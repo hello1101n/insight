@@ -71,6 +71,17 @@ COMPONENTS = [
         "paths": ["src/backend/services/analytics"],
         "triggered_by": ["insight-migration"],
     },
+    # cover=False: the empty service delegates its only HTTP surface to the
+    # api-gateway gear, so no first-party lines are meaningfully coverable yet.
+    # Its formatting, Clippy, and package tests still run on every change.
+    {
+        "name": "insight-v3-core",
+        "lang": "rust",
+        "root": "src/backend",
+        "package": "insight-v3-core",
+        "cover": False,
+        "paths": ["src/backend/services/insight-v3-core"],
+    },
     # cover=False: the api/ and repository layers are still thin on tests, so the
     # 80% gate would block every change to this crate rather than the ones that
     # deserve blocking. fmt + clippy + tests run and gate the pipeline meanwhile.

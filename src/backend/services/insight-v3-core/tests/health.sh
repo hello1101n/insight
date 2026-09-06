@@ -16,6 +16,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+healthcheck() {
+  local status
+  status="$(curl --connect-timeout 2 --max-time 5 --silent \
+    --output /dev/null --write-out '%{http_code}' "$1")" || return
+  [[ "$status" == "200" ]]
+}
+
 APP__gears__api_gateway__config__bind_addr="127.0.0.1:$port" \
   cargo run --quiet --manifest-path "$backend_dir/Cargo.toml" \
   --package insight-v3-core -- \
@@ -28,8 +35,8 @@ for _ in {1..120}; do
     exit 1
   fi
 
-  if curl --fail --silent "http://127.0.0.1:$port/health" >/dev/null && \
-     curl --fail --silent "http://127.0.0.1:$port/healthz" >/dev/null; then
+  if healthcheck "http://127.0.0.1:$port/health" && \
+     healthcheck "http://127.0.0.1:$port/healthz"; then
     exit 0
   fi
 
