@@ -24,6 +24,9 @@ healthcheck() {
 }
 
 APP__gears__api_gateway__config__bind_addr="127.0.0.1:$port" \
+  APP__gears__insight_v3_core__config__clickhouse_url="http://127.0.0.1:18123" \
+  APP__gears__insight_v3_core__config__clickhouse_database="insight" \
+  APP__gears__insight_v3_core__config__ingest_token="health-test-token" \
   cargo run --quiet --manifest-path "$backend_dir/Cargo.toml" \
   --package insight-v3-core -- \
   --config "$service_dir/config/insight.yaml" run >"$log_file" 2>&1 &

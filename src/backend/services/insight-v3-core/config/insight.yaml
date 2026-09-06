@@ -76,4 +76,9 @@ gears:
       priority: 20
 
   insight-v3-core:
-    config: {}
+    config:
+      clickhouse_url: ""
+      clickhouse_database: "insight"
+      clickhouse_user: null
+      clickhouse_password: null
+      ingest_token: ""

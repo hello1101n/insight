@@ -1,4 +1,8 @@
+mod api;
+mod config;
 mod gear;
+mod migration;
+mod raw_data;
 
 use api_gateway as _;
 use authn_resolver as _;
@@ -17,7 +21,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use toolkit::bootstrap::{AppConfig, run_server};
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(name = "insight-v3-core")]
 #[command(about = "Insight v3 Core")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
@@ -29,9 +33,10 @@ struct Cli {
     command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Commands {
     Run,
+    Migrate,
 }
 
 #[tokio::main]
@@ -41,5 +46,6 @@ async fn main() -> Result<()> {
 
     match cli.command.unwrap_or(Commands::Run) {
         Commands::Run => run_server(config).await,
+        Commands::Migrate => gear::run_migrate(&config).await,
     }
 }

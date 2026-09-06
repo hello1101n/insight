@@ -3749,9 +3749,23 @@ dependencies = [
  "cf-gears-static-authz-plugin",
  "cf-gears-tenant-resolver",
  "cf-gears-toolkit",
+ "cf-gears-toolkit-canonical-errors",
  "cf-gears-types-registry",
+ "chrono",
  "clap",
+ "clickhouse",
+ "insight-clickhouse",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "subtle",
+ "thiserror 2.0.18",
  "tokio",
+ "tower",
+ "tracing",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]

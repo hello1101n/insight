@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 toolkit = { workspace = true, features = ["bootstrap"] }
+toolkit-canonical-errors = { workspace = true }
+insight-clickhouse = { workspace = true }
 
 api_gateway = { workspace = true }
 authn-resolver = { workspace = true }
@@ -30,3 +32,18 @@ tokio = { workspace = true }
 clap = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+chrono = { workspace = true }
+clickhouse = { workspace = true }
+secrecy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+utoipa = { version = "5.5", features = ["uuid"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+clickhouse = { workspace = true, features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
