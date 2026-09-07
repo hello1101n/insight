@@ -172,6 +172,24 @@ async fn oversized_request_is_rejected_before_an_insert() {
 }
 
 #[tokio::test]
+async fn missing_json_content_type_remains_unsupported_media_type() {
+    let mock = Mock::new();
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/raw-data")
+        .header(AUTHORIZATION, "Bearer correct-token")
+        .body(Body::from(r#"{"table":"synthetic.events","raw_data":1}"#))
+        .unwrap_or_else(|error| panic!("test request must be valid: {error}"));
+
+    let response = app(&mock)
+        .oneshot(request)
+        .await
+        .unwrap_or_else(|error| panic!("router must respond: {error}"));
+
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+}
+
+#[tokio::test]
 async fn clickhouse_failure_returns_only_a_generic_error() {
     let mock = Mock::new();
     mock.add(handlers::failure(status::INTERNAL_SERVER_ERROR));

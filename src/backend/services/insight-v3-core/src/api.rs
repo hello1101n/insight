@@ -15,6 +15,7 @@ use toolkit::api::{OpenApiRegistry, OperationBuilder};
 use toolkit_canonical_errors::{CanonicalError, Http, resource_error};
 use utoipa::ToSchema;
 
+use crate::config::MAX_INGEST_TOKEN_BYTES;
 use crate::raw_data::{RawDataError, RawDataRecord, RawDataStore, StoreError};
 
 const MAX_CONCURRENT_WRITES: usize = 64;
@@ -61,7 +62,7 @@ impl TokenVerifier {
         };
         if !scheme.eq_ignore_ascii_case("bearer")
             || token.is_empty()
-            || token.len() > 1024
+            || token.len() > MAX_INGEST_TOKEN_BYTES
             || !token.bytes().all(|byte| byte.is_ascii_graphic())
         {
             return false;
@@ -185,6 +186,12 @@ fn request_rejection(error: &JsonRejection) -> CanonicalError {
         return RawDataApiError::invalid_argument()
             .with_field_violation("body", "Request body exceeds the limit", "TOO_LARGE")
             .with_override(Http::status_code(413))
+            .create();
+    }
+    if error.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+        return RawDataApiError::invalid_argument()
+            .with_field_violation("body", "Content-Type must be application/json", "INVALID")
+            .with_override(Http::status_code(415))
             .create();
     }
 

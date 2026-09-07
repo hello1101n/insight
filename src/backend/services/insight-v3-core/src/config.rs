@@ -3,6 +3,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 const DEFAULT_CLICKHOUSE_DATABASE: &str = "insight";
+pub(crate) const MAX_INGEST_TOKEN_BYTES: usize = 1024;
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -32,7 +33,7 @@ pub(crate) struct ValidatedConfig {
     clickhouse_database: String,
     clickhouse_user: Option<String>,
     clickhouse_password: Option<SecretString>,
-    ingest_token: SecretString,
+    ingest_token: IngestToken,
 }
 
 impl ValidatedConfig {
@@ -63,7 +64,7 @@ impl ValidatedConfig {
     }
 
     pub(crate) fn ingest_token(&self) -> &SecretString {
-        &self.ingest_token
+        self.ingest_token.as_secret()
     }
 }
 
@@ -71,7 +72,7 @@ impl GearConfig {
     pub(crate) fn validate(self) -> Result<ValidatedConfig, ConfigError> {
         require_non_empty("clickhouse_url", &self.clickhouse_url)?;
         require_non_empty("clickhouse_database", &self.clickhouse_database)?;
-        require_non_empty("ingest_token", self.ingest_token.expose_secret())?;
+        let ingest_token = IngestToken::parse(self.ingest_token)?;
         validate_credentials(
             self.clickhouse_user.as_deref(),
             self.clickhouse_password.as_ref(),
@@ -82,8 +83,30 @@ impl GearConfig {
             clickhouse_database: self.clickhouse_database,
             clickhouse_user: self.clickhouse_user,
             clickhouse_password: self.clickhouse_password,
-            ingest_token: self.ingest_token,
+            ingest_token,
         })
+    }
+}
+
+#[derive(Debug)]
+struct IngestToken(SecretString);
+
+impl IngestToken {
+    fn parse(value: SecretString) -> Result<Self, ConfigError> {
+        let exposed = value.expose_secret();
+        require_non_empty("ingest_token", exposed)?;
+        if exposed.len() > MAX_INGEST_TOKEN_BYTES {
+            return Err(ConfigError::IngestTokenTooLong);
+        }
+        if !exposed.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(ConfigError::InvalidIngestTokenCharacters);
+        }
+
+        Ok(Self(value))
+    }
+
+    fn as_secret(&self) -> &SecretString {
+        &self.0
     }
 }
 
@@ -119,6 +142,10 @@ pub(crate) enum ConfigError {
     IncompleteCredentials,
     #[error("ClickHouse credentials must not be empty")]
     EmptyCredentials,
+    #[error("ingest_token must be at most {MAX_INGEST_TOKEN_BYTES} bytes")]
+    IngestTokenTooLong,
+    #[error("ingest_token must contain only non-whitespace ASCII characters")]
+    InvalidIngestTokenCharacters,
 }
 
 #[derive(Debug, Error)]
@@ -183,5 +210,32 @@ mod tests {
             config.validate(),
             Err(ConfigError::IncompleteCredentials)
         ));
+    }
+
+    #[test]
+    fn ingest_token_must_be_usable_on_the_bearer_wire() {
+        let invalid_tokens = [
+            "token with space".to_owned(),
+            "töken".to_owned(),
+            "x".repeat(1025),
+        ];
+
+        for token in invalid_tokens {
+            let mut config = valid_config();
+            config.ingest_token = SecretString::from(token);
+
+            assert!(
+                config.validate().is_err(),
+                "configured token outside the Bearer wire contract must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn ingest_token_accepts_the_wire_size_boundary() {
+        let mut config = valid_config();
+        config.ingest_token = SecretString::from("x".repeat(MAX_INGEST_TOKEN_BYTES));
+
+        assert!(config.validate().is_ok());
     }
 }

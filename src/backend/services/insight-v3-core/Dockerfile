@@ -33,9 +33,11 @@ RUN mkdir -p libs/insight-clickhouse/src && echo "" > libs/insight-clickhouse/sr
 
 RUN cargo build --release --bin insight-v3-core 2>/dev/null || true
 
-RUN rm -rf services/insight-v3-core/src \
-    target/release/insight-v3-core target/release/deps/insight_v3_core*
+RUN rm -rf libs/insight-clickhouse/src services/insight-v3-core/src \
+    target/release/insight-v3-core target/release/deps/insight_v3_core* \
+    target/release/deps/insight_clickhouse* target/release/deps/libinsight_clickhouse*
 
+COPY libs/insight-clickhouse/src/ ./libs/insight-clickhouse/src/
 COPY services/insight-v3-core/src/ ./services/insight-v3-core/src/
 COPY services/insight-v3-core/config/ ./services/insight-v3-core/config/
 
