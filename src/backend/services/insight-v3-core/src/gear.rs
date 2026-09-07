@@ -29,7 +29,7 @@ impl std::fmt::Debug for InsightV3CoreGear {
 #[derive(Debug)]
 struct RuntimeState {
     app: Arc<crate::api::AppState>,
-    token_verifier: crate::api::TokenVerifier,
+    admission: crate::api::IngestAdmission,
 }
 
 #[async_trait]
@@ -38,10 +38,11 @@ impl Gear for InsightV3CoreGear {
         let config: crate::config::GearConfig = ctx.config()?;
         let config = config.validate()?;
         let token_verifier = crate::api::TokenVerifier::new(config.ingest_token());
+        let admission = crate::api::IngestAdmission::new(token_verifier);
         let store = crate::raw_data::RawDataStore::new(config.clickhouse_client());
         let runtime = RuntimeState {
             app: Arc::new(crate::api::AppState::new(store)),
-            token_verifier,
+            admission,
         };
         self.runtime
             .set(runtime)
@@ -67,7 +68,7 @@ impl RestApiCapability for InsightV3CoreGear {
             router,
             openapi,
             runtime.app.clone(),
-            runtime.token_verifier.clone(),
+            runtime.admission.clone(),
         ))
     }
 }

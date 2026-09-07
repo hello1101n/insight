@@ -3,6 +3,7 @@ use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, HeaderValue, Request};
 use chrono::{DateTime, Utc};
 use clickhouse::test::{Mock, handlers, status};
+use futures::stream;
 use secrecy::SecretString;
 use serde::Deserialize;
 use serde_json::json;
@@ -33,7 +34,12 @@ fn app(mock: &Mock) -> Router {
     let state = Arc::new(AppState::new(RawDataStore::new(client)));
     let openapi = OpenApiRegistryImpl::new();
 
-    register_routes(Router::new(), &openapi, state, verifier())
+    register_routes(
+        Router::new(),
+        &openapi,
+        state,
+        IngestAdmission::new(verifier()),
+    )
 }
 
 fn post(body: Body, authorization: Option<&str>) -> Request<Body> {
@@ -48,6 +54,14 @@ fn post(body: Body, authorization: Option<&str>) -> Request<Body> {
     request
         .body(body)
         .unwrap_or_else(|error| panic!("test request must be valid: {error}"))
+}
+
+fn unpollable_body() -> Body {
+    Body::from_stream(stream::poll_fn(
+        |_| -> Poll<Option<Result<String, Infallible>>> {
+            panic!("admission middleware must not poll the request body")
+        },
+    ))
 }
 
 #[test]
@@ -172,6 +186,43 @@ async fn oversized_request_is_rejected_before_an_insert() {
 }
 
 #[tokio::test]
+async fn saturated_gate_rejects_without_polling_the_body_or_clickhouse() {
+    let mock = Mock::new();
+    let client =
+        insight_clickhouse::Client::new(insight_clickhouse::Config::new(mock.url(), "insight"));
+    let state = Arc::new(AppState::new(RawDataStore::new(client)));
+    let admission = IngestAdmission::new(verifier());
+    let _permits: Vec<_> = (0..MAX_CONCURRENT_WRITES)
+        .map(|_| {
+            admission
+                .write_slots
+                .clone()
+                .try_acquire_owned()
+                .unwrap_or_else(|error| panic!("test must saturate the gate: {error}"))
+        })
+        .collect();
+    let openapi = OpenApiRegistryImpl::new();
+    let app = register_routes(Router::new(), &openapi, state, admission);
+
+    let unauthorized = app
+        .clone()
+        .oneshot(post(unpollable_body(), Some("Bearer wrong-token")))
+        .await
+        .unwrap_or_else(|error| panic!("router must respond: {error}"));
+    let saturated = app
+        .oneshot(post(unpollable_body(), Some("Bearer correct-token")))
+        .await
+        .unwrap_or_else(|error| panic!("router must respond: {error}"));
+
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(saturated.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        saturated.headers().get(CACHE_CONTROL),
+        Some(&HeaderValue::from_static("no-store"))
+    );
+}
+
+#[tokio::test]
 async fn missing_json_content_type_remains_unsupported_media_type() {
     let mock = Mock::new();
     let request = Request::builder()
@@ -211,3 +262,5 @@ async fn clickhouse_failure_returns_only_a_generic_error() {
     assert!(!body.contains("ClickHouse"));
     assert!(!body.contains("database"));
 }
+use std::convert::Infallible;
+use std::task::Poll;

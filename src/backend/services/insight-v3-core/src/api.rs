@@ -27,14 +27,25 @@ struct RawDataApiError;
 #[derive(Debug)]
 pub(crate) struct AppState {
     store: RawDataStore,
-    write_slots: tokio::sync::Semaphore,
 }
 
 impl AppState {
     pub(crate) fn new(store: RawDataStore) -> Self {
+        Self { store }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct IngestAdmission {
+    verifier: TokenVerifier,
+    write_slots: Arc<tokio::sync::Semaphore>,
+}
+
+impl IngestAdmission {
+    pub(crate) fn new(verifier: TokenVerifier) -> Self {
         Self {
-            store,
-            write_slots: tokio::sync::Semaphore::new(MAX_CONCURRENT_WRITES),
+            verifier,
+            write_slots: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_WRITES)),
         }
     }
 }
@@ -92,7 +103,7 @@ pub(crate) fn register_routes(
     host_router: Router,
     openapi: &dyn OpenApiRegistry,
     state: Arc<AppState>,
-    token_verifier: TokenVerifier,
+    admission: IngestAdmission,
 ) -> Router {
     let api = OperationBuilder::post("/v1/raw-data")
         .operation_id("insight_v3_core.raw_data.ingest")
@@ -110,23 +121,33 @@ pub(crate) fn register_routes(
         .handler(ingest_raw_data)
         .register(Router::new(), openapi)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(token_verifier, authenticate))
+        .layer(middleware::from_fn_with_state(admission, authenticate))
         .layer(Extension(state));
 
     host_router.merge(api)
 }
 
 async fn authenticate(
-    axum::extract::State(verifier): axum::extract::State<TokenVerifier>,
+    axum::extract::State(admission): axum::extract::State<IngestAdmission>,
     headers: HeaderMap,
     request: Request,
     next: Next,
 ) -> Response {
-    let mut response = if verifier.authorizes(&headers) {
-        next.run(request).await
-    } else {
-        unauthenticated_response()
+    if !admission.verifier.authorizes(&headers) {
+        return no_store(unauthenticated_response());
+    }
+    let Ok(permit) = admission.write_slots.try_acquire_owned() else {
+        return no_store(capacity_error().into_response());
     };
+
+    // INVARIANT: admission spans body polling, preparation, and ClickHouse I/O.
+    let response = next.run(request).await;
+    drop(permit);
+
+    no_store(response)
+}
+
+fn no_store(mut response: Response) -> Response {
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -151,19 +172,13 @@ async fn ingest_raw_data(
     body: Result<Json<RawDataRequest>, JsonRejection>,
 ) -> Result<Response, CanonicalError> {
     let Json(request) = body.map_err(|error| request_rejection(&error))?;
-    let permit = state
-        .write_slots
-        .try_acquire()
-        .map_err(|_| capacity_error())?;
     let record = parse_record(request).await?;
 
-    // INVARIANT: the permit spans preparation and ClickHouse I/O to cap full write work.
     state
         .store
         .insert(record)
         .await
         .map_err(|error| store_error(&error))?;
-    drop(permit);
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }

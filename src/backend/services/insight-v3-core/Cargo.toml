@@ -46,4 +46,5 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 clickhouse = { workspace = true, features = ["test-util"] }
+futures = { workspace = true }
 tower = { version = "0.5", features = ["util"] }

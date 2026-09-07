@@ -71,9 +71,9 @@ COMPONENTS = [
         "paths": ["src/backend/services/analytics"],
         "triggered_by": ["insight-migration"],
     },
-    # cover=False: the empty service delegates its only HTTP surface to the
-    # api-gateway gear, so no first-party lines are meaningfully coverable yet.
-    # Its formatting, Clippy, and package tests still run on every change.
+    # cover=False: readiness/container startup and real ClickHouse migration and
+    # insert behavior are exercised by shell/Docker paths outside llvm-cov.
+    # Formatting, Clippy, and package tests still run on every service change.
     {
         "name": "insight-v3-core",
         "lang": "rust",

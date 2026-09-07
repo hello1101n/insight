@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -6,6 +7,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 const RAW_DATA_TABLE: &str = "raw_data";
+const INSERT_SEND_TIMEOUT_SECS: u64 = 10;
+const INSERT_END_TIMEOUT_SECS: u64 = 30;
+const INSERT_TOTAL_TIMEOUT_SECS: u64 = 35;
 pub(crate) const MAX_TABLE_NAME_CHARS: usize = 128;
 
 #[derive(Debug)]
@@ -71,20 +75,36 @@ impl TableName {
 
 pub(crate) struct RawDataStore {
     client: insight_clickhouse::Client,
+    timeouts: InsertTimeouts,
 }
 
 impl RawDataStore {
     pub(crate) fn new(client: insight_clickhouse::Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            timeouts: InsertTimeouts::production(),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_timeouts(client: insight_clickhouse::Client, timeouts: InsertTimeouts) -> Self {
+        Self { client, timeouts }
     }
 
     pub(crate) async fn insert(&self, record: RawDataRecord) -> Result<(), StoreError> {
+        tokio::time::timeout(self.timeouts.total, self.insert_with_timeouts(record))
+            .await
+            .map_err(|_| StoreError::Timeout)?
+    }
+
+    async fn insert_with_timeouts(&self, record: RawDataRecord) -> Result<(), StoreError> {
         let row = record.into_row();
         let mut insert = self
             .client
             .inner()
             .insert::<RawDataRow>(RAW_DATA_TABLE)
-            .await?;
+            .await?
+            .with_timeouts(Some(self.timeouts.send), Some(self.timeouts.end));
         insert.write(&row).await?;
         insert.end().await?;
 
@@ -97,7 +117,25 @@ impl fmt::Debug for RawDataStore {
         formatter
             .debug_struct("RawDataStore")
             .field("table", &RAW_DATA_TABLE)
-            .finish()
+            .field("timeouts", &self.timeouts)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InsertTimeouts {
+    send: Duration,
+    end: Duration,
+    total: Duration,
+}
+
+impl InsertTimeouts {
+    fn production() -> Self {
+        Self {
+            send: Duration::from_secs(INSERT_SEND_TIMEOUT_SECS),
+            end: Duration::from_secs(INSERT_END_TIMEOUT_SECS),
+            total: Duration::from_secs(INSERT_TOTAL_TIMEOUT_SECS),
+        }
     }
 }
 
@@ -112,8 +150,12 @@ pub(crate) enum RawDataError {
 }
 
 #[derive(Debug, Error)]
-#[error("failed to insert raw data")]
-pub(crate) struct StoreError(#[from] clickhouse::error::Error);
+pub(crate) enum StoreError {
+    #[error("failed to insert raw data")]
+    ClickHouse(#[from] clickhouse::error::Error),
+    #[error("raw data insert timed out")]
+    Timeout,
+}
 
 #[derive(Debug, Serialize, Deserialize, clickhouse::Row)]
 struct RawDataRow {
@@ -129,6 +171,7 @@ struct RawDataRow {
 mod tests {
     use clickhouse::test::{Mock, handlers};
     use serde_json::json;
+    use tokio::net::TcpListener;
 
     use super::*;
 
@@ -187,5 +230,42 @@ mod tests {
         assert_eq!(rows[0].table_name, "synthetic.events");
         assert_eq!(rows[0].raw_data, r#"{"nested":[1,true,null]}"#);
         assert_ne!(rows[0].id, uuid::Uuid::nil());
+    }
+
+    #[tokio::test]
+    async fn hung_clickhouse_insert_is_time_bounded() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap_or_else(|error| panic!("test listener must bind: {error}"));
+        let address = listener
+            .local_addr()
+            .unwrap_or_else(|error| panic!("test listener must have an address: {error}"));
+        let server = tokio::spawn(async move {
+            let _connection = listener
+                .accept()
+                .await
+                .unwrap_or_else(|error| panic!("test server must accept: {error}"));
+            futures::future::pending::<()>().await;
+        });
+        let client = insight_clickhouse::Client::new(insight_clickhouse::Config::new(
+            format!("http://{address}"),
+            "insight",
+        ));
+        let timeout = Duration::from_millis(25);
+        let store = RawDataStore::with_timeouts(
+            client,
+            InsertTimeouts {
+                send: timeout,
+                end: timeout,
+                total: timeout,
+            },
+        );
+        let record = RawDataRecord::parse("synthetic.events", &json!(1))
+            .unwrap_or_else(|error| panic!("record must parse: {error}"));
+
+        let result = tokio::time::timeout(Duration::from_secs(1), store.insert(record)).await;
+        server.abort();
+
+        assert!(matches!(result, Ok(Err(StoreError::Timeout))));
     }
 }
