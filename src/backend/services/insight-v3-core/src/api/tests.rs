@@ -1,3 +1,6 @@
+use std::convert::Infallible;
+use std::task::Poll;
+
 use axum::body::{Body, to_bytes};
 use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, HeaderValue, Request};
@@ -262,5 +265,3 @@ async fn clickhouse_failure_returns_only_a_generic_error() {
     assert!(!body.contains("ClickHouse"));
     assert!(!body.contains("database"));
 }
-use std::convert::Infallible;
-use std::task::Poll;
