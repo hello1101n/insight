@@ -14,10 +14,10 @@ const ROUNDED = new Intl.NumberFormat("en", {
 });
 
 /**
- * A row as the table draws it: a whole number as the record holds it, a
- * fraction to two decimals unless the metric marks its column exact, a percent
- * marked as one, and a cell that is an absolute URL linked, so a row can be
- * followed to the pull request, the issue or the page it counted.
+ * A row as the table draws it: a whole number and a percent as the record
+ * holds them, the percent marked as one, a fraction to two decimals unless the
+ * metric marks its column exact, and a cell that is an absolute URL linked, so
+ * a row can be followed to the pull request, the issue or the page it counted.
  */
 export function drawable(
   row: DrilldownRow,
@@ -38,10 +38,10 @@ export function drawable(
 }
 
 function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
-  const fraction = typeof value === "number" && !Number.isInteger(value);
-  const drawn = fraction && !column.exact ? ROUNDED.format(value) : value;
+  if (column.percent) return `${String(value)}%`;
 
-  return column.percent ? `${String(drawn)}%` : drawn;
+  const fraction = typeof value === "number" && !Number.isInteger(value);
+  return fraction && !column.exact ? ROUNDED.format(value) : value;
 }
 
 /**

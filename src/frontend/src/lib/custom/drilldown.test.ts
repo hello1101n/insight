@@ -35,6 +35,12 @@ describe("drawable", () => {
       0.3333,
       0.3333,
     ],
+    [
+      "a percent, marked as one",
+      column("rate", "number", { percent: true }),
+      33.333333333333336,
+      "33.333333333333336%",
+    ],
   ])("keeps %s as the record holds it", (_case, col, value, shown) => {
     expect(
       drawable({ values: { [col.key]: value } }, [col]).values[col.key],
@@ -47,19 +53,6 @@ describe("drawable", () => {
     ["a float sum", column("cost", "number"), 1234.5678901234999, "1234.57"],
     ["a sum that should be zero", column("cost", "number"), -2.1e-16, "0"],
     ["a short fraction", column("cost", "number"), 2.5, "2.5"],
-    [
-      "a percent",
-      column("rate", "number", { percent: true }),
-      42.567,
-      "42.57%",
-    ],
-    ["a whole percent", column("rate", "number", { percent: true }), 50, "50%"],
-    [
-      "an exact percent",
-      column("rate", "number", { percent: true, exact: true }),
-      42.567,
-      "42.567%",
-    ],
   ])(
     "writes %s to at most two decimals unless exact",
     (_case, col, value, shown) => {
