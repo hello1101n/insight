@@ -169,7 +169,7 @@ describe("<WidgetDrilldown>", () => {
     ).toHaveAttribute("aria-sort", "none");
   });
 
-  it("rounds a fraction to two decimals and keeps whole numbers and percents as the record holds them", async () => {
+  it("rounds a fraction and a percent to two decimals and keeps whole numbers as the record holds them", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
     vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(
       page([{ service: "example-api", commits: 1234567, cost: 12.3456, share: 83.91167 }], {
@@ -185,7 +185,7 @@ describe("<WidgetDrilldown>", () => {
 
     expect(await screen.findByText("1234567")).toBeInTheDocument();
     expect(screen.getByText("12.35")).toBeInTheDocument();
-    expect(screen.getByText("83.91167%")).toBeInTheDocument();
+    expect(screen.getByText("83.91%")).toBeInTheDocument();
   });
 
   // A header click is a question to the service; the answer is the next

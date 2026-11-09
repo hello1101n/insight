@@ -36,8 +36,8 @@ describe("drawable", () => {
       0.3333,
     ],
     [
-      "a percent, marked as one",
-      column("rate", "number", { percent: true }),
+      "a percent the metric marks exact, marked as one",
+      column("rate", "number", { percent: true, exact: true }),
       33.333333333333336,
       "33.333333333333336%",
     ],
@@ -53,6 +53,13 @@ describe("drawable", () => {
     ["a float sum", column("cost", "number"), 1234.5678901234999, "1234.57"],
     ["a sum that should be zero", column("cost", "number"), -2.1e-16, "0"],
     ["a short fraction", column("cost", "number"), 2.5, "2.5"],
+    [
+      "a percent",
+      column("rate", "number", { percent: true }),
+      11.111111111111112,
+      "11.11%",
+    ],
+    ["a whole percent", column("rate", "number", { percent: true }), 50, "50%"],
   ])(
     "writes %s to at most two decimals unless exact",
     (_case, col, value, shown) => {
