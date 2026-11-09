@@ -146,9 +146,14 @@ COMPONENTS = [
         "live_db": True,
         "live_db_name": "connectors",
         "live_ch": True,
+        "include_ignored": True,
         "cover": False,
         "drift_test": True,
-        "paths": ["src/backend/services/connectors", "docs/components/backend/connectors/openapi.json"],
+        "paths": [
+            "src/backend/services/connectors",
+            "docs/components/backend/connectors/openapi.json",
+            "src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql",
+        ],
         "triggered_by": ["insight-clickhouse", "insight-migration"],
     },
     # cover=False (mirrors identity-resolution): the crate is a thin HTTP
