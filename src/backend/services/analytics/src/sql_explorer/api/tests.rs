@@ -15,7 +15,7 @@ use crate::domain::sql_token::TokenHash;
 use crate::infra::db::entities::sql_api_tokens;
 
 const TOKEN: &str = "synthetic-test-token-not-a-real-secret";
-const PERSONAL_TOKEN: &str = "isql_synthetic-personal-token-not-a-real-secret";
+const PERSONAL_TOKEN: &str = "isql_synthetic-personal-token-not-a-real-secret0";
 const HOLDER: Uuid = Uuid::from_u128(0x5eed_0000_0000_4000_8000_0000_0000_0001);
 type R = Result<(), Box<dyn std::error::Error>>;
 
@@ -428,5 +428,51 @@ fn an_instance_token_query_logs_no_holder() -> R {
         "unexpected label: {logged}"
     );
     assert!(!output.contains(TOKEN), "leaked token: {output}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_bearer_not_shaped_like_a_personal_token_never_reaches_the_store() -> R {
+    let response = send(
+        app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
+        Some("Bearer synthetic-guess-0123456789abcdef0123456789"),
+        r#"{"sql":"SELECT 1"}"#,
+    )
+    .await?;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_token_store_that_never_answers_is_a_server_error_within_the_lookup_bound() -> R {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let silent = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            held.push(socket);
+        }
+    });
+    let mut options =
+        sea_orm::ConnectOptions::new(format!("mysql://synthetic:synthetic@{address}/analytics"));
+    options.connect_lazy(true).sqlx_logging(false);
+    let store = sea_orm::Database::connect(options).await?;
+
+    let started = std::time::Instant::now();
+    let response = send(
+        app_with_tokens("http://127.0.0.1:1", 1, store),
+        Some(&format!("Bearer {PERSONAL_TOKEN}")),
+        r#"{"sql":"SELECT 1"}"#,
+    )
+    .await?;
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "lookup was not bounded: {:?}",
+        started.elapsed()
+    );
+    silent.abort();
     Ok(())
 }

@@ -15,6 +15,7 @@ mod tests;
 
 const TOKEN_PREFIX: &str = "isql_";
 const TOKEN_ENTROPY_BYTES: usize = 32;
+const TOKEN_BODY_CHARS: usize = 43;
 pub(crate) const LABEL_MAX_CHARS: usize = sql_token_schema::LABEL_CHARS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,16 @@ pub(crate) fn mint() -> Result<MintedToken, CryptoError> {
     })
 }
 
+pub(crate) fn looks_minted(token: &str) -> bool {
+    let Some(body) = token.strip_prefix(TOKEN_PREFIX) else {
+        return false;
+    };
+    body.len() == TOKEN_BODY_CHARS
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TokenLabel(String);
 
@@ -58,6 +69,8 @@ pub(crate) enum LabelRejected {
     Empty,
     #[error("label must be at most {LABEL_MAX_CHARS} characters")]
     TooLong,
+    #[error("label must not contain control characters")]
+    ControlCharacter,
 }
 
 impl TokenLabel {
@@ -68,6 +81,9 @@ impl TokenLabel {
         }
         if trimmed.chars().count() > LABEL_MAX_CHARS {
             return Err(LabelRejected::TooLong);
+        }
+        if trimmed.chars().any(char::is_control) {
+            return Err(LabelRejected::ControlCharacter);
         }
         Ok(Self(trimmed.to_owned()))
     }

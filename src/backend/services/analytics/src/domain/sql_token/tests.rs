@@ -57,6 +57,8 @@ fn a_label_is_trimmed_and_must_hold_text_within_its_column() {
             multibyte_at_budget.as_str(),
             Ok(multibyte_at_budget.as_str()),
         ),
+        ("lap\ntop", Err(LabelRejected::ControlCharacter)),
+        ("lap\u{7}top", Err(LabelRejected::ControlCharacter)),
         ("", Err(LabelRejected::Empty)),
         ("   ", Err(LabelRejected::Empty)),
         (over_budget.as_str(), Err(LabelRejected::TooLong)),
@@ -68,4 +70,26 @@ fn a_label_is_trimmed_and_must_hold_text_within_its_column() {
             "label case: {raw:?}"
         );
     }
+}
+
+#[test]
+fn only_a_token_shaped_like_a_minted_one_is_worth_looking_up() -> R {
+    let minted = mint()?;
+    assert!(looks_minted(minted.token.expose_secret()));
+
+    let body = "a".repeat(43);
+    for (candidate, expected) in [
+        (format!("isql_{body}"), true),
+        (format!("isql_{}", "a".repeat(42)), false),
+        (format!("isql_{}", "a".repeat(44)), false),
+        (format!("isql_{}+", "a".repeat(42)), false),
+        (format!("isqx_{body}"), false),
+        (
+            "synthetic-instance-token-0123456789abcdef".to_owned(),
+            false,
+        ),
+    ] {
+        assert_eq!(looks_minted(&candidate), expected, "candidate: {candidate}");
+    }
+    Ok(())
 }

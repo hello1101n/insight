@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::extract::{DefaultBodyLimit, Request, State, rejection::JsonRejection};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -13,7 +15,9 @@ use toolkit_security::crypto::constant_time_eq;
 
 use super::executor::{MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor, QueryFailure};
 use crate::config::SqlApiConfig;
-use crate::domain::sql_token::{TokenHash, store};
+use crate::domain::sql_token::{TokenHash, looks_minted, store};
+
+const TOKEN_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[resource_error("gts.cf.insight.analytics_api.sql_query.v1~")]
 struct SqlQueryError;
@@ -82,13 +86,27 @@ async fn caller(
         return Ok(Some(QueryCaller::InstanceToken));
     }
 
-    let holder = store::holder(&check.personal, &hash)
-        .await
-        .map_err(|error| {
+    if !looks_minted(token) {
+        return Ok(None);
+    }
+
+    let lookup = tokio::time::timeout(TOKEN_LOOKUP_TIMEOUT, store::holder(&check.personal, &hash));
+    let holder = match lookup.await {
+        Ok(Ok(holder)) => holder,
+        Ok(Err(error)) => {
             tracing::error!(%error, "personal SQL token lookup failed");
-            CanonicalError::internal("failed to verify credentials").create()
-        })?;
+            return Err(lookup_failed());
+        }
+        Err(_) => {
+            tracing::error!("personal SQL token lookup timed out");
+            return Err(lookup_failed());
+        }
+    };
     Ok(holder.map(QueryCaller::PersonalToken))
+}
+
+fn lookup_failed() -> CanonicalError {
+    CanonicalError::internal("failed to verify credentials").create()
 }
 
 fn unauthenticated() -> Response {

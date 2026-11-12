@@ -27,7 +27,7 @@ pub struct SqlTokenRequest {
 }
 impl toolkit::api::api_dto::RequestApiDto for SqlTokenRequest {}
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct CreatedSqlToken {
     pub token_id: String,
     /// Shown in this response only; the service keeps its hash.
@@ -37,6 +37,18 @@ pub struct CreatedSqlToken {
     pub created_at: String,
 }
 impl toolkit::api::api_dto::ResponseApiDto for CreatedSqlToken {}
+
+impl std::fmt::Debug for CreatedSqlToken {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreatedSqlToken")
+            .field("token_id", &self.token_id)
+            .field("person_id", &self.person_id)
+            .field("label", &self.label)
+            .field("created_at", &self.created_at)
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SqlTokenPerson {
@@ -202,4 +214,25 @@ fn violation(field: &str, description: &str) -> CanonicalError {
 fn store_failed(what: &str, error: &sea_orm::DbErr) -> CanonicalError {
     tracing::error!(%error, what, "personal SQL token store failed");
     CanonicalError::internal("personal SQL token store failed").create()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CreatedSqlToken;
+
+    #[test]
+    fn a_created_token_never_prints_its_secret() {
+        let created = CreatedSqlToken {
+            token_id: "t-1".to_owned(),
+            token: "isql_synthetic-token-never-printed".to_owned(),
+            person_id: "p-1".to_owned(),
+            label: "laptop".to_owned(),
+            created_at: "2026-11-12T10:00:00Z".to_owned(),
+        };
+
+        let printed = format!("{created:?}");
+
+        assert!(!printed.contains("never-printed"), "leaked: {printed}");
+        assert!(printed.contains("laptop"), "lost the label: {printed}");
+    }
 }
