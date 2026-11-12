@@ -8,12 +8,15 @@ use serde_json::{Value, json};
 use tower::ServiceExt as _;
 use uuid::Uuid;
 
+use insight_log_context::test_support::capture_output;
+
 use super::*;
 use crate::domain::sql_token::TokenHash;
 use crate::infra::db::entities::sql_api_tokens;
 
 const TOKEN: &str = "synthetic-test-token-not-a-real-secret";
 const PERSONAL_TOKEN: &str = "isql_synthetic-personal-token-not-a-real-secret";
+const HOLDER: Uuid = Uuid::from_u128(0x5eed_0000_0000_4000_8000_0000_0000_0001);
 type R = Result<(), Box<dyn std::error::Error>>;
 
 fn app(url: &str, capacity: usize) -> Router {
@@ -40,7 +43,7 @@ fn stored_personal_token() -> DatabaseConnection {
         id: Uuid::now_v7(),
         insight_tenant_id: Uuid::now_v7(),
         token_hash: TokenHash::of(PERSONAL_TOKEN).as_bytes().to_vec(),
-        person_id: Uuid::now_v7(),
+        person_id: HOLDER,
         label: "laptop".to_owned(),
         created_by: Uuid::now_v7(),
         created_at: Utc::now(),
@@ -341,5 +344,86 @@ async fn malformed_credentials_never_reach_the_token_store() -> R {
             "credential: {token:?}"
         );
     }
+    Ok(())
+}
+
+fn logged_while(run: impl AsyncFnOnce() -> R) -> Result<String, Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut outcome = Ok(());
+    let output = capture_output(|| outcome = runtime.block_on(run()));
+    outcome?;
+    Ok(output)
+}
+
+fn line<'a>(output: &'a str, message: &str) -> Option<&'a str> {
+    output.lines().find(|line| line.contains(message))
+}
+
+#[test]
+fn a_personal_token_query_logs_its_holder_and_never_the_token() -> R {
+    let output = logged_while(async || {
+        let (url, server) = answering_clickhouse().await?;
+        let answered = send(
+            app_with_tokens(&url, 1, stored_personal_token()),
+            Some(&format!("Bearer {PERSONAL_TOKEN}")),
+            r#"{"sql":"SELECT 1 AS answer"}"#,
+        )
+        .await?;
+        assert_eq!(answered.status(), StatusCode::OK);
+        server.abort();
+
+        let failed = send(
+            app_with_tokens("http://127.0.0.1:1", 1, stored_personal_token()),
+            Some(&format!("Bearer {PERSONAL_TOKEN}")),
+            r#"{"sql":"SELECT 1"}"#,
+        )
+        .await?;
+        assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        Ok(())
+    })?;
+
+    for message in ["SQL explorer query completed", "SQL explorer query failed"] {
+        let Some(logged) = line(&output, message) else {
+            panic!("no `{message}` line in {output}");
+        };
+        assert!(
+            logged.contains(&format!(r#""person_id":"{HOLDER}""#)),
+            "no holder in: {logged}"
+        );
+        assert!(
+            logged.contains(r#""token_label":"laptop""#),
+            "no label in: {logged}"
+        );
+    }
+    assert!(!output.contains(PERSONAL_TOKEN), "leaked token: {output}");
+    Ok(())
+}
+
+#[test]
+fn an_instance_token_query_logs_no_holder() -> R {
+    let output = logged_while(async || {
+        let (url, server) = answering_clickhouse().await?;
+        let answered = send(
+            app(&url, 1),
+            Some(&format!("Bearer {TOKEN}")),
+            r#"{"sql":"SELECT 1 AS answer"}"#,
+        )
+        .await?;
+        assert_eq!(answered.status(), StatusCode::OK);
+        server.abort();
+        Ok(())
+    })?;
+
+    let Some(logged) = line(&output, "SQL explorer query completed") else {
+        panic!("no completed line in {output}");
+    };
+    assert!(!logged.contains("person_id"), "unexpected holder: {logged}");
+    assert!(
+        !logged.contains("token_label"),
+        "unexpected label: {logged}"
+    );
+    assert!(!output.contains(TOKEN), "leaked token: {output}");
     Ok(())
 }

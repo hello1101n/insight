@@ -71,7 +71,7 @@ async fn cloned_executors_share_capacity_and_release_it_after_completion()
     use serde_json::json;
     use tokio::sync::Notify;
 
-    use super::executor::{QueryExecutor, QueryFailure};
+    use super::executor::{QueryCaller, QueryExecutor, QueryFailure};
 
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -98,14 +98,20 @@ async fn cloned_executors_share_capacity_and_release_it_after_completion()
     ));
     let executor = QueryExecutor::new(client, 1);
     let other = executor.clone();
-    let running = tokio::spawn(async move { other.query("SELECT 1".to_owned(), Ok).await });
+    let running = tokio::spawn(async move {
+        other
+            .query("SELECT 1".to_owned(), &QueryCaller::Mcp, Ok)
+            .await
+    });
     tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified()).await?;
-    let result = executor.query("SELECT 2".to_owned(), Ok).await;
+    let result = executor
+        .query("SELECT 2".to_owned(), &QueryCaller::Mcp, Ok)
+        .await;
     assert!(matches!(result, Err(QueryFailure::Busy)));
     release.notify_one();
     running.await??;
     let result = executor
-        .query("DROP TABLE gold.example".to_owned(), Ok)
+        .query("DROP TABLE gold.example".to_owned(), &QueryCaller::Mcp, Ok)
         .await;
     assert!(matches!(result, Err(QueryFailure::InvalidSql(_))));
     server.abort();

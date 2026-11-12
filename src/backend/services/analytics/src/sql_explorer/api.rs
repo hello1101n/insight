@@ -4,7 +4,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use sea_orm::DatabaseConnection;
 use secrecy::ExposeSecret as _;
 use serde::Deserialize;
@@ -120,6 +120,7 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 async fn query(
     State(executor): State<QueryExecutor>,
+    Extension(caller): Extension<QueryCaller>,
     body: Result<Json<QueryRequest>, JsonRejection>,
 ) -> Result<Response, CanonicalError> {
     let Json(request) = body.map_err(|error| {
@@ -130,7 +131,7 @@ async fn query(
         }
     })?;
     let bytes = executor
-        .query(request.sql, |result| serde_json::to_vec(&result))
+        .query(request.sql, &caller, |result| serde_json::to_vec(&result))
         .await
         .map_err(|error| query_error(&error))?;
     Ok(([(CONTENT_TYPE, "application/json")], bytes).into_response())
