@@ -351,6 +351,10 @@ fn logged_while(run: impl AsyncFnOnce() -> R) -> Result<String, Box<dyn std::err
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
+    // WORKAROUND: with one live dispatcher, tracing-core computes a callsite's
+    // interest from the registering thread's default; a parallel test without a
+    // subscriber would cache `never` for this capture's lines.
+    let _second_dispatcher = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
     let mut outcome = Ok(());
     let output = capture_output(|| outcome = runtime.block_on(run()));
     outcome?;
