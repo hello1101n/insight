@@ -122,8 +122,6 @@ pub mod feedback {
 }
 
 pub mod sql_api_tokens {
-    //! `sql_api_tokens` entity — a personal SQL API token, held only as its
-    //! SHA-256.
     use sea_orm::entity::prelude::*;
 
     #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]

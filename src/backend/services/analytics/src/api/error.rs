@@ -36,7 +36,6 @@ pub struct ConnectorHealthError;
 #[resource_error("gts.cf.insight.analytics_api.feedback.v1~")]
 pub struct FeedbackError;
 
-/// Resource namespace for `/v1/sql-tokens*` (personal SQL API tokens).
 #[resource_error("gts.cf.insight.analytics_api.sql_token.v1~")]
 pub struct SqlTokenError;
 

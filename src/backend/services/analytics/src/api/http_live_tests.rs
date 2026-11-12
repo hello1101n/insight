@@ -1568,8 +1568,6 @@ async fn an_order_a_list_cannot_take_is_refused_before_the_store_is_asked() -> T
     Ok(())
 }
 
-// ── Personal SQL tokens ─────────────────────────────────────────
-
 fn delete(uri: &str) -> Result<Request<Body>, axum::http::Error> {
     Request::builder()
         .method("DELETE")

@@ -1,6 +1,3 @@
-//! `#[ignore]`d and skip silently when `INTEGRATION_TESTS_MARIADB_URL` is
-//! unset; CI runs them against a database the `migrate` CLI provisioned.
-
 use chrono::{SubsecRound as _, Utc};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use secrecy::ExposeSecret as _;
