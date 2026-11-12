@@ -7,6 +7,7 @@ import { ConnectorHealthPane } from "@/components/portal/connector-health";
 import { IdentitiesView } from "@/components/portal/identities-view";
 import { IngestionView } from "@/components/portal/ingestion-view";
 import { PlatformUsage } from "@/components/portal/platform-usage";
+import { SqlTokensView } from "@/components/portal/sql-tokens-view";
 import { useIsAdmin } from "@/queries/identity-me";
 import { AiAssistantBody } from "@/screens/ai-assistant";
 import { PreviewsBody } from "@/screens/previews";
@@ -29,6 +30,12 @@ export function ManageView({ item }: { item: string | null }) {
     return (
       <AdminGate>
         <PlatformUsage />
+      </AdminGate>
+    );
+  if (item === "sql-tokens")
+    return (
+      <AdminGate>
+        <SqlTokensView />
       </AdminGate>
     );
   if (item === "ingestion")
