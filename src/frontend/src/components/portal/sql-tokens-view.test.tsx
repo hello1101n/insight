@@ -135,6 +135,32 @@ describe("SqlTokensView", () => {
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
+  it("keeps the shown token on screen until Done, whatever else is pressed", async () => {
+    const user = userEvent.setup();
+    list.mockResolvedValue({ items: [] });
+    create.mockResolvedValue({
+      token_id: "t-2",
+      token: SECRET,
+      person_id: "00000000-0000-4000-8000-000000000003",
+      label: "ci",
+      created_at: "2026-11-12T10:00:00Z",
+    });
+
+    renderView();
+    await user.click(await screen.findByRole("button", { name: "Create token" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
+    await user.type(within(dialog).getByLabelText("Label"), "ci");
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    await within(dialog).findByDisplayValue(SECRET);
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(SECRET)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+  });
+
   it("copies the shown token", async () => {
     const user = userEvent.setup();
     list.mockResolvedValue({ items: [] });

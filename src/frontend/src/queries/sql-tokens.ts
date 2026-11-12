@@ -31,6 +31,7 @@ export function useCreateSqlToken() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: SqlTokenRequest) => createSqlToken(body),
+    gcTime: 0,
     onSuccess: () => client.invalidateQueries({ queryKey: LIST_KEY }),
   });
 }

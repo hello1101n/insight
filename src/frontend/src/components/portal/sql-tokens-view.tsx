@@ -126,14 +126,15 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
   const [person, setPerson] = useState<PersonSummary | null>(null);
   const [label, setLabel] = useState("");
 
+  const holdsToken = create.data !== undefined;
   const requestClose = (open: boolean) => {
-    if (!open && !create.isPending) onClose();
+    if (!open && !create.isPending && !holdsToken) onClose();
   };
   const ready = person !== null && label.trim() !== "" && !create.isPending;
 
   return (
     <Dialog open onOpenChange={requestClose}>
-      <DialogContent className="sm:max-w-lg" showCloseButton={!create.isPending}>
+      <DialogContent className="sm:max-w-lg" showCloseButton={!create.isPending && !holdsToken}>
         <DialogHeader>
           <DialogTitle>Create a SQL API token</DialogTitle>
           <DialogDescription>
