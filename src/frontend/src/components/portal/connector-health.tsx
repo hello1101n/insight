@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type {
   ConnectorHealth,
   ConnectorInstanceRef,
-  SyncFact,
 } from "@/api/connector-health-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
@@ -20,6 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@gears-frontx/ui-kit";
+import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pane";
+import { ConnectorSyncHistory } from "./connector-sync-history";
+import { TONE_STYLE } from "./connector-health-tone";
+import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
   UNMEASURED,
   describeConnector,
@@ -28,25 +31,16 @@ import {
   describeNextRun,
   describeRecording,
   describeSchedule,
-  describeSync,
   formatRecords,
   formatStarted,
   instanceKey,
-  type ConnectorTone,
 } from "@/lib/portal/connector-health";
-import { useConnectorHealth, useConnectorSyncs } from "@/queries/connector-health";
-import { activatesRow, activatesRowByKey } from "@/lib/identities/row-activation";
-import { TEXT_LABEL } from "@/lib/type-scale";
+import { useConnectorHealth } from "@/queries/connector-health";
+import {
+  activatesRow,
+  activatesRowByKey,
+} from "@/lib/identities/row-activation";
 import { cn } from "@/lib/utils";
-
-/** Tone carries emphasis; the word beside it carries the meaning. */
-const TONE_STYLE: Record<ConnectorTone, string> = {
-  failing: "bg-destructive/15 text-destructive",
-  unknown: "bg-warning/15 text-warning",
-  active: "bg-primary/15 text-primary",
-  ok: "bg-success/15 text-success",
-  idle: "bg-muted text-muted-foreground",
-};
 
 const COLUMNS = 7;
 
@@ -68,22 +62,37 @@ export function ConnectorHealthPane() {
   const { data, isPending, isError, refetch } = useConnectorHealth();
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (isPending) return <CenteredSpinner data-testid="page-manage-connector-health" className="min-h-[60vh]" />;
+  if (isPending)
+    return (
+      <CenteredSpinner
+        data-testid="page-manage-connector-health"
+        className="min-h-[60vh]"
+      />
+    );
   if (isError || data === undefined) {
     return (
-      <div data-testid="page-manage-connector-health" className="mx-auto w-full max-w-md p-8">
+      <div
+        data-testid="page-manage-connector-health"
+        className="mx-auto w-full max-w-md p-8"
+      >
         <ComingSoon variant="card" state="error" onRetry={() => refetch()} />
       </div>
     );
   }
 
   const recording = describeRecording(data);
+  const polling = data.connectors.some(
+    (row) => row.schedule_request?.last_observation?.status === "pending"
+  );
 
   return (
-    <div data-testid="page-manage-connector-health" className="flex flex-col gap-3 p-4 md:p-6">
+    <div
+      data-testid="page-manage-connector-health"
+      className="flex min-w-0 flex-col gap-3 p-4 md:p-6"
+    >
       <div>
         <h1 className="text-lg font-semibold tracking-tight">
-          Connector health
+          {t("connectors.title")}
         </h1>
         <div
           role="status"
@@ -92,7 +101,7 @@ export function ConnectorHealthPane() {
             "text-sm",
             recording.state === "stopped" || recording.state === "unreadable"
               ? "text-destructive"
-              : "text-muted-foreground",
+              : "text-muted-foreground"
           )}
         >
           <p>{recording.label}</p>
@@ -102,26 +111,45 @@ export function ConnectorHealthPane() {
         </div>
       </div>
 
+      {data.schedule_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.schedule_read_error}
+        </p>
+      )}
       {data.connectors.length === 0 ? (
         <div className="rounded-lg border p-6 text-sm text-muted-foreground">
           {recording.state === "never_read"
-            ? "No connector has been recorded yet. This page reports what has been read from the data mover, and nothing has been read."
-            : "The data mover was read and reported no connector. Nothing here says a connector is missing — only that none was recorded."}
+            ? t("connectors.empty_never_read")
+            : t("connectors.empty_recorded")}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
+        <div className="max-w-full min-w-0 overflow-x-auto rounded-lg border">
+          <Table containerClassName="@container">
             <TableHeader>
               <TableRow>
-                <TableHead className="whitespace-normal">{t("connectors.connector")}</TableHead>
+                <TableHead className="whitespace-normal">
+                  {t("connectors.connector")}
+                </TableHead>
                 {/* One connector can be configured more than once; this is the
                     only cell that tells those rows apart. */}
-                <TableHead className="whitespace-normal">{t("connectors.instance")}</TableHead>
-                <TableHead className="whitespace-normal">{t("connectors.next_sync")}</TableHead>
-                <TableHead className="whitespace-normal">{t("connectors.state")}</TableHead>
-                <TableHead className="whitespace-normal">{t("connectors.last_sync_started")}</TableHead>
-                <TableHead className="text-right whitespace-normal">{t("connectors.duration")}</TableHead>
-                <TableHead className="text-right whitespace-normal">{t("connectors.records_reported")}</TableHead>
+                <TableHead className="whitespace-normal">
+                  {t("connectors.instance")}
+                </TableHead>
+                <TableHead className="px-3 whitespace-normal sm:px-4">
+                  {t("connectors.next_sync")}
+                </TableHead>
+                <TableHead className="whitespace-normal">
+                  {t("connectors.state")}
+                </TableHead>
+                <TableHead className="whitespace-normal">
+                  {t("connectors.last_sync_started")}
+                </TableHead>
+                <TableHead className="text-right whitespace-normal">
+                  {t("connectors.duration")}
+                </TableHead>
+                <TableHead className="text-right whitespace-normal">
+                  {t("connectors.records_reported")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -164,9 +192,11 @@ export function ConnectorHealthPane() {
                     }}
                     className="cursor-pointer select-text"
                   >
-                    <TableCell className="font-medium">{row.connector}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.connector}
+                    </TableCell>
                     <InstanceCell instance={row} />
-                    <ScheduleCell schedule={row.schedule} />
+                    <ScheduleCell row={row} />
                     <TableCell>
                       <Badge
                         variant="secondary"
@@ -175,18 +205,44 @@ export function ConnectorHealthPane() {
                         {state.label}
                       </Badge>
                     </TableCell>
-                    <TableCell className="tabular-nums text-muted-foreground">
+                    <TableCell className="text-muted-foreground tabular-nums">
                       {formatStarted(row.last_sync?.started_at ?? null)}
                     </TableCell>
                     <DurationCell sync={row.last_sync} asOf={data.as_of} />
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                    <TableCell className="text-right text-muted-foreground tabular-nums">
                       {formatRecords(row.last_sync?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
                   open ? (
                     <TableRow key={`syncs-${key}`}>
-                      <TableCell colSpan={COLUMNS} id={panelId} className="bg-muted/40">
-                        <RecentSyncs instance={row} asOf={data.as_of} />
+                      <TableCell
+                        colSpan={COLUMNS}
+                        id={panelId}
+                        className="bg-muted/40 px-4 whitespace-normal"
+                      >
+                        <div className="min-w-0 [contain:inline-size]">
+                          <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
+                            {row.configured && row.source_id != null && (
+                              <div className="@container min-w-0 rounded-md border bg-background p-4">
+                                <ConnectorSchedulePane
+                                  row={row}
+                                  polling={polling}
+                                  reconcileIntervalSecs={
+                                    data.typical_read_interval_ms == null
+                                      ? null
+                                      : data.typical_read_interval_ms / 1000
+                                  }
+                                />
+                              </div>
+                            )}
+                            <div className="min-w-0 rounded-md border bg-background p-4">
+                              <ConnectorSyncHistory
+                                instance={row}
+                                asOf={data.as_of}
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : null,
@@ -205,7 +261,9 @@ function InstanceCell({ instance }: { instance: ConnectorInstanceRef }) {
 
   return (
     <TableCell aria-label={label}>
-      {label === UNMEASURED ? UNMEASURED : (
+      {label === UNMEASURED ? (
+        UNMEASURED
+      ) : (
         <>
           <span className="block">{instance.source_id || UNMEASURED}</span>
           <span
@@ -220,43 +278,57 @@ function InstanceCell({ instance }: { instance: ConnectorInstanceRef }) {
   );
 }
 
-function ScheduleCell({
-  schedule,
-}: {
-  schedule: ConnectorHealth["schedule"];
-}) {
+function ScheduleCell({ row }: { row: ConnectorHealth }) {
+  const request = row.schedule_request;
+  const schedule =
+    request?.last_observation?.status === "applied" && request.crons.length
+      ? {
+          crons: request.crons,
+          timezone: "UTC",
+          suspended: row.schedule?.suspended ?? false,
+        }
+      : row.schedule;
   const tooltipId = useId();
-  const nextRun = schedule == null ? null : describeNextRun(schedule, new Date());
+  const nextRun =
+    schedule == null ? null : describeNextRun(schedule, new Date());
 
   return (
-    <TableCell>
-      {schedule == null ? (
-        UNMEASURED
-      ) : (
-        <Tooltip>
-          <TooltipTrigger
-            aria-describedby={tooltipId}
-            render={
-              <button type="button" className="cursor-help text-left" />
-            }
-          >
-            {nextRun?.text}
-          </TooltipTrigger>
-          <TooltipContent id={tooltipId} role="tooltip">
-            <div className="flex flex-col">
-              {schedule.crons.map((cron, index) => (
-                <span key={index} className="block font-mono">
-                  {cron}
+    <TableCell className="px-3 align-middle sm:px-4">
+      <div
+        data-slot="schedule-next"
+        className="flex items-center gap-1.5 leading-5 whitespace-nowrap"
+      >
+        {schedule == null ? (
+          UNMEASURED
+        ) : (
+          <Tooltip>
+            <TooltipTrigger
+              aria-describedby={tooltipId}
+              render={
+                <button type="button" className="cursor-help text-left" />
+              }
+            >
+              {nextRun?.text}
+            </TooltipTrigger>
+            <TooltipContent id={tooltipId} role="tooltip">
+              <div className="flex flex-col">
+                {schedule.crons.map((cron, index) => (
+                  <span key={index} className="block font-mono">
+                    {cron}
+                  </span>
+                ))}
+                <span className="block text-muted-foreground">
+                  {describeSchedule(schedule)}
                 </span>
-              ))}
-              <span className="block text-muted-foreground">
-                {describeSchedule(schedule)}
-              </span>
-              {nextRun?.detail != null && <span className="block">{nextRun.detail}</span>}
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      )}
+                {nextRun?.detail != null && (
+                  <span className="block">{nextRun.detail}</span>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <ConnectorScheduleRequestChip row={row} />
+      </div>
     </TableCell>
   );
 }
@@ -278,78 +350,10 @@ function DurationCell({
     <TableCell
       className={cn(
         "text-right tabular-nums",
-        duration.inFlight ? "text-foreground" : "text-muted-foreground",
+        duration.inFlight ? "text-foreground" : "text-muted-foreground"
       )}
     >
       {duration.text}
     </TableCell>
-  );
-}
-
-function RecentSyncs({
-  instance,
-  asOf,
-}: {
-  instance: ConnectorInstanceRef;
-  asOf: string;
-}) {
-  const { data, isPending, isError, refetch } = useConnectorSyncs(instance);
-
-  if (isPending) return <CenteredSpinner className="min-h-24" />;
-  if (isError || data === undefined) {
-    return (
-      <div className="max-w-md">
-        <ComingSoon variant="card" state="error" onRetry={() => refetch()} />
-      </div>
-    );
-  }
-  if (data.syncs.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No sync has been recorded for this connector.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <p className={TEXT_LABEL}>
-        Recent syncs — the most recent {data.window}, not the full history
-      </p>
-      <ul className="flex flex-col gap-1">
-        {data.syncs.map((sync) => (
-          <SyncLine key={sync.job_id} sync={sync} asOf={asOf} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function SyncLine({ sync, asOf }: { sync: SyncFact; asOf: string }) {
-  const state = describeSync(sync);
-  const duration = describeDuration(sync, asOf);
-  return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-      <Badge className={cn("font-medium", TONE_STYLE[state.tone])}>
-        {state.label}
-      </Badge>
-      <span className="tabular-nums">{formatStarted(sync.started_at)}</span>
-      <span
-        className={cn(
-          "tabular-nums",
-          duration.inFlight ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {duration.text}
-      </span>
-      <span className="tabular-nums text-muted-foreground">
-        {formatRecords(sync.records_reported)} records
-      </span>
-      {sync.records_reported == null && (
-        <span className="sr-only">
-          {UNMEASURED} means the mover reported no count, not a count of zero
-        </span>
-      )}
-    </li>
   );
 }
