@@ -14,6 +14,7 @@ mod reports;
 mod roster_names;
 mod saved_queries;
 mod sort_direction;
+mod sql_tokens;
 pub(crate) mod usage;
 
 #[cfg(test)]
@@ -405,6 +406,55 @@ pub(crate) fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) ->
         .error_403(openapi)
         .error_500(openapi)
         .handler(feedback::list_feedback)
+        .register(router, openapi);
+
+    router = OperationBuilder::get("/v1/sql-tokens")
+        .operation_id("analytics_api.sql_tokens.list")
+        .summary("Personal SQL API tokens of the caller's tenant")
+        .authenticated()
+        .no_license_required()
+        .json_response_with_schema::<sql_tokens::SqlTokenListResponse>(
+            openapi,
+            StatusCode::OK,
+            "Tokens, newest first; never the token itself",
+        )
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_500(openapi)
+        .handler(sql_tokens::list_sql_tokens)
+        .register(router, openapi);
+
+    router = OperationBuilder::post("/v1/sql-tokens")
+        .operation_id("analytics_api.sql_tokens.create")
+        .summary("Create a personal SQL API token")
+        .authenticated()
+        .no_license_required()
+        .json_request::<sql_tokens::SqlTokenRequest>(openapi, "Who the token is for")
+        .json_response_with_schema::<sql_tokens::CreatedSqlToken>(
+            openapi,
+            StatusCode::CREATED,
+            "The token, shown this once",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_415(openapi)
+        .error_500(openapi)
+        .handler(sql_tokens::create_sql_token)
+        .register(router, openapi);
+
+    router = OperationBuilder::delete("/v1/sql-tokens/{token_id}")
+        .operation_id("analytics_api.sql_tokens.remove")
+        .summary("Remove a personal SQL API token")
+        .authenticated()
+        .no_license_required()
+        .path_param("token_id", "Token id from the list")
+        .no_content_response(StatusCode::NO_CONTENT, "Removed")
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_404(openapi)
+        .error_500(openapi)
+        .handler(sql_tokens::remove_sql_token)
         .register(router, openapi);
 
     // AI assist. `config` answers on every stand — "off" is the answer the SPA

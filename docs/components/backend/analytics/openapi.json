@@ -444,6 +444,34 @@
         ],
         "type": "object"
       },
+      "CreatedSqlToken": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "token": {
+            "description": "Shown in this response only; the service keeps its hash.",
+            "type": "string"
+          },
+          "token_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "token",
+          "person_id",
+          "label",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "CustomMetric": {
         "description": "A portable custom-metric graph — the create/update body, the export item,\nand the get/list detail shape. `origin` is response-only: always `\"custom\"`\non output, omitted from exports, and ignored on input (writes force\n`custom`).",
         "properties": {
@@ -3016,6 +3044,88 @@
         "required": [
           "label",
           "points"
+        ],
+        "type": "object"
+      },
+      "SqlTokenEntry": {
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/SqlTokenPerson"
+          },
+          "label": {
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/SqlTokenPerson"
+          },
+          "token_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "created_at",
+          "person",
+          "created_by"
+        ],
+        "type": "object"
+      },
+      "SqlTokenListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SqlTokenEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "SqlTokenPerson": {
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "person_id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "person_id",
+          "display_name",
+          "username"
+        ],
+        "type": "object"
+      },
+      "SqlTokenRequest": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "person_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "person_id",
+          "label"
         ],
         "type": "object"
       },
@@ -7046,6 +7156,208 @@
           }
         ],
         "summary": "Preview a metric report"
+      }
+    },
+    "/v1/sql-tokens": {
+      "get": {
+        "operationId": "analytics_api.sql_tokens.list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlTokenListResponse"
+                }
+              }
+            },
+            "description": "Tokens, newest first; never the token itself"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Personal SQL API tokens of the caller's tenant"
+      },
+      "post": {
+        "operationId": "analytics_api.sql_tokens.create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlTokenRequest"
+              }
+            }
+          },
+          "description": "Who the token is for",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedSqlToken"
+                }
+              }
+            },
+            "description": "The token, shown this once"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a personal SQL API token"
+      }
+    },
+    "/v1/sql-tokens/{token_id}": {
+      "delete": {
+        "operationId": "analytics_api.sql_tokens.remove",
+        "parameters": [
+          {
+            "description": "Token id from the list",
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Remove a personal SQL API token"
       }
     },
     "/v1/usage/actions": {

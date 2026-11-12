@@ -1567,3 +1567,144 @@ async fn an_order_a_list_cannot_take_is_refused_before_the_store_is_asked() -> T
     }
     Ok(())
 }
+
+// ── Personal SQL tokens ─────────────────────────────────────────
+
+fn delete(uri: &str) -> Result<Request<Body>, axum::http::Error> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header("authorization", "Bearer test-gateway-jwt")
+        .body(Body::empty())
+}
+
+#[tokio::test]
+#[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
+async fn every_sql_token_route_is_refused_without_the_admin_role() -> TestResult {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let identity = spawn_identity_me(&[SOME_OTHER_ROLE]).await?;
+    let app = app_with_identity(db, Uuid::now_v7(), identity);
+    let create = json!({"person_id": VISIBLE_PERSON.to_string(), "label": "laptop"});
+
+    for request in [
+        json_req("GET", "/v1/sql-tokens", &json!({}))?,
+        json_req("POST", "/v1/sql-tokens", &create)?,
+        delete(&format!("/v1/sql-tokens/{}", Uuid::now_v7()))?,
+    ] {
+        let route = format!("{} {}", request.method(), request.uri());
+        let resp = app.clone().oneshot(request).await?;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "route: {route}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
+async fn an_admin_creates_lists_and_removes_a_personal_token() -> TestResult {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let identity = spawn_identity_me(&[ADMIN_ROLE]).await?;
+    let app = app_with_identity(db.clone(), Uuid::now_v7(), identity);
+
+    let resp = app
+        .clone()
+        .oneshot(json_req(
+            "POST",
+            "/v1/sql-tokens",
+            &json!({"person_id": VISIBLE_PERSON.to_string(), "label": "  laptop  "}),
+        )?)
+        .await?;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let created = body_json(resp).await?;
+    let token = created["token"].as_str().unwrap_or_default().to_owned();
+    let token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
+    assert!(token.starts_with("isql_"), "token: {created}");
+    assert_eq!(created["person_id"], json!(VISIBLE_PERSON.to_string()));
+    assert_eq!(created["label"], json!("laptop"));
+
+    let holder = crate::domain::sql_token::store::holder(
+        &db,
+        &crate::domain::sql_token::TokenHash::of(&token),
+    )
+    .await?;
+    assert_eq!(
+        holder.map(|holder| holder.person_id),
+        Some(VISIBLE_PERSON),
+        "the shown token must be the one the SQL API looks up"
+    );
+
+    let listed = body_json(
+        app.clone()
+            .oneshot(json_req("GET", "/v1/sql-tokens", &json!({}))?)
+            .await?,
+    )
+    .await?;
+    let items = listed["items"].as_array().cloned().unwrap_or_default();
+    assert_eq!(items.len(), 1, "listed: {listed}");
+    assert_eq!(items[0]["token_id"], json!(token_id));
+    assert_eq!(items[0]["label"], json!("laptop"));
+    assert_eq!(
+        items[0]["person"]["person_id"],
+        json!(VISIBLE_PERSON.to_string())
+    );
+    assert_eq!(
+        items[0]["created_by"]["person_id"],
+        json!(TEST_PERSON.to_string())
+    );
+    assert!(
+        !listed.to_string().contains(&token),
+        "a list must never carry the token: {listed}"
+    );
+
+    let removed = app
+        .clone()
+        .oneshot(delete(&format!("/v1/sql-tokens/{token_id}"))?)
+        .await?;
+    assert_eq!(removed.status(), StatusCode::NO_CONTENT);
+
+    let again = app
+        .clone()
+        .oneshot(delete(&format!("/v1/sql-tokens/{token_id}"))?)
+        .await?;
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+
+    let listed = body_json(
+        app.oneshot(json_req("GET", "/v1/sql-tokens", &json!({}))?)
+            .await?,
+    )
+    .await?;
+    assert_eq!(listed["items"], json!([]));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
+async fn a_token_request_without_a_usable_label_or_person_is_refused() -> TestResult {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let identity = spawn_identity_me(&[ADMIN_ROLE]).await?;
+    let app = app_with_identity(db, Uuid::now_v7(), identity);
+    let person = VISIBLE_PERSON.to_string();
+
+    for body in [
+        json!({"person_id": person, "label": "   "}),
+        json!({"person_id": person, "label": "x".repeat(256)}),
+        json!({"person_id": "not-a-uuid", "label": "laptop"}),
+        json!({"label": "laptop"}),
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(json_req("POST", "/v1/sql-tokens", &body)?)
+            .await?;
+        assert!(
+            resp.status().is_client_error() && resp.status() != StatusCode::FORBIDDEN,
+            "should refuse as a bad request: {body} -> {}",
+            resp.status()
+        );
+    }
+    Ok(())
+}
