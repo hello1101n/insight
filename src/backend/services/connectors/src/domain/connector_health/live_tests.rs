@@ -276,6 +276,11 @@ impl Stamps {
 #[ignore = "needs a live ClickHouse"]
 async fn the_ledger_reads_answer_from_real_rows() {
     let Some(ch) = client_or_skip() else { return };
+    let _guard = crate::test_support::SYNC_EVENTS_LOCK.lock().await;
+    ch.query("CREATE DATABASE IF NOT EXISTS ingestion_history")
+        .execute()
+        .await
+        .expect("create sync history database");
     apply_migration(&ch, MIGRATION).await;
 
     let at = Stamps::fresh();

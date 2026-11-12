@@ -5,6 +5,9 @@ mod gear;
 mod infra;
 mod migration;
 
+#[cfg(test)]
+mod test_support;
+
 use std::path::PathBuf;
 
 use api_gateway as _;
