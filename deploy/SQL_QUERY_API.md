@@ -47,6 +47,18 @@ after changing the token. In Kubernetes, update the token Secret and roll the
 analytics Deployment: environment-injected secrets are read only at startup.
 During a rolling rotation, old and new pods may temporarily accept different tokens.
 
+## Personal tokens
+
+An admin creates personal tokens under **Manage → SQL API tokens**: pick a
+person, give the token a label, copy the token from the dialog. It is shown once;
+analytics stores only its SHA-256 in MariaDB. A personal token opens this
+endpoint only, not MCP, and works until an admin removes it. The next request
+with a removed token gets 401. The instance token keeps working beside personal
+tokens.
+
+Each query made with a personal token logs `person_id` and `token_label` on its
+`SQL explorer query completed` or `SQL explorer query failed` line.
+
 ## Query
 
 With `INSIGHT_SQL_TOKEN` supplied by your secret manager:
@@ -84,15 +96,15 @@ results are not silently truncated.
 Responses use canonical problem JSON for errors: 400 for invalid requests/SQL,
 401 for missing or invalid tokens, 413 for oversized bodies or SQL, 429 for
 query capacity, result-size, or database resource limits, 504 for query timeouts,
-and 500 for other backend failures. Recognized database exceptions are classified
+and 500 for other backend failures, including a failed personal-token lookup. Recognized database exceptions are classified
 using [ClickHouse's numeric error codes](https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp);
 unrecognized exceptions remain generic backend failures. Responses are marked `Cache-Control:
 no-store`. Database details and the token are not returned in errors.
 
 ## Access scope
 
-The instance token grants all SQL explorer access, not access on behalf of an
-individual user. There are no personal role checks, per-user revocation, or
-automatic tenant-row filters on this endpoint. Distribute it only to trusted
-operators authorized to access the entire allowed dataset, and require HTTPS.
-Revoke access by rotating the token or disabling `global.sqlApi.enabled`.
+Every token grants all SQL explorer access. A personal token names its holder
+but adds no role checks or tenant-row filters. Distribute tokens only to people
+authorized to access the entire allowed dataset, and require HTTPS. Remove a
+personal token to revoke one holder; revoke the instance token by rotating it
+or disabling `global.sqlApi.enabled`.
