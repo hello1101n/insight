@@ -1,22 +1,73 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use axum::routing::post;
+use chrono::Utc;
+use sea_orm::{DatabaseBackend, DatabaseConnection, DbErr, MockDatabase};
 use secrecy::SecretString;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
+use uuid::Uuid;
 
 use super::*;
+use crate::domain::sql_token::TokenHash;
+use crate::infra::db::entities::sql_api_tokens;
 
 const TOKEN: &str = "synthetic-test-token-not-a-real-secret";
+const PERSONAL_TOKEN: &str = "isql_synthetic-personal-token-not-a-real-secret";
 type R = Result<(), Box<dyn std::error::Error>>;
 
 fn app(url: &str, capacity: usize) -> Router {
+    app_with_tokens(url, capacity, no_personal_tokens())
+}
+
+fn app_with_tokens(url: &str, capacity: usize, tokens: DatabaseConnection) -> Router {
     let config = SqlApiConfig {
         enabled: true,
         token: SecretString::from(TOKEN.to_owned()),
     };
     let client = insight_clickhouse::Client::new(insight_clickhouse::Config::new(url, "gold"));
-    router(&config, QueryExecutor::new(client, capacity))
+    router(&config, QueryExecutor::new(client, capacity), tokens)
+}
+
+fn no_personal_tokens() -> DatabaseConnection {
+    MockDatabase::new(DatabaseBackend::MySql)
+        .append_query_results(vec![Vec::<sql_api_tokens::Model>::new(); 8])
+        .into_connection()
+}
+
+fn stored_personal_token() -> DatabaseConnection {
+    let row = sql_api_tokens::Model {
+        id: Uuid::now_v7(),
+        insight_tenant_id: Uuid::now_v7(),
+        token_hash: TokenHash::of(PERSONAL_TOKEN).as_bytes().to_vec(),
+        person_id: Uuid::now_v7(),
+        label: "laptop".to_owned(),
+        created_by: Uuid::now_v7(),
+        created_at: Utc::now(),
+    };
+    MockDatabase::new(DatabaseBackend::MySql)
+        .append_query_results(vec![vec![row]])
+        .into_connection()
+}
+
+fn unreachable_token_store() -> DatabaseConnection {
+    MockDatabase::new(DatabaseBackend::MySql)
+        .append_query_errors(vec![DbErr::Custom("synthetic outage".to_owned()); 4])
+        .into_connection()
+}
+
+async fn answering_clickhouse()
+-> Result<(String, tokio::task::JoinHandle<std::io::Result<()>>), std::io::Error> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let upstream = Router::new().route(
+        "/",
+        post(|| async {
+            Json(json!({"meta":[{"name":"answer","type":"UInt8"}],"data":[{"answer":1}]}))
+        }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, upstream).await });
+    Ok((format!("http://{address}"), server))
 }
 
 async fn send(
@@ -195,6 +246,100 @@ fn duplicate_authorization_headers_are_rejected() -> R {
         HeaderValue::from_str(&format!("Bearer {TOKEN}"))?,
     );
     headers.append(AUTHORIZATION, HeaderValue::from_static("Bearer wrong"));
-    assert!(!valid_token(&headers, &Sha256::digest(TOKEN)));
+    assert_eq!(bearer_token(&headers), None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_personal_token_reads_the_same_rows_as_the_instance_token() -> R {
+    let (url, server) = answering_clickhouse().await?;
+    let body = r#"{"sql":"SELECT 1 AS answer"}"#;
+
+    let by_instance = send(app(&url, 1), Some(&format!("Bearer {TOKEN}")), body).await?;
+    let by_person = send(
+        app_with_tokens(&url, 1, stored_personal_token()),
+        Some(&format!("Bearer {PERSONAL_TOKEN}")),
+        body,
+    )
+    .await?;
+
+    assert_eq!(by_instance.status(), StatusCode::OK);
+    assert_eq!(by_person.status(), StatusCode::OK);
+    assert_eq!(by_person.headers()[CACHE_CONTROL], "no-store");
+    let instance_rows = to_bytes(by_instance.into_body(), 4096).await?;
+    let person_rows = to_bytes(by_person.into_body(), 4096).await?;
+    assert_eq!(person_rows, instance_rows);
+    server.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_token_the_store_does_not_hold_is_unauthenticated() -> R {
+    let response = send(
+        app("http://127.0.0.1:1", 1),
+        Some(&format!("Bearer {PERSONAL_TOKEN}")),
+        r#"{"sql":"SELECT 1"}"#,
+    )
+    .await?;
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(response.headers()[WWW_AUTHENTICATE], "Bearer");
+    assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_failed_token_lookup_is_a_server_error_not_a_refusal() -> R {
+    let response = send(
+        app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
+        Some(&format!("Bearer {PERSONAL_TOKEN}")),
+        r#"{"sql":"SELECT 1"}"#,
+    )
+    .await?;
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+    let body = String::from_utf8(to_bytes(response.into_body(), 4096).await?.to_vec())?;
+    assert!(!body.contains("synthetic outage"), "leaked: {body}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_instance_token_never_waits_on_the_token_store() -> R {
+    let response = send(
+        app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
+        Some(&format!("Bearer {TOKEN}")),
+        "{}",
+    )
+    .await?;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "the instance token must pass authentication with the store down"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn malformed_credentials_never_reach_the_token_store() -> R {
+    for token in [
+        None,
+        Some("Basic wrong"),
+        Some("Bearer "),
+        Some("Bearer two tokens"),
+    ] {
+        let response = send(
+            app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
+            token,
+            "{}",
+        )
+        .await?;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "credential: {token:?}"
+        );
+    }
     Ok(())
 }

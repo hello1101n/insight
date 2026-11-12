@@ -274,6 +274,7 @@ async fn start_accepts_valid_configuration_and_cancellation() -> anyhow::Result<
         &SqlApiConfig::default(),
         "http://127.0.0.1:1",
         "gold",
+        sea_orm::MockDatabase::new(sea_orm::DatabaseBackend::MySql).into_connection(),
         cancellation.clone(),
     )
     .await?;

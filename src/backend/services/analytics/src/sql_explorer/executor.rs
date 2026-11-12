@@ -6,6 +6,7 @@ use tokio::sync::Semaphore;
 use toolkit_security::crypto::hash::Sha256;
 
 use crate::domain::query_gate::validate_mcp_sql;
+use crate::domain::sql_token::TokenHolder;
 
 pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 128 * 1024;
 pub(crate) const MAX_SQL_BYTES: usize = 64 * 1024;
@@ -95,6 +96,12 @@ fn exception_code(message: &str) -> Option<u16> {
         .next()?
         .parse()
         .ok()
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum QueryCaller {
+    InstanceToken,
+    PersonalToken(TokenHolder),
 }
 
 #[derive(Clone)]
