@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,58 @@ def test_migrate_runs_before_install_without_release_config_resources() -> None:
     assert "home_dir: /tmp/gears" in command
     assert "exec /app/connectors -c /tmp/migrate.yaml migrate" in command
     assert not any(doc["kind"] == "Secret" for doc in documents)
+
+
+@pytest.mark.parametrize("umbrella", [False, True], ids=["standalone", "umbrella"])
+def test_workload_selectors_match_only_the_serving_pod(connectors_umbrella: Path, umbrella: bool) -> None:
+    chart = connectors_umbrella if umbrella else CONNECTORS_CHART
+    extra = ["-f", str(connectors_umbrella / "tests/values.yaml")] if umbrella else []
+    documents = connectors_documents(chart, *extra)
+    deployment = workload(documents, "Deployment")
+    job = next(
+        doc
+        for doc in documents
+        if doc["kind"] == "Job" and doc["metadata"]["name"] == "contract-test-connectors-migrate"
+    )
+    serving_labels = deployment["spec"]["template"]["metadata"]["labels"]
+    migration_labels = job["spec"]["template"]["metadata"]["labels"]
+    selectors = {
+        "Service": workload(documents, "Service")["spec"]["selector"],
+        "Deployment": deployment["spec"]["selector"]["matchLabels"],
+    }
+    for kind, selector in selectors.items():
+        assert selector
+        assert selector.items() <= serving_labels.items(), f"{kind} must select the serving pod"
+        assert not selector.items() <= migration_labels.items(), f"{kind} must not select the migration pod"
+
+    assert migration_labels["app.kubernetes.io/component"] == "migrate"
+    assert migration_labels["app.kubernetes.io/instance"] == "contract-test"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        (["--set-string", "identityUrl=https://identity.example.test:8082"], "https://identity.example.test:8082"),
+        ([], "http://contract-test-identity-resolution:8082"),
+        (["--set-string", "identityUrl="], "http://contract-test-identity-resolution:8082"),
+        (
+            ["--set-string", "identityUrl=", "--set-string", "connectors.identityUrl=https://identity.example.test"],
+            "https://identity.example.test",
+        ),
+    ],
+    ids=["override", "unset", "empty", "empty-keeps-subchart-override"],
+)
+def test_umbrella_identity_url_override_preserves_subchart_fallback(
+    connectors_umbrella: Path, overrides: list[str], expected: str
+) -> None:
+    documents = connectors_documents(
+        connectors_umbrella, "-f", str(connectors_umbrella / "tests/values.yaml"), *overrides
+    )
+    container = workload(documents, "Deployment")["spec"]["template"]["spec"]["containers"][0]
+    identity_env = next(
+        entry for entry in container["env"] if entry["name"] == "APP__gears__connectors__config__identity_url"
+    )
+    assert identity_env["value"] == expected
 
 
 def test_service_route_and_database_always_render(connectors_umbrella: Path) -> None:
@@ -127,16 +180,25 @@ def test_umbrella_uses_existing_password_secrets_for_both_workloads(connectors_u
 
 
 @pytest.mark.parametrize("auto_generate", [True, False])
-def test_connectors_adds_no_secret(connectors_umbrella: Path, auto_generate: bool) -> None:
-    documents = connectors_documents(
+def test_connectors_templates_render_no_secrets(connectors_umbrella: Path, auto_generate: bool) -> None:
+    result = render_connectors(
         connectors_umbrella,
         "-f",
         str(connectors_umbrella / "tests/values.yaml"),
         "--set",
         f"credentials.autoGenerate={str(auto_generate).lower()}",
     )
-    secrets = {doc["metadata"]["name"] for doc in documents if doc["kind"] == "Secret"}
-    assert not any("connectors" in name for name in secrets)
+    assert result.returncode == 0, result.stderr
+    for manifest in re.split(r"^---\s*$", result.stdout, flags=re.MULTILINE):
+        document = yaml.safe_load(manifest)
+        if not document or document["kind"] != "Secret":
+            continue
+
+        source = next(
+            line.removeprefix("# Source: ") for line in manifest.splitlines() if line.startswith("# Source: ")
+        )
+        assert source != "insight/templates/connectors.yaml", (source, document["metadata"]["name"])
+        assert not source.startswith("insight/charts/connectors/"), (source, document["metadata"]["name"])
 
 
 def test_gears_host_verifies_gateway_identity(connectors_umbrella: Path) -> None:
