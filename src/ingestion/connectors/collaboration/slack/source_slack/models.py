@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, ValidationError
 
 NonBlank = Annotated[str, Field(pattern=r"\S")]
 
@@ -30,6 +30,29 @@ class Refusal(BaseModel):
 
     ok: StrictBool
     error: str | None = None
+
+
+class BillingAnswer(BaseModel):
+    """The `team.billing.info` answer: the plan, or a refusal."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ok: StrictBool
+    error: str | None = None
+    plan: str | None = None
+
+
+def _scope_list(value: object) -> object:
+    return frozenset(filter(None, (scope.strip() for scope in value.split(",")))) if isinstance(value, str) else value
+
+
+class Billing(BaseModel):
+    """The plan from `team.billing.info` and the token's scopes from its `x-oauth-scopes` header."""
+
+    model_config = ConfigDict(frozen=True)
+
+    plan: str
+    scopes: Annotated[frozenset[str], BeforeValidator(_scope_list)]
 
 
 class MemberRow(BaseModel):

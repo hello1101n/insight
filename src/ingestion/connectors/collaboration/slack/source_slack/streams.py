@@ -9,7 +9,7 @@ finished, and unique_key makes the second copy replace the first.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Generator, Iterable, Mapping, MutableMapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -19,7 +19,7 @@ from airbyte_cdk.sources.streams import CheckpointMixin, Stream
 from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 from pydantic import ValidationError
 
-from source_slack.client import SlackAnalyticsClient, SlackApiError, SlackResponseError
+from source_slack.client import SlackApiError, SlackClient, SlackResponseError
 from source_slack.models import MemberRow, SlackConfig, describe
 
 logger = logging.getLogger("airbyte")
@@ -77,7 +77,7 @@ class UsersDetails(Stream, CheckpointMixin):
     source_defined_cursor = True
     state_checkpoint_interval = None
 
-    def __init__(self, config: SlackConfig, client: SlackAnalyticsClient) -> None:
+    def __init__(self, config: SlackConfig, client: SlackClient) -> None:
         self._client = client
         self._tenant_id = config.insight_tenant_id
         self._source_id = config.insight_source_id
@@ -119,7 +119,9 @@ class UsersDetails(Stream, CheckpointMixin):
     ) -> Iterable[Mapping[str, Any]]:
         if not stream_slice or self._stopped:
             return
-        day = stream_slice[CURSOR]
+        yield from self._read_day(stream_slice[CURSOR])
+
+    def _read_day(self, day: str) -> Generator[dict[str, Any], None, None]:
         try:
             for row in self._client.member_day(day):
                 yield self._stamp(row, day)
@@ -143,6 +145,12 @@ class UsersDetails(Stream, CheckpointMixin):
                 failure_type=FailureType.transient_error,
             ) from error
         self._cursor = date.fromisoformat(day)
+
+    def probe(self) -> None:
+        """Read the first row of the latest published day; raise what a sync would."""
+        records = self._read_day((today() - PUBLICATION_DELAY).isoformat())
+        next(records, None)
+        records.close()
 
     def _stamp(self, row: Mapping[str, Any], day: str) -> dict[str, Any]:
         try:
