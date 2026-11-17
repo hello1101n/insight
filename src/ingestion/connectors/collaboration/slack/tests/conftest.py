@@ -23,8 +23,9 @@ from airbyte_cdk.test.catalog_builder import CatalogBuilder
 from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput, read
 from source_slack import client as client_module
 from source_slack import streams as streams_module
-from source_slack.client import API_URL, BILLING_URL, USERS_URL
-from source_slack.models import BillingAnswer, Member, PageMetadata, Profile, Refusal, UsersPage
+from source_slack.client import API_URL, BILLING_URL, CONVERSATIONS_URL, USERS_URL
+from source_slack.models import BillingAnswer, ConversationsPage, Member, PageMetadata, Profile, Refusal, UsersPage
+from source_slack.plan import HISTORY_SCOPES
 from source_slack.source import SourceSlack
 
 TODAY = date(2026, 10, 4)  # today - 2 days = 2026-10-02
@@ -48,7 +49,7 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return waits
 
 
-SCOPES = ("admin.analytics:read", "team.billing:read", "users:read", "users:read.email")
+SCOPES = ("admin.analytics:read", "team.billing:read", "users:read", "users:read.email", *sorted(HISTORY_SCOPES))
 
 
 def billing(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> dict[str, Any]:
@@ -74,10 +75,14 @@ def users_page(members: tuple[Member, ...] = MEMBERS, next_cursor: str = "") -> 
 
 
 def slack(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> rm.Mocker:
-    """A mocked Slack that answers team.billing.info and users.list; each test registers the rest."""
+    """A mocked Slack that answers team.billing.info, users.list and an empty conversations.list.
+
+    Each test registers the rest.
+    """
     http = rm.Mocker()
     http.post(BILLING_URL, **billing(plan, scopes))
     http.get(USERS_URL, **users_page())
+    http.get(CONVERSATIONS_URL, json=ConversationsPage(ok=True).model_dump(mode="json"))
     return http
 
 
@@ -103,12 +108,12 @@ def catalog(sync_mode: SyncMode = SyncMode.incremental) -> ConfiguredAirbyteCata
     return CatalogBuilder().with_stream("users_details", sync_mode).build()
 
 
-def stream_state(value: dict[str, Any]) -> list[AirbyteStateMessage]:
+def stream_state(value: dict[str, Any], name: str = "users_details") -> list[AirbyteStateMessage]:
     return [
         AirbyteStateMessage(
             type=AirbyteStateType.STREAM,
             stream=AirbyteStreamState(
-                stream_descriptor=StreamDescriptor(name="users_details"), stream_state=AirbyteStateBlob(**value)
+                stream_descriptor=StreamDescriptor(name=name), stream_state=AirbyteStateBlob(**value)
             ),
         )
     ]

@@ -60,8 +60,8 @@ def test_plans_with_member_analytics_read_activity(plan: str) -> None:
 
 
 @pytest.mark.parametrize("plan", ["free", "std"])
-def test_plans_without_member_analytics_sync_without_reading_activity(plan: str) -> None:
-    with slack(plan, scopes=("team.billing:read",)) as http:
+def test_plans_without_member_analytics_never_read_the_activity_file(plan: str) -> None:
+    with slack(plan) as http:
         output = run()
 
     assert not output.errors, f"should succeed on {plan}"
@@ -69,13 +69,23 @@ def test_plans_without_member_analytics_sync_without_reading_activity(plan: str)
     assert [r.url for r in http.request_history] == [BILLING_URL]
 
 
+@pytest.mark.parametrize("plan", ["free", "std"])
+def test_plans_without_member_analytics_need_the_history_scopes(plan: str) -> None:
+    with slack(plan, scopes=("team.billing:read", "users:read", "users:read.email")):
+        output = run(expecting_exception=True)
+
+    errors = _errors(output)
+    assert errors[0].failure_type == FailureType.config_error, f"should be config_error on {plan}"
+    assert "channels:history" in errors[0].message and "messages" in errors[0].message
+
+
 @pytest.mark.parametrize(
     ("plan", "report"),
     [
         ("plus", "Plan Business+ (plus). Streams to read: users_details, users. Missing scopes: none."),
         ("compliance", "Plan Enterprise (compliance). Streams to read: users_details, users. Missing scopes: none."),
-        ("free", "Plan Free (free). Streams to read: users. Missing scopes: none."),
-        ("std", "Plan Pro (std). Streams to read: users. Missing scopes: none."),
+        ("free", "Plan Free (free). Streams to read: messages, users. Missing scopes: none."),
+        ("std", "Plan Pro (std). Streams to read: messages, users. Missing scopes: none."),
     ],
 )
 def test_check_reports_the_plan_and_the_streams_to_read(plan: str, report: str) -> None:

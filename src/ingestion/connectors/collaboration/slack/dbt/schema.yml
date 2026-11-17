@@ -19,6 +19,7 @@ sources:
       - name: users
         # users.list has no day: each sync replaces every member row.
         freshness: null
+      - name: messages
 
 models:
   - name: slack__users_latest
@@ -66,6 +67,29 @@ models:
 
   - name: slack__collab_chat_activity
     description: "Slack daily chat activity per user (admin.analytics.getFile). Feeds silver.class_collab_chat_activity."
+    columns:
+      - name: tenant_id
+        tests:
+          - not_null
+      - name: insight_source_id
+        tests:
+          - not_null
+      - name: unique_key
+        tests:
+          - not_null
+          - unique
+      - name: person_key
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null
+      - name: data_source
+        tests:
+          - not_null
+
+  - name: slack__collab_chat_activity_messages
+    description: "Slack daily chat activity per user on Free and Pro, from message history (bronze_slack.messages). Same columns and measures as slack__collab_chat_activity. Feeds silver.class_collab_chat_activity."
     columns:
       - name: tenant_id
         tests:

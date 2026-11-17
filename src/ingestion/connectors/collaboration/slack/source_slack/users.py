@@ -9,16 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
-import requests
-from airbyte_cdk.models import FailureType, SyncMode
+from airbyte_cdk.models import SyncMode
 from airbyte_cdk.sources.streams import Stream
-from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 
-from source_slack.client import SlackApiError, SlackClient, SlackResponseError
+from source_slack.client import SlackClient
 from source_slack.models import Member, SlackConfig
-from source_slack.streams import failure
-
-METHOD = "users.list"
+from source_slack.streams import traced
 
 
 class Users(Stream):
@@ -51,22 +47,8 @@ class Users(Stream):
         members.close()
 
     def _members(self) -> Iterator[Member]:
-        try:
+        with traced("users.list"):
             yield from self._client.members()
-        except SlackApiError as error:
-            raise failure(error) from error
-        except SlackResponseError as error:
-            raise AirbyteTracedException(
-                message=f"Unexpected {METHOD} answer: {error}",
-                internal_message=str(error),
-                failure_type=FailureType.system_error,
-            ) from error
-        except requests.RequestException as error:
-            raise AirbyteTracedException(
-                message=f"{METHOD} kept failing: {type(error).__name__}",
-                internal_message=str(error),
-                failure_type=FailureType.transient_error,
-            ) from error
 
     def _record(self, member: Member) -> dict[str, Any]:
         return {

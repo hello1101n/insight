@@ -10,7 +10,7 @@ import requests
 from airbyte_cdk.models import FailureType, SyncMode
 from airbyte_cdk.test.catalog_builder import CatalogBuilder
 from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput, read
-from conftest import CONFIG, MEMBERS, assert_not_echoed, slack, users_page
+from conftest import CONFIG, MEMBERS, assert_not_echoed, day_url, member_file, slack, users_page
 from source_slack.client import MAX_PAGE_BYTES, USERS_URL
 from source_slack.models import Member, Profile, UsersPage
 from source_slack.source import SourceSlack
@@ -172,10 +172,11 @@ def test_check_fails_when_users_list_is_refused_for_the_token() -> None:
 
 
 def test_a_token_without_the_email_scope_skips_the_members() -> None:
-    with slack("std", scopes=("team.billing:read", "users:read")) as http:
+    with slack("plus", scopes=("team.billing:read", "admin.analytics:read", "users:read")) as http:
+        http.get(day_url("2026-10-02"), **member_file("2026-10-02"))
         output = _run()
         status = SourceSlack().check(_LOG, CONFIG)
 
     assert not output.errors and not output.records
     assert not [r for r in http.request_history if r.url.startswith(USERS_URL)]
-    assert status.message == "Plan Pro (std). Streams to read: none. Missing scopes: users:read.email."
+    assert status.message == "Plan Business+ (plus). Streams to read: users_details. Missing scopes: users:read.email."

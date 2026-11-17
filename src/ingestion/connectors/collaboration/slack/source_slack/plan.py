@@ -21,6 +21,19 @@ PLAN_NAMES = {"free": "Free", "std": "Pro", "plus": "Business+", "enterprise": "
 BILLING_SCOPE = "team.billing:read"
 ANALYTICS_PLANS = frozenset({"plus", "enterprise", "compliance"})
 ALL_PLANS = frozenset(PLAN_NAMES)
+HISTORY_PLANS = frozenset({"free", "std"})
+HISTORY_SCOPES = frozenset(
+    {
+        "channels:history",
+        "channels:read",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "mpim:history",
+        "mpim:read",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +46,7 @@ class StreamRule:
 
 STREAM_RULES: tuple[StreamRule, ...] = (
     StreamRule("users_details", ANALYTICS_PLANS, frozenset({"admin.analytics:read"}), main=True),
+    StreamRule("messages", HISTORY_PLANS, HISTORY_SCOPES, main=True),
     StreamRule("users", ALL_PLANS, frozenset({"users:read", "users:read.email"})),
 )
 
