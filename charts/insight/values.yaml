@@ -414,6 +414,7 @@ redpanda:
 gateway:
   replicaCount: 2
   image:
+    # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
     repository: ghcr.io/hello1101n/insight-gateway
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent

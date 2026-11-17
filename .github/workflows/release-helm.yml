@@ -408,6 +408,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
       - name: Helm push
         id: helm_push
         if: steps.queue.outputs.clear == 'true' && steps.current.outputs.matches == 'true'
@@ -720,6 +721,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
       - name: Helm push
         id: helm_push
         if: steps.queue.outputs.clear == 'true'
