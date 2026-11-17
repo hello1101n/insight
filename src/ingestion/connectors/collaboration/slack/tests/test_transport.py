@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 from source_slack import client as client_module
-from source_slack.client import SlackAnalyticsClient, SlackApiError, SlackResponseError
+from source_slack.client import SlackApiError, SlackClient, SlackResponseError
 from source_slack.models import MemberRow, Refusal
 
 _ROWS = [MemberRow(user_id=user, date="2026-10-01").model_dump(mode="json") for user in ("U1", "U2")]
@@ -81,7 +81,7 @@ def test_reads_the_file_whether_or_not_the_transport_unpacked_it(
 ) -> None:
     monkeypatch.setattr(client_module, "API_URL", f"{server}/{answer}")
 
-    assert list(SlackAnalyticsClient("xoxp-t").member_day("2026-10-01")) == _ROWS
+    assert list(SlackClient("xoxp-t").member_day("2026-10-01")) == _ROWS
 
 
 def test_a_one_row_file_unpacked_by_the_transport_is_not_mistaken_for_a_refusal(
@@ -89,20 +89,20 @@ def test_a_one_row_file_unpacked_by_the_transport_is_not_mistaken_for_a_refusal(
 ) -> None:
     monkeypatch.setattr(client_module, "API_URL", f"{server}/encoded-one-row")
 
-    assert list(SlackAnalyticsClient("xoxp-t").member_day("2026-10-01")) == _ROWS[:1]
+    assert list(SlackClient("xoxp-t").member_day("2026-10-01")) == _ROWS[:1]
 
 
 def test_raises_the_refusal(server: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(client_module, "API_URL", f"{server}/refusal")
 
     with pytest.raises(SlackApiError) as raised:
-        list(SlackAnalyticsClient("xoxp-t").member_day("2026-10-01"))
+        list(SlackClient("xoxp-t").member_day("2026-10-01"))
     assert raised.value.code == "file_not_found"
 
 
-def _client_for(server: str, answer: str, monkeypatch: pytest.MonkeyPatch) -> SlackAnalyticsClient:
+def _client_for(server: str, answer: str, monkeypatch: pytest.MonkeyPatch) -> SlackClient:
     monkeypatch.setattr(client_module, "API_URL", f"{server}/{answer}")
-    return SlackAnalyticsClient("xoxp-t")
+    return SlackClient("xoxp-t")
 
 
 @pytest.mark.parametrize("answer", ["double", "members"])
