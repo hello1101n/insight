@@ -16,7 +16,7 @@ For all the data that Slack supplies, refer to [DATA-SOURCES.md](DATA-SOURCES.md
 | Stream | Slack API | Plans | Scopes | Bronze table | Status |
 |---|---|---|---|---|---|
 | Activity | `admin.analytics.getFile?type=member` | B+, Enterprise | `admin.analytics:read` | `users_details` | In `main` |
-| Members | `users.list` | All | `users:read`, `users:read.email` | `users` | #4341 |
+| Members | `users.list` | All | `users:read`, `users:read.email` | `users` | In `main` |
 | Message activity | `conversations.history`, `conversations.replies` | Free, Pro | `channels:history`, `groups:history`, `im:history`, `mpim:history` | `messages` (proposal, section 7.3) | #4349 |
 | Channels | `admin.analytics.getFile?type=public_channel` | B+, Enterprise | `admin.analytics:read` | `channels_details` (proposal, section 7.3) | #4350 |
 | Alerts | `conversations.history`, `conversations.replies` | All | `channels:history`, `groups:history` | `messages` (proposal, section 7.3) | #4351 |
@@ -77,7 +77,7 @@ Each file lists **all members of the workspace**. Inactive members have zero cou
 | Request | `GET https://slack.com/api/users.list?limit=200&cursor=<next_cursor>` |
 | Pages | The connector reads all pages in each sync. |
 
-On Enterprise, `users.list` can need a `team_id` for each workspace. Make sure of this on a real organization before you write the code (#4341).
+The connector calls `users.list` without `team_id`. On Enterprise, a token of the organization level can need a `team_id` for each workspace. Nobody tested this on a real organization. If Slack refuses the call, the sync fails and the message names the Slack code (section 6.1).
 
 ## 3. Plan detection
 
@@ -396,7 +396,7 @@ The streams with an issue in section 1 do not exist in `main`.
 | The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
 | Each sync reads the cursor day and the 2 days before it (section 5.1) | Each sync reads the cursor day only. | #4334 |
 | The bronze columns are `insight_tenant_id` and `insight_source_id` (section 7) | The columns are `tenant_id` and `source_id`. | #4342 |
-| Bots are never counted and bind to the excluded person (sections 8, 9) | No bot flag. Slack bots are not excluded. | #4341 |
+| Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Slack sends no identity inputs, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | A NULL `is_guest` is counted only if the member resolves (section 8) | A NULL `is_guest` is always counted. | #4335 |
 | Slack sends identity inputs. Rows resolve by `user_id` (section 9). | No Slack identity inputs. Only email. Members without email are not counted. | #4320 |

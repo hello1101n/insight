@@ -1,4 +1,4 @@
-"""Slack member analytics — Airbyte source connector entry point.
+"""Slack member analytics and members list — Airbyte source connector entry point.
 
 Python CDK rather than a declarative manifest: Slack refuses a day with HTTP 200
 and `{"ok": false}`, while a served day is a streamed gzip file. A manifest error
@@ -38,6 +38,7 @@ from source_slack.client import SlackApiError, SlackClient, SlackResponseError
 from source_slack.models import SlackConfig, describe
 from source_slack.plan import BILLING_SCOPE, PLAN_NAMES, Access, access
 from source_slack.streams import CONFIG_ERRORS, UsersDetails
+from source_slack.users import Users
 
 logger = logging.getLogger("airbyte")
 
@@ -62,8 +63,9 @@ def _client(config: SlackConfig) -> SlackClient:
     return SlackClient(config.slack_bot_token)
 
 
-def _streams(config: SlackConfig) -> list[UsersDetails]:
-    return [UsersDetails(config, _client(config))]
+def _streams(config: SlackConfig) -> list[UsersDetails | Users]:
+    client = _client(config)
+    return [UsersDetails(config, client), Users(config, client)]
 
 
 def _access(config: SlackConfig) -> Access:

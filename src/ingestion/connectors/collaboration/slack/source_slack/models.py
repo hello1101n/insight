@@ -32,14 +32,52 @@ class Refusal(BaseModel):
     error: str | None = None
 
 
-class BillingAnswer(BaseModel):
-    """The `team.billing.info` answer: the plan, or a refusal."""
+class Answer(BaseModel):
+    """A Web API JSON answer: `ok` and, on a refusal, the `error` code."""
 
     model_config = ConfigDict(frozen=True)
 
     ok: StrictBool
     error: str | None = None
+
+
+class BillingAnswer(Answer):
+    """The `team.billing.info` answer: the plan, or a refusal."""
+
     plan: str | None = None
+
+
+class Profile(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    display_name: str | None = None
+    real_name: str | None = None
+    email: str | None = None
+
+
+class Member(BaseModel):
+    """One member of a `users.list` page. The connector keeps only these fields."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    real_name: str | None = None
+    deleted: bool | None = None
+    is_bot: bool | None = None
+    is_restricted: bool | None = None
+    is_ultra_restricted: bool | None = None
+    profile: Profile = Profile()
+
+
+class PageMetadata(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    next_cursor: str = ""
+
+
+class UsersPage(Answer):
+    members: tuple[Member, ...] = ()
+    response_metadata: PageMetadata = PageMetadata()
 
 
 def _scope_list(value: object) -> object:

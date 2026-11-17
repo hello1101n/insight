@@ -20,6 +20,7 @@ from source_slack.models import Billing
 PLAN_NAMES = {"free": "Free", "std": "Pro", "plus": "Business+", "enterprise": "Enterprise", "compliance": "Enterprise"}
 BILLING_SCOPE = "team.billing:read"
 ANALYTICS_PLANS = frozenset({"plus", "enterprise", "compliance"})
+ALL_PLANS = frozenset(PLAN_NAMES)
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class StreamRule:
 
 STREAM_RULES: tuple[StreamRule, ...] = (
     StreamRule("users_details", ANALYTICS_PLANS, frozenset({"admin.analytics:read"}), main=True),
+    StreamRule("users", ALL_PLANS, frozenset({"users:read", "users:read.email"})),
 )
 
 
