@@ -20,7 +20,7 @@ Env:
 
 Examples:
   $0
-  TOOLBOX_IMAGE=ghcr.io/constructorfabric/insight-toolbox:latest $0 --push --platform=linux/amd64
+  TOOLBOX_IMAGE=ghcr.io/hello1101n/insight-toolbox:latest $0 --push --platform=linux/amd64
 USAGE
       exit 0 ;;
   esac
