@@ -24,6 +24,7 @@ import {
   TooltipTrigger,
   useSidebar,
 } from "@gears-frontx/ui-kit";
+import { resolveText } from "@/i18n/localized-text";
 import {
   setPortalRailLabels,
   usePortalRailLabels,
@@ -38,6 +39,7 @@ import { cn } from "@/lib/utils";
  * icons; picking an item opens the pane beside it again.
  */
 export function LensRail() {
+  const { t } = useTranslation();
   return (
     <Sidebar
       collapsible="none"
@@ -47,7 +49,7 @@ export function LensRail() {
       <SidebarHeader>
         <img
           src={brandSymbol}
-          alt="Constructor Fabric"
+          alt={t("nav.brand_alt")}
           className="size-8 shrink-0"
           width={32}
           height={32}
@@ -125,6 +127,7 @@ function LabelsToggle() {
 
 /** One row per rail item: icons in the rail, labelled rows in the phone drawer. */
 export function RailItems() {
+  const { t } = useTranslation();
   const { items, activeItem, selectItem } = useRailNav();
   const { setOpen } = useSidebar();
 
@@ -132,11 +135,13 @@ export function RailItems() {
     <SidebarGroup>
       <SidebarGroupContent>
         <SidebarMenu>
-          {items.map((item) => (
+          {items.map((item) => {
+            const label = resolveText(t, item.label);
+            return (
             <SidebarMenuItem key={item.id}>
-              <RailTooltip label={item.label}>
+              <RailTooltip label={label}>
                 <SidebarMenuButton
-                  aria-label={item.label}
+                  aria-label={label}
                   data-planned={item.planned || undefined}
                   isActive={activeItem === item.id}
                   className={cn(item.planned && "text-muted-foreground")}
@@ -146,11 +151,12 @@ export function RailItems() {
                   }}
                 >
                   <item.icon />
-                  <RailName>{item.label}</RailName>
+                  <RailName>{label}</RailName>
                 </SidebarMenuButton>
               </RailTooltip>
             </SidebarMenuItem>
-          ))}
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

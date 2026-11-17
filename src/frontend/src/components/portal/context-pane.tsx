@@ -24,6 +24,7 @@ import {
   useHomeSubject,
   type HomeSubject,
 } from "@/lib/portal/home-subject";
+import { resolveText } from "@/i18n/localized-text";
 import { useIsAdmin } from "@/queries/identity-me";
 import { usePreviewsGate } from "@/queries/previews";
 
@@ -49,7 +50,7 @@ export function ContextPane() {
     >
       <SidebarHeader>
         <span className="px-2 py-1.5 text-sm font-semibold tracking-tight text-sidebar-foreground">
-          {rail?.paneTitle ?? rail?.label ?? "Insight"}
+          {rail ? resolveText(t, rail.paneTitle ?? rail.label) : t("nav.insight")}
         </span>
       </SidebarHeader>
       <SidebarContent
