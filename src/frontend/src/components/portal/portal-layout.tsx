@@ -105,6 +105,6 @@ function ZoneGuard({ children }: { children: ReactNode }) {
     homeShown,
   });
 
-  if (decision.kind === "reset") return <Navigate to="/" replace />;
+  if (decision.kind === "reset") return <Navigate to="/" search replace />;
   return children;
 }

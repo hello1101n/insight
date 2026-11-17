@@ -30,13 +30,13 @@ afterEach(() => {
 });
 
 const route = Route as unknown as {
-  beforeLoad: () => void;
+  beforeLoad: (context: { search: Record<string, unknown> }) => void;
   component?: () => React.ReactNode;
 };
 
-function thrownByBeforeLoad(): unknown {
+function thrownByBeforeLoad(search: Record<string, unknown> = {}): unknown {
   try {
-    route.beforeLoad();
+    route.beforeLoad({ search });
   } catch (error) {
     return error;
   }
@@ -45,14 +45,22 @@ function thrownByBeforeLoad(): unknown {
 
 describe("/", () => {
   it("sends the reader Home", () => {
-    expect(thrownByBeforeLoad()).toEqual({ redirect: { to: "/home", params: {} } });
+    expect(thrownByBeforeLoad()).toEqual({ redirect: { to: "/home", params: {}, search: {} } });
   });
 
   it("sends the reader to their own page where the install leaves Home out", () => {
     policy.hidden.add("overview");
 
     expect(thrownByBeforeLoad()).toEqual({
-      redirect: { to: "/people/$person", params: { person: viewer.personId } },
+      redirect: { to: "/people/$person", params: { person: viewer.personId }, search: {} },
+    });
+  });
+
+  it("keeps the shared scope and period through the bounce", () => {
+    const search = { scope: "bbbbbbbb-2222-4222-8222-222222222222", period: "quarter" };
+
+    expect(thrownByBeforeLoad(search)).toEqual({
+      redirect: { to: "/home", params: {}, search },
     });
   });
 
