@@ -11,7 +11,7 @@ images:
     name: source-claude-team-invoices-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-claude-team-invoices-insight:2026.09.02.09.09-00d2c69"
+    image: "ghcr.io/hello1101n/source-claude-team-invoices-insight:2026.09.02.09.09-00d2c69"
 dbt_select: "tag:claude-team-invoices+"
 connection:
   # Its own namespace, though it is the same vendor through the same proxy: dbt

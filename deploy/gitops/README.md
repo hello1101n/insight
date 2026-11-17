@@ -2,7 +2,7 @@
 
 The real deployment surface for [Insight](https://github.com/constructorfabric/insight)
 on Kubernetes. The umbrella Helm chart is published from the public
-Insight repo to `oci://ghcr.io/constructorfabric/charts/insight` per
+Insight repo to `oci://ghcr.io/hello1101n/charts/insight` per
 merge to `main`; this directory holds everything else — values
 overlays, sealed-secret manifests, the Makefile, and a few helper
 scripts.
@@ -339,7 +339,7 @@ real `*.yaml` siblings beside them, safe to commit.
 ## Chart-pin flow (L3)
 
 1. The public Insight repo's CI publishes umbrella chart versions to
-   `oci://ghcr.io/constructorfabric/charts/insight:<semver>` per merge to
+   `oci://ghcr.io/hello1101n/charts/insight:<semver>` per merge to
    `main`.
 2. The `.insight-version` file in this repo pins one semver. Bump it
    to promote a new chart version. The Makefile reads it as
@@ -362,7 +362,7 @@ A standalone deployment repo has to wire its own bump; the pattern is:
 1. List semver tags at the chart registry on a cron schedule (e.g.
    hourly):
    ```bash
-   skopeo list-tags docker://ghcr.io/constructorfabric/charts/insight \
+   skopeo list-tags docker://ghcr.io/hello1101n/charts/insight \
      | jq -r '.Tags[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
    ```
 2. If the highest tag is newer than `.insight-version`, write it and

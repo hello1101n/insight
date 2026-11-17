@@ -88,7 +88,7 @@ builder container.
 **K8s path** — also `kubectl`, `helm`, `kubeseal`, `yq`, `jq`, plus a
 local cluster (OrbStack with Kubernetes / k3d / kind / minikube). No
 frontend checkout needed — the umbrella chart pulls
-`ghcr.io/constructorfabric/insight-frontend:<tag>` from GHCR.
+`ghcr.io/hello1101n/insight-frontend:<tag>` from GHCR.
 
 **Frontend checkout** — only needed for compose with
 `FRONTEND_MODE=dev` (Vite HMR) or `built` (host-built dist). The
@@ -308,7 +308,7 @@ Skip the local Rust build for one or more services:
 ./dev-compose.sh up --build-only=analytics     # invert: build only this
 
 # Or pin in .env.compose
-ANALYTICS_IMAGE=ghcr.io/constructorfabric/insight-analytics:latest
+ANALYTICS_IMAGE=ghcr.io/hello1101n/insight-analytics:latest
 ```
 
 The script writes `deploy/compose/override.generated.yml` (gitignored) that
@@ -416,7 +416,7 @@ docker compose --profile build run --rm build-rust cargo test -p analytics
 
 `prune` is the only command that removes `.env.compose`. Always
 interactive — no `--yes` switch. Asks separately whether to also remove
-pulled `ghcr.io/constructorfabric/insight-*` images (defaults to no —
+pulled `ghcr.io/hello1101n/insight-*` images (defaults to no —
 they're slow to re-pull). After prune, next `up` re-runs the wizard.
 
 ### Point the authenticator at a real IdP

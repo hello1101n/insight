@@ -42,7 +42,7 @@ images:
     name: insight-jira-enrich
     dockerfile: ./enrich/Dockerfile
     context: ./enrich
-    image: "ghcr.io/constructorfabric/insight-jira-enrich:2026.09.01.10.28-9e18eb1"
+    image: "ghcr.io/hello1101n/insight-jira-enrich:2026.09.01.10.28-9e18eb1"
 # Silver routing (class_task_*) is delivered by the task-tracking Silver layer
 # package, not by this connector. The pipeline runs the jira-rust path:
 # dbt(tag:jira) → tt-enrich-jira-run → dbt(<selector below>). The selector is

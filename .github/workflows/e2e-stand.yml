@@ -297,7 +297,7 @@ jobs:
           GATEWAY_POLICY: ${{ needs.changes.outputs.gateway == 'true' && 'required' || 'unchanged' }}
         run: |
           python3 scripts/ci/prebuilt_images.py \
-            --run-id "$RUN_ID" --registry ghcr.io/constructorfabric \
+            --run-id "$RUN_ID" --registry ghcr.io/hello1101n \
             --destination /tmp/e2e-prebuilt \
             --image "insight-analytics:${ANALYTICS_POLICY}" \
             --image "insight-authenticator:${AUTHENTICATOR_POLICY}" \

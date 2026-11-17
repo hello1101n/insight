@@ -197,7 +197,7 @@ jobs:
         run: |
           python3 "$GITHUB_WORKSPACE/scripts/ci/prebuilt_images.py" \
             --run-id "$RUN_ID" \
-            --registry ghcr.io/constructorfabric \
+            --registry ghcr.io/hello1101n \
             --destination /tmp/e2e-prebuilt \
             --image insight-analytics:unchanged \
             --image insight-identity-resolution:unchanged \

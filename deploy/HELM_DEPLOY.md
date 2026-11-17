@@ -37,7 +37,7 @@ This runbook shows a platform or DevOps engineer how to install the Insight busi
 
 ## Overview
 
-Insight reads engineering and collaboration data from your tools (Jira, Slack, GitHub, and so on), pipelines it through ClickHouse, and serves metrics to a dashboard behind an OIDC (OpenID Connect, the login protocol) login. It installs as five first-party services in one Helm "umbrella" chart — bundled sub-charts, so a single `helm install` deploys everything — published at `oci://ghcr.io/constructorfabric/charts/insight`. The five are:
+Insight reads engineering and collaboration data from your tools (Jira, Slack, GitHub, and so on), pipelines it through ClickHouse, and serves metrics to a dashboard behind an OIDC (OpenID Connect, the login protocol) login. It installs as five first-party services in one Helm "umbrella" chart — bundled sub-charts, so a single `helm install` deploys everything — published at `oci://ghcr.io/hello1101n/charts/insight`. The five are:
 
 - **Gateway** (`insight-gateway`, alias `gateway`) — the OpenResty edge. It owns the chart's only public route (a Gateway API `HTTPRoute`) and is the single entrance to the cluster: it routes `/*` to the Frontend and `/api/*` to Analytics/Identity, performing a cached cookie-to-JWT exchange against the Authenticator's `/internal/authz` endpoint (a per-pod Lua cosocket lookup, not nginx's `auth_request`) and injecting the resulting gateway JWT into upstream requests.
 - **Authenticator** (`insight-authenticator`, alias `authenticator`) — a separate pod that performs the OIDC login with your IdP, keeps Redis-backed sessions, and mints the ES256 gateway JWT the Gateway injects downstream.
@@ -279,7 +279,7 @@ frontend:                            # the web UI (dashboard)
 To start from the chart's full defaults instead of typing the skeleton:
 
 ```sh
-helm show values oci://ghcr.io/constructorfabric/charts/insight > values/umbrella.yaml
+helm show values oci://ghcr.io/hello1101n/charts/insight > values/umbrella.yaml
 ```
 
 Fill each placeholder:
@@ -369,7 +369,7 @@ Do **not** copy Airbyte's own `airbyte-auth-secrets` into `insight`. The reconci
 Install the umbrella chart against your values file:
 
 ```sh
-helm upgrade --install insight oci://ghcr.io/constructorfabric/charts/insight \
+helm upgrade --install insight oci://ghcr.io/hello1101n/charts/insight \
   -n insight -f values/umbrella.yaml --wait --timeout 15m
 ```
 

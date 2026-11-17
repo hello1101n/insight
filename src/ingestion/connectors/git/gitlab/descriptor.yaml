@@ -61,7 +61,7 @@ images:
     name: source-gitlab-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-gitlab-insight:2026.09.03.08.06-08aee3d"
+    image: "ghcr.io/hello1101n/source-gitlab-insight:2026.09.03.08.06-08aee3d"
 dbt_select: "tag:gitlab+"
 connection:
   namespace: "bronze_gitlab"
