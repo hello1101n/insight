@@ -261,4 +261,4 @@ def test_the_migrate_hook_runs_the_image_the_configmap_pins():
     assert attributes["service.version"] == tag
 
     images = {container(docs)["image"], one(docs, "Job")["spec"]["template"]["spec"]["containers"][0]["image"]}
-    assert images == {f"ghcr.io/constructorfabric/insight-v3-core:{tag}"}
+    assert images == {f"ghcr.io/hello1101n/insight-v3-core:{tag}"}
