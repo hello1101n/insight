@@ -8,10 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Recharts needs a real layout; the assertions here are about what the page
 // hands the chart, so the primitives report their props as data attributes.
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   BarChart: ({
     data,
     children,
@@ -23,16 +21,26 @@ vi.mock("@/components/ui/chart", () => ({
       {children}
     </div>
   ),
-  ChartBar: ({ dataKey }: { dataKey: string }) => (
-    <div data-testid="bar" data-key={dataKey} />
-  ),
   XAxis: ({ dataKey }: { dataKey: string }) => (
     <div data-testid="x-axis" data-key={dataKey} />
   ),
-  YAxis: () => <div data-testid="y-axis" />,
   CartesianGrid: () => <div data-testid="grid" />,
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   ChartTooltip: () => <div data-testid="tooltip" />,
   ChartTooltipContent: () => <div data-testid="tooltip-content" />,
+}));
+
+vi.mock("@/components/chart-series", () => ({
+  ChartBar: ({ dataKey }: { dataKey: string }) => (
+    <div data-testid="bar" data-key={dataKey} />
+  ),
+  YAxis: () => <div data-testid="y-axis" />,
 }));
 
 // The house harness for a virtualized body: report every row, and record what

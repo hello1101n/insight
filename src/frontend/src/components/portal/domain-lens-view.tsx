@@ -2,6 +2,7 @@ import { ExplainWithAi } from "@/components/widgets/dashboard/explain-with-ai";
 import { trendSnapshot } from "@/lib/insight/explain-snapshot";
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 import { resolveText } from "@/i18n/localized-text";
 import { MetricName } from "@/components/widgets/metric-help-tooltip";
 import { TrendingDown, TrendingUp } from "lucide-react";
@@ -14,8 +15,13 @@ import {
   type SectionTrendPoint,
   type SectionTrendSeries,
 } from "@/components/portal/section-trend";
+import { ChartBar, YAxis } from "@/components/chart-series";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
   Table,
   TableBody,
   TableCell,
@@ -26,17 +32,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import {
   attentionSummary,

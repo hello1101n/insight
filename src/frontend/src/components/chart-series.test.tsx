@@ -1,20 +1,10 @@
 // @vitest-environment jsdom
-/**
- * The central line defaults every chart inherits: straight segments between
- * real readings (no invented curve), dots while they are readable, and an
- * always-visible dot for a lone value that would otherwise draw no line.
- */
+import { ChartContainer, type ChartConfig } from "@gears-frontx/ui-kit";
 import { render } from "@testing-library/react";
+import { AreaChart, BarChart, LineChart } from "recharts";
 import { describe, expect, it } from "vitest";
 
-import {
-  ChartContainer,
-  ChartLine,
-  DOT_DENSITY_LIMIT,
-  LineChart,
-  YAxis,
-  type ChartConfig,
-} from "./chart";
+import { ChartArea, ChartBar, ChartLine, YAxis } from "./chart-series";
 
 const CONFIG: ChartConfig = { v: { label: "V", color: "#f00" } };
 
@@ -24,7 +14,7 @@ function renderSeries(data: Array<{ d: string; v: number | null }>) {
       <LineChart data={data} width={384} height={160}>
         <ChartLine dataKey="v" stroke="#f00" />
       </LineChart>
-    </ChartContainer>,
+    </ChartContainer>
   );
 }
 
@@ -32,25 +22,13 @@ const series = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ d: `2026-07-${i + 1}`, v: i + 1 }));
 
 describe("ChartLine defaults", () => {
-  it("draws a dot per reading on a short series", () => {
+  it("draws no per-point dots on a connected series", () => {
     const { container } = renderSeries(series(7));
-    expect(container.querySelectorAll("circle")).toHaveLength(7);
-  });
-
-  it("drops per-point dots once the series gets dense", () => {
-    const { container } = renderSeries(series(DOT_DENSITY_LIMIT + 10));
     expect(container.querySelectorAll("circle")).toHaveLength(0);
   });
 
-  it("keeps the boundary readable — exactly at the limit dots still show", () => {
-    const { container } = renderSeries(series(DOT_DENSITY_LIMIT));
-    expect(container.querySelectorAll("circle")).toHaveLength(DOT_DENSITY_LIMIT);
-  });
-
-  it("always marks a lone reading between gaps, however dense the series", () => {
-    // One value surrounded by nulls draws no line segment at all: without a dot
-    // the chart would look empty rather than "one measurement".
-    const data = Array.from({ length: DOT_DENSITY_LIMIT + 20 }, (_, i) => ({
+  it("always marks a lone reading between gaps, however long the series", () => {
+    const data = Array.from({ length: 60 }, (_, i) => ({
       d: `d${i}`,
       v: i === 15 ? 42 : null,
     }));
@@ -58,22 +36,21 @@ describe("ChartLine defaults", () => {
     expect(container.querySelectorAll("circle")).toHaveLength(1);
   });
 
-  it("renders no dot for a null value", () => {
+  it("marks only the lone reading, not readings that have a neighbour", () => {
     const { container } = renderSeries([
       { d: "a", v: 1 },
-      { d: "b", v: null },
-      { d: "c", v: 3 },
+      { d: "b", v: 2 },
+      { d: "c", v: null },
+      { d: "d", v: 4 },
+      { d: "e", v: null },
     ]);
-    // a and c are dotted; b contributes nothing.
-    expect(container.querySelectorAll("circle")).toHaveLength(2);
+    expect(container.querySelectorAll("circle")).toHaveLength(1);
   });
 
-  it("joins readings with straight segments, not an interpolated curve", () => {
+  it("joins readings with a smooth curve", () => {
     const { container } = renderSeries(series(4));
     const path = container.querySelector("path.recharts-line-curve");
-    // A monotone curve emits cubic commands ("C"); linear segments only "L".
-    expect(path?.getAttribute("d")).not.toMatch(/C/);
-    expect(path?.getAttribute("d")).toMatch(/L/);
+    expect(path?.getAttribute("d")).toMatch(/C/);
   });
 
   it("lets a caller override the curve for step-like counters", () => {
@@ -82,12 +59,53 @@ describe("ChartLine defaults", () => {
         <LineChart data={series(4)} width={384} height={160}>
           <ChartLine dataKey="v" stroke="#f00" type="stepAfter" />
         </LineChart>
-      </ChartContainer>,
+      </ChartContainer>
     );
-    const d = container.querySelector("path.recharts-line-curve")?.getAttribute("d");
-    // stepAfter holds a value then jumps: horizontal then vertical segments.
+    const d = container
+      .querySelector("path.recharts-line-curve")
+      ?.getAttribute("d");
     expect(d).toMatch(/L/);
     expect(d).not.toMatch(/C/);
+  });
+});
+
+describe("ChartArea defaults", () => {
+  it("marks a lone reading, which encloses no area of its own", () => {
+    const { container } = render(
+      <ChartContainer config={CONFIG} className="h-40 w-96">
+        <AreaChart
+          data={[
+            { d: "a", v: 1 },
+            { d: "b", v: 2 },
+            { d: "c", v: null },
+            { d: "d", v: 4 },
+            { d: "e", v: null },
+          ]}
+          width={384}
+          height={160}
+        >
+          <ChartArea dataKey="v" stroke="#f00" fill="#f00" />
+        </AreaChart>
+      </ChartContainer>
+    );
+    expect(container.querySelectorAll("circle")).toHaveLength(1);
+  });
+});
+
+describe("ChartBar defaults", () => {
+  it("caps the bar width when few categories share a wide chart", () => {
+    const { container } = render(
+      <ChartContainer config={CONFIG} className="h-40 w-96">
+        <BarChart data={series(3)} width={384} height={160}>
+          <ChartBar dataKey="v" fill="#f00" />
+        </BarChart>
+      </ChartContainer>
+    );
+    const widths = [
+      ...container.querySelectorAll("path.recharts-rectangle"),
+    ].map((bar) => Number(bar.getAttribute("width")));
+    expect(widths).toHaveLength(3);
+    expect(widths.every((width) => width === 24)).toBe(true);
   });
 });
 
@@ -106,17 +124,16 @@ describe("YAxis defaults", () => {
           <YAxis />
           <ChartLine dataKey="v" stroke="#f00" />
         </LineChart>
-      </ChartContainer>,
+      </ChartContainer>
     );
 
   const ticks = (c: HTMLElement) =>
     [...c.querySelectorAll(".recharts-cartesian-axis-tick-value")].map(
-      (t) => t.textContent ?? "",
+      (t) => t.textContent ?? ""
     );
 
   it("abbreviates large ticks so they fit the axis gutter", () => {
     const { container } = renderAxis(40_000);
-    // Whatever ticks recharts picks, none of them is a raw five-digit number.
     expect(ticks(container).some((t) => t.endsWith("k"))).toBe(true);
     expect(ticks(container).every((t) => !/^\d{5}/.test(t))).toBe(true);
   });
@@ -129,11 +146,18 @@ describe("YAxis defaults", () => {
   it("lets a caller keep raw numbers", () => {
     const { container } = render(
       <ChartContainer config={CONFIG} className="h-40 w-96">
-        <LineChart data={[{ d: "a", v: 0 }, { d: "b", v: 40_000 }]} width={384} height={160}>
+        <LineChart
+          data={[
+            { d: "a", v: 0 },
+            { d: "b", v: 40_000 },
+          ]}
+          width={384}
+          height={160}
+        >
           <YAxis tickFormatter={(v: number) => String(v)} />
           <ChartLine dataKey="v" stroke="#f00" />
         </LineChart>
-      </ChartContainer>,
+      </ChartContainer>
     );
     expect(ticks(container).some((t) => /^\d{5}$/.test(t))).toBe(true);
   });
