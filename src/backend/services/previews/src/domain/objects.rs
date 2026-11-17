@@ -23,7 +23,7 @@ use super::httproute::{
 
 /// The one image previews may run. Hardcoded on purpose: the API accepts a tag
 /// only, so there is no arbitrary-image surface.
-pub const IMAGE_REPOSITORY: &str = "ghcr.io/constructorfabric/insight-frontend";
+pub const IMAGE_REPOSITORY: &str = "ghcr.io/hello1101n/insight-frontend";
 
 /// Label selecting every object of every experiment; the value is the slug.
 pub const EXPERIMENT_LABEL: &str = "insight.dev/preview-experiment";

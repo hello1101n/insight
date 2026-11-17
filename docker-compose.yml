@@ -764,7 +764,7 @@ services:
     profiles: ["front-ghcr"]
     # No platform pin: the published tags are multi-arch manifests covering
     # linux/amd64 and linux/arm64, so Apple-silicon hosts pull arm64 natively.
-    image: ${FRONTEND_IMAGE:-ghcr.io/constructorfabric/insight-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/hello1101n/insight-frontend:latest}
     container_name: ${COMPOSE_PROJECT_NAME:-insight}-front
     networks:
       insight:

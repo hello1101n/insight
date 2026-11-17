@@ -35,7 +35,7 @@ concurrency:
 env:
   CI: "true"
   # Same cache image and tag scheme build-images.yml writes; read-only here.
-  BUILDCACHE: ghcr.io/constructorfabric/insight-buildcache
+  BUILDCACHE: ghcr.io/hello1101n/insight-buildcache
   # The compose stand shares the runner with its other services, so its
   # ClickHouse gets a share rather than the machine. Raise it here if a lane
   # starts failing with MEMORY_LIMIT_EXCEEDED.

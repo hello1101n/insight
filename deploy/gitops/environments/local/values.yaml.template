@@ -225,7 +225,7 @@ identityResolution:
     limits:   { cpu: 500m, memory: 512Mi }
 
 frontend:
-  # The SPA image is pulled from ghcr (ghcr.io/constructorfabric/insight-frontend,
+  # The SPA image is pulled from ghcr (ghcr.io/hello1101n/insight-frontend,
   # chart appVersion tag) — no local build needed. It deploys but may not fully
   # work against the current backend yet.
   deploy: true

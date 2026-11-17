@@ -4,7 +4,7 @@
 #
 # This is a SAMPLE gitops layout intended to be copied into your own
 # private repo and adapted (cluster names, hostnames, image tags, secret
-# backend, CI). The umbrella chart it pulls (oci://ghcr.io/constructorfabric/
+# backend, CI). The umbrella chart it pulls (oci://ghcr.io/hello1101n/
 # charts/insight) is published from the public Insight repo per merge to
 # main, so this directory plus an actual cluster is enough to deploy.
 #
@@ -30,7 +30,7 @@
 #       password manager). Or use VALUE_FILE=… for one-off seals.
 #
 # This repo is settings-only. The umbrella chart is published per merge
-# to oci://ghcr.io/constructorfabric/charts/insight; INSIGHT_VERSION pins one
+# to oci://ghcr.io/hello1101n/charts/insight; INSIGHT_VERSION pins one
 # semver from .insight-version.
 
 # bash, not /bin/sh: `deploy-insight` needs `set -o pipefail` to read helm's
@@ -64,7 +64,7 @@ NS_MONITORING    ?= $(NS_INFRA)
 
 # Back-compat alias for older targets still referencing NAMESPACE.
 NAMESPACE        ?= $(NS_APP)
-CHART            ?= oci://ghcr.io/constructorfabric/charts/insight
+CHART            ?= oci://ghcr.io/hello1101n/charts/insight
 # Local umbrella chart source (this repo's working tree) for validation
 LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)

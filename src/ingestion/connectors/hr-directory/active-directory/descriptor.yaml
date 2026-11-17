@@ -20,7 +20,7 @@ images:
     name: source-active-directory-insight
     dockerfile: ./Dockerfile
     context: .
-    image: ghcr.io/constructorfabric/source-active-directory-insight:2026.10.25.16.09-d4aa4a8
+    image: ghcr.io/hello1101n/source-active-directory-insight:2026.10.25.16.09-d4aa4a8
 connection:
   namespace: bronze_active_directory
 secret:

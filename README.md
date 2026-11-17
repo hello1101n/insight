@@ -247,7 +247,7 @@ Constructor Fabric clusters are deployed from the private `infra/insight-gitops`
 External consumers run the umbrella chart directly:
 
 ```bash
-helm install insight oci://ghcr.io/constructorfabric/charts/insight \
+helm install insight oci://ghcr.io/hello1101n/charts/insight \
   --version <V> \
   --namespace insight --create-namespace \
   -f values.yaml
@@ -309,7 +309,7 @@ The compose stack does not run Airbyte or Argo Workflows — those live on the K
 
 The chart fails fast if any image tag is empty — there are **no `:latest` defaults** anywhere.
 
-For local Docker Compose development each backend service is built locally by default; skip the build for any service and pull its published image instead by setting `<SVC>_IMAGE` in `.env.compose` (e.g. `API_GATEWAY_IMAGE=ghcr.io/constructorfabric/insight-api-gateway:latest`) or with `./dev-compose.sh up --from-ghcr=<svc>`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the build targets and frontend modes.
+For local Docker Compose development each backend service is built locally by default; skip the build for any service and pull its published image instead by setting `<SVC>_IMAGE` in `.env.compose` (e.g. `API_GATEWAY_IMAGE=ghcr.io/hello1101n/insight-api-gateway:latest`) or with `./dev-compose.sh up --from-ghcr=<svc>`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the build targets and frontend modes.
 
 For cluster deployments image tags flow through automatically: the umbrella chart's CI bumps each subchart's `appVersion` on every merge to `main`, and the subchart templates default `image.tag` to `.Chart.AppVersion`. Env overlays only need to pin a tag explicitly for a hotfix scenario (testing one service at a different tag than the one bundled in the umbrella version). Image source repos:
 
@@ -323,7 +323,7 @@ For cluster deployments image tags flow through automatically: the umbrella char
 | `insight-frontend` | this repo | https://github.com/constructorfabric/insight/pkgs/container/insight-frontend |
 ### CI/CD
 
-GitHub Actions builds and pushes backend + toolbox container images on every merge to `main` (see [`.github/workflows/build-images.yml`](.github/workflows/build-images.yml)). Images are tagged `YYYY.MM.DD.HH.mm-<short-sha>` and `latest`. The same workflow publishes the umbrella Helm chart to `oci://ghcr.io/constructorfabric/charts/insight:<semver>` and auto-commits the version bumps back to `main`. See [`deploy/gitops/README.md`](deploy/gitops/README.md) for the gitops deploy contract.
+GitHub Actions builds and pushes backend + toolbox container images on every merge to `main` (see [`.github/workflows/build-images.yml`](.github/workflows/build-images.yml)). Images are tagged `YYYY.MM.DD.HH.mm-<short-sha>` and `latest`. The same workflow publishes the umbrella Helm chart to `oci://ghcr.io/hello1101n/charts/insight:<semver>` and auto-commits the version bumps back to `main`. See [`deploy/gitops/README.md`](deploy/gitops/README.md) for the gitops deploy contract.
 
 To trigger manually: Actions → "Build & Push Container Images" → Run workflow.
 
