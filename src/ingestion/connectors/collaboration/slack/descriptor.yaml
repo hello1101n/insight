@@ -23,7 +23,7 @@ images:
     name: source-slack-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-slack-insight:2026.11.12.09.21-3400fcd"
+    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.12.09.21-3400fcd"
 dbt_select: tag:slack+
 workflow: sync
 connection:

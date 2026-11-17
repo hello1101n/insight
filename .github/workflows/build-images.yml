@@ -98,10 +98,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/constructorfabric
+  IMAGE_PREFIX: ghcr.io/hello1101n
   # buildx layer cache: one tag per (image, arch), plus backend-deps-<arch>,
   # the cargo-chef dependency layer every Rust image shares.
-  BUILDCACHE: ghcr.io/constructorfabric/insight-buildcache
+  BUILDCACHE: ghcr.io/hello1101n/insight-buildcache
 
 permissions:
   contents: write # publish-chart auto-commits Chart.yaml bumps back to main

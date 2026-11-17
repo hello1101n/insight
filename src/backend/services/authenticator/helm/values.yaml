@@ -11,7 +11,7 @@ global:
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-authenticator
+  repository: ghcr.io/hello1101n/insight-authenticator
   tag: "" # MUST be set by the operator. No `:latest` default.
   pullPolicy: IfNotPresent
 
