@@ -29,6 +29,7 @@
     },
     "table": {
       "member": "Member",
+      "period": "Period",
       "person": "Person",
       "role": "Role",
       "status": "Status",
@@ -69,16 +70,10 @@
       "cancel": "Cancel",
       "scroll_to_top": "Back to the top of the list",
       "scroll_to_bottom": "Jump to the end of the list",
+      "download": "Download",
       "apply": "Apply",
       "clear": "Clear",
       "shrink": "Shrink"
-    },
-    "ui_components": {
-      "sidebar": {
-        "title": "Sidebar",
-        "description": "Displays the mobile sidebar.",
-        "toggle": "Toggle Sidebar"
-      }
     },
     "period_presets": {
       "7d": "7d",
@@ -100,7 +95,10 @@
     "copied": "Copied",
     "copy_failed": "Unable to copy",
     "a11y": {
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "section_navigation": "Section navigation",
+      "expand_navigation": "Expand navigation",
+      "collapse_navigation": "Collapse navigation"
     },
     "states": {
       "empty": "No data for this period",
@@ -687,8 +685,11 @@
       }
     }
   },
+  "settings": {
+    "nav_label": "Settings"
+  },
   "feedback": {
-    "nav_label": "Send feedback",
+    "nav_label": "Feedback",
     "title": "Submit feedback / bug report",
     "message": "Your feedback",
     "placeholder": "Describe the issue",
@@ -950,6 +951,11 @@
   },
   "metrics_view": {
     "title": "Metrics view",
+    "download": {
+      "xlsx": "Excel (.xlsx)",
+      "csv": "CSV (.csv)",
+      "failed": "The download failed. Try again."
+    },
     "count": "Metrics: {{picked}} of {{total}}",
     "select_all": "Select all",
     "select_all_metrics": "Select all metrics",

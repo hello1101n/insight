@@ -72,12 +72,13 @@ vi.mock("@gears-frontx/ui-kit", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/sidebar", async () => {
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => {
   const { cloneElement, isValidElement } = await import("react");
   const passthrough = ({ children }: { children?: React.ReactNode }) => (
     <div>{children}</div>
   );
   return {
+    ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
     SidebarMenu: passthrough,
     SidebarMenuItem: passthrough,
     // The real button MERGES into `render`: the label lands inside the anchor.
@@ -170,7 +171,7 @@ describe("AppSidebarFooter", () => {
     const onNavigate = vi.fn();
     render(<AppSidebarFooter onNavigate={onNavigate} />);
 
-    await userEvent.click(entry("Send feedback"));
+    await userEvent.click(entry("Feedback"));
 
     expect(mocks.openFeedback).toHaveBeenCalled();
     expect(onNavigate).toHaveBeenCalled();
@@ -179,12 +180,12 @@ describe("AppSidebarFooter", () => {
   it("offers feedback without navigating anywhere", () => {
     render(<AppSidebarFooter />);
 
-    expect(entry("Send feedback").querySelector('[data-testid="link"]')).toBeNull();
+    expect(entry("Feedback").querySelector('[data-testid="link"]')).toBeNull();
   });
 
   it("leaves feedback out where the shell already offers it", () => {
     render(<AppSidebarFooter showFeedback={false} />);
 
-    expect(screen.queryByText("Send feedback")).toBeNull();
+    expect(screen.queryByText("Feedback")).toBeNull();
   });
 });

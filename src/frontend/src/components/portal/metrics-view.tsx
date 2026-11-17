@@ -2,9 +2,11 @@ import { useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
+import type { DateRange } from "@/api/period-to-date-range";
 import { useViewer } from "@/auth";
 import { MetricsComparePicker } from "@/components/portal/metrics-compare-picker";
 import { MetricsCompareTable } from "@/components/portal/metrics-compare-table";
+import { MetricsDownloadMenu } from "@/components/portal/metrics-download-menu";
 import {
   MetricsTable,
   type MetricsSort,
@@ -29,6 +31,7 @@ import { flattenSubordinates } from "@/lib/insight/identity-tree";
 import { metricHelp, type MetricHelpText } from "@/lib/insight/metric-help";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
+import { usePageTitle } from "@/lib/portal/document-title-frame";
 import {
   compareTeams,
   rolesById,
@@ -53,6 +56,21 @@ import { useMetricsViewData } from "@/queries/metrics-view";
 import type { IdentityPerson } from "@/types/insight";
 
 const TEST_ID = "page-people-metrics";
+
+function comparedNames(
+  compareParam: string,
+  members: readonly MembersGridMember[],
+): string[] {
+  const byId = new Map(
+    members.map((member) => [member.entityId, member.displayName]),
+  );
+  const names: string[] = [];
+  for (const id of compareParam.split(",")) {
+    const name = byId.get(id);
+    if (name) names.push(name);
+  }
+  return names;
+}
 
 export function MetricsView() {
   const { t } = useTranslation();
@@ -88,7 +106,7 @@ export function MetricsView() {
     [catalog],
   );
 
-  const { metrics: metricsParam } = usePortalSearch();
+  const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
   const setSearch = useSetPortalSearch();
   const picked = useMemo(
     () =>
@@ -125,6 +143,10 @@ export function MetricsView() {
     () => members.map((member) => member.entityId),
     [members],
   );
+  const compared = compareParam
+    ? comparedNames(compareParam, members)
+    : [];
+  usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
   const data = useMetricsViewData(metricKeys, memberIds, dateRange);
 
@@ -210,6 +232,7 @@ export function MetricsView() {
           byKey={data.byKey}
           helpByKey={helpByKey}
           loading={data.isPending}
+          range={dateRange}
         />
       )}
     </div>
@@ -275,6 +298,7 @@ function MetricsBody({
   byKey,
   helpByKey,
   loading,
+  range,
 }: {
   pivot: IdentityPerson | null;
   people: ReadonlyArray<{ person_id: string; display_name?: string | null }>;
@@ -283,6 +307,7 @@ function MetricsBody({
   byKey: Map<string, NormalizedMetricResult>;
   helpByKey: ReadonlyMap<string, MetricHelpText>;
   loading: boolean;
+  range: DateRange;
 }) {
   const { t } = useTranslation();
   const { setScope } = usePortalNavActions();
@@ -355,6 +380,10 @@ function MetricsBody({
             teams={teams}
             picked={comparing ?? []}
             onCompare={setComparing}
+          />
+          <MetricsDownloadMenu
+            view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
+            disabled={metricKeys.length === 0 || loading}
           />
         </div>
       </div>
