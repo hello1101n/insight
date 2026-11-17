@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn the_repository_path_drops_the_registry_host() {
-        assert_eq!(repository_path(), "constructorfabric/insight-frontend");
+        assert_eq!(repository_path(), "hello1101n/insight-frontend");
     }
 
     #[test]

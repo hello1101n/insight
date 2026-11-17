@@ -98,10 +98,11 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/constructorfabric
+  # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
+  IMAGE_PREFIX: ghcr.io/hello1101n
   # buildx layer cache: one tag per (image, arch), plus backend-deps-<arch>,
   # the cargo-chef dependency layer every Rust image shares.
-  BUILDCACHE: ghcr.io/constructorfabric/insight-buildcache
+  BUILDCACHE: ghcr.io/hello1101n/insight-buildcache
 
 permissions:
   contents: write # publish-chart auto-commits Chart.yaml bumps back to main
@@ -178,7 +179,8 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; then
             echo 'arches=["amd64"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'arches=["amd64","arm64"]' >> "$GITHUB_OUTPUT"
+            # TEMPORARY: amd64 only while builds run on GitHub-hosted runners, where arm64 builds under emulation take hours. Every Insight stand runs amd64 nodes.
+            echo 'arches=["amd64"]' >> "$GITHUB_OUTPUT"
           fi
       # INVARIANT: services diff the last PINNED commit, never the previous
       # push. A per-push diff drops whatever a cancelled pending run carried

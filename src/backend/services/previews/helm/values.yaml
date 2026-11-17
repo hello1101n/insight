@@ -6,7 +6,7 @@ replicaCount: 1
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-previews
+  repository: ghcr.io/hello1101n/insight-previews
   tag: "" # MUST be set by the operator. No `:latest` default.
   pullPolicy: IfNotPresent
 
