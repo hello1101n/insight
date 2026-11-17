@@ -24,7 +24,7 @@ export function ReportBuilderActions({
   onPreview,
 }: ReportBuilderActionsProps) {
   return (
-    <div className="fixed end-0 bottom-0 start-0 z-30 border-t bg-background/95 backdrop-blur-sm md:start-(--sidebar-width-icon) lg:start-(--sidebar-width)">
+    <div className="fixed end-0 bottom-0 start-0 z-30 border-t bg-background/95 backdrop-blur-sm md:start-(--sidebar-width) md:in-[:has(>[data-collapsible=icon])]:start-(--sidebar-width-icon)">
       <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center gap-3 px-4 py-3 md:px-6">
         <div className="flex min-w-0 flex-1 flex-col">
           <span
