@@ -180,7 +180,7 @@ describe("ContextPane header", () => {
     inZone(zone);
     pane();
     const sections = screen.getByRole("navigation", { name: "Section navigation" });
-    expect(sections.previousElementSibling).toHaveTextContent(new RegExp(`^${title}$`));
+    expect(sections.previousElementSibling?.textContent).toBe(title);
   });
 });
 
