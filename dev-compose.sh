@@ -1546,7 +1546,7 @@ EOF
     # ID, it leaves any other tag on the same image (the e2e rig's
     # `*:e2e-prebuilt` retags) in place. Tagged pulls keep the repo:tag form.
     imgs=$(docker images --digests --format '{{.Repository}}:{{.Tag}} {{.Repository}}@{{.Digest}}' 2>/dev/null \
-           | awk '$1 ~ /^ghcr\.io\/constructorfabric\/insight-/ {
+           | awk '$1 ~ /^ghcr\.io\/hello1101n\/insight-/ {
                if ($1 !~ /:<none>$/)      print $1
                else if ($2 !~ /@<none>$/) print $2
              }' || true)
