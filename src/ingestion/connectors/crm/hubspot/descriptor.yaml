@@ -16,7 +16,7 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-hubspot-insight:2026.11.02.11.55-82d45ab"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.02.11.55-82d45ab"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"

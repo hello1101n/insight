@@ -75,6 +75,12 @@ on:
   # no backend/connector builds, no descriptor bumps, no chart publish.
   workflow_dispatch:
     inputs:
+      build_tag:
+        type: string
+        default: ""
+      connectors_only:
+        type: boolean
+        default: false
       frontend_only:
         description: "Build and push only the frontend image (skip everything else)"
         type: boolean
@@ -98,10 +104,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/constructorfabric
+  IMAGE_PREFIX: ghcr.io/hello1101n
   # buildx layer cache: one tag per (image, arch), plus backend-deps-<arch>,
   # the cargo-chef dependency layer every Rust image shares.
-  BUILDCACHE: ghcr.io/constructorfabric/insight-buildcache
+  BUILDCACHE: ghcr.io/hello1101n/insight-buildcache
 
 permissions:
   contents: write # publish-chart auto-commits Chart.yaml bumps back to main
@@ -178,7 +184,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; then
             echo 'arches=["amd64"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'arches=["amd64","arm64"]' >> "$GITHUB_OUTPUT"
+            echo 'arches=["amd64"]' >> "$GITHUB_OUTPUT"
           fi
       # INVARIANT: services diff the last PINNED commit, never the previous
       # push. A per-push diff drops whatever a cancelled pending run carried
@@ -374,6 +380,7 @@ jobs:
         id: tag
         env:
           REF_NAME: ${{ github.ref_name }}
+          OVERRIDE_TAG: ${{ inputs.build_tag }}
         run: |
           BUILD_TAG="$(date -u +%Y.%m.%d.%H.%M)-$(echo "${GITHUB_SHA}" | cut -c1-7)"
           if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
@@ -399,6 +406,7 @@ jobs:
             fi
             BUILD_TAG="${BUILD_TAG}.${SAFE_BRANCH}"
           fi
+          if [ -n "${OVERRIDE_TAG}" ]; then BUILD_TAG="${OVERRIDE_TAG}"; fi
           # Pull request and merge-group builds export loadable validation
           # artifacts without publishing. Push and workflow_dispatch publish.
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] || [ "${GITHUB_EVENT_NAME}" = "merge_group" ]; then
@@ -523,8 +531,10 @@ jobs:
   backend-analytics:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.analytics == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -657,8 +667,10 @@ jobs:
   backend-authenticator:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.authenticator == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -786,8 +798,10 @@ jobs:
   backend-gateway:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.gateway == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -911,8 +925,10 @@ jobs:
   backend-git-cli-proxy:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.git_cli_proxy == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1044,8 +1060,10 @@ jobs:
   backend-identity-resolution:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.identity_resolution == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1178,8 +1196,10 @@ jobs:
   backend-insight-v3-core:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.insight_v3_core == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1300,8 +1320,10 @@ jobs:
   backend-previews:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.previews == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1431,8 +1453,10 @@ jobs:
   frontend:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.frontend == 'true'
       || github.event_name == 'workflow_dispatch'
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1567,8 +1591,10 @@ jobs:
   toolbox:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.toolbox == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1744,8 +1770,10 @@ jobs:
   seed:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.seed == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -1891,8 +1919,10 @@ jobs:
   ui-tests:
     needs: changes
     if: |
+      !inputs.connectors_only && (
       needs.changes.outputs.ui_tests == 'true'
       || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -2243,23 +2273,7 @@ jobs:
     # never be `failure` or `cancelled`. Each merge-* job's manifest-push
     # is what tags the canonical <build_tag> images, so descriptor refs
     # only safely point at those tags once the merge completes.
-    if: |
-      always()
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-'))
-      && needs.discover-images.outputs.any == 'true'
-      && needs.queue-gate.result == 'success'
-      && needs.queue-gate.outputs.clear == 'true'
-      && (needs.merge-image.result == 'success' || needs.merge-image.result == 'skipped')
-      && (needs.merge-analytics.result == 'success' || needs.merge-analytics.result == 'skipped')
-      && (needs.merge-authenticator.result == 'success' || needs.merge-authenticator.result == 'skipped')
-      && (needs.merge-gateway.result       == 'success' || needs.merge-gateway.result       == 'skipped')
-      && (needs.merge-identity-resolution.result == 'success' || needs.merge-identity-resolution.result == 'skipped')
-      && (needs.merge-git-cli-proxy.result == 'success' || needs.merge-git-cli-proxy.result == 'skipped')
-      && (needs.merge-insight-v3-core.result == 'success' || needs.merge-insight-v3-core.result == 'skipped')
-      && (needs.merge-previews.result      == 'success' || needs.merge-previews.result      == 'skipped')
-      && (needs.merge-frontend.result      == 'success' || needs.merge-frontend.result      == 'skipped')
-      && (needs.merge-toolbox.result       == 'success' || needs.merge-toolbox.result       == 'skipped')
+    if: false
     runs-on: ${{ (vars.INSIGHT_FORCE_GITHUB_HOSTED == 'true' || github.repository != 'constructorfabric/insight' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || 'insight-small-vm' }}
     outputs:
       # `committed` is set to 'true' when this job actually pushed a
@@ -2442,9 +2456,7 @@ jobs:
       - merge-image
       - bump-descriptors
       - queue-gate
-    if: |
-      always()
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: false
     permissions:
       contents: write
       actions: read
