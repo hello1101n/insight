@@ -93,7 +93,7 @@ spec:
         parameters:
           - name: query
       container:
-        image: ghcr.io/constructorfabric/insight-toolbox:latest
+        image: ghcr.io/hello1101n/insight-toolbox:latest
         command: ["bash", "-c"]
         args:
           - |

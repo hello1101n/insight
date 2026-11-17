@@ -97,7 +97,7 @@ make diff ENV=test-stand INSIGHT_VERSION=<chart-version>
 
 ```bash
 helm upgrade --install insight \
-  oci://ghcr.io/constructorfabric/charts/insight \
+  oci://ghcr.io/hello1101n/charts/insight \
   --version "<chart-version>" --namespace insight \
   --values deploy/gitops/environments/test-stand/values.yaml \
   --set-string authenticator.oidc.clientSecret="$(kubectl -n insight \
