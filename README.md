@@ -34,7 +34,7 @@ Compose does not run Airbyte or Argo Workflows. For ingestion work, use the [Kub
 Insight ships as one Helm chart:
 
 ```bash
-helm install insight oci://ghcr.io/constructorfabric/charts/insight \
+helm install insight oci://ghcr.io/hello1101n/charts/insight \
   --namespace insight --create-namespace \
   -f values.yaml
 ```

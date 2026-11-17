@@ -81,7 +81,7 @@ If you install under a different name, override all cross-service URLs in your o
 The published artifact is the normal install path:
 
 ```bash
-helm upgrade --install insight oci://ghcr.io/constructorfabric/charts/insight \
+helm upgrade --install insight oci://ghcr.io/hello1101n/charts/insight \
   --version <x.y.z> \
   --namespace insight --create-namespace \
   -f my-values.yaml \
@@ -344,6 +344,6 @@ deploy first ([upgrade floor](../../docs/operations/CLICKHOUSE-UPGRADE-FLOOR.md)
 Publishing is automated: the `publish-chart` job in
 [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml)
 packages the umbrella and pushes it to
-`oci://ghcr.io/constructorfabric/charts/insight` on every push to `main` and
+`oci://ghcr.io/hello1101n/charts/insight` on every push to `main` and
 `release-*`, then commits the `version`/`appVersion` bump back to the branch.
 Do not push chart packages by hand.

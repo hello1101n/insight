@@ -619,10 +619,10 @@ cmd_up() {
     fi
   done
 
-  contains "$ghcr_list" analytics && [[ -z "${ANALYTICS_IMAGE:-}" ]] && export ANALYTICS_IMAGE="ghcr.io/constructorfabric/insight-analytics:${ANALYTICS_GHCR_TAG:-latest}"
-  contains "$ghcr_list" identity-resolution && [[ -z "${IDENTITY_RESOLUTION_IMAGE:-}" ]] && export IDENTITY_RESOLUTION_IMAGE="ghcr.io/constructorfabric/insight-identity-resolution:${IDENTITY_RESOLUTION_GHCR_TAG:-latest}"
-  contains "$ghcr_list" authenticator && [[ -z "${AUTHENTICATOR_IMAGE:-}" ]] && export AUTHENTICATOR_IMAGE="ghcr.io/constructorfabric/insight-authenticator:${AUTHENTICATOR_GHCR_TAG:-latest}"
-  contains "$ghcr_list" gateway && [[ -z "${GATEWAY_IMAGE:-}" ]] && export GATEWAY_IMAGE="ghcr.io/constructorfabric/insight-gateway:${GATEWAY_GHCR_TAG:-latest}"
+  contains "$ghcr_list" analytics && [[ -z "${ANALYTICS_IMAGE:-}" ]] && export ANALYTICS_IMAGE="ghcr.io/hello1101n/insight-analytics:${ANALYTICS_GHCR_TAG:-latest}"
+  contains "$ghcr_list" identity-resolution && [[ -z "${IDENTITY_RESOLUTION_IMAGE:-}" ]] && export IDENTITY_RESOLUTION_IMAGE="ghcr.io/hello1101n/insight-identity-resolution:${IDENTITY_RESOLUTION_GHCR_TAG:-latest}"
+  contains "$ghcr_list" authenticator && [[ -z "${AUTHENTICATOR_IMAGE:-}" ]] && export AUTHENTICATOR_IMAGE="ghcr.io/hello1101n/insight-authenticator:${AUTHENTICATOR_GHCR_TAG:-latest}"
+  contains "$ghcr_list" gateway && [[ -z "${GATEWAY_IMAGE:-}" ]] && export GATEWAY_IMAGE="ghcr.io/hello1101n/insight-gateway:${GATEWAY_GHCR_TAG:-latest}"
   true
 
   # ── Generate per-run override ────────────────────────────────────
@@ -1433,7 +1433,7 @@ The main pass removes:
   • .env.compose
 
 You will then be asked separately whether to also remove pulled
-ghcr.io/constructorfabric/insight-* images (slow to re-pull; kept by
+ghcr.io/hello1101n/insight-* images (slow to re-pull; kept by
 default).
 EOF
 }
@@ -1538,7 +1538,7 @@ EOF
   fi
 
   # Image removal is a separate question — re-pulling is slow.
-  if ask_yes_no "Also remove pulled ghcr.io/constructorfabric/insight-* images?" "n"; then
+  if ask_yes_no "Also remove pulled ghcr.io/hello1101n/insight-* images?" "n"; then
     local imgs
     # A pull whose tag was since taken over by a newer image is listed as
     # `repo:<none>` — not a valid reference for `docker rmi`. Address those as
@@ -1546,7 +1546,7 @@ EOF
     # ID, it leaves any other tag on the same image (the e2e rig's
     # `*:e2e-prebuilt` retags) in place. Tagged pulls keep the repo:tag form.
     imgs=$(docker images --digests --format '{{.Repository}}:{{.Tag}} {{.Repository}}@{{.Digest}}' 2>/dev/null \
-           | awk '$1 ~ /^ghcr\.io\/constructorfabric\/insight-/ {
+           | awk '$1 ~ /^ghcr\.io\/hello1101n\/insight-/ {
                if ($1 !~ /:<none>$/)      print $1
                else if ($2 !~ /@<none>$/) print $2
              }' || true)
@@ -1790,7 +1790,7 @@ test_stand_pinned_image() {
   [[ -f "$chart" ]] || { echo "ERROR: $chart not found — cannot pin $name." >&2; return 1; }
   version="$(awk -F'"' '/^appVersion:/ {print $2; exit}' "$chart")"
   [[ -n "$version" ]] || { echo "ERROR: no appVersion in $chart — cannot pin $name." >&2; return 1; }
-  printf 'ghcr.io/constructorfabric/insight-%s:%s' "$name" "$version"
+  printf 'ghcr.io/hello1101n/insight-%s:%s' "$name" "$version"
 }
 
 test_stand_frontend_image() {
