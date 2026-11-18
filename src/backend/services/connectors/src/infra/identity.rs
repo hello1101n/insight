@@ -32,10 +32,10 @@ pub(crate) struct IdentityClient {
 }
 
 impl IdentityClient {
-    pub(crate) fn new(base_url: &str) -> Result<Self, reqwest::Error> {
+    pub(crate) fn new(base_url: &str) -> anyhow::Result<Self> {
         Ok(Self {
             base_url: base_url.trim().trim_end_matches('/').to_owned(),
-            http: reqwest::Client::builder()
+            http: insight_http_client::client_builder()?
                 .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()?,

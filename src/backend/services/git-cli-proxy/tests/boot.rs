@@ -831,7 +831,7 @@ async fn a_branch_replaced_by_one_nested_under_its_name_is_served() -> R {
     wait_healthy(server.port).await?;
     let repo = taggable_origin(&server.dir)?;
     let origin = server.dir.join("taggable");
-    let client = reqwest::Client::new();
+    let client = http_client();
     let base = format!("http://127.0.0.1:{}", server.port);
     let branches = || async {
         client

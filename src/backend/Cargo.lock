@@ -2037,6 +2037,7 @@ dependencies = [
  "clap",
  "clickhouse",
  "insight-clickhouse",
+ "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
  "insight-migration",
