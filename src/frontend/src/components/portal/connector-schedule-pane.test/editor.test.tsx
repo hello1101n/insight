@@ -1,13 +1,7 @@
 import { pickPreset, presetLabel } from "./preset";
 import { mocks, read, pane, editCustom, pickTime } from "./fixtures";
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 
@@ -292,12 +286,60 @@ it("preserves custom row whitespace on open so Save stays disabled", async () =>
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
-it.each([
-  ["Asia/Kathmandu", -345],
-  ["America/St_Johns", 210],
-] as const)(
-  "presets save UTC crons in viewer timezone %s",
-  async (timeZone, offset) => {
+const VIEWER_ZONES = [
+  { timeZone: "Asia/Kathmandu", offset: -345 },
+  { timeZone: "America/St_Johns", offset: 210 },
+] as const;
+
+const PRESET_CRONS = [
+  { preset: "hours-1", label: "Minute", time: "15", cron: "15 * * * *" },
+  {
+    preset: "hours-2",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 1,3,5,7,9,11,13,15,17,19,21,23 * * *",
+  },
+  {
+    preset: "hours-3",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 0,3,6,9,12,15,18,21 * * *",
+  },
+  {
+    preset: "hours-4",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 1,5,9,13,17,21 * * *",
+  },
+  {
+    preset: "hours-6",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 3,9,15,21 * * *",
+  },
+  {
+    preset: "hours-8",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 1,9,17 * * *",
+  },
+  {
+    preset: "hours-12",
+    label: "Start time",
+    time: "09:15",
+    cron: "15 9,21 * * *",
+  },
+  { preset: "daily", label: "Time", time: "09:15", cron: "15 9 * * *" },
+  { preset: "weekdays", label: "Time", time: "00:15", cron: "15 0 * * 1-5" },
+] as const;
+
+it.each(
+  VIEWER_ZONES.flatMap((zone) =>
+    PRESET_CRONS.map((row) => ({ ...zone, ...row }))
+  )
+)(
+  "saves preset $preset as a UTC cron in viewer timezone $timeZone",
+  async ({ timeZone, offset, preset, label, time, cron }) => {
     const options = new Intl.DateTimeFormat().resolvedOptions();
     const zone = vi
       .spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions")
@@ -306,42 +348,24 @@ it.each([
       .spyOn(Date.prototype, "getTimezoneOffset")
       .mockReturnValue(offset);
     try {
-      for (const [preset, label, time, cron] of [
-        ["hours-1", "Minute", "15", "15 * * * *"],
-        [
-          "hours-2",
-          "Start time",
-          "09:15",
-          "15 1,3,5,7,9,11,13,15,17,19,21,23 * * *",
-        ],
-        ["hours-3", "Start time", "09:15", "15 0,3,6,9,12,15,18,21 * * *"],
-        ["hours-4", "Start time", "09:15", "15 1,5,9,13,17,21 * * *"],
-        ["hours-6", "Start time", "09:15", "15 3,9,15,21 * * *"],
-        ["hours-8", "Start time", "09:15", "15 1,9,17 * * *"],
-        ["hours-12", "Start time", "09:15", "15 9,21 * * *"],
-        ["daily", "Time", "09:15", "15 9 * * *"],
-        ["weekdays", "Time", "00:15", "15 0 * * 1-5"],
-      ]) {
-        mocks.save.mockResolvedValue(read());
-        render(pane());
-        await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-        await pickPreset(preset);
-        if (label === "Minute") {
-          fireEvent.change(screen.getByLabelText(label), {
-            target: { value: time },
-          });
-        } else {
-          await pickTime(time);
-        }
-        expect(screen.getAllByText("UTC").length, preset).toBeGreaterThan(0);
-        expect(screen.getByText(cron), preset).toHaveTextContent(cron);
-        await userEvent.click(screen.getByRole("button", { name: "Save" }));
-        expect(mocks.save, preset).toHaveBeenLastCalledWith({
-          etag: '"2"',
-          crons: [cron],
+      mocks.save.mockResolvedValue(read());
+      render(pane());
+      await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+      await pickPreset(preset);
+      if (label === "Minute") {
+        fireEvent.change(screen.getByLabelText(label), {
+          target: { value: time },
         });
-        cleanup();
+      } else {
+        await pickTime(time);
       }
+      expect(screen.getAllByText("UTC").length).toBeGreaterThan(0);
+      expect(screen.getByText(cron)).toHaveTextContent(cron);
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(mocks.save).toHaveBeenLastCalledWith({
+        etag: '"2"',
+        crons: [cron],
+      });
     } finally {
       zone.mockRestore();
       timezoneOffset.mockRestore();
