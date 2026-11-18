@@ -48,14 +48,19 @@ each chart's `appVersion` instead; that is CI's mode, and the fast path when
 nothing under `src/backend/` or `src/frontend/` differs from main.
 
 `test-stand test` requires [`uv`](https://docs.astral.sh/uv/) on the host
-and runs `uv run --project tests --frozen pytest tests/stand <args>`. Run
+and runs `uv run --project tests --frozen pytest tests/stand --compose-stand <args>`. Run
 pytest directly the same way if you prefer:
 
 ```bash
 uv sync --project tests
 uv run --project tests playwright install chromium   # first time only, for ui/
-uv run --project tests pytest tests/stand
+uv run --project tests pytest tests/stand --compose-stand
 ```
+
+Tests marked `compose_only` need compose fixtures or an unavailable cluster connection.
+Direct pytest runs skip these tests unless you pass `--compose-stand`.
+The `test-stand test` command passes this option for `tests/stand` in both host and image runs.
+The `-ra` summary shows the reason for each skip.
 
 This host-side run is also exactly what CI's `ui-journeys` lane does. The
 verb also accepts `--image <ref>` to run the checkout's tests in a Playwright

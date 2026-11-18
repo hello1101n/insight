@@ -122,6 +122,7 @@ markers = [
     "requires_portal_widgets: needs the manifest's portal_widgets capability; skipped with a reason when absent",
     "requires_portal_datasets: needs the manifest's portal_datasets capability; skipped with a reason when absent",
     "stand_smoke: the post-deploy gate — API identity and metric checks, explicit portal page tests and navigation, selected with `-m stand_smoke`",
+    "compose_only: needs compose fixtures or an unavailable cluster connection; skipped unless --compose-stand is passed",
     "rebuild_lane: the serialized rebuild lane — the test triggers a scoped dbt rebuild of one gold evidence relation through the stand's own seed image, so it needs docker beside the local compose stand and a run nothing else shares. OPT-IN: skipped unless --rebuild-lane is passed (tests/stand/conftest.py)",
     # Quality vectors — every stand api/ui test carries exactly one: a module-level
     # pytestmark where the whole module shares a vector, per-test markers throughout

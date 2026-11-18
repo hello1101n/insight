@@ -32,6 +32,7 @@ def schedule_path(admin_operator_session: PersonaSession) -> Iterator[str]:
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
+@pytest.mark.compose_only
 def test_unavailable_cluster_preserves_the_request_and_revision(
     admin_operator_session: PersonaSession, schedule_path: str
 ) -> None:
@@ -68,6 +69,7 @@ def test_unavailable_cluster_preserves_the_request_and_revision(
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
+@pytest.mark.compose_only
 @pytest.mark.parametrize("method", ["PUT", "DELETE"])
 def test_writes_require_if_match(
     admin_operator_session: PersonaSession, schedule_path: str, method: str
@@ -81,6 +83,7 @@ def test_writes_require_if_match(
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
+@pytest.mark.compose_only
 @pytest.mark.parametrize("cron", ["not a cron"])
 def test_invalid_crons_report_field_violations(
     admin_operator_session: PersonaSession, schedule_path: str, cron: str
@@ -104,6 +107,7 @@ def test_invalid_crons_report_field_violations(
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
+@pytest.mark.compose_only
 def test_put_requires_json(admin_operator_session: PersonaSession, schedule_path: str) -> None:
     client = admin_operator_session.client
     current = client.get(schedule_path)

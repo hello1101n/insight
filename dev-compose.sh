@@ -2532,10 +2532,11 @@ cmd_test_stand() {
         echo "       Bring the stand up first: ./dev-compose.sh test-stand up" >&2
         return 1; }
 
-      local datapath=0 other=0 tree
+      local datapath=0 other=0 tree stand_args=()
       for tree in "${trees[@]}"; do
         case "$tree" in
           tests/datapath|tests/datapath/*) datapath=1 ;;
+          tests/stand|tests/stand/*) other=1; stand_args=(--compose-stand) ;;
           *) other=1 ;;
         esac
       done
@@ -2553,7 +2554,7 @@ cmd_test_stand() {
           echo "       that would replace it. Run it host-side instead." >&2
           return 2
         fi
-        test_stand_test_in_image "$image" "$gw_port" "$@"
+        test_stand_test_in_image "$image" "$gw_port" ${stand_args[@]+"${stand_args[@]}"} "$@"
         return $?
       fi
 
@@ -2583,7 +2584,7 @@ cmd_test_stand() {
       INSIGHT_STAND_ENV_FILE="$TEST_STAND_ENV_FILE" \
       INSIGHT_STAND_MANIFEST="$TEST_STAND_MANIFEST_FILE" \
       INSIGHT_STAND_REALM_EXPORT="$TEST_STAND_REALM_FILE" \
-      uv run "${uv_args[@]}" pytest "${trees[@]}" "$@"
+      uv run "${uv_args[@]}" pytest "${trees[@]}" ${stand_args[@]+"${stand_args[@]}"} "$@"
       ;;
 
     down)

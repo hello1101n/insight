@@ -170,6 +170,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         ),
     )
     parser.addoption(
+        "--compose-stand",
+        action="store_true",
+        default=False,
+        help="Run compose_only tests that need compose fixtures or an unavailable cluster connection.",
+    )
+    parser.addoption(
         "--rebuild-lane",
         action="store_true",
         default=False,
@@ -293,6 +299,18 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             "per-test markers throughout a mixed one (a module default PLUS a per-test marker "
             "leaves both on the item and breaks -m selection).\n" + "\n".join(lines)
         )
+
+    if not config.getoption("--compose-stand"):
+        for item in items:
+            if item.get_closest_marker("compose_only") is not None:
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=(
+                            "compose_only: pass --compose-stand. The test needs compose "
+                            "fixtures or an unavailable cluster connection."
+                        )
+                    )
+                )
 
     if not config.getoption("--rebuild-lane"):
         for item in items:

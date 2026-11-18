@@ -2,7 +2,6 @@ from urllib.parse import quote
 
 import pytest
 from api.schemas import ConnectorHealthResponse
-from insight_stand import Manifest
 from playwright.sync_api import expect
 from pydantic import BaseModel
 
@@ -20,12 +19,10 @@ class SavedSchedule(BaseModel):
 
 
 @pytest.mark.requires_seed("admin_operator")
+@pytest.mark.compose_only
 def test_a_refused_schedule_shows_the_server_reason_and_preserves_the_saved_value(
-    admin_operator_portal: PortalPage, stand_manifest: Manifest
+    admin_operator_portal: PortalPage,
 ) -> None:
-    if stand_manifest.capabilities.ingestion:
-        pytest.skip("The no-cluster schedule refusal is a compose scenario.")
-
     portal = admin_operator_portal
     page = portal.shell.page
     response = page.request.get("/api/connectors/v1/connector-health")
