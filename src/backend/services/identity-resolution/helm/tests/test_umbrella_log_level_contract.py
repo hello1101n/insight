@@ -60,6 +60,8 @@ def rendered_per_service(stdout: str, key: str) -> dict[str, list[str]]:
         values = re.findall(rf"{key}:\s*(\S+)", doc)
         if source and values:
             per_service.setdefault(source.group(1), []).extend(values)
+        if "# Source: insight/templates/connectors.yaml" in doc and "kind: ConfigMap" in doc and values:
+            per_service.setdefault("connectors", []).extend(values)
     return per_service
 
 

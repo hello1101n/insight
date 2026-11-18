@@ -2,7 +2,7 @@
 //! and returns the captured JSON probe line plus its `log_ctx` span fields.
 
 use std::io;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use axum::Router;
 use axum::body::Body;
@@ -15,6 +15,10 @@ use uuid::Uuid;
 use crate::LogContextLayer;
 
 pub const PROBE_MESSAGE: &str = "log context probe line";
+
+// WORKAROUND: A second live dispatcher prevents tracing from caching callsite interest from another thread's no-op default.
+static NOOP_DISPATCH: LazyLock<tracing::Dispatch> =
+    LazyLock::new(|| tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default()));
 
 #[derive(Debug, thiserror::Error)]
 pub enum CaptureError {
@@ -63,6 +67,8 @@ async fn probe_handler() -> &'static str {
 /// seeded-leak assertions: log through the real call site inside `f`, then
 /// assert the seeded secret is absent from the returned lines.
 pub fn capture_output(f: impl FnOnce()) -> String {
+    LazyLock::force(&NOOP_DISPATCH);
+
     let writer = SharedWriter::default();
     let subscriber = tracing_subscriber::fmt()
         .json()
