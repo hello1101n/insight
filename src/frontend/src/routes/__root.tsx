@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { Toaster } from "@/components/ui/toaster";
 import { normalizePersonId } from "@/lib/metrics/entity";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 import { queryClient } from "@/query-client";
 import { FeedbackDialogProvider } from "@/components/feedback-dialog-provider";
 import { MetricEvidenceDialogProvider } from "@/components/metric-evidence-dialog-provider";
@@ -46,9 +47,6 @@ export const Route = createRootRoute({
 function RootPending() {
   return <CenteredSpinner className="min-h-screen w-full" />;
 }
-
-// Long enough that a pointer passing over a row of triggers opens none of them.
-const TOOLTIP_DELAY_MS = 400;
 
 function RootLayout() {
   return (

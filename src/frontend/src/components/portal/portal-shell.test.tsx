@@ -16,12 +16,17 @@ import { portalRouter } from "@/test/portal-router";
 
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Tooltip, TooltipContent, TooltipTrigger } from "@gears-frontx/ui-kit";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 
 const mocks = vi.hoisted(() => ({
   personId: null as string | null,
   isManager: true,
   isPending: false,
+  topBar: null as ReactNode,
 }));
 
 vi.mock("@/auth", () => ({
@@ -99,7 +104,9 @@ vi.mock("@/components/portal/context-pane", () => ({
   ContextPane: () => <div />,
   ZonePages: () => <div />,
 }));
-vi.mock("@/components/portal/portal-topbar", () => ({ PortalTopBar: () => <div /> }));
+vi.mock("@/components/portal/portal-topbar", () => ({
+  PortalTopBar: () => <div>{mocks.topBar}</div>,
+}));
 vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
@@ -129,6 +136,7 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
   mocks.isManager = true;
   mocks.isPending = false;
+  mocks.topBar = null;
   mocks.personId = pid("boss");
   resetRouteScopeSync();
   act(() => {
@@ -248,6 +256,24 @@ describe("PortalLayout zone guard", () => {
     act(() => portalRouter.go("/explore/dev/delivery"));
     render(<PortalLayout />);
     expect(sentHome()).toBe(true);
+  });
+});
+
+describe("PortalLayout tooltips", () => {
+  it("keeps a tooltip in the content closed until the app delay passes", async () => {
+    mocks.topBar = (
+      <Tooltip>
+        <TooltipTrigger>Help</TooltipTrigger>
+        <TooltipContent>Explained</TooltipContent>
+      </Tooltip>
+    );
+    render(<PortalLayout />);
+
+    await userEvent.hover(screen.getByText("Help"));
+    await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS / 4));
+    expect(screen.queryByText("Explained")).toBeNull();
+
+    expect(await screen.findByText("Explained")).toBeInTheDocument();
   });
 });
 
