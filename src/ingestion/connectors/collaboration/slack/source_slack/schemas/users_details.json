@@ -6,10 +6,10 @@
     "unique_key": {
       "type": "string"
     },
-    "tenant_id": {
+    "insight_tenant_id": {
       "type": "string"
     },
-    "source_id": {
+    "insight_source_id": {
       "type": "string"
     },
     "date": {
@@ -141,8 +141,8 @@
   },
   "required": [
     "unique_key",
-    "tenant_id",
-    "source_id",
+    "insight_tenant_id",
+    "insight_source_id",
     "user_id",
     "date"
   ],
