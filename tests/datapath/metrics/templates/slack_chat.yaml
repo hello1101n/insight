@@ -49,3 +49,26 @@ templates:
     is_restricted: false
     is_ultra_restricted: false
     is_bot: false
+
+  # bronze_slack.messages: one message from conversations.history or conversations.replies.
+  slack_message:
+    _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
+    _airbyte_extracted_at: "2030-01-01T00:00:00"
+    _airbyte_meta: "{}"
+    _airbyte_generation_id: 0
+    unique_key: null
+    insight_tenant_id: "{{ tenant }}"
+    insight_source_id: "slack-test"
+    channel_id: C001
+    channel_type: public_channel
+    ts: null
+    date: null
+    thread_ts: null
+    user_id: null
+    bot_id: null
+    subtype: null
+    reply_count: null
+    text_length: 10
+    link_count: 0
+    file_count: 0
+    attachment_count: 0

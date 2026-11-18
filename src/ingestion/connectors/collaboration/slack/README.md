@@ -1,6 +1,6 @@
 # Slack Connector
 
-Per-day user activity snapshots from Slack Analytics API (`admin.analytics.getFile?type=member`), and the members list from `users.list`.
+Per-day user activity snapshots from Slack Analytics API (`admin.analytics.getFile?type=member`) on Business+ and Enterprise, message metadata from the message history on Free and Pro, and the members list from `users.list`.
 
 Python CDK connector (`source_slack/`). Slack refuses a day with HTTP 200 and
 `{"ok": false, "error": "<code>"}`, while a served day is a gzip file; a declarative
@@ -13,6 +13,7 @@ manifest version stored refusals as all-NULL rows and kept reporting success.
 - Scope `team.billing:read` on every plan: the connector reads the plan with `team.billing.info`.
 - Scope `admin.analytics:read` on **Business+** and **Enterprise** (the Analytics API does not exist on lower plans).
 - Scopes `users:read` and `users:read.email` on every plan, for the `users` stream. Without them, the connector does not read `users` and writes a warning.
+- Scopes `channels:history`, `groups:history`, `im:history`, `mpim:history`, `channels:read`, `groups:read`, `im:read` and `mpim:read` on **Free** and **Pro**, for the `messages` stream. Install the app as an internal app of the workspace: Slack limits the message history of other apps to 1 request each minute.
 
 ## Plan and scopes
 
@@ -20,7 +21,7 @@ Each check and each sync first calls `team.billing.info`, and reads the token's 
 
 | Plan (`team.billing.info`) | Streams |
 |----------------------------|---------|
-| Free (`free`), Pro (`std`) | `users`. The main stream for these plans (message activity) does not exist yet, so the sync reads no activity. |
+| Free (`free`), Pro (`std`) | `messages` (main stream), `users` |
 | Business+ (`plus`), Enterprise (`enterprise`, `compliance`) | `users_details` (main stream), `users` |
 
 | Condition | Outcome |
@@ -37,7 +38,7 @@ The connection check reports the plan, the streams to read and the missing scope
 
 1. Go to https://api.slack.com/apps → **Create New App** → **From scratch**
 2. Pick the workspace, name the app (e.g. `Insight Analytics`)
-3. **OAuth & Permissions** → add `team.billing:read`, `users:read`, `users:read.email` and, on Business+ or Enterprise, `admin.analytics:read` under **User Token Scopes**
+3. **OAuth & Permissions** → add `team.billing:read`, `users:read`, `users:read.email` under **User Token Scopes**. Add `admin.analytics:read` on Business+ or Enterprise. Add the eight history and read scopes above on Free or Pro.
 4. Install the app by an org admin → copy the resulting OAuth token
 5. Store as `slack_bot_token` in the K8s Secret (field name kept for backward compatibility)
 
@@ -46,6 +47,7 @@ The connection check reports the plan, the streams to read and the missing scope
 | Stream | Sync Mode | Primary Key | Cursor | Description |
 |--------|-----------|-------------|--------|-------------|
 | `users_details` | Incremental | `unique_key` (`tenant-source-user_id-date`) | `date` (P1D) | Per-user per-day Slack activity snapshot |
+| `messages` | Incremental | `unique_key` (`tenant-source-channel_id-ts`) | `date` (P1D) | One row per message or thread reply, metadata only (Free and Pro) |
 | `users` | Full refresh | `unique_key` (`tenant-source-user_id`) | none | One row per member from `users.list` |
 
 The stream issues one HTTP request per date from the cursor day (read again, as the manifest connector did; `unique_key` dedups it) or `slack_start_date` to `today - 2 days`, and checkpoints `{"date": "YYYY-MM-DD"}` after each day. Response body is gzip-compressed JSON Lines; each line is a single member record.
@@ -82,12 +84,30 @@ Each sync reads all pages of `users.list` (200 members for each page). The conne
 
 Staging uses `is_bot` to remove bots from `slack__collab_chat_activity`. Slackbot (`USLACKBOT`) is always removed.
 
+### Message activity: `messages`
+
+On Free and Pro, each sync reads all conversations that the token can see, from `max(slack_start_date, cursor - 2 days)` to now, and the replies of each thread that starts in that window. The connector reads the window in parts of 7 days and sends the state `{"date": "YYYY-MM-DD"}` after each part. After the last part, the state is the day before the sync. The rules are in SPEC.md section 5.3.
+
+The connector keeps metadata only. It never sends `text`, `blocks`, `attachments` or file content to bronze:
+
+| Slack field | Kept |
+|-------------|------|
+| `text` | `text_length`, `link_count`, `link_hosts` (hosts only, no path or query) |
+| `files` | `file_ids`, `file_types`, `file_count` |
+| `attachments` | `attachment_count` |
+| other | `channel_id`, `channel_type`, `ts`, `date`, `thread_ts`, `user_id`, `bot_id`, `subtype`, `reply_count`, `reactions` |
+
+A user token sees the private channels, DMs and group DMs of the installing member only. The direct message counts on Free and Pro do not include the other private conversations.
+
+`not_in_channel` and `channel_not_found` skip the conversation with a warning; `thread_not_found` skips the thread. Other errors follow the activity rules.
+
+Staging model `slack__collab_chat_activity_messages` counts the messages of each member and day into `silver.class_collab_chat_activity`, with the same measures as the analytics file. Bot messages, joins and leaves, guests and bots do not count.
+
 ### Not included
 
 This connector does **not** fetch:
 
-- Raw messages or threads (no `channels:history` scope used)
-- Private channels, DMs, or group DMs
+- Message text, formatted text, attachment payloads or file content
 - Channel metadata (use a separate stream/scope if required)
 
 ## K8s Secret
@@ -104,7 +124,7 @@ metadata:
     insight.cyberfabric.com/source-id: slack-main
 type: Opaque
 stringData:
-  slack_bot_token: "xoxp-..."       # user token: team.billing:read, users:read, users:read.email, admin.analytics:read
+  slack_bot_token: "xoxp-..."       # user token: team.billing:read, users:read, users:read.email, and the plan scopes
   slack_start_date: "2026-04-03"    # Earliest analytics date to fetch
 ```
 
@@ -112,7 +132,7 @@ stringData:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `slack_bot_token` | Yes | User OAuth token (`xoxp-*`) with `team.billing:read`, `users:read` and `users:read.email`, plus `admin.analytics:read` on Business+ or Enterprise |
+| `slack_bot_token` | Yes | User OAuth token (`xoxp-*`) with `team.billing:read`, `users:read` and `users:read.email`. Add `admin.analytics:read` on Business+ or Enterprise, and the history and read scopes on Free or Pro. |
 | `slack_start_date` | Yes | Earliest analytics date (YYYY-MM-DD). Recommended: 14 days ago. |
 
 ### Automatically injected

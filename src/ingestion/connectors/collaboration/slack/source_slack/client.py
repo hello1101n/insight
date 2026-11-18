@@ -1,4 +1,4 @@
-"""Slack Web API over HTTP: the workspace plan, the members list and admin.analytics.getFile.
+"""Slack Web API over HTTP: the workspace plan, the members list, message history and admin.analytics.getFile.
 
 Slack answers a served day with a gzip file of JSON Lines and a refused day with
 HTTP 200 and a JSON body `{"ok": false, "error": "<code>"}`. The two share a
@@ -27,17 +27,37 @@ import requests
 from pydantic import TypeAdapter, ValidationError
 from requests.structures import CaseInsensitiveDict
 
-from source_slack.models import Answer, Billing, BillingAnswer, Member, Refusal, UsersPage, describe
+from source_slack.models import (
+    Answer,
+    Billing,
+    BillingAnswer,
+    Conversation,
+    ConversationsPage,
+    Member,
+    Message,
+    MessagesPage,
+    Page,
+    Refusal,
+    UsersPage,
+    describe,
+)
 
 logger = logging.getLogger("airbyte")
 
 API_URL = "https://slack.com/api/admin.analytics.getFile"
 BILLING_URL = "https://slack.com/api/team.billing.info"
 USERS_URL = "https://slack.com/api/users.list"
+CONVERSATIONS_URL = "https://slack.com/api/conversations.list"
+HISTORY_URL = "https://slack.com/api/conversations.history"
+REPLIES_URL = "https://slack.com/api/conversations.replies"
+CONVERSATION_TYPES = "public_channel,private_channel,mpim,im"
 MAX_ANSWER_BYTES = 64 * 1024
-USERS_PAGE_SIZE = 200
+LIST_PAGE_SIZE = 200
+MESSAGES_PAGE_SIZE = 100
 # A users.list member with a full profile is ~2 KiB, so a page of 200 is ~400 KiB.
 MAX_PAGE_BYTES = 16 * 1024**2
+# A message has 40,000 characters of text maximum. With its blocks, a page of 100 messages stays below this.
+MAX_MESSAGES_PAGE_BYTES = 64 * 1024**2
 TIMEOUT = 60
 MAX_RETRIES = 5
 BACKOFF_BASE_SECS = 2.0
@@ -299,20 +319,47 @@ class SlackClient:
         answer, headers = self._call("POST", BILLING_URL, "team.billing.info", BillingAnswer, MAX_ANSWER_BYTES)
         return _billing(answer, headers)
 
-    def members(self) -> Iterator[Member]:
-        """Every member on all pages of users.list."""
+    def _pages[P: Page](
+        self, url: str, method: str, model: type[P], params: Mapping[str, str], limit: int = MAX_PAGE_BYTES
+    ) -> Iterator[P]:
+        """Each page of a method that pages with `cursor`."""
         cursor = ""
         seen: set[str] = set()
         while True:
-            params = {"limit": str(USERS_PAGE_SIZE)} | ({"cursor": cursor} if cursor else {})
-            page, _ = self._call("GET", USERS_URL, "users.list", UsersPage, MAX_PAGE_BYTES, params)
-            yield from page.members
+            page_params = {**params, "cursor": cursor} if cursor else params
+            page, _ = self._call("GET", url, method, model, limit, page_params)
+            yield page
             seen.add(cursor)
             cursor = page.response_metadata.next_cursor
             if not cursor:
                 return
             if cursor in seen:
-                raise SlackResponseError("users.list: the next page cursor repeats an earlier cursor")
+                raise SlackResponseError(f"{method}: the next page cursor repeats an earlier cursor")
+
+    def members(self) -> Iterator[Member]:
+        """Every member on all pages of users.list."""
+        for page in self._pages(USERS_URL, "users.list", UsersPage, {"limit": str(LIST_PAGE_SIZE)}):
+            yield from page.members
+
+    def conversations(self) -> Iterator[Conversation]:
+        """Every channel, private channel, DM and group DM that the token can see, archived included."""
+        params = {"types": CONVERSATION_TYPES, "exclude_archived": "false", "limit": str(LIST_PAGE_SIZE)}
+        for page in self._pages(CONVERSATIONS_URL, "conversations.list", ConversationsPage, params):
+            yield from page.channels
+
+    def history(self, channel: str, oldest: str, latest: str | None = None) -> Iterator[Message]:
+        """The messages of a conversation from `oldest` to `latest` (epoch seconds; none is now), without replies."""
+        params = {"channel": channel, "oldest": oldest, "limit": str(MESSAGES_PAGE_SIZE)}
+        if latest is not None:
+            params["latest"] = latest
+        for page in self._pages(HISTORY_URL, "conversations.history", MessagesPage, params, MAX_MESSAGES_PAGE_BYTES):
+            yield from page.messages
+
+    def replies(self, channel: str, thread_ts: str, oldest: str) -> Iterator[Message]:
+        """The messages of a thread from `oldest` to now. Slack also sends the parent message."""
+        params = {"channel": channel, "ts": thread_ts, "oldest": oldest, "limit": str(MESSAGES_PAGE_SIZE)}
+        for page in self._pages(REPLIES_URL, "conversations.replies", MessagesPage, params, MAX_MESSAGES_PAGE_BYTES):
+            yield from page.messages
 
     def member_day(self, day: str) -> Iterator[dict[str, Any]]:
         """Every member row Slack reports for one UTC day, streamed."""

@@ -9,7 +9,8 @@ finished, and unique_key makes the second copy replace the first.
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator, Iterable, Mapping, MutableMapping
+from collections.abc import Generator, Iterable, Iterator, Mapping, MutableMapping
+from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -64,7 +65,28 @@ def failure(error: SlackApiError) -> AirbyteTracedException:
     return AirbyteTracedException(message=str(error), internal_message=str(error), failure_type=kind)
 
 
-def _cursor_from_state(value: Mapping[str, Any]) -> date | None:
+@contextmanager
+def traced(method: str) -> Iterator[None]:
+    """Raise a failure of a Slack Web API method as the failure type of section 6.1."""
+    try:
+        yield
+    except SlackApiError as error:
+        raise failure(error) from error
+    except SlackResponseError as error:
+        raise AirbyteTracedException(
+            message=f"Unexpected {method} answer: {error}",
+            internal_message=str(error),
+            failure_type=FailureType.system_error,
+        ) from error
+    except requests.RequestException as error:
+        raise AirbyteTracedException(
+            message=f"{method} kept failing: {type(error).__name__}",
+            internal_message=str(error),
+            failure_type=FailureType.transient_error,
+        ) from error
+
+
+def cursor_from_state(value: Mapping[str, Any]) -> date | None:
     try:
         return date.fromisoformat(str(value.get(CURSOR))[:10])
     except ValueError:
@@ -100,7 +122,7 @@ class UsersDetails(Stream, CheckpointMixin):
 
     @state.setter
     def state(self, value: Mapping[str, Any]) -> None:
-        self._cursor = _cursor_from_state(value) if isinstance(value, Mapping) else None
+        self._cursor = cursor_from_state(value) if isinstance(value, Mapping) else None
 
     def stream_slices(
         self, sync_mode: Any = None, cursor_field: Any = None, stream_state: Mapping[str, Any] | None = None

@@ -1,0 +1,153 @@
+{
+  "type": "object",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Slack messages and thread replies from conversations.history and conversations.replies, one row per message. Metadata only: the connector never sends the text, the blocks, the attachments or the file content. Source fields are [type, \"null\"]: the destination stores NULL for a value it cannot convert and records it in _airbyte_meta.",
+  "properties": {
+    "unique_key": {
+      "type": "string"
+    },
+    "insight_tenant_id": {
+      "type": "string"
+    },
+    "insight_source_id": {
+      "type": "string"
+    },
+    "channel_id": {
+      "type": "string"
+    },
+    "channel_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "thread_ts": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "bot_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subtype": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reply_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "reactions": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "users": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "text_length": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "link_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "link_hosts": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "file_ids": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "file_types": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "file_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "attachment_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "unique_key",
+    "insight_tenant_id",
+    "insight_source_id",
+    "channel_id",
+    "ts",
+    "date"
+  ],
+  "additionalProperties": true
+}

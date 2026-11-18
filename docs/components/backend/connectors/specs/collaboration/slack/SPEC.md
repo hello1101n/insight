@@ -17,7 +17,7 @@ For all the data that Slack supplies, refer to [DATA-SOURCES.md](DATA-SOURCES.md
 |---|---|---|---|---|---|
 | Activity | `admin.analytics.getFile?type=member` | B+, Enterprise | `admin.analytics:read` | `users_details` | In `main` |
 | Members | `users.list` | All | `users:read`, `users:read.email` | `users` | In `main` |
-| Message activity | `conversations.history`, `conversations.replies` | Free, Pro | `channels:history`, `groups:history`, `im:history`, `mpim:history` | `messages` (proposal, section 7.3) | #4349 |
+| Message activity | `conversations.list`, `conversations.history`, `conversations.replies` | Free, Pro | `channels:history`, `groups:history`, `im:history`, `mpim:history`, `channels:read`, `groups:read`, `im:read`, `mpim:read` | `messages` (section 7.3) | In `main` |
 | Channels | `admin.analytics.getFile?type=public_channel` | B+, Enterprise | `admin.analytics:read` | `channels_details` (proposal, section 7.3) | #4350 |
 | Alerts | `conversations.history`, `conversations.replies` | All | `channels:history`, `groups:history` | `messages` (proposal, section 7.3) | #4351 |
 | Huddles | Audit Logs API, actions `huddle_*` | Enterprise | `auditlogs:read` | `huddle_events` (proposal, section 7.3) | #4352 |
@@ -131,6 +131,23 @@ Schedule: each day at **04:00 UTC**. The descriptor sets the schedule. The Secre
 
 - Each sync reads all pages of `users.list`. It updates all members that Slack returns.
 - This stream has no state.
+
+### 5.3 Message activity
+
+- Each sync reads all conversations that the token can see: public channels, private channels, DMs and group DMs. Archived conversations are included.
+- For each conversation, the sync reads the messages from **`max(slack_start_date, cursor − 2 days)`** to now (UTC).
+- For each message in this window that starts a thread, the sync also reads the thread replies in the same window.
+- The connector reads the window in parts of 7 days. For each part, it reads all conversations.
+- The state is `{"date": "YYYY-MM-DD"}`: the last full day that the connector read. The connector sends the state after each part. After the last part, the state is the day before the sync.
+- After a failure, the next sync starts again from the state. A long first sync thus keeps the parts that it completed.
+- A message that the connector reads again replaces its row.
+- If Slack refuses a conversation with `not_in_channel` or `channel_not_found`, the connector writes a warning and reads the next conversation. If Slack refuses a thread with `thread_not_found`, the connector writes a warning and reads the next thread.
+
+Limits:
+
+- The token is a user token. Slack gives the private channels, DMs and group DMs of a user token only if the installing member is in them. Other private conversations do not get to Insight. Thus the direct message counts on Free and Pro can be lower than on B+ and Enterprise.
+- A reply to a thread that started before the window does not get to Insight.
+- On Free, Slack shows the messages of the last 90 days only.
 
 ## 6. Errors
 
@@ -264,6 +281,25 @@ These streams do not exist now. The table names and the row grain are proposals.
 
 All rules of section 7 apply to these tables.
 
+Columns of `messages` (Message activity):
+
+| Column | Type | Meaning |
+|---|---|---|
+| `channel_id` | String | Conversation ID |
+| `channel_type` | String | `public_channel`, `private_channel`, `im` or `mpim` |
+| `ts` | String | Slack message time stamp. With `channel_id`, it is the key of the message. |
+| `date` | String `YYYY-MM-DD` | UTC day of `ts` |
+| `thread_ts` | String | Time stamp of the first message of the thread |
+| `user_id` | String | Author |
+| `bot_id` | String | Bot that posted the message |
+| `subtype` | String | Slack message subtype, for example `channel_join` or `file_share` |
+| `reply_count` | Int64 | Number of replies, on the first message of a thread |
+| `reactions` | Array | Emoji name, count and user IDs of each reaction |
+| `text_length`, `link_count`, `link_hosts` | Int64, Int64, Array(String) | Refer to the table below |
+| `file_ids`, `file_types`, `file_count` | Array(String), Array(String), Int64 | Refer to the table below |
+| `attachment_count` | Int64 | Refer to the table below |
+| `insight_tenant_id`, `insight_source_id`, `unique_key` | String | Platform columns and key |
+
 Rules for `messages`:
 
 - The three streams write the same columns. A bot message has `bot_id`. An alert is a bot message in a channel from `slack_alert_channels`.
@@ -283,7 +319,7 @@ Link rules:
 
 - A link is an absolute `http` or `https` URL in the message. Mentions of users, channels and groups are not links.
 - `link_count` is the number of links in the message.
-- `link_hosts` is the list of hosts of these links, for example `github.com`. The connector does not keep the path or the query of a URL, because they can contain names and IDs.
+- `link_hosts` is the sorted list of the distinct hosts of these links, for example `github.com`. The connector does not keep the path or the query of a URL, because they can contain names and IDs.
 
 ## 8. Who is counted
 
@@ -335,7 +371,19 @@ In metrics, these rows have the dimension `tool = slack`.
 
 A Slack day is the UTC day from Slack. There is no time-zone change.
 
-On Free and Pro, Message activity supplies the same measures (#4349).
+On Free and Pro, Message activity supplies the same measures through the staging model `slack__collab_chat_activity_messages`:
+
+| Bronze `messages` | Measure |
+|---|---|
+| Messages of a member on a day | `total_chat_messages` |
+| The messages in `public_channel` and `private_channel` conversations | `channel_posts` |
+| The messages in `im` and `mpim` conversations | `direct_and_group_messages` |
+
+- Thread replies are messages. A message counts if its `subtype` is empty, `thread_broadcast`, `file_share` or `me_message`. Joins, leaves and other events do not count.
+- A message with `bot_id`, and a message from `USLACKBOT`, do not count.
+- The email comes from Members. A member without a Members row keeps the `user_id` as its key.
+- If the analytics file has a row for the member and the day, the analytics row wins.
+- Section 5.3 gives the limits of the direct message counts.
 On Enterprise, the Huddles stream supplies meetings with duration and participants. It replaces the huddle count (#4352).
 Planned measures for files and links:
 

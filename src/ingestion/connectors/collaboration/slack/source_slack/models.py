@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue, StrictBool, ValidationError
 
 NonBlank = Annotated[str, Field(pattern=r"\S")]
 
@@ -75,9 +75,71 @@ class PageMetadata(BaseModel):
     next_cursor: str = ""
 
 
-class UsersPage(Answer):
-    members: tuple[Member, ...] = ()
+class Page(Answer):
+    """A Web API answer that continues on the next page while `next_cursor` is not empty."""
+
     response_metadata: PageMetadata = PageMetadata()
+
+
+class UsersPage(Page):
+    members: tuple[Member, ...] = ()
+
+
+class Conversation(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    is_im: bool = False
+    is_mpim: bool = False
+    is_private: bool = False
+
+    @property
+    def kind(self) -> str:
+        if self.is_im:
+            return "im"
+        if self.is_mpim:
+            return "mpim"
+        return "private_channel" if self.is_private else "public_channel"
+
+
+class ConversationsPage(Page):
+    channels: tuple[Conversation, ...] = ()
+
+
+class File(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str | None = None
+    filetype: str | None = None
+
+
+class Reaction(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = None
+    count: int | None = None
+    users: tuple[str, ...] = ()
+
+
+class Message(BaseModel):
+    """A message or a thread reply. `text` is read only for its length and its links."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ts: str = Field(pattern=r"^\d+(\.\d+)?$")
+    thread_ts: str | None = None
+    user: str | None = None
+    bot_id: str | None = None
+    subtype: str | None = None
+    reply_count: int | None = None
+    text: str | None = None
+    files: tuple[File, ...] = ()
+    attachments: tuple[JsonValue, ...] = ()
+    reactions: tuple[Reaction, ...] = ()
+
+
+class MessagesPage(Page):
+    messages: tuple[Message, ...] = ()
 
 
 def _scope_list(value: object) -> object:

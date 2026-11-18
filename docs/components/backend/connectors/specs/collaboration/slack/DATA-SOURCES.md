@@ -34,7 +34,7 @@ The method `team.billing.info` (scope `team.billing:read`) gives the plan of a w
 
 The connector reads only the data that the plan permits (#4348).
 
-On Free and Pro, `admin.analytics.getFile` is not available. Insight gets no Slack activity on these plans now (#4349).
+On Free and Pro, `admin.analytics.getFile` is not available. On these plans, Insight counts the messages from the message history (SPEC.md section 5.3).
 
 ### 1.2 Tokens
 
@@ -107,7 +107,7 @@ The Public Channel Management permission is necessary for the channel file. By d
 |---|---|---|---|
 | `admin.analytics.messages.metadata` | For each message: author, time, thread, subtype, length, reactions, files. No text. | Enterprise | Planned (#4354) |
 | `admin.analytics.messages.activity` | For each message: unique viewers, reactors and clickers. Views for each client. Data for each department and team. | Enterprise | No |
-| `conversations.history`, `conversations.replies` | Messages and thread replies with text, time, author, subtype, reactions, reply count | Any. The Free plan shows 90 days. | Planned (#4349, #4351). Metadata only. |
+| `conversations.history`, `conversations.replies` | Messages and thread replies with text, time, author, subtype, reactions, reply count | Any. The Free plan shows 90 days. | **Yes** on Free and Pro, metadata only. Alerts: planned (#4351). |
 | Events API: `message.*`, `reaction_added`, `member_joined_channel` | Real-time messages, reactions and channel membership. The data starts at installation. | Any | No |
 | `search.messages` | Messages that agree with a query, with text. User token only. | Any | No |
 
