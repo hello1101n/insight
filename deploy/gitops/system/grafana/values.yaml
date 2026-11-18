@@ -12025,16 +12025,36 @@ alerting:
             refId: A
             editorType: sql
             format: 1
-            rawSql: WITH configured AS (SELECT DISTINCT connector FROM ingestion_history.sync_events WHERE
-              event = 'connector.configured' AND tick_id = (SELECT argMax(tick_id, ts) FROM ingestion_history.sync_events
-              WHERE event = 'sweep.completed')), succeeded AS (SELECT connector, max(coalesce(job_updated_at,
-              ts)) AS last_ok FROM ingestion_history.sync_events WHERE event = 'sync.completed' AND status
-              = 'succeeded' GROUP BY connector), first_seen AS (SELECT connector, min(ts) AS since FROM
-              ingestion_history.sync_events WHERE event = 'connector.configured' GROUP BY connector) SELECT
-              configured.connector AS connector, dateDiff('hour', coalesce(succeeded.last_ok, first_seen.since),
-              now()) AS stale_hours FROM configured LEFT JOIN succeeded ON succeeded.connector = configured.connector
-              LEFT JOIN first_seen ON first_seen.connector = configured.connector SETTINGS join_use_nulls
-              = 1
+            rawSql: |-
+              WITH configured AS (
+                  SELECT DISTINCT connector FROM ingestion_history.sync_events
+                  WHERE event = 'connector.configured'
+                    AND tick_id = (SELECT argMax(tick_id, ts) FROM ingestion_history.sync_events
+                                   WHERE event = 'sweep.completed')
+              ),
+              landed AS (
+                  SELECT _database AS db, max(_airbyte_extracted_at) AS last_row
+                  FROM merge(REGEXP('^bronze_'), '.*')
+                  -- Slack answers a refused admin.analytics.getFile day with HTTP 200
+                  -- {"ok":false}; the sync stores it as an all-NULL row keyed
+                  -- '<tenant>-<source>--' and re-extracts it daily, masking the stall.
+                  WHERE NOT (_database = 'bronze_slack' AND endsWith(unique_key, '--'))
+                    -- Only the main-stream tables count: Members writes `users` on every sync
+                    -- and would hide a stalled Activity. `users_details` is the main stream on
+                    -- B+ and Enterprise, `messages` on Free and Pro.
+                    AND (_database != 'bronze_slack' OR _table IN ('users_details', 'messages'))
+                  GROUP BY _database
+              ),
+              first_seen AS (
+                  SELECT connector, min(ts) AS since FROM ingestion_history.sync_events
+                  WHERE event = 'connector.configured' GROUP BY connector
+              )
+              SELECT configured.connector AS connector,
+                  dateDiff('hour', coalesce(landed.last_row, first_seen.since), now()) AS stale_hours
+              FROM configured
+              LEFT JOIN landed ON landed.db = concat('bronze_', replaceAll(configured.connector, '-', '_'))
+              LEFT JOIN first_seen ON first_seen.connector = configured.connector
+              SETTINGS join_use_nulls = 1
         - refId: C
           relativeTimeRange:
             from: 0
@@ -12055,8 +12075,10 @@ alerting:
         labels:
           severity: warning
         annotations:
-          summary: "{{ \"{{ $labels.connector }}\" }} has no successful sync for over 26h \u2014 Insight\
-            \ \xB7 Connectors"
+          summary: >-
+            {{ `{{ if $labels.connector }}{{ $labels.connector }} has no new bronze rows for over 26h —
+            Insight · Connectors{{ else }}Connector-stale rule could not evaluate (datasource error, see
+            Error){{ end }}` }}
       - uid: insight-sync-not-run
         title: Sync reported success but never ran
         condition: C
