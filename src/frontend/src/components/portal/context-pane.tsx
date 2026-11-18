@@ -44,7 +44,7 @@ export function ContextPane() {
   return (
     <Sidebar
       collapsible="none"
-      className="flex-1"
+      className="min-w-0 flex-1"
       // WORKAROUND: the kit only clips a collapsed pane; it stays in the Tab order.
       inert={state === "collapsed"}
     >
