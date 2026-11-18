@@ -34,6 +34,9 @@ WITH newest_extract AS (
         reportPeriod AS report_period,
         now() AS collected_at,
         'insight_m365' AS data_source,
+        'email' AS account_source_type,
+        '' AS account_source_id,
+        '' AS account_id,
         toUnixTimestamp64Milli(now64()) AS _version,
         coalesce(isLicensed, false) = true AS licensed
     FROM {{ source('bronze_m365', 'teams_activity') }} FINAL

@@ -74,7 +74,10 @@ models:
           - not_null
           - unique
       - name: person_key
-        description: "lower(email) with lower(user_name) fallback — cross-source identity join key"
+        description: >
+          lower(email) — the cross-source identity join key. A Slack row
+          resolves by its account first (see account_id); its person_key is
+          lower(user_id) for a member without an email.
         tests:
           - not_null
       - name: date
@@ -82,7 +85,25 @@ models:
         tests:
           - not_null
       - name: data_source
-        description: "Source discriminator: insight_m365 | insight_slack"
+        description: "Source discriminator: insight_m365 | insight_slack | insight_zulip_proxy"
+        tests:
+          - not_null
+      - name: account_source_type
+        description: >
+          How the row resolves: 'email' (by person_key only, the other two
+          columns are empty) or the identity source type of the account that
+          resolves it first ('slack')
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['email', 'slack']
+      - name: account_source_id
+        description: "Raw connector source id of that account; '' on an email-keyed row"
+        tests:
+          - not_null
+      - name: account_id
+        description: "The account's id as the source states it (the Slack user_id); '' on an email-keyed row"
         tests:
           - not_null
       - name: direct_messages

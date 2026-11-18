@@ -350,7 +350,8 @@ Inactive members are counted with zeros. Their message metrics are `0`. They add
 - Slack sends one identity input for each member: the account `(slack, <insight_source_id>, <user_id>)` with the claim of the email.
 - The email comes from Activity `email_address` (B+, Enterprise) or from Members `email` (all plans). If both are present, Activity wins, because it is the value for that day.
 - Bots (section 8) bind to the excluded person (not a human). Identity resolution does not resolve them to a person, and does not show them as unmapped.
-- Identity resolution finds the person for a Slack row **by the account first** (`identity.account_assignment`). Then it uses the email (`identity.person_map`).
+- Identity resolution binds the account to the person of its email when it first sees the account. An operator can change the binding.
+- Identity resolution finds the person for a Slack row **by the account first** (`identity.account_assignment`). The email of the row (`identity.person_map`) applies only to an account without a binding.
 - Thus a member with a new email stays the same person, because the `user_id` does not change. A member without an email can also have a person.
 - Identity resolution gives each member one `person_id`. Identity resolution solves conflicts, for example one email on more than one person. The connector does not.
 - Person and team views do not show rows without a person.
@@ -443,15 +444,14 @@ The streams with an issue in section 1 do not exist in `main`.
 | Connector management configures the connector (section 4) | Kubernetes Secret. No connector management. | #670 |
 | The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
 | Each sync reads the cursor day and the 2 days before it (section 5.1) | Each sync reads the cursor day only. | #4334 |
-| Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Slack sends no identity inputs, so no binding exists. | #4320 |
+| Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Bots send no identity input, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | A NULL `is_guest` is counted only if the member resolves (section 8) | A NULL `is_guest` is always counted. | #4335 |
-| Slack sends identity inputs. Rows resolve by `user_id` (section 9). | No Slack identity inputs. Only email. Members without email are not counted. | #4320 |
 | An email on more than one person resolves to one person (section 9) | The email resolves to no person (`identity/person_map.sql`). | #4343 |
 | Identity resolution shows unmapped members (section 9) | There is no such list. | #4319 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |
 | Huddles are counted as meetings (section 10) | Huddles are not used. | #4321 |
 | Each new bronze day gets to staging (section 11) | Staging reads only the last 3 days of loads. After a long stop, some days do not get to staging. | #4317 |
 | Data-quality problems make an alert (section 11) | The check has the tier `warn`. It only writes to the log. | #4324 |
-| `unmapped_member`: a non-guest member without an identity binding (section 11) | `member_without_email`: a non-guest member without an email | #4324 |
+| `unmapped_member`: a non-guest member without an identity binding (section 11) | No check. A member without an email gets to gold under its account, and nothing reports a member without a binding. | #4324 |
 | The move to a new connector type never loses the cursor (section 12) | The state backup is in the reconcile pod. | #4315 |
