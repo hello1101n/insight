@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { metricHelp } from "@/lib/insight/metric-help";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp } from "lucide-react";
@@ -11,12 +12,10 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@/components/ui/preview-card";
 import { formatMetricValue, isDurationUnit } from "@/lib/format";
 import { absenceLabel } from "@/lib/metrics/absence";
 import {
@@ -528,7 +527,7 @@ function MemberRow({
         <div className="flex min-h-12 flex-col justify-center gap-0.5">
           <div className="flex items-center gap-1.5">
             <Link
-              to="/ic/$person/personal"
+              to="/people/$person"
               params={{ person: member.entityId }}
               className="min-w-0 truncate text-sm leading-tight font-medium hover:underline"
             >
@@ -625,10 +624,10 @@ function GridCell({
   // render it as a second line.
   const showStanding = observed && cell.status !== "neutral";
   return (
-    // PreviewCard is base-ui's hover-only surface — no click-to-open at all,
+    // HoverCard wraps base-ui's hover-only PreviewCard — no click-to-open at all,
     // so a pressed cell can never pin its detail open.
-    <PreviewCard>
-      <PreviewCardTrigger
+    <HoverCard>
+      <HoverCardTrigger
         delay={150}
         // Close immediately on mouse-out — the default 300ms lets the old
         // card linger while the next cell's opens, flashing two at once.
@@ -671,7 +670,7 @@ function GridCell({
           </button>
         }
       />
-      <PreviewCardContent className="w-64 p-3">
+      <HoverCardContent>
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold">{col.label}</p>
           <p className="text-xs text-muted-foreground">{memberName}</p>
@@ -717,8 +716,8 @@ function GridCell({
             <p className="mt-1 text-xs text-muted-foreground">{leaveLabel}</p>
           ) : null}
         </div>
-      </PreviewCardContent>
-    </PreviewCard>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -749,6 +748,7 @@ function ColumnHeader({
   direction: "ascending" | "descending" | undefined;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   const help = metricHelp(col.metric);
   return (
     <Tooltip>
@@ -761,7 +761,7 @@ function ColumnHeader({
               "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
               active && "text-foreground"
             )}
-            aria-label={`${col.label} — sort by this column`}
+            aria-label={t("common.legend.sort_column", { column: col.label })}
           >
             {/* Label stays centered; the arrow hugs its right edge (left-full)
                 like the value cell, rather than pinning to the column edge. */}
@@ -790,11 +790,11 @@ function ColumnHeader({
           <span className="text-background/70">
             {col.unit ? `${col.unit} · ` : ""}
             {betterWhenHigher(col.direction) === true
-              ? "higher is better · "
+              ? t("common.legend.higher_is_better")
               : betterWhenHigher(col.direction) === false
-                ? "lower is better · "
+                ? t("common.legend.lower_is_better")
                 : ""}
-            click to sort
+            {t("common.legend.click_to_sort")}
           </span>
         </span>
       </TooltipContent>
@@ -803,12 +803,13 @@ function ColumnHeader({
 }
 
 function Legend() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-4 px-3 text-xs text-muted-foreground">
-      <LegendSwatch className={PEER_FILL.top}>Top 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.in_pack}>Near the median</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.bottom}>Bottom 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.neutral}>No comparison</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.top}>{t("common.legend.top")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.in_pack}>{t("common.legend.near_median")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.bottom}>{t("common.legend.bottom")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.neutral}>{t("common.legend.no_comparison")}</LegendSwatch>
     </div>
   );
 }

@@ -125,7 +125,6 @@ export default defineConfig({
             "@base-ui/react/menu",
             "@base-ui/react/merge-props",
             "@base-ui/react/popover",
-            "@base-ui/react/preview-card",
             "@base-ui/react/scroll-area",
             "@base-ui/react/select",
             "@base-ui/react/separator",
@@ -139,6 +138,7 @@ export default defineConfig({
             "@gears-frontx/ui-kit",
             "@sentry/react",
             "@tanstack/react-virtual",
+            "cronstrue",
             // `await import("exceljs")` inside the export path: the scan cannot
             // see it, so it is discovered while the export story is running and
             // takes the page down with it as vite reloads.

@@ -18,6 +18,7 @@
  * discussion — and that link answers whatever the queue looks like by then,
  * an emptied backlog included.
  */
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -38,6 +39,11 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { AccountSearchView } from "@/components/portal/account-search-view";
@@ -47,23 +53,13 @@ import { MergeCaseDialog } from "@/components/portal/merge-case-dialog";
 import { PersonAccountsView } from "@/components/portal/person-accounts-view";
 import { PersonCell } from "@/components/portal/person-cell";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ScrollToEnds } from "@/components/widgets/scroll-to-ends";
-import {
-  usePortalSearch,
-  useSetPortalSearch,
-} from "@/lib/portal/portal-search";
+import { type IdentitiesSearch, usePortalSearch } from "@/lib/portal/portal-search";
 import { usePortalNavActions } from "@/lib/portal/portal-nav";
 import { itemKey } from "@/lib/identities/account-key";
 import { activatesRow, activatesRowByKey } from "@/lib/identities/row-activation";
-import { MODES, resolveMode } from "@/lib/portal/identity-modes";
+import { DEFAULT_MODE, MODES, resolveMode } from "@/lib/portal/identity-modes";
 import { personDisplayName } from "@/lib/identities/person-display";
 import {
   groupIntoCases,
@@ -86,10 +82,9 @@ const KIND_ORDER = [
   "no_evidence",
 ] as const;
 
-export function IdentitiesView() {
+export function IdentitiesView({ mode }: { mode?: string }) {
   const { t } = useTranslation();
-  const { mode } = usePortalSearch();
-  const setSearch = useSetPortalSearch();
+  const navigate = useNavigate();
   const active: string = resolveMode(mode);
 
   return (
@@ -107,10 +102,17 @@ export function IdentitiesView() {
         value={active}
         // A mode change closes whatever was open: a case or a person picked in
         // one mode means nothing in another, and carrying either would open a
-        // window over a list that does not contain it.
-        onValueChange={(next) =>
-          setSearch({ mode: String(next), acct: undefined, person: undefined })
-        }
+        // window over a list that does not contain it. The roster's terms and
+        // the source filter come along.
+        onValueChange={(next) => {
+          const picked = String(next);
+          const search = (prev: IdentitiesSearch) => ({ find: prev.find, src: prev.src });
+          void navigate(
+            picked === DEFAULT_MODE
+              ? { to: "/manage/identities", search }
+              : { to: "/manage/identities/$mode", params: { mode: picked }, search },
+          );
+        }}
       >
         <TabsList>
           {MODES.map((m) => (
@@ -270,7 +272,7 @@ function Tile({
 function AllResolved() {
   const { t } = useTranslation();
   return (
-    <Empty>
+    <Empty className="mx-auto">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <PartyPopper />

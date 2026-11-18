@@ -22,7 +22,6 @@ import "@/i18n";
 
 const mocks = vi.hoisted(() => ({
   isFlat: false,
-  zone: { activeZone: "overview", activePerson: "boss@x" },
   standings: [] as Array<{
     id: string;
     title: string;
@@ -44,7 +43,6 @@ const mocks = vi.hoisted(() => ({
   fetchOrphanedFolders: vi.fn(),
 }));
 
-vi.mock("@/lib/portal/use-active-zone", () => ({ useActiveZone: () => mocks.zone }));
 vi.mock("@/components/org-tree", () => ({
   OrgTree: () => <div data-testid="org-tree" />,
 }));
@@ -95,12 +93,8 @@ vi.mock("@/api/custom-client", async (orig) => ({
 
 import { CustomApiError } from "@/api/custom-client";
 
-import {
-  usePortalDir,
-  usePortalItem,
-  usePortalLens,
-} from "@/lib/portal/portal-nav";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
+import { SidebarProvider } from "@gears-frontx/ui-kit";
 import { setMetricsViewPaneShown } from "@/lib/portal/metrics-view-pane";
 // The sections nav asks where the person stands so it can mark each section;
 // the standings come from the section screens' own queries, which this test
@@ -111,6 +105,8 @@ vi.mock("@/lib/portal/use-person-sections", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   usePersonSectionStandings: () => mocks.standings,
 }));
+
+import "@/i18n";
 
 import { ContextPane } from "./context-pane";
 
@@ -125,8 +121,20 @@ const pane = () =>
 
 const buttonFor = (label: string) => screen.getByText(label).closest("button, a");
 
-const inZone = (activeZone: string) => {
-  mocks.zone = { activeZone, activePerson: "boss@x" };
+/** Where each zone's tests stand: Directions opens Development on Delivery. */
+const ZONE_PATHS: Record<string, string> = {
+  overview: "/home",
+  directions: "/explore/dev/delivery",
+  aicost: "/explore/ai",
+  person: "/people/boss@x",
+  people: "/people/boss@x/team",
+  reports: "/reports/builder",
+  manage: "/manage/assistant",
+  custom: "/dashboards",
+};
+
+const inZone = (zone: string) => {
+  act(() => portalRouter.go(ZONE_PATHS[zone]!));
 };
 
 beforeEach(() => {
@@ -155,8 +163,6 @@ beforeEach(() => {
   mocks.fetchOrphanedFolders.mockReset().mockResolvedValue({ items: [], total: 0 });
   act(() => {
     portalRouter.reset();
-    portalRouter.set({ dir: "dev" });
-    portalRouter.set({ lens: "Delivery" });
     setMetricsViewPaneShown(false);
   });
 });
@@ -177,14 +183,15 @@ describe("ContextPane header", () => {
   ])("titles the %s pane %s", (zone, title) => {
     inZone(zone);
     pane();
-    expect(screen.getByText(title, { selector: '[data-slot="sidebar-header"] *' })).toBeInTheDocument();
+    const sections = screen.getByRole("navigation", { name: "Section navigation" });
+    expect(sections.previousElementSibling?.textContent).toBe(title);
   });
 });
 
 describe("Home pane", () => {
   it("lists the themes and writes the selection on click", async () => {
     pane();
-    const item = renderHook(() => usePortalItem());
+    const item = renderHook(() => useNavLocation().item);
     await userEvent.click(screen.getByText("Worth a look"));
     expect(item.result.current).toBe("attention");
   });
@@ -233,8 +240,8 @@ describe("Explore pane", () => {
   it("shows the open direction's lenses and drives dir+lens state", async () => {
     inZone("directions");
     pane();
-    const dir = renderHook(() => usePortalDir());
-    const lens = renderHook(() => usePortalLens());
+    const dir = renderHook(() => useNavLocation().dir);
+    const lens = renderHook(() => useNavLocation().lens);
     await userEvent.click(screen.getByText("Git output"));
     expect(dir.result.current).toBe("dev");
     expect(lens.result.current).toBe("Git output");
@@ -248,7 +255,7 @@ describe("Explore pane", () => {
     await userEvent.click(screen.getByText("Knowledge / Wiki"));
 
     expect(portalRouter.navigations).toHaveLength(1);
-    expect(portalRouter.search).toMatchObject({ dir: "wiki", lens: "Overview" });
+    expect(portalRouter.pathname).toBe("/explore/wiki/overview");
   });
 
   it("picks a lens in one navigation", async () => {
@@ -264,7 +271,7 @@ describe("Explore pane", () => {
   it("opens a lens from the keyboard", async () => {
     inZone("directions");
     pane();
-    const lens = renderHook(() => usePortalLens());
+    const lens = renderHook(() => useNavLocation().lens);
 
     screen.getByRole("button", { name: "Development" }).focus();
     await userEvent.tab();
@@ -290,12 +297,11 @@ describe("Explore pane", () => {
     await userEvent.click(screen.getByText("AI adoption"));
 
     expect(portalRouter.navigations).toHaveLength(1);
-    expect(portalRouter.search).toMatchObject({ zone: "aicost", item: "adoption-funnel" });
+    expect(portalRouter.pathname).toBe("/explore/ai/funnel");
   });
 
   it("folds the open AI & Cost group on a second click without navigating", async () => {
-    inZone("aicost");
-    act(() => portalRouter.set({ item: "idle-seats" }));
+    act(() => portalRouter.go("/explore/ai/seats"));
     pane();
     portalRouter.navigations.length = 0;
 
@@ -306,18 +312,16 @@ describe("Explore pane", () => {
   });
 
   it("opens a view picked inside an AI & Cost group", async () => {
-    inZone("aicost");
-    act(() => portalRouter.set({ item: "idle-seats" }));
+    act(() => portalRouter.go("/explore/ai/seats"));
     pane();
 
     await userEvent.click(screen.getByText("Credits burn-down"));
 
-    expect(portalRouter.search).toMatchObject({ zone: "aicost", item: "credits" });
+    expect(portalRouter.pathname).toBe("/explore/ai/credits");
   });
 
   it("lists the views of the open AI & Cost group", () => {
-    inZone("aicost");
-    act(() => portalRouter.set({ item: "idle-seats" }));
+    act(() => portalRouter.go("/explore/ai/seats"));
     pane();
     expect(buttonFor("Idle seats")).toHaveAttribute("data-active");
     expect(screen.queryByText("Adoption funnel")).toBeNull();
@@ -340,7 +344,7 @@ describe("People pane", () => {
 
     await userEvent.click(screen.getByText("Me"));
 
-    expect(portalRouter.pathname).toBe("/ic/me%40x/personal");
+    expect(portalRouter.pathname).toBe("/people/me%40x");
   });
 
   it("opens a team view from a person page on the viewer's team", async () => {
@@ -350,8 +354,7 @@ describe("People pane", () => {
     await userEvent.click(screen.getByText("Roster · by role"));
 
     expect(portalRouter.navigations).toHaveLength(1);
-    expect(portalRouter.pathname).toBe("/ic/me%40x/team");
-    expect(portalRouter.search).toMatchObject({ item: "employees" });
+    expect(portalRouter.pathname).toBe("/people/me%40x/team/roster");
   });
 
   it("switches team view in place on a team page", async () => {
@@ -360,8 +363,7 @@ describe("People pane", () => {
 
     await userEvent.click(screen.getByText("Roster · by role"));
 
-    expect(portalRouter.search).toMatchObject({ item: "employees" });
-    expect(portalRouter.pathname).toBe("/portal");
+    expect(portalRouter.pathname).toBe("/people/boss%40x/team/roster");
   });
 
   it("offers a viewer with nobody to look at their own page only", () => {
@@ -397,7 +399,8 @@ describe("People pane", () => {
     expect(scrollArea).not.toBeNull();
     expect(scrollArea).toHaveClass("min-h-0", "flex-1");
     expect(scrollArea).not.toContainElement(search);
-    expect(scrollArea?.closest('[data-slot="sidebar-group"]')).toHaveClass(
+    const group = scrollArea?.parentElement?.parentElement;
+    expect(group).toHaveClass(
       "min-h-0",
       "flex-1"
     );
@@ -481,16 +484,14 @@ describe("People pane", () => {
 
 describe("People pane on Metrics view", () => {
   it("leaves the width to the table on a wide screen", () => {
-    inZone("people");
-    act(() => portalRouter.set({ item: "metrics" }));
+    act(() => portalRouter.go("/people/boss@x/team/metrics"));
     pane();
 
     expect(screen.queryByText("Roster · by role")).not.toBeInTheDocument();
   });
 
   it("comes back once the reader asks for it", () => {
-    inZone("people");
-    act(() => portalRouter.set({ item: "metrics" }));
+    act(() => portalRouter.go("/people/boss@x/team/metrics"));
     pane();
 
     act(() => setMetricsViewPaneShown(true));
@@ -499,8 +500,7 @@ describe("People pane on Metrics view", () => {
   });
 
   it("stays on the other team views", () => {
-    inZone("people");
-    act(() => portalRouter.set({ item: "employees" }));
+    act(() => portalRouter.go("/people/boss@x/team/roster"));
     pane();
 
     expect(screen.getByText("Metrics view")).toBeInTheDocument();
@@ -538,14 +538,14 @@ describe("Manage pane", () => {
     expect(screen.getByText("Data")).toBeInTheDocument();
     expect(screen.getByText("People & access")).toBeInTheDocument();
     expect(screen.getByText("Platform")).toBeInTheDocument();
-    expect(screen.getByText("Sources & connectors")).toBeInTheDocument();
+    expect(screen.getByText("Connectors")).toBeInTheDocument();
   });
 
   it("keeps admin-only surfaces away from a non-admin", () => {
     inZone("manage");
     pane();
     expect(screen.queryByText(/Platform usage/i)).not.toBeInTheDocument();
-    expect(screen.queryByText("Sources & connectors")).not.toBeInTheDocument();
+    expect(screen.queryByText("Connectors")).not.toBeInTheDocument();
   });
 
   it("shows admin-only surfaces to an admin", () => {
@@ -606,7 +606,7 @@ describe("Dashboards pane", () => {
     inZone("custom");
     pane();
     const all = screen.getByRole("link", { name: /All dashboards/ });
-    expect(all).toHaveAttribute("href", "/portal/custom");
+    expect(all).toHaveAttribute("href", "/dashboards");
     expect(await screen.findByText("14")).toBeInTheDocument();
   });
 
@@ -615,19 +615,19 @@ describe("Dashboards pane", () => {
     pane();
     expect(screen.getByRole("link", { name: "Metrics" })).toHaveAttribute(
       "href",
-      "/portal/custom/metrics",
+      "/dashboards/metrics",
     );
     expect(screen.getByRole("link", { name: "Widgets" })).toHaveAttribute(
       "href",
-      "/portal/custom/widgets",
+      "/dashboards/widgets",
     );
     expect(screen.getByRole("link", { name: "Datasets" })).toHaveAttribute(
       "href",
-      "/portal/custom/datasets",
+      "/dashboards/datasets",
     );
     expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute(
       "href",
-      "/portal/custom/alerts",
+      "/dashboards/alerts",
     );
   });
 
@@ -636,18 +636,18 @@ describe("Dashboards pane", () => {
     pane();
     expect(screen.getByRole("link", { name: "My dashboards" })).toHaveAttribute(
       "href",
-      "/portal/custom?owned=me",
+      "/dashboards?owned=me",
     );
     expect(screen.getByRole("link", { name: "Shared with me" })).toHaveAttribute(
       "href",
-      "/portal/custom?owned=shared",
+      "/dashboards?owned=shared",
     );
   });
 
   it("keeps the picked tags when narrowing by ownership", () => {
     inZone("custom");
     act(() => {
-      portalRouter.go("/portal/custom");
+      portalRouter.go("/dashboards");
       portalRouter.set({ tag: ["Ops"] });
     });
     pane();
@@ -699,24 +699,17 @@ describe("ContextPane highlight", () => {
     ["aicost", "Overview"],
     ["people", "My team"],
     ["manage", "AI assistant config"],
-  ])("highlights the default item of %s when the URL names none", (zone, label) => {
+  ])("highlights the item %s opens on", (zone, label) => {
     inZone(zone);
     pane();
     expect(buttonFor(label)).toHaveAttribute("data-active");
   });
 
-  it("moves the highlight to the item the URL names", () => {
-    act(() => portalRouter.set({ item: "by-direction" }));
+  it("moves the highlight to the item the path names", () => {
+    act(() => portalRouter.go("/home/directions"));
     pane();
     expect(buttonFor("By direction")).toHaveAttribute("data-active");
     expect(buttonFor("At a glance")).not.toHaveAttribute("data-active");
-  });
-
-  it("ignores an item left behind by another zone", () => {
-    inZone("people");
-    act(() => portalRouter.set({ item: "by-direction" }));
-    pane();
-    expect(buttonFor("My team")).toHaveAttribute("data-active");
   });
 });
 
@@ -728,7 +721,7 @@ describe("Dashboards pane folders", () => {
   const onTheList = (folder?: string) => {
     inZone("custom");
     act(() => {
-      portalRouter.go("/portal/custom");
+      portalRouter.go("/dashboards");
       if (folder) portalRouter.set({ folder });
     });
   };
@@ -738,10 +731,10 @@ describe("Dashboards pane folders", () => {
     pane();
 
     const platform = await screen.findByRole("link", { name: /Platform/ });
-    expect(platform).toHaveAttribute("href", "/portal/custom?folder=f1");
+    expect(platform).toHaveAttribute("href", "/dashboards?folder=f1");
     expect(platform.closest("li")).toHaveTextContent("3");
     const unfiled = screen.getByRole("link", { name: /Unfiled/ });
-    expect(unfiled).toHaveAttribute("href", "/portal/custom?folder=unfiled");
+    expect(unfiled).toHaveAttribute("href", "/dashboards?folder=unfiled");
     expect(unfiled.closest("li")).toHaveTextContent("11");
   });
 
@@ -759,7 +752,7 @@ describe("Dashboards pane folders", () => {
   it("keeps the picked tags when switching folder", async () => {
     inZone("custom");
     act(() => {
-      portalRouter.go("/portal/custom");
+      portalRouter.go("/dashboards");
       portalRouter.set({ folder: "f1", tag: ["Ops"] });
     });
     pane();
@@ -961,16 +954,19 @@ describe("Dashboards pane pins", () => {
     inZone("custom");
   }
 
-  const groupLabels = () =>
-    [...document.querySelectorAll('[data-slot="sidebar-group-label"]')].map(
-      (label) => label.textContent,
-    );
+  const inDocumentOrder = (labels: string[]) =>
+    labels
+      .map((label) => screen.getByText(label))
+      .every(
+        (element, i, all) =>
+          i === 0 ||
+          Boolean(all[i - 1].compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING),
+      );
 
   const pinnedRows = () =>
     within(
       screen
-        .getByText("Pinned")
-        .closest('[data-slot="sidebar-group"]') as HTMLElement,
+        .getByText("Pinned").parentElement as HTMLElement,
     ).getAllByRole("link");
 
   it("lists the pinned dashboards after the catalogues, in pin order, by title", async () => {
@@ -978,15 +974,15 @@ describe("Dashboards pane pins", () => {
     pane();
 
     await screen.findByRole("link", { name: "Hiring pipeline" });
-    expect(groupLabels()).toEqual(["Browse", "Folders", "Catalogue", "Pinned"]);
+    expect(inDocumentOrder(["Browse", "Folders", "Catalogue", "Pinned"])).toBe(true);
     const rows = pinnedRows();
     expect(rows.map((row) => row.textContent)).toEqual([
       "Hiring pipeline",
       "Delivery",
     ]);
     expect(rows.map((row) => row.getAttribute("href"))).toEqual([
-      "/portal/custom/hiring",
-      "/portal/custom/delivery",
+      "/dashboards/hiring",
+      "/dashboards/delivery",
     ]);
   });
 
@@ -1019,14 +1015,14 @@ describe("Dashboards pane pins", () => {
       "Untitled board",
     ]);
     expect(pinnedRows().map((row) => row.getAttribute("href"))).toEqual([
-      "/portal/custom/d-loading",
-      "/portal/custom/d-untitled",
+      "/dashboards/d-loading",
+      "/dashboards/d-untitled",
     ]);
   });
 
   it("marks the pinned dashboard on screen", async () => {
     pinned(["hiring", "delivery"]);
-    act(() => portalRouter.go("/portal/custom/delivery"));
+    act(() => portalRouter.go("/dashboards/delivery"));
     pane();
 
     expect(

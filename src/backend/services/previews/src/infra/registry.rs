@@ -25,7 +25,7 @@ impl Registry {
         } else {
             Some(bearer(token)?)
         };
-        let http = reqwest::Client::builder()
+        let http = insight_http_client::client_builder()?
             .timeout(REGISTRY_TIMEOUT)
             .build()
             .context("registry http client")?;
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn the_repository_path_drops_the_registry_host() {
-        assert_eq!(repository_path(), "constructorfabric/insight-frontend");
+        assert_eq!(repository_path(), "hello1101n/insight-frontend");
     }
 
     #[test]

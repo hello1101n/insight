@@ -1,13 +1,13 @@
 import { NewDashboardButton } from "@/components/custom/create-dashboard-dialog";
-import { Button } from "@gears-frontx/ui-kit";
 import {
+  Button,
   Empty,
   EmptyActions,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@gears-frontx/ui-kit";
 import {
   emptyCase,
   type EmptyAction,
@@ -62,7 +62,7 @@ export function DashboardsEmpty({
   const { icon: Icon, title, description, action } = emptyCase(listing);
 
   return (
-    <Empty>
+    <Empty className="mx-auto">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Icon aria-hidden />

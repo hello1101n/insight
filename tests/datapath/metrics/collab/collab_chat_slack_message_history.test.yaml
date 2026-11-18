@@ -1,0 +1,45 @@
+spec_version: 1
+description: >
+  Metric: collab.messages_sent, collab.channel_posts, collab.dm_ratio — Slack on
+  Free and Pro, from message history.
+
+  How it's computed (bronze → silver → gold):
+    • bronze: one row per message or thread reply (metadata only), and the
+      members list with the email, the guest flags and the bot flag
+    • silver: messages are counted for each member and day. A channel or private
+      channel message is a channel post; a DM or group DM is a direct message.
+      Joins, leaves, bot messages, guests and bots are dropped
+    • gold:   the same measures as the analytics file on Business+ and Enterprise
+
+  Cases, all on 2026-12-25:
+    • alice — 2 channel messages, 1 private channel thread reply, 1 DM, 1 channel
+      join → 4 messages, 3 channel posts, DM ratio 25 %
+    • alice — 1 bot message posted with her user ID → not counted
+    • bob   — a guest (is_restricted) with 5 channel messages → excluded
+    • carol — the members list flags the account as a bot, 2 messages → excluded
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/bob
+    - $ref: ../templates/people.yaml#/templates/carol
+
+  bronze_slack.users:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U001, unique_key: sl-member-U001, email: alice@example.com}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U002, unique_key: sl-member-U002, email: bob@example.com, is_restricted: true}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U003, unique_key: sl-member-U003, email: carol@example.com, is_bot: true}
+
+  bronze_slack.messages:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-1,  user_id: U001, ts: "1798156800.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-2,  user_id: U001, ts: "1798156900.000100", date: "2026-12-25", subtype: file_share}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-3,  user_id: U001, ts: "1798157000.000100", date: "2026-12-25", channel_id: G001, channel_type: private_channel, thread_ts: "1798150000.000100"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-4,  user_id: U001, ts: "1798157100.000100", date: "2026-12-25", channel_id: D001, channel_type: im}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-5,  user_id: U001, ts: "1798157200.000100", date: "2026-12-25", subtype: channel_join}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-6,  user_id: U001, ts: "1798157300.000100", date: "2026-12-25", bot_id: B001, subtype: bot_message}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-7,  user_id: U002, ts: "1798157400.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-8,  user_id: U002, ts: "1798157500.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-9,  user_id: U002, ts: "1798157600.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-10, user_id: U002, ts: "1798157700.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-11, user_id: U002, ts: "1798157800.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-12, user_id: U003, ts: "1798157900.000100", date: "2026-12-25"}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_message, unique_key: sl-msg-13, user_id: U003, ts: "1798158000.000100", date: "2026-12-25"}

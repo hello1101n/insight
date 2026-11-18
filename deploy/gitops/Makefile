@@ -4,7 +4,7 @@
 #
 # This is a SAMPLE gitops layout intended to be copied into your own
 # private repo and adapted (cluster names, hostnames, image tags, secret
-# backend, CI). The umbrella chart it pulls (oci://ghcr.io/constructorfabric/
+# backend, CI). The umbrella chart it pulls (oci://ghcr.io/hello1101n/
 # charts/insight) is published from the public Insight repo per merge to
 # main, so this directory plus an actual cluster is enough to deploy.
 #
@@ -30,12 +30,44 @@
 #       password manager). Or use VALUE_FILE=… for one-off seals.
 #
 # This repo is settings-only. The umbrella chart is published per merge
-# to oci://ghcr.io/constructorfabric/charts/insight; INSIGHT_VERSION pins one
+# to oci://ghcr.io/hello1101n/charts/insight; INSIGHT_VERSION pins one
 # semver from .insight-version.
 
 # bash, not /bin/sh: `deploy-insight` needs `set -o pipefail` to read helm's
 # exit status through `tee`; dash lacks it and a failed upgrade reports SUCCESS.
 SHELL            := /bin/bash
+
+.PHONY: local-mock-source-guard local-mock-source-install local-mock-source-remove
+local-mock-source-guard:
+	@ENV="$(ENV)" KUBE_CTX="$(KUBE_CTX)" bash scripts/local-harness-guard.sh "$(NS_APP)"
+
+local-mock-source-install: local-mock-source-guard
+	@test -n "$(MOCK_TOOLBOX_IMAGE)" || { echo "MOCK_TOOLBOX_IMAGE is required"; exit 1; }
+	helm upgrade --install mock-source environments/local/mock-source \
+		--kube-context "$(KUBE_CTX)" --namespace "$(NS_APP)" \
+		--set-string image="$(MOCK_TOOLBOX_IMAGE)" --wait --timeout 2m
+
+local-mock-source-remove: local-mock-source-guard
+	helm uninstall mock-source --kube-context "$(KUBE_CTX)" --namespace "$(NS_APP)" --wait --timeout 2m
+
+.PHONY: local-mock-airbyte-api-install local-mock-airbyte-api-remove local-mock-airbyte-api-profile local-airbyte-manifest-seed
+local-mock-airbyte-api-install: local-mock-source-guard
+	@test -n "$(MOCK_TOOLBOX_IMAGE)" || { echo "MOCK_TOOLBOX_IMAGE is required"; exit 1; }
+	@test -n "$(MOCK_AIRBYTE_UPSTREAM)" || { echo "MOCK_AIRBYTE_UPSTREAM is required"; exit 1; }
+	helm upgrade --install mock-airbyte-api environments/local/mock-airbyte-api \
+		--kube-context "$(KUBE_CTX)" --namespace "$(NS_APP)" \
+		--set-string image="$(MOCK_TOOLBOX_IMAGE)" --set-string upstream="$(MOCK_AIRBYTE_UPSTREAM)" \
+		--wait --timeout 2m
+
+local-mock-airbyte-api-remove: local-mock-source-guard
+	helm uninstall mock-airbyte-api --kube-context "$(KUBE_CTX)" --namespace "$(NS_APP)" --wait --timeout 2m
+
+local-mock-airbyte-api-profile: local-mock-source-guard
+	@mkdir -p .deploy
+	@ENV="$(ENV)" KUBE_CTX="$(KUBE_CTX)" NS_APP="$(NS_APP)" bash scripts/local-airbyte-proxy-profile.sh > .deploy/local-airbyte-proxy.yaml
+
+local-airbyte-manifest-seed:
+	@ENV="$(ENV)" KUBE_CTX="$(KUBE_CTX)" NS_INFRA="$(NS_INFRA)" bash scripts/local-airbyte-manifest-seed.sh
 
 ENV              ?= local
 # Single source of truth for per-env cluster topology. Drives bootstrap,
@@ -64,7 +96,7 @@ NS_MONITORING    ?= $(NS_INFRA)
 
 # Back-compat alias for older targets still referencing NAMESPACE.
 NAMESPACE        ?= $(NS_APP)
-CHART            ?= oci://ghcr.io/constructorfabric/charts/insight
+CHART            ?= oci://ghcr.io/hello1101n/charts/insight
 # Local umbrella chart source (this repo's working tree) for validation
 LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
@@ -953,6 +985,7 @@ system-airbyte: vpn-up kube-ctx
 		AIRBYTE_SETUP_EMAIL="$$AIRBYTE_SETUP_EMAIL" \
 		AIRBYTE_SETUP_ORG="$$AIRBYTE_SETUP_ORG" \
 		bash scripts/airbyte-setup.sh
+	@if [ "$(ENV)" = local ]; then $(MAKE) local-airbyte-manifest-seed; fi
 
 # Argo Workflows: install the chart with workflowNamespaces+instanceID
 # scoped to NS_INFRA *and* NS_APP, then apply the supplemental RBAC

@@ -956,4 +956,26 @@ SQL
 
 heal_zoom_participant_device_columns
 
+echo "=== Renaming the Slack activity platform columns ==="
+# The destination drops a column that leaves the stream catalog. The rename
+# must land before the first sync of the new connector, or stored rows lose
+# their tenant. A rename moves no row. A converged table has no old column.
+# INVARIANT: repairs releases without #4342 (main before 0.7.200); delete once every CH_FLOOR_RELEASES release runs it.
+heal_slack_users_details_platform_columns() {
+  local old new old_type new_type
+  ch_table_exists bronze_slack users_details || return 0
+  for old in tenant_id source_id; do
+    new="insight_${old}"
+    old_type="$(ch_column_type bronze_slack users_details "${old}")"
+    new_type="$(ch_column_type bronze_slack users_details "${new}")"
+    [[ -n "${old_type}" && -z "${new_type}" ]] || continue
+    echo "  bronze_slack.users_details: ${old} -> ${new}"
+    run_ch <<SQL
+ALTER TABLE bronze_slack.users_details RENAME COLUMN ${old} TO ${new};
+SQL
+  done
+}
+
+heal_slack_users_details_platform_columns
+
 echo "=== ClickHouse migrations complete ==="

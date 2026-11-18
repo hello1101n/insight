@@ -17,10 +17,8 @@ import {
 
 // Recharts needs a real layout; the assertions here are about what SectionTrend
 // hands it, so the chart primitives report their props as data attributes.
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   ComposedChart: ({
     data,
     children,
@@ -32,6 +30,25 @@ vi.mock("@/components/ui/chart", () => ({
       {children}
     </div>
   ),
+  XAxis: () => <div data-testid="x" />,
+  CartesianGrid: () => null,
+  ReferenceLine: ({ y }: { y: number }) => (
+    <div data-testid="target" data-y={y} />
+  ),
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
+  ChartLegend: () => null,
+  ChartLegendContent: () => null,
+  ChartTooltip: () => null,
+  ChartTooltipContent: () => null,
+}));
+
+vi.mock("@/components/chart-series", () => ({
   ChartLine: ({ dataKey, yAxisId }: { dataKey: string; yAxisId: string }) => (
     <div data-testid="line" data-key={dataKey} data-axis={yAxisId} />
   ),
@@ -44,15 +61,6 @@ vi.mock("@/components/ui/chart", () => ({
   }) => <div data-testid="area" data-key={dataKey} data-stack={stackId ?? ""} />,
   YAxis: ({ yAxisId }: { yAxisId: string }) => (
     <div data-testid={`y-${yAxisId}`} />
-  ),
-  XAxis: () => <div data-testid="x" />,
-  CartesianGrid: () => null,
-  ChartLegend: () => null,
-  ChartLegendContent: () => null,
-  ChartTooltip: () => null,
-  ChartTooltipContent: () => null,
-  ReferenceLine: ({ y }: { y: number }) => (
-    <div data-testid="target" data-y={y} />
   ),
 }));
 

@@ -7,7 +7,9 @@ import {
   eachDayOfInterval,
   parseISO,
 } from "date-fns";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type {
   UsageActionsSort,
   UsageDay,
@@ -16,7 +18,13 @@ import type {
   UsagePeopleSort,
   UsageRange,
 } from "@/api/usage-client";
-import { Input } from "@gears-frontx/ui-kit";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Input,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
@@ -25,17 +33,6 @@ import {
   toISODate,
 } from "@/api/period-to-date-range";
 import { PeriodSelectorBar } from "@/components/widgets/period-selector-bar";
-import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { FeedbackTable } from "@/components/portal/platform-usage-feedback";
 import {
   PersonName,

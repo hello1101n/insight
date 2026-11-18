@@ -79,8 +79,8 @@ vi.mock("@/lib/portal/use-person-cohort", () => ({
 }));
 // This view only mounts on "At a glance", so no section is ever open under it;
 // `use-person-sections.test.tsx` covers the window scope on both routes.
-vi.mock("@/lib/portal/portal-nav", () => ({
-  usePortalItem: () => null,
+vi.mock("@/lib/portal/use-nav-location", () => ({
+  useNavLocation: () => ({ zone: "person", item: null, person: "", dir: "", lens: "" }),
 }));
 vi.mock("@/hooks/use-portal-period", () => ({
   usePortalPeriod: () => ({
@@ -111,9 +111,9 @@ vi.mock("@/components/widgets/dashboard/ic-needs-attention", () => ({
   IcNeedsAttention: () => <div data-testid="needs-attention" />,
 }));
 vi.mock("@/components/widgets/metric-views/metric-group-card", () => ({
-  MetricGroupCard: ({ def, onOpen }: { def: { id: string; title: string }; onOpen: () => void }) => (
+  MetricGroupCard: ({ def, onOpen }: { def: { id: string; title: string | { key: string } }; onOpen: () => void }) => (
     <button data-testid={`group-card-${def.id}`} onClick={onOpen}>
-      {def.title}
+      {typeof def.title === "string" ? def.title : def.title.key}
     </button>
   ),
 }));

@@ -123,10 +123,8 @@ vi.mock("@/components/portal/section-trend", () => ({
   },
 }));
 
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   BarChart: ({ data, children }: { data: unknown[]; children: React.ReactNode }) => (
     <div data-testid="plot" data-rows={JSON.stringify(data)}>
       {children}
@@ -146,20 +144,30 @@ vi.mock("@/components/ui/chart", () => ({
   ScatterChart: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="scatter">{children}</div>
   ),
-  ChartScatter: (props: { data: unknown[] }) => {
+  Scatter: (props: { data: unknown[] }) => {
     mocks.scatters.push({ data: props.data });
     return <div />;
   },
-  ChartBar: () => <div />,
-  ChartLine: () => <div />,
   ZAxis: () => <div />,
   XAxis: () => <div />,
-  YAxis: () => <div />,
   CartesianGrid: () => <div />,
   ReferenceArea: () => <div />,
   ReferenceLine: () => <div />,
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   ChartTooltip: () => <div />,
   ChartTooltipContent: () => <div />,
+}));
+
+vi.mock("@/components/chart-series", () => ({
+  ChartBar: () => <div />,
+  ChartLine: () => <div />,
+  YAxis: () => <div />,
 }));
 
 import { TenantLensView } from "./index";
