@@ -72,8 +72,7 @@ pub(crate) async fn holder(
         .await?;
 
     Ok(row.map(|row| TokenHolder {
-        token_id: row.id,
         person_id: row.person_id,
-        label: row.label,
+        label: TokenLabel(row.label),
     }))
 }

@@ -48,7 +48,7 @@ pub(crate) async fn start(
     api: &SqlApiConfig,
     clickhouse_url: &str,
     clickhouse_database: &str,
-    personal_tokens: DatabaseConnection,
+    token_store: DatabaseConnection,
     cancellation: CancellationToken,
 ) -> anyhow::Result<()> {
     validate_config(mcp, api)?;
@@ -73,7 +73,7 @@ pub(crate) async fn start(
         )?);
     }
     if api.enabled {
-        router = router.merge(api::router(api, executor, personal_tokens));
+        router = router.merge(api::router(api, executor, token_store));
     }
     let listener = tokio::net::TcpListener::bind(&mcp.bind_addr).await?;
     tracing::info!(bind_addr = %mcp.bind_addr, "SQL explorer listening");

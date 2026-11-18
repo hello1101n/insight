@@ -10,6 +10,7 @@ use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
+use toolkit_security::crypto::CryptoError;
 use uuid::Uuid;
 
 use super::error::SqlTokenError;
@@ -83,7 +84,7 @@ pub async fn list_sql_tokens(
     let tenant = ctx.subject_tenant_id();
     let rows = store::list(&state.db, tenant)
         .await
-        .map_err(|error| store_failed("listing", &error))?;
+        .map_err(|error| store_failed("list", &error))?;
 
     let people = people(&rows);
     let (names, roster) = tokio::join!(
@@ -110,10 +111,7 @@ pub async fn create_sql_token(
     let label = TokenLabel::parse(&req.label)
         .map_err(|rejected| violation("label", &rejected.to_string()))?;
     require_known_person(&state, &headers, req.person_id).await?;
-    let minted = mint().map_err(|error| {
-        tracing::error!(%error, "crypto rng unavailable");
-        CanonicalError::internal("failed to create the token").create()
-    })?;
+    let minted = mint().map_err(mint_failed)?;
     let created_at = Utc::now().trunc_subsecs(0);
 
     let token_id = store::insert(
@@ -128,7 +126,7 @@ pub async fn create_sql_token(
         },
     )
     .await
-    .map_err(|error| store_failed("creating", &error))?;
+    .map_err(|error| store_failed("create", &error))?;
 
     let created = CreatedSqlToken {
         token_id: token_id.to_string(),
@@ -150,7 +148,7 @@ pub async fn remove_sql_token(
 
     let removed = store::remove(&state.db, ctx.subject_tenant_id(), token_id)
         .await
-        .map_err(|error| store_failed("removing", &error))?;
+        .map_err(|error| store_failed("remove", &error))?;
     if !removed {
         return Err(SqlTokenError::not_found("token not found")
             .with_resource(token_id.to_string())
@@ -232,8 +230,20 @@ fn violation(field: &str, description: &str) -> CanonicalError {
         .create()
 }
 
-fn store_failed(what: &str, error: &sea_orm::DbErr) -> CanonicalError {
-    tracing::error!(%error, what, "personal SQL token store failed");
+fn mint_failed(error: CryptoError) -> CanonicalError {
+    tracing::error!(
+        %error,
+        "SQL token mint read from the crypto RNG failed. The request returns 500."
+    );
+    CanonicalError::internal("failed to create the token").create()
+}
+
+fn store_failed(operation: &str, error: &sea_orm::DbErr) -> CanonicalError {
+    tracing::error!(
+        %error,
+        operation,
+        "Personal SQL token query in MariaDB failed. The request returns 500."
+    );
     CanonicalError::internal("personal SQL token store failed").create()
 }
 

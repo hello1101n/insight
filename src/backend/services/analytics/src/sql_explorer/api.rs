@@ -31,20 +31,20 @@ struct QueryRequest {
     sql: String,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct TokenCheck {
     instance: TokenHash,
-    personal: DatabaseConnection,
+    token_store: DatabaseConnection,
 }
 
 pub(super) fn router(
     config: &SqlApiConfig,
     executor: QueryExecutor,
-    personal_tokens: DatabaseConnection,
+    token_store: DatabaseConnection,
 ) -> Router {
     let check = TokenCheck {
         instance: TokenHash::of(config.token.expose_secret()),
-        personal: personal_tokens,
+        token_store,
     };
     Router::new()
         .route("/api/sql/query", post(query))
@@ -90,15 +90,24 @@ async fn caller(
         return Ok(None);
     }
 
-    let lookup = tokio::time::timeout(TOKEN_LOOKUP_TIMEOUT, store::holder(&check.personal, &hash));
+    let lookup = tokio::time::timeout(
+        TOKEN_LOOKUP_TIMEOUT,
+        store::holder(&check.token_store, &hash),
+    );
     let holder = match lookup.await {
         Ok(Ok(holder)) => holder,
         Ok(Err(error)) => {
-            tracing::error!(%error, "personal SQL token lookup failed");
+            tracing::error!(
+                %error,
+                "Personal SQL token lookup in MariaDB failed. The SQL API request returns 500."
+            );
             return Err(lookup_failed());
         }
         Err(_) => {
-            tracing::error!("personal SQL token lookup timed out");
+            tracing::error!(
+                timeout_ms = TOKEN_LOOKUP_TIMEOUT.as_millis(),
+                "Personal SQL token lookup in MariaDB passed its time bound. The SQL API request returns 500."
+            );
             return Err(lookup_failed());
         }
     };

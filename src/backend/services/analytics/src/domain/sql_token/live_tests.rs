@@ -55,9 +55,8 @@ async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
     assert_eq!(
         holder,
         Some(TokenHolder {
-            token_id,
             person_id: person,
-            label: "laptop".to_owned(),
+            label,
         })
     );
 

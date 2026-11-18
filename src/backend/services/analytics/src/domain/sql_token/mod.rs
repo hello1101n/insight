@@ -94,7 +94,6 @@ impl TokenLabel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TokenHolder {
-    pub(crate) token_id: Uuid,
     pub(crate) person_id: Uuid,
-    pub(crate) label: String,
+    pub(crate) label: TokenLabel,
 }
