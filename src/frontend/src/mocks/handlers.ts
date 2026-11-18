@@ -919,7 +919,7 @@ const BRONZE_SLUG = /^bronze_[a-z0-9_]{1,120}$/;
 
 function ingestionHandlers() {
   return [
-    http.get("/api/analytics/v1/ingestion/intensity", ({ request }) => {
+    http.get("/api/connectors/v1/ingestion/intensity", ({ request }) => {
       const params = new URL(request.url).searchParams;
       const grain = params.get("grain") ?? "15m";
       const series = params.get("series");
@@ -1128,7 +1128,7 @@ function connectorHealthHandlers() {
   });
 
   return [
-    http.get("/api/analytics/v1/connector-health", () => {
+    http.get("/api/connectors/v1/connector-health", () => {
       const now = new Date();
       return HttpResponse.json({
         as_of: now.toISOString(),
@@ -1165,7 +1165,7 @@ function connectorHealthHandlers() {
         ],
       });
     }),
-    http.get("/api/analytics/v1/connector-health/:connector/syncs", ({ params }) => {
+    http.get("/api/connectors/v1/connector-health/:connector/syncs", ({ params }) => {
       const connector = String(params.connector);
       return HttpResponse.json({
         connector,
@@ -1283,13 +1283,13 @@ const PAGE_ROWS = [
   { path: "/portal/people", views: 61, visitors: 3 },
   { path: "/portal/manage/connector-health", views: 42, visitors: 2 },
   { path: "/portal/manage/platform-usage", views: 23, visitors: 1 },
-  { path: "/portal/custom/:id", views: 31, visitors: 3 },
-  { path: "/portal/custom/q3-hiring-plan", views: 17, visitors: 2 },
-  { path: "/portal/custom/release-health", views: 12, visitors: 2 },
-  { path: "/portal/custom/metrics", views: 9, visitors: 2 },
-  { path: "/portal/custom/metrics/deploy-frequency", views: 6, visitors: 1 },
-  { path: "/portal/custom/edit/dashboards/release-health", views: 4, visitors: 1 },
-  { path: "/portal/custom/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
+  { path: "/dashboards/:id", views: 31, visitors: 3 },
+  { path: "/dashboards/q3-hiring-plan", views: 17, visitors: 2 },
+  { path: "/dashboards/release-health", views: 12, visitors: 2 },
+  { path: "/dashboards/metrics", views: 9, visitors: 2 },
+  { path: "/dashboards/metrics/deploy-frequency", views: 6, visitors: 1 },
+  { path: "/dashboards/edit/dashboards/release-health", views: 4, visitors: 1 },
+  { path: "/dashboards/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
 ];
 
 function aiAssistHandlers() {

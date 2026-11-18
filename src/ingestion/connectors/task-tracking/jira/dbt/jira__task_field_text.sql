@@ -9,6 +9,7 @@
     query_settings={
         'max_bytes_before_external_group_by': 2000000000,
         'max_bytes_before_external_sort': 2000000000,
+        'query_plan_join_swap_table': 'false',
     },
     tags=['staging', 'jira', 'silver:class_task_field_text']
 ) }}
@@ -50,28 +51,28 @@ WITH long_text_fields AS (
     WHERE field_kind = 'long_text'
 ),
 
--- Current bodies, from the issue JSON.
-issue_winner AS (
-    -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
-    -- within a source, (source_id, jira_id): unmerged parts hold several rows
-    -- per issue, and `unique_key` exists for the merge alone.
-    SELECT source_id, jira_id, argMax(_airbyte_raw_id, _airbyte_extracted_at) AS raw_id
-    FROM {{ source('bronze_jira', 'jira_issue') }}
-    GROUP BY source_id, jira_id
-),
-
+-- Current bodies, from the issue JSON. The JSON stream stays on the left of
+-- the join to `long_text_fields`; `query_plan_join_swap_table` is off so the
+-- planner cannot hash it instead (#4370).
 from_snapshot AS (
     SELECT
         CAST(i.source_id AS String)                       AS insight_source_id,
         kv.2                                              AS content,
         CAST('adf_json' AS String)                        AS content_form
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN issue_winner AS w ON i._airbyte_raw_id = w.raw_id
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
         ON f.insight_source_id = CAST(i.source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
+      -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
+      -- within a source, (source_id, jira_id): unmerged parts hold several
+      -- rows per issue, and `unique_key` exists for the merge alone.
+      AND i._airbyte_raw_id IN (
+          SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
+          FROM {{ source('bronze_jira', 'jira_issue') }}
+          GROUP BY source_id, jira_id
+      )
 ),
 
 -- Historical bodies, from both sides of every changelog item.

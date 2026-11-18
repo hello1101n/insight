@@ -12,7 +12,7 @@ replicaCount: 1
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-gateway
+  repository: ghcr.io/hello1101n/insight-gateway
   tag: "" # MUST be set by the operator. No `:latest` default.
   pullPolicy: IfNotPresent
 
@@ -78,6 +78,10 @@ gateway:
       timeoutMs: 40000
       mcpOnly: true
       v3Only: true
+    - prefix: /api/connectors
+      upstream: 'http://{{ .Release.Name }}-connectors:8088'
+      timeoutMs: 135000
+      stripPrefix: true
     - prefix: /api/analytics
       upstream: 'http://{{ .Release.Name }}-analytics:8081'
       timeoutMs: 135000

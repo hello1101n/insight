@@ -1,15 +1,13 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
+import { Card, CardContent } from "@/components/ui/card";
 import { fmtCompact } from "@/lib/portal/metric-stats";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
