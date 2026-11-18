@@ -2411,6 +2411,10 @@ cmd_test_stand() {
       update_env_var "$TEST_STAND_ENV_FILE" AUTHENTICATOR_OIDC_ISSUER "${AUTHENTICATOR_OIDC_ISSUER:-}"
       echo "=== persisted AUTHENTICATOR_OIDC_ISSUER=${AUTHENTICATOR_OIDC_ISSUER:-<empty>} ==="
 
+      # INVARIANT: this flag declares the rows that seed_connector_schedules inserts below.
+      # The flag stays in the env file, so a later `test-stand seed` declares them again.
+      update_env_var "$TEST_STAND_ENV_FILE" SEED_CONNECTOR_SCHEDULES 1
+
       # Scope the gate to this run BEFORE seeding.
       local run_started_at
       run_started_at="$(date -u '+%Y-%m-%d %H:%M:%S')"

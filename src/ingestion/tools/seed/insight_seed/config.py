@@ -48,6 +48,7 @@ ANALYTICS_DB_ENV = "MARIADB_ANALYTICS_DB"
 IDENTITY_DB_ENV = "MARIADB_DB"
 CROSS_TENANT_FIXTURE_ENV = "SEED_CROSS_TENANT_FIXTURE"
 SERVICE_PRINCIPALS_ENV = "SEED_SERVICE_PRINCIPALS"
+CONNECTOR_SCHEDULES_ENV = "SEED_CONNECTOR_SCHEDULES"
 FORCE_ENV = "SEED_FORCE"
 ANCHOR_ENV = "SEED_ANCHOR_DATE"
 MANIFEST_PATH_ENV = "SEED_MANIFEST_PATH"
@@ -208,6 +209,15 @@ def service_principals_reachable(env: Mapping[str, str]) -> bool:
     address that answers nothing.
     """
     return parse_flag(env, SERVICE_PRINCIPALS_ENV, default=True)
+
+
+def connector_schedules_present(env: Mapping[str, str]) -> bool:
+    """Whether the stand holds the scratch connector instance the schedule tests edit.
+
+    False by default, because the seed does not write that instance.
+    `dev-compose.sh test-stand up` inserts it and turns the flag on.
+    """
+    return parse_flag(env, CONNECTOR_SCHEDULES_ENV, default=False)
 
 
 def force_enabled(env: Mapping[str, str]) -> bool:

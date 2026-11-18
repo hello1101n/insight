@@ -124,6 +124,25 @@ def test_the_stand_suite_parses_what_this_package_produces(headcount: str | None
     )
 
 
+@pytest.mark.parametrize(
+    ("flag", "expected"),
+    [("1", True), ("true", True), ("0", False), ("false", False), (None, False)],
+)
+def test_the_suite_sees_connector_schedules_only_when_the_flag_declares_them(
+    flag: str | None, expected: bool
+) -> None:
+    reader = _load_stand_reader()
+    env = _env()
+    if flag is not None:
+        env[config.CONNECTOR_SCHEDULES_ENV] = flag
+    doc = json.loads(json.dumps(manifest.build_manifest(env)))
+
+    parsed = reader.Manifest.parse(doc, source_path=pathlib.Path("contract-test"))
+
+    assert doc["capabilities"]["connector_schedules"] is expected, f"flag={flag!r}"
+    assert parsed.has_capability("connector_schedules") is expected, f"flag={flag!r}"
+
+
 def test_both_sides_agree_on_the_supported_version() -> None:
     reader = _load_stand_reader()
 
