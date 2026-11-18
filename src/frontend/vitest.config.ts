@@ -108,31 +108,8 @@ export default defineConfig({
         // reported against a bystander — usually the slowest thing to load.
         // Listing the bystander changes nothing; the dependency named by
         // "new dependencies optimized" is the one to add.
-        //
-        // Every `@base-ui/react/*` entry point the source imports is listed,
-        // whether or not it has misbehaved yet, because none of them is
-        // reached until a story mounts. To check the set still matches:
-        //   grep -rhoE '"@base-ui/react/[a-z-]+"' src | sort -u
         optimizeDeps: {
           include: [
-            "@base-ui/react/avatar",
-            "@base-ui/react/button",
-            "@base-ui/react/checkbox",
-            "@base-ui/react/collapsible",
-            "@base-ui/react/dialog",
-            "@base-ui/react/input",
-            "@base-ui/react/menu",
-            "@base-ui/react/merge-props",
-            "@base-ui/react/popover",
-            "@base-ui/react/scroll-area",
-            "@base-ui/react/select",
-            "@base-ui/react/separator",
-            "@base-ui/react/switch",
-            "@base-ui/react/tabs",
-            "@base-ui/react/toggle",
-            "@base-ui/react/toggle-group",
-            "@base-ui/react/tooltip",
-            "@base-ui/react/use-render",
             "@gears-frontx/telemetry",
             "@gears-frontx/ui-kit",
             "@sentry/react",
@@ -141,7 +118,6 @@ export default defineConfig({
             // see it, so it is discovered while the export story is running and
             // takes the page down with it as vite reloads.
             "exceljs",
-            "react-day-picker",
             "react-error-boundary",
           ],
         },
