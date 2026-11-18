@@ -10,7 +10,7 @@ use crate::infra::identity::IdentityClient;
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
-fn state(url: &str) -> Result<AppState, reqwest::Error> {
+fn state(url: &str) -> anyhow::Result<AppState> {
     Ok(AppState {
         db: MockDatabase::new(DatabaseBackend::MySql).into_connection(),
         ch: insight_clickhouse::Client::new(insight_clickhouse::Config::new(
