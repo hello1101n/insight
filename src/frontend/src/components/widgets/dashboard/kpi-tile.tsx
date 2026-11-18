@@ -14,7 +14,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
 import type { KpiTileData } from "@/lib/insight/kpi-row";
 import type { GroupId } from "@/lib/insight/groups";
 import { STATUS_TEXT_CLASS } from "@/lib/status";

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { MetricName } from "@/components/widgets/metric-help-tooltip";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import {
   dimensionColorSeed,
   dimensionLabel,

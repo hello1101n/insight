@@ -10,10 +10,11 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 
 import { ChartBar, YAxis } from "@/components/chart-series";
-import { Card, CardContent } from "@/components/ui/card";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { hourColumns } from "./derived";

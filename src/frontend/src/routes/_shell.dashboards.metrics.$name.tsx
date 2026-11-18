@@ -7,8 +7,13 @@ import { MetricSummary } from "@/components/custom/definition-summary";
 import { EditLink } from "@/components/custom/editor/edit-link";
 import { HeldBy } from "@/components/custom/held-by";
 import { refusal } from "@/components/custom/refusal";
-import { Button } from "@gears-frontx/ui-kit";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { metricQuery, metricResultQuery } from "@/queries/custom";
 import { RANGE_PRESETS } from "@/lib/custom/time-range";

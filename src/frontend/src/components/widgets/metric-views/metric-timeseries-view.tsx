@@ -30,8 +30,9 @@ import {
   PopoverTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   TimeseriesBody,
   TimeseriesExportMenu,

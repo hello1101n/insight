@@ -1,15 +1,15 @@
 import { useTranslation } from "react-i18next";
 
 import { resolveText } from "@/i18n/localized-text";
+import { MetricName } from "@/components/widgets/metric-help-tooltip";
 import {
+  Spinner,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
-import { Spinner } from "@gears-frontx/ui-kit";
+} from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import type { MetricGroup } from "@/lib/insight/groups";
 import { countableSignals } from "@/lib/insight/metric-containment";
