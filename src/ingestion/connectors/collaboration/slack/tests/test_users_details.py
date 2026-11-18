@@ -310,8 +310,7 @@ def test_a_config_the_spec_accepts_but_the_model_refuses_fails_as_a_config_error
 def test_discover_offers_incremental_on_a_source_defined_date_cursor() -> None:
     output = discover(SourceSlack(), CONFIG)
 
-    (stream,) = output.catalog.catalog.streams
-    assert stream.name == "users_details"
+    (stream,) = [s for s in output.catalog.catalog.streams if s.name == "users_details"]
     assert SyncMode.incremental in stream.supported_sync_modes
     assert stream.source_defined_cursor
     assert stream.default_cursor_field == ["date"]

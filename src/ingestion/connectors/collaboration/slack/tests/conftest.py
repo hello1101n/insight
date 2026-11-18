@@ -23,8 +23,8 @@ from airbyte_cdk.test.catalog_builder import CatalogBuilder
 from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput, read
 from source_slack import client as client_module
 from source_slack import streams as streams_module
-from source_slack.client import API_URL, BILLING_URL
-from source_slack.models import BillingAnswer, Refusal
+from source_slack.client import API_URL, BILLING_URL, USERS_URL
+from source_slack.models import BillingAnswer, Member, PageMetadata, Profile, Refusal, UsersPage
 from source_slack.source import SourceSlack
 
 TODAY = date(2026, 10, 4)  # today - 2 days = 2026-10-02
@@ -48,7 +48,7 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return waits
 
 
-SCOPES = ("admin.analytics:read", "team.billing:read")
+SCOPES = ("admin.analytics:read", "team.billing:read", "users:read", "users:read.email")
 
 
 def billing(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> dict[str, Any]:
@@ -60,10 +60,24 @@ def billing_refusal(code: str) -> dict[str, Any]:
     return {"json": BillingAnswer(ok=False, error=code).model_dump(mode="json", exclude_none=True)}
 
 
+MEMBERS = (
+    Member(id="U1", real_name="Ann Example", profile=Profile(display_name="ann", email="ann@example.com")),
+    Member(id="U2", is_restricted=True, profile=Profile(real_name="Guest Example", email="guest@example.com")),
+    Member(id="B1", is_bot=True, profile=Profile(real_name="Example Bot")),
+    Member(id="U3", deleted=True),
+)
+
+
+def users_page(members: tuple[Member, ...] = MEMBERS, next_cursor: str = "") -> dict[str, Any]:
+    page = UsersPage(ok=True, members=members, response_metadata=PageMetadata(next_cursor=next_cursor))
+    return {"json": page.model_dump(mode="json")}
+
+
 def slack(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> rm.Mocker:
-    """A mocked Slack that answers team.billing.info; each test registers the rest."""
+    """A mocked Slack that answers team.billing.info and users.list; each test registers the rest."""
     http = rm.Mocker()
     http.post(BILLING_URL, **billing(plan, scopes))
+    http.get(USERS_URL, **users_page())
     return http
 
 

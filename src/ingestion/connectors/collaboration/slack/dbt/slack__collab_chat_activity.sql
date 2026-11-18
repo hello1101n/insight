@@ -8,6 +8,8 @@
     tags=['slack', 'silver:class_collab_chat_activity']
 ) }}
 
+{%- set members = adapter.get_relation(database=none, schema='bronze_slack', identifier='users') -%}
+
 -- Slack daily chat activity per user, sourced from admin.analytics.getFile?type=member.
 -- Bronze row is already one per (user, date); we simply reshape to the shared
 -- class_collab_chat_activity schema. The analytics endpoint reports
@@ -71,6 +73,15 @@ WHERE u.user_id IS NOT NULL
   -- an unknown flag keeps the row. `is_active` and `is_billable_seat` derive from
   -- activity (the latter is unreliable off invoiced plans): never filter on them.
   AND NOT coalesce(u.is_guest, false)
+  -- INVARIANT: bots are never counted. Slackbot is USLACKBOT; the Members stream flags the others.
+  AND u.user_id != 'USLACKBOT'
+{%- if members %}
+  AND (u.tenant_id, u.source_id, u.user_id) NOT IN (
+      SELECT insight_tenant_id, insight_source_id, user_id
+      FROM {{ source('bronze_slack', 'users') }} FINAL
+      WHERE coalesce(is_bot, false)
+  )
+{%- endif %}
 {% if is_incremental() %}
   -- Watermark on the source EXTRACT time, not the business date (see zoom model header for
   -- the backfill-strand failure mode this fixes — Slack chat had the same gap on virtuozzo,

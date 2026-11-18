@@ -16,10 +16,8 @@ from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput
 from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 from conftest import CONFIG, billing, billing_refusal, day_url, member_file, refusal, run, slack
 from pydantic import ValidationError
-from source_slack import plan as plan_module
 from source_slack.client import BILLING_URL, MAX_ANSWER_BYTES
 from source_slack.models import Billing
-from source_slack.plan import StreamRule
 from source_slack.source import SourceSlack
 
 _LOG = logging.getLogger("test")
@@ -74,10 +72,10 @@ def test_plans_without_member_analytics_sync_without_reading_activity(plan: str)
 @pytest.mark.parametrize(
     ("plan", "report"),
     [
-        ("plus", "Plan Business+ (plus). Streams to read: users_details. Missing scopes: none."),
-        ("compliance", "Plan Enterprise (compliance). Streams to read: users_details. Missing scopes: none."),
-        ("free", "Plan Free (free). Streams to read: none. Missing scopes: none."),
-        ("std", "Plan Pro (std). Streams to read: none. Missing scopes: none."),
+        ("plus", "Plan Business+ (plus). Streams to read: users_details, users. Missing scopes: none."),
+        ("compliance", "Plan Enterprise (compliance). Streams to read: users_details, users. Missing scopes: none."),
+        ("free", "Plan Free (free). Streams to read: users. Missing scopes: none."),
+        ("std", "Plan Pro (std). Streams to read: users. Missing scopes: none."),
     ],
 )
 def test_check_reports_the_plan_and_the_streams_to_read(plan: str, report: str) -> None:
@@ -144,10 +142,7 @@ def test_a_main_stream_without_its_scope_fails_the_sync_naming_the_scope() -> No
     assert not ok and "admin.analytics:read" in message
 
 
-def test_an_optional_stream_without_its_scope_is_skipped_with_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
-    optional = StreamRule("users", frozenset({"plus"}), frozenset({"users:read", "users:read.email"}))
-    monkeypatch.setattr(plan_module, "STREAM_RULES", (*plan_module.STREAM_RULES, optional))
-
+def test_an_optional_stream_without_its_scope_is_skipped_with_a_warning() -> None:
     with slack("plus", scopes=("team.billing:read", "admin.analytics:read", "users:read")) as http:
         for day in ("2026-10-01", "2026-10-02"):
             http.get(day_url(day), **member_file(day))

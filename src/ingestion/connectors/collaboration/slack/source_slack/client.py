@@ -1,4 +1,4 @@
-"""Slack Web API over HTTP: the workspace plan and admin.analytics.getFile.
+"""Slack Web API over HTTP: the workspace plan, the members list and admin.analytics.getFile.
 
 Slack answers a served day with a gzip file of JSON Lines and a refused day with
 HTTP 200 and a JSON body `{"ok": false, "error": "<code>"}`. The two share a
@@ -25,14 +25,19 @@ from typing import Any
 
 import requests
 from pydantic import TypeAdapter, ValidationError
+from requests.structures import CaseInsensitiveDict
 
-from source_slack.models import Billing, BillingAnswer, Refusal, describe
+from source_slack.models import Answer, Billing, BillingAnswer, Member, Refusal, UsersPage, describe
 
 logger = logging.getLogger("airbyte")
 
 API_URL = "https://slack.com/api/admin.analytics.getFile"
 BILLING_URL = "https://slack.com/api/team.billing.info"
+USERS_URL = "https://slack.com/api/users.list"
 MAX_ANSWER_BYTES = 64 * 1024
+USERS_PAGE_SIZE = 200
+# A users.list member with a full profile is ~2 KiB, so a page of 200 is ~400 KiB.
+MAX_PAGE_BYTES = 16 * 1024**2
 TIMEOUT = 60
 MAX_RETRIES = 5
 BACKOFF_BASE_SECS = 2.0
@@ -217,20 +222,20 @@ def _rows(response: requests.Response, day: str) -> Iterator[dict[str, Any]]:
         yield row
 
 
-def _billing_answer(response: requests.Response) -> BillingAnswer:
-    body = response.raw.read(MAX_ANSWER_BYTES + 1, decode_content=True)
-    if len(body) > MAX_ANSWER_BYTES:
-        raise SlackResponseError(f"team.billing.info: answer exceeds {MAX_ANSWER_BYTES} bytes")
+def _answer[A: Answer](response: requests.Response, method: str, model: type[A], limit: int) -> A:
+    body = response.raw.read(limit + 1, decode_content=True)
+    if len(body) > limit:
+        raise SlackResponseError(f"{method}: answer exceeds {limit} bytes")
     try:
-        return BillingAnswer.model_validate_json(body)
+        return model.model_validate_json(body)
     except ValidationError as error:
-        raise SlackResponseError(f"team.billing.info: unexpected answer ({describe(error)})") from None
+        raise SlackResponseError(f"{method}: unexpected answer ({describe(error)})") from None
 
 
-def _billing(answer: BillingAnswer, response: requests.Response) -> Billing:
+def _billing(answer: BillingAnswer, headers: CaseInsensitiveDict[str]) -> Billing:
     """Slack sends the token's scopes in `x-oauth-scopes` on every Web API answer."""
     try:
-        return Billing.model_validate({"plan": answer.plan, "scopes": response.headers.get("x-oauth-scopes")})
+        return Billing.model_validate({"plan": answer.plan, "scopes": headers.get("x-oauth-scopes")})
     except ValidationError as error:
         raise SlackResponseError(f"team.billing.info: unexpected answer ({describe(error)})") from None
 
@@ -266,22 +271,48 @@ class SlackClient:
     def _get(self, day: str) -> requests.Response:
         return self._send("GET", API_URL, day, {"type": "member", "date": day})
 
+    def _call[A: Answer](
+        self,
+        http_method: str,
+        url: str,
+        method: str,
+        model: type[A],
+        limit: int,
+        params: Mapping[str, str] | None = None,
+    ) -> tuple[A, CaseInsensitiveDict[str]]:
+        """A JSON answer with `ok: true` and its headers, after retrying what Slack calls temporary."""
+        for attempt in itertools.count():
+            with self._send(http_method, url, method, params) as response:
+                answer = _answer(response, method, model, limit)
+                if answer.ok:
+                    return answer, response.headers
+                refusal = SlackApiError(answer.error or "unknown_error", method=method)
+                if refusal.code not in RETRY_ERRORS or attempt >= MAX_RETRIES:
+                    raise refusal
+                wait = _wait(response, attempt)
+                logger.warning("%s, retrying in %.0fs", refusal, wait)
+                time.sleep(wait)
+        raise AssertionError("unreachable")
+
     def billing(self) -> Billing:
         """The plan from team.billing.info and the scopes of the token."""
-        method = "team.billing.info"
-        for attempt in itertools.count():
-            with self._send("POST", BILLING_URL, method) as response:
-                answer = _billing_answer(response)
-                if not answer.ok:
-                    refusal = SlackApiError(answer.error or "unknown_error", method=method)
-                    if refusal.code not in RETRY_ERRORS or attempt >= MAX_RETRIES:
-                        raise refusal
-                    wait = _wait(response, attempt)
-                    logger.warning("%s, retrying in %.0fs", refusal, wait)
-                    time.sleep(wait)
-                    continue
-                return _billing(answer, response)
-        raise AssertionError("unreachable")
+        answer, headers = self._call("POST", BILLING_URL, "team.billing.info", BillingAnswer, MAX_ANSWER_BYTES)
+        return _billing(answer, headers)
+
+    def members(self) -> Iterator[Member]:
+        """Every member on all pages of users.list."""
+        cursor = ""
+        seen: set[str] = set()
+        while True:
+            params = {"limit": str(USERS_PAGE_SIZE)} | ({"cursor": cursor} if cursor else {})
+            page, _ = self._call("GET", USERS_URL, "users.list", UsersPage, MAX_PAGE_BYTES, params)
+            yield from page.members
+            seen.add(cursor)
+            cursor = page.response_metadata.next_cursor
+            if not cursor:
+                return
+            if cursor in seen:
+                raise SlackResponseError("users.list: the next page cursor repeats an earlier cursor")
 
     def member_day(self, day: str) -> Iterator[dict[str, Any]]:
         """Every member row Slack reports for one UTC day, streamed."""

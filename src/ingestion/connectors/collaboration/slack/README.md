@@ -1,6 +1,6 @@
 # Slack Connector
 
-Per-day user activity snapshots from Slack Analytics API (`admin.analytics.getFile?type=member`).
+Per-day user activity snapshots from Slack Analytics API (`admin.analytics.getFile?type=member`), and the members list from `users.list`.
 
 Python CDK connector (`source_slack/`). Slack refuses a day with HTTP 200 and
 `{"ok": false, "error": "<code>"}`, while a served day is a gzip file; a declarative
@@ -12,6 +12,7 @@ manifest version stored refusals as all-NULL rows and kept reporting success.
 - Slack **user OAuth token** (`xoxp-*`) installed by an **Org Owner/Admin**. Slack restricts `admin.*` scopes to user tokens — bot tokens (`xoxb-*`) are not supported by `admin.analytics.getFile`.
 - Scope `team.billing:read` on every plan: the connector reads the plan with `team.billing.info`.
 - Scope `admin.analytics:read` on **Business+** and **Enterprise** (the Analytics API does not exist on lower plans).
+- Scopes `users:read` and `users:read.email` on every plan, for the `users` stream. Without them, the connector does not read `users` and writes a warning.
 
 ## Plan and scopes
 
@@ -19,8 +20,8 @@ Each check and each sync first calls `team.billing.info`, and reads the token's 
 
 | Plan (`team.billing.info`) | Streams |
 |----------------------------|---------|
-| Free (`free`), Pro (`std`) | none yet: the main stream for these plans (message activity) is not implemented, so a sync succeeds with no rows |
-| Business+ (`plus`), Enterprise (`enterprise`, `compliance`) | `users_details` (main stream) |
+| Free (`free`), Pro (`std`) | `users`. The main stream for these plans (message activity) does not exist yet, so the sync reads no activity. |
+| Business+ (`plus`), Enterprise (`enterprise`, `compliance`) | `users_details` (main stream), `users` |
 
 | Condition | Outcome |
 |-----------|---------|
@@ -30,13 +31,13 @@ Each check and each sync first calls `team.billing.info`, and reads the token's 
 | Main stream lacks a scope | Fails (`config_error`) naming the scope |
 | Optional stream lacks a scope | The stream is skipped with a warning naming the scope; the other streams are read |
 
-The connection check reports the plan, the streams to read and the missing scopes, for example `Plan Business+ (plus). Streams to read: users_details. Missing scopes: none.` The check also reads the first row of each stream it will read. A token, scope or plan refusal fails the check with a message; any other failure (Slack outage, network error, other Slack code) exits non-zero with its failure type.
+The connection check reports the plan, the streams to read and the missing scopes, for example `Plan Business+ (plus). Streams to read: users_details, users. Missing scopes: none.` The check also reads the first row of each stream it will read. A token, scope or plan refusal fails the check with a message; any other failure (Slack outage, network error, other Slack code) exits non-zero with its failure type.
 
 ### Creating the token
 
 1. Go to https://api.slack.com/apps → **Create New App** → **From scratch**
 2. Pick the workspace, name the app (e.g. `Insight Analytics`)
-3. **OAuth & Permissions** → add `team.billing:read` and, on Business+ or Enterprise, `admin.analytics:read` under **User Token Scopes**
+3. **OAuth & Permissions** → add `team.billing:read`, `users:read`, `users:read.email` and, on Business+ or Enterprise, `admin.analytics:read` under **User Token Scopes**
 4. Install the app by an org admin → copy the resulting OAuth token
 5. Store as `slack_bot_token` in the K8s Secret (field name kept for backward compatibility)
 
@@ -45,6 +46,7 @@ The connection check reports the plan, the streams to read and the missing scope
 | Stream | Sync Mode | Primary Key | Cursor | Description |
 |--------|-----------|-------------|--------|-------------|
 | `users_details` | Incremental | `unique_key` (`tenant-source-user_id-date`) | `date` (P1D) | Per-user per-day Slack activity snapshot |
+| `users` | Full refresh | `unique_key` (`tenant-source-user_id`) | none | One row per member from `users.list` |
 
 The stream issues one HTTP request per date from the cursor day (read again, as the manifest connector did; `unique_key` dedups it) or `slack_start_date` to `today - 2 days`, and checkpoints `{"date": "YYYY-MM-DD"}` after each day. Response body is gzip-compressed JSON Lines; each line is a single member record.
 
@@ -70,6 +72,16 @@ Counters: `messages_posted_count`, `channel_messages_posted_count`, `reactions_a
 
 Injected by the connector: `tenant_id`, `source_id`, `date`, `unique_key`.
 
+### Members: `users`
+
+Each sync reads all pages of `users.list` (200 members for each page). The connector keeps only these fields and drops all other profile fields (phone, title, photo, status):
+
+`user_id`, `real_name`, `display_name`, `deleted`, `email`, `is_restricted`, `is_ultra_restricted`, `is_bot`, `insight_tenant_id`, `insight_source_id`, `unique_key`.
+
+`users.list` errors follow the same rules as the activity stream. The limit for each page is 16 MiB. A page cursor that repeats an earlier cursor fails the sync (`system_error`).
+
+Staging uses `is_bot` to remove bots from `slack__collab_chat_activity`. Slackbot (`USLACKBOT`) is always removed.
+
 ### Not included
 
 This connector does **not** fetch:
@@ -92,7 +104,7 @@ metadata:
     insight.cyberfabric.com/source-id: slack-main
 type: Opaque
 stringData:
-  slack_bot_token: "xoxp-..."       # user token: team.billing:read, admin.analytics:read
+  slack_bot_token: "xoxp-..."       # user token: team.billing:read, users:read, users:read.email, admin.analytics:read
   slack_start_date: "2026-04-03"    # Earliest analytics date to fetch
 ```
 
@@ -100,7 +112,7 @@ stringData:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `slack_bot_token` | Yes | User OAuth token (`xoxp-*`) with `team.billing:read`, plus `admin.analytics:read` on Business+ or Enterprise |
+| `slack_bot_token` | Yes | User OAuth token (`xoxp-*`) with `team.billing:read`, `users:read` and `users:read.email`, plus `admin.analytics:read` on Business+ or Enterprise |
 | `slack_start_date` | Yes | Earliest analytics date (YYYY-MM-DD). Recommended: 14 days ago. |
 
 ### Automatically injected

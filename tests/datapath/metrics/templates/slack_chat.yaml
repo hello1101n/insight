@@ -31,3 +31,21 @@ templates:
     slack_huddles_count: 0
     search_count: 0
     date_claimed: null
+
+  # bronze_slack.users: one member from users.list.
+  slack_member:
+    _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
+    _airbyte_extracted_at: "2030-01-01T00:00:00"
+    _airbyte_meta: "{}"
+    _airbyte_generation_id: 0
+    unique_key: null
+    insight_tenant_id: "{{ tenant }}"
+    insight_source_id: "slack-test"
+    user_id: null
+    real_name: null
+    display_name: null
+    deleted: false
+    email: null
+    is_restricted: false
+    is_ultra_restricted: false
+    is_bot: false
