@@ -2,5 +2,5 @@ apiVersion: v2
 name: insight-connectors
 description: Connector management service
 version: 0.1.0
-appVersion: "2026.11.18.12.36-daa605b"
+appVersion: "2026.11.18.13.11-b490c8c"
 type: application
