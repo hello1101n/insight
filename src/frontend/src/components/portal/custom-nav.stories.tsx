@@ -7,7 +7,7 @@ import {
   Sidebar,
   SidebarContent,
   SidebarProvider,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 
 import { CustomNav } from "./custom-nav";
 
