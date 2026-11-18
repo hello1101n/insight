@@ -127,17 +127,9 @@ async fn request_and_sql_validation_precede_database_calls() -> R {
 
 #[tokio::test]
 async fn query_returns_the_shared_result_contract() -> R {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let address = listener.local_addr()?;
-    let upstream = Router::new().route(
-        "/",
-        post(|| async {
-            Json(json!({"meta":[{"name":"answer","type":"UInt8"}],"data":[{"answer":1}]}))
-        }),
-    );
-    let server = tokio::spawn(async move { axum::serve(listener, upstream).await });
+    let (url, server) = answering_clickhouse().await?;
     let response = send(
-        app(&format!("http://{address}"), 1),
+        app(&url, 1),
         Some(&format!("Bearer {TOKEN}")),
         r#"{"sql":"SELECT 1 AS answer"}"#,
     )
@@ -325,12 +317,13 @@ async fn the_instance_token_never_waits_on_the_token_store() -> R {
 }
 
 #[tokio::test]
-async fn malformed_credentials_never_reach_the_token_store() -> R {
+async fn credentials_not_shaped_like_a_personal_token_never_reach_the_token_store() -> R {
     for token in [
         None,
         Some("Basic wrong"),
         Some("Bearer "),
         Some("Bearer two tokens"),
+        Some("Bearer synthetic-guess-0123456789abcdef0123456789"),
     ] {
         let response = send(
             app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
@@ -351,9 +344,6 @@ fn logged_while(run: impl AsyncFnOnce() -> R) -> Result<String, Box<dyn std::err
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    // WORKAROUND: with one live dispatcher, tracing-core caches callsite interest from the
-    // registering thread; a parallel test without a subscriber would cache `never`.
-    let _second_dispatcher = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
     let mut outcome = Ok(());
     let output = capture_output(|| outcome = runtime.block_on(run()));
     outcome?;
@@ -428,19 +418,6 @@ fn an_instance_token_query_logs_no_holder() -> R {
         "unexpected label: {logged}"
     );
     assert!(!output.contains(TOKEN), "leaked token: {output}");
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_bearer_not_shaped_like_a_personal_token_never_reaches_the_store() -> R {
-    let response = send(
-        app_with_tokens("http://127.0.0.1:1", 1, unreachable_token_store()),
-        Some("Bearer synthetic-guess-0123456789abcdef0123456789"),
-        r#"{"sql":"SELECT 1"}"#,
-    )
-    .await?;
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     Ok(())
 }
 

@@ -46,9 +46,9 @@ fn two_mints_never_share_a_token() -> R {
 
 #[test]
 fn a_label_is_trimmed_and_must_hold_text_within_its_column() {
-    let at_budget = "x".repeat(LABEL_MAX_CHARS);
-    let over_budget = "x".repeat(LABEL_MAX_CHARS + 1);
-    let multibyte_at_budget = "é".repeat(LABEL_MAX_CHARS);
+    let at_budget = "x".repeat(sql_token_schema::LABEL_CHARS);
+    let over_budget = "x".repeat(sql_token_schema::LABEL_CHARS + 1);
+    let multibyte_at_budget = "é".repeat(sql_token_schema::LABEL_CHARS);
 
     for (raw, expected) in [
         ("  laptop  ", Ok("laptop")),

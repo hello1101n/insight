@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
+use super::person_names::PersonName;
 use crate::infra::identity::{IdentityClient, RosterPerson};
 
 pub(crate) type Roster = HashMap<Uuid, RosterPerson>;
@@ -32,6 +33,19 @@ impl Naming {
             username: person.username.clone().unwrap_or_default(),
             email: person.email.clone(),
         }
+    }
+
+    pub(crate) fn of_person(
+        person_id: Uuid,
+        names: &HashMap<Uuid, PersonName>,
+        roster: &Roster,
+    ) -> Self {
+        let (display_name, username) = names
+            .get(&person_id)
+            .map(|name| (name.display_name.clone(), name.username.clone()))
+            .unwrap_or_default();
+
+        Self::of(roster.get(&person_id), display_name, username)
     }
 }
 

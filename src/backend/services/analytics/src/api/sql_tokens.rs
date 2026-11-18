@@ -86,9 +86,10 @@ pub async fn list_sql_tokens(
         .map_err(|error| store_failed("listing", &error))?;
 
     let people = people(&rows);
-    let names = person_names::lookup(&state.ch, tenant, &people).await;
-    let roster =
-        roster_names::roster(&state.identity, &people, forwarded_authorization(&headers)).await;
+    let (names, roster) = tokio::join!(
+        person_names::lookup(&state.ch, tenant, &people),
+        roster_names::roster(&state.identity, &people, forwarded_authorization(&headers)),
+    );
 
     Ok(Json(SqlTokenListResponse {
         items: rows
@@ -181,11 +182,7 @@ fn entry(
 }
 
 fn person(person_id: Uuid, names: &HashMap<Uuid, PersonName>, roster: &Roster) -> SqlTokenPerson {
-    let (display_name, username) = names
-        .get(&person_id)
-        .map(|name| (name.display_name.clone(), name.username.clone()))
-        .unwrap_or_default();
-    let naming = Naming::of(roster.get(&person_id), display_name, username);
+    let naming = Naming::of_person(person_id, names, roster);
 
     SqlTokenPerson {
         person_id: person_id.to_string(),

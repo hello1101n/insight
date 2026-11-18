@@ -16,7 +16,6 @@ mod tests;
 const TOKEN_PREFIX: &str = "isql_";
 const TOKEN_ENTROPY_BYTES: usize = 32;
 const TOKEN_BODY_CHARS: usize = 43;
-pub(crate) const LABEL_MAX_CHARS: usize = sql_token_schema::LABEL_CHARS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TokenHash([u8; 32]);
@@ -67,7 +66,7 @@ pub(crate) struct TokenLabel(String);
 pub(crate) enum LabelRejected {
     #[error("label must not be empty")]
     Empty,
-    #[error("label must be at most {LABEL_MAX_CHARS} characters")]
+    #[error("label must be at most {} characters", sql_token_schema::LABEL_CHARS)]
     TooLong,
     #[error("label must not contain control characters")]
     ControlCharacter,
@@ -79,7 +78,7 @@ impl TokenLabel {
         if trimmed.is_empty() {
             return Err(LabelRejected::Empty);
         }
-        if trimmed.chars().count() > LABEL_MAX_CHARS {
+        if trimmed.chars().count() > sql_token_schema::LABEL_CHARS {
             return Err(LabelRejected::TooLong);
         }
         if trimmed.chars().any(char::is_control) {
