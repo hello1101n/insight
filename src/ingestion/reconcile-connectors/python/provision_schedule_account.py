@@ -54,7 +54,9 @@ def existing_grants(cursor: SSCursor, name: str, *, for_role: bool) -> list[str]
     if rows != [("Y" if for_role else "N",)]:
         raise AccountConflict
     principal = f"`{name}`" if for_role else f"`{name}`@`%`"
-    cursor.execute(f"SHOW GRANTS FOR {principal}", None)
+    cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+        f"SHOW GRANTS FOR {principal}", None
+    )
     return [grant for (grant,) in cursor]
 
 
@@ -107,13 +109,21 @@ def provision(env: Mapping[str, str]) -> None:
         if user_grants is None:
             cursor.execute("CREATE USER %s@'%%' IDENTIFIED BY %s", (user, password))
         if role_grants is None:
-            cursor.execute(f"CREATE ROLE `{role}`", None)
-        cursor.execute(f"GRANT SELECT ON `{database}`.connector_schedule_requests_v1 TO `{role}`", None)
-        cursor.execute(
+            cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+                f"CREATE ROLE `{role}`", None
+            )
+        cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+            f"GRANT SELECT ON `{database}`.connector_schedule_requests_v1 TO `{role}`", None
+        )
+        cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
             f"GRANT SELECT (connector, source_id), DELETE ON `{database}`.connector_schedules TO `{role}`", None
         )
-        cursor.execute(f"GRANT `{role}` TO %s@'%%'", (user,))
-        cursor.execute(f"SET DEFAULT ROLE `{role}` FOR %s@'%%'", (user,))
+        cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+            f"GRANT `{role}` TO %s@'%%'", (user,)
+        )
+        cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+            f"SET DEFAULT ROLE `{role}` FOR %s@'%%'", (user,)
+        )
 
 
 def main() -> int:
