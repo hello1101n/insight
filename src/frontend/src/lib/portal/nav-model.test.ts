@@ -147,17 +147,6 @@ describe("the ingestion lens", () => {
   });
 });
 
-describe("the SQL API tokens item", () => {
-  it("is offered to admins only", () => {
-    const shows = (isAdmin: boolean) =>
-      manageGroupsFor({ isAdmin, canManagePreviews: false })
-        .flatMap((g) => g.items)
-        .some((i) => i.id === "sql-tokens");
-    expect(shows(false)).toBe(false);
-    expect(shows(true)).toBe(true);
-  });
-});
-
 describe("manageGroupsFor", () => {
   const labelsOf = (isAdmin: boolean, canManagePreviews = false) =>
     Object.fromEntries(

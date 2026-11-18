@@ -21,7 +21,7 @@ export function useSqlTokens(): UseQueryResult<SqlTokenList> {
   const { session } = useAuth();
   return useQuery({
     queryKey: [...LIST_KEY, sessionAuthorizationScope(session)],
-    queryFn: () => listSqlTokens(),
+    queryFn: listSqlTokens,
     staleTime: 0,
     refetchOnMount: "always",
   });

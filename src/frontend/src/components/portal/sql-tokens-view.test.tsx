@@ -56,6 +56,14 @@ const ENTRY = {
 
 const SECRET = "isql_synthetic-token-shown-once";
 
+const CREATED = {
+  token_id: "t-2",
+  token: SECRET,
+  person_id: "00000000-0000-4000-8000-000000000003",
+  label: "ci",
+  created_at: "2026-11-12T10:00:00Z",
+};
+
 function renderView() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
@@ -65,6 +73,18 @@ function renderView() {
       <SqlTokensView />
     </QueryClientProvider>,
   );
+}
+
+async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
+  renderView();
+  await user.click(await screen.findByRole("button", { name: "Create token" }));
+  return screen.findByRole("dialog");
+}
+
+async function submitToken(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
+  await user.type(within(dialog).getByLabelText("Label"), "ci");
+  await user.click(within(dialog).getByRole("button", { name: "Create" }));
 }
 
 beforeEach(() => {
@@ -105,22 +125,12 @@ describe("SqlTokensView", () => {
   it("creates a token for a picked person and shows it once", async () => {
     const user = userEvent.setup();
     list.mockResolvedValue({ items: [] });
-    create.mockResolvedValue({
-      token_id: "t-2",
-      token: SECRET,
-      person_id: "00000000-0000-4000-8000-000000000003",
-      label: "ci",
-      created_at: "2026-11-12T10:00:00Z",
-    });
+    create.mockResolvedValue(CREATED);
 
-    renderView();
-    await user.click(await screen.findByRole("button", { name: "Create token" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await openCreateDialog(user);
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
 
-    await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
-    await user.type(within(dialog).getByLabelText("Label"), "ci");
-    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    await submitToken(user, dialog);
 
     expect(create).toHaveBeenCalledWith({
       person_id: "00000000-0000-4000-8000-000000000003",
@@ -138,20 +148,10 @@ describe("SqlTokensView", () => {
   it("keeps the shown token on screen until Done, whatever else is pressed", async () => {
     const user = userEvent.setup();
     list.mockResolvedValue({ items: [] });
-    create.mockResolvedValue({
-      token_id: "t-2",
-      token: SECRET,
-      person_id: "00000000-0000-4000-8000-000000000003",
-      label: "ci",
-      created_at: "2026-11-12T10:00:00Z",
-    });
+    create.mockResolvedValue(CREATED);
 
-    renderView();
-    await user.click(await screen.findByRole("button", { name: "Create token" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
-    await user.type(within(dialog).getByLabelText("Label"), "ci");
-    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    const dialog = await openCreateDialog(user);
+    await submitToken(user, dialog);
     await within(dialog).findByDisplayValue(SECRET);
 
     await user.keyboard("{Escape}");
@@ -164,20 +164,10 @@ describe("SqlTokensView", () => {
   it("copies the shown token", async () => {
     const user = userEvent.setup();
     list.mockResolvedValue({ items: [] });
-    create.mockResolvedValue({
-      token_id: "t-2",
-      token: SECRET,
-      person_id: "00000000-0000-4000-8000-000000000003",
-      label: "ci",
-      created_at: "2026-11-12T10:00:00Z",
-    });
+    create.mockResolvedValue(CREATED);
 
-    renderView();
-    await user.click(await screen.findByRole("button", { name: "Create token" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
-    await user.type(within(dialog).getByLabelText("Label"), "ci");
-    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    const dialog = await openCreateDialog(user);
+    await submitToken(user, dialog);
     await within(dialog).findByDisplayValue(SECRET);
 
     await user.click(within(dialog).getByRole("button", { name: "Copy" }));
@@ -190,12 +180,8 @@ describe("SqlTokensView", () => {
     list.mockResolvedValue({ items: [] });
     create.mockRejectedValue(new Error("refused"));
 
-    renderView();
-    await user.click(await screen.findByRole("button", { name: "Create token" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "pick Picked Person" }));
-    await user.type(within(dialog).getByLabelText("Label"), "ci");
-    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+    const dialog = await openCreateDialog(user);
+    await submitToken(user, dialog);
 
     expect(await within(dialog).findByText("The token could not be created")).toBeInTheDocument();
   });
