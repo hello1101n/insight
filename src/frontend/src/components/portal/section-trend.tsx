@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { CartesianGrid, ComposedChart, ReferenceLine, XAxis } from "recharts";
 import {
   type ChartConfig,
@@ -77,6 +78,7 @@ export function SectionTrend({
   onRetry,
   onBucketClick,
 }: SectionTrendProps) {
+  const { t } = useTranslation();
   if (isPending) {
     return <Skeleton className="h-48 w-full rounded-lg" />;
   }
@@ -84,7 +86,7 @@ export function SectionTrend({
     return (
       <ComingSoon
         state="error"
-        label={`${title} — unable to load`}
+        label={t("common.chart.unable_to_load_named", { title })}
         onRetry={onRetry}
       />
     );
@@ -94,7 +96,7 @@ export function SectionTrend({
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          <CardDescription>No trend data yet.</CardDescription>
+          <CardDescription>{t("common.chart.no_trend")}</CardDescription>
         </CardHeader>
       </Card>
     );

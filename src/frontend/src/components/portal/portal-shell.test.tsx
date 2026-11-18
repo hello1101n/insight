@@ -51,8 +51,10 @@ vi.mock("@/queries/ic-dashboard", () => ({
 
 // Leaf views become labelled placeholders so routing is observable.
 vi.mock("@/components/portal/domain-lens-view", () => ({
-  DomainLensView: ({ config }: { config: { title: string } }) => (
-    <div data-testid="domain-lens">{config.title}</div>
+  DomainLensView: ({ config }: { config: { title: string | { key: string } } }) => (
+    <div data-testid="domain-lens">
+      {typeof config.title === "string" ? config.title : config.title.key}
+    </div>
   ),
   Pending: ({ label }: { label: string }) => <div data-testid="pending">{label}</div>,
 }));
@@ -92,8 +94,15 @@ vi.mock("@/components/portal/person-header", () => ({
     <div data-testid="person-header">{person}</div>
   ),
 }));
-vi.mock("@/components/portal/lens-rail", () => ({ LensRail: () => <div /> }));
-vi.mock("@/components/portal/context-pane", () => ({ ContextPane: () => <div /> }));
+vi.mock("@/components/portal/lens-rail", () => ({
+  LensRail: () => <div />,
+  RailItems: () => <div />,
+  RailFooterItems: () => <div />,
+}));
+vi.mock("@/components/portal/context-pane", () => ({
+  ContextPane: () => <div />,
+  ZonePages: () => <div />,
+}));
 vi.mock("@/components/portal/portal-topbar", () => ({ PortalTopBar: () => <div /> }));
 vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({

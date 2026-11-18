@@ -38,6 +38,11 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { AccountSearchView } from "@/components/portal/account-search-view";
@@ -47,13 +52,6 @@ import { MergeCaseDialog } from "@/components/portal/merge-case-dialog";
 import { PersonAccountsView } from "@/components/portal/person-accounts-view";
 import { PersonCell } from "@/components/portal/person-cell";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ScrollToEnds } from "@/components/widgets/scroll-to-ends";
 import {
@@ -270,7 +268,7 @@ function Tile({
 function AllResolved() {
   const { t } = useTranslation();
   return (
-    <Empty>
+    <Empty className="mx-auto">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <PartyPopper />

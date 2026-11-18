@@ -125,7 +125,6 @@ export default defineConfig({
             "@base-ui/react/menu",
             "@base-ui/react/merge-props",
             "@base-ui/react/popover",
-            "@base-ui/react/preview-card",
             "@base-ui/react/scroll-area",
             "@base-ui/react/select",
             "@base-ui/react/separator",
