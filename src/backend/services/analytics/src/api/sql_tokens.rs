@@ -109,6 +109,7 @@ pub async fn create_sql_token(
 
     let label = TokenLabel::parse(&req.label)
         .map_err(|rejected| violation("label", &rejected.to_string()))?;
+    require_known_person(&state, &headers, req.person_id).await?;
     let minted = mint().map_err(|error| {
         tracing::error!(%error, "crypto rng unavailable");
         CanonicalError::internal("failed to create the token").create()
@@ -190,6 +191,29 @@ fn person(person_id: Uuid, names: &HashMap<Uuid, PersonName>, roster: &Roster) -
         username: naming.username,
         email: naming.email,
     }
+}
+
+async fn require_known_person(
+    state: &AppState,
+    headers: &HeaderMap,
+    person_id: Uuid,
+) -> Result<(), CanonicalError> {
+    let roster = state
+        .identity
+        .tenant_people(&[person_id], forwarded_authorization(headers))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                "Tenant roster read for a SQL token holder failed. The request returns 500."
+            );
+            CanonicalError::internal("failed to verify the person").create()
+        })?;
+
+    if roster.iter().any(|person| person.person_id == person_id) {
+        return Ok(());
+    }
+    Err(violation("person_id", "person is not in the tenant roster"))
 }
 
 fn timestamp(at: DateTime<Utc>) -> String {

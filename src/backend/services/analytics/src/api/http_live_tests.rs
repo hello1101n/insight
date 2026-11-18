@@ -1576,6 +1576,101 @@ fn delete(uri: &str) -> Result<Request<Body>, axum::http::Error> {
         .body(Body::empty())
 }
 
+async fn spawn_admin_identity_knowing(
+    known: &[Uuid],
+) -> Result<IdentityClient, Box<dyn std::error::Error>> {
+    let known = Arc::new(known.to_vec());
+
+    let app = Router::new()
+        .route(
+            "/v1/me",
+            axum::routing::get(|| async {
+                axum::Json(json!({"roles": [{"role_id": ADMIN_ROLE.to_string()}]}))
+            }),
+        )
+        .route(
+            "/v1/people",
+            axum::routing::get(
+                move |axum::extract::Query(params): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| {
+                    let known = Arc::clone(&known);
+                    async move {
+                        let asked = params.get("ids").cloned().unwrap_or_default();
+                        let items: Vec<Value> = known
+                            .iter()
+                            .filter(|id| asked.split(',').any(|asked| asked == id.to_string()))
+                            .map(|id| json!({"person_id": id.to_string()}))
+                            .collect();
+                        axum::Json(json!({"items": items, "next_cursor": null}))
+                    }
+                },
+            ),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    Ok(IdentityClient::new(&format!("http://{addr}"))?)
+}
+
+#[tokio::test]
+#[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
+async fn a_token_for_a_person_the_roster_does_not_know_is_refused() -> TestResult {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let tenant = Uuid::now_v7();
+    let identity = spawn_admin_identity_knowing(&[VISIBLE_PERSON]).await?;
+    let app = app_with_identity(db.clone(), tenant, identity);
+
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/v1/sql-tokens",
+            &json!({"person_id": HIDDEN_PERSON.to_string(), "label": "laptop"}),
+        )?)
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await?;
+    assert!(body.to_string().contains("person_id"), "body: {body}");
+    assert!(
+        crate::domain::sql_token::store::list(&db, tenant)
+            .await?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
+async fn a_token_whose_person_the_roster_cannot_confirm_is_a_server_error() -> TestResult {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let tenant = Uuid::now_v7();
+    let identity = spawn_identity_me(&[ADMIN_ROLE]).await?;
+    let app = app_with_identity(db.clone(), tenant, identity);
+
+    let resp = app
+        .oneshot(json_req(
+            "POST",
+            "/v1/sql-tokens",
+            &json!({"person_id": VISIBLE_PERSON.to_string(), "label": "laptop"}),
+        )?)
+        .await?;
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(
+        crate::domain::sql_token::store::list(&db, tenant)
+            .await?
+            .is_empty()
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "requires live MariaDB (INTEGRATION_TESTS_MARIADB_URL)"]
 async fn every_sql_token_route_is_refused_without_the_admin_role() -> TestResult {
@@ -1604,7 +1699,7 @@ async fn an_admin_creates_lists_and_removes_a_personal_token() -> TestResult {
     let Some(db) = connect_or_skip().await else {
         return Ok(());
     };
-    let identity = spawn_identity_me(&[ADMIN_ROLE]).await?;
+    let identity = spawn_admin_identity_knowing(&[VISIBLE_PERSON]).await?;
     let app = app_with_identity(db.clone(), Uuid::now_v7(), identity);
 
     let resp = app
