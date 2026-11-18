@@ -104,13 +104,13 @@ counted_days AS (
       -- INVARIANT: the analytics file wins. A day it reports for a member is not counted again.
       AND (d.tenant_id, d.insight_source_id, d.user_id, d.day) NOT IN (
           SELECT
-              tenant_id,
-              source_id,
+              insight_tenant_id,
+              insight_source_id,
               user_id,
               toDate(parseDateTimeBestEffortOrNull(date))
           FROM {{ source('bronze_slack', 'users_details') }} FINAL
-          WHERE tenant_id IS NOT NULL
-            AND source_id IS NOT NULL
+          WHERE insight_tenant_id IS NOT NULL
+            AND insight_source_id IS NOT NULL
             AND user_id IS NOT NULL
             AND parseDateTimeBestEffortOrNull(date) IS NOT NULL
       )

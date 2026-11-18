@@ -187,7 +187,7 @@ class UsersDetails(Stream, CheckpointMixin):
         return {
             **row,
             CURSOR: row_day,
-            "tenant_id": self._tenant_id,
-            "source_id": self._source_id,
+            "insight_tenant_id": self._tenant_id,
+            "insight_source_id": self._source_id,
             "unique_key": f"{self._tenant_id}-{self._source_id}-{member.user_id}-{row_day}",
         }

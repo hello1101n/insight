@@ -8,15 +8,15 @@
 ) }}
 
 -- Dedup bronze_slack.users_details to one row per Slack user.
--- Identity is (tenant_id, source_id, user_id) so email changes register as
+-- Identity is (insight_tenant_id, insight_source_id, user_id) so email changes register as
 -- attribute updates in the downstream SCD2 snapshot, not as new entities.
 -- Bronze has one row per user per day; we keep the latest `date` seen and
 -- drop rows with null/empty email.
 
 WITH ranked AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id AS tenant_id,
+        insight_source_id AS source_id,
         user_id,
         email_address AS email,
         is_guest,

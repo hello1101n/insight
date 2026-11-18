@@ -72,7 +72,7 @@ Lifecycle: `is_guest`, `is_billable_seat`, `date_claimed`
 Activity flags: `is_active`, `is_active_ios`, `is_active_android`, `is_active_desktop`, `is_active_apps`, `is_active_workflows`, `is_active_slack_connect`
 Counters: `messages_posted_count`, `channel_messages_posted_count`, `reactions_added_count`, `files_added_count`, `total_calls_count`, `slack_calls_count`, `slack_huddles_count`, `search_count`
 
-Injected by the connector: `tenant_id`, `source_id`, `date`, `unique_key`.
+Injected by the connector: `insight_tenant_id`, `insight_source_id`, `date`, `unique_key`.
 
 ### Members: `users`
 

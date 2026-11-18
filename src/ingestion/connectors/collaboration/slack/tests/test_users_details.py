@@ -46,8 +46,8 @@ def test_reads_each_day_up_to_the_publication_delay_and_stamps_identity() -> Non
         ("2026-10-02", "U0000000002"),
     ]
     assert records[0]["unique_key"] == "test-tenant-slack-test-U0000000001-2026-10-01"
-    assert {r["tenant_id"] for r in records} == {"test-tenant"}
-    assert {r["source_id"] for r in records} == {"slack-test"}
+    assert {r["insight_tenant_id"] for r in records} == {"test-tenant"}
+    assert {r["insight_source_id"] for r in records} == {"slack-test"}
     for record in records:
         assert not list(Draft7Validator(_SCHEMA).iter_errors(record))
     assert last_state(output) == {"date": "2026-10-02"}
