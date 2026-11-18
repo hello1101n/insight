@@ -12,12 +12,10 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@/components/ui/preview-card";
 import { formatMetricValue, isDurationUnit } from "@/lib/format";
 import { absenceLabel } from "@/lib/metrics/absence";
 import {
@@ -626,10 +624,10 @@ function GridCell({
   // render it as a second line.
   const showStanding = observed && cell.status !== "neutral";
   return (
-    // PreviewCard is base-ui's hover-only surface — no click-to-open at all,
+    // HoverCard wraps base-ui's hover-only PreviewCard — no click-to-open at all,
     // so a pressed cell can never pin its detail open.
-    <PreviewCard>
-      <PreviewCardTrigger
+    <HoverCard>
+      <HoverCardTrigger
         delay={150}
         // Close immediately on mouse-out — the default 300ms lets the old
         // card linger while the next cell's opens, flashing two at once.
@@ -672,7 +670,7 @@ function GridCell({
           </button>
         }
       />
-      <PreviewCardContent className="w-64 p-3">
+      <HoverCardContent>
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold">{col.label}</p>
           <p className="text-xs text-muted-foreground">{memberName}</p>
@@ -718,8 +716,8 @@ function GridCell({
             <p className="mt-1 text-xs text-muted-foreground">{leaveLabel}</p>
           ) : null}
         </div>
-      </PreviewCardContent>
-    </PreviewCard>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
