@@ -20,6 +20,7 @@ class SavedSchedule(BaseModel):
 
 
 @pytest.mark.requires_seed("admin_operator")
+@pytest.mark.requires_connector_schedules
 def test_a_refused_schedule_shows_the_server_reason_and_preserves_the_saved_value(
     admin_operator_portal: PortalPage, stand_manifest: Manifest
 ) -> None:
