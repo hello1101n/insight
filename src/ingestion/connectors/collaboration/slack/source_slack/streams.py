@@ -9,7 +9,7 @@ finished, and unique_key makes the second copy replace the first.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Generator, Iterable, Mapping, MutableMapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -17,8 +17,10 @@ import requests
 from airbyte_cdk.models import FailureType
 from airbyte_cdk.sources.streams import CheckpointMixin, Stream
 from airbyte_cdk.utils.traced_exception import AirbyteTracedException
+from pydantic import ValidationError
 
-from source_slack.client import SlackAnalyticsClient, SlackApiError, SlackResponseError
+from source_slack.client import SlackApiError, SlackClient, SlackResponseError
+from source_slack.models import MemberRow, SlackConfig, describe
 
 logger = logging.getLogger("airbyte")
 
@@ -75,11 +77,11 @@ class UsersDetails(Stream, CheckpointMixin):
     source_defined_cursor = True
     state_checkpoint_interval = None
 
-    def __init__(self, config: Mapping[str, Any], client: SlackAnalyticsClient) -> None:
+    def __init__(self, config: SlackConfig, client: SlackClient) -> None:
         self._client = client
-        self._tenant_id = config["insight_tenant_id"]
-        self._source_id = config["insight_source_id"]
-        self._start = date.fromisoformat(config["slack_start_date"])
+        self._tenant_id = config.insight_tenant_id
+        self._source_id = config.insight_source_id
+        self._start = config.slack_start_date
         self._cursor: date | None = None
         self._stopped = False
 
@@ -117,7 +119,9 @@ class UsersDetails(Stream, CheckpointMixin):
     ) -> Iterable[Mapping[str, Any]]:
         if not stream_slice or self._stopped:
             return
-        day = stream_slice[CURSOR]
+        yield from self._read_day(stream_slice[CURSOR])
+
+    def _read_day(self, day: str) -> Generator[dict[str, Any], None, None]:
         try:
             for row in self._client.member_day(day):
                 yield self._stamp(row, day)
@@ -142,19 +146,26 @@ class UsersDetails(Stream, CheckpointMixin):
             ) from error
         self._cursor = date.fromisoformat(day)
 
+    def probe(self) -> None:
+        """Read the first row of the latest published day; raise what a sync would."""
+        records = self._read_day((today() - PUBLICATION_DELAY).isoformat())
+        next(records, None)
+        records.close()
+
     def _stamp(self, row: Mapping[str, Any], day: str) -> dict[str, Any]:
-        user_id = row.get("user_id")
-        if not user_id:
+        try:
+            member = MemberRow.model_validate(row)
+        except ValidationError as error:
+            message = f"Slack member file for {day} has a malformed row ({describe(error)})"
             raise AirbyteTracedException(
-                message=f"Slack member file for {day} has a row without user_id",
-                internal_message=f"row keys: {sorted(row)}",
-                failure_type=FailureType.system_error,
-            )
-        row_day = row.get(CURSOR) or day
+                message=message, internal_message=message, failure_type=FailureType.system_error
+            ) from None
+
+        row_day = member.date or day
         return {
             **row,
             CURSOR: row_day,
             "tenant_id": self._tenant_id,
             "source_id": self._source_id,
-            "unique_key": f"{self._tenant_id}-{self._source_id}-{user_id}-{row_day}",
+            "unique_key": f"{self._tenant_id}-{self._source_id}-{member.user_id}-{row_day}",
         }

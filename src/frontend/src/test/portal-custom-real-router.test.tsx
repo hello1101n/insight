@@ -151,9 +151,7 @@ describe("the /dashboards routes, through the real router", { timeout: 20_000 },
       "href",
       "/dashboards",
     );
-    expect(
-      document.querySelector('[data-slot="sidebar-wrapper"]')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("lens-rail")).toBeInTheDocument();
   });
 
   it("renders a dashboard at /dashboards/$name, inside the portal shell", async () => {
@@ -169,9 +167,7 @@ describe("the /dashboards routes, through the real router", { timeout: 20_000 },
     expect(
       await screen.findByRole("heading", { name: "Engineering" }, { timeout: 10000 })
     ).toBeInTheDocument();
-    expect(
-      document.querySelector('[data-slot="sidebar-wrapper"]')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("lens-rail")).toBeInTheDocument();
   });
 
   it("keeps the thread when creating a dashboard navigates to it", async () => {

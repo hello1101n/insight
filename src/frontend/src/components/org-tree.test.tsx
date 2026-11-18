@@ -40,7 +40,8 @@ vi.mock("@/lib/portal/portal-nav", () => ({
 }));
 // The sidebar primitives need their provider; the tree's own markup is what
 // this file is about, so they stand in as plain elements.
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
   SidebarMenu: ({ children }: { children?: React.ReactNode }) => (
     <ul>{children}</ul>
   ),

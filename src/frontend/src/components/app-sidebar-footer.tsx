@@ -12,7 +12,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 import { getInitials } from "@/lib/insight/get-initials";
 import { resolveZoneItem } from "@/lib/portal/nav-model";
 import { linkTo } from "@/lib/portal/portal-routes";

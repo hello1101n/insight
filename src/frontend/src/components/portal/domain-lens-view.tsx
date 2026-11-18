@@ -2,6 +2,7 @@ import { ExplainWithAi } from "@/components/widgets/dashboard/explain-with-ai";
 import { trendSnapshot } from "@/lib/insight/explain-snapshot";
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 import { resolveText } from "@/i18n/localized-text";
 import { MetricName } from "@/components/widgets/metric-help-tooltip";
 import { TrendingDown, TrendingUp } from "lucide-react";
@@ -14,8 +15,13 @@ import {
   type SectionTrendPoint,
   type SectionTrendSeries,
 } from "@/components/portal/section-trend";
+import { ChartBar, YAxis } from "@/components/chart-series";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
   Table,
   TableBody,
   TableCell,
@@ -26,17 +32,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import {
   attentionSummary,
@@ -683,8 +678,11 @@ export function DomainLensView({
           <p className="text-sm text-muted-foreground">
             {personId
               ? null
-              : `${orgScope.label} · ${members.length} ${members.length === 1 ? "person" : "people"} · `}
-            {config.tagline ?? "trend & balance"}
+              : t("common.lens.scope_line", {
+                  scope: orgScope.label,
+                  count: members.length,
+                })}
+            {resolveText(t, config.tagline ?? { key: "common.lens.default_tagline" })}
           </p>
         </div>
         {drawable.length > 0 && trendBucket ? (
@@ -2747,6 +2745,7 @@ function DirectionCardsSection({
   personal: boolean;
   personalReach: ReadonlySet<string> | null;
 }) {
+  const { t } = useTranslation();
   const { openDirection } = usePortalNavActions();
   const showPlanned = usePortalShowPlanned();
   const cards = overviewCardDirections(showPlanned)
@@ -2778,16 +2777,16 @@ function DirectionCardsSection({
   return (
     <section className="flex flex-col gap-3">
       <p className={TEXT_EYEBROW}>
-        By direction
+        {t("nav.items.by_direction")}
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
         {cards.map((c) => {
           const body = (
             <div className="flex flex-col gap-2 p-4">
-              <div className="text-sm font-semibold">{c.name}</div>
+              <div className="text-sm font-semibold">{resolveText(t, c.name)}</div>
               {!c.connected ? (
                 <span className="text-xs text-muted-foreground">
-                  this data source is not connected yet
+                  {t("directions.not_connected")}
                 </span>
               ) : !c.observed ? (
                 <span className="text-xs text-muted-foreground">

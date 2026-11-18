@@ -16,6 +16,9 @@ sources:
     schema: bronze_slack
     tables:
       - name: users_details
+      - name: users
+        # users.list has no day: each sync replaces every member row.
+        freshness: null
 
 models:
   - name: slack__users_latest

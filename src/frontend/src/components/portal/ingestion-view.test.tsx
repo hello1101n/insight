@@ -11,15 +11,36 @@ import type { IngestionIntensity } from "@/api/ingestion-client";
 
 // Recharts needs a real layout; every assertion here is about what the view
 // HANDS the chart, so the primitives report their props as data attributes.
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   BarChart: ({ data, children }: { data: unknown[]; children: React.ReactNode }) => (
     <div data-testid="plot" data-rows={JSON.stringify(data)}>
       {children}
     </div>
   ),
+  XAxis: ({ dataKey, type, domain }: { dataKey: string; type?: string; domain?: unknown }) => (
+    <div
+      data-testid="x-axis"
+      data-key={dataKey}
+      data-type={type ?? ""}
+      data-domain={JSON.stringify(domain ?? null)}
+    />
+  ),
+  CartesianGrid: () => <div data-testid="grid" />,
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
+  ChartTooltip: () => <div data-testid="tooltip" />,
+  ChartTooltipContent: () => <div data-testid="tooltip-content" />,
+  ChartLegend: () => <div data-testid="legend" />,
+  ChartLegendContent: () => <div data-testid="legend-content" />,
+}));
+
+vi.mock("@/components/chart-series", () => ({
   ChartBar: ({
     dataKey,
     stackId,
@@ -31,14 +52,6 @@ vi.mock("@/components/ui/chart", () => ({
   }) => (
     <div data-testid="bar" data-key={dataKey} data-stack={stackId ?? ""} data-fill={fill} />
   ),
-  XAxis: ({ dataKey, type, domain }: { dataKey: string; type?: string; domain?: unknown }) => (
-    <div
-      data-testid="x-axis"
-      data-key={dataKey}
-      data-type={type ?? ""}
-      data-domain={JSON.stringify(domain ?? null)}
-    />
-  ),
   YAxis: ({ scale, domain, ticks }: { scale?: string; domain?: unknown; ticks?: unknown }) => (
     <div
       data-testid="y-axis"
@@ -47,11 +60,6 @@ vi.mock("@/components/ui/chart", () => ({
       data-ticks={JSON.stringify(ticks ?? null)}
     />
   ),
-  CartesianGrid: () => <div data-testid="grid" />,
-  ChartTooltip: () => <div data-testid="tooltip" />,
-  ChartTooltipContent: () => <div data-testid="tooltip-content" />,
-  ChartLegend: () => <div data-testid="legend" />,
-  ChartLegendContent: () => <div data-testid="legend-content" />,
 }));
 
 const mocks = vi.hoisted(() => ({

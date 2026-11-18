@@ -1,13 +1,9 @@
+import { ComposedChart, XAxis } from "recharts";
+import { type ChartConfig, ChartContainer } from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
 import type { MetricBucket } from "@/api/metric-results-client";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  ChartContainer,
-  ChartLine,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { bucketNote, smallMultiples } from "./derived";

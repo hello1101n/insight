@@ -74,6 +74,48 @@ Before creating or modifying any GitHub-visible content, verify that it contains
 
 When uncertain whether information came from a real environment, omit it and use a generic hypothetical formulation instead.
 
+## Write in ASD-STE100 Simplified Technical English
+
+Use ASD-STE100 Simplified Technical English (STE) for all new or changed text of these types:
+
+- Documentation: READMEs, `docs/`, runbooks, operator guides.
+- Specs: PRD, DESIGN, ADR, and FEATURE documents.
+- Code comments, including the text after a comment tag.
+- Pull request and merge request titles and descriptions.
+- Log messages, alert names, alert summaries, and alert descriptions.
+
+Do not rewrite text that your change does not touch.
+
+### Rules
+
+- Write one topic in each sentence.
+- Keep procedural sentences (instructions) to 20 words or fewer. Keep descriptive sentences to 25 words or fewer.
+- Keep a paragraph to one topic and six sentences or fewer.
+- Use the active voice. Use the passive voice only in descriptive text, and only when the actor is not known or not important.
+- Write instructions in the imperative: "Run the migration", not "The migration should be run".
+- Use the simple present, simple past, and simple future tenses. Do not use the progressive ("is failing") or perfect ("has failed") forms.
+- Use one word for one concept, and use that word each time. Do not use synonyms for variety.
+- Use each word with one meaning only. Avoid phrasal verbs ("set up", "carry out", "look into"); use one verb ("install", "do", "examine").
+- Do not join more than three nouns. Break a longer noun cluster with a preposition: "the timeout of the session cache", not "session cache timeout value".
+- Use articles ("a", "the") and demonstratives ("this") where possible.
+- Use a vertical list for a sequence of steps or more than three items.
+- Start a warning or caution with a clear command. Then give the risk: "Do not delete the PVC. The stand loses all its data."
+
+Technical names and technical verbs are permitted: product names, service names, CLI commands, API fields, and domain terms such as "deploy", "commit", or "query". Keep code identifiers, commands, quoted output, and error text exactly as they are.
+
+### Log messages and alerts
+
+- State what happened and to which object. Then state the result or the next action.
+- Use the simple past for an event that occurred, and the simple present for a state.
+- Put variable values in structured fields, not in the sentence.
+- Do not use "failed to", "unable to", or "could not" with a vague subject. Name the operation.
+
+| Incorrect | Correct |
+|-----------|---------|
+| `Failed to fetch tokens, retrying...` | `Token fetch from the IdP failed. The service retries in 5 s.` |
+| `Something went wrong while processing batch` | `Batch insert into ClickHouse failed. The batch stays in the queue.` |
+| `Connector has been stale for a while` | `Connector sync is older than 24 h.` |
+
 ## Comments
 
 - No comments unless they express a constraint the code cannot.
@@ -180,7 +222,12 @@ Tooling owns layout and correctness lints: rustfmt plus clippy pedantic (deny) i
 ### Python
 
 - Type hints on every signature; no bare `Any` escapes.
-- Typed boundary shapes are `@dataclass(frozen=True)`, `NamedTuple`, or enum.
+- External data (API answers, stream lines, connector config, files from outside the package) goes through a pydantic v2 model with `frozen=True`: `Model.model_validate_json(body)` for a body, `TypeAdapter(T).validate_json(line)` for one line of a stream. Never parse by hand with `json.loads` plus `isinstance` and `.get()` checks. The model declares only the fields the code reads; `extra="ignore"` keeps unknown fields from failing the parse. A field the code only copies into a record is typed `JsonValue` or left out of the model, so a vendor type change does not fail the sync; the emitted record keeps the raw shape.
+- A `ValidationError` becomes the existing failure type. Its message names the field path (`loc`) and error `type` from `errors(include_input=False)`, never the input value — it can be personal data. Raise the replacement `from None`: the `ValidationError` text quotes the input, and a chained cause reaches the traceback and the logs. A `dict` key is part of `loc`, so a map keyed by personal data needs a model that does not name the key.
+- Declare `pydantic>=2,<3` in the `pyproject.toml` of each package that imports it; never rely on a transitive dependency.
+- Internal values that need no validation are `@dataclass(frozen=True)`, `NamedTuple`, or enum.
+- Tests build fixtures from the models (`Model(...).model_dump(mode="json")`), not hand-written dicts, unless the test is about malformed input.
+- Exception: a script that runs on the bare CI runner Python, with no package install step, stays on the standard library.
 - `pytest.mark.parametrize` over copy-pasted cases.
 - Comprehensions stay single-clause — one needing two `for` clauses or an `else` becomes a loop.
 

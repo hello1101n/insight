@@ -101,13 +101,13 @@ class ChangedCliTests(unittest.TestCase):
             },
         )
 
-    def test_only_insight_v3_core_runs_its_ignored_live_suites(self) -> None:
+    def test_only_insight_v3_core_and_connectors_run_their_ignored_live_suites(self) -> None:
         """identity-resolution's live tests are never #[ignore]d (they skip when
         the URL is unset), so the flag must stay off everywhere else."""
         matrix = changed.all_components(COMPONENTS)
 
         flagged = {job["name"] for job in matrix["rust"] if job["include_ignored"]}
-        self.assertEqual(flagged, {"insight-v3-core"})
+        self.assertEqual(flagged, {"insight-v3-core", "connectors"})
 
     def test_insight_clickhouse_change_runs_insight_v3_core_tests(self) -> None:
         completed = subprocess.CompletedProcess(
@@ -166,6 +166,20 @@ class ChangedCliTests(unittest.TestCase):
         drift_gated = sorted(c["name"] for c in COMPONENTS if c.get("drift_test"))
         self.assertEqual(tested, drift_gated)
         self.assertFalse(any(job["cover"] for job in matrix["rust"]))
+
+    def test_connectors_changes_run_ignored_clickhouse_tests_without_coverage(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=["git", "diff"], returncode=0, stdout="src/backend/services/connectors/src/gear.rs\n"
+        )
+
+        with patch.object(changed.subprocess, "run", return_value=completed):
+            matrix = changed.changed_components("origin/main", COMPONENTS)
+
+        job = next(job for job in matrix["rust"] if job["name"] == "connectors")
+        self.assertIs(job["test"], True)
+        self.assertIs(job["cover"], False)
+        self.assertIs(job["live_ch"], True)
+        self.assertIs(job["include_ignored"], True)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type {
   IngestionGrain,
   IngestionIntensity,
@@ -8,20 +10,15 @@ import type {
 } from "@/api/ingestion-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { Button } from "@gears-frontx/ui-kit";
 import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
+  Button,
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+} from "@gears-frontx/ui-kit";
 import {
   LOG_FLOOR,
   bandLabel,

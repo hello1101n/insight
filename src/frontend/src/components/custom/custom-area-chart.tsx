@@ -1,5 +1,6 @@
 import { AreaChart } from "recharts";
 
+import { ChartArea } from "@/components/chart-series";
 import type { MetricResult } from "@/api/custom-client";
 import {
   pointClick,
@@ -8,7 +9,6 @@ import {
 } from "@/components/custom/chart-data";
 import { unitFor } from "@/components/custom/chart-format";
 import { ChartFrame, SeriesAxes } from "@/components/custom/chart-frame";
-import { ChartArea } from "@/components/ui/chart";
 
 export interface CustomAreaChartProps {
   result: MetricResult;
