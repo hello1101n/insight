@@ -1,5 +1,16 @@
 import { useTranslation } from "react-i18next";
+import { CartesianGrid, ComposedChart, ReferenceLine, XAxis } from "recharts";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  Skeleton,
+} from "@gears-frontx/ui-kit";
 
+import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   Card,
@@ -8,22 +19,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  CartesianGrid,
-  ChartArea,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLine,
-  ChartTooltip,
-  ChartTooltipContent,
-  ComposedChart,
-  ReferenceLine,
-  type ChartConfig,
-  XAxis,
-  YAxis,
-} from "@/components/ui/chart";
-import { Skeleton } from "@gears-frontx/ui-kit";
 
 /** One plotted series: its metric key, its label, and how to draw it. */
 export type SectionTrendSeries = {
@@ -231,7 +226,7 @@ export function SectionTrend({
                   yAxisId={yAxisId}
                   dataKey={s.key}
                   name={s.label}
-                  type={s.type === "step" ? "stepAfter" : "linear"}
+                  type={s.type === "step" ? "stepAfter" : undefined}
                   stroke={color}
                   strokeWidth={2}
                 />
