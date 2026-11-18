@@ -2,7 +2,7 @@
 
 Frontend application for **Insight** — a decision intelligence platform for engineering analytics, productivity insights, bottleneck detection, AI adoption tracking, and team health visibility.
 
-Single-page application built on React 19 + TanStack Router + TanStack Query + shadcn/ui. Uses MSW for offline / demo mocking; talks to the Insight backend in production.
+Single-page application built on React 19 + TanStack Router + TanStack Query + `@gears-frontx/ui-kit`. Uses MSW for offline / demo mocking; talks to the Insight backend in production.
 
 Part of the [Insight](https://github.com/constructorfabric/insight) monorepo — the backend, ingestion
 and Helm charts live alongside this directory. Connector specs and API contracts are in
@@ -17,7 +17,7 @@ and Helm charts live alongside this directory. Connector specs and API contracts
 | Data | TanStack Query (per-query hooks under `src/queries/`) |
 | Build | Vite 8 |
 | Language | TypeScript 6 (strict) |
-| Styling | Tailwind CSS 4 + shadcn/ui (`base-vega` style, CSS variables) |
+| Styling | Tailwind CSS 4 + `@gears-frontx/ui-kit` (CSS variables) |
 | Charts | Recharts 3 |
 | Auth | Server-side session (cookie/BFF through the gateway) |
 | i18n | `i18next` + `react-i18next` (English only today) |
@@ -100,7 +100,6 @@ src/
   routeTree.gen.ts       #   ← auto-generated, do not edit
   screens/               # Page components composed by routes
   components/
-    ui/                  #   shadcn/ui primitives (button, card, dialog, alert, …)
     widgets/             #   Feature widgets (dashboard/, metric-views/, …)
     app-sidebar.tsx      #   Org-tree sidebar (recursive nav)
     theme-provider.tsx   #   Light/dark/system theme (localStorage-backed)
@@ -241,7 +240,7 @@ policy is written against are mapped in `src/lib/portal/portal-routes.ts`.
 
 ## Theming
 
-`light` / `dark` / `system`. Theme tokens are CSS variables defined in [src/index.css](src/index.css); use the semantic Tailwind utilities (`bg-background`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-warning/10`, etc.). The shadcn theme is `base-vega` with `cssVariables: true` (see [components.json](components.json)).
+`light` / `dark` / `system`. Theme tokens are CSS variables defined in [src/index.css](src/index.css); use the semantic Tailwind utilities (`bg-background`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-warning/10`, etc.).
 
 ## i18n
 
