@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Alert,
   AlertDescription,
@@ -22,39 +23,62 @@ import { ComingSoon } from "@/components/widgets/coming-soon";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { formatUtcClock } from "@/lib/format";
 import { TEXT_NAME } from "@/lib/type-scale";
-import { useCreateSqlToken, useRemoveSqlToken, useSqlTokens } from "@/queries/sql-tokens";
+import {
+  useCreateSqlToken,
+  useRemoveSqlToken,
+  useSqlTokens,
+} from "@/queries/sql-tokens";
+
+const LABEL_MAX_CHARS = 255;
 
 export function SqlTokensView() {
+  const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className={TEXT_NAME}>SQL API tokens</h2>
+          <h2 className={TEXT_NAME}>{t("sql_tokens.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Personal tokens for the SQL API. A token opens the SQL API only and works until it is
-            removed.
+            {t("sql_tokens.subtitle")}
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>Create token</Button>
+        <Button onClick={() => setCreating(true)}>
+          {t("sql_tokens.create_token")}
+        </Button>
       </div>
       <TokenList />
-      {creating ? <CreateTokenDialog onClose={() => setCreating(false)} /> : null}
+      {creating ? (
+        <CreateTokenDialog onClose={() => setCreating(false)} />
+      ) : null}
     </div>
   );
 }
 
 function TokenList() {
+  const { t } = useTranslation();
   const tokens = useSqlTokens();
   const [removing, setRemoving] = useState<SqlTokenEntry | null>(null);
 
   if (tokens.isPending) return <CenteredSpinner />;
   if (tokens.isError) {
-    return <ComingSoon variant="row" state="error" label="Tokens could not be loaded" />;
+    return (
+      <ComingSoon
+        variant="row"
+        state="error"
+        label={t("sql_tokens.list.load_failed")}
+      />
+    );
   }
   if (tokens.data.items.length === 0) {
-    return <ComingSoon variant="row" state="empty" label="No personal tokens yet" />;
+    return (
+      <ComingSoon
+        variant="row"
+        state="empty"
+        label={t("sql_tokens.list.empty")}
+      />
+    );
   }
 
   return (
@@ -62,10 +86,12 @@ function TokenList() {
       <table className="w-full text-sm">
         <thead className="text-left text-xs text-muted-foreground">
           <tr>
-            <th className="py-2 font-medium">Person</th>
-            <th className="py-2 font-medium">Label</th>
-            <th className="py-2 font-medium">Created</th>
-            <th className="py-2 font-medium">Created by</th>
+            <th className="py-2 font-medium">{t("sql_tokens.list.person")}</th>
+            <th className="py-2 font-medium">{t("sql_tokens.list.label")}</th>
+            <th className="py-2 font-medium">{t("sql_tokens.list.created")}</th>
+            <th className="py-2 font-medium">
+              {t("sql_tokens.list.created_by")}
+            </th>
             <th className="py-2" />
           </tr>
         </thead>
@@ -76,7 +102,9 @@ function TokenList() {
                 <PersonName row={entry.person} />
               </td>
               <td className="py-2">{entry.label}</td>
-              <td className="py-2">{formatUtcClock(entry.created_at, "d MMM yyyy")}</td>
+              <td className="py-2">
+                {formatUtcClock(entry.created_at, "d MMM yyyy")}
+              </td>
               <td className="py-2">
                 <PersonName row={entry.created_by} />
               </td>
@@ -84,10 +112,12 @@ function TokenList() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label={`Remove ${entry.label}`}
+                  aria-label={t("sql_tokens.list.remove_named", {
+                    label: entry.label,
+                  })}
                   onClick={() => setRemoving(entry)}
                 >
-                  Remove
+                  {t("sql_tokens.list.remove")}
                 </Button>
               </td>
             </tr>
@@ -101,7 +131,14 @@ function TokenList() {
   );
 }
 
-function RemoveTokenDialog({ entry, onClose }: { entry: SqlTokenEntry; onClose: () => void }) {
+function RemoveTokenDialog({
+  entry,
+  onClose,
+}: {
+  entry: SqlTokenEntry;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
   const remove = useRemoveSqlToken();
 
   return (
@@ -110,18 +147,21 @@ function RemoveTokenDialog({ entry, onClose }: { entry: SqlTokenEntry; onClose: 
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={`Remove ${entry.label}?`}
-      description={`${personDisplayName(entry.person)} loses SQL API access with this token. The next query with it is refused.`}
-      confirmLabel="Remove"
+      title={t("sql_tokens.remove.title", { label: entry.label })}
+      description={t("sql_tokens.remove.description", {
+        person: personDisplayName(entry.person),
+      })}
+      confirmLabel={t("sql_tokens.remove.confirm")}
       destructive
       isPending={remove.isPending}
-      error={remove.isError ? "The token could not be removed" : null}
+      error={remove.isError ? t("sql_tokens.remove.failed") : null}
       onConfirm={() => remove.mutate(entry.token_id, { onSuccess: onClose })}
     />
   );
 }
 
 function CreateTokenDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const create = useCreateSqlToken();
   const [person, setPerson] = useState<PersonSummary | null>(null);
   const [label, setLabel] = useState("");
@@ -136,9 +176,9 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={requestClose}>
       <DialogContent className="sm:max-w-lg" showCloseButton={closable}>
         <DialogHeader>
-          <DialogTitle>Create a SQL API token</DialogTitle>
+          <DialogTitle>{t("sql_tokens.create.title")}</DialogTitle>
           <DialogDescription>
-            The token is shown once. Send it to the person; it works until removed.
+            {t("sql_tokens.create.description")}
           </DialogDescription>
         </DialogHeader>
         {create.data ? (
@@ -148,42 +188,54 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
             {person ? (
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span>{personDisplayName(person)}</span>
-                <Button variant="ghost" size="sm" onClick={() => setPerson(null)}>
-                  Change
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPerson(null)}
+                >
+                  {t("sql_tokens.create.change_person")}
                 </Button>
               </div>
             ) : (
               <PersonPicker onPick={setPerson} />
             )}
-            <label className="flex flex-col gap-1 text-sm" htmlFor="sql-token-label">
-              Label
+            <label
+              className="flex flex-col gap-1 text-sm"
+              htmlFor="sql-token-label"
+            >
+              {t("sql_tokens.create.label")}
               <Input
                 id="sql-token-label"
                 value={label}
-                maxLength={255}
-                placeholder="laptop, CI job, …"
+                maxLength={LABEL_MAX_CHARS}
+                placeholder={t("sql_tokens.create.label_placeholder")}
                 onChange={(event) => setLabel(event.target.value)}
               />
             </label>
             {create.isError ? (
               <Alert variant="destructive">
-                <AlertDescription>The token could not be created</AlertDescription>
+                <AlertDescription>
+                  {t("sql_tokens.create.failed")}
+                </AlertDescription>
               </Alert>
             ) : null}
           </div>
         )}
         <DialogFooter>
           {create.data ? (
-            <Button onClick={onClose}>Done</Button>
+            <Button onClick={onClose}>{t("sql_tokens.create.done")}</Button>
           ) : (
             <Button
               disabled={!ready}
               onClick={() => {
                 if (person === null) return;
-                create.mutate({ person_id: person.person_id, label: label.trim() });
+                create.mutate({
+                  person_id: person.person_id,
+                  label: label.trim(),
+                });
               }}
             >
-              Create
+              {t("sql_tokens.create.submit")}
             </Button>
           )}
         </DialogFooter>
@@ -193,22 +245,30 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
 }
 
 function ShownToken({ created }: { created: CreatedSqlToken }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   return (
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex gap-2">
-        <Input readOnly aria-label="Token" value={created.token} className="font-mono" />
+        <Input
+          readOnly
+          aria-label={t("sql_tokens.shown.token")}
+          value={created.token}
+          className="font-mono"
+        />
         <Button
           variant="outline"
           onClick={() => {
-            void navigator.clipboard.writeText(created.token).then(() => setCopied(true));
+            void navigator.clipboard
+              .writeText(created.token)
+              .then(() => setCopied(true));
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("common.copied") : t("common.copy")}
         </Button>
       </div>
-      <p className="text-muted-foreground">Copy it now. It is not shown again.</p>
+      <p className="text-muted-foreground">{t("sql_tokens.shown.once")}</p>
     </div>
   );
 }
