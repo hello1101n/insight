@@ -1,3 +1,5 @@
+import { Cron } from "croner";
+
 import type {
   AppliedSchedule,
   ConnectorHealth,
@@ -22,7 +24,10 @@ export interface NextRunView {
   detail: string | null;
 }
 
-export function describeNextRun(schedule: AppliedSchedule, now: Date): NextRunView {
+export function describeNextRun(
+  schedule: AppliedSchedule,
+  now: Date
+): NextRunView {
   if (schedule.suspended) {
     return {
       text: i18n.t("connectors.suspended"),
@@ -45,12 +50,27 @@ export function describeNextRun(schedule: AppliedSchedule, now: Date): NextRunVi
     for (const expression of schedule.crons) {
       const next = nextScheduledRun(expression, schedule.timezone, now);
       if (next == null) {
-        return unreadable;
+        const cron = new Cron(expression.replaceAll("?", "*"), {
+          timezone: schedule.timezone,
+          mode: "5-part",
+        });
+        if (
+          cron.getPattern() == null ||
+          /[LW#]/i.test(expression.replace(/\b(?:JUL|WED)\b/gi, ""))
+        )
+          return unreadable;
+        continue;
       }
       earliest = Math.min(earliest, next.getTime());
     }
 
     const delay = earliest - now.getTime();
+    if (!Number.isFinite(delay) && schedule.crons.length > 0) {
+      return {
+        text: i18n.t("connectors.unknown"),
+        detail: i18n.t("connectors.no_next_run"),
+      };
+    }
     if (!Number.isFinite(delay)) return unreadable;
 
     return { text: describeNextRunDelay(delay), detail: null };
@@ -160,7 +180,10 @@ function stateOf(status: string | undefined): ConnectorStateView {
  */
 export function describeConnector(row: ConnectorHealth): ConnectorStateView {
   if (!row.configured) {
-    return { ...NO_LONGER_CONFIGURED, label: i18n.t("connectors.no_longer_configured") };
+    return {
+      ...NO_LONGER_CONFIGURED,
+      label: i18n.t("connectors.no_longer_configured"),
+    };
   }
   if (row.last_sync == null) {
     return { ...NEVER_SYNCED, label: i18n.t("connectors.never_synced") };
@@ -206,7 +229,7 @@ export function describeRecording(
   summary: Pick<
     ConnectorHealthSummary,
     "as_of" | "checked_at" | "typical_read_interval_ms" | "history_available"
-  >,
+  >
 ): RecordingView {
   if (!summary.history_available || summary.checked_at == null) {
     return {
@@ -242,7 +265,9 @@ export function describeRecording(
   if (age > threshold) {
     return {
       state: "stopped",
-      label: i18n.t("connectors.last_checked_stopped", { age: describeAge(age) }),
+      label: i18n.t("connectors.last_checked_stopped", {
+        age: describeAge(age),
+      }),
       detail: i18n.t("connectors.stopped_detail"),
     };
   }
@@ -267,7 +292,10 @@ function staleAfter(interval: number | null | undefined): number | null {
   if (interval == null || !Number.isFinite(interval) || interval <= 0) {
     return null;
   }
-  const clamped = Math.min(Math.max(interval, MIN_INTERVAL_MS), MAX_INTERVAL_MS);
+  const clamped = Math.min(
+    Math.max(interval, MIN_INTERVAL_MS),
+    MAX_INTERVAL_MS
+  );
   return clamped * STALE_AFTER_INTERVALS;
 }
 
@@ -284,7 +312,10 @@ function staleAfter(interval: number | null | undefined): number | null {
  * page. Reporting "just now" there would be the page asserting a freshness it
  * has no basis for.
  */
-function elapsedMs(asOf: string, since: string | null | undefined): number | null {
+function elapsedMs(
+  asOf: string,
+  since: string | null | undefined
+): number | null {
   const now = parseStamp(asOf);
   const then = parseStamp(since);
   if (now === null || then === null) return null;
@@ -298,7 +329,8 @@ function elapsedMs(asOf: string, since: string | null | undefined): number | nul
  * confident absolute timestamp. The service emits RFC 3339, so requiring that
  * shape costs nothing and refuses everything else.
  */
-const RFC3339 = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+const RFC3339 =
+  /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
 
 function parseStamp(raw: string | null | undefined): number | null {
   if (typeof raw !== "string" || !RFC3339.test(raw)) return null;
@@ -314,10 +346,14 @@ const DAY_MS = 24 * HOUR_MS;
 export function describeAge(ageInMs: number): string {
   if (ageInMs < MINUTE_MS) return i18n.t("connectors.just_now");
   if (ageInMs < HOUR_MS) {
-    return i18n.t("connectors.minutes_ago", { count: Math.floor(ageInMs / MINUTE_MS) });
+    return i18n.t("connectors.minutes_ago", {
+      count: Math.floor(ageInMs / MINUTE_MS),
+    });
   }
   if (ageInMs < DAY_MS) {
-    return i18n.t("connectors.hours_ago", { count: Math.floor(ageInMs / HOUR_MS) });
+    return i18n.t("connectors.hours_ago", {
+      count: Math.floor(ageInMs / HOUR_MS),
+    });
   }
   return i18n.t("connectors.days_ago", { count: Math.floor(ageInMs / DAY_MS) });
 }
@@ -395,7 +431,10 @@ export function formatDuration(durationMs: number | null | undefined): string {
  * that maps the mover's vocabulary stays the only one — a second `=== "running"`
  * here would silently stop agreeing with the badge beside it.
  */
-const IN_FLIGHT: ReadonlySet<ConnectorStateName> = new Set(["queued", "syncing"]);
+const IN_FLIGHT: ReadonlySet<ConnectorStateName> = new Set([
+  "queued",
+  "syncing",
+]);
 
 export interface DurationView {
   /** What the cell prints. */
@@ -422,8 +461,9 @@ export interface DurationView {
  * drifting from it by whatever the two machines disagree about.
  */
 export function describeDuration(
-  sync: Pick<SyncFact, "status" | "started_at" | "duration_ms"> | null | undefined,
-  asOf: string,
+  sync:
+    Pick<SyncFact, "status" | "started_at" | "duration_ms"> | null | undefined,
+  asOf: string
 ): DurationView {
   if (sync == null) return { text: UNMEASURED, inFlight: false };
   if (!IN_FLIGHT.has(stateOf(sync.status).state)) {
