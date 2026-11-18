@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { resolveZoneItem } from "@/lib/portal/nav-model";
-import { usePortalItem } from "@/lib/portal/portal-nav";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useShellLayout } from "@/lib/portal/use-shell-layout";
 import { useZoneNav } from "@/lib/portal/use-zone-nav";
 
@@ -35,7 +35,7 @@ export function useMetricsViewPaneShown(): boolean {
  */
 export function useMetricsViewHidesPane(): boolean {
   const { activeZone } = useZoneNav();
-  const item = usePortalItem();
+  const { item } = useNavLocation();
   const shown = useMetricsViewPaneShown();
   const wide = useShellLayout() === "wide";
 

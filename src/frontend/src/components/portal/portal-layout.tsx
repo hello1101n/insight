@@ -1,5 +1,5 @@
-import { useEffect, useRef, type CSSProperties } from "react";
-import { Outlet } from "@tanstack/react-router";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { Navigate, Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { MockBanner } from "@/components/mock-banner";
@@ -21,7 +21,6 @@ import {
 } from "@gears-frontx/ui-kit";
 import { useMetricsViewHidesPane } from "@/lib/portal/metrics-view-pane";
 import { PortalDocumentTitle } from "@/lib/portal/document-title-frame";
-import { usePortalNavActions, usePortalZone } from "@/lib/portal/portal-nav";
 import { bareLandingZone, landingDecision } from "@/lib/portal/landing-zone";
 import {
   usePortalRailLabels,
@@ -31,6 +30,8 @@ import {
   useShellLayout,
   type ShellLayout,
 } from "@/lib/portal/use-shell-layout";
+import { CONTENT_ID } from "@/lib/portal/content-scroll";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useViewerReach } from "@/lib/portal/use-viewer-reach";
 import { useZoneNav } from "@/lib/portal/use-zone-nav";
 import { useIsAdmin } from "@/queries/identity-me";
@@ -40,52 +41,11 @@ import { useIsAdmin } from "@/queries/identity-me";
  * `insight.portal`. Composition: one SidebarProvider, one collapsible shell
  * sidebar holding two columns, then the content:
  *   [ lens rail | zone-contextual pane ] [ content ]
- * Every zone renders through `<ZoneContent/>` (Person / People / Directions /
- * Overview / … all portal-native); the route only carries the active person.
+ * Mounted once by the `_shell` route: the outlet swaps the page, never the shell.
  */
 export function PortalLayout() {
-  const { replaceZone } = usePortalNavActions();
-  // Leave an org zone the viewer cannot see, once their shape resolves. The
-  // rules live in `landingDecision` (pure, table-tested); this effect only
-  // applies them, once, so a zone the reader picks later is never rewritten.
-  const { canSeeOthers, isPending } = useViewerReach();
-  const {
-    isAdmin,
-    isPending: adminPending,
-    isError: adminError,
-  } = useIsAdmin();
-  const zone = usePortalZone();
-  const homeShown = bareLandingZone(usePortalShowPlanned()) === "overview";
-  const landed = useRef(false);
   const paneHidden = useMetricsViewHidesPane();
   const railWidth = usePortalRailLabels() ? RAIL_WIDTH_LABELS : RAIL_WIDTH_ICONS;
-  useEffect(() => {
-    if (landed.current) return;
-    const decision = landingDecision({
-      zone,
-      mgrPending: isPending,
-      canSeeOthers,
-      // An errored check is "unknown", not "no": the landing decision is
-      // one-shot, so resetting on it would permanently rewrite a URL an
-      // admin deliberately opened. Waiting costs nothing — the me query
-      // retries itself until an answer lands.
-      adminPending: adminPending || adminError,
-      isAdmin,
-      homeShown,
-    });
-    if (decision.kind === "wait") return;
-    landed.current = true;
-    if (decision.kind === "reset") replaceZone(null);
-  }, [
-    isPending,
-    canSeeOthers,
-    adminPending,
-    adminError,
-    isAdmin,
-    homeShown,
-    zone,
-    replaceZone,
-  ]);
 
   return (
     <PortalDocumentTitle>
@@ -105,14 +65,20 @@ export function PortalLayout() {
         <ShellSidebar />
         {/* INVARIANT: `isolate` keeps the inset's own stacking — the sticky
             topbar included — under the fixed shell sidebar. */}
-        <SidebarInset className="isolate min-w-0 overflow-x-clip overflow-y-auto">
+        <SidebarInset
+          id={CONTENT_ID}
+          data-scroll-restoration-id={CONTENT_ID}
+          className="isolate min-w-0 overflow-x-clip overflow-y-auto"
+        >
           <MockBanner />
           {/* The impersonation indicator: it names whose data is on screen and
               carries the way out. Missing it left a view-as operator with no sign
               they were not looking at their own org, and no exit. */}
           <ViewAsBanner />
           <PortalTopBar />
-          <Outlet />
+          <ZoneGuard>
+            <Outlet />
+          </ZoneGuard>
         </SidebarInset>
       </SidebarProvider>
     </PortalDocumentTitle>
@@ -195,4 +161,29 @@ function PaneStateForLayout() {
     setOpen(layout === "wide");
   }, [layout, setOpen]);
   return null;
+}
+
+/**
+ * Send the reader home from a zone that is not theirs to see. The rules live
+ * in `landingDecision` (pure, table-tested); the zone renders while the
+ * viewer's reach is still resolving.
+ */
+function ZoneGuard({ children }: { children: ReactNode }) {
+  const { zone } = useNavLocation();
+  const { canSeeOthers, isPending } = useViewerReach();
+  const { isAdmin, isPending: adminPending, isError: adminError } = useIsAdmin();
+  const homeShown = bareLandingZone(usePortalShowPlanned()) === "overview";
+  const decision = landingDecision({
+    zone,
+    mgrPending: isPending,
+    canSeeOthers,
+    // An errored check is "unknown", not "no": refusing on it would bounce an
+    // admin off a page they opened. The me query retries until an answer lands.
+    adminPending: adminPending || adminError,
+    isAdmin,
+    homeShown,
+  });
+
+  if (decision.kind === "reset") return <Navigate to="/" search replace />;
+  return children;
 }

@@ -22,10 +22,10 @@ type CatalogueId = "metrics" | "widgets" | "datasets" | "alerts";
 interface Catalogue {
   id: CatalogueId;
   to:
-    | "/portal/custom/metrics"
-    | "/portal/custom/widgets"
-    | "/portal/custom/datasets"
-    | "/portal/custom/alerts";
+    | "/dashboards/metrics"
+    | "/dashboards/widgets"
+    | "/dashboards/datasets"
+    | "/dashboards/alerts";
   label: DisplayText;
   icon: LucideIcon;
 }
@@ -37,23 +37,23 @@ export interface ShownCatalogue extends Catalogue {
 const CATALOGUES: readonly Catalogue[] = [
   {
     id: "metrics",
-    to: "/portal/custom/metrics",
+    to: "/dashboards/metrics",
     label: { key: "nav.items.metrics" },
     icon: Sigma,
   },
   {
     id: "widgets",
-    to: "/portal/custom/widgets",
+    to: "/dashboards/widgets",
     label: { key: "nav.items.widgets" },
     icon: LayoutDashboard,
   },
   {
     id: "datasets",
-    to: "/portal/custom/datasets",
+    to: "/dashboards/datasets",
     label: { key: "nav.items.datasets" },
     icon: Database,
   },
-  { id: "alerts", to: "/portal/custom/alerts", label: { key: "nav.items.alerts" }, icon: Bell },
+  { id: "alerts", to: "/dashboards/alerts", label: { key: "nav.items.alerts" }, icon: Bell },
 ];
 
 function catalogueShown(

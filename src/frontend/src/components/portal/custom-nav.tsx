@@ -24,7 +24,7 @@ import { usePortalSearch } from "@/lib/portal/portal-search";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useIsAdmin } from "@/queries/identity-me";
 
-const DASHBOARD_ROUTES = new Set(["/portal/custom/", "/portal/custom/$name"]);
+const DASHBOARD_ROUTES = new Set(["/_shell/dashboards/", "/_shell/dashboards/$name"]);
 
 export function CustomNav() {
   const { t } = useTranslation();
@@ -48,7 +48,7 @@ export function CustomNav() {
                   isActive={onDashboards && !folder && owned === narrowed}
                   render={
                     <Link
-                      to="/portal/custom"
+                      to="/dashboards"
                       search={{ owned: narrowed, tag }}
                     />
                   }
@@ -125,7 +125,7 @@ export function HomeDashboardsGroup() {
           {mine ? (
             <SidebarMenuItem>
               <SidebarMenuButton
-                render={<Link to="/portal/custom" search={{ owned: "me" }} />}
+                render={<Link to="/dashboards" search={{ owned: "me" }} />}
               >
                 <mine.icon />
                 <span>{resolveText(t, mine.label)}</span>

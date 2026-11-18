@@ -16,7 +16,7 @@ import {
   zoneSections,
 } from "@/lib/portal/nav-model";
 import { useMetricsViewHidesPane } from "@/lib/portal/metrics-view-pane";
-import { usePortalItem } from "@/lib/portal/portal-nav";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { railItemFor, type RailId } from "@/lib/portal/rail-model";
 import { useZoneNav, type ZoneNav } from "@/lib/portal/use-zone-nav";
 import {
@@ -70,7 +70,7 @@ export function ZonePages({ nav }: { nav: ZoneNav }) {
 }
 
 function RailPane({ rail, nav }: { rail: RailId; nav: ZoneNav }) {
-  const active = resolveZoneItem(nav.activeZone, usePortalItem());
+  const active = resolveZoneItem(nav.activeZone, useNavLocation().item);
   const visibleZones = new Set(nav.zones.map((zone) => zone.id));
   const { subject, isPending: reachPending } = useHomeSubject();
 

@@ -69,10 +69,9 @@ const mocks = vi.hoisted(() => ({
   truncated: false,
 }));
 
-vi.mock("@/lib/portal/portal-search", () => ({
-  usePortalSearch: () => ({ conn: mocks.conn }),
-  useSetPortalSearch: () => (patch: Record<string, unknown>) => {
-    mocks.patches.push(patch);
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => (target: Record<string, unknown>) => {
+    mocks.patches.push(target);
   },
 }));
 
@@ -134,14 +133,16 @@ beforeEach(() => {
 
 describe("the overview", () => {
   it("plots every connector and offers each as a drill-down", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.getByRole("heading", { name: "Ingestion" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /jira/ }));
-    expect(mocks.patches).toEqual([{ conn: "jira" }]);
+    expect(mocks.patches).toEqual([
+      { to: "/manage/ingestion/$connector", params: { connector: "jira" } },
+    ]);
   });
 
   it("reads org-wide, with no scope on any request", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(mocks.asked).toHaveLength(3);
     expect(mocks.asked.every((req) => req.scope === null)).toBe(true);
     // The trend asks for a lookback, not a resolved instant: resolving one
@@ -157,7 +158,7 @@ describe("the overview", () => {
 
   it("states that the timestamps are extraction time, not insert time", () => {
     // The number is honest only if the page says what it counts.
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.getByText(/extraction intensity, not insert time/)).toBeTruthy();
     expect(screen.getByText(/not deduplicated/)).toBeTruthy();
   });
@@ -169,13 +170,13 @@ describe("the drill-down", () => {
   });
 
   it("names the connector and scopes every read to its bronze database", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.getByRole("heading", { name: "jira" })).toBeTruthy();
     expect(mocks.asked.every((req) => req.scope === "bronze_jira")).toBe(true);
   });
 
   it("bands by stream", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.getByText("Recent activity by stream")).toBeTruthy();
     const stacked = screen
       .getAllByTestId("bar")
@@ -184,21 +185,21 @@ describe("the drill-down", () => {
     expect(stacked.map((bar) => bar.getAttribute("data-key"))).toContain("_boards");
   });
 
-  it("goes back by clearing the key, not by pushing a bare address", () => {
-    render(<IngestionView />);
+  it("goes back to the overview", () => {
+    render(<IngestionView connector={mocks.conn} />);
     fireEvent.click(screen.getByRole("button", { name: /All connectors/ }));
-    expect(mocks.patches).toEqual([{ conn: undefined }]);
+    expect(mocks.patches).toEqual([{ to: "/manage/ingestion" }]);
   });
 
   it("drops the roster, which is an overview affordance", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.queryByText(/Connectors active/)).toBeNull();
   });
 });
 
 describe("the axes", () => {
   it("floors the log axis below one so a single-row bucket has height", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     const trend = screen.getAllByTestId("y-axis")[0];
     expect(trend.getAttribute("data-scale")).toBe("log");
     const domain = JSON.parse(trend.getAttribute("data-domain") ?? "null") as number[];
@@ -211,14 +212,14 @@ describe("the axes", () => {
   });
 
   it("leaves the stacked axes linear", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     const [, recent, live] = screen.getAllByTestId("y-axis");
     expect(recent.getAttribute("data-scale")).toBe("linear");
     expect(live.getAttribute("data-scale")).toBe("linear");
   });
 
   it("plots time numerically, so an idle hour reads as a gap", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     const axis = screen.getAllByTestId("x-axis")[0];
     expect(axis.getAttribute("data-key")).toBe("epoch");
     expect(axis.getAttribute("data-type")).toBe("number");
@@ -233,7 +234,7 @@ describe("the axes", () => {
   });
 
   it("hands the plot UTC epochs, not re-cut local buckets", () => {
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     const rows = JSON.parse(
       screen.getAllByTestId("plot")[0].getAttribute("data-rows") ?? "[]",
     ) as Array<{ epoch: number }>;
@@ -244,7 +245,7 @@ describe("the axes", () => {
 describe("a clipped read", () => {
   it("says so rather than showing a short chart as complete", () => {
     mocks.truncated = true;
-    render(<IngestionView />);
+    render(<IngestionView connector={mocks.conn} />);
     expect(screen.getAllByText(/Clipped/).length).toBeGreaterThan(0);
   });
 });

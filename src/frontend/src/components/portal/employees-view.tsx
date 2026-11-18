@@ -17,7 +17,6 @@ import {
   TableRow,
 } from "@gears-frontx/ui-kit";
 import { personName } from "@/lib/identities/person-display";
-import { usePortalNavActions } from "@/lib/portal/portal-nav";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
 import { cn } from "@/lib/utils";
@@ -55,7 +54,6 @@ function rosterEmployees(
  */
 export function EmployeesView() {
   const { t } = useTranslation();
-  const { setZone } = usePortalNavActions();
   const { isFlat } = useVisibilityPolicy();
   const visibleRoster = useVisibleRoster(true);
   const [query, setQuery] = useState("");
@@ -140,11 +138,8 @@ export function EmployeesView() {
               <TableRow key={e.personId}>
                 <TableCell>
                   <Link
-                    to="/ic/$person/personal"
+                    to="/people/$person"
                     params={{ person: e.personId }}
-                    // Clear the pinned Manage zone so the route-driven Person
-                    // zone takes over (same pattern as the rail).
-                    onClick={() => setZone(null)}
                     className="font-medium hover:underline"
                   >
                     {e.displayName}
