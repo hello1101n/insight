@@ -1,0 +1,9 @@
+{{- $service := .Subcharts.connectors }}
+{{- $values := mergeOverwrite (deepCopy $service.Values) (dict "mariadb" .Values.mariadb "clickhouse" .Values.clickhouse) }}
+{{- with .Values.identityUrl }}
+{{- $_ := set $values "identityUrl" . }}
+{{- end }}
+{{- $context := mergeOverwrite (deepCopy $service) (dict "Values" $values) }}
+{{ include "insight-connectors.deployment" $context }}
+---
+{{ include "insight-connectors.migrate" $context }}
