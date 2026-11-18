@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveValue::Set, ColumnTrait as _, ConnectionTrait, DbErr, EntityTrait as _, Order,
-    QueryFilter as _, QueryOrder as _,
+    QueryFilter as _, QueryOrder as _, QuerySelect as _,
 };
 use uuid::Uuid;
 
 use super::{TokenHash, TokenHolder, TokenLabel};
 use crate::infra::db::entities::sql_api_tokens;
+
+pub(crate) const LIST_LIMIT: u64 = 1000;
 
 #[derive(Debug)]
 pub(crate) struct NewToken<'a> {
@@ -44,6 +46,7 @@ pub(crate) async fn list(
         .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
         .order_by(sql_api_tokens::Column::CreatedAt, Order::Desc)
         .order_by(sql_api_tokens::Column::Id, Order::Desc)
+        .limit(LIST_LIMIT)
         .all(db)
         .await
 }

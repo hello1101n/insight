@@ -6511,7 +6511,7 @@
                 }
               }
             },
-            "description": "Tokens, newest first; never the token itself"
+            "description": "At most 1000 tokens, newest first; never the token itself"
           },
           "401": {
             "content": {

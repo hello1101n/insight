@@ -120,3 +120,34 @@ async fn a_tenant_lists_and_removes_only_its_own_tokens_newest_first() -> R {
     assert_eq!(store::list(&db, other_tenant).await?.len(), 1);
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires live MariaDB 11+; set INTEGRATION_TESTS_MARIADB_URL to enable"]
+async fn a_tenant_list_stops_at_the_list_limit() -> R {
+    let Some(db) = connect_or_skip().await else {
+        return Ok(());
+    };
+    let tenant = Uuid::now_v7();
+    let label = TokenLabel::parse("ci")?;
+
+    for _ in 0..=store::LIST_LIMIT {
+        let minted = mint()?;
+        store::insert(
+            &db,
+            NewToken {
+                tenant_id: tenant,
+                person_id: Uuid::now_v7(),
+                label: &label,
+                created_by: Uuid::now_v7(),
+                hash: &minted.hash,
+                created_at: Utc::now().trunc_subsecs(0),
+            },
+        )
+        .await?;
+    }
+
+    let listed = store::list(&db, tenant).await?;
+
+    assert_eq!(u64::try_from(listed.len())?, store::LIST_LIMIT);
+    Ok(())
+}

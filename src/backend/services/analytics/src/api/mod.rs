@@ -335,7 +335,7 @@ pub(crate) fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) ->
         .json_response_with_schema::<sql_tokens::SqlTokenListResponse>(
             openapi,
             StatusCode::OK,
-            "Tokens, newest first; never the token itself",
+            "At most 1000 tokens, newest first; never the token itself",
         )
         .error_401(openapi)
         .error_403(openapi)
