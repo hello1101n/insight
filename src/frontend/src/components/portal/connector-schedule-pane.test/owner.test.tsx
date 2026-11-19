@@ -224,7 +224,7 @@ it.each(["loading", "failed"])(
     await waitFor(() => expect(api.getConnectorSchedule).toHaveBeenCalled());
     await userEvent.hover(chip);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Saved by another admin"
+      "Target · saved by another admin"
     );
     expect(screen.getByRole("tooltip")).not.toHaveTextContent(OTHER);
     await userEvent.unhover(chip);
@@ -233,7 +233,7 @@ it.each(["loading", "failed"])(
     const header = screen.getByText("Pending").closest("[tabindex]")!;
     await userEvent.hover(header);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Saved by another admin"
+      "Target · saved by another admin"
     );
     expect(document.body.textContent).not.toContain(OTHER);
   }
@@ -270,14 +270,14 @@ it.each([
       );
     await userEvent.hover(within(row).getByRole("img", { name: "Pending" }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      `Saved by ${name}`
+      `Target · saved by ${name}`
     );
     await userEvent.unhover(within(row).getByRole("img", { name: "Pending" }));
     await userEvent.click(row);
     await screen.findByText(new RegExp(`Saved by ${name}`));
     await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      `Saved by ${name}`
+      `Target · saved by ${name}`
     );
     expect(document.body.textContent).not.toContain(personId);
   }

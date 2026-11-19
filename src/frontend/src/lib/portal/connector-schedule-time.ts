@@ -28,7 +28,13 @@ const utcMonth = new Intl.DateTimeFormat("en-US", {
 function formatScheduleTime(
   value: string | Date | null | undefined,
   now: Date,
-  includePreposition: boolean
+  {
+    includePreposition,
+    includeZone,
+  }: {
+    includePreposition: boolean;
+    includeZone: boolean;
+  }
 ): string {
   const time = value == null ? null : new Date(value);
   if (!time || !Number.isFinite(time.getTime()))
@@ -36,9 +42,10 @@ function formatScheduleTime(
       ? i18n.t("connectors.schedule.at_time", { time: "—" })
       : "—";
 
-  const clock = i18n.t("connectors.schedule.with_utc", {
-    words: scheduleClock(time),
-  });
+  const hoursAndMinutes = scheduleClock(time);
+  const clock = includeZone
+    ? i18n.t("connectors.schedule.with_utc", { words: hoursAndMinutes })
+    : hoursAndMinutes;
   if (time.toISOString().slice(0, 10) === now.toISOString().slice(0, 10))
     return includePreposition
       ? i18n.t("connectors.schedule.at_time", { time: clock })
@@ -61,14 +68,40 @@ export function scheduleTime(
   value: string | Date | null | undefined,
   now = new Date()
 ): string {
-  return formatScheduleTime(value, now, false);
+  return formatScheduleTime(value, now, {
+    includePreposition: false,
+    includeZone: true,
+  });
 }
 
 export function scheduleTimePhrase(
   value: string | Date | null | undefined,
   now = new Date()
 ): string {
-  return formatScheduleTime(value, now, true);
+  return formatScheduleTime(value, now, {
+    includePreposition: true,
+    includeZone: true,
+  });
+}
+
+export function scheduleTooltipTimePhrase(
+  value: string,
+  now = new Date()
+): string {
+  return formatScheduleTime(value, now, {
+    includePreposition: true,
+    includeZone: false,
+  });
+}
+
+export function scheduleObservationTime(
+  value: string,
+  now = new Date()
+): string {
+  return formatScheduleTime(value, now, {
+    includePreposition: false,
+    includeZone: false,
+  });
 }
 
 export function relativeScheduleTime(

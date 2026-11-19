@@ -1,6 +1,6 @@
 import { mocks, pane } from "./fixtures";
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 
@@ -10,11 +10,11 @@ it("omits saved-by attribution from a pending clear tooltip", async () => {
   await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
 
   const tooltip = await screen.findByRole("tooltip");
-  expect(tooltip).toHaveTextContent("Running as of");
-  expect(tooltip).not.toHaveTextContent("Saved by");
+  expect(tooltip).toHaveTextContent("Running · as of");
+  expect(tooltip).not.toHaveTextContent(/saved by/i);
 });
 
-it("explains the header chip on hover and keyboard focus with separate stacked lines", async () => {
+it("explains the header chip on hover and keyboard focus with a status and a running row", async () => {
   mocks.query.data!.schedule.status = "inherited";
   mocks.query.data!.schedule.requested = null;
   mocks.query.data!.schedule.inherited = {
@@ -32,17 +32,14 @@ it("explains the header chip on hover and keyboard focus with separate stacked l
     }
     const tooltip = await screen.findByRole("tooltip");
     expect(trigger).toHaveAttribute("aria-describedby", tooltip.id);
-    const lines = Array.from(tooltip.querySelectorAll("span"));
-    expect(
-      lines.map((line) => line.textContent),
-      gesture
-    ).toEqual([
-      "Runs the schedule set at deployment in instance settings.",
-      "0 2 * * * UTC",
-      "0 14 * * * UTC",
-    ]);
-    expect(lines[0].parentElement).toHaveClass("flex", "flex-col");
-    for (const line of lines) expect(line).toHaveClass("block");
+    expect(tooltip.querySelector("p"), gesture).toHaveTextContent(
+      "Runs the schedule set at deployment in instance settings."
+    );
+    const row = within(tooltip).getByRole("listitem");
+    expect(row, gesture).toHaveTextContent(
+      "Running · as of 12:00 0 3 * * * UTC"
+    );
+    expect(row.querySelector("code")).toHaveTextContent("0 3 * * *");
     await user.unhover(trigger);
     if (gesture === "focus") await user.tab();
     await waitFor(() =>
