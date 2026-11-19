@@ -437,7 +437,6 @@ describe("orderAttentionItems", () => {
     valueUnit: "",
     medianText: "9",
     gapText: "-89%",
-    help: null,
     spreadGap: 1,
     relGap: 1,
     kind: "behind",

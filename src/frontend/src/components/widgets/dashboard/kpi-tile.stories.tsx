@@ -36,7 +36,6 @@ function makeTile(overrides: Partial<KpiTileData> = {}): KpiTileData {
     medianLabel: "median 6",
     gapText: null,
     gapStatus: "neutral",
-    help: { description: "Issues closed in the period", explanation: null },
     groupId: "task_delivery",
     ...overrides,
   };

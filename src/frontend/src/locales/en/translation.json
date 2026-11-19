@@ -154,9 +154,6 @@
       "near_median": "near the median"
     },
     "legend": {
-      "higher_is_better": "higher is better · ",
-      "lower_is_better": "lower is better · ",
-      "click_to_sort": "click to sort",
       "sort_column": "{{column}} — sort by this column",
       "top": "Top 25%",
       "near_median": "Near the median",
@@ -1104,8 +1101,6 @@
       "nothing_for_period": "Nothing to show here for the selected period.",
       "no_source": "No data source is connected for this section — nothing is measured here for anyone yet.",
       "nothing_recorded": "Nothing recorded here for the selected period.",
-      "loading_named": "Loading {{title}}",
-      "open_named": "Open {{title}} details",
       "caption": "{{title}} metrics for each person, compared with their own {{cohort}} peers",
       "coverage_unmeasured": "No data source is connected for {{sections}} — this page shows what is measured, not everything this person does.",
       "coverage_inactive": "Nothing recorded in {{sections}} this period.",

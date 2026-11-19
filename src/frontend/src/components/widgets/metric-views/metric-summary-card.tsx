@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { Card, CardContent } from "@gears-frontx/ui-kit";
@@ -91,8 +91,8 @@ export function MetricSummaryCard({
       <CardContent className="flex h-full flex-col gap-3">
         <MetricName
           metric={metric}
-          focusable
-          className="truncate pr-8 text-sm font-semibold"
+          truncate
+          className="pr-8 text-sm font-semibold"
         />
         <span className="flex items-baseline gap-1 tabular-nums">
           <span className={TEXT_FIGURE}>

@@ -1,12 +1,9 @@
-import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
 
 import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@gears-frontx/ui-kit";
-import { metricHelp, type MetricHelpText } from "@/lib/insight/metric-help";
 import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, formatMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
@@ -33,7 +30,6 @@ export function MetricsTable({
   rows,
   groups,
   byKey,
-  helpByKey,
   roles,
   sort,
   onSort,
@@ -43,7 +39,6 @@ export function MetricsTable({
   rows: readonly MetricsRow[];
   groups: readonly MetricGroup[];
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
-  helpByKey: ReadonlyMap<string, MetricHelpText>;
   roles: ReadonlyMap<string, string>;
   sort: MetricsSort | null;
   onSort: (metricKey: string) => void;
@@ -89,7 +84,6 @@ export function MetricsTable({
             {keys.map((key) => {
               const result = byKey.get(key);
               const label = result?.label ?? key;
-              const help = helpByKey.get(key) ?? (result ? metricHelp(result) : null);
               const direction = sort?.key === key ? sort.direction : undefined;
               return (
                 <th
@@ -103,24 +97,22 @@ export function MetricsTable({
                     groupStarts.has(key) && "border-s",
                   )}
                 >
-                  <MetricHelpTooltip label={label} help={help}>
-                    <button
-                      type="button"
-                      aria-label={`Sort by ${label}`}
-                      onClick={() => onSort(key)}
-                      className="flex w-full cursor-pointer items-end justify-end gap-1 text-end text-xs leading-tight font-semibold hover:text-primary"
-                    >
-                      <span className="whitespace-normal">
-                        {label}
-                        <UnitNote result={result} className="block" />
-                      </span>
-                      {direction === "descending" ? (
-                        <ArrowDown className="size-3 shrink-0" aria-hidden />
-                      ) : direction === "ascending" ? (
-                        <ArrowUp className="size-3 shrink-0" aria-hidden />
-                      ) : null}
-                    </button>
-                  </MetricHelpTooltip>
+                  <button
+                    type="button"
+                    aria-label={`Sort by ${label}`}
+                    onClick={() => onSort(key)}
+                    className="flex w-full cursor-pointer items-end justify-end gap-1 text-end text-xs leading-tight font-semibold hover:text-primary"
+                  >
+                    <span className="whitespace-normal">
+                      {label}
+                      <UnitNote result={result} className="block" />
+                    </span>
+                    {direction === "descending" ? (
+                      <ArrowDown className="size-3 shrink-0" aria-hidden />
+                    ) : direction === "ascending" ? (
+                      <ArrowUp className="size-3 shrink-0" aria-hidden />
+                    ) : null}
+                  </button>
                 </th>
               );
             })}
@@ -199,29 +191,6 @@ export function MetricsTable({
         </tbody>
       </table>
     </div>
-  );
-}
-
-export function MetricHelpTooltip({
-  label,
-  help,
-  children,
-}: {
-  label: string;
-  help: MetricHelpText | null;
-  children: ReactElement;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipContent side="top" className="max-w-72">
-        <span className="flex flex-col gap-1 leading-snug">
-          <span className="font-medium">{label}</span>
-          {help?.description ? <span>{help.description}</span> : null}
-          {help?.explanation ? <span className="opacity-80">{help.explanation}</span> : null}
-        </span>
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
