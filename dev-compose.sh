@@ -1736,7 +1736,8 @@ instead, which is CI's mode.
 
   up      Generate .env.compose.test-stand, bring the stack up, seed it, and
           block until EVERY gold observation table the seed populates proves
-          dbt rebuilt it for this run and left a positive observation in it.
+          dbt rebuilt it for this run and left a positive observation in it,
+          and every backend service reports ready on /health.
 
           By default the Rust services (analytics, authenticator,
           identity-resolution, gateway, insight-v3-core) are compiled from
@@ -2139,14 +2140,15 @@ test_stand_table_ready() {
 # Requiring the whole set rather than one canary is what stops a stand where a
 # single generator family produced nothing from being reported ready — that
 # failure otherwise surfaces much later, as tests failing on absent rows.
-# Every service the data path is read through. All four answer the framework's
-# /health, so one path covers them.
+# INVARIANT: probe /health, not /healthz. During application preparation a
+# toolkit service answers /health with 503 but /healthz with 200.
 TEST_STAND_SERVICE_PROBES=(
   "connectors|CONNECTORS_PORT"
   "gateway|GATEWAY_PORT"
   "analytics|ANALYTICS_PORT"
   "authenticator|AUTHENTICATOR_PORT"
   "identity-resolution|IDENTITY_RESOLUTION_PORT"
+  "insight-v3-core|INSIGHT_V3_CORE_PORT"
 )
 
 # A published port as the running stand has it: the env file where it names one,
@@ -2165,9 +2167,6 @@ test_stand_published_port() {
   return 1
 }
 
-# Readiness for a stand whose data its caller will write itself. The gold gate
-# below certifies rows a data-path run deletes as its first act, so waiting on
-# them would mean waiting for something about to be destroyed.
 test_stand_wait_services() {
   local elapsed=0 probe name var port pending=() kc_port
 
@@ -2198,7 +2197,7 @@ test_stand_wait_services() {
   done
 
   echo "ERROR: readiness gate timed out after ${TEST_STAND_READY_TIMEOUT}s." >&2
-  echo "       ${#pending[@]} service(s) never answered /health:" >&2
+  echo "       ${#pending[@]} service(s) did not report ready on /health:" >&2
   printf '         %s\n' "${pending[@]}" >&2
   return 1
 }
@@ -2427,6 +2426,10 @@ cmd_test_stand() {
       seed_connector_schedules "$TEST_STAND_ENV_FILE" || return 1
 
       test_stand_wait_ready "$run_started_at" || return 1
+
+      # INVARIANT: the seed restarts analytics as its last step, so the gold
+      # gate can pass while analytics still answers 503.
+      test_stand_wait_services || return 1
 
       echo "=== test-stand is ready ==="
       ;;
