@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import { resolveText } from "@/i18n/localized-text";
 import { MetricName } from "@/components/widgets/metric-help-tooltip";
 import {
+  Spinner,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Spinner } from "@gears-frontx/ui-kit";
+} from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { GroupCardEmpty } from "@/components/widgets/group-card-empty";
 import { formatMetricValue } from "@/lib/format";

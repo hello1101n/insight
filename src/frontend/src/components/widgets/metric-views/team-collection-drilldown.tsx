@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { resolveText } from "@/i18n/localized-text";
 
 import type { DateRange } from "@/api/period-to-date-range";
-import { Card, CardContent } from "@/components/ui/card";
-import { Spinner } from "@gears-frontx/ui-kit";
+import { Spinner, Card, CardContent } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   MembersGrid,

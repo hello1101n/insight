@@ -4,10 +4,11 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 
 import { ChartLine, YAxis } from "@/components/chart-series";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   formatHoursDuration,
   formatMetricValue,

@@ -6,7 +6,7 @@ import type { DashboardListed } from "@/api/custom-client";
 import { DashboardByline } from "@/components/custom/dashboard-byline";
 import { DashboardMenu } from "@/components/custom/dashboard-menu";
 import { DashboardTags } from "@/components/custom/dashboard-tags";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { dashboardQuery, dashboardTagsQuery } from "@/queries/custom";
 import { TEXT_NAME } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";

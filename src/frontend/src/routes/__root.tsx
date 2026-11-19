@@ -1,12 +1,13 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
-import { TooltipProvider } from "@gears-frontx/ui-kit";
+import { Toaster, TooltipProvider } from "@gears-frontx/ui-kit";
 import { getPerson } from "@/api/identity-client";
 import { authStore, getViewerPersonId, signIn } from "@/auth";
 import { AuthGate } from "@/components/auth-gate";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
-import { Toaster } from "@/components/ui/toaster";
 import { normalizePersonId } from "@/lib/metrics/entity";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 import { queryClient } from "@/query-client";
 import { FeedbackDialogProvider } from "@/components/feedback-dialog-provider";
 import { MetricEvidenceDialogProvider } from "@/components/metric-evidence-dialog-provider";
@@ -47,10 +48,9 @@ function RootPending() {
   return <CenteredSpinner className="min-h-screen w-full" />;
 }
 
-// Long enough that a pointer passing over a row of triggers opens none of them.
-const TOOLTIP_DELAY_MS = 400;
-
 function RootLayout() {
+  const { t } = useTranslation();
+
   return (
     <TooltipProvider delay={TOOLTIP_DELAY_MS}>
       <MetricEvidenceDialogProvider>
@@ -62,7 +62,10 @@ function RootLayout() {
               closing, and the identity verbs report their result by closing the
               case window and toasting. Without this mount every `toast()` call
               in the app is silently dropped. */}
-          <Toaster />
+          <Toaster
+            label={t("common.a11y.notifications")}
+            closeLabel={t("common.actions.close")}
+          />
         </FeedbackDialogProvider>
       </MetricEvidenceDialogProvider>
     </TooltipProvider>

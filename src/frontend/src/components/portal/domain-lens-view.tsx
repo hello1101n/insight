@@ -16,7 +16,6 @@ import {
   type SectionTrendSeries,
 } from "@/components/portal/section-trend";
 import { ChartBar, YAxis } from "@/components/chart-series";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
@@ -31,6 +30,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import {

@@ -8,17 +8,15 @@ import {
   ChartTooltip,
   ChartTooltipContent,
   Skeleton,
-} from "@gears-frontx/ui-kit";
-
-import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
-import { ComingSoon } from "@/components/widgets/coming-soon";
-import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
+
+import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
+import { ComingSoon } from "@/components/widgets/coming-soon";
 
 /** One plotted series: its metric key, its label, and how to draw it. */
 export type SectionTrendSeries = {

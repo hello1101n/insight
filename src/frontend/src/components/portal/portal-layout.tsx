@@ -17,6 +17,7 @@ import {
   SidebarFooter,
   SidebarInset,
   SidebarProvider,
+  TooltipProvider,
   useSidebar,
 } from "@gears-frontx/ui-kit";
 import { useMetricsViewHidesPane } from "@/lib/portal/metrics-view-pane";
@@ -34,6 +35,7 @@ import { CONTENT_ID } from "@/lib/portal/content-scroll";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useViewerReach } from "@/lib/portal/use-viewer-reach";
 import { useZoneNav } from "@/lib/portal/use-zone-nav";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 import { useIsAdmin } from "@/queries/identity-me";
 
 /**
@@ -70,15 +72,19 @@ export function PortalLayout() {
           data-scroll-restoration-id={CONTENT_ID}
           className="isolate min-w-0 overflow-x-clip overflow-y-auto"
         >
-          <MockBanner />
-          {/* The impersonation indicator: it names whose data is on screen and
-              carries the way out. Missing it left a view-as operator with no sign
-              they were not looking at their own org, and no exit. */}
-          <ViewAsBanner />
-          <PortalTopBar />
-          <ZoneGuard>
-            <Outlet />
-          </ZoneGuard>
+          {/* WORKAROUND: the kit's SidebarProvider sets a tooltip delay of 0
+              for everything inside it, sidebar or not. */}
+          <TooltipProvider delay={TOOLTIP_DELAY_MS}>
+            <MockBanner />
+            {/* The impersonation indicator: it names whose data is on screen and
+                carries the way out. Missing it left a view-as operator with no sign
+                they were not looking at their own org, and no exit. */}
+            <ViewAsBanner />
+            <PortalTopBar />
+            <ZoneGuard>
+              <Outlet />
+            </ZoneGuard>
+          </TooltipProvider>
         </SidebarInset>
       </SidebarProvider>
     </PortalDocumentTitle>

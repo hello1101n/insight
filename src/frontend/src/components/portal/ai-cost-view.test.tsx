@@ -173,7 +173,7 @@ beforeEach(() => {
 describe("AiCostView", () => {
   it("renders headline KPIs: Claude-only cost, active users, org lines", () => {
     render(<AiCostView item={null} />);
-    const costTile = screen.getByText("Claude Code only").closest("[data-slot=card]");
+    const costTile = screen.getByText("Claude Code only").parentElement;
     expect(costTile).toHaveTextContent("Potential cost as the API names it");
     expect(screen.getByText("Claude Code only")).toBeInTheDocument();
     // 3 of the 5 people in scope (lead included) have active days > 0
@@ -200,7 +200,7 @@ describe("AiCostView", () => {
     mocks.grid.byKey = drop(mocks.grid.byKey);
     mocks.tools.byKey = drop(mocks.tools.byKey);
     render(<AiCostView item={null} />);
-    const costTile = screen.getByText("Claude Code only").closest("[data-slot=card]");
+    const costTile = screen.getByText("Claude Code only").parentElement;
     expect(costTile).toHaveTextContent("Potential cost as the API names it");
     // A $0 actual cost would assert that nothing was billed.
     expect(screen.queryByText(/actual cost/)).not.toBeInTheDocument();

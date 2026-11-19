@@ -7,7 +7,6 @@ import type {
   ReportRecipe,
 } from "@/api/reports-client";
 import { MAX_REPORT_PEOPLE } from "@/api/reports-client";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Spinner,
   Tooltip,
@@ -15,6 +14,8 @@ import {
   TooltipTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ReportBuilderActions } from "@/components/portal/report-builder-actions";
