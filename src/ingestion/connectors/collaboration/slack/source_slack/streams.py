@@ -1,9 +1,9 @@
 """`users_details`: one row per member per day from Slack's member analytics file.
 
-Incremental on `date`, one request per day from the cursor day to today - 2 days
-(Slack's publication delay). The cursor day is read again, as the declarative
-connector did: its state `{"date": "YYYY-MM-DD"}` could name a day it had not
-finished, and unique_key makes the second copy replace the first.
+Incremental on `date`, one request per day from `max(slack_start_date, cursor - 2 days)`
+to today - 2 days (Slack's publication delay). The cursor day and the 2 days before it
+are read again because Slack can revise them late; unique_key makes the new copy
+replace the stored one. The cursor does not move back while those days are read again.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from source_slack.models import MemberRow, SlackConfig, describe
 logger = logging.getLogger("airbyte")
 
 CURSOR = "date"
+LOOKBACK = timedelta(days=2)
 PUBLICATION_DELAY = timedelta(days=2)
 # A day Slack still calls not yet available this long after it ended is not late,
 # it is missing: the sync fails instead of waiting for it forever.
@@ -129,7 +130,7 @@ class UsersDetails(Stream, CheckpointMixin):
     ) -> Iterable[Mapping[str, Any] | None]:
         if stream_state:
             self.state = stream_state
-        first = max(self._start, self._cursor) if self._cursor else self._start
+        first = max(self._start, self._cursor - LOOKBACK) if self._cursor else self._start
         last = today() - PUBLICATION_DELAY
         day = first
         while day <= last:
@@ -166,7 +167,8 @@ class UsersDetails(Stream, CheckpointMixin):
                 internal_message=str(error),
                 failure_type=FailureType.transient_error,
             ) from error
-        self._cursor = date.fromisoformat(day)
+        read = date.fromisoformat(day)
+        self._cursor = max(self._cursor, read) if self._cursor else read
 
     def probe(self) -> None:
         """Read the first row of the latest published day; raise what a sync would."""
