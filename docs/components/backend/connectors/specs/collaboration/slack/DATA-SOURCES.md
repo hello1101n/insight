@@ -87,8 +87,8 @@ The API `admin.analytics.messages.metadata` (Enterprise) does not send the text.
 | Source | Data | Plan | In Insight |
 |---|---|---|---|
 | `users.list` | Member ID, full name, display name, deactivated flag, guest flags, bot flag. Also time zone and status. The email needs the scope `users:read.email`. | Any | **Yes.** Insight reads the ID, the names, the flags and the email. |
-| `usergroups.list`, `usergroups.users.list` | User groups and their members | Any | Planned (#4356) |
-| SCIM API | Title, department, manager, cost center, division. Groups and members. | B+ | Planned (#4356) |
+| `usergroups.list`, `usergroups.users.list` | User groups and their members. On Free, Slack refuses with `plan_upgrade_required`. | Paid | **Yes.** Insight stores the membership for each day. Teams and identity do not use it (SPEC.md section 9). |
+| SCIM API | Employee ID, title, department, manager, cost center, division. Groups and members. Needs the `admin` scope, which can also change members. | B+ | No. Decision in #4356: Insight does not ask for the `admin` scope (SPEC.md section 9). |
 | `admin.users.list` | Roles, guest flags, date of creation, date of deactivation, 2FA, SSO | Enterprise | No |
 
 ### 2.3 Channels

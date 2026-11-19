@@ -12,7 +12,7 @@ from conftest import CONFIG, day_url, member_file, refusal, slack
 from source_slack.source import SourceSlack
 
 _LOG = logging.getLogger("test")
-REPORT = "Plan Business+ (plus). Streams to read: users_details, users. Missing scopes: none."
+REPORT = "Plan Business+ (plus). Streams to read: users_details, users, usergroup_members. Missing scopes: none."
 
 
 def test_spec_requires_the_insight_identity_and_the_token() -> None:

@@ -142,6 +142,25 @@ class MessagesPage(Page):
     messages: tuple[Message, ...] = ()
 
 
+class Usergroup(BaseModel):
+    """One user group of `usergroups.list`. `auto_type` is `admins` or `owner` for a group Slack keeps itself."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    handle: JsonValue = None
+    name: JsonValue = None
+    auto_type: JsonValue = None
+
+
+class UsergroupsAnswer(Answer):
+    usergroups: tuple[Usergroup, ...] = ()
+
+
+class UsergroupUsersAnswer(Answer):
+    users: tuple[Annotated[str, Field(min_length=1)], ...] = ()
+
+
 def _scope_list(value: object) -> object:
     return frozenset(filter(None, (scope.strip() for scope in value.split(",")))) if isinstance(value, str) else value
 

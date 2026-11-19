@@ -22,6 +22,7 @@ BILLING_SCOPE = "team.billing:read"
 ANALYTICS_PLANS = frozenset({"plus", "enterprise", "compliance"})
 ALL_PLANS = frozenset(PLAN_NAMES)
 HISTORY_PLANS = frozenset({"free", "std"})
+PAID_PLANS = ALL_PLANS - {"free"}
 HISTORY_SCOPES = frozenset(
     {
         "channels:history",
@@ -48,6 +49,7 @@ STREAM_RULES: tuple[StreamRule, ...] = (
     StreamRule("users_details", ANALYTICS_PLANS, frozenset({"admin.analytics:read"}), main=True),
     StreamRule("messages", HISTORY_PLANS, HISTORY_SCOPES, main=True),
     StreamRule("users", ALL_PLANS, frozenset({"users:read", "users:read.email"})),
+    StreamRule("usergroup_members", PAID_PLANS, frozenset({"usergroups:read"})),
 )
 
 

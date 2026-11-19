@@ -23,8 +23,17 @@ from airbyte_cdk.test.catalog_builder import CatalogBuilder
 from airbyte_cdk.test.entrypoint_wrapper import EntrypointOutput, read
 from source_slack import client as client_module
 from source_slack import streams as streams_module
-from source_slack.client import API_URL, BILLING_URL, CONVERSATIONS_URL, USERS_URL
-from source_slack.models import BillingAnswer, ConversationsPage, Member, PageMetadata, Profile, Refusal, UsersPage
+from source_slack.client import API_URL, BILLING_URL, CONVERSATIONS_URL, USERGROUPS_URL, USERS_URL
+from source_slack.models import (
+    BillingAnswer,
+    ConversationsPage,
+    Member,
+    PageMetadata,
+    Profile,
+    Refusal,
+    UsergroupsAnswer,
+    UsersPage,
+)
 from source_slack.plan import HISTORY_SCOPES
 from source_slack.source import SourceSlack
 
@@ -49,7 +58,14 @@ def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     return waits
 
 
-SCOPES = ("admin.analytics:read", "team.billing:read", "users:read", "users:read.email", *sorted(HISTORY_SCOPES))
+SCOPES = (
+    "admin.analytics:read",
+    "team.billing:read",
+    "usergroups:read",
+    "users:read",
+    "users:read.email",
+    *sorted(HISTORY_SCOPES),
+)
 
 
 def billing(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> dict[str, Any]:
@@ -75,7 +91,7 @@ def users_page(members: tuple[Member, ...] = MEMBERS, next_cursor: str = "") -> 
 
 
 def slack(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> rm.Mocker:
-    """A mocked Slack that answers team.billing.info, users.list and an empty conversations.list.
+    """A mocked Slack that answers team.billing.info, users.list, an empty conversations.list and no user groups.
 
     Each test registers the rest.
     """
@@ -83,6 +99,7 @@ def slack(plan: str = "plus", scopes: tuple[str, ...] = SCOPES) -> rm.Mocker:
     http.post(BILLING_URL, **billing(plan, scopes))
     http.get(USERS_URL, **users_page())
     http.get(CONVERSATIONS_URL, json=ConversationsPage(ok=True).model_dump(mode="json"))
+    http.get(USERGROUPS_URL, json=UsergroupsAnswer(ok=True).model_dump(mode="json"))
     return http
 
 
