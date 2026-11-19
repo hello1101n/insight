@@ -454,5 +454,4 @@ The streams with an issue in section 1 do not exist in `main`.
 | Each new bronze day gets to staging (section 11) | Staging reads only the last 3 days of loads. After a long stop, some days do not get to staging. | #4317 |
 | Data-quality problems make an alert (section 11) | The check has the tier `warn`. It only writes to the log. | #4324 |
 | `unmapped_member`: a non-guest member without an identity binding (section 11) | `member_without_email`: a non-guest member without an email | #4324 |
-| The stale alert checks the table of the main stream (section 11) | The alert checks all tables in `bronze_slack`. When Members writes on each sync, the alert does not fire if Activity stops. | #4358 |
 | The move to a new connector type never loses the cursor (section 12) | The state backup is in the reconcile pod. | #4315 |
