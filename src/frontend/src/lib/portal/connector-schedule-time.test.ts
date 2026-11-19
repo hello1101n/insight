@@ -26,9 +26,12 @@ it.each([
   }
 );
 
-it("keeps the UTC clock short and only the full UTC date in the tooltip", () => {
+it("includes a date for other UTC days and omits seconds", () => {
   expect(shortScheduleTime(now, now)).toBe("12:00");
-  expect(scheduleTime(now)).toBe("2026-01-15 12:00:00 UTC");
+  expect(scheduleTime(now, now)).toBe("12:00 UTC");
+  expect(scheduleTime("2026-01-15T23:30:20-02:00", now)).toBe(
+    "16 Jan at 01:30 UTC"
+  );
   expect(scheduleTime("invalid")).toBe("—");
   expect(relativeScheduleTime("invalid", now)).toBe("—");
 });
@@ -59,3 +62,10 @@ it.each([
     expect(scheduleClock(value)).toBe(expected);
   }
 );
+
+it.each([
+  ["2026-09-12T16:48:00Z", "12 Sep at 16:48 UTC"],
+  ["2025-11-12T16:48:00Z", "12 Nov 2025 at 16:48 UTC"],
+])("formats the UTC date for %s", (value, expected) => {
+  expect(scheduleTime(value, now)).toBe(expected);
+});

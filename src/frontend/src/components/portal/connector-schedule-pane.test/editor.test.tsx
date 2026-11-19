@@ -220,9 +220,8 @@ it("focuses a save failure alert once and lets the draft be edited again", async
 
 it.each([
   ["inherited", "Default", false],
-  ["applied", "Applied", true],
-  ["pending", "Waiting for reconcile", true],
-  ["pending", "Waiting for reconcile", true],
+  ["applied", "Set by admin", true],
+  ["pending", "Pending", true],
 ] as const)(
   "keeps the header chip on one line for %s in both views",
   async (status, label, requested) => {
@@ -245,12 +244,12 @@ it.each([
   }
 );
 
-it("renders compact UTC values with relative attribution and Edit in the header", () => {
+it("renders compact UTC values with the save time and Edit in the header", () => {
   mocks.query.data!.schedule.status = "applied";
   render(pane());
   expect(screen.getByText("Every day at 03:00")).toBeInTheDocument();
   expect(screen.getByText("0 3 * * *").parentElement).toHaveTextContent("UTC");
-  expect(screen.getByText("set by you · just now")).toBeInTheDocument();
+  expect(screen.getByText("Saved by you at 12:00 UTC.")).toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Edit" }).closest("header")
   ).toContainElement(screen.getByRole("heading", { name: "Schedule" }));
@@ -394,7 +393,10 @@ it.each(["save", "reset"])(
         name: operation === "save" ? "Save" : /Reset to/,
       })
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(reason);
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(reason)).not.toBeVisible();
+    await userEvent.click(within(alert).getByText("Details"));
+    expect(within(alert).getByText(reason)).toBeVisible();
     expect(mocks.query.refetch).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("combobox", { name: "Hour" })).toHaveTextContent(
       "06"

@@ -84,6 +84,20 @@ import { ConnectorHealthPane } from "./connector-health";
 
 const NOW = "2026-01-15T12:00:00.000Z";
 
+it("shows Not loaded for an expanded configured row without a source id", async () => {
+  mocks.summary.data = summary({
+    connectors: [{ connector: "example-tracker", configured: true }],
+  });
+  render(<ConnectorHealthPane />);
+
+  await userEvent.click(rowFor("example-tracker"));
+
+  expect(screen.getByText("Not loaded")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Edit" })
+  ).not.toBeInTheDocument();
+});
+
 it.each(["pending", "paused"] as const)(
   "shows only sync history for an unconfigured row with a stale %s request",
   async (status) => {
@@ -321,10 +335,7 @@ describe("the pane prints what it was served", () => {
       });
       render(<ConnectorHealthPane />);
       const mark = within(rowFor("example-tracker")).getByRole("img", {
-        name:
-          status === "pending"
-            ? "Waiting for reconcile"
-            : "Waiting for reconcile",
+        name: "Pending",
       });
       expect(mark).toBeInTheDocument();
       const scheduleCell = mark.closest("td")!;

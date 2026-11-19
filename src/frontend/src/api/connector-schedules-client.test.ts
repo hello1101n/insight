@@ -80,7 +80,9 @@ it.each([400, 412, 500])(
 
 it("refuses an unreadable revision instead of inventing an If-Match value", async () => {
   fetchMock.mockResolvedValue(new Response(JSON.stringify(body)));
-  await expect(getConnectorSchedule(instance)).rejects.toThrow("no revision");
+  await expect(getConnectorSchedule(instance)).rejects.toThrow(
+    "Could not confirm the schedule"
+  );
 });
 
 it("uses the configured connectors base for health, syncs, intensity and schedules", async () => {

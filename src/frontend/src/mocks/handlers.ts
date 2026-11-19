@@ -8,6 +8,7 @@ import type { MetricResultsRequest } from "@/api/metric-results-client";
 import { isPersonId } from "@/lib/metrics/entity";
 
 import { ADMIN_ASSIGNMENTS } from "./admin-assignments";
+import { seedConnectorScheduleScenarios } from "./connector-schedule-scenarios";
 import { connectorScheduleMocks } from "./connector-schedules";
 import { buildMetricDefinitions } from "./metric-definitions-factory";
 import { dashboardHandlers } from "./dashboard-handlers";
@@ -1074,6 +1075,10 @@ function connectorHealthHandlers() {
   // in the handler — because a fixed `as_of` would freeze the elapsed time the
   // page derives from it and the running row would never advance while polling.
   const anchor = new Date();
+  const scenarios =
+    import.meta.env.VITE_CONNECTOR_SCHEDULE_SCENARIOS === "true"
+      ? seedConnectorScheduleScenarios(anchor)
+      : null;
   const minutesAgo = (minutes: number) =>
     new Date(anchor.getTime() - minutes * 60_000).toISOString();
 
@@ -1119,17 +1124,20 @@ function connectorHealthHandlers() {
   const summaryRow = (
     connector: string,
     configured: boolean,
-    schedule: AppliedSchedule | null
+    schedule: AppliedSchedule | null,
+    sourceId = `${connector}-main`,
+    scenario = false
   ) => ({
     connector,
     tenant_id: "00000000-0000-4000-8000-000000000001",
-    source_id: `${connector}-main`,
+    source_id: sourceId,
     configured,
-    ...connectorScheduleMocks.summary(connector, `${connector}-main`, schedule),
+    ...connectorScheduleMocks.summary(connector, sourceId, schedule, scenario),
     last_sync: histories[connector]?.[0] ?? null,
   });
 
   return [
+    ...(scenarios?.handlers ?? []),
     ...connectorScheduleMocks.handlers,
     http.get(`${CONNECTORS_BASE}/connector-health`, () => {
       const now = new Date();
@@ -1139,6 +1147,15 @@ function connectorHealthHandlers() {
         typical_read_interval_ms: 15 * 60_000,
         history_available: true,
         connectors: [
+          ...(scenarios?.rows.map(({ connector, sourceId }) =>
+            summaryRow(
+              connector,
+              true,
+              connectorScheduleMocks.read(connector, sourceId).live ?? null,
+              sourceId,
+              true
+            )
+          ) ?? []),
           summaryRow("example-tracker", true, {
             suspended: false,
             crons: ["0 22 * * *", "0 10 * * *"],

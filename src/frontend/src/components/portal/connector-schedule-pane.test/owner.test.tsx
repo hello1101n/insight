@@ -144,7 +144,7 @@ it.each([true, false])(
     const row = await screen.findByRole("row", { expanded: false });
     if (expanded) {
       await userEvent.click(row);
-      await screen.findByText(/set by you/);
+      await screen.findByText(/Saved by you/);
     }
     anotherSave();
     await act(async () => {
@@ -158,15 +158,9 @@ it.each([true, false])(
     expect(await screen.findByRole("tooltip")).toHaveTextContent("0 9 * * 0");
     await userEvent.unhover(scheduleButton);
     if (!expanded) await userEvent.click(row);
-    await screen.findByText(/set by Example Admin/);
+    await screen.findByText(/Saved by Example Admin/);
     expect(screen.getByText("0 9 * * 0")).toBeInTheDocument();
     expect(screen.queryByText(/overrides default/)).not.toBeInTheDocument();
-    await userEvent.hover(
-      screen.getByText(/set by Example Admin/).closest("[tabindex]")!
-    );
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Set by Example Admin"
-    );
     expect(document.body.textContent).not.toContain(OTHER);
     expect(searchPersons).toHaveBeenCalledTimes(1);
   }
@@ -206,7 +200,7 @@ it("preserves a draft's revision through summary refresh and reloads the other s
   );
   expect(screen.getByRole("textbox")).toHaveValue("0 9 * * 0");
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  await screen.findByText(/set by Example Admin/);
+  await screen.findByText(/Saved by Example Admin/);
   expect(document.body.textContent).not.toContain(OTHER);
 });
 
@@ -225,23 +219,21 @@ it.each(["loading", "failed"])(
     openPage();
     const row = await screen.findByRole("row", { expanded: false });
     const chip = within(row).getByRole("img", {
-      name: "Waiting for reconcile",
+      name: "Pending",
     });
     await waitFor(() => expect(api.getConnectorSchedule).toHaveBeenCalled());
     await userEvent.hover(chip);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "saved by another admin"
+      "Saved by another admin"
     );
     expect(screen.getByRole("tooltip")).not.toHaveTextContent(OTHER);
     await userEvent.unhover(chip);
     await userEvent.click(row);
-    await screen.findByText(/set by another admin/);
-    const header = screen
-      .getByText("Waiting for reconcile")
-      .closest("[tabindex]")!;
+    await screen.findByText(/Saved by another admin/);
+    const header = screen.getByText("Pending").closest("[tabindex]")!;
     await userEvent.hover(header);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "saved by another admin"
+      "Saved by another admin"
     );
     expect(document.body.textContent).not.toContain(OTHER);
   }
@@ -276,22 +268,16 @@ it.each([
             .some((q) => q.state.status === "success")
         ).toBe(true)
       );
-    await userEvent.hover(
-      within(row).getByRole("img", { name: "Waiting for reconcile" })
-    );
+    await userEvent.hover(within(row).getByRole("img", { name: "Pending" }));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      `saved by ${name}`
+      `Saved by ${name}`
     );
-    await userEvent.unhover(
-      within(row).getByRole("img", { name: "Waiting for reconcile" })
-    );
+    await userEvent.unhover(within(row).getByRole("img", { name: "Pending" }));
     await userEvent.click(row);
-    await screen.findByText(new RegExp(`set by ${name}`));
-    await userEvent.hover(
-      screen.getByText("Waiting for reconcile").closest("[tabindex]")!
-    );
+    await screen.findByText(new RegExp(`Saved by ${name}`));
+    await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      `saved by ${name}`
+      `Saved by ${name}`
     );
     expect(document.body.textContent).not.toContain(personId);
   }

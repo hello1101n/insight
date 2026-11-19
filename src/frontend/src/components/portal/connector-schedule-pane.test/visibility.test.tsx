@@ -25,8 +25,12 @@ it.each(["no_cronworkflow", "awaiting_reconcile"] as const)(
       expect(screen.queryByText(/First sync/i)).not.toBeInTheDocument();
       const copy = screen.getByText(
         known
-          ? "Next reconcile expected around 12:15 UTC"
-          : "Takes effect at the next reconcile pass"
+          ? reason === "awaiting_reconcile"
+            ? "The deployment schedule is shown after 12:15 UTC."
+            : "Starts by 12:15 UTC."
+          : reason === "awaiting_reconcile"
+            ? "The deployment schedule is shown after the next check."
+            : "Takes effect after the next check."
       );
       expect(copy.closest("[data-slot]")).toHaveAttribute(
         "data-slot",
@@ -40,71 +44,90 @@ it.each(["no_cronworkflow", "awaiting_reconcile"] as const)(
 it("warns only after two known reconcile intervals", () => {
   const schedule = mocks.query.data!.schedule;
   schedule.pending_reason = "awaiting_reconcile";
-  schedule.requested!.updated_at = "2026-01-15T11:30:00Z";
-  schedule.reconcile_interval_secs = 900;
+  schedule.requested!.updated_at = "2026-01-15T11:45:00Z";
+  schedule.reconcile_interval_secs = 450;
   const view = render(pane());
-  expect(
-    screen.getByText(/Not applied after two reconcile passes/)
-  ).toHaveClass("text-warning");
+  expect(screen.getByText(/Not applied after 15 minutes/)).toHaveClass(
+    "text-warning"
+  );
   schedule.reconcile_interval_secs = null;
   view.rerender(pane());
-  expect(
-    screen.queryByText(/Not applied after two reconcile passes/)
-  ).not.toBeInTheDocument();
-  schedule.reconcile_interval_secs = 901;
+  expect(screen.queryByText(/Not applied after/)).not.toBeInTheDocument();
+  schedule.reconcile_interval_secs = 451;
   view.rerender(pane());
-  expect(
-    screen.queryByText(/Not applied after two reconcile passes/)
-  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Not applied after/)).not.toBeInTheDocument();
 });
 
 it("uses the measured reconcile interval for a delayed request when the API estimate is unknown", () => {
   mocks.query.data!.schedule.pending_reason = "awaiting_reconcile";
-  mocks.query.data!.schedule.requested!.updated_at = "2026-01-15T11:30:00Z";
+  mocks.query.data!.schedule.requested!.updated_at = "2026-01-15T11:40:00Z";
   render(
     <ConnectorSchedulePane
       row={row}
       polling={false}
-      reconcileIntervalSecs={900}
+      reconcileIntervalSecs={600}
     />
   );
-  expect(
-    screen.getByText(/Not applied after two reconcile passes/)
-  ).toBeInTheDocument();
+  expect(screen.getByText(/Not applied after 20 minutes/)).toBeInTheDocument();
 });
 
-it.each(["pending"] as const)(
-  "shows the next reconcile estimate for %s",
-  async (status) => {
-    const schedule = mocks.query.data!.schedule;
-    schedule.status = status;
-    schedule.pending_reason =
-      status === "pending" ? "different_schedule" : null;
-    schedule.next_reconcile_at = "2026-01-15T12:01:00Z";
-    const view = render(pane());
-    const label =
-      status === "pending" ? "Waiting for reconcile" : "Waiting for reconcile";
-    await userEvent.hover(screen.getByText(label).closest("[tabindex]")!);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Next reconcile: 2026-01-15 12:01:00 UTC"
-    );
-    expect(
-      screen.getByText(/Next reconcile expected around 12:01 UTC/)
-    ).toBeInTheDocument();
-    schedule.next_reconcile_at = null;
-    view.rerender(pane());
-    expect(screen.getByRole("tooltip")).not.toHaveTextContent(
-      "Next reconcile:"
-    );
-  }
-);
+it("uses the API reconcile interval before the measured interval", () => {
+  const schedule = mocks.query.data!.schedule;
+  schedule.pending_reason = "different_schedule";
+  schedule.requested!.updated_at = "2026-01-15T11:59:00Z";
+  schedule.reconcile_interval_secs = 30;
+  render(
+    <ConnectorSchedulePane
+      row={row}
+      polling={false}
+      reconcileIntervalSecs={600}
+    />
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Not applied after 1 minute"
+  );
+});
+
+it("uses singular minutes for a one-minute delay", () => {
+  const schedule = mocks.query.data!.schedule;
+  schedule.pending_reason = "different_schedule";
+  schedule.requested!.updated_at = "2026-01-15T11:59:00Z";
+  schedule.reconcile_interval_secs = 30;
+  render(pane());
+
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Not applied after 1 minute."
+  );
+});
+
+it("shows the next check for a saved schedule", async () => {
+  const schedule = mocks.query.data!.schedule;
+  schedule.pending_reason = "different_schedule";
+  schedule.next_reconcile_at = "2026-01-15T12:01:00Z";
+  const view = render(pane());
+  const label = "Pending";
+  await userEvent.hover(screen.getByText(label).closest("[tabindex]")!);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    "Starts by 12:01 UTC."
+  );
+  expect(
+    within(
+      view.container.querySelector<HTMLElement>('[data-slot="schedule-hint"]')!
+    ).getByText("Starts by 12:01 UTC.")
+  ).toBeInTheDocument();
+  schedule.next_reconcile_at = null;
+  view.rerender(pane());
+  expect(screen.getByRole("tooltip")).toHaveTextContent(
+    "Takes effect after the next check."
+  );
+});
 
 it("confirms an immediate application and previews three live runs in UTC", () => {
   const schedule = mocks.query.data!.schedule;
   schedule.status = "applied";
   schedule.live!.crons = ["*/5 * * * *", "5 * * * *"];
   const view = render(pane());
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
   expect(screen.queryByText(/Saved and applied at/)).not.toBeInTheDocument();
   const preview = screen.getByText("Next (UTC)").parentElement!;
   expect(within(preview).getAllByRole("listitem")).toHaveLength(3);
@@ -126,7 +149,7 @@ it("shows a default badge and keeps the reset origin in its tooltip", async () =
   expect(screen.queryByText(/Reset at/)).not.toBeInTheDocument();
   await userEvent.hover(screen.getByText("Default").closest("[tabindex]")!);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "deployment schedule from the connector descriptor"
+    "Runs the connector's default schedule."
   );
   expect(screen.getByText("Every day at 03:00")).not.toHaveTextContent("..");
 });

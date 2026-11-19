@@ -218,10 +218,10 @@ it("a background poll preserves the draft and Save reloads a pending conflict", 
   ).toBeInTheDocument();
   expect(puts).toEqual([{ etag: '"1"', body: { crons: ["0 8 * * *"] } }]);
   expect(screen.getByRole("textbox")).toHaveValue("0 9 * * 0");
-  expect(screen.getByText("Waiting for reconcile")).toBeInTheDocument();
+  expect(screen.getByText("Pending")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(
-    screen.getByText("Takes effect at the next reconcile pass")
+    screen.getByText("Takes effect after the next check.")
   ).toBeInTheDocument();
 });
 
@@ -311,7 +311,7 @@ it("an applied poll keeps the editor open and Cancel reveals applied status", as
   expect(screen.getByRole("textbox")).toHaveValue("0 8 * * *");
   expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
   expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent(
     /^Schedule applied/
   );
