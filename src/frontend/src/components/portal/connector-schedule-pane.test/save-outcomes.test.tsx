@@ -13,7 +13,7 @@ it("does not announce Applied when a pending revision rolls back", () => {
   mocks.query.data = restored;
   rerender(pane());
   expect(mocks.toast).not.toHaveBeenCalled();
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
 });
 
 it("does not announce Applied after a refused save reloads the same revision", async () => {
@@ -71,12 +71,12 @@ it("shows a neutral loading state until the schedule arrives", () => {
   mocks.query.isPending = true;
   const { rerender } = render(pane());
   expect(screen.getByText("Loading…")).toBeInTheDocument();
-  expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+  expect(screen.queryByText("Can't read")).not.toBeInTheDocument();
   mocks.query.data = read();
   mocks.query.isPending = false;
   rerender(pane());
   expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-  expect(screen.getByText("Waiting for reconcile")).toBeInTheDocument();
+  expect(screen.getByText("Pending")).toBeInTheDocument();
 });
 
 it.each([
@@ -134,7 +134,7 @@ it("keeps a failed restoration concise and puts the cluster reason in Details", 
 });
 
 it.each([409, 503])(
-  "keeps the reconcile instruction visible when Reset loses its fallback: %s",
+  "keeps the server reason in Details when Reset loses its fallback: %s",
   async (status) => {
     const reason =
       "Reset requires the deployment schedule annotation; run reconcile before resetting";
@@ -147,10 +147,12 @@ it.each([409, 503])(
     await userEvent.click(screen.getByRole("button", { name: /Reset to/ }));
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
-      "Schedule not changed: run reconcile before resetting."
+      "Can't reset yet. Try after the next check."
     );
     expect(alert.querySelector("details")).not.toHaveAttribute("open");
     expect(screen.getByText(detail)).not.toBeVisible();
+    await userEvent.click(screen.getByText("Details"));
+    expect(screen.getByText(detail)).toBeVisible();
     expect(alert.textContent?.split("Details")[0]).not.toContain("Try again");
   }
 );

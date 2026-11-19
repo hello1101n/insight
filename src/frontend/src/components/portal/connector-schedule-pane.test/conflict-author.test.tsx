@@ -85,9 +85,14 @@ async function conflict(next = saved(OTHER, 2)) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime("2026-01-15T12:00:00Z");
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
-afterEach(() => client.clear());
+afterEach(() => {
+  client.clear();
+  vi.useRealTimers();
+});
 
 it("names the reloaded request's author once the lookup resolves", async () => {
   let finish!: (found: PersonSearchResponse) => void;
@@ -193,7 +198,7 @@ it("keeps the existing conflict wording when the reloaded schedule has no reques
   };
   await conflict(next);
   expect(screen.getByRole("alert")).toHaveTextContent(
-    `Another admin changed this schedule at — UTC. ${SUFFIX}`
+    `Another admin changed this schedule at —. ${SUFFIX}`
   );
   expect(searchPersons).not.toHaveBeenCalled();
 });

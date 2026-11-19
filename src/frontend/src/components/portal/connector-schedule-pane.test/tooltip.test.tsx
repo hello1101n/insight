@@ -7,13 +7,11 @@ import { expect, it } from "vitest";
 it("omits saved-by attribution from a pending clear tooltip", async () => {
   mocks.query.data!.schedule.requested!.crons = [];
   render(pane());
-  await userEvent.hover(
-    screen.getByText("Waiting for reconcile").closest("[tabindex]")!
-  );
+  await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
 
   const tooltip = await screen.findByRole("tooltip");
-  expect(tooltip).toHaveTextContent("Request revision 2");
-  expect(tooltip).not.toHaveTextContent("saved by");
+  expect(tooltip).toHaveTextContent("Running as of");
+  expect(tooltip).not.toHaveTextContent("Saved by");
 });
 
 it("explains the header chip on hover and keyboard focus with separate stacked lines", async () => {
@@ -39,7 +37,7 @@ it("explains the header chip on hover and keyboard focus with separate stacked l
       lines.map((line) => line.textContent),
       gesture
     ).toEqual([
-      "No schedule request. Runs the deployment schedule from the Secret annotation insight.cyberfabric.com/schedule.",
+      "Runs the schedule set at deployment in instance settings.",
       "0 2 * * * UTC",
       "0 14 * * * UTC",
     ]);
@@ -55,7 +53,10 @@ it("explains the header chip on hover and keyboard focus with separate stacked l
 
 it.each([
   ["no_cronworkflow", "This instance has no sync schedule yet"],
-  ["awaiting_reconcile", "The sync job is not yet prepared"],
+  [
+    "awaiting_reconcile",
+    "The deployment schedule is shown after the next check",
+  ],
   ["different_schedule", "The sync job runs a different schedule"],
 ] as const)(
   "explains the pending reason in the header and tooltip: %s",
@@ -63,14 +64,39 @@ it.each([
     mocks.query.data!.schedule.pending_reason = pending_reason;
     render(pane());
     const header = screen.getByText(
-      pending_reason === "no_cronworkflow"
-        ? "Not scheduled yet"
-        : pending_reason === "awaiting_reconcile"
-          ? "Waiting for reconcile"
-          : "Waiting for reconcile"
+      pending_reason === "no_cronworkflow" ? "Not scheduled yet" : "Pending"
     );
-    expect(screen.queryByText(/✓ Saved/)).not.toBeInTheDocument();
+    expect(screen.getByText(new RegExp(wording))).toBeInTheDocument();
     await userEvent.hover(header.closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(`${wording}.`);
+  }
+);
+
+it("puts the deployment annotation behind Details on the default pane", async () => {
+  const schedule = mocks.query.data!.schedule;
+  schedule.status = "inherited";
+  schedule.requested = null;
+  schedule.inherited = { crons: ["0 3 * * *"], origin: "annotation" };
+  render(pane());
+
+  const annotation = screen.getByText("insight.cyberfabric.com/schedule");
+  expect(annotation).not.toBeVisible();
+  await userEvent.click(screen.getByText("Details"));
+  expect(annotation).toBeVisible();
+});
+
+it.each(["descriptor", "default", "api"] as const)(
+  "omits the operator annotation details for the %s origin",
+  (origin) => {
+    const schedule = mocks.query.data!.schedule;
+    schedule.status = "inherited";
+    schedule.requested = null;
+    schedule.inherited = { crons: ["0 3 * * *"], origin };
+    render(pane());
+
+    expect(screen.queryByText("Details")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("insight.cyberfabric.com/schedule")
+    ).not.toBeInTheDocument();
   }
 );

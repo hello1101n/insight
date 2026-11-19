@@ -101,9 +101,11 @@ export function choiceSummary(
         time: choice.time,
       });
     case "custom":
-      return choice.crons.length === 1
-        ? cronTranslation(choice.crons[0], concise)
-        : i18n.t(`connectors.schedule.${key}.expressions`, {
+      if (choice.crons.length === 1)
+        return cronTranslation(choice.crons[0], concise);
+      return concise
+        ? null
+        : i18n.t("connectors.schedule.summary.expressions", {
             count: choice.crons.length,
           });
   }

@@ -74,9 +74,9 @@ it("explains the collapsed chip's status and loading state on hover and keyboard
   render(<ConnectorHealthPane />, { wrapper: AppTooltips });
   const row = screen.getByRole("row", { expanded: false });
   const trigger = within(row).getByRole("img", {
-    name: "Waiting for reconcile",
+    name: "Pending",
   });
-  expect(trigger).toHaveAccessibleName("Waiting for reconcile");
+  expect(trigger).toHaveAccessibleName("Pending");
   const user = userEvent.setup();
   for (const gesture of ["hover", "focus"]) {
     if (gesture === "hover") await user.hover(trigger);
@@ -96,7 +96,7 @@ it("explains the collapsed chip's status and loading state on hover and keyboard
     expect(
       lines.map((line) => line.textContent),
       gesture
-    ).toEqual(["Waiting for reconcile. Schedule details are loading."]);
+    ).toEqual(["Pending. Schedule details are loading."]);
     expect(lines[0].parentElement).toHaveClass("flex", "flex-col");
     for (const line of lines) expect(line).toHaveClass("block");
     expect(row).toHaveAttribute("aria-expanded", "false");
@@ -123,14 +123,14 @@ describe.each([false, true])(
       ],
       [
         "awaiting_reconcile",
-        "Waiting for reconcile",
-        "The sync job is not yet prepared",
+        "Pending",
+        "The deployment schedule is shown after the next check",
         "lucide-clock",
         "text-warning",
       ],
       [
         "different_schedule",
-        "Waiting for reconcile",
+        "Pending",
         "The sync job runs a different schedule",
         "lucide-clock",
         "text-warning",
@@ -183,7 +183,7 @@ describe.each([false, true])(
 it("shows waiting as an inline warning icon with an accessible name and tooltip", async () => {
   mocks.summaryStatus = "pending";
   render(<ConnectorHealthPane />, { wrapper: AppTooltips });
-  const trigger = screen.getByRole("img", { name: "Waiting for reconcile" });
+  const trigger = screen.getByRole("img", { name: "Pending" });
   const mark = trigger.querySelector('[data-slot="schedule-request-status"]')!;
   expect(mark).toHaveClass(
     "size-4",
@@ -198,7 +198,7 @@ it("shows waiting as an inline warning icon with an accessible name and tooltip"
   trigger.focus();
   expect(trigger).toHaveFocus();
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "Waiting for reconcile. Schedule details are loading."
+    "Pending. Schedule details are loading."
   );
 });
 
@@ -242,10 +242,10 @@ it("keeps the current attention mark when the cached instance revision is older"
     status: "inherited",
   };
   render(<ConnectorHealthPane />, { wrapper: AppTooltips });
-  const trigger = screen.getByRole("img", { name: "Waiting for reconcile" });
+  const trigger = screen.getByRole("img", { name: "Pending" });
   await userEvent.hover(trigger);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "Waiting for reconcile. Schedule details are loading."
+    "Pending. Schedule details are loading."
   );
 });
 
@@ -260,8 +260,8 @@ it("explains Paused while the collapsed row's schedule details load", async () =
 });
 
 it.each([
-  ["pending", "Waiting for reconcile", false],
-  ["pending", "Waiting for reconcile", true],
+  ["pending", "Pending", false],
+  ["pending", "Pending", true],
   ["paused", "Paused", false],
   ["paused", "Paused", true],
 ] as const)(
@@ -297,12 +297,10 @@ it("shows loading during a refetch after an error with an older cache", async ()
     status: "inherited",
   };
   render(<ConnectorHealthPane />, { wrapper: AppTooltips });
-  const chip = screen.getByRole("img", { name: "Waiting for reconcile" });
+  const chip = screen.getByRole("img", { name: "Pending" });
   await userEvent.hover(chip);
   const tooltip = await screen.findByRole("tooltip");
-  expect(tooltip).toHaveTextContent(
-    "Waiting for reconcile. Schedule details are loading."
-  );
+  expect(tooltip).toHaveTextContent("Pending. Schedule details are loading.");
   expect(tooltip).not.toHaveTextContent("could not be loaded");
 });
 
@@ -319,7 +317,7 @@ it.each([false, true])(
     mocks.summaryStatus = "inherited";
     mocks.summaryError = "live sync job identity does not match";
     render(<ConnectorHealthPane />, { wrapper: AppTooltips });
-    const chip = screen.getByRole("img", { name: "Unavailable" });
+    const chip = screen.getByRole("img", { name: "Can't read" });
     await userEvent.hover(chip);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       mocks.summaryError

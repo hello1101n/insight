@@ -264,3 +264,40 @@ it("a paused job stays Paused after a saved change and in the health summary", a
       .schedule_request?.last_observation?.status
   ).toBe("paused");
 });
+
+it("dates the ordinary summary observation when it reads the request", () => {
+  const state = mocks.read("example-tracker", "main");
+  const original = "2026-01-15T12:00:00.000Z";
+  state.live!.observed_at = original;
+  state.requested = {
+    crons: ["0 6 * * *"],
+    updated_at: original,
+    updated_by: "00000000-0000-4000-8000-000000000001",
+  };
+  state.revision = 1;
+  const before = Date.now();
+
+  const observation = mocks.summary("example-tracker", "main", state.live!)
+    .schedule_request?.last_observation;
+
+  expect(Date.parse(observation!.observed_at)).toBeGreaterThanOrEqual(before);
+});
+
+it.each(["pending", "read_error"])(
+  "omits a request from the ordinary summary of a %s state without one",
+  (kind) => {
+    const state = mocks.read("example-tracker", "main");
+    if (kind === "pending") {
+      state.status = "pending";
+      state.pending_reason = "no_cronworkflow";
+    } else {
+      state.status = null;
+      state.read_error = "Synthetic read failure";
+    }
+    state.live = null;
+
+    expect(
+      mocks.summary("example-tracker", "main", null).schedule_request
+    ).toBeNull();
+  }
+);
