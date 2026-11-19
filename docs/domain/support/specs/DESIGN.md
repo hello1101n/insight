@@ -1,6 +1,6 @@
 # Technical Design — Support Domain
 
-Version 0.5 — November 2026
+Version 0.6 — November 2026
 Based on: #886, #2297
 
 Target bronze → silver design for customer support data, with Zendesk as the
@@ -63,9 +63,18 @@ Support is therefore its own domain (`class_support_*`), not rows in
 
 ## 3. Zendesk connector
 
-**API:** REST v2 at `https://{subdomain}.zendesk.com/api/v2/`. Basic auth with
-an admin email and API token — the incremental exports, SLA policies and
-satisfaction data are admin-only. Agents resolve to people by email.
+**API:** REST v2 at `https://{subdomain}.zendesk.com/api/v2/`. Agents resolve
+to people by email.
+
+**Auth: OAuth client credentials, not API tokens.** Zendesk stopped issuing API
+tokens in October 2026 and disables the remaining ones on 30 April 2027. The
+tenant creates a confidential OAuth client with the `read` scope; the connector
+posts `grant_type=client_credentials` with its id and secret to
+`/oauth/tokens` and gets a bearer token valid 30 minutes, with no refresh
+token, so it requests a new one before expiry. The token acts as the admin who
+created the client, which the incremental exports, SLA policies and
+satisfaction data require. The secret carries `zendesk_subdomain`,
+`zendesk_client_id` and `zendesk_secret`.
 
 **Why many tables:** a ticket has many updates, each update many events; SLA,
 ratings and metric events are separate objects with their own lifecycles, and
@@ -84,6 +93,7 @@ custom fields, statuses and schedules are needed to decode them.
 | `zendesk_ticket_fields`, `zendesk_ticket_forms`, `zendesk_custom_statuses`, `zendesk_brands` | list | full refresh | Dictionaries to decode tickets and their history |
 | `zendesk_sla_policies`, `zendesk_schedules` | list | full refresh | SLA targets and business hours |
 | `zendesk_deleted_tickets` | `deleted_tickets` | full refresh | Deletion census |
+| `zendesk_merge_audits` | `tickets/{id}/audits` for tickets tagged `closed_by_merge` | per ticket, once | Link from a merged ticket to its target |
 | `zendesk_kb_articles` | `help_center/incremental/articles` | incremental, time | Knowledge base (Guide) |
 
 **Throughput.** Per the vendor documentation:
@@ -102,15 +112,27 @@ first.
 one save of a ticket — the fields it changed (`previous_value` → `value`), its
 comment and notifications — not a snapshot of the ticket; the list of a
 ticket's audits from `Create` is its history. `incremental/ticket_events`
-carries these updates for every ticket of the account ([OQ-1](#oq-1-layout-and-completeness-of-ticket-events)) in pages of up to
+carries these updates for every ticket of the account in pages of up to
 1,000, so history costs one request per thousand updates instead of one per
 changed ticket. Its `start_time` is arbitrary, so the first sync reads from
 `start_date`, which defaults to the start of the account: every ticket then
 has its `Create`, and no initial state is derived backwards. A later
 `start_date` is an operator's choice to trade depth for backfill time; only
 then does a ticket created before it get a synthetic initial state, derived
-backwards from the snapshot as Jira does. `tickets/{id}/audits` stays a manual
-repair tool for a single ticket, not a stream.
+backwards from the snapshot as Jira does. `tickets/{id}/audits` is read only
+for merged tickets ([section 6](#6-merged-tickets)) and as a manual repair tool.
+
+**Event layout.** Each record is an `Audit` with `ticket_id`, `updater_id`,
+`via` and `child_events`. A child event names its field by key, not by
+`field_name`: `{"event_type": "Change", "status": "pending",
+"previous_value": "open"}`; a custom field arrives as
+`{"custom_ticket_fields": {"<field id>": "<value>"}, "previous_value": …}`, and
+`tags` also carries `added_tags` and `removed_tags`. `Create` is split into one
+child event per field, `sla_policy` included. The export holds the same child
+events as the audits endpoint except `Notification`. Its `via` is a plain
+string (`Web service`, `Merge`, `SLA`), without the source the audits endpoint
+gives. Updates by Zendesk itself — SLA, automatic triage — have
+`updater_id = -1`. Comment bodies are in the export.
 
 **Pagination is per endpoint, never mixed.** Cursor exports stop on
 `end_of_stream` / `has_more = false`; time-based exports pass `end_time` as the
@@ -152,13 +174,13 @@ snapshots `zendesk_ticket_fields` every sync with the `snapshot` /
 `fields_history` macros already used for user profiles, and decodes each event
 with the definition in force at its time.
 
-**In history.** A custom field change is a `Change` child event with
-`field_name = <field id>` and the new and previous value. The vendor
-documents `tags` values as arrays; the design assumes every multi-value field
-carries the full set before and after, not a delta
-([OQ-3](#oq-3-multi-value-fields-in-history)). Drop-down, multi-select and
-checkbox values are mirrored into `tags`, so one edit can produce two `Change`
-events; silver counts the field change and treats the matching `tags` change
+**In history.** A custom field change is a `Change` child event keyed
+`custom_ticket_fields` with the new and previous value. A multi-select value
+is the whole set as one space-separated string of option values in sorted
+order, before and after (`"a b"` → `"a b c"`); clearing it gives `""`. Silver
+splits it into a JSON array. Drop-down, multi-select and checkbox values are
+mirrored into `tags`, so one edit produces two `Change` events in the same
+update; silver counts the field change and treats the matching `tags` change
 as its echo. An option deletion rewrites tickets without an update; it
 surfaces as a `snapshot_diff`.
 
@@ -257,6 +279,11 @@ counts and one-touch resolution are computed from it.
 `class_support_sla_policies` holds `policy_id`, `title`, `position`,
 `metric`, `priority`, `target_minutes`, `business_hours`.
 
+`apply` carries the target and policy. `breach` is stamped at the moment the
+target runs out, even when nothing happens on the ticket then. A merge
+fulfils every running metric of the merged ticket, so SLA attainment excludes
+merged tickets rather than counting them as met.
+
 ### Satisfaction
 
 | Field | Type | Description |
@@ -316,16 +343,22 @@ exists. Gold reads them; silver does not.
 **What Zendesk does.** A merge is final. Every source ticket is closed and
 tagged `closed_by_merge` (some vendor articles spell it `closed_by_merged`),
 and gets a comment; the target gets a comment and the sources' attachments
-and users. Field values freeze on the source. Comments are not moved, and no
-field links source to target — only the comment text names it.
+and users. Field values freeze on the source. Comments are not moved. In the
+bulk export the closing update says only `via = Merge`; the audits endpoint
+gives the link: the source's update has `via.source.rel = merge` and
+`via.source.from.ticket_id` = target, and the target's has
+`via.source.from.ticket_ids` = sources.
 
 **What silver does.** Both tickets stay as they are, with their own history.
 
 - The source's closing update becomes an `availability` event `merged`; the
   ticket is not counted as solved, and its resolution time is not measured.
 - Interactions on the source stay on the source: the work was done there.
-- `merged_into_id` is filled when the merge update names the target; otherwise
-  it is NULL, never guessed from free text.
+- `merged_into_id` comes from `zendesk_merge_audits`: the connector reads the
+  audits of each ticket that gained `closed_by_merge`, once. It is never
+  guessed from comment text.
+- The merge fulfils the source's SLA metrics; silver marks them, and SLA
+  attainment leaves the ticket out.
 
 ## 7. What is reused from task tracking
 
@@ -445,6 +478,7 @@ Intercom, and ServiceNow or Salesforce.
 
 | Area | Shipped | Target |
 |---|---|---|
+| Auth | email + API token, disabled by Zendesk on 30 April 2027 | OAuth client credentials |
 | Ticket payload | selected columns; custom fields dropped; AI-agent tickets excluded | whole object, all support types |
 | Audit events | classified into four counters; values dropped | full field history with previous values |
 | SLA | none | policies + metric events |
@@ -494,31 +528,27 @@ what a person without a Zendesk account sees.
 
 ## Open Questions
 
-No Zendesk account is available to the team yet. Each question is answered on
-the first sync against a trial or development account; until then the
-connector and silver accept both readings where one is named.
+The event layout, merge link and multi-select history above were checked
+against a trial account holding only synthetic tickets. What a trial could not
+show stays open.
 
-### OQ-1: Layout and completeness of ticket events
+### OQ-1: Events of archived tickets
 
-The vendor reference shows a `Comment` child event but not a `Change` one, and
-does not say whether the export reaches events of archived tickets or how far
-back it goes. Silver parses a field name both as `field_name` and as a key of
-the child event, and treats a ticket without `Create` as starting before
-`start_date`.
+Zendesk archives tickets closed for 120 days. Whether the bulk export still
+returns their events, and from how far back, is unverified; a ticket without
+`Create` is treated as starting before `start_date`.
 
-### OQ-2: How a merge names its target
+### OQ-2: Shape of satisfaction data
 
-Whether the source's closing update carries a structured reference to the
-target, or only the comment text, decides whether `merged_into_id` can be
-filled. Until known, it stays NULL.
+A rating can be given only by the requester, so the trial holds none, and
+the survey endpoint answers 404 there. The record layout of both CSAT
+generations is taken from the vendor reference until a rated ticket exists.
 
-### OQ-3: Multi-value fields in history
+### OQ-3: Lookup fields in history
 
-The reference shows arrays for `tags` but does not say whether a
-`multiselect` or `multi_lookup` change carries the full set or only the
-difference, nor whether its `tags` echo lands in the same update. The fold
-assumes full sets; a delta shows up as a `snapshot_diff` against the ticket
-snapshot.
+A multi-select carries its whole set; whether `lookup` and `multi_lookup`
+fields do the same is unverified. A delta would show up as a `snapshot_diff`
+against the ticket snapshot.
 
 ## Sources
 
@@ -540,4 +570,6 @@ Zendesk developer and help documentation:
 - [User roles](https://support.zendesk.com/hc/en-us/articles/4408883763866-Understanding-Zendesk-Support-user-roles)
 - [Setting ticket access](https://support.zendesk.com/hc/en-us/articles/4408886939930-Adding-agents-and-admins-and-setting-ticket-access)
 - [Private ticket groups](https://support.zendesk.com/hc/en-us/articles/4988173561370-Creating-private-ticket-groups-and-granting-agents-access)
+- [Removal of API tokens](https://support.zendesk.com/hc/en-us/articles/10851263566234-Announcing-the-removal-of-API-tokens-as-an-authentication-method-for-API-requests)
+- [Migrating from API tokens to OAuth](https://developer.zendesk.com/documentation/authentication/oauth-migration/)
 - [Reporting on merged tickets](https://support.zendesk.com/hc/en-us/articles/4419174418202-What-Analytics-reporting-options-are-available-for-merged-tickets)
