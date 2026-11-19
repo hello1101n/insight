@@ -129,6 +129,7 @@ import {
 import { useMemberGridData } from "@/queries/member-grid";
 import { TEXT_EYEBROW, TEXT_FIGURE, TEXT_NAME } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
+import { chartColor } from "@/lib/chart-palette";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const NO_METRICS: readonly string[] = [];
@@ -1667,7 +1668,7 @@ function DistributionSection({
               <ChartBar
                 dataKey="count"
                 name="People"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>
@@ -1797,7 +1798,7 @@ function EventHistogramSection({
               <ChartBar
                 dataKey="count"
                 name="Events"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>

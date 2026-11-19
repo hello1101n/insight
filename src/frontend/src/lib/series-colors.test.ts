@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { chartColor } from "@/lib/chart-palette";
 import { seriesColors } from "@/lib/series-colors";
 
 describe("seriesColors", () => {
@@ -23,28 +24,28 @@ describe("seriesColors", () => {
     expect(palette.zulip_proxy).toBe("var(--brand-zulip)");
   });
 
-  it("assigns chart tokens to unknown seeds in sorted order", () => {
+  it("assigns palette colours to unknown seeds in sorted order", () => {
     const palette = seriesColors(["beta", "alpha"]);
-    expect(palette.alpha).toBe("var(--chart-1)");
-    expect(palette.beta).toBe("var(--chart-2)");
+    expect(palette.alpha).toBe(chartColor(0));
+    expect(palette.beta).toBe(chartColor(1));
   });
 
   it("does not skip chart slots for brand-mapped seeds", () => {
     const palette = seriesColors(["slack", "unknown_tool"]);
     expect(palette.slack).toBe("var(--brand-slack)");
-    expect(palette.unknown_tool).toBe("var(--chart-1)");
+    expect(palette.unknown_tool).toBe(chartColor(0));
   });
 
-  it("cycles chart tokens past the kit's five", () => {
-    const palette = seriesColors(["a", "b", "c", "d", "e", "f"]);
-    expect(palette.a).toBe("var(--chart-1)");
-    expect(palette.e).toBe("var(--chart-5)");
-    expect(palette.f).toBe("var(--chart-1)");
+  it("cycles the palette past its tenth colour", () => {
+    const seeds = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+    const palette = seriesColors(seeds);
+    expect(palette.j).toBe(chartColor(9));
+    expect(palette.k).toBe(chartColor(0));
   });
 
   it("treats prototype-member seeds as unknown, never as brand colors", () => {
     const palette = seriesColors(["__proto__", "constructor"]);
-    expect(palette["__proto__"]).toBe("var(--chart-1)");
-    expect(palette["constructor"]).toBe("var(--chart-2)");
+    expect(palette["__proto__"]).toBe(chartColor(0));
+    expect(palette["constructor"]).toBe(chartColor(1));
   });
 });

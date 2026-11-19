@@ -12,15 +12,10 @@ import type {
   IngestionPoint,
   IngestionSeries,
 } from "@/api/ingestion-client";
+import { chartColor } from "@/lib/chart-palette";
 
 /** The band a `series=total` read comes back under. */
 export const TOTAL_KEY = "all";
-
-/**
- * INVARIANT: the kit defines `--chart-1` to `--chart-5`; an index past them is
- * an undefined `var()` that paints the band the fallback colour.
- */
-const PALETTE_SIZE = 5;
 
 /**
  * Log-axis baseline, deliberately below 1.
@@ -94,7 +89,7 @@ export function seriesColorVar(key: string): string {
     hash ^= key.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return `var(--chart-${(hash % PALETTE_SIZE) + 1})`;
+  return chartColor(hash);
 }
 
 export interface PivotRow {

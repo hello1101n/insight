@@ -51,6 +51,12 @@
   /* WORKAROUND: @fontsource-variable/inter registers "Inter Variable"; the kit names "Inter". */
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-heading: var(--font-sans);
+  /* The kit stops at --chart-5. These match its lightness in each scope. */
+  --chart-6: light-dark(#a16207, #b45309);
+  --chart-7: light-dark(#a855f7, #d8b4fe);
+  --chart-8: light-dark(#ea580c, #f97316);
+  --chart-9: light-dark(#0891b2, #67e8f9);
+  --chart-10: light-dark(#4d7c0f, #84cc16);
   --brand-slack: oklch(0.46 0.16 325);
   --brand-m365: oklch(0.62 0.19 40);
   --brand-zoom: oklch(0.55 0.21 262);

@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { IngestionPoint } from "@/api/ingestion-client";
+import { CHART_PALETTE } from "@/lib/chart-palette";
 import {
   LOG_FLOOR,
   bandLabel,
@@ -102,9 +103,8 @@ describe("colour follows the entity", () => {
   });
 
   it("resolves to a palette slot that exists", () => {
-    // The kit defines --chart-1 … --chart-5. An index past 5 is an undefined
-    // var(), which paints the band the fallback colour instead of failing
-    // loudly, so the ceiling is asserted over enough keys to catch it.
+    // An index past the palette is an undefined var(), which paints the band
+    // the fallback colour instead of failing loudly.
     const keys = [
       "jira", "slack", "zoom", "_boards", "m365", "cursor", "bamboohr",
       "confluence", "bitbucket_cloud", "claude_enterprise", "demo_tasks",
@@ -112,7 +112,7 @@ describe("colour follows the entity", () => {
       "channels", "pages", "github", "gitlab", "hubspot", "outline", "zendesk",
     ];
     for (const key of keys) {
-      expect(seriesColorVar(key), key).toMatch(/^var\(--chart-[1-5]\)$/);
+      expect(CHART_PALETTE, key).toContain(seriesColorVar(key));
     }
   });
 });

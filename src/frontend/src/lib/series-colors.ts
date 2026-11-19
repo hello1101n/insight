@@ -1,3 +1,5 @@
+import { chartColor } from "@/lib/chart-palette";
+
 /**
  * Series colors for dimension-split charts.
  *
@@ -7,9 +9,9 @@
  * connector in the platform's documented inventory; families that are not
  * built yet use their anticipated dimension value (snake_case vendor name)
  * and simply fall back to chart tokens until the value matches. Unknown
- * seeds fall back to the kit's categorical chart tokens (`--chart-1..5`),
- * assigned in sorted seed order so a given seed set always maps the same
- * way; past five they cycle, as the kit's own charts do.
+ * seeds fall back to the chart palette (`CHART_PALETTE`), assigned in sorted
+ * seed order so a given seed set always maps the same way; past its end they
+ * cycle.
  *
  * A `Map` (not a `Record`) so a malformed seed like `"__proto__"` or
  * `"constructor"` falls through to the chart-token path instead of leaking
@@ -69,14 +71,6 @@ const FILE_CATEGORY_BY_SEED: ReadonlyMap<string, string> = new Map([
   ["vendored", "var(--muted-foreground)"],
 ]);
 
-const CHART_TOKENS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-] as const;
-
 export function seriesColors(seeds: string[]): Record<string, string> {
   // Null prototype so a seed like "__proto__" becomes an own property
   // instead of silently mutating (or dropping) the object's prototype.
@@ -92,7 +86,7 @@ export function seriesColors(seeds: string[]): Record<string, string> {
   }
   unknown.sort();
   unknown.forEach((seed, index) => {
-    palette[seed] = CHART_TOKENS[index % CHART_TOKENS.length]!;
+    palette[seed] = chartColor(index);
   });
   return palette;
 }

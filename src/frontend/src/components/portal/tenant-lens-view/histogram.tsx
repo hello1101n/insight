@@ -14,6 +14,7 @@ import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const HISTOGRAM_CONFIG: ChartConfig = { count: { label: "Runs" } };
 
@@ -81,7 +82,7 @@ export function HistogramSection({
               <ChartBar
                 dataKey="count"
                 name="Runs"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>
