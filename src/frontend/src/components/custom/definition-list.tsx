@@ -7,15 +7,15 @@ import {
   type Paging,
 } from "@/components/custom/definition-paging";
 import { DefinitionSearch } from "@/components/custom/definition-search";
-import { Button } from "@gears-frontx/ui-kit";
 import {
+  Button,
   Empty,
   EmptyActions,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { TEXT_TITLE } from "@/lib/type-scale";
@@ -132,7 +132,7 @@ function NothingFound({
   action?: ReactNode;
 }) {
   return (
-    <Empty>
+    <Empty className="mx-auto">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Icon aria-hidden />

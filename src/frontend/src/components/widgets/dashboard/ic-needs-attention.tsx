@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { MetricHelpTooltip } from "@/components/widgets/metric-help-tooltip";
 import type { AttentionItem } from "@/lib/insight/attention";
 import type { GroupId } from "@/lib/insight/groups";
@@ -66,7 +66,7 @@ export function IcNeedsAttention({
       {titled ? (
         <h2 className={cn("mb-3", TEXT_EYEBROW)}>{t("worth_a_look.title")}</h2>
       ) : null}
-      <Card data-size="sm">
+      <Card size="sm">
         <CardContent className="text-sm">
           {/* One column, not two. Six columns of content inside half the
               content width truncated the two things a row exists to say — the

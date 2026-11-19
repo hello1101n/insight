@@ -1,0 +1,34 @@
+import i18n from "@/i18n";
+
+import { Check, Clock, Minus } from "lucide-react";
+import type {
+  SchedulePendingReason,
+  ScheduleStatus,
+} from "@/api/connector-health-client";
+
+export function scheduleStatusView(
+  status: ScheduleStatus | null | undefined,
+  reason?: SchedulePendingReason | null
+) {
+  const label =
+    status === "pending"
+      ? reason === "no_cronworkflow"
+        ? i18n.t("connectors.schedule.status.not_scheduled")
+        : i18n.t("connectors.schedule.status.waiting")
+      : status === "applied"
+        ? i18n.t("connectors.schedule.status.applied")
+        : status === "inherited"
+          ? i18n.t("connectors.schedule.status.default")
+          : status === "paused"
+            ? i18n.t("connectors.schedule.status.paused")
+            : i18n.t("connectors.schedule.status.unavailable");
+  const Icon =
+    status === "applied" ? Check : status === "pending" ? Clock : Minus;
+  const tone =
+    status === "applied"
+      ? "bg-success/15 text-success"
+      : status === "pending"
+        ? "bg-warning/15 text-warning"
+        : "text-muted-foreground";
+  return { label, Icon, tone, iconClass: "size-3 shrink-0" };
+}

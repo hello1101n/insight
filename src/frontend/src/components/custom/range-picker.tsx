@@ -1,7 +1,6 @@
 import { addDays } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
-import type { DateRange as DayPickerRange } from "react-day-picker";
 
 import { latestPickableDay, toISODate } from "@/api/period-to-date-range";
 import {
@@ -12,6 +11,7 @@ import {
   PopoverTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  type CalendarProps,
 } from "@gears-frontx/ui-kit";
 import { keepNavigationKeysInside } from "@/lib/keep-navigation-keys-inside";
 import {
@@ -20,6 +20,10 @@ import {
   toInterval,
   toRangeToken,
 } from "@/lib/custom/time-range";
+
+type DayPickerRange = NonNullable<
+  Extract<CalendarProps, { mode: "range" }>["selected"]
+>;
 
 export interface RangePickerProps {
   /** The tokens this board offers, in the order it offers them. */

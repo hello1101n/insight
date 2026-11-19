@@ -1,15 +1,14 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { CartesianGrid, ComposedChart, XAxis } from "recharts";
 import {
-  CartesianGrid,
+  type ChartConfig,
   ChartContainer,
-  ChartLine,
   ChartTooltip,
   ChartTooltipContent,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
 import {
   formatHoursDuration,
   formatMetricValue,

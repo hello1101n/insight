@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `df92fd75184e178e` |
+| seed_revision | `3bb20dc50ae185f3` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -96,6 +96,7 @@ renaming one breaks every test that declares it.
 
 | capability | value |
 |---|---|
+| `connector_schedules` | no |
 | `idp` | keycloak |
 | `ingestion` | no |
 | `service_principals` | yes |
@@ -108,6 +109,11 @@ so a runner can exchange an RFC 7523 assertion for a service principal and
 exercise the `/internal/*` routes only a service may call. A stand that
 keeps that listener in-cluster reports `no`, and those tests skip with a
 reason rather than failing.
+
+`connector_schedules: no` — the seed does not write the scratch connector
+instance that the schedule tests edit. `./dev-compose.sh test-stand up`
+inserts it and reports `yes`. On a stand without it, those tests skip with
+a reason.
 
 `idp` reflects the environment the seed was run with. This page is
 rendered against a canonical environment, so it shows the default rather

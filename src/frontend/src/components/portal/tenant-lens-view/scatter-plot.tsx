@@ -1,18 +1,22 @@
-import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   CartesianGrid,
-  ChartContainer,
-  ChartScatter,
-  ChartTooltip,
-  ChartTooltipContent,
   ReferenceLine,
+  Scatter,
   ScatterChart,
   XAxis,
-  YAxis,
   ZAxis,
+} from "recharts";
+import {
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { YAxis } from "@/components/chart-series";
+import type { MetricBucket } from "@/api/metric-results-client";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
@@ -112,7 +116,8 @@ export function ScatterSection({
                   />
                 }
               />
-              <ChartScatter
+              <Scatter
+                isAnimationActive={false}
                 data={points}
                 name={axisLabel(ry)}
                 fill="var(--chart-1)"

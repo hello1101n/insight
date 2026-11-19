@@ -2,15 +2,13 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@gears-frontx/ui-kit";
 import { PeerComparison } from "@/components/widgets/metric-views/peer-comparison";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";

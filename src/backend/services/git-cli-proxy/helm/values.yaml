@@ -11,7 +11,7 @@ replicaCount: 1
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-git-cli-proxy
+  repository: ghcr.io/hello1101n/insight-git-cli-proxy
   tag: "" # MUST be set by the operator. No `:latest` default.
   pullPolicy: IfNotPresent
 

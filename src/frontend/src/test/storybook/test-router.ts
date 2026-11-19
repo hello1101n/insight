@@ -15,8 +15,9 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 
-export function createTestingRouter() {
-  const rootRoute = createRootRoute({ component: Outlet });
+/** `zone` puts the story in a portal zone, as a shell route's `staticData` would. */
+export function createTestingRouter(zone?: string) {
+  const rootRoute = createRootRoute({ component: Outlet, staticData: { zone } });
   const history = createMemoryHistory({ initialEntries: ["/"] });
   const router = createRouter({ routeTree: rootRoute, history });
   return {

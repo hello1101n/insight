@@ -1,0 +1,31 @@
+spec_version: 1
+description: >
+  Metric: collab.messages_sent — Slack bots never reach chat metrics.
+
+  How it's computed (bronze → silver → gold):
+    • bronze: Slack member analytics, one row per account per day, and the
+      members list with the bot flag of each account
+    • silver: an account the members list flags as a bot is dropped, and
+      Slackbot (USLACKBOT) is always dropped
+    • gold:   messages sent = the day's posted-message count, summed over the period
+
+  Cases, each with one Slack row dated 2026-12-25. Each email belongs to a person,
+  so only the bot rule can remove a row:
+    • alice — member, not a bot, 3 messages → kept, 3 (control)
+    • bob   — the members list flags the account as a bot, 7 messages → excluded
+    • carol — the account is USLACKBOT, 9 messages → excluded
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/bob
+    - $ref: ../templates/people.yaml#/templates/carol
+
+  bronze_slack.users_details:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U001,      email_address: alice@example.com, date: "2026-12-25", unique_key: sl-alice-20261225, messages_posted_count: 3, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: B001,      email_address: bob@example.com,   date: "2026-12-25", unique_key: sl-bob-20261225,   messages_posted_count: 7, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: USLACKBOT, email_address: carol@example.com, date: "2026-12-25", unique_key: sl-carol-20261225, messages_posted_count: 9, channel_messages_posted_count: 0}
+
+  bronze_slack.users:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U001, unique_key: sl-member-U001, email: alice@example.com}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: B001, unique_key: sl-member-B001, is_bot: true}

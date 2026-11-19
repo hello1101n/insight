@@ -21,7 +21,7 @@ mcp:
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-v3-core
+  repository: ghcr.io/hello1101n/insight-v3-core
   tag: ""
   pullPolicy: IfNotPresent
 

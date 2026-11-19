@@ -1,23 +1,17 @@
+import { BarChart, CartesianGrid, Cell, ReferenceLine, XAxis } from "recharts";
 import {
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ChartBar,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
-import { evidenceSelection } from "@/api/metric-drilldown-client";
-import {
   Card,
   CardAction,
   CardContent,
   CardHeader,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
+import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { ChartEmpty } from "@/components/widgets/metric-views/chart-empty";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";
 import { formatMetricNumber, formatMetricValue } from "@/lib/format";

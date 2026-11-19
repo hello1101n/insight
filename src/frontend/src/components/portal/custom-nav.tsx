@@ -1,4 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
+
+import { resolveText } from "@/i18n/localized-text";
 
 import { visibleCatalogues } from "@/lib/custom/catalogues";
 import { useDashboardBrowse } from "@/lib/custom/dashboard-browse";
@@ -12,7 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 import {
   DASHBOARD_BROWSE_PLANNED,
   STARTER_DASHBOARDS,
@@ -21,9 +24,10 @@ import { usePortalSearch } from "@/lib/portal/portal-search";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useIsAdmin } from "@/queries/identity-me";
 
-const DASHBOARD_ROUTES = new Set(["/portal/custom/", "/portal/custom/$name"]);
+const DASHBOARD_ROUTES = new Set(["/_shell/dashboards/", "/_shell/dashboards/$name"]);
 
 export function CustomNav() {
+  const { t } = useTranslation();
   const showPlanned = usePortalShowPlanned();
   const { isAdmin } = useIsAdmin();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -35,7 +39,7 @@ export function CustomNav() {
   return (
     <>
       <SidebarGroup>
-        <PaneGroupLabel>Browse</PaneGroupLabel>
+        <PaneGroupLabel>{t("nav.groups.browse")}</PaneGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             {browse.map(({ owned: narrowed, label, icon: Icon, count }) => (
@@ -44,13 +48,13 @@ export function CustomNav() {
                   isActive={onDashboards && !folder && owned === narrowed}
                   render={
                     <Link
-                      to="/portal/custom"
+                      to="/dashboards"
                       search={{ owned: narrowed, tag }}
                     />
                   }
                 >
                   <Icon />
-                  <span>{label}</span>
+                  <span>{resolveText(t, label)}</span>
                 </SidebarMenuButton>
                 {count != null ? <CountBadge>{count}</CountBadge> : null}
               </SidebarMenuItem>
@@ -79,9 +83,10 @@ function CatalogueGroup({
   pathname: string;
   showPlanned: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <SidebarGroup>
-      <PaneGroupLabel>Catalogue</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.groups.catalogue")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {visibleCatalogues(showPlanned).map(
@@ -94,7 +99,7 @@ function CatalogueGroup({
                   className={planned ? "text-muted-foreground" : undefined}
                 >
                   <Icon />
-                  <span>{label}</span>
+                  <span>{resolveText(t, label)}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )
@@ -106,6 +111,7 @@ function CatalogueGroup({
 }
 
 export function HomeDashboardsGroup() {
+  const { t } = useTranslation();
   const showPlanned = usePortalShowPlanned();
   const mine = useDashboardBrowse().find((row) => row.owned === "me");
 
@@ -113,16 +119,16 @@ export function HomeDashboardsGroup() {
 
   return (
     <SidebarGroup>
-      <PaneGroupLabel>Dashboards</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.groups.dashboards")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {mine ? (
             <SidebarMenuItem>
               <SidebarMenuButton
-                render={<Link to="/portal/custom" search={{ owned: "me" }} />}
+                render={<Link to="/dashboards" search={{ owned: "me" }} />}
               >
                 <mine.icon />
-                <span>{mine.label}</span>
+                <span>{resolveText(t, mine.label)}</span>
               </SidebarMenuButton>
               {mine.count != null ? (
                 <CountBadge>{mine.count}</CountBadge>

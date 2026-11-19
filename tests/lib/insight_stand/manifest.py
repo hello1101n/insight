@@ -73,6 +73,7 @@ BOOLEAN_CAPABILITIES: Final[frozenset[str]] = frozenset(
     {
         "ingestion",
         "service_principals",
+        "connector_schedules",
         "custom_catalogue",
         "files_sharing",
         "portal_dashboards",
@@ -174,6 +175,7 @@ class Capabilities:
     ingestion: bool
     service_principals: bool
     idp: str
+    connector_schedules: bool = False
     portal_dashboards: bool = False
     portal_metrics: bool = False
     portal_widgets: bool = False
@@ -190,6 +192,7 @@ class Capabilities:
             # False, which skips the S2S tests rather than failing to parse.
             service_principals=bool(doc.get("service_principals", False)),
             idp=_require(doc, "idp", str, where),
+            connector_schedules=_capability(doc, "connector_schedules"),
             portal_dashboards=_capability(doc, "portal_dashboards"),
             portal_metrics=_capability(doc, "portal_metrics"),
             portal_widgets=_capability(doc, "portal_widgets"),

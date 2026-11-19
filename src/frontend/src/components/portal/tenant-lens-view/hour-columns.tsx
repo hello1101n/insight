@@ -1,17 +1,20 @@
-import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart,
   CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
   ReferenceArea,
   ReferenceLine,
   XAxis,
-  YAxis,
+} from "recharts";
+import {
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { hourColumns } from "./derived";
