@@ -286,7 +286,7 @@ it.each([
       within(row).getByRole("img", { name: "Waiting for reconcile" })
     );
     await userEvent.click(row);
-    await screen.findByText(new RegExp(`set by ${name}`));
+    await screen.findByText((content) => content.includes(`set by ${name}`));
     await userEvent.hover(
       screen.getByText("Waiting for reconcile").closest("[tabindex]")!
     );

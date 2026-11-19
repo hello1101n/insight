@@ -117,7 +117,9 @@ it.each([
   expect(
     container.querySelectorAll('[data-slot="schedule-hint"]')
   ).toHaveLength(1);
-  expect(screen.getByText(new RegExp(hint))).toBeInTheDocument();
+  expect(
+    screen.getByText((content) => content.includes(hint))
+  ).toBeInTheDocument();
   expect(screen.getByText(/until then runs/)).toHaveTextContent(
     "every day at 03:00"
   );
