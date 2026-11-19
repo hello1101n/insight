@@ -44,7 +44,6 @@ const meta: Meta<typeof MetricsCompareTable> = {
     people: PEOPLE,
     keys: ["git.commits"],
     byKey: BY_KEY,
-    helpByKey: new Map(),
     roles: new Map([[PEOPLE[0]!.entityId, "Software Engineer"]]),
   },
   decorators: [

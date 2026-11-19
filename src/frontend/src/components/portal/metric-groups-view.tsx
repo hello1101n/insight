@@ -97,7 +97,7 @@ export type MetricGroupsContent = "glance" | "attention" | "none";
 /**
  * Catalog-driven metric-group screen — the reusable body behind the portal's
  * Overview and Direction lenses. Reuses the v2 dashboard widgets
- * (KpiTile / MetricGroupCard / GroupDrilldownSheet) and the `/metric-results`
+ * (KpiTile / GroupDrilldownSheet) and the `/metric-results`
  * collection queries, parameterised by the set of groups to show.
  */
 export function MetricGroupsView({

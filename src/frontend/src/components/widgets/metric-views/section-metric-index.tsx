@@ -1,4 +1,4 @@
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import {
   PEER_MARK_CENTRE,
   PeerMark,
@@ -25,8 +25,7 @@ import {
  * their standing against a cohort: a reader looking for emails sent had to
  * know it was unremarkable this period in order to guess where it went.
  *
- * So: no ranking, no fold, alphabetical order, the value, the pool's middle,
- * and the catalog's own words on hover.
+ * So: no ranking, no fold, alphabetical order, the value, and the pool's middle.
  *
  * Only rows that read. A metric holding nothing for this person in this
  * period gives the reader nothing to act on and costs them a line to discover
@@ -99,7 +98,7 @@ export function SectionMetricIndex({
             className="flex flex-wrap items-center gap-x-4 gap-y-0.5 border-b border-dashed py-1 last:border-b-0"
           >
             <dt className={cn("min-w-0 truncate", TEXT_NAME)}>
-              <MetricName metric={metric} />
+              <MetricName metric={metric} truncate />
             </dt>
             {/* Layout only. Putting the label role on the container greyed
                 the person's own value along with its median, so the subject of

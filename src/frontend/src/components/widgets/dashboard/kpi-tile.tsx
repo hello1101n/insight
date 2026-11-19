@@ -1,4 +1,3 @@
-import { useId } from "react";
 import {
   ChevronRight,
   Sparkles,
@@ -6,7 +5,6 @@ import {
   TrendingUpIcon,
 } from "lucide-react";
 
-import { MetricHelpTooltip } from "@/components/widgets/metric-help-tooltip";
 import { Sparkline } from "@/components/widgets/dashboard/sparkline";
 import {
   Card,
@@ -48,10 +46,6 @@ export function KpiTile({
 }: KpiTileProps) {
   const primaryGroup = onOpenGroup ? tile.groupId : null;
   const interactive = primaryGroup != null;
-  const descriptionId = useId();
-  const description = [tile.help?.description, tile.help?.explanation]
-    .filter(Boolean)
-    .join(". ");
 
   return (
     <Card
@@ -66,7 +60,6 @@ export function KpiTile({
             type="button"
             onClick={() => onOpenGroup?.(primaryGroup)}
             aria-label={`Open ${tile.label} details`}
-            aria-describedby={description ? descriptionId : undefined}
           />
         ) : undefined
       }
@@ -83,21 +76,12 @@ export function KpiTile({
         />
       ) : null}
       <CardHeader>
-        <MetricHelpTooltip help={tile.help} name={tile.label}>
-          <CardDescription
-            className={cn(TEXT_NAME, "min-w-0 cursor-help truncate")}
-            tabIndex={interactive ? undefined : 0}
-          >
-            {tile.label}
-          </CardDescription>
-        </MetricHelpTooltip>
-        {/* The kit's tooltip does not describe its trigger, and the button's
-            label replaces its contents, so the copy is linked explicitly. */}
-        {description ? (
-          <span id={descriptionId} className="sr-only">
-            {description}
-          </span>
-        ) : null}
+        <CardDescription
+          className={cn(TEXT_NAME, "min-w-0 truncate")}
+          title={tile.label}
+        >
+          {tile.label}
+        </CardDescription>
         {/* Plain ink, and the badge is gone: its content moved into the
             line below, where it can say what it is comparing against
             instead of leaving "-13%" to be read as either comparison. */}
