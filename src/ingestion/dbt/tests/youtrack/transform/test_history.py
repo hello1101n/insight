@@ -253,7 +253,8 @@ def test_gold_uses_bindings_and_does_not_choose_first_of_many_assignees(case: Wa
     case.build()
     case.build('class_task_field_history')
     case.build('task_issue_state task_status_spans')
-    assert list(case.rows('SELECT issue_id FROM insight.task_issue_state')) == []
+    assert list(case.rows('SELECT issue_id,account_id,entity_id FROM insight.task_issue_state')) == [
+        {'issue_id': 'issue-1', 'account_id': '', 'entity_id': ''}]
 
 
 def test_metadata_observations_do_not_claim_exact_change_time(case: Warehouse) -> None:
