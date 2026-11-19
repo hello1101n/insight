@@ -28,7 +28,6 @@ import { usePortalPeriod } from "@/hooks/use-portal-period";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { offeredMetricFilter } from "@/lib/insight/groups";
 import { flattenSubordinates } from "@/lib/insight/identity-tree";
-import { metricHelp, type MetricHelpText } from "@/lib/insight/metric-help";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
@@ -86,16 +85,6 @@ export function MetricsView() {
   );
   const catalogKeys = useMemo(
     () => catalog.map((metric) => metric.metric_key),
-    [catalog],
-  );
-  const helpByKey = useMemo(
-    () =>
-      new Map(
-        catalog.flatMap((metric) => {
-          const help = metricHelp(metric);
-          return help ? [[metric.metric_key, help] as const] : [];
-        }),
-      ),
     [catalog],
   );
   const families = useMemo(
@@ -230,7 +219,6 @@ export function MetricsView() {
           members={members}
           metricKeys={metricKeys}
           byKey={data.byKey}
-          helpByKey={helpByKey}
           loading={data.isPending}
           range={dateRange}
         />
@@ -296,7 +284,6 @@ function MetricsBody({
   members,
   metricKeys,
   byKey,
-  helpByKey,
   loading,
   range,
 }: {
@@ -305,7 +292,6 @@ function MetricsBody({
   members: MembersGridMember[];
   metricKeys: readonly string[];
   byKey: Map<string, NormalizedMetricResult>;
-  helpByKey: ReadonlyMap<string, MetricHelpText>;
   loading: boolean;
   range: DateRange;
 }) {
@@ -397,7 +383,6 @@ function MetricsBody({
             people={compared}
             keys={columns}
             byKey={byKey}
-            helpByKey={helpByKey}
             roles={roles}
           />
         </div>
@@ -406,7 +391,6 @@ function MetricsBody({
           rows={rows}
           groups={metricGroups(columns)}
           byKey={byKey}
-          helpByKey={helpByKey}
           roles={roles}
           sort={sort}
           onSort={(key) => setSort((current) => nextSort(current, key))}

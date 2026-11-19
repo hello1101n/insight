@@ -114,7 +114,9 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
     <CardHeader className="pb-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{metric.label}</span>
+          <span className="truncate text-sm font-semibold" title={metric.label}>
+            {metric.label}
+          </span>
           <span className="text-xs text-muted-foreground">
             {[
               direction,
