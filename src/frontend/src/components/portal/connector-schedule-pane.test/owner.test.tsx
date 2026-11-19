@@ -274,7 +274,7 @@ it.each([
     );
     await userEvent.unhover(within(row).getByRole("img", { name: "Pending" }));
     await userEvent.click(row);
-    await screen.findByText(new RegExp(`Saved by ${name}`));
+    await screen.findByText((text) => text.includes(`Saved by ${name}`));
     await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       `Target · saved by ${name}`

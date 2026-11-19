@@ -63,7 +63,9 @@ it.each([
     const header = screen.getByText(
       pending_reason === "no_cronworkflow" ? "Not scheduled yet" : "Pending"
     );
-    expect(screen.getByText(new RegExp(wording))).toBeInTheDocument();
+    expect(
+      screen.getByText((text) => text.includes(wording))
+    ).toBeInTheDocument();
     await userEvent.hover(header.closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(`${wording}.`);
   }
