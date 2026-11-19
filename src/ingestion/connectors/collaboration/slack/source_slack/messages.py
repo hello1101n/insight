@@ -21,11 +21,10 @@ from source_slack import streams
 from source_slack.client import SlackApiError, SlackClient
 from source_slack.metadata import message_metadata
 from source_slack.models import Conversation, Message, SlackConfig
-from source_slack.streams import CURSOR, cursor_from_state, traced
+from source_slack.streams import CURSOR, LOOKBACK, cursor_from_state, traced
 
 logger = logging.getLogger("airbyte")
 
-LOOKBACK = timedelta(days=2)
 SLICE = timedelta(days=7)
 # The token cannot read this conversation: the next conversation is read.
 SKIPPED_CONVERSATION_ERRORS = frozenset({"channel_not_found", "not_in_channel"})

@@ -65,31 +65,45 @@ def test_checkpoints_after_every_day() -> None:
     assert "2026-10-01" in days and days[-1] == "2026-10-02"
 
 
-def test_resumes_from_the_declarative_cursor_day_inclusive() -> None:
+def test_reads_the_cursor_day_and_the_two_days_before_it_again() -> None:
     config = {**CONFIG, "slack_start_date": "2026-09-01"}
+    days = ["2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"]
+    with slack() as http:
+        for day in days:
+            http.get(day_url(day), **member_file(day))
+
+        output = run(stream_state({"date": "2026-10-01"}), config=config)
+
+    assert [r.url for r in http.request_history[1:]] == [day_url(day) for day in days]
+    assert last_state(output) == {"date": "2026-10-02"}
+
+
+def test_a_failed_reread_keeps_the_cursor() -> None:
+    config = {**CONFIG, "slack_start_date": "2026-09-01"}
+    with slack() as http:
+        http.get(day_url("2026-09-30"), **member_file("2026-09-30"))
+        http.get(day_url("2026-10-01"), **refusal("file_not_found"))
+
+        output = run(stream_state({"date": "2026-10-02"}), config=config, expecting_exception=True)
+
+    assert {r.record.data["date"] for r in output.records} == {"2026-09-30"}
+    assert last_state(output) == {"date": "2026-10-02"}
+
+
+def test_the_lookback_never_reads_before_the_start_date() -> None:
     with slack() as http:
         http.get(day_url("2026-10-01"), **member_file("2026-10-01"))
         http.get(day_url("2026-10-02"), **member_file("2026-10-02"))
 
-        output = run(stream_state({"date": "2026-10-01"}), config=config)
-
-    assert [r.url for r in http.request_history[1:]] == [day_url("2026-10-01"), day_url("2026-10-02")]
-    assert last_state(output) == {"date": "2026-10-02"}
-
-
-def test_a_cursor_at_the_publication_edge_reads_only_that_day() -> None:
-    with slack() as http:
-        http.get(day_url("2026-10-02"), **member_file("2026-10-02"))
-
         output = run(stream_state({"date": "2026-10-02"}))
 
-    assert {r.record.data["date"] for r in output.records} == {"2026-10-02"}
+    assert [r.url for r in http.request_history[1:]] == [day_url("2026-10-01"), day_url("2026-10-02")]
     assert not output.errors
 
 
 def test_a_cursor_past_the_publication_edge_asks_for_nothing() -> None:
     with slack():
-        output = run(stream_state({"date": "2026-10-03"}))
+        output = run(stream_state({"date": "2026-10-05"}))
 
     assert not output.records
     assert not output.errors
@@ -142,7 +156,7 @@ def test_a_day_still_unpublished_past_the_grace_period_fails() -> None:
         http.get(day_url("2026-09-20"), **refusal("file_not_yet_available"))
 
         output = run(
-            stream_state({"date": "2026-09-20"}),
+            stream_state({"date": "2026-09-22"}),
             expecting_exception=True,
             config={**CONFIG, "slack_start_date": "2026-09-01"},
         )

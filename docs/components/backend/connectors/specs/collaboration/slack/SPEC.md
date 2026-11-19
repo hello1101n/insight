@@ -446,7 +446,6 @@ The streams with an issue in section 1 do not exist in `main`.
 | Optional key `slack_alert_channels` (section 4) | The key does not exist. | #4351 |
 | Connector management configures the connector (section 4) | Kubernetes Secret. No connector management. | #670 |
 | The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
-| Each sync reads the cursor day and the 2 days before it (section 5.1) | Each sync reads the cursor day only. | #4334 |
 | Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Bots send no identity input, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | An email on more than one person resolves to one person (section 9) | The email resolves to no person (`identity/person_map.sql`). | #4343 |
