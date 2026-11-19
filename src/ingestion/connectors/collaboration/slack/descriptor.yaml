@@ -17,7 +17,7 @@ name: slack
 #   chat evidence resolves each Slack row by that account first, then by the email.
 #   MAJOR so reconcile runs `dbt --full-refresh`: staging rows built before the
 #   change have no account. Slack sends identity inputs from the members models.
-version: "2028.3.0"
+version: "2028.4.0"
 type: cdk
 schedule: 0 4 * * *
 # images.cdk.image stays empty until the first main build of build-images.yml,
@@ -27,7 +27,7 @@ images:
     name: source-slack-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.19.13.02-ba5cfb4"
+    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.19.16.53-652be89"
 dbt_select: tag:slack+
 workflow: sync
 connection:
