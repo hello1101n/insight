@@ -79,4 +79,19 @@ and bronze deduplicates on `unique_key`.
 
 ## Silver targets
 
-None yet: the `class_support_*` contract of DESIGN.md §5 lands separately.
+Staging parses `payload_json` into one model per class; each is tagged
+`silver:class_support_*` and unioned into `silver/support/`.
+
+| Class | Built from |
+|---|---|
+| `class_support_ticket_field_history` | ticket events (one row per field set), merge audits, deleted tickets |
+| `class_support_tickets` | ticket snapshot, merge audits, deletions, the history's last `closed` |
+| `class_support_interactions` | comment events |
+| `class_support_sla_events`, `class_support_sla_policies` | ticket metric events, SLA policies |
+| `class_support_satisfaction` | legacy ratings and survey responses in one score vocabulary |
+| `class_support_agents`, `class_support_customers` | users by role, organizations |
+| `class_support_groups`, `class_support_group_memberships` | groups, memberships |
+| `class_support_field_definitions`, `class_support_schedules`, `class_support_kb_articles` | ticket fields, schedules, Help Center articles |
+
+`zendesk__ticket_event_items` is the shared parse of the event export: one row
+per field an update set, or per comment it added.
