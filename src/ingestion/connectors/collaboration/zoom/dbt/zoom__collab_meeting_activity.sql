@@ -1,7 +1,8 @@
 -- depends_on: {{ ref('zoom__meeting_sessions') }}
 {{ config(
     materialized='incremental',
-    incremental_strategy='append',
+    unique_key='unique_key',
+    incremental_strategy='delete+insert',
     schema='staging',
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by='(unique_key)',
@@ -78,18 +79,20 @@
 WITH
 {%- if is_incremental() %}
 -- INVARIANT: the watermark is the source EXTRACT time, not the meeting date, because
--- re-pulled rows carry a fresh `_airbyte_extracted_at`. Company time depends on every
--- attendee, so a late attendee re-opens all dates of that meeting.
+-- re-pulled rows carry a fresh `_airbyte_extracted_at`. It starts at the newest extract
+-- this model has already built for the source instance, so meetings extracted while runs
+-- failed are built on the next run. Company time depends on every attendee, so a
+-- late attendee re-opens all dates of that meeting.
 recently_extracted_meetings AS (
     SELECT DISTINCT meeting_uuid
     FROM {{ participants }}
     WHERE _airbyte_extracted_at
-          > (SELECT max(_airbyte_extracted_at) FROM {{ participants }}) - INTERVAL 3 DAY
+          > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
     UNION DISTINCT
     SELECT DISTINCT uuid AS meeting_uuid
     FROM {{ meetings }}
     WHERE _airbyte_extracted_at
-          > (SELECT max(_airbyte_extracted_at) FROM {{ meetings }}) - INTERVAL 3 DAY
+          > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
 ),
 
 dates_to_rebuild AS (
@@ -156,7 +159,8 @@ deduped_participants AS (
         p.share_application AS share_application,
         p.share_whiteboard AS share_whiteboard,
         p.joined_at AS joined_at,
-        p.left_at AS left_at
+        p.left_at AS left_at,
+        p.extracted_at AS extracted_at
     FROM (
         SELECT
             tenant_id,
@@ -171,16 +175,14 @@ deduped_participants AS (
             share_application,
             share_whiteboard,
             parseDateTimeBestEffortOrNull(join_time) AS joined_at,
-            parseDateTimeBestEffortOrNull(leave_time) AS left_at
+            parseDateTimeBestEffortOrNull(leave_time) AS left_at,
+            _airbyte_extracted_at AS extracted_at
         FROM {{ participants }}
         WHERE parseDateTimeBestEffortOrNull(join_time) IS NOT NULL
           -- INVARIANT: time spent waiting to be admitted is not time in the meeting.
           AND coalesce(status, '') != 'in_waiting_room'
         {%- if is_incremental() %}
-          AND (
-              (SELECT count() FROM {{ this }}) = 0
-              OR meeting_uuid IN (SELECT meeting_uuid FROM meetings_in_scope)
-          )
+          AND meeting_uuid IN (SELECT meeting_uuid FROM meetings_in_scope)
         {%- endif %}
         -- WORKAROUND: Airbyte re-emits identical participant rows; keep the latest one.
         ORDER BY _airbyte_extracted_at DESC
@@ -321,6 +323,7 @@ sessions_with_company AS (
         own.share_application AS share_application,
         own.share_whiteboard AS share_whiteboard,
         own.joined_at AS joined_at,
+        max(own.extracted_at) AS extracted_at,
         greatest(0, ifNull(dateDiff('second', own.joined_at, own.left_at), 0)) AS session_seconds,
         -- WORKAROUND: an unmatched LEFT JOIN gives NULL or 0 depending on join_use_nulls,
         -- and greatest()/least() skip NULL, so test for a match before clipping.
@@ -385,7 +388,8 @@ attended_days AS (
             coalesce(p.share_desktop, false)
             OR coalesce(p.share_application, false)
             OR coalesce(p.share_whiteboard, false)
-        )) AS screen_share_duration_seconds
+        )) AS screen_share_duration_seconds,
+        max(p.extracted_at) AS extracted_at
     FROM sessions_with_company AS p
     LEFT JOIN {{ ref('zoom__meeting_sessions') }} AS ml FINAL
         ON p.meeting_uuid = ml.uuid
@@ -400,16 +404,14 @@ hosted_sessions AS (
         source_id,
         uuid AS meeting_uuid,
         email AS host_email,
-        parseDateTimeBestEffortOrNull(start_time) AS started_at
+        parseDateTimeBestEffortOrNull(start_time) AS started_at,
+        _airbyte_extracted_at AS extracted_at
     FROM {{ meetings }}
     WHERE email IS NOT NULL AND email != ''
       AND uuid IS NOT NULL AND uuid != ''
       AND parseDateTimeBestEffortOrNull(start_time) IS NOT NULL
     {%- if is_incremental() %}
-      AND (
-          (SELECT count() FROM {{ this }}) = 0
-          OR uuid IN (SELECT meeting_uuid FROM meetings_in_scope)
-      )
+      AND uuid IN (SELECT meeting_uuid FROM meetings_in_scope)
     {%- endif %}
     ORDER BY _airbyte_extracted_at DESC
     LIMIT 1 BY tenant_id, source_id, uuid
@@ -421,7 +423,8 @@ attended_by_others AS (
         h.source_id AS source_id,
         h.meeting_uuid AS meeting_uuid,
         h.host_email AS host_email,
-        h.started_at AS started_at
+        h.started_at AS started_at,
+        max(h.extracted_at) AS extracted_at
     FROM hosted_sessions AS h
     INNER JOIN attendance AS a
         ON a.tenant_id = h.tenant_id
@@ -440,7 +443,8 @@ organized_days AS (
         lower(o.host_email) AS person_key,
         toDate(o.started_at, 'UTC') AS date,
         min(o.host_email) AS organizer_email,
-        toInt64(uniqExact(coalesce(ml.logical_meeting_id, o.meeting_uuid))) AS meetings_organized
+        toInt64(uniqExact(coalesce(ml.logical_meeting_id, o.meeting_uuid))) AS meetings_organized,
+        max(o.extracted_at) AS extracted_at
     FROM attended_by_others AS o
     LEFT JOIN {{ ref('zoom__meeting_sessions') }} AS ml FINAL
         ON o.meeting_uuid = ml.uuid
@@ -466,7 +470,8 @@ person_days AS (
         audio_duration_seconds,
         video_duration_seconds,
         screen_share_duration_seconds,
-        toInt64(0)                    AS meetings_organized
+        toInt64(0)                    AS meetings_organized,
+        extracted_at
     FROM attended_days
     UNION ALL
     SELECT
@@ -485,7 +490,8 @@ person_days AS (
         toInt64(0)                    AS audio_duration_seconds,
         toInt64(0)                    AS video_duration_seconds,
         toInt64(0)                    AS screen_share_duration_seconds,
-        meetings_organized
+        meetings_organized,
+        extracted_at
     FROM organized_days
 )
 
@@ -509,7 +515,7 @@ SELECT
     toNullable(sum(video_duration_seconds)) AS video_duration_seconds,
     toNullable(sum(screen_share_duration_seconds)) AS screen_share_duration_seconds,
     CAST(NULL AS Nullable(String)) AS report_period,
-    now() AS collected_at,
+    toDateTime(max(extracted_at)) AS collected_at,
     'insight_zoom' AS data_source,
     any(account_source_type) AS account_source_type,
     any(account_source_id) AS account_source_id,
@@ -518,9 +524,6 @@ SELECT
     toUnixTimestamp64Milli(now64()) AS _version
 FROM person_days
 {%- if is_incremental() %}
-WHERE (
-    (SELECT count() FROM {{ this }}) = 0
-    OR date IN (SELECT date FROM dates_to_rebuild)
-)
+WHERE date IN (SELECT date FROM dates_to_rebuild)
 {%- endif %}
 GROUP BY tenant_id, source_id, person_key, date
