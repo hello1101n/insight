@@ -11,6 +11,7 @@ import { nextScheduledRun } from "@/lib/portal/connector-schedule";
 import { PEOPLE } from "./registry";
 
 const CALLER = PEOPLE[0].person_id;
+const OTHER_ADMIN = PEOPLE[1].person_id;
 const PATH = `${CONNECTORS_BASE}/connectors/:connector/:sourceId/schedule`;
 
 function hasScheduledRun(crons: string[], now: Date): boolean {
@@ -25,6 +26,7 @@ function hasScheduledRun(crons: string[], now: Date): boolean {
 export function createConnectorScheduleMocks() {
   const states = new Map<string, ConnectorSchedule>();
   const failures = new Map<string, 400 | 412 | 500 | 503>();
+  const writeOutcomes = new Map<string, "applied" | "unconfirmed">();
   const key = (connector: string, sourceId: string) =>
     `${connector}/${sourceId}`;
 
@@ -105,7 +107,7 @@ export function createConnectorScheduleMocks() {
       state.revision++;
       state.requested = {
         crons: ["0 9 * * *"],
-        updated_by: "00000000-0000-4000-8000-000000000002",
+        updated_by: OTHER_ADMIN,
         updated_at: new Date().toISOString(),
       };
       state.status = "pending";
@@ -118,7 +120,8 @@ export function createConnectorScheduleMocks() {
       return HttpResponse.json(
         {
           status: 503,
-          detail: "The schedule was not changed: synthetic cluster refusal",
+          detail:
+            "The schedule was not changed: the cluster refused the change because the sync job is locked.",
         },
         { status: 503 }
       );
@@ -163,11 +166,40 @@ export function createConnectorScheduleMocks() {
       state.status = "pending";
       state.pending_reason = "different_schedule";
     }
+    const outcome = writeOutcomes.get(key(connector, sourceId));
+    if (outcome === "applied") {
+      const effective = crons.length ? crons : state.inherited?.crons;
+      if (effective) {
+        state.live = {
+          crons: effective,
+          timezone: "UTC",
+          origin: crons.length ? "api" : state.inherited?.origin,
+          suspended: state.live?.suspended ?? false,
+          observed_at: new Date().toISOString(),
+        };
+        state.status = crons.length ? "applied" : "inherited";
+        state.read_error = null;
+        state.pending_reason = null;
+      }
+    } else if (outcome === "unconfirmed") {
+      state.live = null;
+      state.status = null;
+      state.pending_reason = null;
+      state.read_error =
+        "Could not confirm the schedule change in the cluster.";
+    }
     return reply(state);
   }
 
   return {
     read,
+    setWriteOutcome(
+      connector: string,
+      sourceId: string,
+      outcome: "applied" | "unconfirmed"
+    ) {
+      writeOutcomes.set(key(connector, sourceId), outcome);
+    },
     failNext(
       connector: string,
       sourceId: string,
@@ -202,17 +234,20 @@ export function createConnectorScheduleMocks() {
     summary(
       connector: string,
       sourceId: string,
-      live: AppliedSchedule | null
+      live: AppliedSchedule | null,
+      scenario = false
     ): Pick<ConnectorHealth, "schedule" | "schedule_request"> {
       const state = read(connector, sourceId);
-      if (state.revision === 0)
+      if (state.revision === 0 && (!scenario || state.live !== live))
         state.live = live
           ? { ...live, observed_at: new Date().toISOString() }
           : null;
       return {
         schedule: live,
         schedule_request:
-          state.requested || live?.suspended
+          state.requested ||
+          live?.suspended ||
+          (scenario && (state.status === "pending" || state.read_error))
             ? {
                 crons: state.requested?.crons ?? [],
                 revision: state.revision,
@@ -220,7 +255,11 @@ export function createConnectorScheduleMocks() {
                 last_observation: state.status
                   ? {
                       status: state.live?.suspended ? "paused" : state.status,
-                      observed_at: new Date().toISOString(),
+                      observed_at:
+                        (scenario
+                          ? (state.live?.observed_at ??
+                            state.requested?.updated_at)
+                          : null) ?? new Date().toISOString(),
                     }
                   : null,
               }

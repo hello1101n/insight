@@ -38,7 +38,7 @@ it("wraps schedule values, attribution and status inside a nowrap table cell", (
     "min-w-0",
     "flex-wrap"
   );
-  expect(screen.getByText(/set by you/).closest("header")).toHaveClass(
+  expect(screen.getByText(/Saved by you/).closest("header")).toHaveClass(
     "min-w-0",
     "flex-wrap"
   );
@@ -124,11 +124,11 @@ it.each([
 
 it("keeps recorded and requested schedules separate with compact attribution", () => {
   const { container } = render(pane());
-  expect(screen.getByText(/until then runs/)).toHaveTextContent(
-    "until then runs every day at 03:00"
+  expect(screen.getByText(/Until then:/)).toHaveTextContent(
+    "Until then: every day at 03:00"
   );
   expect(screen.getByText("0 6 * * *")).toBeInTheDocument();
-  expect(screen.getByText("set by you · just now")).toBeInTheDocument();
+  expect(screen.getByText("Saved by you at 12:00 UTC.")).toBeInTheDocument();
   expect(
     container.querySelector('[aria-live="polite"] > span')
   ).toBeEmptyDOMElement();
@@ -144,16 +144,16 @@ it.each([false, true])(
       "00000000-0000-4000-8000-000000000002";
     mocks.save.mockResolvedValue(read());
     render(pane());
-    expect(Boolean(screen.queryByText(/set by another admin/))).toBe(!cleared);
-    expect(
-      screen.getByText("Waiting for reconcile").closest("[title]")
-    ).toHaveClass("text-warning");
-    expect(
-      screen.getByText("Takes effect at the next reconcile pass")
-    ).toBeInTheDocument();
-    await userEvent.hover(
-      screen.getByText("Waiting for reconcile").closest("[tabindex]")!
+    expect(Boolean(screen.queryByText(/Saved by another admin/))).toBe(
+      !cleared
     );
+    expect(screen.getByText("Pending").closest("[title]")).toHaveClass(
+      "text-warning"
+    );
+    expect(
+      screen.getByText("Takes effect after the next check.")
+    ).toBeInTheDocument();
+    await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).not.toHaveTextContent(
       "attempted at"
     );
@@ -173,8 +173,10 @@ it.each(["pending"] as const)(
     mocks.query.data!.schedule.status = "applied";
     mocks.query.data!.schedule.live!.observed_at = observedAt;
     view.rerender(pane());
-    expect(screen.getByText("Applied")).toBeInTheDocument();
-    await userEvent.hover(screen.getByText("Applied").closest("[tabindex]")!);
+    expect(screen.getByText("Set by admin")).toBeInTheDocument();
+    await userEvent.hover(
+      screen.getByText("Set by admin").closest("[tabindex]")!
+    );
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       scheduleTime(observedAt)
     );
@@ -195,13 +197,13 @@ it("keeps applied confirmation visible when the pane reopens", () => {
   const view = render(pane());
   mocks.query.data!.schedule.status = "applied";
   view.rerender(pane());
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
   expect(screen.queryByText("Requested")).not.toBeInTheDocument();
   view.rerender(pane());
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
   view.unmount();
   render(pane());
-  expect(screen.getByText("Applied")).toBeInTheDocument();
+  expect(screen.getByText("Set by admin")).toBeInTheDocument();
 });
 
 it("renders no recorded schedule as unknown and hides requested once inherited", () => {
@@ -233,16 +235,16 @@ it("shows the running schedule without override attribution after an inherited c
 });
 
 it.each([
-  ["pending", "annotation", "the Secret annotation"],
-  ["pending", "descriptor", "the connector descriptor"],
-  ["pending", "default", "the default"],
-  ["pending", "annotation", "the Secret annotation"],
-  ["pending", "descriptor", "the connector descriptor"],
-  ["pending", "default", "the default"],
+  [
+    "annotation",
+    "Returns to the schedule set at deployment in instance settings.",
+  ],
+  ["descriptor", "Returns to the connector's default schedule."],
+  ["default", "Returns to the default schedule: every day at 00:00 UTC."],
 ] as const)(
-  "names the deployment schedule and origin for a %s clear from %s",
-  async (status, origin, source) => {
-    mocks.query.data!.schedule.status = status;
+  "names the deployment schedule and origin for a pending reset from %s",
+  async (origin, source) => {
+    mocks.query.data!.schedule.pending_reason = "different_schedule";
     mocks.query.data!.schedule.requested!.crons = [];
     mocks.query.data!.schedule.inherited = {
       crons: ["0 2 * * *", "0 14 * * *"],
@@ -251,14 +253,10 @@ it.each([
     render(pane());
 
     expect(screen.getByText("0 2 * * *; 0 14 * * *")).toBeInTheDocument();
-    const badge = screen.getByText(
-      status === "pending" ? "Waiting for reconcile" : "Waiting for reconcile"
-    );
+    const badge = screen.getByText("Pending");
     await userEvent.hover(badge.closest("[tabindex]")!);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      `from ${source}`
-    );
-    expect(screen.queryByText(/set by you/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(source);
+    expect(screen.queryByText(/Saved by you/)).not.toBeInTheDocument();
     expect(screen.queryByText("The default schedule")).not.toBeInTheDocument();
     expect(screen.queryByText("Set by")).not.toBeInTheDocument();
     expect(
@@ -275,7 +273,7 @@ it.each(["pending"] as const)(
     render(pane());
 
     expect(screen.getByText("Default schedule")).toBeInTheDocument();
-    expect(screen.queryByText(/set by you/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Saved by you/)).not.toBeInTheDocument();
     expect(screen.queryByText("The default schedule")).not.toBeInTheDocument();
   }
 );
@@ -300,7 +298,7 @@ it("submits the custom list with the last ETag, then closes and restores focus",
   );
   expect(screen.getByRole("button", { name: "Edit" })).toHaveFocus();
   expect(
-    screen.getByText("Takes effect at the next reconcile pass")
+    screen.getByText("Takes effect after the next check.")
   ).toBeInTheDocument();
 });
 
@@ -474,24 +472,116 @@ it.each([true, false])(
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     const reset = screen.getByRole("button", { name: "Reset to default" });
     await userEvent.hover(reset.closest("[tabindex]")!);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      known ? "0 2 * * * UTC" : "has not been recorded"
-    );
+    const tooltip = await screen.findByRole("tooltip");
+    if (known) {
+      expect(tooltip).toHaveTextContent(
+        "Returns to the connector's default schedule."
+      );
+      expect(tooltip).toHaveTextContent("0 2 * * * UTC");
+    } else {
+      expect(tooltip).toHaveTextContent(
+        "The deployment schedule is shown after the next check."
+      );
+    }
   }
 );
+
+it("shows the built-in reset schedule once in the editor tooltip", async () => {
+  mocks.query.data!.schedule.inherited = {
+    crons: ["0 0 * * *"],
+    origin: "default",
+  };
+  render(pane());
+
+  await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const reset = screen.getByRole("button", { name: "Reset to default" });
+  await userEvent.hover(reset.closest("[tabindex]")!);
+  const tooltip = await screen.findByRole("tooltip");
+  expect(
+    Array.from(tooltip.querySelectorAll("span"), (line) => line.textContent)
+  ).toEqual([
+    "Every day at 00:00 UTC",
+    "0 0 * * * UTC",
+    "Returns to the default schedule.",
+  ]);
+});
 
 it("shows the live schedule even when the summary still has the previous schedule", () => {
   mocks.query.data!.schedule.live!.crons = ["0 8 * * *"];
   render(pane());
-  const running = screen.getByText(/until then runs/);
+  const running = screen.getByText(/Until then:/);
   expect(running).toHaveTextContent("every day at 08:00");
   expect(running).not.toHaveTextContent("0 3 * * *");
+});
+
+it.each([
+  {
+    crons: ["0 3 * * *", "0 15 * * *"],
+    count: "2 cron expressions",
+  },
+  { crons: ["H * * * *"], count: "1 cron expression" },
+])(
+  "uses $count when the running crons have no short description",
+  ({ crons, count }) => {
+    const schedule = mocks.query.data!.schedule;
+    schedule.pending_reason = "different_schedule";
+    schedule.requested!.crons = [];
+    schedule.inherited = {
+      crons: ["0 3 * * *", "0 14 * * *"],
+      origin: "annotation",
+    };
+    schedule.live!.crons = crons;
+    render(pane());
+
+    expect(screen.getByText(/Until then:/)).toHaveTextContent(
+      `Until then: ${count}, UTC.`
+    );
+  }
+);
+
+it("counts cron expressions in the displayed schedule", () => {
+  mocks.query.data!.schedule.requested!.crons = ["0 3 * * *", "0 14 * * *"];
+  render(pane());
+  expect(screen.getByText("2 cron expressions", { exact: true })).toBeVisible();
+});
+
+it("counts cron expressions in the editor reset tooltip", async () => {
+  mocks.query.data!.schedule.inherited = {
+    crons: ["0 3 * * *", "0 14 * * *"],
+    origin: "annotation",
+  };
+  render(pane());
+
+  await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const reset = screen.getByRole("button", { name: "Reset to default" });
+  await userEvent.hover(reset.closest("[tabindex]")!);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    "2 cron expressions UTC"
+  );
 });
 
 it("does not present the summary schedule as live when no CronWorkflow exists", () => {
   mocks.query.data!.schedule.live = null;
   mocks.query.data!.schedule.pending_reason = "no_cronworkflow";
   render(pane());
-  expect(screen.queryByText(/until then runs/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Until then:/)).not.toBeInTheDocument();
   expect(screen.getByText("0 6 * * *")).toBeInTheDocument();
 });
+
+it.each(["initial query error", "no data", "no source id"] as const)(
+  "shows Not loaded when the page has %s",
+  (reason) => {
+    mocks.query.isError = reason.endsWith("error");
+    mocks.query.isPending = reason === "no source id";
+    mocks.query.data = reason === "no source id" ? read() : undefined;
+    render(
+      reason === "no source id" ? pane({ ...row, source_id: null }) : pane()
+    );
+
+    expect(screen.getByText("Not loaded")).toBeInTheDocument();
+    expect(screen.queryByText("Can't read")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Edit" })
+    ).not.toBeInTheDocument();
+  }
+);

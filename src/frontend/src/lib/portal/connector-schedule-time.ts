@@ -20,12 +20,55 @@ export function scheduleRuns(
   }
 }
 
-export function scheduleTime(value: string | Date): string {
-  const time = new Date(value);
-  if (!Number.isFinite(time.getTime())) return "—";
-  return i18n.t("connectors.schedule.with_utc", {
-    words: time.toISOString().replace("T", " ").slice(0, 19),
+const utcMonth = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  timeZone: "UTC",
+});
+
+function formatScheduleTime(
+  value: string | Date | null | undefined,
+  now: Date,
+  includePreposition: boolean
+): string {
+  const time = value == null ? null : new Date(value);
+  if (!time || !Number.isFinite(time.getTime()))
+    return includePreposition
+      ? i18n.t("connectors.schedule.at_time", { time: "—" })
+      : "—";
+
+  const clock = i18n.t("connectors.schedule.with_utc", {
+    words: scheduleClock(time),
   });
+  if (time.toISOString().slice(0, 10) === now.toISOString().slice(0, 10))
+    return includePreposition
+      ? i18n.t("connectors.schedule.at_time", { time: clock })
+      : clock;
+
+  const day = `${time.getUTCDate()} ${utcMonth.format(time)}`;
+  const year = time.getUTCFullYear();
+  return i18n.t(
+    includePreposition
+      ? "connectors.schedule.on_date_at_time"
+      : "connectors.schedule.date_at_time",
+    {
+      date: year === now.getUTCFullYear() ? day : `${day} ${year}`,
+      time: clock,
+    }
+  );
+}
+
+export function scheduleTime(
+  value: string | Date | null | undefined,
+  now = new Date()
+): string {
+  return formatScheduleTime(value, now, false);
+}
+
+export function scheduleTimePhrase(
+  value: string | Date | null | undefined,
+  now = new Date()
+): string {
+  return formatScheduleTime(value, now, true);
 }
 
 export function relativeScheduleTime(

@@ -13,8 +13,9 @@ import { saveError } from "./save-error";
 
 import { ConnectorScheduleHeader } from "@/components/portal/connector-schedule-header";
 import { ConnectorScheduleTooltip } from "../connector-schedule-tooltip";
+import { ConnectorScheduleDetails } from "../connector-schedule-details";
 import { deploymentScheduleLines } from "@/lib/portal/connector-schedule-display";
-import { scheduleClock } from "@/lib/portal/connector-schedule-time";
+import { scheduleTimePhrase } from "@/lib/portal/connector-schedule-time";
 import { validateScheduleCrons } from "@/lib/portal/connector-schedule-validation";
 import { isScheduleOverride } from "@/lib/portal/connector-schedule";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
@@ -117,7 +118,7 @@ export function ConnectorScheduleEditor({
             : "connectors.editor.conflict_other",
           {
             author,
-            time: scheduleClock(current.schedule.requested?.updated_at),
+            time: scheduleTimePhrase(current.schedule.requested?.updated_at),
           }
         );
 
@@ -185,9 +186,10 @@ export function ConnectorScheduleEditor({
               ]
         );
       } else if (failure instanceof ConnectorsApiError) {
-        const body = failure.body as { detail?: unknown } | null;
-        const detail = typeof body?.detail === "string" ? body.detail : "";
-        const failureMessage = saveError(detail);
+        const failureMessage = saveError(
+          failure,
+          current.schedule.next_reconcile_at
+        );
         setError(failureMessage.summary);
         setErrorDetails(failureMessage.details);
         try {
@@ -239,14 +241,7 @@ export function ConnectorScheduleEditor({
           className="@4xl:col-span-2"
         >
           {message}
-          {errorDetails && (
-            <details className="mt-2 text-xs">
-              <summary className="cursor-pointer">
-                {t("common.actions.details")}
-              </summary>
-              <p className="mt-1">{errorDetails}</p>
-            </details>
-          )}
+          {errorDetails && <ConnectorScheduleDetails text={errorDetails} />}
         </Alert>
       )}
       <fieldset disabled={busy} className="min-w-0 space-y-3">
@@ -373,7 +368,10 @@ export function ConnectorScheduleEditor({
         <div>
           {isScheduleOverride(current.schedule.requested) && (
             <ConnectorScheduleTooltip
-              lines={deploymentScheduleLines(current.schedule.inherited)}
+              lines={deploymentScheduleLines(
+                current.schedule.inherited,
+                current.schedule.next_reconcile_at
+              )}
             >
               <Button
                 type="button"

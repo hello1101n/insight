@@ -6,20 +6,19 @@ import type {
   ConnectorHealth,
   ScheduleRead,
 } from "@/api/connector-health-client";
-import { Button, toast } from "@gears-frontx/ui-kit";
+import { ConnectorsApiError } from "@/api/connectors-client";
+import { Alert, Button, toast } from "@gears-frontx/ui-kit";
 import { ConnectorScheduleHeader } from "./connector-schedule-header";
 import { ConnectorScheduleStatus } from "./connector-schedule-status";
 import { ConnectorScheduleEditor } from "./connector-schedule-editor";
 import { ConnectorScheduleRuns } from "./connector-schedule-runs";
-import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
+import { ConnectorScheduleDetails } from "./connector-schedule-details";
+import { saveError } from "./connector-schedule-editor/save-error";
 import {
   conciseScheduleWords,
   scheduleTransitionMessage,
 } from "@/lib/portal/connector-schedule-display";
-import {
-  relativeScheduleTime,
-  scheduleTime,
-} from "@/lib/portal/connector-schedule-time";
+import { scheduleTimePhrase } from "@/lib/portal/connector-schedule-time";
 import { instanceKey } from "@/lib/portal/connector-health";
 import { isScheduleOverride } from "@/lib/portal/connector-schedule";
 import {
@@ -42,34 +41,52 @@ export function ConnectorSchedulePane({
   const write = useWriteConnectorSchedule(row);
   const [failedRevision, setFailedRevision] = useState<number>();
   const [editing, setEditing] = useState(false);
+  const [retryError, setRetryError] = useState<
+    (ReturnType<typeof saveError> & { read: ScheduleRead }) | null
+  >(null);
+  const retrying = useRef(false);
   const editButton = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef(false);
-  const schedule = query.data?.schedule;
+  const [focusRequest, setFocusRequest] = useState(0);
+  const focusedRequest = useRef(0);
+  const observed = query.data?.schedule;
+  const schedule = row.source_id == null ? undefined : observed;
+  const visibleRetryError =
+    retryError &&
+    schedule?.status === "pending" &&
+    retryError.read.schedule.connector === schedule.connector &&
+    retryError.read.schedule.source_id === schedule.source_id &&
+    retryError.read.schedule.pending_reason === schedule.pending_reason &&
+    retryError.read.schedule.revision === schedule.revision &&
+    retryError.read.schedule.requested?.updated_at ===
+      schedule.requested?.updated_at
+      ? retryError
+      : null;
+  if (retryError && !visibleRetryError) setRetryError(null);
   const identity = instanceKey(row);
   const [seen, setSeen] = useState({
     identity,
-    status: schedule?.status,
-    revision: schedule?.revision,
+    status: observed?.status,
+    revision: observed?.revision,
     message: "",
   });
   if (
     identity !== seen.identity ||
-    schedule?.status !== seen.status ||
-    schedule?.revision !== seen.revision
+    observed?.status !== seen.status ||
+    observed?.revision !== seen.revision
   ) {
     const message =
       identity === seen.identity &&
       seen.status !== undefined &&
       seen.revision !== undefined &&
-      schedule &&
-      schedule.revision >= seen.revision &&
-      schedule.revision !== failedRevision
-        ? scheduleTransitionMessage(schedule)
+      observed &&
+      observed.revision >= seen.revision &&
+      observed.revision !== failedRevision
+        ? scheduleTransitionMessage(observed)
         : "";
     setSeen({
       identity,
-      status: schedule?.status,
-      revision: schedule?.revision,
+      status: observed?.status,
+      revision: observed?.revision,
       message,
     });
   }
@@ -83,14 +100,14 @@ export function ConnectorSchedulePane({
   }, [seen]);
 
   useEffect(() => {
-    if (!editing && returnFocus.current) {
-      editButton.current?.focus();
-      returnFocus.current = false;
-    }
-  }, [editing]);
+    if (editing || write.isPending || focusRequest === focusedRequest.current)
+      return;
+    editButton.current?.focus();
+    focusedRequest.current = focusRequest;
+  }, [editing, focusRequest, write.isPending]);
 
   function close() {
-    returnFocus.current = true;
+    setFocusRequest((request) => request + 1);
     setEditing(false);
   }
   async function reload(): Promise<ScheduleRead> {
@@ -100,6 +117,50 @@ export function ConnectorSchedulePane({
         result.error ?? new Error(t("connectors.schedule.unavailable_error"))
       );
     return result.data;
+  }
+
+  async function save(etag: string, crons: string[] | null) {
+    try {
+      const result = await write.mutateAsync({ etag, crons });
+      setFailedRevision(undefined);
+      return result;
+    } catch (error) {
+      setFailedRevision(schedule?.revision);
+      throw error;
+    }
+  }
+
+  async function saveAgain() {
+    const read = query.data;
+    const request = read?.schedule.requested;
+    if (!read || !request || write.isPending || retrying.current) return;
+    retrying.current = true;
+    setRetryError(null);
+    setFailedRevision(undefined);
+    try {
+      await write.mutateAsync({
+        etag: read.etag,
+        crons: isScheduleOverride(request) ? request.crons : null,
+      });
+      setFocusRequest((request) => request + 1);
+    } catch (error) {
+      if (error instanceof ConnectorsApiError && error.status === 412) {
+        const { data, error: reloadError } = await query.refetch();
+        if (reloadError || !data) return;
+        setRetryError({
+          read: data,
+          summary: t("connectors.schedule.overdue_conflict"),
+          details: "",
+        });
+      } else {
+        setRetryError({
+          read,
+          ...saveError(error, read.schedule.next_reconcile_at),
+        });
+      }
+    } finally {
+      retrying.current = false;
+    }
   }
 
   const request = schedule?.requested;
@@ -122,19 +183,10 @@ export function ConnectorSchedulePane({
           {seen.message}
         </span>
       </div>
-      {editing && query.data ? (
+      {editing && schedule && query.data ? (
         <ConnectorScheduleEditor
           read={query.data}
-          save={async (etag, crons) => {
-            try {
-              const result = await write.mutateAsync({ etag, crons });
-              setFailedRevision(undefined);
-              return result;
-            } catch (error) {
-              setFailedRevision(schedule?.revision);
-              throw error;
-            }
-          }}
+          save={save}
           reload={reload}
           onClose={close}
         />
@@ -146,19 +198,12 @@ export function ConnectorSchedulePane({
           >
             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-3">
               {override && (
-                <ConnectorScheduleTooltip
-                  lines={[
-                    t("connectors.schedule.set_by", { person }),
-                    scheduleTime(request.updated_at),
-                  ]}
-                >
-                  <span className="text-xs text-muted-foreground">
-                    {t("connectors.schedule.set_by_age", {
-                      person,
-                      age: relativeScheduleTime(request.updated_at),
-                    })}
-                  </span>
-                </ConnectorScheduleTooltip>
+                <span className="text-xs text-muted-foreground">
+                  {t("connectors.schedule.request_author", {
+                    person,
+                    time: scheduleTimePhrase(request.updated_at),
+                  })}
+                </span>
               )}
               {schedule && (
                 <Button
@@ -166,6 +211,7 @@ export function ConnectorSchedulePane({
                   type="button"
                   size="sm"
                   variant="outline"
+                  disabled={write.isPending}
                   onClick={() => setEditing(true)}
                 >
                   {t("common.actions.edit")}
@@ -186,8 +232,22 @@ export function ConnectorSchedulePane({
             <ConnectorScheduleStatus
               schedule={schedule}
               reconcileIntervalSecs={reconcileIntervalSecs}
+              onSaveAgain={() => void saveAgain()}
+              saving={write.isPending}
             />
           )}
+          {visibleRetryError && (
+            <Alert role="alert" variant="destructive">
+              {visibleRetryError.summary}
+              {visibleRetryError.details && (
+                <ConnectorScheduleDetails text={visibleRetryError.details} />
+              )}
+            </Alert>
+          )}
+          {schedule?.status === "inherited" &&
+            schedule.inherited?.origin === "annotation" && (
+              <ConnectorScheduleDetails text="insight.cyberfabric.com/schedule" />
+            )}
           {!differs && live?.timezone && (
             <ConnectorScheduleRuns
               crons={live.crons}
