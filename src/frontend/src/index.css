@@ -1,13 +1,11 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "./font.css";
 @import "@gears-frontx/ui-kit/theme.css";
 @import "@gears-frontx/ui-kit/utilities.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: "Inter Variable", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,9 +46,6 @@
 }
 
 :root {
-  /* WORKAROUND: @fontsource-variable/inter registers "Inter Variable"; the kit names "Inter". */
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: var(--font-sans);
   /* The kit stops at --chart-5. These match its lightness in each scope. */
   --chart-6: light-dark(#a16207, #b45309);
   --chart-7: light-dark(#a855f7, #d8b4fe);
@@ -129,13 +124,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html {
-    @apply font-sans;
+    @apply border-border;
   }
   /* Tailwind 4's preflight leaves a button at the browser's `default` arrow,
      so a rail item that is a button read as inert beside one that is a link. */
