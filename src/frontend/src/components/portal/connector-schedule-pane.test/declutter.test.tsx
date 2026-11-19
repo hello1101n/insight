@@ -11,7 +11,7 @@ it.each([
     "Set by admin",
     "text-success",
     "lucide-check",
-    "Running as of",
+    "Running · as of",
   ],
   [
     "pending",
@@ -37,7 +37,14 @@ it.each([
     "lucide-clock",
     "This instance has no sync schedule yet",
   ],
-  ["pending", null, "Pending", "text-warning", "lucide-clock", "Running as of"],
+  [
+    "pending",
+    null,
+    "Pending",
+    "text-warning",
+    "lucide-clock",
+    "Running · as of",
+  ],
   [
     "inherited",
     null,

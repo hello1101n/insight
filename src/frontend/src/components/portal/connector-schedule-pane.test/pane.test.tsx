@@ -11,7 +11,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
 import { ConnectorsApiError } from "@/api/connectors-client";
-import { scheduleTime } from "@/lib/portal/connector-schedule-time";
+import { scheduleClock } from "@/lib/portal/connector-schedule-time";
 import { ConnectorSchedulePane } from "../connector-schedule-pane";
 
 it("shows Edit when the loaded schedule response has no editable field", async () => {
@@ -157,7 +157,9 @@ it.each([false, true])(
     expect(await screen.findByRole("tooltip")).not.toHaveTextContent(
       "attempted at"
     );
-    expect(screen.getByRole("tooltip")).toHaveTextContent(scheduleTime(NOW));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      `Running · as of ${scheduleClock(NOW)}`
+    );
     await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(mocks.save).not.toHaveBeenCalled();
@@ -178,7 +180,7 @@ it.each(["pending"] as const)(
       screen.getByText("Set by admin").closest("[tabindex]")!
     );
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      scheduleTime(observedAt)
+      `Running · as of ${scheduleClock(observedAt)}`
     );
     expect(mocks.toast).toHaveBeenCalledTimes(1);
   }
@@ -235,12 +237,9 @@ it("shows the running schedule without override attribution after an inherited c
 });
 
 it.each([
-  [
-    "annotation",
-    "Returns to the schedule set at deployment in instance settings.",
-  ],
-  ["descriptor", "Returns to the connector's default schedule."],
-  ["default", "Returns to the default schedule: every day at 00:00 UTC."],
+  ["annotation", "Target · instance settings"],
+  ["descriptor", "Target · connector default"],
+  ["default", "Target · built-in default"],
 ] as const)(
   "names the deployment schedule and origin for a pending reset from %s",
   async (origin, source) => {
@@ -474,9 +473,7 @@ it.each([true, false])(
     await userEvent.hover(reset.closest("[tabindex]")!);
     const tooltip = await screen.findByRole("tooltip");
     if (known) {
-      expect(tooltip).toHaveTextContent(
-        "Returns to the connector's default schedule."
-      );
+      expect(tooltip).toHaveTextContent("Target · connector default");
       expect(tooltip).toHaveTextContent("0 2 * * * UTC");
     } else {
       expect(tooltip).toHaveTextContent(
@@ -497,13 +494,9 @@ it("shows the built-in reset schedule once in the editor tooltip", async () => {
   const reset = screen.getByRole("button", { name: "Reset to default" });
   await userEvent.hover(reset.closest("[tabindex]")!);
   const tooltip = await screen.findByRole("tooltip");
-  expect(
-    Array.from(tooltip.querySelectorAll("span"), (line) => line.textContent)
-  ).toEqual([
-    "Every day at 00:00 UTC",
-    "0 0 * * * UTC",
-    "Returns to the default schedule.",
-  ]);
+  expect(within(tooltip).getByRole("listitem")).toHaveTextContent(
+    /^Target · built-in default 0 0 \* \* \* UTC$/
+  );
 });
 
 it("shows the live schedule even when the summary still has the previous schedule", () => {
@@ -545,7 +538,7 @@ it("counts cron expressions in the displayed schedule", () => {
   expect(screen.getByText("2 cron expressions", { exact: true })).toBeVisible();
 });
 
-it("counts cron expressions in the editor reset tooltip", async () => {
+it("lists the cron expressions together in the editor reset tooltip", async () => {
   mocks.query.data!.schedule.inherited = {
     crons: ["0 3 * * *", "0 14 * * *"],
     origin: "annotation",
@@ -556,7 +549,7 @@ it("counts cron expressions in the editor reset tooltip", async () => {
   const reset = screen.getByRole("button", { name: "Reset to default" });
   await userEvent.hover(reset.closest("[tabindex]")!);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "2 cron expressions UTC"
+    "Target · instance settings 0 3 * * *; 0 14 * * * UTC"
   );
 });
 

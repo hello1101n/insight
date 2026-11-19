@@ -23,7 +23,7 @@ it("shows UTC next chips and UTC-only exact attribution and badge tooltips", asy
   const user = userEvent.setup();
   for (const [trigger, exact] of [
     [times[0], "23:30 UTC"],
-    [screen.getByText("Set by admin"), "12:00 UTC"],
+    [screen.getByText("Set by admin"), "Running · as of 12:00"],
   ] as const) {
     await user.hover(trigger.closest("[tabindex]")!);
     const tooltip = await screen.findByRole("tooltip");
