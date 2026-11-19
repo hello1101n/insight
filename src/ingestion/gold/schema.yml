@@ -402,7 +402,8 @@ models:
       Source measure observations for the unified metrics runtime, AI cost
       family. One row per (tenant, entity, metric date, measure, dimension tuple).
       seat_cost_usd is the invoiced price of the seat itself, from the per-seat
-      amount on the invoice's subscription lines; extra_usage_usd is the money
+      amount on the invoice's subscription lines, at the tier the seat held
+      when its billing period began; extra_usage_usd is the money
       the vendor billed once that seat exhausted the usage included in its fee;
       extra_usage_limit_usd is the admin-set ceiling on that spend, and serves
       only as the utilisation denominator; daily_extra_usage_usd is the same
