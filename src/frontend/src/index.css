@@ -2,7 +2,6 @@
 @import "@fontsource-variable/inter";
 @import "@gears-frontx/ui-kit/theme.css";
 @import "@gears-frontx/ui-kit/utilities.css";
-@import "./insight-theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -17,13 +16,6 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-12: var(--chart-12);
-  --color-chart-11: var(--chart-11);
-  --color-chart-10: var(--chart-10);
-  --color-chart-9: var(--chart-9);
-  --color-chart-8: var(--chart-8);
-  --color-chart-7: var(--chart-7);
-  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -53,18 +45,12 @@
   --color-selection-subtle: var(--selection-subtle);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-xs: calc(var(--radius) - 4px);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 4px);
-  --radius-xl: calc(var(--radius) + 8px);
-  --radius-2xl: calc(var(--radius) + 16px);
-  --radius-3xl: calc(var(--radius) + 24px);
-  --radius-4xl: calc(var(--radius) + 32px);
 }
 
 :root {
+  /* WORKAROUND: @fontsource-variable/inter registers "Inter Variable"; the kit names "Inter". */
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-sans);
   --brand-slack: oklch(0.46 0.16 325);
   --brand-m365: oklch(0.62 0.19 40);
   --brand-zoom: oklch(0.55 0.21 262);
@@ -96,12 +82,6 @@
   --brand-workday: oklch(0.72 0.16 60);
   --brand-ms-entra: oklch(0.6 0.14 235);
   --brand-ldap: oklch(0.5 0.03 260);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-ring: var(--ring);
-  /* The kit's sidebar-foreground is its muted label colour; this sidebar uses
-     the token as its base text colour and derives muted steps by opacity. */
-  --sidebar-foreground: var(--foreground);
 }
 
 .dark {
@@ -154,5 +134,23 @@
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .home-metrics [data-slot="headline-grid"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @container (min-width: 28rem) {
+    .home-metrics [data-slot="headline-grid"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container (min-width: 42rem) {
+    .home-metrics [data-slot="headline-grid"] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
 }

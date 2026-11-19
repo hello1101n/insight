@@ -17,14 +17,10 @@ import type {
 export const TOTAL_KEY = "all";
 
 /**
- * How many `--chart-N` custom properties `index.css` actually defines.
- *
- * Twelve, not twenty-four: the file lists them twice — once on `:root` and
- * again in the dark-mode block — so counting lines rather than distinct indices
- * overshoots, and an index past the last real one resolves to an undefined
- * `var()` that paints every band the fallback colour.
+ * INVARIANT: the kit defines `--chart-1` to `--chart-5`; an index past them is
+ * an undefined `var()` that paints the band the fallback colour.
  */
-const PALETTE_SIZE = 12;
+const PALETTE_SIZE = 5;
 
 /**
  * Log-axis baseline, deliberately below 1.

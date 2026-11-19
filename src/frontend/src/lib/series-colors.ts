@@ -7,9 +7,9 @@
  * connector in the platform's documented inventory; families that are not
  * built yet use their anticipated dimension value (snake_case vendor name)
  * and simply fall back to chart tokens until the value matches. Unknown
- * seeds fall back to the theme's categorical chart tokens (`--chart-1..12`),
+ * seeds fall back to the kit's categorical chart tokens (`--chart-1..5`),
  * assigned in sorted seed order so a given seed set always maps the same
- * way; past twelve they cycle.
+ * way; past five they cycle, as the kit's own charts do.
  *
  * A `Map` (not a `Record`) so a malformed seed like `"__proto__"` or
  * `"constructor"` falls through to the chart-token path instead of leaking
@@ -61,17 +61,11 @@ const BRAND_BY_SEED: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * Two of the git file categories (`git_file_category` in gold) are pinned
- * because the sorted fallback gave them neighbouring tokens — alphabetically
- * `test` and `vendored` landed on two ambers a reader could not tell apart.
- * The rest keep the fallback: they were already distinct.
- *
- * `vendored` takes the muted token rather than a chart hue: it is
- * machine-produced content, so it should recede from the authored lines beside
- * it rather than compete with them.
+ * `vendored` (a `git_file_category` in gold) takes the muted token rather
+ * than a chart hue: it is machine-produced content, so it should recede from
+ * the authored lines beside it rather than compete with them.
  */
 const FILE_CATEGORY_BY_SEED: ReadonlyMap<string, string> = new Map([
-  ["test", "var(--chart-8)"],
   ["vendored", "var(--muted-foreground)"],
 ]);
 
@@ -81,13 +75,6 @@ const CHART_TOKENS = [
   "var(--chart-3)",
   "var(--chart-4)",
   "var(--chart-5)",
-  "var(--chart-6)",
-  "var(--chart-7)",
-  "var(--chart-8)",
-  "var(--chart-9)",
-  "var(--chart-10)",
-  "var(--chart-11)",
-  "var(--chart-12)",
 ] as const;
 
 export function seriesColors(seeds: string[]): Record<string, string> {

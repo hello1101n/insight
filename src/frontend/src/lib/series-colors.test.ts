@@ -35,26 +35,11 @@ describe("seriesColors", () => {
     expect(palette.unknown_tool).toBe("var(--chart-1)");
   });
 
-  it("cycles chart tokens past twelve unknown seeds", () => {
-    const seeds = [
-      "a",
-      "b",
-      "c",
-      "d",
-      "e",
-      "f",
-      "g",
-      "h",
-      "i",
-      "j",
-      "k",
-      "l",
-      "m",
-    ];
-    const palette = seriesColors(seeds);
+  it("cycles chart tokens past the kit's five", () => {
+    const palette = seriesColors(["a", "b", "c", "d", "e", "f"]);
     expect(palette.a).toBe("var(--chart-1)");
-    expect(palette.l).toBe("var(--chart-12)");
-    expect(palette.m).toBe("var(--chart-1)");
+    expect(palette.e).toBe("var(--chart-5)");
+    expect(palette.f).toBe("var(--chart-1)");
   });
 
   it("treats prototype-member seeds as unknown, never as brand colors", () => {
