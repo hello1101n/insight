@@ -7,7 +7,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import "@/i18n";
+import i18n from "@/i18n";
+import { resolveText } from "@/i18n/localized-text";
 
 const adminGate = vi.hoisted(() => ({
   value: {
@@ -30,7 +31,12 @@ vi.mock("@/components/portal/connector-health", () => ({
   ConnectorHealthPane: () => <div data-testid="connector-health-pane" />,
 }));
 
-import { MANAGE_ITEMS } from "@/lib/portal/nav-model";
+import { MANAGE_ITEMS as MANAGE_ITEMS_WITH_KEYS } from "@/lib/portal/nav-model";
+
+const MANAGE_ITEMS = MANAGE_ITEMS_WITH_KEYS.map((item) => ({
+  ...item,
+  label: resolveText(i18n.t, item.label),
+}));
 
 import { ManageView } from "./manage-view";
 
@@ -55,7 +61,7 @@ describe("Manage · What's new", () => {
   });
 });
 
-describe("Manage · Connector health", () => {
+describe("Manage · Connectors", () => {
   it("is instance-wide, so a non-admin is refused rather than shown an empty page", () => {
     adminGate.value = { ...adminGate.value, isAdmin: false };
     render(<ManageView item="connector-health" />);
@@ -140,4 +146,10 @@ describe("identities gate", () => {
     await userEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(retry).toHaveBeenCalledOnce();
   });
+});
+
+it("names the existing connector-health menu item Connectors", () => {
+  expect(
+    MANAGE_ITEMS.find((item) => item.id === "connector-health")?.label
+  ).toBe("Connectors");
 });
