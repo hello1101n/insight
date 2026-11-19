@@ -91,7 +91,7 @@ export function SlopeSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}
@@ -172,7 +172,7 @@ export function MomentumSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {section.description ? (
             <p className="text-xs text-muted-foreground">{section.description}</p>
           ) : null}

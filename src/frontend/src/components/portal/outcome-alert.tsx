@@ -34,13 +34,13 @@ export function OutcomeAlert({ outcome }: { outcome: CorrectionResponse }) {
           </Badge>
         ) : null}
         {refused > 0 ? (
-          <Badge variant="secondary" className="bg-destructive/15 text-destructive">
+          <Badge variant="secondary">
             {t("identities.outcomes.refused", { count: refused })}
           </Badge>
         ) : null}
       </AlertTitle>
       {outcome.new_person_id ? (
-        <AlertDescription className="font-mono text-xs">
+        <AlertDescription className="font-mono">
           {t("identities.outcomes.new_person")} {outcome.new_person_id}
         </AlertDescription>
       ) : null}

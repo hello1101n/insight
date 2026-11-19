@@ -19,7 +19,6 @@ import {
 import { personName } from "@/lib/identities/person-display";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
-import { cn } from "@/lib/utils";
 
 interface EmployeeRow {
   personId: string;
@@ -145,18 +144,18 @@ export function EmployeesView() {
                     {e.displayName}
                   </Link>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {e.jobTitle || "—"}
                 </TableCell>
                 {isFlat ? null : (
                   <>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.department || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.division || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.supervisorName || "—"}
                     </TableCell>
                   </>
@@ -165,12 +164,6 @@ export function EmployeesView() {
                   {e.status ? (
                     <Badge
                       variant="secondary"
-                      className={cn(
-                        "font-medium",
-                        e.status.toLowerCase() === "active"
-                          ? "bg-success/15 text-success"
-                          : "bg-muted text-muted-foreground",
-                      )}
                     >
                       {e.status}
                     </Badge>

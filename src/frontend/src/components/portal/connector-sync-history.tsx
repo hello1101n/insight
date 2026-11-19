@@ -196,7 +196,7 @@ function SyncRow({ sync, asOf }: { sync: SyncFact; asOf: string }) {
       <td className="px-1 py-2 align-top">
         <Badge
           className={cn(
-            "max-w-full font-medium whitespace-normal",
+            "max-w-full whitespace-normal",
             TONE_STYLE[state.tone]
           )}
         >

@@ -32,7 +32,7 @@ export function DefinitionSearch({
         value={value}
         aria-label={label}
         placeholder={label}
-        className="h-8 rounded-md ps-9"
+        className="ps-9"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>

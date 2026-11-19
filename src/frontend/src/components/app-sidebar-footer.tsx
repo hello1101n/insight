@@ -77,8 +77,8 @@ export function AppSidebarFooter({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="cursor-default">
-              <Avatar className="size-8 shrink-0">
-                <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+              <Avatar className="shrink-0">
+                <AvatarFallback>
                   {getInitials(primary) || "?"}
                 </AvatarFallback>
               </Avatar>

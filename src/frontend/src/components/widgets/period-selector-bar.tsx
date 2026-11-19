@@ -156,7 +156,7 @@ export function PeriodSelectorBar({
                   />
                   <TooltipContent
                     side="bottom"
-                    className="max-w-xs text-xs leading-relaxed"
+                    className="max-w-xs"
                   >
                     {t("common.period.utc_tooltip")}
                   </TooltipContent>
@@ -166,7 +166,7 @@ export function PeriodSelectorBar({
           />
           <PopoverContent
             align="end"
-            className="w-auto gap-0 p-0"
+            className="w-auto"
             onKeyDown={keepNavigationKeysInside}
           >
             {tempRange?.from ? (
@@ -189,7 +189,6 @@ export function PeriodSelectorBar({
               captionLayout="dropdown"
               fixedWeeks
               endMonth={latestPickableDay()}
-              className="p-3"
               resetOnSelect
               showOutsideDays={false}
               selected={tempRange}

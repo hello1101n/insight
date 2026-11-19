@@ -382,7 +382,7 @@ function DashboardWidgetSlot({
             variant="ghost"
             size="sm"
             aria-label={`Expand ${heading}`}
-            className="-my-1 text-muted-foreground"
+            className="-my-1"
             icon={<Maximize2 />}
             onClick={onExpand}
           />
@@ -395,7 +395,7 @@ function DashboardWidgetSlot({
                   variant="ghost"
                   size="sm"
                   aria-label={`More for ${heading}`}
-                  className="-my-1 text-muted-foreground"
+                  className="-my-1"
                   icon={<Ellipsis />}
                 />
               }

@@ -253,7 +253,7 @@ function VisitorSearch({
         onChange={(event) => onChange(event.target.value)}
         placeholder="Search visitors"
         aria-label="Search visitors"
-        className="h-8 ps-8"
+        className="ps-8"
       />
     </div>
   );

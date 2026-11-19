@@ -52,7 +52,7 @@ export function KpiTile({
       className={cn(
         CARD_SURFACE,
         "relative",
-        interactive && "text-left transition-colors hover:bg-card-hover"
+        interactive && "text-left"
       )}
       render={
         primaryGroup ? (
@@ -109,7 +109,7 @@ export function KpiTile({
           even when one of them wraps its badge onto a second line; the
           two-line reserve keeps a wrapped comparison from changing the
           card's height. */}
-      <CardFooter className={cn("mt-auto min-h-[2lh] flex-col items-start gap-0.5", TEXT_LABEL)}>
+      <CardFooter className={cn("mt-auto min-h-[2lh] flex-col items-start", TEXT_LABEL)}>
         {/* The person's own change first, and the only line carrying a
             verdict. This is their page: their own last period is the one
             comparison they can act on. */}
@@ -153,7 +153,7 @@ export function KpiTilePlaceholder({ label }: { label?: string }) {
         </CardDescription>
         <CardTitle className={TEXT_FIGURE}>—</CardTitle>
       </CardHeader>
-      <CardFooter className={cn("gap-1.5", TEXT_LABEL)}>
+      <CardFooter className={cn(TEXT_LABEL)}>
         <Sparkles className="size-3.5 shrink-0" aria-hidden />
         Coming soon
       </CardFooter>

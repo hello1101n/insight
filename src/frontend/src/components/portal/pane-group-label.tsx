@@ -11,7 +11,7 @@ export function PaneGroupLabel({
   return (
     <SidebarGroupLabel
       className={cn(
-        "items-end pb-1 font-semibold tracking-[0.05em] text-muted-foreground uppercase",
+        "items-end",
         className
       )}
       {...props}

@@ -256,7 +256,7 @@ function MetricFamilyGroup({
               <TooltipTrigger render={row} />
               <TooltipContent
                 side="top"
-                className="max-w-xs text-xs leading-relaxed"
+                className="max-w-xs"
               >
                 {metric.reason}
               </TooltipContent>

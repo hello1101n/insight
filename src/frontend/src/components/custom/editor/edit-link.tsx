@@ -18,7 +18,6 @@ export function EditLink({
     <Button
       variant="ghost"
       size="sm"
-      className="text-muted-foreground"
       aria-label={`Edit ${name}`}
       nativeButton={false}
       render={

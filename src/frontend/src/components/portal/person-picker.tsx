@@ -139,7 +139,7 @@ export function PersonPicker({
           onChange={(e) => setQuery(e.target.value)}
         />
         {loading ? (
-          <Spinner className="absolute end-2.5 top-1/2 size-4 -translate-y-1/2" />
+          <Spinner className="absolute end-2.5 top-1/2 -translate-y-1/2" />
         ) : null}
       </div>
       {asked && list.isError ? (
@@ -235,7 +235,7 @@ function ListShell({
 }) {
   if (!asSurface) return children;
   return (
-    <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden py-0">
+    <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {children}
     </Card>
   );

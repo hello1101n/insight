@@ -81,8 +81,8 @@ export function MemberFilter({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-72 gap-3 p-3">
-        <PopoverHeader className="flex-row items-center justify-between gap-2">
+      <PopoverContent align="end" className="w-72">
+        <PopoverHeader className="flex-row items-center justify-between">
           <PopoverTitle>{t("people.filter_title")}</PopoverTitle>
           <div className="flex items-center gap-1">
             <Button

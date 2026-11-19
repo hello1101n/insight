@@ -86,7 +86,7 @@ export function AccountPicker({
           onChange={(event) => setQuery(event.target.value)}
         />
         {loading ? (
-          <Spinner className="absolute end-2.5 top-1/2 size-4 -translate-y-1/2" />
+          <Spinner className="absolute end-2.5 top-1/2 -translate-y-1/2" />
         ) : null}
       </div>
       {asked && search.isError ? (
@@ -198,7 +198,7 @@ function AccountOption({
       {item.person ? (
         <PersonCell person={item.person} />
       ) : item.excluded ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.excluded")}
         </Badge>
       ) : (

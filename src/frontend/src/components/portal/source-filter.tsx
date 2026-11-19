@@ -64,8 +64,8 @@ export function SourceFilter({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-72 gap-3 p-3">
-        <PopoverHeader className="flex-row items-center justify-between gap-2">
+      <PopoverContent align="end" className="w-72">
+        <PopoverHeader className="flex-row items-center justify-between">
           <PopoverTitle>{label}</PopoverTitle>
           <Button
             type="button"

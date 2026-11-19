@@ -117,7 +117,7 @@ function WorkChart() {
         onChange={(event) => setQuery(event.target.value)}
         placeholder={t("nav.find_someone")}
         aria-label={t("nav.find_someone_org")}
-        className="h-8 ps-7 text-sm"
+        className="ps-7"
       />
     </div>
   );
@@ -174,7 +174,7 @@ function PersonSectionsNav() {
                   data-planned={personSectionPlanned(g.id) || undefined}
                   isActive={active === g.id}
                   className={
-                    personSectionPlanned(g.id) ? "text-muted-foreground" : undefined
+                    personSectionPlanned(g.id) ? "" : undefined
                   }
                   onClick={() => {
                     setItem(g.id);

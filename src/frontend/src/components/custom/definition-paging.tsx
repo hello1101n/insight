@@ -51,7 +51,7 @@ export function MoreDefinitions({
 
   return (
     <div ref={marker} className="mt-4 flex min-h-4 justify-center">
-      {isFetchingMore ? <Spinner className="size-4" /> : null}
+      {isFetchingMore ? <Spinner /> : null}
     </div>
   );
 }

@@ -74,7 +74,7 @@ export function TeamCollectionDrilldown({
   if (data.isPending) {
     return (
       <div className="flex h-full min-h-96 w-full items-center justify-center p-10">
-        <Spinner className="size-12 text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }

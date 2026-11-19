@@ -99,7 +99,7 @@ export function NumberInput({
       {...described(describedBy)}
       inputMode="decimal"
       value={shown}
-      className="h-9 w-32 tabular-nums"
+      className="w-32 tabular-nums"
       onChange={(event) => {
         setTyped(event.target.value);
         onChange(typedNumber(event.target.value));
@@ -249,7 +249,7 @@ function ValueInput({
             {...described(saidOn())}
             inputMode="numeric"
             value={amount}
-            className="h-9 w-20 tabular-nums"
+            className="w-20 tabular-nums"
             onChange={(event) => onChange(ageText(event.target.value, unit))}
           />
           <Choice

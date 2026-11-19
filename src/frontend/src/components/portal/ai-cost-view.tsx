@@ -454,7 +454,7 @@ export function AiCostView({ item }: { item: string | null }) {
           <div className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-3">
             {toolRows.map((t) => (
               <Card key={t.tool}>
-                <CardContent className="flex flex-col gap-1 p-4">
+                <CardContent className="flex flex-col gap-1">
                   <div className="text-sm font-semibold">
                     {TOOL_LABEL[t.tool] ?? t.tool}
                   </div>
@@ -493,7 +493,7 @@ export function AiCostView({ item }: { item: string | null }) {
           Cost &amp; usage by person
         </p>
         <Card>
-          <CardContent className="p-0">
+          <CardContent>
             <MembersGrid
               members={members.map((m) => ({
                 entityId: normalizePersonId(m.person_id),
@@ -524,7 +524,7 @@ function FunnelSection({ funnel }: { funnel: { label: string; n: number }[] }) {
         Adoption funnel
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {funnel.map((s) => {
             const pct = Math.round((s.n / top) * 100);
             return (
@@ -600,11 +600,11 @@ function UnitSection({
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.unit}>
-                <TableCell className="font-medium">{r.unit}</TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
+                <TableCell>{r.unit}</TableCell>
+                <TableCell className="text-right tabular-nums">
                   {r.people}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
+                <TableCell className="text-right tabular-nums">
                   {r.active}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -625,7 +625,7 @@ function UnitSection({
                       )
                     : "—"}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
+                <TableCell className="text-right tabular-nums">
                   {formatMetricValue(r.lines, linesR?.format ?? "integer", linesR?.unit ?? null)}
                 </TableCell>
               </TableRow>
@@ -658,7 +658,7 @@ function Tile({
 }) {
   return (
     <Card>
-      <CardContent className="p-4">
+      <CardContent>
         <div className="text-xs font-medium text-muted-foreground">{label}</div>
         <div className={cn("mt-1", TEXT_FIGURE)}>{value}</div>
         {note ? (

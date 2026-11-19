@@ -288,8 +288,8 @@ export function MetricEvidenceDialog({
       onOpenChange={(open) => !open && closeDialog()}
     >
       {state && (activeTarget || showPeople) ? (
-        <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[90rem]">
-          <DialogHeader className="shrink-0 border-b p-5 pr-14">
+        <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden sm:h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[90rem]">
+          <DialogHeader className="shrink-0">
             {people && drilled ? (
               <div className="flex">
                 <button
@@ -323,7 +323,6 @@ export function MetricEvidenceDialog({
                     <SelectTrigger
                       size="sm"
                       aria-label="Metric"
-                      className="border-transparent bg-transparent px-0 text-sm font-semibold shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
                     >
                       <SelectValue>{activeTarget.label}</SelectValue>
                     </SelectTrigger>
@@ -422,7 +421,7 @@ export function MetricEvidenceDialog({
                     onChange={(event) => setPeopleSearch(event.target.value)}
                     placeholder="Search people"
                     aria-label="Search people"
-                    className="h-8 ps-8"
+                    className="ps-8"
                   />
                 </div>
                 <p
@@ -448,7 +447,7 @@ export function MetricEvidenceDialog({
                         ? undefined
                         : "Searching records needs a newer server"
                     }
-                    className="h-8 ps-8"
+                    className="ps-8"
                   />
                 </div>
                 <p
@@ -489,7 +488,7 @@ export function MetricEvidenceDialog({
             )
           ) : query.isPending ? (
             <div className="flex flex-1 items-center justify-center">
-              <Spinner className="size-10" />
+              <Spinner size="lg" />
             </div>
           ) : query.isError && !query.data ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3">

@@ -88,7 +88,6 @@ export function FoldersGroup() {
               <SidebarMenuItem key={folder.id}>
                 <SidebarMenuButton
                   isActive={isShown(folder.id)}
-                  className="pe-16"
                   render={
                     <Link
                       to="/dashboards"
@@ -170,7 +169,6 @@ function OrphanedFolderRows() {
         <SidebarMenuItem key={folder.id}>
           <SidebarMenuButton
             aria-haspopup="dialog"
-            className="text-muted-foreground"
             onClick={() =>
               setMoving({
                 kind: "folders",
@@ -189,7 +187,6 @@ function OrphanedFolderRows() {
       {pages.hasNextPage ? (
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="text-muted-foreground"
             disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
@@ -294,7 +291,6 @@ function FolderNameField({
           aria-label="Folder name"
           aria-invalid={error != null}
           aria-describedby={error ? errorId : undefined}
-          className="h-8"
           maxLength={FOLDER_NAME_MAX}
           readOnly={saving}
           value={value}

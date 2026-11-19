@@ -52,7 +52,7 @@ export function ExpandedWidget({
       }}
     >
       <DialogContent className="flex h-[96dvh] w-[98vw] max-w-[98vw] flex-col">
-        <DialogHeader className="flex-row items-center gap-2 pr-14">
+        <DialogHeader className="flex-row items-center">
           <DialogTitle className="min-w-0 truncate">{heading}</DialogTitle>
           {allTime ? (
             <Badge variant="secondary" className="shrink-0">

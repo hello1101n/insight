@@ -135,7 +135,7 @@ export function ConnectorHealthPane() {
                 <TableHead className="whitespace-normal">
                   {t("connectors.instance")}
                 </TableHead>
-                <TableHead className="px-3 whitespace-normal sm:px-4">
+                <TableHead className="whitespace-normal">
                   {t("connectors.next_sync")}
                 </TableHead>
                 <TableHead className="whitespace-normal">
@@ -192,7 +192,7 @@ export function ConnectorHealthPane() {
                     }}
                     className="cursor-pointer select-text"
                   >
-                    <TableCell className="font-medium">
+                    <TableCell>
                       {row.connector}
                     </TableCell>
                     <InstanceCell instance={row} />
@@ -200,16 +200,16 @@ export function ConnectorHealthPane() {
                     <TableCell>
                       <Badge
                         variant="secondary"
-                        className={cn("font-medium", TONE_STYLE[state.tone])}
+                        className={cn(TONE_STYLE[state.tone])}
                       >
                         {state.label}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
+                    <TableCell className="tabular-nums">
                       {formatStarted(row.last_sync?.started_at ?? null)}
                     </TableCell>
                     <DurationCell sync={row.last_sync} asOf={data.as_of} />
-                    <TableCell className="text-right text-muted-foreground tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {formatRecords(row.last_sync?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
@@ -218,7 +218,7 @@ export function ConnectorHealthPane() {
                       <TableCell
                         colSpan={COLUMNS}
                         id={panelId}
-                        className="bg-muted/40 px-4 whitespace-normal"
+                        className="whitespace-normal"
                       >
                         <div className="min-w-0 [contain:inline-size]">
                           <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
@@ -293,7 +293,7 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
     schedule == null ? null : describeNextRun(schedule, new Date());
 
   return (
-    <TableCell className="px-3 align-middle sm:px-4">
+    <TableCell className="align-middle">
       <div
         data-slot="schedule-next"
         className="flex items-center gap-1.5 leading-5 whitespace-nowrap"
@@ -348,10 +348,7 @@ function DurationCell({
   const duration = describeDuration(sync, asOf);
   return (
     <TableCell
-      className={cn(
-        "text-right tabular-nums",
-        duration.inFlight ? "text-foreground" : "text-muted-foreground"
-      )}
+      className="text-right tabular-nums"
     >
       {duration.text}
     </TableCell>

@@ -111,7 +111,7 @@ it.each([
       expect(input.querySelector('input[type="time"]')).toBeNull();
     }
     for (const control of controls)
-      expect(control).toHaveClass("w-[64px]", "h-8", "max-w-full", "min-w-0");
+      expect(control).toHaveClass("w-[64px]", "max-w-full", "min-w-0");
     expect(
       within(input.parentElement!.closest(".flex")!).getByText(connector)
     ).toBeInTheDocument();

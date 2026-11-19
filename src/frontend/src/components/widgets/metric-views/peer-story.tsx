@@ -63,7 +63,7 @@ function HeroCard({
   return (
     <Card
       className={cn(
-        "relative flex h-full min-h-72 flex-col gap-0 p-0",
+        "relative flex h-full min-h-72 flex-col gap-0",
         STATUS_STRIPE_TOP[isBad ? "bad" : "good"]
       )}
     >
@@ -189,12 +189,9 @@ function SideCard({
   return (
     <Card
       className={cn(
-        "relative min-h-28 p-0",
+        "relative min-h-28",
         stretch && "h-full",
-        "border-current/20",
         PEER_TEXT[entry.status],
-        entry.status === "top" && "bg-success/5",
-        entry.status === "bottom" && "bg-destructive/5",
         entry.status === "top" && STATUS_STRIPE_LEFT.good,
         entry.status === "bottom" && STATUS_STRIPE_LEFT.bad
       )}
@@ -341,7 +338,7 @@ function OutlierChips({
 function FlatGridCard({ entry }: { entry: PeerStoryEntry }) {
   const unit = metricDisplayUnit(entry.format, entry.unit);
   return (
-    <Card className="relative p-4">
+    <Card className="relative">
       <MetricCardActions evidence={entry.evidence} label={entry.label} />
       <div className="min-w-0 pr-8">
         <div
@@ -509,7 +506,7 @@ export function PeerStory({
     return (
       <Card className={className}>
         <CardHeader>
-          <CardTitle className="text-sm font-semibold">Counters</CardTitle>
+          <CardTitle>Counters</CardTitle>
           <CardDescription>{emptyLabel}</CardDescription>
         </CardHeader>
       </Card>
