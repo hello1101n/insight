@@ -1,0 +1,34 @@
+spec_version: 1
+description: >
+  Metric: collab.messages_sent — a Slack row with an unknown guest flag counts only
+  when its member resolves to a person.
+
+  How it's computed (bronze → silver → gold):
+    • bronze: Slack member analytics, one row per account per day, with a NULL
+      guest flag where Slack sent no value
+    • silver: a NULL guest flag keeps the row; each row carries its account
+    • gold:   the analytics runtime resolves the account (then the email) to a
+      person, and a row without a person counts for nobody; the connector check
+      reports the row as unresolved_null_guest
+
+  Cast (Engineering), Slack rows on 2026-12-20:
+    alice — U101, member flag false, 3 messages → 3 (control).
+    judy  — U102, guest flag NULL, judy@example.com resolves by the email → 55.
+    dave  — U103, guest flag NULL, no email; the operator binds the account → 8.
+    carol — U104, guest flag NULL, no email, never bound → nobody, reported.
+
+identity_accounts:
+  - {source_type: slack, source_id: slack-test, account_id: U103, person: dave@example.com}
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/carol
+    - $ref: ../templates/people.yaml#/templates/dave
+    - {$ref: ../templates/people.yaml#/templates/bamboohr_employee, id: e104, unique_key: bamboohr-test-e104, firstName: Judy, lastName: Unknown, displayName: Judy Unknown, workEmail: judy@example.com}
+
+  bronze_slack.users_details:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U101, email_address: alice@example.com, date: "2026-12-20", unique_key: sln-alice-20261220, messages_posted_count: 3,  channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U102, email_address: judy@example.com,  date: "2026-12-20", unique_key: sln-judy-20261220,  messages_posted_count: 55, channel_messages_posted_count: 0, is_guest: null}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U103, date: "2026-12-20", unique_key: sln-dave-20261220,  messages_posted_count: 8,  channel_messages_posted_count: 0, is_guest: null}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U104, date: "2026-12-20", unique_key: sln-carol-20261220, messages_posted_count: 6,  channel_messages_posted_count: 0, is_guest: null}

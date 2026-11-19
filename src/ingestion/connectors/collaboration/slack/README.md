@@ -50,7 +50,7 @@ The connection check reports the plan, the streams to read and the missing scope
 | `messages` | Incremental | `unique_key` (`tenant-source-channel_id-ts`) | `date` (P1D) | One row per message or thread reply, metadata only (Free and Pro) |
 | `users` | Full refresh | `unique_key` (`tenant-source-user_id`) | none | One row per member from `users.list` |
 
-The stream issues one HTTP request per date from the cursor day (read again, as the manifest connector did; `unique_key` dedups it) or `slack_start_date` to `today - 2 days`, and checkpoints `{"date": "YYYY-MM-DD"}` after each day. Response body is gzip-compressed JSON Lines; each line is a single member record.
+The stream issues one HTTP request per date from `max(slack_start_date, cursor - 2 days)` (Slack can revise the last days late; `unique_key` replaces the stored rows) to `today - 2 days`, and checkpoints `{"date": "YYYY-MM-DD"}` after each day. Response body is gzip-compressed JSON Lines; each line is a single member record.
 
 ### When Slack refuses a day
 
