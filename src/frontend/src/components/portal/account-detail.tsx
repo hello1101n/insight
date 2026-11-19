@@ -47,6 +47,7 @@ const VERB_KEYS: Record<string, string> = {
   "login-bootstrap": "identities.history.login_bootstrap",
   "roster-mint": "identities.history.roster_mint",
   "auto-seed-link": "identities.history.auto_seed_link",
+  "auto-seed-employee-id-link": "identities.history.auto_seed_employee_id_link",
 };
 
 export function AccountDetail({
