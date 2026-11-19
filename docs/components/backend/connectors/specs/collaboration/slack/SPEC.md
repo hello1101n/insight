@@ -341,6 +341,8 @@ A member-day is counted when:
 - the message counters are present (a NULL counter is a broken row, not zero), **and**
 - the member is not a guest. If the guest flag is NULL, the member is counted only if the member resolves to a person (section 9).
 
+Staging drops a proven guest. Staging keeps a row with a NULL guest flag. The analytics runtime applies the NULL rule when it reads the metrics, because it resolves each row to a person at that time. Thus a binding that an operator makes later also counts the earlier days of the member. No rebuild is necessary.
+
 These values do not change the decision: `is_billable_seat`, `is_active`, email domain. Non-billable members and members with a partner domain are counted.
 
 Inactive members are counted with zeros. Their message metrics are `0`. They add no active day.
@@ -416,6 +418,7 @@ The data-quality check `assert_slack_bronze_rows_reach_metrics` finds Activity r
 | `refused_day_row` | A row without `user_id` or `date`. The old connector wrote these rows. |
 | `missing_counter` | A non-guest row with a NULL message counter |
 | `unmapped_member` | A non-guest member without an identity binding |
+| `unresolved_null_guest` | A row with a NULL `is_guest` whose member resolves to no person (section 8). The metrics do not count it. |
 
 Monitoring alerts (Grafana):
 
@@ -445,7 +448,6 @@ The streams with an issue in section 1 do not exist in `main`.
 | The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
 | Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Bots send no identity input, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
-| A NULL `is_guest` is counted only if the member resolves (section 8) | A NULL `is_guest` is always counted. | #4335 |
 | An email on more than one person resolves to one person (section 9) | The email resolves to no person (`identity/person_map.sql`). | #4343 |
 | Identity resolution shows unmapped members (section 9) | There is no such list. | #4319 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |

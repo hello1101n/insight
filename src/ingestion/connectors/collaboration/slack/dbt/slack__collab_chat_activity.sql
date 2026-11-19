@@ -73,7 +73,9 @@ WHERE u.user_id IS NOT NULL
   AND u.messages_posted_count IS NOT NULL
   AND u.channel_messages_posted_count IS NOT NULL
   -- INVARIANT: the class holds workspace members only — a proven guest is dropped,
-  -- an unknown flag keeps the row. `is_active` and `is_billable_seat` derive from
+  -- an unknown flag keeps the row. The analytics runtime counts that row only when
+  -- the member resolves to a person; assert_slack_bronze_rows_reach_metrics reports
+  -- a member that does not. `is_active` and `is_billable_seat` derive from
   -- activity (the latter is unreliable off invoiced plans): never filter on them.
   AND NOT coalesce(u.is_guest, false)
   -- INVARIANT: bots are never counted. Slackbot is USLACKBOT; the Members stream flags the others.
