@@ -253,9 +253,9 @@ connectors:
         value: ""
       insight_tenant_id:
         value: fake
-      zendesk_api_token:
+      zendesk_client_id:
         value: fake
-      zendesk_email:
+      zendesk_secret:
         value: fake
       zendesk_subdomain:
         value: fake
