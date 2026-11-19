@@ -110,6 +110,9 @@ global:
     enabled: false
     # Public origin of this Insight instance, for example https://insight.example.com.
     publicUrl: ""
+    # Where the MCP servers fetch signing keys: through the in-cluster gateway, because a pod may not reach publicUrl.
+    # Empty derives it from publicUrl.
+    jwksUrl: 'http://{{ .Release.Name }}-gateway.{{ .Release.Namespace }}.svc.cluster.local:8080/.well-known/jwks.json'
     # Permits an http:// publicUrl on a private address. Both the authenticator,
     # which issues the tokens, and insight-v3-core, which verifies them, refuse
     # one otherwise — so a cluster with no TLS at its edge cannot serve MCP

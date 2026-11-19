@@ -82,6 +82,8 @@ spec:
               value: "0.0.0.0:{{ .Values.mcp.port }}"
             - name: APP__gears__insight_v3_core__config__mcp__public_url
               value: {{ required "global.mcp.publicUrl is required when MCP is enabled" .Values.global.mcp.publicUrl | quote }}
+            - name: APP__gears__insight_v3_core__config__mcp__jwks_url
+              value: {{ tpl ((((.Values.global).mcp).jwksUrl) | default "") . | quote }}
             - name: APP__gears__insight_v3_core__config__mcp__allow_insecure_private_network
               value: {{ or (((.Values.global).mcp).allowInsecurePrivateNetwork) .Values.mcp.allowInsecurePrivateNetwork | quote }}
             {{- end }}
