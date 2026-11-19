@@ -92,7 +92,6 @@ def _seed_selectors() -> list[str]:
         silver.IDENTITY_INPUTS_SELECT,
         silver.AI_INVOICE_SELECT,
         *silver.CI_CHAIN_SELECT,
-        *silver.SUPPORT_CHAIN_SELECT,
         *silver.WIKI_CHAIN_SELECT,
         *silver.CRM_CHAIN_SELECT,
         *silver.COLLAB_CHAIN_SELECT,
@@ -123,7 +122,6 @@ def test_the_selector_names_only_models_that_exist() -> None:
     known = _model_tags()
     selectors = [
         *silver.CI_CHAIN_SELECT,
-        *silver.SUPPORT_CHAIN_SELECT,
         *silver.WIKI_CHAIN_SELECT,
         *silver.CRM_CHAIN_SELECT,
         *silver.COLLAB_CHAIN_SELECT,

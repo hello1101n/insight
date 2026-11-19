@@ -85,7 +85,7 @@ custom fields, statuses and schedules are needed to decode them.
 | `zendesk_tickets` | `incremental/tickets/cursor.json?include=metric_sets&support_type_scope=all` | incremental, cursor | Ticket snapshot, whole, including tickets handled by AI agents |
 | `zendesk_ticket_events` | `incremental/ticket_events?include=comment_events&support_type_scope=all` | incremental, time | Ticket history: one record per update, with its field changes and comments |
 | `zendesk_ticket_metric_events` | `incremental/ticket_metric_events` | incremental | SLA lifecycle: apply, activate, pause, fulfill, breach |
-| `zendesk_satisfaction_ratings` | `satisfaction_ratings` | incremental, time | Legacy CSAT |
+| `zendesk_csat_ratings` | `satisfaction_ratings` | incremental, time | Legacy CSAT |
 | `zendesk_survey_responses` | `guide/survey_responses` | incremental by `created_at_start` | Survey-based CSAT |
 | `zendesk_users` | `incremental/users/cursor.json` | incremental, cursor | Agents and end users, role, suspension |
 | `zendesk_organizations` | `incremental/organizations` | incremental, time | Customer accounts |

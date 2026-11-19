@@ -175,7 +175,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 | `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `amount`, `amount_home`, `currency`, `close_date`, `is_closed`, `is_won`, `owner_id` |
 | `class_crm_activities` | engagement | `engagements_{calls,emails,meetings,tasks,notes,communications}` (+archived) | `activity_type`, `timestamp`, `owner_id`, `created_by_user_id`, `subject`, `body`, `direction`, `status`, `channel`, `duration_seconds`, `ended_at` |
 | `class_crm_leads` | lead | `leads` (+archived) | `lead_id`, `pipeline_id`, `stage_id`, `owner_id`, `contact_id`, `account_id` |
-| `class_crm_tickets` | ticket | `tickets` (+archived) | layout of `silver.dim_support_ticket`, then `pipeline_id`, `stage_id`, `content`, `deal_id` |
+| `class_crm_tickets` | ticket | `tickets` (+archived) | ticket attributes, then `pipeline_id`, `stage_id`, `content`, `deal_id` |
 | `class_crm_users` | owner | `owners` (+archived) | `user_id`, `hs_user_id`, `email`, `is_active`, `primary_team_id`, `team_ids` |
 | `class_crm_teams` | team | `owners.teams` | `team_id`, `name` |
 | `class_crm_associations` | record × associated object type | every object stream | `from_object_type`, `from_object_id`, `to_object_type`, `to_object_ids` |
@@ -187,7 +187,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 ### Notes per class
 
 - **Activities.** `body` is the engagement's free text: call notes, email plain text, meeting body, task body, note body, message text. Meeting `timestamp` is the meeting start; `ended_at` is set for meetings only. `channel` is set for communications only (`SMS`, `WHATS_APP`, `LINKEDIN_MESSAGE`, …). `contact_id` / `deal_id` / `account_id` hold the first association; the full lists are in `class_crm_associations`.
-- **Tickets.** Columns up to `_version` repeat `silver.dim_support_ticket` in name, order and type (including `insight_source_id`), so CRM and support tickets can be unioned positionally. `status_canonical` is `open` / `closed` from `hs_is_closed`; `priority_canonical` lowercases `hs_ticket_priority` with `MEDIUM` → `normal`; `type_canonical` is the lowercased category; `group_source_id` is the HubSpot team; requester and organisation are the first associated contact and company.
+- **Tickets.** `status_canonical` is `open` / `closed` from `hs_is_closed`; `priority_canonical` lowercases `hs_ticket_priority` with `MEDIUM` → `normal`; `type_canonical` is the lowercased category; `group_source_id` is the HubSpot team; requester and organisation are the first associated contact and company.
 - **Associations.** One row per record and associated object type with the complete id list, replaced whenever the record changes — a removed association disappears with the record's next version. Use `ARRAY JOIN to_object_ids` for pairs.
 - **Pipeline stages.** `is_won` is set for deal stages that close at probability 1 (HubSpot carries no explicit won flag); ticket stages carry `ticket_state` instead. Outcomes such as *refunded* are stage labels, read from `label`. A stage or pipeline the latest poll no longer returns stays with `is_deleted = 1` and its last label, so history still joins to it.
 - **Field history.** One row per value change of the tracked properties, with `change_source_type` (`CRM_UI`, `IMPORT`, `API`, `CALCULATED`, …). Deal stage transitions are `field = 'dealstage'`; time in stage is the gap to the next change of the same object and field.

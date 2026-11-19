@@ -8,8 +8,6 @@
     tags=['hubspot', 'silver:class_crm_tickets']
 ) }}
 
--- INVARIANT: columns up to `_version` mirror silver.dim_support_ticket in
--- name, order and type, so the two classes can be unioned positionally.
 WITH src AS (
     {% for tbl in hubspot_bronze_tables('tickets') %}
     SELECT
