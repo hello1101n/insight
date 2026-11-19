@@ -1,13 +1,12 @@
 import type { MetricBucket } from "@/api/metric-results-client";
 import { Card, CardContent } from "@gears-frontx/ui-kit";
+import { chartColor } from "@/lib/chart-palette";
 import { formatMetricValue } from "@/lib/format";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { decomposeBy } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
-
-const SEGMENT_COLORS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
 /** One 100% bar of a summable metric split by a dimension. */
 export function DecompositionSection({
@@ -38,7 +37,7 @@ export function DecompositionSection({
                 title={`${section.segmentLabels?.[segment.value] ?? segment.label}: ${segment.share.toFixed(1)}%`}
                 style={{
                   width: `${segment.share}%`,
-                  background: `var(--${SEGMENT_COLORS[index % SEGMENT_COLORS.length]})`,
+                  background: chartColor(index),
                 }}
               />
             ))}
@@ -49,7 +48,7 @@ export function DecompositionSection({
                 <span
                   className="size-2 rounded-full"
                   style={{
-                    background: `var(--${SEGMENT_COLORS[index % SEGMENT_COLORS.length]})`,
+                    background: chartColor(index),
                   }}
                 />
                 {section.segmentLabels?.[segment.value] ?? segment.label} ·{" "}
