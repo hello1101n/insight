@@ -142,7 +142,7 @@ function expectHeadlineClearOfActions(canvasElement: HTMLElement) {
 /** The ⋯ column takes its width from the subtitle's line. */
 function expectSubtitleOnOneLine(canvasElement: HTMLElement) {
   const subtitle = canvasElement.querySelector<HTMLElement>(
-    '[data-slot="card-header"] span.truncate + span',
+    "span.truncate + span",
   )!;
   const lineHeight = parseFloat(getComputedStyle(subtitle).lineHeight);
 

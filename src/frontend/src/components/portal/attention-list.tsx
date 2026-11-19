@@ -11,7 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import {
   groupFlagsByTheme,
   type AttentionFlag,

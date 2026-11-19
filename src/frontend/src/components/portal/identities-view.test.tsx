@@ -358,8 +358,8 @@ describe("IdentitiesView", () => {
     };
     render(<IdentitiesView />);
 
-    const contested = screen.getByText(/contested/i).closest("[data-slot=card]");
-    expect(within(contested as HTMLElement).getByText("2")).toBeInTheDocument();
+    const contested = screen.getByRole("button", { name: /contested/i });
+    expect(within(contested).getByText("2")).toBeInTheDocument();
     expect(screen.getByText(/no address to match on/i)).toBeInTheDocument();
     // Unknown kind lands in the catch-all group rather than vanishing.
     expect(screen.getByText("q-1")).toBeInTheDocument();

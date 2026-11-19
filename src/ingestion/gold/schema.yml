@@ -402,7 +402,8 @@ models:
       Source measure observations for the unified metrics runtime, AI cost
       family. One row per (tenant, entity, metric date, measure, dimension tuple).
       seat_cost_usd is the invoiced price of the seat itself, from the per-seat
-      amount on the invoice's subscription lines; extra_usage_usd is the money
+      amount on the invoice's subscription lines, at the tier the seat held
+      when its billing period began; extra_usage_usd is the money
       the vendor billed once that seat exhausted the usage included in its fee;
       extra_usage_limit_usd is the admin-set ceiling on that spend, and serves
       only as the utilisation denominator; daily_extra_usage_usd is the same
@@ -734,16 +735,20 @@ models:
       - name: entity_id
         description: >
           Source identity of the measured entity — `entity_type + entity_id`
-          identifies it, and for a person that is the normalized source email.
-          The analytics runtime resolves it to a canonical person through
-          `identity.person_map` at query time; identity_resolution_coverage
+          identifies it. For a person it is the normalized source email, or
+          an opaque `account:` key where the source reported no email. The analytics
+          runtime resolves it to a canonical person through
+          `identity.account_assignment` first and `identity.person_map` second
+          at query time; identity_resolution_coverage
           reports how much of this relation currently resolves.
         tests:
           - not_null
       - name: account_source_type
-        description: "Account-binding source family; '' — no account-keyed facts here"
+        description: >
+          Account-binding source family: 'slack' for a Slack chat row,
+          'zoom-guest' for a Zoom guest, '' on an email-keyed row
       - name: account_source_id
-        description: "Raw connector source id of the account binding; '' here"
+        description: "Raw connector source id of the account binding; '' on an email-keyed row"
       - name: account_id
         description: "Source-native account id; '' keeps resolution on the email path"
       - name: metric_date

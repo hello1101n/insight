@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from conftest import SOURCE, TENANT, Warehouse
 
 
@@ -251,7 +253,8 @@ def test_gold_uses_bindings_and_does_not_choose_first_of_many_assignees(case: Wa
     case.build()
     case.build('class_task_field_history')
     case.build('task_issue_state task_status_spans')
-    assert list(case.rows('SELECT issue_id FROM insight.task_issue_state')) == []
+    assert list(case.rows('SELECT issue_id,account_id,entity_id FROM insight.task_issue_state')) == [
+        {'issue_id': 'issue-1', 'account_id': '', 'entity_id': ''}]
 
 
 def test_metadata_observations_do_not_claim_exact_change_time(case: Warehouse) -> None:
@@ -504,3 +507,60 @@ def test_a_comment_stored_without_its_ids_is_attributed_through_the_issue_snapsh
     case.build()
     rows = list(case.rows("SELECT comment_id, issue_id, id_readable FROM staging.youtrack__task_comments"))
     assert rows == [{'comment_id': 'comment-9', 'issue_id': 'issue-1', 'id_readable': 'EX-1'}]
+
+
+def test_a_comment_stored_without_its_ids_whose_issue_no_snapshot_lists_is_left_out(case: Warehouse) -> None:
+    case.issue([])
+    case.insert('youtrack_comments', {'unique_key': TENANT + '-' + SOURCE + '-comment-orphan',
+        'created': 1767312000000, 'deleted': False, 'author_id': 'user-1', 'text': 'Synthetic comment'})
+    case.insert('youtrack_comments', {'unique_key': TENANT + '-' + SOURCE + '-comment-1', 'id': 'comment-1',
+        'issue_id': 'issue-1', 'issue_id_readable': 'EX-1', 'created': 1767312000000,
+        'deleted': False, 'author_id': 'user-1', 'text': 'Synthetic comment'})
+    case.build()
+    case.build('class_task_comments class_task_worklogs class_task_links')
+    rows = list(case.rows("SELECT comment_id, issue_id FROM silver.class_task_comments FINAL WHERE data_source='youtrack'"))
+    assert rows == [{'comment_id': 'comment-1', 'issue_id': 'issue-1'}]
+    case.dbt('test', '--select', 'assert_relationship_ids_present')
+
+
+def test_a_text_change_sent_as_fragments_is_one_value(case: Warehouse) -> None:
+    case.issue([])
+    case.insert('youtrack_activities', {
+        'id': 'redescribe', 'unique_key': TENANT + '-' + SOURCE + '-redescribe',
+        '_type': 'TextMarkupActivityItem', 'timestamp': '1767312000000', 'author_id': 'user-1',
+        'field_json': '{}', 'target_json': '{"id":"issue-1","idReadable":"EX-1","$type":"Issue"}',
+        'removed_json': json.dumps(['First old line', 'Second old line']),
+        'added_json': json.dumps(['First line', 'Second line', 'First line']),
+        'activity_json': '{"targetMember":"description"}',
+    })
+    case.build()
+    rows = list(case.rows("SELECT before_pairs, after_pairs FROM staging.youtrack__activities WHERE event_id='redescribe'"))
+    assert rows == [{
+        'before_pairs': [('First old line\nSecond old line', 'First old line\nSecond old line')],
+        'after_pairs': [('First line\nSecond line\nFirst line', 'First line\nSecond line\nFirst line')],
+    }]
+    case.dbt('test', '--select', 'assert_youtrack_value_arrays')
+
+
+def census(case: Warehouse, issue_id: str, pass_id: int, observed: str) -> None:
+    case.insert('youtrack_issue_census', {
+        'id': issue_id, 'idReadable': 'EX-' + issue_id, 'created': 1767225600000, 'updated': 1767312000000,
+        'unique_key': f'{TENANT}-{SOURCE}-{issue_id}-{pass_id}', '_airbyte_meta': json.dumps({'sync_id': pass_id}),
+    }, observed)
+
+
+def test_only_the_newest_census_pass_must_have_snapshots(case: Warehouse) -> None:
+    case.insert('youtrack_issues', {
+        'id': 'issue-1', 'idReadable': 'EX-1', 'created': 1767225600000, 'updated': '1767225600000',
+        'unique_key': TENANT + '-' + SOURCE + '-issue-1', 'reporter_id': 'user-1', 'project_id': 'project-1',
+        'custom_fields_json': '[]', 'issue_json': json.dumps({'summary': 'Synthetic issue', 'links': []}),
+    }, '2026-01-12T00:00:00')
+    census(case, 'issue-1', 1, '2026-01-11T00:00:00')
+    census(case, 'issue-deleted', 1, '2026-01-11T00:00:00')
+    census(case, 'issue-1', 2, '2026-01-12T00:00:00')
+    case.build()
+    case.dbt('test', '--select', 'assert_youtrack_census_has_snapshot')
+
+    census(case, 'issue-missed', 2, '2026-01-12T00:00:00')
+    with pytest.raises(AssertionError):
+        case.dbt('test', '--select', 'assert_youtrack_census_has_snapshot')

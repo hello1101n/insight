@@ -34,8 +34,9 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ScrollToEnds } from "@/components/widgets/scroll-to-ends";
 import { useAutoLoadOnScroll } from "@/hooks/use-auto-load-on-scroll";

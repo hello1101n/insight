@@ -110,7 +110,7 @@ models:
           NULL on every line row. Summing it over a tenant-month is therefore the
           invoice-level spend with no dedup needed.
       - name: invoice_metrics_json
-        description: "Raw vendor extras: product_name, description, num_seats, invoice_total, period_end_ts, price_id. The invoice-level ones are empty on a line row."
+        description: "Raw vendor extras: product_name, description, num_seats, invoice_total, period_start_ts, period_end_ts, price_id. The invoice-level ones are empty on a line row."
       - name: source
         description: "Always 'claude_team'"
         tests:

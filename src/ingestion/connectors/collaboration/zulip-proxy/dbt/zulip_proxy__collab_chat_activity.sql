@@ -54,6 +54,9 @@ SELECT
     CAST(NULL AS Nullable(String)) AS report_period,
     now() AS collected_at,
     'insight_zulip_proxy' AS data_source,
+    'email' AS account_source_type,
+    '' AS account_source_id,
+    '' AS account_id,
     toUnixTimestamp64Milli(now64()) AS _version
 FROM (
     -- Drop bronze re-emit duplicates of the same aggregate bucket. RMT

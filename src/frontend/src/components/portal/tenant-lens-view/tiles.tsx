@@ -1,6 +1,6 @@
 import { Delta } from "@/components/portal/domain-lens-view";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
-import { Card, CardContent } from "@/components/ui/card";
+import { MetricName } from "@/components/widgets/metric-name";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { formatMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { TEXT_FIGURE } from "@/lib/type-scale";
@@ -48,7 +48,6 @@ export function TileRow({
                 metric={tile.r}
                 className="text-xs font-medium text-muted-foreground"
                 truncate
-                focusable
               />
               <Delta
                 now={tile.now}

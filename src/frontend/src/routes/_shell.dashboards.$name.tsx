@@ -10,6 +10,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
 } from "@gears-frontx/ui-kit";
 
 import {
@@ -35,7 +39,6 @@ import { CustomWidget } from "@/components/custom/custom-widget";
 import { ExpandedWidget } from "@/components/custom/expanded-widget";
 import { refusal } from "@/components/custom/refusal";
 import { WidgetDrilldown } from "@/components/custom/widget-drilldown";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {

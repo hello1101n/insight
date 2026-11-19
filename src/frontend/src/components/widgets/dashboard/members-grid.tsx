@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { metricHelp } from "@/lib/insight/metric-help";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
@@ -9,9 +8,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
@@ -146,18 +142,6 @@ function columnFor(metric: NormalizedMetricResult): Column {
     direction: metric.direction,
     metric,
   };
-}
-
-/**
- * Which end of the scale reads as "better", or `null` for a neutral metric
- * that carries no better/worse judgment. Never collapse `direction` to a
- * boolean: a neutral metric is a fact, not a score, and must not be tinted
- * or ranked as if higher were good.
- */
-function betterWhenHigher(direction: MetricDirection): boolean | null {
-  if (direction === "higher_is_better") return true;
-  if (direction === "lower_is_better") return false;
-  return null;
 }
 
 interface CellShape {
@@ -749,56 +733,27 @@ function ColumnHeader({
   onClick: () => void;
 }) {
   const { t } = useTranslation();
-  const help = metricHelp(col.metric);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onClick}
-            className={cn(
-              "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
-              active && "text-foreground"
-            )}
-            aria-label={t("common.legend.sort_column", { column: col.label })}
-          >
-            {/* Label stays centered; the arrow hugs its right edge (left-full)
-                like the value cell, rather than pinning to the column edge. */}
-            <span className="relative inline-flex max-w-full items-center">
-              <span className="truncate">{col.heading}</span>
-              <SortArrow
-                direction={direction}
-                className="absolute left-full ml-0.5"
-              />
-            </span>
-          </button>
-        }
-      />
-      <TooltipContent side="top" className="max-w-56">
-        <span className="flex flex-col gap-0.5 leading-snug">
-          <span className="font-medium">{col.label}</span>
-          {/* What the column counts, in the catalog's words. A header reading
-              "AI LINES +" is otherwise a guess, and the grid is where a
-              reader compares people on it. */}
-          {help?.description ? <span>{help.description}</span> : null}
-          {/* The catalog sometimes supplies only the longer explanation, and a
-              header showing neither leaves the column a guess. */}
-          {help?.explanation ? (
-            <span className="text-background/70">{help.explanation}</span>
-          ) : null}
-          <span className="text-background/70">
-            {col.unit ? `${col.unit} · ` : ""}
-            {betterWhenHigher(col.direction) === true
-              ? t("common.legend.higher_is_better")
-              : betterWhenHigher(col.direction) === false
-                ? t("common.legend.lower_is_better")
-                : ""}
-            {t("common.legend.click_to_sort")}
-          </span>
-        </span>
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
+        active && "text-foreground"
+      )}
+      aria-label={t("common.legend.sort_column", { column: col.label })}
+      title={col.label}
+    >
+      {/* Label stays centered; the arrow hugs its right edge (left-full)
+          like the value cell, rather than pinning to the column edge. */}
+      <span className="relative inline-flex max-w-full items-center">
+        <span className="truncate">{col.heading}</span>
+        <SortArrow
+          direction={direction}
+          className="absolute left-full ml-0.5"
+        />
+      </span>
+    </button>
   );
 }
 

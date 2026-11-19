@@ -1,5 +1,5 @@
 import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { formatMetricValue } from "@/lib/format";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 

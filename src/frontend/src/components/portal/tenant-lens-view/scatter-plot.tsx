@@ -11,11 +11,12 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 
 import { YAxis } from "@/components/chart-series";
 import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 

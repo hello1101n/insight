@@ -11,8 +11,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
 import { PREVIEWED, type PreviewedKind } from "@/lib/custom/catalogue-paths";
 import { changedAgo } from "@/lib/custom/changed-ago";
 import { TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";

@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 

@@ -12,7 +12,6 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 import { dropRedundantMetrics } from "@/lib/insight/metric-containment";
-import { metricHelp, type MetricHelpText } from "@/lib/insight/metric-help";
 import { peerStatusToStatus } from "@/lib/insight/peer-status";
 import { formatGapMagnitude } from "@/lib/metrics/gap";
 import { derivePeerStanding } from "@/lib/metrics/peer-standing";
@@ -51,11 +50,6 @@ export interface KpiTileData {
    * where it is explained, and the badge keeps the trend to itself.
    */
   gapStatus: Status;
-  /**
-   * The catalog's own words for the metric — shown on hover or focus. Null
-   * when the catalog has none.
-   */
-  help: MetricHelpText | null;
   groupId: GroupId | null;
 }
 
@@ -143,7 +137,6 @@ export function metricKpiTiles(
             : null,
         gapText,
         gapStatus,
-        help: metricHelp(metric),
         groupId: groupIdForMetricKey(metric.metric_key),
       },
     ];

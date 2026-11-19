@@ -23,27 +23,35 @@ sources:
 
 models:
   - name: slack__users_latest
-    description: "Latest analytics snapshot per Slack user (tenant_id, source_id, user_id). Email is kept as a tracked attribute so downstream SCD2 records email changes instead of creating new entities."
+    description: >
+      One row per Slack member (tenant_id, source_id, user_id), built from the
+      Activity file (bronze_slack.users_details) and the Members list
+      (bronze_slack.users). The Activity email wins; the Members email is the
+      fallback. Bots and proven guests are left out. Feeds slack__users_snapshot.
     columns:
       - name: tenant_id
+        description: "The raw tenant string from bronze insight_tenant_id."
         tests:
           - not_null
       - name: source_id
+        description: "The raw source string from bronze insight_source_id."
         tests:
           - not_null
       - name: user_id
+        description: "The Slack member ID."
         tests:
           - not_null
       - name: email
-        tests:
-          - not_null
+        description: "The email of the latest Activity row, else the Members email. NULL when neither has one."
+      - name: display_name
+        description: "The first non-empty value of Members real_name and display_name. NULL without a Members row."
       - name: unique_key
         tests:
           - not_null
           - unique
 
   - name: slack__users_snapshot
-    description: "Slack users SCD2 snapshot — tracks email, is_guest, is_billable_seat changes over time."
+    description: "SCD2 snapshot of slack__users_latest. A new version is written when email or display_name changes."
     columns:
       - name: tenant_id
         tests:
@@ -56,14 +64,41 @@ models:
           - not_null
 
   - name: slack__users_fields_history
-    description: "Slack users field-level change history (email, is_guest, is_billable_seat)."
+    description: "Field-level change log of slack__users_snapshot (user_id, email, display_name). entity_id is the Slack member ID."
     columns:
+      - name: entity_id
+        tests:
+          - not_null
       - name: tenant_id
         tests:
           - not_null
       - name: source_id
         tests:
           - not_null
+
+  - name: slack__identity_inputs
+    description: >
+      Identity observations for the Slack account (slack, insight_source_id,
+      user_id): the email, the display_name and the ADR-0002 id binding row.
+      A deactivated member keeps its binding. Unioned into silver.identity_inputs.
+    columns:
+      - name: unique_key
+        tests:
+          - not_null
+          - unique
+      - name: insight_source_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['slack']
+      - name: source_account_id
+        tests:
+          - not_null
+      - name: value_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['id', 'email', 'display_name']
 
   - name: slack__collab_chat_activity
     description: "Slack daily chat activity per user (admin.analytics.getFile). Feeds silver.class_collab_chat_activity."
@@ -87,6 +122,20 @@ models:
       - name: data_source
         tests:
           - not_null
+      - name: account_source_type
+        description: "Always 'slack': the Slack account resolves the row first, the email of the day is the fallback"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['slack']
+      - name: account_source_id
+        description: "The raw insight_source_id of the Slack workspace"
+        tests:
+          - not_null
+      - name: account_id
+        description: "The Slack user_id. It does not change when the email of the member changes."
+        tests:
+          - not_null
 
   - name: slack__collab_chat_activity_messages
     description: "Slack daily chat activity per user on Free and Pro, from message history (bronze_slack.messages). Same columns and measures as slack__collab_chat_activity. Feeds silver.class_collab_chat_activity."
@@ -108,5 +157,19 @@ models:
         tests:
           - not_null
       - name: data_source
+        tests:
+          - not_null
+      - name: account_source_type
+        description: "Always 'slack': the Slack account resolves the row first, the email of the day is the fallback"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['slack']
+      - name: account_source_id
+        description: "The raw insight_source_id of the Slack workspace"
+        tests:
+          - not_null
+      - name: account_id
+        description: "The Slack user_id. It does not change when the email of the member changes."
         tests:
           - not_null

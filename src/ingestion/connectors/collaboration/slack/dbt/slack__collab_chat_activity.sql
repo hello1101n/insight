@@ -59,6 +59,9 @@ SELECT
     CAST(NULL AS Nullable(String)) AS report_period,
     now() AS collected_at,
     'insight_slack' AS data_source,
+    'slack' AS account_source_type,
+    coalesce(u.insight_source_id, '') AS account_source_id,
+    coalesce(u.user_id, '') AS account_id,
     toUnixTimestamp64Milli(now64()) AS _version
 FROM {{ source('bronze_slack', 'users_details') }} AS u FINAL
 WHERE u.user_id IS NOT NULL

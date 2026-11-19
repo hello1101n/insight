@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { BarChart, CartesianGrid, XAxis } from "recharts";
 import { resolveText } from "@/i18n/localized-text";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { AttentionList } from "@/components/portal/attention-list";
 import { personDisplayName } from "@/lib/identities/person-display";
@@ -16,7 +16,6 @@ import {
   type SectionTrendSeries,
 } from "@/components/portal/section-trend";
 import { ChartBar, YAxis } from "@/components/chart-series";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   type ChartConfig,
   ChartContainer,
@@ -31,6 +30,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import {
@@ -1241,7 +1242,6 @@ function HeadlineCard({
           text={labelSource === "short" ? (c.r.short_label ?? c.r.label) : undefined}
           className={TEXT_NAME}
           truncate
-          focusable={!evidence}
         />
         <Delta now={c.reading.value} prev={c.prev} direction={c.r.direction} showUnavailable />
       </div>
@@ -2812,7 +2812,6 @@ function DirectionCardsSection({
                         text={r.label}
                         className="text-muted-foreground"
                         truncate
-                        focusable={personal}
                       />
                       <span className="flex items-center gap-2">
                         <span className="font-medium tabular-nums">

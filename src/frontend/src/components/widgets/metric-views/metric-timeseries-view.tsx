@@ -30,8 +30,9 @@ import {
   PopoverTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   TimeseriesBody,
   TimeseriesExportMenu,
@@ -356,6 +357,7 @@ export function MetricTimeseriesView({
   const shouldCombineMetrics =
     presentation === "chart" &&
     shouldCombineTimeseriesMetrics(model, chart?.multiMetric ?? "selectable");
+  const combinedLabel = model.metrics.map((metric) => metric.label).join(" & ");
   const evidenceMetrics =
     presentation === "table" || shouldCombineMetrics
       ? model.metrics
@@ -514,8 +516,11 @@ export function MetricTimeseriesView({
         <div className="flex min-w-0 flex-[1_1_8rem] flex-wrap items-center gap-2">
           {selectedMetric ? (
             shouldCombineMetrics ? (
-              <h3 className="min-w-0 truncate px-2 text-sm font-semibold">
-                {model.metrics.map((metric) => metric.label).join(" & ")}
+              <h3
+                className="min-w-0 truncate px-2 text-sm font-semibold"
+                title={combinedLabel}
+              >
+                {combinedLabel}
               </h3>
             ) : model.metrics.length > 1 && presentation === "chart" ? (
               <Select
@@ -527,6 +532,7 @@ export function MetricTimeseriesView({
                 <SelectTrigger
                   size="sm"
                   aria-label={t("common.chart.metric")}
+                  title={selectedMetric.label}
                   className="min-w-0 max-w-full border-transparent bg-transparent ps-2 pe-2 font-semibold shadow-none hover:bg-muted/50 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:bg-muted/50 dark:bg-transparent dark:hover:bg-muted/50 [&>span]:truncate"
                 >
                   <SelectValue>{selectedMetric.label}</SelectValue>
@@ -556,7 +562,10 @@ export function MetricTimeseriesView({
                 </span>
               </h3>
             ) : model.metrics.length === 1 ? (
-              <h3 className="min-w-0 truncate px-2 text-sm font-semibold">
+              <h3
+                className="min-w-0 truncate px-2 text-sm font-semibold"
+                title={selectedMetric.label}
+              >
                 {selectedMetric.label}
               </h3>
             ) : null

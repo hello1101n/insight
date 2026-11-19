@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { DefinitionKind, Holder } from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { hiddenHolders } from "@/lib/custom/hidden-holders";
 import { dependentsQuery } from "@/queries/custom";

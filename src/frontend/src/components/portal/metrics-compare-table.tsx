@@ -1,13 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import {
-  MetricHelpTooltip,
-  MetricValue,
-  UnitNote,
-} from "@/components/portal/metrics-table";
+import { MetricValue, UnitNote } from "@/components/portal/metrics-table";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
-import { metricHelp, type MetricHelpText } from "@/lib/insight/metric-help";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { compareGaps, finiteValue, formatGap } from "@/lib/portal/metrics-view";
 import { cn } from "@/lib/utils";
@@ -19,13 +14,11 @@ export function MetricsCompareTable({
   people,
   keys,
   byKey,
-  helpByKey,
   roles,
 }: {
   people: readonly MembersGridMember[];
   keys: readonly string[];
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
-  helpByKey: ReadonlyMap<string, MetricHelpText>;
   roles: ReadonlyMap<string, string>;
 }) {
   const { t } = useTranslation();
@@ -80,15 +73,8 @@ export function MetricsCompareTable({
                   scope="row"
                   className={cn(STICKY_START, "border-b px-3 py-1.5 text-start font-normal")}
                 >
-                  <MetricHelpTooltip
-                    label={result.label}
-                    help={helpByKey.get(key) ?? metricHelp(result)}
-                  >
-                    <span className="cursor-help">
-                      {result.label}
-                      <UnitNote result={result} className="ms-1.5 text-xs" />
-                    </span>
-                  </MetricHelpTooltip>
+                  {result.label}
+                  <UnitNote result={result} className="ms-1.5 text-xs" />
                 </th>
                 {people.map((person, index) => {
                   const cell = cells[index]!;

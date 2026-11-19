@@ -4,16 +4,14 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@gears-frontx/ui-kit";
-
-import { ChartBar, YAxis } from "@/components/chart-series";
-import { evidenceSelection } from "@/api/metric-drilldown-client";
-import {
   Card,
   CardAction,
   CardContent,
   CardHeader,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
+import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { ChartEmpty } from "@/components/widgets/metric-views/chart-empty";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";
 import { formatMetricNumber, formatMetricValue } from "@/lib/format";
@@ -116,7 +114,9 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
     <CardHeader className="pb-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{metric.label}</span>
+          <span className="truncate text-sm font-semibold" title={metric.label}>
+            {metric.label}
+          </span>
           <span className="text-xs text-muted-foreground">
             {[
               direction,

@@ -27,7 +27,6 @@ const meta: Meta<typeof MetricsTable> = {
     ],
     groups: [{ family: "git", name: "Development · Git", keys: ["git.commits", "git.prs_merged"] }],
     byKey: BY_KEY,
-    helpByKey: new Map(),
     roles: new Map(),
     sort: null,
     onSort: fn(),

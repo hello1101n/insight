@@ -355,7 +355,7 @@ describe("MetricTimeseriesView", () => {
         groupBy={{ default: "repository" }}
       />
     );
-    const body = () => container.querySelector('[data-slot="card-content"]')!;
+    const body = () => container.querySelector("[aria-busy]")!;
     await user.click(screen.getByRole("button", { name: "Table view" }));
     expect(body().className).toContain("max-h-96");
 
@@ -383,7 +383,7 @@ describe("MetricTimeseriesView", () => {
         groupBy={{ default: "repository" }}
       />
     );
-    const body = () => container.querySelector('[data-slot="card-content"]')!;
+    const body = () => container.querySelector("[aria-busy]")!;
     expect(body().className).toContain("h-96");
     expect(body().className).not.toContain("max-h-96");
 
