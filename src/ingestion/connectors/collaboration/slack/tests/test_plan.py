@@ -82,10 +82,17 @@ def test_plans_without_member_analytics_need_the_history_scopes(plan: str) -> No
 @pytest.mark.parametrize(
     ("plan", "report"),
     [
-        ("plus", "Plan Business+ (plus). Streams to read: users_details, users. Missing scopes: none."),
-        ("compliance", "Plan Enterprise (compliance). Streams to read: users_details, users. Missing scopes: none."),
+        (
+            "plus",
+            "Plan Business+ (plus). Streams to read: users_details, users, usergroup_members. Missing scopes: none.",
+        ),
+        (
+            "compliance",
+            "Plan Enterprise (compliance). Streams to read: users_details, users, usergroup_members. "
+            "Missing scopes: none.",
+        ),
         ("free", "Plan Free (free). Streams to read: messages, users. Missing scopes: none."),
-        ("std", "Plan Pro (std). Streams to read: messages, users. Missing scopes: none."),
+        ("std", "Plan Pro (std). Streams to read: messages, users, usergroup_members. Missing scopes: none."),
     ],
 )
 def test_check_reports_the_plan_and_the_streams_to_read(plan: str, report: str) -> None:
@@ -165,7 +172,7 @@ def test_an_optional_stream_without_its_scope_is_skipped_with_a_warning() -> Non
     warnings = [log.log.message for log in output.logs if log.log.level.value == "WARN"]
     assert any("users" in w and "users:read.email" in w for w in warnings)
     assert status.message == (
-        "Plan Business+ (plus). Streams to read: users_details. Missing scopes: users:read.email."
+        "Plan Business+ (plus). Streams to read: users_details. Missing scopes: usergroups:read, users:read.email."
     )
 
 
