@@ -6,7 +6,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { IngestionPoint } from "@/api/ingestion-client";
-import { CHART_PALETTE } from "@/lib/chart-palette";
 import {
   LOG_FLOOR,
   bandLabel,
@@ -112,7 +111,7 @@ describe("colour follows the entity", () => {
       "channels", "pages", "github", "gitlab", "hubspot", "outline", "zendesk",
     ];
     for (const key of keys) {
-      expect(CHART_PALETTE, key).toContain(seriesColorVar(key));
+      expect(seriesColorVar(key), key).toMatch(/^var\(--chart-(?:[1-9]|1[0-2])\)$/);
     }
   });
 });

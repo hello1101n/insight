@@ -24,7 +24,7 @@ describe("seriesColors", () => {
     expect(palette.zulip_proxy).toBe("var(--brand-zulip)");
   });
 
-  it("assigns palette colours to unknown seeds in sorted order", () => {
+  it("assigns chart tokens to unknown seeds in sorted order", () => {
     const palette = seriesColors(["beta", "alpha"]);
     expect(palette.alpha).toBe(chartColor(0));
     expect(palette.beta).toBe(chartColor(1));
@@ -36,11 +36,26 @@ describe("seriesColors", () => {
     expect(palette.unknown_tool).toBe(chartColor(0));
   });
 
-  it("cycles the palette past its tenth colour", () => {
-    const seeds = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
+  it("cycles chart tokens past twelve unknown seeds", () => {
+    const seeds = [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+      "i",
+      "j",
+      "k",
+      "l",
+      "m",
+    ];
     const palette = seriesColors(seeds);
-    expect(palette.j).toBe(chartColor(9));
-    expect(palette.k).toBe(chartColor(0));
+    expect(palette.a).toBe(chartColor(0));
+    expect(palette.l).toBe("var(--chart-12)");
+    expect(palette.m).toBe(chartColor(0));
   });
 
   it("treats prototype-member seeds as unknown, never as brand colors", () => {

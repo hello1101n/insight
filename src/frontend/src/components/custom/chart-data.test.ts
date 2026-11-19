@@ -115,10 +115,10 @@ describe("stacks' top segment", () => {
 });
 
 describe("stackColor", () => {
-  it("paints ten segments apart before it repeats", () => {
-    const colors = Array.from({ length: 11 }, (_, index) => stackColor(index));
+  it("paints twelve segments apart before it repeats", () => {
+    const colors = Array.from({ length: 13 }, (_, index) => stackColor(index));
 
-    expect(new Set(colors.slice(0, 10)).size).toBe(10);
-    expect(colors[10]).toBe(colors[0]);
+    expect(new Set(colors.slice(0, 12)).size).toBe(12);
+    expect(colors[12]).toBe(colors[0]);
   });
 });
