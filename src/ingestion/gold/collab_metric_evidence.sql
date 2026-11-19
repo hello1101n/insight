@@ -1,13 +1,15 @@
 {{ metric_evidence_table() }}
 
+{% set row_account_keys = ['row_account_source_type', 'row_account_source_id', 'row_account_id'] %}
+
 -- Keyed by the source identity, not by person: the analytics runtime resolves
 -- through `identity.account_assignment` first and `identity.person_map` second
 -- while it serves. An unresolvable row stays and starts counting the moment it
 -- resolves. Every row is keyed by one `entity_id`: the normalized email where
--- the source reported one, else an opaque key naming the source account (a Zoom
--- guest known by display name only). The outer SELECT restores the account
--- triple beside that key; no email map carries the key, so the account path
--- decides.
+-- the source reported one, else an opaque key naming the source account (a
+-- Slack member or a Zoom guest without an email). A Slack chat row carries its
+-- own account triple, so the account decides and the email is the fallback. A
+-- meeting row gets its triple back from `account_keys` by its opaque key.
 WITH account_keys AS (
     SELECT DISTINCT
         tenant_id,
@@ -30,11 +32,15 @@ SELECT
     src.tenant_id,
     src.source_key,
     src.entity_type,
-    if(coalesce(acc.account_id, '') != '', src.entity_id, {{ normalized_email('src.entity_id') }}) AS entity_id,
+    if(
+        src.account_id != '' OR coalesce(acc.account_id, '') != '',
+        src.entity_id,
+        {{ normalized_email('src.entity_id') }}
+    ) AS entity_id,
     -- '' on an email-keyed row leaves the account join unmatched.
-    coalesce(acc.account_source_type, '') AS account_source_type,
-    coalesce(acc.account_source_id, '') AS account_source_id,
-    coalesce(acc.account_id, '') AS account_id,
+    if(src.account_id != '', src.account_source_type, coalesce(acc.account_source_type, '')) AS account_source_type,
+    if(src.account_id != '', src.account_source_id, coalesce(acc.account_source_id, '')) AS account_source_id,
+    if(src.account_id != '', src.account_id, coalesce(acc.account_id, '')) AS account_id,
     src.metric_date,
     src.observed_at,
     src.measure_key,
@@ -51,9 +57,18 @@ FROM (
 
 WITH
 chat_source AS (
+    -- INVARIANT: a chat row with an email keeps the email as entity_id, so its
+    -- days still meet the meeting days of that address in the derived measures.
     SELECT
         tenant_id,
-        {{ normalized_email('person_key') }} AS entity_id,
+        if(
+            person_key LIKE '%@%',
+            {{ normalized_email('person_key') }},
+            {{ account_entity_key('account_source_type', 'account_source_id', 'account_id') }}
+        ) AS entity_id,
+        if(account_source_type = 'email', '', account_source_type) AS row_account_source_type,
+        if(account_source_type = 'email', '', account_source_id) AS row_account_source_id,
+        if(account_source_type = 'email', '', account_id) AS row_account_id,
         date AS metric_date,
         total_chat_messages,
         channel_posts,
@@ -66,7 +81,7 @@ chat_source AS (
             AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS tool_dimensions
     FROM {{ ref('class_collab_chat_activity') }} FINAL
-    WHERE person_key LIKE '%@%'
+    WHERE (account_source_type != 'email' OR person_key LIKE '%@%')
       AND date IS NOT NULL
 ),
 meeting_source AS (
@@ -181,6 +196,9 @@ deliberate_activity AS (
     SELECT
         tenant_id,
         entity_id,
+        row_account_source_type,
+        row_account_source_id,
+        row_account_id,
         metric_date,
         tool_value,
         CAST(
@@ -188,23 +206,23 @@ deliberate_activity AS (
             AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS tool_dimensions
     FROM (
-        SELECT DISTINCT tenant_id, entity_id, metric_date, tool_value
+        SELECT DISTINCT tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
         FROM (
-            SELECT tenant_id, entity_id, metric_date, tool_value
+            SELECT tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
             FROM chat_source
             WHERE total_chat_messages > 0
             UNION ALL
-            SELECT tenant_id, entity_id, metric_date, tool_value
+            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM email_source
             WHERE sent_count > 0
             UNION ALL
-            SELECT tenant_id, entity_id, metric_date, tool_value
+            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM document_source
             WHERE viewed_or_edited_count > 0
                OR shared_internally_count > 0
                OR shared_externally_count > 0
             UNION ALL
-            SELECT tenant_id, entity_id, metric_date, tool_value
+            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM meeting_source
             WHERE meetings_and_calls_attended > 0
         )
@@ -282,25 +300,24 @@ workday_source AS (
         ON hours.tenant_id = active_days.tenant_id
        AND hours.entity_id = active_days.entity_id
 ),
-value_measures AS (
-    {{ sum_measure('total_chat_messages', 'chat_source', 'total_chat_messages', 'tool_dimensions') }}
+chat_value_measures AS (
+    {{ sum_measure('total_chat_messages', 'chat_source', 'total_chat_messages', 'tool_dimensions', keys=row_account_keys) }}
 
     UNION ALL
 
-    {{ sum_measure('channel_posts', 'chat_source', 'channel_posts + ifNull(channel_replies, 0)', 'tool_dimensions') }}
+    {{ sum_measure('channel_posts', 'chat_source', 'channel_posts + ifNull(channel_replies, 0)', 'tool_dimensions', keys=row_account_keys) }}
 
     UNION ALL
 
-    {{ sum_measure('direct_and_group_messages', 'chat_source', 'direct_and_group_messages', 'tool_dimensions') }}
+    {{ sum_measure('direct_and_group_messages', 'chat_source', 'direct_and_group_messages', 'tool_dimensions', keys=row_account_keys) }}
 
     UNION ALL
 
     -- INVARIANT: only tools that tell direct from channel messages apart feed this,
     -- so a total without that split never dilutes the direct share.
-    {{ sum_measure('split_chat_messages', 'chat_source', 'if(direct_and_group_messages IS NULL, NULL, total_chat_messages)', 'tool_dimensions') }}
-
-    UNION ALL
-
+    {{ sum_measure('split_chat_messages', 'chat_source', 'if(direct_and_group_messages IS NULL, NULL, total_chat_messages)', 'tool_dimensions', keys=row_account_keys) }}
+),
+value_measures AS (
     {{ sum_measure('emails_sent', 'email_source', 'sent_count', 'tool_dimensions') }}
 
     UNION ALL
@@ -355,6 +372,9 @@ active_day_grain AS (
     SELECT DISTINCT
         tenant_id,
         entity_id,
+        row_account_source_type,
+        row_account_source_id,
+        row_account_id,
         metric_date,
         tool_dimensions
     FROM deliberate_activity
@@ -363,6 +383,9 @@ chat_active_day_grain AS (
     SELECT DISTINCT
         tenant_id,
         entity_id,
+        row_account_source_type,
+        row_account_source_id,
+        row_account_id,
         metric_date,
         tool_dimensions
     FROM chat_source
@@ -428,17 +451,20 @@ attendance_measures AS (
     FROM meeting_summary_measures
 ),
 subject_measures AS (
-    {{ distinct_measure('active_day', 'active_day_grain', 'metric_date', 'tool_dimensions') }}
+    {{ distinct_measure('active_day', 'active_day_grain', 'metric_date', 'tool_dimensions', keys=row_account_keys) }}
 
     UNION ALL
 
-    {{ distinct_measure('chat_active_day', 'chat_active_day_grain', 'metric_date', 'tool_dimensions') }}
+    {{ distinct_measure('chat_active_day', 'chat_active_day_grain', 'metric_date', 'tool_dimensions', keys=row_account_keys) }}
 )
 SELECT
     assumeNotNull(tenant_id) AS tenant_id,
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
+    '' AS account_source_type,
+    '' AS account_source_id,
+    '' AS account_id,
     assumeNotNull(metric_date) AS metric_date,
     CAST(NULL AS Nullable(DateTime64(3))) AS observed_at,
     measure_key,
@@ -472,6 +498,9 @@ SELECT
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
+    row_account_source_type AS account_source_type,
+    row_account_source_id AS account_source_id,
+    row_account_id AS account_id,
     assumeNotNull(metric_date) AS metric_date,
     CAST(NULL AS Nullable(DateTime64(3))) AS observed_at,
     measure_key,
@@ -480,7 +509,43 @@ SELECT
         ':',
         measure_key,
         ':',
-        hex(sipHash128(toString(tuple(arrayMap(d -> tuple(d.1, d.2), dimensions), subject_key))))
+        -- INVARIANT: the account is part of the key. Two accounts on one
+        -- email would otherwise share a record_id.
+        hex(sipHash128(toString(arrayMap(d -> tuple(d.1, d.2), dimensions)), account_source_type, account_source_id, account_id))
+    ) AS record_id,
+    measure_key AS record_kind,
+    'source_summary' AS granularity,
+    replaceAll(measure_key, '_', ' ') AS record_label,
+    value AS contribution,
+    CAST(NULL AS Nullable(String)) AS subject_key,
+    dimensions,
+    CAST(map() AS Map(String, String)) AS details
+FROM chat_value_measures
+WHERE tenant_id IS NOT NULL
+  AND entity_id IS NOT NULL
+  AND metric_date IS NOT NULL
+
+UNION ALL
+
+SELECT
+    assumeNotNull(tenant_id) AS tenant_id,
+    'collab' AS source_key,
+    'person' AS entity_type,
+    assumeNotNull(entity_id) AS entity_id,
+    row_account_source_type AS account_source_type,
+    row_account_source_id AS account_source_id,
+    row_account_id AS account_id,
+    assumeNotNull(metric_date) AS metric_date,
+    CAST(NULL AS Nullable(DateTime64(3))) AS observed_at,
+    measure_key,
+    concat(
+        toString(metric_date),
+        ':',
+        measure_key,
+        ':',
+        -- INVARIANT: the account is part of the key. Two accounts on one
+        -- email would otherwise share a record_id.
+        hex(sipHash128(toString(tuple(arrayMap(d -> tuple(d.1, d.2), dimensions), subject_key)), account_source_type, account_source_id, account_id))
     ) AS record_id,
     measure_key AS record_kind,
     'derived_population' AS granularity,
@@ -501,6 +566,9 @@ SELECT
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
+    '' AS account_source_type,
+    '' AS account_source_id,
+    '' AS account_id,
     assumeNotNull(metric_date) AS metric_date,
     CAST(NULL AS Nullable(DateTime64(3))) AS observed_at,
     measure_key,

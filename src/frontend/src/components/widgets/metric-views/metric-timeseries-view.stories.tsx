@@ -645,7 +645,7 @@ export const TestNarrowHeaderStacksInsteadOfOverlapping: Story = {
     });
     // The header row only — the table below it scrolls sideways by design, and
     // its cells are buttons that leave the card's box on purpose.
-    const header = title.closest('[data-slot="card"] > *');
+    const header = title.parentElement?.parentElement ?? null;
     await expect(header, "the card renders a header row").not.toBeNull();
     const controls = Array.from(header!.querySelectorAll("button"));
 

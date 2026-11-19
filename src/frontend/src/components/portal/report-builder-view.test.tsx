@@ -51,6 +51,7 @@ vi.mock("@/telemetry", async () => {
 });
 
 import { ReportBuilderView } from "@/components/portal/report-builder-view";
+import { AppTooltips, openTooltip } from "@/test/tooltip";
 
 const personId = "00000000-0000-0000-0000-000000000001";
 
@@ -190,6 +191,54 @@ describe("ReportBuilderView", () => {
     expect(checkbox("Commits")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: "Issues closed" })).toBeNull();
     expect(mocks.preview).not.toHaveBeenCalled();
+  });
+
+  it("titles each metric's name, which the row may cut, with the full name", () => {
+    mocks.definitions = [
+      metric({}),
+      metric({
+        metric_key: "tasks.closed",
+        label: "Issues closed",
+        last_observed_date: null,
+      }),
+    ];
+    render(<ReportBuilderView />);
+
+    expect(screen.getByText("Commits")).toHaveAttribute("title", "Commits");
+    expect(screen.getByText("Issues closed")).toHaveAttribute(
+      "title",
+      "Issues closed"
+    );
+  });
+
+  it("shows only the reason over a metric that cannot be picked", async () => {
+    mocks.definitions = [
+      metric({}),
+      metric({
+        metric_key: "tasks.closed",
+        label: "Issues closed",
+        last_observed_date: null,
+      }),
+    ];
+    render(<ReportBuilderView />, { wrapper: AppTooltips });
+
+    expect(checkbox("Issues closed")).toHaveAttribute("aria-disabled", "true");
+    await userEvent.hover(screen.getByText("Issues closed"));
+
+    await waitFor(() =>
+      expect(openTooltip()).toHaveTextContent(
+        /^No data source is connected for this metric yet$/
+      )
+    );
+  });
+
+  it("opens no tooltip over a metric that can be picked", async () => {
+    render(<ReportBuilderView />, { wrapper: AppTooltips });
+
+    await userEvent.hover(screen.getByText("Commits"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(openTooltip()).toBeNull();
   });
 
   it("keeps selection actions available and clears the current selection", async () => {

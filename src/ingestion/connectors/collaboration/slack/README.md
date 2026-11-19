@@ -84,6 +84,12 @@ Each sync reads all pages of `users.list` (200 members for each page). The conne
 
 Staging uses `is_bot` to remove bots from `slack__collab_chat_activity`. Slackbot (`USLACKBOT`) is always removed.
 
+### Identity
+
+Slack sends one identity input for each member: the account `(slack, <insight_source_id>, <user_id>)` with the email and the name. The email comes from Activity `email_address` when it is present, else from Members `email`. Bots and guests send no identity input.
+
+The chain is `slack__users_latest` → `slack__users_snapshot` → `slack__users_fields_history` → `slack__identity_inputs`. Chat rows carry the same account, so identity resolution finds the person by `user_id` first. A member who changes the email stays the same person. The rules are in SPEC.md section 9.
+
 ### Message activity: `messages`
 
 On Free and Pro, each sync reads all conversations that the token can see, from `max(slack_start_date, cursor - 2 days)` to now, and the replies of each thread that starts in that window. The connector reads the window in parts of 7 days and sends the state `{"date": "YYYY-MM-DD"}` after each part. After the last part, the state is the day before the sync. The rules are in SPEC.md section 5.3.

@@ -543,6 +543,32 @@ heal_collab_meeting_table staging m365__collab_meeting_activity
 heal_collab_meeting_table staging zoom__collab_meeting_activity
 heal_collab_meeting_table silver class_collab_meeting_activity
 
+echo "=== Healing collab-chat contract schema ==="
+# Same positional invariant: collab chat rows gained the account triple after
+# data_source (Slack rows keyed by the Slack account). A row written before the
+# columns existed is keyed by its email, which the default states, until the
+# Slack descriptor's major bump rebuilds the Slack rows.
+# INVARIANT: repairs releases without #4320 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+heal_collab_chat_account_table() {
+  local db="$1" table="$2"
+  ch_table_exists "$db" "$table" || return 0
+  echo "  ${db}.${table}"
+  run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_source_type String DEFAULT 'email' AFTER data_source;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_source_type String DEFAULT 'email' AFTER data_source;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_source_id String AFTER account_source_type;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_source_id String AFTER account_source_type;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_id String AFTER account_source_id;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_id String AFTER account_source_id;
+SQL
+}
+
+heal_collab_chat_account_table staging m365__collab_chat_activity
+heal_collab_chat_account_table staging slack__collab_chat_activity
+heal_collab_chat_account_table staging slack__collab_chat_activity_messages
+heal_collab_chat_account_table staging zulip_proxy__collab_chat_activity
+heal_collab_chat_account_table silver class_collab_chat_activity
+
 echo "=== Healing git pull-request reported close-time column ==="
 # Same positional invariant: every projection feeding class_git_pull_requests
 # gained closed_on_reported after closed_on — the close time as the source
@@ -977,5 +1003,36 @@ SQL
 }
 
 heal_slack_users_details_platform_columns
+
+echo "=== Aligning the Slack users snapshot with slack__users_latest ==="
+# The snapshot refuses to append when its columns differ from its source.
+# The old shape kept bots and guests. A kept version mints its member as an account,
+# so the heal removes the versions that slack__users_latest now drops, before the guest flag goes.
+# INVARIANT: repairs releases without #4328 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+heal_slack_users_snapshot_columns() {
+  local is_guest_type
+  local excluded="coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
+  ch_table_exists staging slack__users_snapshot || return 0
+  is_guest_type="$(ch_column_type staging slack__users_snapshot is_guest)"
+  echo "  staging.slack__users_snapshot"
+  if [[ -n "${is_guest_type}" ]]; then
+    if ch_table_exists bronze_slack users_details; then
+      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id HAVING argMax(coalesce(is_guest, false), date))"
+    fi
+    if ch_table_exists bronze_slack users; then
+      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users FINAL WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
+    fi
+    run_ch <<SQL
+ALTER TABLE staging.slack__users_snapshot DELETE WHERE ${excluded} SETTINGS mutations_sync = 2;
+SQL
+  fi
+  run_ch <<'SQL'
+ALTER TABLE staging.slack__users_snapshot ADD COLUMN IF NOT EXISTS display_name Nullable(String) AFTER email;
+ALTER TABLE staging.slack__users_snapshot MODIFY COLUMN display_name Nullable(String) AFTER email;
+ALTER TABLE staging.slack__users_snapshot DROP COLUMN IF EXISTS is_guest, DROP COLUMN IF EXISTS is_billable_seat;
+SQL
+}
+
+heal_slack_users_snapshot_columns
 
 echo "=== ClickHouse migrations complete ==="

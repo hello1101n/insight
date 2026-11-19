@@ -1,6 +1,6 @@
 # Frontend agent notes
 
-React 19 SPA (Vite, TanStack Router + Query, Tailwind 4 + shadcn/ui, MSW for mocks).
+React 19 SPA (Vite, TanStack Router + Query, Tailwind 4 + `@gears-frontx/ui-kit`, MSW for mocks).
 Run every command from this directory — `pnpm` is scoped here, not to the repository root.
 
 ## Commands

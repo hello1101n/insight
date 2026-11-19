@@ -1,9 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { MetricHelpTooltip } from "@/components/widgets/metric-help-tooltip";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import type { AttentionItem } from "@/lib/insight/attention";
 import type { GroupId } from "@/lib/insight/groups";
 import { PEER_TEXT } from "@/lib/peers";
@@ -43,7 +42,6 @@ export function IcNeedsAttention({
 }: IcNeedsAttentionProps) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
-  const describedBy = useId();
 
   // Furthest outside the cohort's own spread first, percent-of-median only to
   // break a tie. Ordering by percentage put a metric whose cohort median is
@@ -66,7 +64,7 @@ export function IcNeedsAttention({
       {titled ? (
         <h2 className={cn("mb-3", TEXT_EYEBROW)}>{t("worth_a_look.title")}</h2>
       ) : null}
-      <Card data-size="sm">
+      <Card size="sm">
         <CardContent className="text-sm">
           {/* One column, not two. Six columns of content inside half the
               content width truncated the two things a row exists to say — the
@@ -80,13 +78,7 @@ export function IcNeedsAttention({
               every row obeys them — while the row stays a real button with its
               own padding and hover. */}
           <ul className="flex flex-col gap-y-1 sm:grid sm:grid-cols-[minmax(0,max-content)_auto_auto_auto_minmax(0,1fr)_auto]">
-            {visible.map((item, index) => {
-              const description = [item.help?.description, item.help?.explanation]
-                .filter(Boolean)
-                .join(". ");
-              const descriptionId = `${describedBy}-${index}`;
-
-              return (
+            {visible.map((item) => (
               <li
                 key={`${item.group}-${item.key}`}
                 className="sm:col-span-full sm:grid sm:grid-cols-subgrid"
@@ -94,7 +86,6 @@ export function IcNeedsAttention({
                   <button
                     type="button"
                     onClick={() => onOpenGroup(item.group)}
-                    aria-describedby={description ? descriptionId : undefined}
                     /* Content-sized columns, not fixed ones. Fixed widths
                        decide what dies under width pressure before knowing
                        what is in them: the unit column held its full width
@@ -110,11 +101,12 @@ export function IcNeedsAttention({
                     className="-mx-2 flex w-[calc(100%+1rem)] flex-col gap-x-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted sm:col-span-full sm:grid sm:w-auto sm:grid-cols-subgrid sm:items-baseline"
                   >
                     <span className="flex min-w-0 items-baseline gap-2 sm:contents">
-                      <MetricHelpTooltip help={item.help}>
-                        <span className={cn("min-w-0 cursor-help truncate", TEXT_NAME)}>
-                          {item.label}
-                        </span>
-                      </MetricHelpTooltip>
+                      <span
+                        className={cn("min-w-0 truncate", TEXT_NAME)}
+                        title={item.label}
+                      >
+                        {item.label}
+                      </span>
                       {/* Beside the name, not stranded at the far edge of the
                           row: it says what KIND of finding this name is, and
                           half a row away it was read as a fifth number. */}
@@ -160,14 +152,8 @@ export function IcNeedsAttention({
                       aria-hidden
                     />
                   </button>
-                  {description ? (
-                    <span id={descriptionId} className="sr-only">
-                      {description}
-                    </span>
-                  ) : null}
               </li>
-              );
-            })}
+            ))}
             {shouldCollapse ? (
               <li className="sm:col-span-full">
                 <button

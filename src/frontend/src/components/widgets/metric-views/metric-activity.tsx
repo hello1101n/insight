@@ -10,7 +10,7 @@ import {
   withOwnTarget,
 } from "@/components/metric-evidence-context";
 import { Button, Spinner } from "@gears-frontx/ui-kit";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import {
   beforeAvailableDataDays,
   isCovered,
@@ -21,7 +21,6 @@ import {
   type StripDay,
 } from "@/lib/insight/day-strip";
 import { metricComparisons } from "@/lib/insight/metric-comparison";
-import { metricHelp } from "@/lib/insight/metric-help";
 import {
   activityEvents,
   finestGrain,
@@ -88,7 +87,7 @@ export function MetricActivity({
   const ready = grain != null && !declared.isPending;
   const detail = useMetricDetail(selection, ready && grain === "event");
   const series = useMetricDaySeries(selection, ready && grain !== "event");
-  const help = metricHelp(metric);
+  const description = metric.description?.trim();
   const data = forEntity(metric, entityId);
   const total = formatMetricValue(data.value, metric.format, metric.unit);
   const against = metricComparisons(metric, previous, entityId);
@@ -101,9 +100,9 @@ export function MetricActivity({
             which the figures drop to their own line. */}
         <div className="min-w-0 flex-[1_1_16rem]">
           <MetricName metric={metric} className="text-sm font-medium" />
-          {help?.description ? (
+          {description ? (
             <p className="truncate text-xs text-muted-foreground">
-              {help.description}
+              {description}
             </p>
           ) : null}
         </div>

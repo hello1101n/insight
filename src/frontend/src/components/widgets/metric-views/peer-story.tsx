@@ -2,15 +2,13 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@gears-frontx/ui-kit";
 import { PeerComparison } from "@/components/widgets/metric-views/peer-comparison";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";
@@ -205,7 +203,10 @@ function SideCard({
       <div className="flex h-full">
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-4">
           <div className="min-w-0 pr-8">
-            <div className="truncate text-sm font-semibold text-muted-foreground">
+            <div
+              className="truncate text-sm font-semibold text-muted-foreground"
+              title={entry.label}
+            >
               {entry.label}
             </div>
             {entry.sublabel ? (
@@ -278,9 +279,6 @@ function ChipTooltip({
   return (
     <span className="flex flex-col gap-1 leading-snug">
       <span className="font-medium">{entry.label}</span>
-      {entry.sublabel ? (
-        <span className="text-background/70">{entry.sublabel}</span>
-      ) : null}
       <span>
         {formatMetricValue(entry.value, entry.format, entry.unit)} ·{" "}
         {outlierText(entry.status)}
@@ -346,7 +344,10 @@ function FlatGridCard({ entry }: { entry: PeerStoryEntry }) {
     <Card className="relative p-4">
       <MetricCardActions evidence={entry.evidence} label={entry.label} />
       <div className="min-w-0 pr-8">
-        <div className="truncate text-sm font-semibold text-muted-foreground">
+        <div
+          className="truncate text-sm font-semibold text-muted-foreground"
+          title={entry.label}
+        >
           {entry.label}
         </div>
         {entry.sublabel ? (

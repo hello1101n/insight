@@ -119,11 +119,11 @@ describe("MembersGrid", () => {
     );
     const table = screen.getByRole("table", { name: "Members grid" });
     // Header carries the server short label; the sort control names the full one.
-    expect(
-      within(table).getByRole("button", {
-        name: "Active AI days — sort by this column",
-      }),
-    ).toHaveTextContent("AI days");
+    const header = within(table).getByRole("button", {
+      name: "Active AI days — sort by this column",
+    });
+    expect(header).toHaveTextContent("AI days");
+    expect(header).toHaveAttribute("title", "Active AI days");
     const rowHeaders = within(table).getAllByRole("rowheader");
     expect(rowHeaders).toHaveLength(3);
     const annLink = within(table).getByRole("link", { name: "Ann" });

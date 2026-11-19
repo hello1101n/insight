@@ -1,7 +1,6 @@
 import { CalendarIcon, CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { DateRange as DayPickerRange } from "react-day-picker";
 
 import {
   latestPickableDay,
@@ -22,10 +21,15 @@ import {
   PopoverTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  type CalendarProps,
 } from "@gears-frontx/ui-kit";
 import { formatRange } from "@/lib/date-range-label";
 import { keepNavigationKeysInside } from "@/lib/keep-navigation-keys-inside";
 import type { CustomRange, PeriodValue } from "@/types/insight";
+
+type DayPickerRange = NonNullable<
+  Extract<CalendarProps, { mode: "range" }>["selected"]
+>;
 
 function formatLongDate(d: Date): string {
   return d.toLocaleDateString("en-GB", {

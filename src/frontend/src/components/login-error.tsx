@@ -1,8 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { clearAuthErrorAttempts, signIn } from "@/auth";
-import { Button } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, Card, CardContent } from "@gears-frontx/ui-kit";
 
 type LoginErrorProps = {
   /** The authenticator's `auth_error` reason code (insight#2032). */

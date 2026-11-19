@@ -52,10 +52,7 @@ function DashboardSection() {
       ) : (
         <ul className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
           {shown.map((dashboard) => (
-            <li
-              key={dashboard.id}
-              className="[&_[data-slot=card-content]]:p-0 [&_[data-slot=card]]:p-4"
-            >
+            <li key={dashboard.id}>
               <DashboardCard dashboard={dashboard} />
             </li>
           ))}

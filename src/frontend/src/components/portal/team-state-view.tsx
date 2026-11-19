@@ -13,8 +13,7 @@ import {
   MembersGrid,
   type MembersGridProps,
 } from "@/components/widgets/dashboard/members-grid";
-import { Button, Switch } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, Switch, Card, CardContent } from "@gears-frontx/ui-kit";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import { formatMetricValue } from "@/lib/format";
 import {
