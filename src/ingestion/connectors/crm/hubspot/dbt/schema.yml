@@ -163,7 +163,7 @@ models:
           - accepted_values: { values: ['hubspot'] }
 
   - name: hubspot__crm_tickets
-    description: "HubSpot tickets → staging, feeds class_crm_tickets (dim_support_ticket column layout)"
+    description: "HubSpot tickets → staging, feeds class_crm_tickets"
     columns:
       - name: tenant_id
         tests: [not_null]

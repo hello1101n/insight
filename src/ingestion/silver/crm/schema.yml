@@ -126,10 +126,10 @@ models:
           - not_null
 
   - name: class_crm_tickets
-    description: "CRM service tickets. Columns up to `_version` mirror silver.dim_support_ticket in name, order and type, so the two can be unioned."
+    description: "CRM service tickets."
     columns:
       - name: insight_source_id
-        description: "Source instance — named as in dim_support_ticket"
+        description: "Source instance"
         tests:
           - not_null
       - name: source_ticket_id

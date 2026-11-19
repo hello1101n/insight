@@ -407,9 +407,9 @@ metadata:
 type: Opaque
 stringData:
   zendesk_subdomain: "your-subdomain"        # <subdomain>.zendesk.com
-  zendesk_email:     "agent@your-org.com"
-  zendesk_api_token: "CHANGE_ME"
-  # start_date:      "2026-01-01"            # optional
+  zendesk_client_id: "CHANGE_ME"             # confidential OAuth client, read scope
+  zendesk_secret:    "CHANGE_ME"
+  # zendesk_start_date: "2026-01-01"         # optional; empty reads the whole account
 ```
 
 ### Quality & testing

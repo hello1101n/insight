@@ -111,6 +111,10 @@ for database in bronze_claude_admin bronze_figma bronze_github_copilot bronze_op
 done
 drop_retired_table_if_empty insight raw_data
 drop_retired_table_if_empty identity aliases
+# INVARIANT: bronze of zendesk connector 2.x, which 3.0.0 no longer writes; each drops only while empty.
+for table in support_tickets support_ticket_ids support_agents support_ticket_events zendesk_satisfaction_ratings; do
+  drop_retired_table_if_empty bronze_zendesk "${table}"
+done
 # INVARIANT: can fire at the floor: any dropped materialized view leaves its inner table behind.
 drop_orphaned_inner_tables insight
 
