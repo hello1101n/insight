@@ -656,7 +656,7 @@ export function DomainLensView({
   };
 
   return (
-    <div data-testid={testId} className={cn("flex flex-col gap-6", embedded ? "home-metrics" : "p-4 md:p-6")}>
+    <div data-testid={testId} className={cn("flex flex-col gap-6", !embedded && "p-4 md:p-6")}>
       {scoped ? (
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm">
           <button
@@ -705,6 +705,7 @@ export function DomainLensView({
         <Section
           key={`${s.kind}-${i}`}
           spec={s}
+          embedded={embedded}
           grid={grid}
           trend={trend}
           trendWindow={trendWindow}
@@ -812,6 +813,7 @@ function Section({
   onOpenChart,
   onOpenValue,
   onOpenBlock,
+  embedded,
 }: {
   spec: SectionSpec;
   grid: GridData;
@@ -842,6 +844,7 @@ function Section({
   onOpenValue?: (value: string) => void;
   /** The records of one hour block of a heatmap. */
   onOpenBlock?: (block: string) => void;
+  embedded: boolean;
 }) {
   switch (spec.kind) {
     case "headline":
@@ -853,6 +856,7 @@ function Section({
           memberIds={memberIds}
           roster={{ nameByEntity, personIdByEntity }}
           unattributedByKey={unattributedByKey}
+          embedded={embedded}
         />
       );
     case "stat-tiles":
@@ -1100,6 +1104,7 @@ function HeadlineSection({
   memberIds,
   roster,
   unattributedByKey,
+  embedded,
 }: {
   metrics: readonly string[];
   labelSource?: "short";
@@ -1107,6 +1112,7 @@ function HeadlineSection({
   memberIds: readonly string[];
   roster: RosterLookups;
   unattributedByKey: Map<string, number | null>;
+  embedded: boolean;
 }) {
   const cards = metrics
     .map((key) => headlineCard(key, grid, memberIds, roster, unattributedByKey))
@@ -1120,7 +1126,14 @@ function HeadlineSection({
           Per person
         </p>
       )}
-      <div data-slot="headline-grid" className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4">
+      <div
+        className={cn(
+          "grid gap-4",
+          embedded
+            ? "grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3"
+            : "grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]"
+        )}
+      >
         {cards.map((c) =>
           c.kind === "members" ? (
             <HeadlineCard key={c.key} card={c} labelSource={labelSource} />
