@@ -143,5 +143,8 @@ SELECT
     CAST(NULL AS Nullable(String)) AS report_period,
     now() AS collected_at,
     'insight_slack' AS data_source,
+    'slack' AS account_source_type,
+    coalesce(insight_source_id, '') AS account_source_id,
+    coalesce(user_id, '') AS account_id,
     toUnixTimestamp64Milli(now64()) AS _version
 FROM counted_days

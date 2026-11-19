@@ -63,3 +63,9 @@ models:
       - name: date
         tests:
           - not_null
+      - name: account_source_type
+        description: "Always 'email': person_key is the address and the account columns are empty"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['email']

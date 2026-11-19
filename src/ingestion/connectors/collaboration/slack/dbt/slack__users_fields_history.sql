@@ -4,12 +4,13 @@
     tags=['slack', 'silver']
 ) }}
 
+{#- INVARIANT: user_id gives each member a first-version row, so a member without email or name still gets its id row. #}
 {{ fields_history(
     snapshot_ref=ref('slack__users_snapshot'),
-    entity_id_col='unique_key',
+    entity_id_col='user_id',
     fields=[
+        'user_id',
         'email',
-        'is_guest',
-        'is_billable_seat'
+        'display_name'
     ]
 ) }}

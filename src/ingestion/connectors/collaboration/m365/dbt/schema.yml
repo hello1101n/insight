@@ -42,6 +42,12 @@ models:
       - name: date
         tests:
           - not_null
+      - name: account_source_type
+        description: "Always 'email': person_key is the address and the account columns are empty"
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['email']
 
   - name: m365__collab_meeting_activity
     description: "M365 Teams meeting activity → staging, feeds class_collab_meeting_activity"
