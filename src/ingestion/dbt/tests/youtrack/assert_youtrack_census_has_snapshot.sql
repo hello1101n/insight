@@ -5,7 +5,7 @@
         'domain': 'task-tracking',
         'category': 'completeness',
         'tier': 'error',
-        'remediation': 'The census saw an issue inside the window the `updated:` search covers, yet no snapshot exists. Check the search slices and the stream state for youtrack_issues.'
+        'remediation': 'The newest census saw an issue inside the window the `updated:` search covers, yet no snapshot exists. Check the search slices and the stream state for youtrack_issues.'
     }
 ) }}
 
@@ -15,6 +15,9 @@
 -- one updated after the search last read was created or changed mid-sync and is
 -- the next sync's. The window is read from youtrack_issues, the `updated:`
 -- search that defines it.
+-- INVARIANT: only the newest census pass is the population. Every pass appends
+-- its own rows (the key carries the read time), so an older pass still names
+-- issues deleted since, which no snapshot can ever cover.
 WITH collection_window AS (
     SELECT source_id,
         min(toInt64(assumeNotNull(updated))) AS window_start,
@@ -22,9 +25,22 @@ WITH collection_window AS (
     FROM {{ source('bronze_youtrack', 'youtrack_issues') }}
     WHERE updated IS NOT NULL
     GROUP BY source_id
+),
+
+census_passes AS (
+    SELECT source_id, id, updated, JSONExtractInt(_airbyte_meta, 'sync_id') AS pass_id
+    FROM {{ source('bronze_youtrack', 'youtrack_issue_census') }}
+),
+
+newest_pass AS (
+    SELECT source_id, max(pass_id) AS pass_id
+    FROM census_passes
+    GROUP BY source_id
 )
-SELECT c.source_id, c.id
-FROM {{ source('bronze_youtrack', 'youtrack_issue_census') }} AS c FINAL
+
+SELECT DISTINCT c.source_id, c.id
+FROM census_passes AS c
+INNER JOIN newest_pass AS p ON p.source_id = c.source_id AND p.pass_id = c.pass_id
 INNER JOIN collection_window AS w ON w.source_id = c.source_id
 LEFT ANTI JOIN {{ ref('youtrack__issues') }} AS i
     ON i.insight_source_id = c.source_id AND i.issue_id = c.id
