@@ -959,22 +959,21 @@
         "default": "Runs the default schedule: every day at 00:00 UTC.",
         "api": "Runs the schedule set through the API."
       },
-      "deployment_reset": {
-        "annotation": "Returns to the schedule set at deployment in instance settings.",
-        "descriptor": "Returns to the connector's default schedule.",
-        "default": "Returns to the default schedule: every day at 00:00 UTC.",
-        "api": "Returns to the schedule set through the API."
-      },
-      "editor_reset_default": "Returns to the default schedule.",
-      "deployment_override": {
-        "annotation": "Overrides the schedule set at deployment in instance settings.",
-        "descriptor": "Overrides the connector's default schedule.",
-        "default": "Overrides the default schedule: every day at 00:00 UTC.",
-        "api": "Overrides the schedule set through the API."
+      "tooltip": {
+        "running": "Running",
+        "target": "Target",
+        "deployment": "Deployment",
+        "as_of": "as of {{time}}",
+        "saved_by": "saved by {{person}} {{time}}",
+        "origin": {
+          "annotation": "instance settings",
+          "descriptor": "connector default",
+          "default": "built-in default",
+          "api": "API"
+        }
       },
       "not_loaded": "The schedule has not been loaded yet.",
       "details_loading": "{{label}}. Schedule details are loading.",
-      "runs_checked": "Running as of {{time}}.",
       "paused_detail": "The sync job is paused. No sync runs are scheduled.",
       "request_author": "Saved by {{person}} {{time}}.",
       "live_unrecorded": "The live schedule has not been recorded yet.",

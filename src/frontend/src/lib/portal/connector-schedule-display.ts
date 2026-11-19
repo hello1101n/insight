@@ -2,7 +2,6 @@ import i18n from "@/i18n";
 
 import type {
   ConnectorSchedule,
-  InheritedSchedule,
   ScheduleOrigin,
   SchedulePendingReason,
 } from "@/api/connector-health-client";
@@ -20,29 +19,8 @@ export function conciseScheduleWords(crons: string[]): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function deploymentScheduleLines(
-  inherited: InheritedSchedule | null | undefined,
-  nextCheck?: string | null
-): string[] {
-  if (!inherited) return [deploymentScheduleAvailability(nextCheck)];
-  return [
-    i18n.t("connectors.schedule.with_utc", {
-      words: conciseScheduleWords(inherited.crons),
-    }),
-    ...inherited.crons.map((cron) =>
-      i18n.t("connectors.schedule.with_utc", { words: cron })
-    ),
-    inherited.origin === "default"
-      ? i18n.t("connectors.schedule.editor_reset_default")
-      : deploymentScheduleSentence("reset", inherited.origin),
-  ];
-}
-
-export function deploymentScheduleSentence(
-  kind: "inherited" | "reset" | "override",
-  origin: ScheduleOrigin
-): string {
-  return i18n.t(`connectors.schedule.deployment_${kind}.${origin}`);
+export function inheritedScheduleSentence(origin: ScheduleOrigin): string {
+  return i18n.t(`connectors.schedule.deployment_inherited.${origin}`);
 }
 
 export function schedulePendingSentence(

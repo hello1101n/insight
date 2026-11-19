@@ -68,6 +68,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it("shows only a status paragraph in the Next sync icon tooltip while details load", async () => {
+  render(<ConnectorHealthPane />, { wrapper: AppTooltips });
+  const row = screen.getByRole("row", { expanded: false });
+  await userEvent.hover(within(row).getByRole("img", { name: "Pending" }));
+
+  const tooltip = await screen.findByRole("tooltip");
+  expect(tooltip.querySelector("p")?.textContent).toBe(
+    "Pending. Schedule details are loading."
+  );
+  expect(within(tooltip).queryAllByRole("listitem")).toHaveLength(0);
+});
+
 it("explains the collapsed chip's status and loading state on hover and keyboard focus", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime("2026-01-15T12:00:00Z");
@@ -92,13 +104,9 @@ it("explains the collapsed chip's status and loading state on hover and keyboard
     }
     const tooltip = await screen.findByRole("tooltip");
     expect(trigger).toHaveAttribute("aria-describedby", tooltip.id);
-    const lines = Array.from(tooltip.querySelectorAll("span"));
-    expect(
-      lines.map((line) => line.textContent),
-      gesture
-    ).toEqual(["Pending. Schedule details are loading."]);
-    expect(lines[0].parentElement).toHaveClass("flex", "flex-col");
-    for (const line of lines) expect(line).toHaveClass("block");
+    expect(tooltip.querySelector("p"), gesture).toHaveTextContent(
+      "Pending. Schedule details are loading."
+    );
     expect(row).toHaveAttribute("aria-expanded", "false");
     await user.click(trigger);
     expect(row).toHaveAttribute("aria-expanded", "false");

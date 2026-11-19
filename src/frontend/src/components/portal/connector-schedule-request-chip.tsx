@@ -4,7 +4,7 @@ import type {
   ScheduleStatus,
 } from "@/api/connector-health-client";
 import { ConnectorScheduleTooltip } from "@/components/portal/connector-schedule-tooltip";
-import { scheduleTooltipLines } from "@/lib/portal/connector-schedule-tooltip";
+import { scheduleTooltip } from "@/lib/portal/connector-schedule-tooltip";
 import { scheduleStatusView } from "@/lib/portal/connector-schedule-status";
 import { useConnectorSchedule } from "@/queries/connector-health";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
@@ -62,10 +62,13 @@ function RequestStatus({
   return (
     <ConnectorScheduleTooltip
       label={label}
-      lines={
+      content={
         !schedule && isError && !isFetching && !row.schedule_request?.read_error
-          ? [t("connectors.schedule.details_load_error", { label })]
-          : scheduleTooltipLines(
+          ? {
+              status: t("connectors.schedule.details_load_error", { label }),
+              rows: [],
+            }
+          : scheduleTooltip(
               schedule ?? row.schedule_request ?? undefined,
               person
             )

@@ -14,7 +14,7 @@ import { saveError } from "./save-error";
 import { ConnectorScheduleHeader } from "@/components/portal/connector-schedule-header";
 import { ConnectorScheduleTooltip } from "../connector-schedule-tooltip";
 import { ConnectorScheduleDetails } from "../connector-schedule-details";
-import { deploymentScheduleLines } from "@/lib/portal/connector-schedule-display";
+import { resetScheduleTooltip } from "@/lib/portal/connector-schedule-tooltip";
 import { scheduleTimePhrase } from "@/lib/portal/connector-schedule-time";
 import { validateScheduleCrons } from "@/lib/portal/connector-schedule-validation";
 import { isScheduleOverride } from "@/lib/portal/connector-schedule";
@@ -368,7 +368,7 @@ export function ConnectorScheduleEditor({
         <div>
           {isScheduleOverride(current.schedule.requested) && (
             <ConnectorScheduleTooltip
-              lines={deploymentScheduleLines(
+              content={resetScheduleTooltip(
                 current.schedule.inherited,
                 current.schedule.next_reconcile_at
               )}

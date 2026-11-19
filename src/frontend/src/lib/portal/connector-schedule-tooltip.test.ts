@@ -4,7 +4,7 @@ import type {
   ConnectorSchedule,
   ScheduleRequestState,
 } from "@/api/connector-health-client";
-import { scheduleTooltipLines } from "./connector-schedule-tooltip";
+import { scheduleTooltip } from "./connector-schedule-tooltip";
 
 const schedule: ConnectorSchedule = {
   connector: "example-tracker",
@@ -34,30 +34,46 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+function tooltipText(
+  schedule: ConnectorSchedule | ScheduleRequestState | undefined,
+  person?: string
+): string[] {
+  const { status, rows } = scheduleTooltip(schedule, person);
+  const rowText = rows.map(
+    ({ label, qualifier, crons, zone }) =>
+      `${label} · ${qualifier} ${crons.join("; ")} ${zone}`
+  );
+  return status ? [status, ...rowText] : rowText;
+}
+
+const running = "Running · as of 11:00 0 3 * * *; 0 15 * * * UTC";
+const pending =
+  "The sync job runs a different schedule. Starts by 16 Jan at 00:15 UTC.";
+
 it.each([
   ["annotation", "Runs the schedule set at deployment in instance settings."],
   ["descriptor", "Runs the connector's default schedule."],
   ["default", "Runs the default schedule: every day at 00:00 UTC."],
   ["api", "Runs the schedule set through the API."],
 ] as const)(
-  "names the plain deployment source for %s and every cron",
+  "names the plain deployment source for %s and every running cron",
   (origin, source) => {
     const crons =
       origin === "default" ? ["0 0 * * *"] : schedule.inherited!.crons;
     expect(
-      scheduleTooltipLines({
+      tooltipText({
         ...schedule,
         status: "inherited",
         requested: null,
         inherited: { crons, origin },
       })
-    ).toEqual([source, ...crons.map((cron) => `${cron} UTC`)]);
+    ).toEqual([source, running]);
   }
 );
 
 it("dates an applied schedule and lists the overridden deployment schedule", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       status: "applied",
       pending_reason: null,
@@ -66,18 +82,14 @@ it("dates an applied schedule and lists the overridden deployment schedule", () 
     })
   ).toEqual([
     "Saved by another admin on 14 Jan at 12:00 UTC.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
-    "Overrides the connector's default schedule.",
-    "0 2 * * * UTC",
-    "0 14 * * * UTC",
+    running,
+    "Deployment · connector default 0 2 * * *; 0 14 * * * UTC",
   ]);
 });
 
 it("omits a next-check hint when the schedule is applied and the deployment schedule is unknown", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       status: "applied",
       pending_reason: null,
@@ -85,65 +97,44 @@ it("omits a next-check hint when the schedule is applied and the deployment sche
       requested: { ...schedule.requested!, crons: schedule.live!.crons },
       inherited: null,
     })
-  ).toEqual([
-    "Saved by another admin on 14 Jan at 12:00 UTC.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
-  ]);
+  ).toEqual(["Saved by another admin on 14 Jan at 12:00 UTC.", running]);
 });
 
 it("gives the pending start estimate and lists each running cron once", () => {
-  expect(scheduleTooltipLines(schedule)).toEqual([
-    "Saved by another admin on 14 Jan at 12:00 UTC.",
-    "The sync job runs a different schedule.",
-    "Starts by 16 Jan at 00:15 UTC.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
+  expect(tooltipText(schedule)).toEqual([
+    pending,
+    "Target · saved by another admin on 14 Jan at 12:00 0 6 * * * UTC",
+    running,
   ]);
 });
 
 it("lists the full reset target when only one cron is shared", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: { ...schedule.requested!, crons: [] },
       inherited: { crons: ["0 3 * * *", "0 14 * * *"], origin: "annotation" },
     })
   ).toEqual([
-    "The sync job runs a different schedule.",
-    "Starts by 16 Jan at 00:15 UTC.",
-    "Returns to the schedule set at deployment in instance settings.",
-    "0 3 * * * UTC",
-    "0 14 * * * UTC",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
+    pending,
+    "Target · instance settings 0 3 * * *; 0 14 * * * UTC",
+    running,
   ]);
 });
 
 it("lists the reset target when it is a strict subset of the running crons", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: { ...schedule.requested!, crons: [] },
       inherited: { crons: ["0 3 * * *"], origin: "descriptor" },
     })
-  ).toEqual([
-    "The sync job runs a different schedule.",
-    "Starts by 16 Jan at 00:15 UTC.",
-    "Returns to the connector's default schedule.",
-    "0 3 * * * UTC",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
-  ]);
+  ).toEqual([pending, "Target · connector default 0 3 * * * UTC", running]);
 });
 
 it("explains a pending reset when the deployment schedule and next check are unknown", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: { ...schedule.requested!, crons: [] },
       inherited: null,
@@ -152,15 +143,13 @@ it("explains a pending reset when the deployment schedule and next check are unk
     })
   ).toEqual([
     "The deployment schedule is shown after the next check.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
+    running,
   ]);
 });
 
 it("gives one availability sentence for a pending reset with a known next check", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: { ...schedule.requested!, crons: [] },
       inherited: null,
@@ -168,15 +157,13 @@ it("gives one availability sentence for a pending reset with a known next check"
     })
   ).toEqual([
     "The deployment schedule is shown after 16 Jan at 00:15 UTC.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
+    running,
   ]);
 });
 
 it("explains why an instance without a sync job is not scheduled", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: null,
       live: null,
@@ -185,14 +172,12 @@ it("explains why an instance without a sync job is not scheduled", () => {
       next_reconcile_at: null,
     })
   ).toEqual([
-    "This instance has no sync schedule yet.",
-    "Takes effect after the next check.",
-    "No sync job runs until then.",
+    "This instance has no sync schedule yet. Takes effect after the next check. No sync job runs until then.",
   ]);
 });
 
 it("explains that the schedule has not been loaded when the response is missing", () => {
-  expect(scheduleTooltipLines(undefined)).toEqual([
+  expect(tooltipText(undefined)).toEqual([
     "The schedule has not been loaded yet.",
   ]);
 });
@@ -210,7 +195,7 @@ it.each([
       revision: 3,
       last_observation: { status, observed_at: "2026-01-15T12:00:00Z" },
     };
-    expect(scheduleTooltipLines(request)).toEqual([
+    expect(tooltipText(request)).toEqual([
       `${label}. Schedule details are loading.`,
     ]);
   }
@@ -218,22 +203,22 @@ it.each([
 
 it("shows loading while a summary has no schedule observation", () => {
   expect(
-    scheduleTooltipLines({ crons: [], revision: 3, last_observation: null })
+    tooltipText({ crons: [], revision: 3, last_observation: null })
   ).toEqual(["The schedule has not been loaded yet."]);
 });
 
 it.each(["you", "Example Admin", "another admin"])(
   "uses the supplied author wording %s without exposing the person id",
   (person) => {
-    const lines = scheduleTooltipLines(schedule, person).join(" ");
-    expect(lines).toContain(`Saved by ${person} on`);
+    const lines = tooltipText(schedule, person).join(" ");
+    expect(lines).toContain(`Target · saved by ${person}`);
     expect(lines).not.toContain(schedule.requested!.updated_by);
   }
 );
 
-it("omits the reset target crons when the running UTC set matches in a different order", () => {
+it("lists the reset target crons when the running UTC set matches in a different order", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       requested: { ...schedule.requested!, crons: [] },
       inherited: {
@@ -242,36 +227,35 @@ it("omits the reset target crons when the running UTC set matches in a different
       },
     })
   ).toEqual([
-    "The sync job runs a different schedule.",
-    "Starts by 16 Jan at 00:15 UTC.",
-    "Returns to the schedule set at deployment in instance settings.",
-    "Running as of 11:00 UTC.",
-    "0 3 * * * UTC",
-    "0 15 * * * UTC",
+    pending,
+    "Target · instance settings 0 15 * * *; 0 3 * * * UTC",
+    running,
   ]);
 });
 
-it("explains that the live schedule has not been recorded for an applied request", () => {
+it("dates an applied request when the live schedule has not been recorded", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       status: "applied",
       live: null,
       inherited: null,
     })
   ).toEqual([
-    "Saved by another admin on 14 Jan at 12:00 UTC.",
-    "The live schedule has not been recorded yet.",
+    "Saved by another admin on 14 Jan at 12:00 UTC. The live schedule has not been recorded yet.",
   ]);
 });
 
 it("explains when the default schedule is shown if the deployment target is unknown", () => {
   expect(
-    scheduleTooltipLines({
+    tooltipText({
       ...schedule,
       status: "inherited",
       requested: null,
       inherited: null,
     })
-  ).toEqual(["The deployment schedule is shown after 16 Jan at 00:15 UTC."]);
+  ).toEqual([
+    "The deployment schedule is shown after 16 Jan at 00:15 UTC.",
+    running,
+  ]);
 });
