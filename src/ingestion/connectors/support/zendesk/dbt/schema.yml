@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: bronze_zendesk
+    schema: bronze_zendesk
+    tables:
+      - name: zendesk_tickets
+      - name: zendesk_ticket_events
+      - name: zendesk_ticket_metric_events
+      - name: zendesk_users
+      - name: zendesk_organizations
+      - name: zendesk_csat_ratings
+      - name: zendesk_survey_responses
+      - name: zendesk_groups
+      - name: zendesk_group_memberships
+      - name: zendesk_ticket_fields
+      - name: zendesk_sla_policies
+      - name: zendesk_schedules
+      - name: zendesk_deleted_tickets
+      - name: zendesk_kb_articles
+      - name: zendesk_merge_audits
+
+models:
+  - name: zendesk__ticket_event_items
+    description: "One row per field a ticket update set, or per comment it added; parsed from the bulk ticket-event export."
+  - name: zendesk__user_kinds
+    description: "Each Zendesk user's author kind: agent, end_user or system."
