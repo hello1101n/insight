@@ -36,6 +36,7 @@ import {
 import { useIngestionIntensity } from "@/queries/ingestion";
 import { formatAxisTick, formatMetricNumber, formatUtcClock } from "@/lib/format";
 import { TEXT_BODY, TEXT_LABEL, TEXT_NAME, TEXT_TITLE } from "@/lib/type-scale";
+import { chartColor } from "@/lib/chart-palette";
 
 /**
  * How far back the trend reads. Long enough to show a weekly rhythm and a
@@ -312,7 +313,7 @@ function IntensityChart({
             key={key}
             dataKey={key}
             stackId={stacked ? "rows" : undefined}
-            fill={stacked ? seriesColorVar(key) : "var(--chart-1)"}
+            fill={stacked ? seriesColorVar(key) : chartColor(0)}
             radius={0}
           />
         ))}

@@ -23,6 +23,7 @@ import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 import { scatterPoints, type DimRow } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const SCATTER_CONFIG: ChartConfig = { y: { label: "y" } };
 
@@ -120,7 +121,7 @@ export function ScatterSection({
                 isAnimationActive={false}
                 data={points}
                 name={axisLabel(ry)}
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
                 fillOpacity={0.7}
               />
             </ScatterChart>

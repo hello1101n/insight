@@ -13,6 +13,7 @@ import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 import { bucketNote, smallMultiples } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const MULTIPLE_CONFIG: ChartConfig = { value: { label: "Value" } };
 
@@ -67,7 +68,7 @@ export function SmallMultiplesSection({
                   <YAxis hide domain={[0, max]} />
                   <ChartLine
                     dataKey="value"
-                    stroke="var(--chart-1)"
+                    stroke={chartColor(0)}
                     strokeWidth={1.5}
                   />
                 </ComposedChart>

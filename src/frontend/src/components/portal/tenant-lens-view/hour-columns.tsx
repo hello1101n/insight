@@ -20,6 +20,7 @@ import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 import { hourColumns } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const COLUMNS_CONFIG: ChartConfig = { value: { label: "Value" } };
 
@@ -76,14 +77,14 @@ export function HourColumnsSection({
                 <ReferenceArea
                   y1={mean - stddev}
                   y2={mean + stddev}
-                  fill="var(--chart-2)"
+                  fill={chartColor(1)}
                   fillOpacity={0.12}
                 />
               ) : null}
               {mean != null ? (
                 <ReferenceLine
                   y={mean}
-                  stroke="var(--chart-2)"
+                  stroke={chartColor(1)}
                   strokeDasharray="4 4"
                 />
               ) : null}
@@ -91,7 +92,7 @@ export function HourColumnsSection({
               <ChartBar
                 dataKey="value"
                 name={r.short_label ?? r.label}
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>
