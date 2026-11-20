@@ -16,16 +16,22 @@ pub(super) const MAX_IDENTIFIER_CHARS: usize = 128;
 /// How to sort the rows. Without it the grouping's own columns order the
 /// result, which cannot answer "the most" or "the largest".
 #[derive(Debug, Deserialize)]
-pub(super) struct OrderBy {
+pub(crate) struct OrderBy {
     /// One of the query's own `as_name` values.
-    pub(super) field: String,
+    pub(crate) field: String,
     #[serde(default)]
-    pub(super) direction: Direction,
+    pub(crate) direction: Direction,
+}
+
+impl OrderBy {
+    pub(crate) fn descending(&self) -> bool {
+        matches!(self.direction, Direction::Desc)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Direction {
+pub(crate) enum Direction {
     #[default]
     Asc,
     Desc,
@@ -264,8 +270,7 @@ impl Field {
     ///
     /// The two are this query's own `as_name`s, already selected: `ClickHouse`
     /// resolves an alias inside the same select list, so a rate needs no
-    /// second pass over the table. `nullIf` keeps a zero denominator a
-    /// missing rate instead of an error.
+    /// second pass over the table.
     pub(super) fn ratio(
         &self,
         selected: &HashSet<&str>,
@@ -290,13 +295,7 @@ impl Field {
             }
         }
 
-        let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
-
-        Ok(Some(if self.percent {
-            format!("(100 * {division})")
-        } else {
-            division
-        }))
+        Ok(Some(ratio_sql(numerator, denominator, self.percent)))
     }
 
     /// The same, keeping only the rows this field's own conditions admit.
@@ -306,6 +305,16 @@ impl Field {
             (Some(agg), None) => format!("{}({read})", agg.sql()),
             (None, _) => read,
         }
+    }
+}
+
+pub(crate) fn ratio_sql(numerator: &str, denominator: &str, percent: bool) -> String {
+    let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
+
+    if percent {
+        format!("(100 * {division})")
+    } else {
+        division
     }
 }
 
@@ -434,7 +443,7 @@ impl Agg {
     }
 }
 
-pub(super) fn is_identifier(value: &str) -> bool {
+pub(crate) fn is_identifier(value: &str) -> bool {
     !value.is_empty()
         && value.chars().count() <= MAX_IDENTIFIER_CHARS
         && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')

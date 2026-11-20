@@ -22,21 +22,25 @@ const DEFAULT_LIMIT: u32 = 1000;
 const MAX_LIMIT: u32 = 10000;
 
 impl super::MetricQuery {
-    /// Where a whole run stops without the metric having asked it to: the
-    /// default bound when it names none, or the most it may ask for when it
-    /// names more. A bound the metric names itself is its own question.
     pub(crate) fn imposed_limit(&self) -> Option<u32> {
-        match self.limit {
-            None => Some(DEFAULT_LIMIT),
-            Some(limit) if limit > MAX_LIMIT => Some(MAX_LIMIT),
-            Some(_) => None,
-        }
+        imposed_limit(self.limit)
+    }
+}
+
+/// Where a whole run stops without the metric having asked it to: the
+/// default bound when it names none, or the most it may ask for when it
+/// names more. A bound the metric names itself is its own question.
+pub(crate) fn imposed_limit(limit: Option<u32>) -> Option<u32> {
+    match limit {
+        None => Some(DEFAULT_LIMIT),
+        Some(limit) if limit > MAX_LIMIT => Some(MAX_LIMIT),
+        Some(_) => None,
     }
 }
 
 /// How much of the result a compiled query is asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Bound {
+pub(crate) enum Bound {
     /// Everything a reader drawing the whole result gets: ordered as the
     /// metric says, cut at its own limit or the default.
     Whole,
@@ -44,6 +48,7 @@ enum Bound {
     /// wrote survives, and then the order behind it is made total so the
     /// same N rows answer every page.
     Paged,
+    Subquery,
 }
 
 /// What the field list compiled to.
@@ -137,7 +142,7 @@ impl MetricQuery {
     /// Whether this metric answers one row per group rather than one per
     /// record, which is what decides whether a windowed run buckets or merely
     /// reports the bucket each row falls in.
-    fn groups_its_rows(&self) -> bool {
+    pub(crate) fn groups_its_rows(&self) -> bool {
         !self.group_by.is_empty() || self.fields.iter().any(|field| field.agg.is_some())
     }
 
@@ -294,6 +299,16 @@ impl MetricQuery {
         self.assemble(people, window, engine, over, Bound::Whole)
     }
 
+    pub(crate) fn compile_subquery(
+        &self,
+        people: &People,
+        window: &Window,
+        engine: TableEngine,
+        over: Option<Over<'_>>,
+    ) -> Result<CompiledQuery, MetricQueryError> {
+        self.assemble(people, window, engine, over, Bound::Subquery)
+    }
+
     /// The same query for a reader that orders and pages it itself.
     pub(crate) fn compile_paged(
         &self,
@@ -420,7 +435,7 @@ impl MetricQuery {
         // time. One the reader numbers outside is not here yet to order by.
         let carried: &[String] = if numbered { &[] } else { &hidden };
         let ordered: Vec<String> = columns.iter().chain(carried.iter()).cloned().collect();
-        self.bound_by(&mut sql, bound, ordering, &groups, &ordered);
+        bound_by(&mut sql, bound, self.limit, ordering, &groups, &ordered);
 
         Ok(CompiledQuery {
             sql,
@@ -462,52 +477,6 @@ impl MetricQuery {
         parts.push(format!("{id} AS `{RECORD_COLUMN}`"));
 
         (vec![RECORD_COLUMN.to_owned()], false)
-    }
-
-    /// The order and the cut at the end of the statement, as the bound asks.
-    ///
-    /// A bounded read is an ordered read: which rows a `LIMIT` keeps is only
-    /// an answer when something says which come first.
-    fn bound_by(
-        &self,
-        sql: &mut String,
-        bound: Bound,
-        ordering: Option<&OrderBy>,
-        groups: &[String],
-        columns: &[String],
-    ) {
-        let limit = match bound {
-            Bound::Whole => Some(self.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT)),
-            Bound::Paged => self.limit.map(|limit| limit.min(MAX_LIMIT)),
-        };
-        let Some(limit) = limit else {
-            return;
-        };
-
-        let mut terms: Vec<String> = match ordering {
-            Some(order) => vec![format!("`{}` {}", order.field, order.direction.sql())],
-            None => groups.iter().map(|group| format!("`{group}`")).collect(),
-        };
-        if bound == Bound::Paged {
-            // INVARIANT: total. A page is cut out of this result by
-            // position, and two rows the order leaves interchangeable
-            // could swap sides of the cut between one page and the next.
-            let named: Vec<&str> = match ordering {
-                Some(order) => vec![order.field.as_str()],
-                None => groups.iter().map(String::as_str).collect(),
-            };
-            terms.extend(
-                columns
-                    .iter()
-                    .filter(|column| !named.contains(&column.as_str()))
-                    .map(|column| format!("`{column}`")),
-            );
-        }
-        if !terms.is_empty() {
-            sql.push_str(" ORDER BY ");
-            sql.push_str(&terms.join(", "));
-        }
-        let _ = write!(sql, " LIMIT {limit}");
     }
 
     fn add_filters(
@@ -625,4 +594,51 @@ impl MetricQuery {
 
         Ok(())
     }
+}
+
+/// The order and the cut at the end of the statement, as the bound asks.
+///
+/// A bounded read is an ordered read: which rows a `LIMIT` keeps is only
+/// an answer when something says which come first.
+pub(crate) fn bound_by(
+    sql: &mut String,
+    bound: Bound,
+    limit: Option<u32>,
+    ordering: Option<&OrderBy>,
+    groups: &[String],
+    columns: &[String],
+) {
+    let limit = match bound {
+        Bound::Whole => Some(limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT)),
+        Bound::Paged => limit.map(|limit| limit.min(MAX_LIMIT)),
+        Bound::Subquery => None,
+    };
+    let Some(limit) = limit else {
+        return;
+    };
+
+    let mut terms: Vec<String> = match ordering {
+        Some(order) => vec![format!("`{}` {}", order.field, order.direction.sql())],
+        None => groups.iter().map(|group| format!("`{group}`")).collect(),
+    };
+    if bound == Bound::Paged {
+        // INVARIANT: total. A page is cut out of this result by
+        // position, and two rows the order leaves interchangeable
+        // could swap sides of the cut between one page and the next.
+        let named: Vec<&str> = match ordering {
+            Some(order) => vec![order.field.as_str()],
+            None => groups.iter().map(String::as_str).collect(),
+        };
+        terms.extend(
+            columns
+                .iter()
+                .filter(|column| !named.contains(&column.as_str()))
+                .map(|column| format!("`{column}`")),
+        );
+    }
+    if !terms.is_empty() {
+        sql.push_str(" ORDER BY ");
+        sql.push_str(&terms.join(", "));
+    }
+    let _ = write!(sql, " LIMIT {limit}");
 }
