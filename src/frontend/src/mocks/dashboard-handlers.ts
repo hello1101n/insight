@@ -10,6 +10,8 @@ import type {
   GrantLevel,
 } from "@/api/custom-client";
 
+import { dashboardItems } from "@/lib/custom/dashboard-items";
+
 import { isAdministrator } from "./admin-assignments";
 import { PEOPLE } from "./registry";
 
@@ -80,7 +82,178 @@ const dashboards: Record<string, MockDashboard> = {
     owner: LEAVER,
     grants: [granted(EVERYONE, "viewer", LEAVER)],
   },
+  // Spike: one board with every widget kind, a heading, a text and a window.
+  "delivery-pulse": {
+    name: "Delivery pulse",
+    body: {
+      title: "Delivery pulse",
+      time_ranges: ["P7D", "P30D", "P1Y"],
+      default_range: "P30D",
+      items: [
+        { heading: "Throughput" },
+        { widget: "pulse-deploys" },
+        { widget: "pulse-failure-rate" },
+        { widget: "pulse-deploys-per-day" },
+        { widget: "pulse-open-prs" },
+        { heading: "Breakdown" },
+        { text: "Synthetic numbers for comparing the two renderers." },
+        { widget: "pulse-deploys-by-team" },
+        { widget: "pulse-deploys-by-outcome" },
+        { widget: "pulse-prs-by-state" },
+        { widget: "pulse-slow-pipelines" },
+      ],
+    },
+    owner: CALLER,
+    grants: [],
+  },
 };
+
+const clock = { field: "day", from: "metric" } as const;
+
+const PULSE_WIDGETS: DashboardWidget[] = [
+  {
+    id: "pulse-deploys",
+    name: "Deploys",
+    body: {
+      type: "stat",
+      metric: "pulse",
+      value: "deploys",
+      label: "deploys in the window",
+    },
+    clock,
+  },
+  {
+    id: "pulse-failure-rate",
+    name: "Change failure rate",
+    body: {
+      type: "stat",
+      metric: "pulse",
+      value: "rate",
+      label: "of deploys failed",
+    },
+    clock,
+  },
+  {
+    id: "pulse-deploys-per-day",
+    name: "Deploys per day",
+    body: { type: "line", metric: "pulse", x: "bucket", y: "deploys" },
+    clock,
+  },
+  {
+    id: "pulse-open-prs",
+    name: "Open pull requests",
+    body: { type: "area", metric: "pulse", x: "bucket", y: "open" },
+    clock,
+  },
+  {
+    id: "pulse-deploys-by-team",
+    name: "Deploys by team",
+    body: {
+      type: "bar",
+      metric: "pulse",
+      x: "team",
+      y: "deploys",
+      labels: true,
+    },
+    clock,
+  },
+  {
+    id: "pulse-deploys-by-outcome",
+    name: "Deploys by team and outcome",
+    body: {
+      type: "bar",
+      metric: "pulse",
+      x: "team",
+      y: "deploys",
+      series: "outcome",
+    },
+    clock,
+  },
+  {
+    id: "pulse-prs-by-state",
+    name: "Pull requests by state",
+    body: { type: "pie", metric: "pulse", label: "state", value: "count" },
+    clock: null,
+  },
+  {
+    id: "pulse-slow-pipelines",
+    name: "Slowest pipelines",
+    body: {
+      type: "table",
+      metric: "pulse",
+      columns: ["pipeline", "median_minutes", "runs"],
+    },
+    clock,
+  },
+];
+
+const DAYS: Record<string, number> = { P7D: 7, P30D: 30, P1Y: 365 };
+const TEAMS = ["Atlas", "Borealis", "Cobalt", "Delta"];
+
+/** Synthetic rows that grow with the window, so a range change shows. */
+function pulseRows(widget: string, range: string | undefined) {
+  const days = DAYS[range ?? ""] ?? 30;
+  const wave = (i: number) => Math.round(6 + 4 * Math.sin(i / 3) + (i % 5));
+  const buckets = Array.from({ length: Math.min(days, 60) }, (_, i) => {
+    const date = new Date(Date.UTC(2026, 9, 1) + i * 86_400_000);
+    return date.toISOString().slice(0, 10);
+  });
+  const total = buckets.reduce((sum, _, i) => sum + wave(i), 0);
+
+  switch (widget) {
+    case "pulse-deploys":
+      return { columns: ["deploys"], rows: [[total]] };
+    case "pulse-failure-rate":
+      return {
+        columns: ["rate"],
+        rows: [[0.12 + days / 3650]],
+        percents: ["rate"],
+      };
+    case "pulse-deploys-per-day":
+      return {
+        columns: ["bucket", "deploys"],
+        rows: buckets.map((day, i) => [day, wave(i)]),
+      };
+    case "pulse-open-prs":
+      return {
+        columns: ["bucket", "open"],
+        rows: buckets.map((day, i) => [day, 20 + wave(i * 2)]),
+      };
+    case "pulse-deploys-by-team":
+      return {
+        columns: ["team", "deploys"],
+        rows: TEAMS.map((team, i) => [team, Math.round(total / (i + 2))]),
+      };
+    case "pulse-deploys-by-outcome":
+      return {
+        columns: ["team", "outcome", "deploys"],
+        rows: TEAMS.flatMap((team, i) => [
+          [team, "succeeded", Math.round(total / (i + 2))],
+          [team, "failed", Math.round(total / (i + 2) / 8)],
+        ]),
+      };
+    case "pulse-prs-by-state":
+      return {
+        columns: ["state", "count"],
+        rows: [
+          ["open", 42],
+          ["merged", 318],
+          ["closed", 57],
+        ],
+      };
+    case "pulse-slow-pipelines":
+      return {
+        columns: ["pipeline", "median_minutes", "runs"],
+        rows: ["build", "e2e", "lint", "deploy", "docs"].map((name, i) => [
+          name,
+          30 - i * 5,
+          Math.round(days * (i + 1)),
+        ]),
+      };
+    default:
+      return undefined;
+  }
+}
 
 const widgets: Record<string, DashboardWidget> = {
   "deploys-per-week": {
@@ -89,6 +262,7 @@ const widgets: Record<string, DashboardWidget> = {
     body: { type: "table", metric: "deploys", columns: ["week", "deploys"] },
     clock: null,
   },
+  ...Object.fromEntries(PULSE_WIDGETS.map((widget) => [widget.id, widget])),
 };
 
 const ROWS = {
@@ -406,20 +580,31 @@ export const dashboardHandlers = [
     const dashboard = dashboards[id];
     if (!dashboard || !accessOf(id)) return notFound();
 
-    const items = (dashboard.body.widgets ?? []).flatMap((widget) => {
-      const drawn = widgets[widget];
+    const items = dashboardItems(dashboard.body).flatMap((item) => {
+      const drawn = "widget" in item ? widgets[item.widget] : undefined;
       return drawn ? [drawn] : [];
     });
     return HttpResponse.json({ items });
   }),
-  http.post("/api/v3/v1/dashboards/:id/widgets/:widget/run", ({ params }) => {
-    const id = String(params.id);
-    const widget = String(params.widget);
-    const drawn = dashboards[id]?.body.widgets?.includes(widget);
-    if (!accessOf(id) || !drawn || !widgets[widget]) return notFound();
+  http.post(
+    "/api/v3/v1/dashboards/:id/widgets/:widget/run",
+    async ({ params, request }) => {
+      const id = String(params.id);
+      const widget = String(params.widget);
+      const board = dashboards[id];
+      const drawn =
+        board &&
+        dashboardItems(board.body).some(
+          (item) => "widget" in item && item.widget === widget
+        );
+      if (!accessOf(id) || !drawn || !widgets[widget]) return notFound();
 
-    return HttpResponse.json(ROWS);
-  }),
+      const asked = (await request.json().catch(() => ({}))) as {
+        range?: string;
+      };
+      return HttpResponse.json(pulseRows(widget, asked.range) ?? ROWS);
+    }
+  ),
   http.get("/api/v3/v1/:kind/:id/grants", ({ params }) => {
     const shared = sharedThing(String(params.kind), String(params.id));
     if (shared instanceof Response) return shared;
