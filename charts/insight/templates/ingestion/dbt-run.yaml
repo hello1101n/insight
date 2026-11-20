@@ -19,6 +19,9 @@ spec:
       #  bash. See ingestion-templates SECURITY notes in DESIGN.md.
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.workInputs" . | nindent 10 }}
+{{- end }}
           - name: dbt_select
           # Space-separated selectors to subtract from the selection (same
           # grammar as dbt_select). The pipeline uses it to keep a graph-walk
@@ -49,6 +52,9 @@ spec:
       # PR #456 / ADR-0015) can rebuild the entire staging+silver
       # layer for a connector. 30m caps were observed killing the
       # job on hubspot full-refresh.
+{{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.workMetadata" . | nindent 6 }}
+{{- end }}
       activeDeadlineSeconds: 7200
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
@@ -59,6 +65,9 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [bash]
         env:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.dbtEnv" . | nindent 10 }}
+{{- end }}
           - name: CLICKHOUSE_PASSWORD
             valueFrom:
               secretKeyRef:

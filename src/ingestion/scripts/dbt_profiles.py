@@ -77,6 +77,11 @@ def session_settings(*, correlated_subqueries: bool) -> dict[str, object]:
     """
     settings: dict[str, object] = {}
 
+    if stage := os.environ.get("ADMISSION_STAGE"):
+        settings["log_comment"] = (
+            f"insight:sync={os.environ['SYNC_ID']}:stage={stage}:attempt={os.environ['ADMISSION_ATTEMPT']}"
+        )
+
     if correlated_subqueries:
         # Correlated subqueries (LEFT ANTI JOIN in the identity seed models)
         # are gated behind this experimental flag on CH 25.7. A model-level

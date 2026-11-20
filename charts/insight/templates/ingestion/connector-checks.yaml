@@ -34,6 +34,9 @@ spec:
       # as "$ENV_VAR", never spliced into shell, Python or YAML source.
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.workInputs" . | nindent 10 }}
+{{- end }}
           - name: dbt_select
           - name: connector
             default: ""
@@ -45,12 +48,18 @@ spec:
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
             default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+{{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.workMetadata" . | nindent 6 }}
+{{- end }}
       activeDeadlineSeconds: 1800
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         imagePullPolicy: IfNotPresent
         command: [bash]
         env:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.dbtEnv" . | nindent 10 }}
+{{- end }}
           - name: CLICKHOUSE_PASSWORD
             valueFrom:
               secretKeyRef:

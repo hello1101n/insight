@@ -1,0 +1,97 @@
+{{- if and .Values.ingestion.templates.enabled .Values.connectors.stageAdmission.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: stage-admission
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingestion-template
+spec:
+  serviceAccountName: argo-workflow
+  entrypoint: gate
+  templates:
+    - name: gate
+      inputs:
+        parameters:
+          - name: stage
+          - name: attempt
+            default: "1"
+          - name: admission_connector
+          - name: admission_source_id
+          - name: mode_signature
+            default: ""
+          - name: connection_id
+            default: ""
+      outputs:
+        parameters:
+          {{- range list "cpu_millis" "memory_bytes" "source_cpu_millis" "source_memory_bytes" }}
+          - name: {{ . }}
+            valueFrom:
+              parameter: {{ printf "{{steps.request.outputs.parameters.%s}}" . | quote }}
+          {{- end }}
+      steps:
+        - - name: request
+            template: request-stage
+            arguments:
+              parameters:
+                {{- range list "stage" "attempt" "admission_connector" "admission_source_id" "connection_id" "mode_signature" }}
+                - name: {{ . }}
+                  value: {{ printf "{{inputs.parameters.%s}}" . | quote }}
+                {{- end }}
+        - - name: wait
+            when: "{{`{{steps.request.outputs.result}}`}} == queued"
+            template: wait-stage
+            arguments:
+              parameters:
+                - name: stage
+                  value: "{{`{{inputs.parameters.stage}}`}}"
+                - name: attempt
+                  value: "{{`{{inputs.parameters.attempt}}`}}"
+    - name: wait-stage
+      inputs:
+        parameters:
+          - name: admission_sync_id
+            default: "{{`{{workflow.uid}}`}}"
+          - name: stage
+          - name: attempt
+      suspend: {}
+    - name: request-stage
+      inputs:
+        parameters:
+          - name: stage
+          - name: attempt
+          - name: admission_connector
+          - name: admission_source_id
+          - name: mode_signature
+            default: ""
+          - name: connection_id
+      outputs:
+        parameters:
+          {{- range list "cpu_millis" "memory_bytes" "source_cpu_millis" "source_memory_bytes" }}
+          - name: {{ . }}
+            valueFrom:
+              path: /tmp/admission-{{ . }}
+              {{- if hasPrefix "source_" . }}
+              default: ""
+              {{- end }}
+          {{- end }}
+      retryStrategy:
+        limit: "3"
+        retryPolicy: OnError
+      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
+      container:
+        image: {{ required "ingestion.toolboxImage is required" .Values.ingestion.toolboxImage | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [python3, /ingestion/scripts/stage_admission.py]
+        {{- include "insight.admission.tokenMount" . | nindent 8 }}
+        env:
+          {{- include "insight.admission.clientEnv" . | nindent 10 }}
+          - name: ADMISSION_STAGE
+            value: "{{`{{inputs.parameters.stage}}`}}"
+          - name: ADMISSION_ATTEMPT
+            value: "{{`{{inputs.parameters.attempt}}`}}"
+          - name: CONNECTION_MODE_SIGNATURE
+            value: "{{`{{inputs.parameters.mode_signature}}`}}"
+          - name: CONNECTION_ID
+            value: "{{`{{inputs.parameters.connection_id}}`}}"
+{{- end }}

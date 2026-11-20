@@ -22,12 +22,15 @@ testpaths = ["tests"]
 [tool.setuptools]
 py-modules = [
     "airbyte_auth",
+    "airbyte_admission",
+    "airbyte_catalog_signature",
     "airbyte_sync_poll",
     "airbyte_sync_trigger",
     "data_quality_findings",
     "dbt_completed",
     "dbt_profiles",
     "insight_logging",
+    "stage_admission",
     "load_field_value_map",
 ]
 packages = ["tenant_migration"]

@@ -2037,6 +2037,7 @@ dependencies = [
  "chrono-tz",
  "clap",
  "clickhouse",
+ "futures-util",
  "insight-clickhouse",
  "insight-http-client",
  "insight-http-metrics",

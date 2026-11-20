@@ -21,6 +21,11 @@ pub(crate) struct GearConfig {
     pub(crate) namespace: String,
     pub(crate) tenant_id: String,
     pub(crate) reconcile_workflow_name: String,
+    pub(crate) admission_enabled: bool,
+    pub(crate) airbyte_namespace: String,
+    pub(crate) argo_url: String,
+    pub(crate) workflow_sa: String,
+    pub(crate) clickhouse_cluster: String,
 }
 
 impl Default for GearConfig {
@@ -41,6 +46,11 @@ impl Default for GearConfig {
             namespace: String::new(),
             tenant_id: String::new(),
             reconcile_workflow_name: String::new(),
+            admission_enabled: false,
+            airbyte_namespace: String::new(),
+            argo_url: String::new(),
+            workflow_sa: String::new(),
+            clickhouse_cluster: String::new(),
         }
     }
 }
@@ -92,6 +102,18 @@ impl GearConfig {
 
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
         self.database_url()?;
+        if self.admission_enabled
+            && (!self.cluster.enabled
+                || self.workflow_sa.is_empty()
+                || !Url::parse(&self.argo_url).is_ok_and(|v| {
+                    matches!(v.scheme(), "http" | "https") && v.host_str().is_some()
+                }))
+        {
+            return Err(config_error(
+                "admission_enabled",
+                "requires Kubernetes, a workflow service account and Argo URL",
+            ));
+        }
         if self.cluster.enabled {
             for (key, value) in [
                 ("namespace", &self.namespace),

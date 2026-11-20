@@ -104,6 +104,14 @@ spec:
             - name: RECONCILE_DESTINATION_ID
               value: {{ . | quote }}
             {{- end }}
+            {{- if .Values.connectors.stageAdmission.enabled }}
+            - name: INSIGHT_DESTINATION_REPOSITORY
+              value: {{ required "connectors.stageAdmission.destinationImage.repository is required" .Values.connectors.stageAdmission.destinationImage.repository | quote }}
+            - name: INSIGHT_DESTINATION_TAG
+              value: {{ required "connectors.stageAdmission.destinationImage.tag is required" .Values.connectors.stageAdmission.destinationImage.tag | quote }}
+            - name: INSIGHT_DESTINATION_OWNER
+              value: {{ printf "%s-%s" .Release.Namespace .Release.Name | quote }}
+            {{- end }}
             - name: RECONCILE_DESTINATION_NAME
               value: {{ default "clickhouse-bronze" .Values.ingestion.reconcile.destinationName | quote }}
             {{- with .Values.ingestion.reconcile.imageMirrors }}

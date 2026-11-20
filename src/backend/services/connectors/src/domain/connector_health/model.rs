@@ -202,6 +202,8 @@ pub struct ConnectorHealth {
     pub(crate) schedule_request: Option<HealthScheduleRequest>,
     /// Absent for a configured connector that has never synced.
     pub last_sync: Option<SyncFact>,
+    pub latest_run: Option<crate::domain::admission::history::Run>,
+    pub last_successful_run: Option<crate::domain::admission::history::Run>,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -235,6 +237,7 @@ pub struct SyncHistoryResponse {
     pub source_id: Option<String>,
     /// A bounded window, newest first — not the full retained history.
     pub syncs: Vec<SyncFact>,
+    pub runs: Vec<crate::domain::admission::history::Run>,
     /// How many rows this window holds at most, so the page can say the list
     /// is a window rather than everything.
     pub window: u32,
@@ -266,6 +269,7 @@ impl SyncHistoryResponse {
             connector,
             tenant_id,
             source_id,
+            runs: Vec::new(),
             syncs: syncs.into_iter().map(Into::into).collect(),
             window,
         }
@@ -301,6 +305,8 @@ impl From<ConnectorSummary> for ConnectorHealth {
             configured: summary.configured,
             schedule: summary.schedule,
             schedule_request: None,
+            latest_run: None,
+            last_successful_run: None,
             last_sync: summary.last_sync.map(Into::into),
         }
     }

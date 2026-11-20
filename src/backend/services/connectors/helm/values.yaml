@@ -49,3 +49,9 @@ readinessProbe:
   periodSeconds: 5
 
 tenantId: "00000000-0000-0000-0000-000000000000"
+
+stageAdmission:
+  airbyteNamespace: ""
+  enabled: false
+  argoUrl: 'http://argo-workflows-server.{{ .Release.Namespace }}.svc:2746'
+  workflowServiceAccount: '{{ .Release.Name }}-reconcile'

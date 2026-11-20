@@ -934,6 +934,11 @@ frontend:
     # lists is hidden.
     planned: []
 connectors:
+  stageAdmission:
+    enabled: false
+    destinationImage:
+      repository: ghcr.io/hello1101n/insight-destination-clickhouse
+      tag: "2.1.29"
   infraFromUmbrella: true
   replicaCount: 1
   databaseName: connectors

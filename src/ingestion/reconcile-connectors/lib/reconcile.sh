@@ -91,8 +91,15 @@ reconcile__log() {
 # Echoes the destinationId on stdout; returns non-zero on failure.
 # ---------------------------------------------------------------------------
 reconcile_resolve_destination_id() {
-  local subject="$1"
-  if [[ -n "${_RECONCILE_DESTINATION_ID:-}" ]]; then
+  local subject="$1" catalog="${2:-}" tagged=""
+  if [[ -n "${INSIGHT_DESTINATION_REPOSITORY:-}" && -n "${catalog}" ]] && \
+      jq -e '(.streams | type == "array" and length > 0) and
+        all(.streams[]; .config.selected == true and
+          (.config.destinationSyncMode == "append" or .config.destinationSyncMode == "append_dedup"))' \
+        >/dev/null <<<"${catalog}"; then
+    tagged=true
+  fi
+  if [[ -n "${_RECONCILE_DESTINATION_ID:-}" && -z "${INSIGHT_DESTINATION_REPOSITORY:-}" ]]; then
     printf '%s' "${_RECONCILE_DESTINATION_ID}"
     return 0
   fi
@@ -107,7 +114,9 @@ reconcile_resolve_destination_id() {
     fi
   else
     local definition
-    if ! definition="$(ab_destination_definition_by_name Clickhouse 2>/dev/null)"; then
+    if [[ -n "${tagged}" ]]; then
+      definition="$(ab_managed_destination_definition)" || return 1
+    elif ! definition="$(ab_destination_definition_by_name Clickhouse 2>/dev/null)"; then
       reconcile__log ERROR "${subject}" \
         "Airbyte does not register a Clickhouse destination definition in this workspace — cannot bootstrap Bronze sink"
       return 1
@@ -123,6 +132,9 @@ reconcile_resolve_destination_id() {
 
   if [[ -z "${dest_id}" ]]; then
     local dest_name="${RECONCILE_DESTINATION_NAME:-clickhouse-bronze}"  # RULE-DEFAULTS-OK: project-fixed name, not operator-tunable
+    if [[ -n "${tagged}" ]]; then
+      dest_name="${dest_name}-${INSIGHT_DESTINATION_OWNER:?}"
+    fi
     # Required for fresh-cluster bootstrap; caller (Helm chart reconcile-cron.yaml)
     # injects them from chart values + insight-db-creds secret.
     : "${RECONCILE_DEST_CLICKHOUSE_HOST:?RECONCILE_DEST_CLICKHOUSE_HOST must be set (the in-cluster ClickHouse host for the Bronze destination)}"
@@ -140,7 +152,7 @@ reconcile_resolve_destination_id() {
       return 1
     fi
 
-    if ! dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")"; then
+    if ! dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}" "${tagged:+${def_id}}")"; then
       reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
       return 1
     fi
@@ -980,10 +992,6 @@ reconcile_connections() {
       printf 'created\t\n'
       return 0
     fi
-    local destination_id
-    if ! destination_id="$(reconcile_resolve_destination_id "${connector_name}")"; then
-      return 1
-    fi
     local discover_json sync_catalog source_catalog_id
     # disable_cache=true: bootstrap discover for a source whose definition may
     # have just been (re)created at a new image. Avoid a stale cached catalog.
@@ -996,6 +1004,10 @@ reconcile_connections() {
           | python3 "${_RECONCILE_PY_DIR}/normalize_catalog.py")"; then
       reconcile__log ERROR "${connector_name}" \
         "normalize_catalog failed for source ${source_id}"
+      return 1
+    fi
+    local destination_id
+    if ! destination_id="$(reconcile_resolve_destination_id "${connector_name}" "${sync_catalog}")"; then
       return 1
     fi
     # catalogId → sourceCatalogId: anchor schema-change detection to the
@@ -1244,6 +1256,10 @@ reconcile_recreate_with_state() {
       | python3 "${_RECONCILE_PY_DIR}/select_connection_by_source.py" "${source_id}")"
   fi
 
+  local destination_id=""
+  if [[ -n "${INSIGHT_DESTINATION_REPOSITORY:-}" && -n "${connection_id}" ]]; then
+    destination_id="$(ab_get_connection "${connection_id}" | jq -er '.destinationId // empty')" || return 1
+  fi
   # @cpt-begin:cpt-insightspec-algo-reconcile-export-import-state-on-recreate:p1:inst-eisor-try
   local state_json="" state_backup=""
   if [[ -n "${connection_id}" ]]; then
@@ -1275,8 +1291,7 @@ reconcile_recreate_with_state() {
                       "${source_name}" "${target_cfg_json}")"
   new_source_id="$(printf '%s' "${new_source_json}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sourceId",""))')"
 
-  local destination_id
-  if ! destination_id="$(reconcile_resolve_destination_id "${source_name}")"; then
+  if [[ -z "${destination_id}" ]] && ! destination_id="$(reconcile_resolve_destination_id "${source_name}")"; then
     return 1
   fi
   # Airbyte connection re-created with scheduleType=manual; Argo

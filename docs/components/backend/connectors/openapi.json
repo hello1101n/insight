@@ -49,6 +49,16 @@
           "connector": {
             "type": "string"
           },
+          "last_successful_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Run"
+              }
+            ]
+          },
           "last_sync": {
             "oneOf": [
               {
@@ -57,6 +67,16 @@
               {
                 "$ref": "#/components/schemas/SyncFact",
                 "description": "Absent for a configured connector that has never synced."
+              }
+            ]
+          },
+          "latest_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Run"
               }
             ]
           },
@@ -383,6 +403,141 @@
         ],
         "type": "object"
       },
+      "Run": {
+        "properties": {
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "load_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "records_reported": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RunStage"
+            },
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "transform_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "wait_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sync_id",
+          "status",
+          "started_at",
+          "stages"
+        ],
+        "type": "object"
+      },
+      "RunStage": {
+        "properties": {
+          "attempt": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "granted_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "queued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "attempt",
+          "status",
+          "queued_at"
+        ],
+        "type": "object"
+      },
       "ScheduleObservation": {
         "properties": {
           "observed_at": {
@@ -581,6 +736,12 @@
           "connector": {
             "type": "string"
           },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
           "source_id": {
             "description": "The installation's own id within that tenant. Absent with `tenant_id`.",
             "type": [
@@ -612,6 +773,7 @@
         "required": [
           "connector",
           "syncs",
+          "runs",
           "window"
         ],
         "type": "object"

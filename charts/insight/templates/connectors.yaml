@@ -1,5 +1,6 @@
 {{- $service := .Subcharts.connectors }}
 {{- $values := mergeOverwrite (deepCopy $service.Values) (dict "mariadb" .Values.mariadb "clickhouse" .Values.clickhouse "tenantId" .Values.ingestion.reconcile.tenantId "cluster" (dict "enabled" .Values.ingestion.templates.enabled)) }}
+{{- $_ := set $values.stageAdmission "airbyteNamespace" (include "insight.airbyte.namespace" .) }}
 {{- with .Values.identityUrl }}
 {{- $_ := set $values "identityUrl" . }}
 {{- end }}

@@ -40,6 +40,9 @@ spec:
     - name: main
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.identityInputs" . | nindent 10 }}
+{{- end }}
           - name: connection_name
           - name: airbyte_url
       steps:
@@ -51,7 +54,53 @@ spec:
                   value: {{ `"{{inputs.parameters.connection_name}}"` }}
                 - name: airbyte_url
                   value: {{ `"{{inputs.parameters.airbyte_url}}"` }}
+{{- if .Values.connectors.stageAdmission.enabled }}
+        - - name: first-attempt
+            when: "'{{`{{inputs.parameters.admission_managed}}`}}' == 'true'"
+            template: managed-attempt
+            continueOn: {failed: true, error: true}
+            arguments:
+              parameters:
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                - name: mode_signature
+                  value: "{{`{{steps.resolve-connection-by-name.outputs.parameters.mode_signature}}`}}"
+                - name: attempt
+                  value: "1"
+                - name: connection_id
+                  value: "{{`{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}`}}"
+                - name: airbyte_url
+                  value: "{{`{{inputs.parameters.airbyte_url}}`}}"
+        - - name: check-retry
+            when: "{{`{{steps.first-attempt.status}}`}} =~ '^(Failed|Error)$'"
+            template: retry-bronze
+            arguments:
+              parameters:
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                - name: attempt
+                  value: "1"
+                - name: connection_id
+                  value: "{{`{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}`}}"
+                - name: airbyte_url
+                  value: "{{`{{inputs.parameters.airbyte_url}}`}}"
+        - - name: second-attempt
+            when: "{{`{{steps.check-retry.status}}`}} == Succeeded"
+            template: managed-attempt
+            arguments:
+              parameters:
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                - name: mode_signature
+                  value: "{{`{{steps.resolve-connection-by-name.outputs.parameters.mode_signature}}`}}"
+                - name: attempt
+                  value: "2"
+                - name: connection_id
+                  value: "{{`{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}`}}"
+                - name: airbyte_url
+                  value: "{{`{{inputs.parameters.airbyte_url}}`}}"
+{{- end }}
         - - name: sync
+{{- if .Values.connectors.stageAdmission.enabled }}
+            when: "'{{`{{inputs.parameters.admission_managed}}`}}' != 'true'"
+{{- end }}
             template: sync
             arguments:
               parameters:
@@ -59,6 +108,102 @@ spec:
                   value: {{ `"{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
                   value: {{ `"{{inputs.parameters.airbyte_url}}"` }}
+
+{{- if .Values.connectors.stageAdmission.enabled }}
+    - name: managed-attempt
+      inputs:
+        parameters:
+          {{- include "insight.admission.identityInputs" . | nindent 10 }}
+          - name: mode_signature
+            default: ""
+          - name: attempt
+          - name: connection_id
+          - name: airbyte_url
+      steps:
+        - - name: admit-bronze
+            templateRef:
+              name: stage-admission
+              template: gate
+            arguments:
+              parameters:
+                - name: stage
+                  value: bronze
+                {{- range list "attempt" "admission_connector" "admission_source_id" "connection_id" "mode_signature" }}
+                - name: {{ . }}
+                  value: {{ printf "{{inputs.parameters.%s}}" . | quote }}
+                {{- end }}
+        - - name: size-source
+            template: prepare-source
+            arguments:
+              parameters:
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                {{- range list "attempt" "connection_id" "airbyte_url" }}
+                - name: {{ . }}
+                  value: {{ printf "{{inputs.parameters.%s}}" . | quote }}
+                {{- end }}
+                {{- range list "source_cpu_millis" "source_memory_bytes" }}
+                - name: {{ . }}
+                  value: {{ printf "{{steps.admit-bronze.outputs.parameters.%s}}" . | quote }}
+                {{- end }}
+        - - name: sync
+            template: sync
+            arguments:
+              parameters:
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                {{- range list "attempt" "connection_id" "airbyte_url" }}
+                - name: {{ . }}
+                  value: {{ printf "{{inputs.parameters.%s}}" . | quote }}
+                {{- end }}
+
+{{- range $action := list "prepare" "retry" }}
+    - name: {{ eq $action "prepare" | ternary "prepare-source" "retry-bronze" }}
+      inputs:
+        parameters:
+          {{- include "insight.admission.identityInputs" $ | nindent 10 }}
+          - name: attempt
+          - name: connection_id
+          - name: airbyte_url
+          {{- if eq $action "prepare" }}
+          - name: source_cpu_millis
+          - name: source_memory_bytes
+          {{- end }}
+      {{- if eq $action "retry" }}
+      {{- include "insight.admission.tokenVolume" $ | nindent 6 }}
+      {{- end }}
+      container:
+        image: {{ $.Values.ingestion.toolboxImage | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [python3, /ingestion/scripts/airbyte_admission.py, {{ $action }}]
+        {{- if eq $action "retry" }}
+        {{- include "insight.admission.tokenMount" $ | nindent 8 }}
+        {{- end }}
+        env:
+          {{- if eq $action "retry" }}
+          {{- include "insight.admission.clientEnv" $ | nindent 10 }}
+          - name: ADMISSION_STAGE
+            value: bronze
+          {{- else }}
+          - name: AIRBYTE_SOURCE_CPU_MILLIS
+            value: "{{`{{inputs.parameters.source_cpu_millis}}`}}"
+          - name: AIRBYTE_SOURCE_MEMORY_BYTES
+            value: "{{`{{inputs.parameters.source_memory_bytes}}`}}"
+          {{- end }}
+          - name: ADMISSION_ATTEMPT
+            value: "{{`{{inputs.parameters.attempt}}`}}"
+          - name: CONNECTION_ID
+            value: "{{`{{inputs.parameters.connection_id}}`}}"
+          - name: AIRBYTE_URL
+            value: "{{`{{inputs.parameters.airbyte_url}}`}}"
+          - name: AIRBYTE_AUTH_SECRET_NAME
+            value: {{ $.Values.airbyte.authSecret.name | quote }}
+          - name: AIRBYTE_AUTH_SECRET_NAMESPACE
+            value: {{ include "insight.airbyte.namespace" $ | quote }}
+          - name: AIRBYTE_CLIENT_ID_KEY
+            value: {{ default "instance-admin-client-id" $.Values.airbyte.authSecret.clientIdKey | quote }}
+          - name: AIRBYTE_CLIENT_SECRET_KEY
+            value: {{ default "instance-admin-client-secret" $.Values.airbyte.authSecret.clientSecretKey | quote }}
+{{- end }}
+{{- end }}
 
     - name: resolve-connection-by-name
       retryStrategy:
@@ -77,6 +222,12 @@ spec:
           - name: connection_id
             valueFrom:
               path: /tmp/connection_id.txt
+{{- if .Values.connectors.stageAdmission.enabled }}
+          - name: mode_signature
+            valueFrom:
+              path: /tmp/mode_signature
+              default: ""
+{{- end }}
       script:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
         command: [bash]
@@ -96,22 +247,31 @@ spec:
             value: {{ default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey | quote }}
           - name: AIRBYTE_CLIENT_SECRET_KEY
             value: {{ default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey | quote }}
+          - name: CONNECTION_NAME
+            value: {{ `"{{inputs.parameters.connection_name}}"` }}
           - name: CONNECTORS_DIR
             value: "/ingestion/connectors"
         source: |
           set -euo pipefail
           source /ingestion/reconcile-connectors/lib/airbyte.sh
           source /ingestion/reconcile-connectors/lib/argo.sh
-          name='{{ `{{inputs.parameters.connection_name}}` }}'
-          if ! id="$(argo_resolve_connection_id_by_name "$name")"; then
-            echo "ERROR: connection name not found: $name" >&2
+          if ! id="$(argo_resolve_connection_id_by_name "$CONNECTION_NAME")"; then
+            echo "ERROR: connection name not found: $CONNECTION_NAME" >&2
             exit 1
           fi
           printf '%s' "$id" > /tmp/connection_id.txt
+{{- if .Values.connectors.stageAdmission.enabled }}
+          ab_get_connection "$id" | python3 /ingestion/scripts/airbyte_catalog_signature.py > /tmp/mode_signature || : > /tmp/mode_signature
+{{- end }}
 
     - name: sync
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.identityInputs" . | nindent 10 }}
+          - name: attempt
+            default: "1"
+{{- end }}
           - name: connection_id
           - name: airbyte_url
       steps:
@@ -119,6 +279,11 @@ spec:
             template: trigger-sync
             arguments:
               parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                - name: attempt
+                  value: "{{`{{inputs.parameters.attempt}}`}}"
+{{- end }}
                 - name: connection_id
                   value: {{ `"{{inputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
@@ -127,6 +292,13 @@ spec:
             template: poll-job
             arguments:
               parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+                {{- include "insight.admission.forwardIdentity" . | nindent 16 }}
+                - name: connection_id
+                  value: "{{`{{inputs.parameters.connection_id}}`}}"
+                - name: attempt
+                  value: "{{`{{inputs.parameters.attempt}}`}}"
+{{- end }}
                 - name: job_id
                   value: {{ `"{{steps.trigger.outputs.result}}"` }}
                 - name: airbyte_url
@@ -142,15 +314,47 @@ spec:
           maxDuration: "5m"
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.identityInputs" . | nindent 10 }}
+          - name: attempt
+            default: "1"
+{{- end }}
           - name: connection_id
           - name: airbyte_url
+{{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
+      metadata:
+        labels:
+          insight.cyberfabric.com/stage: bronze
+          insight.cyberfabric.com/attempt: "{{`{{inputs.parameters.attempt}}`}}"
+      outputs:
+        parameters:
+          - name: airbyte-send-evidence
+            valueFrom:
+              path: /tmp/airbyte-send-evidence
+              default: ""
+{{- end }}
       container:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
         # IfNotPresent so dev clusters use the locally-built toolbox image loaded
         # into Kind via `kind load docker-image` (same convention as dbt-run.yaml).
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_trigger.py]
+{{- if .Values.connectors.stageAdmission.enabled }}
+        {{- include "insight.admission.tokenMount" . | nindent 8 }}
+{{- end }}
         env:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          - name: AIRBYTE_SEND_EVIDENCE_PATH
+            value: /tmp/airbyte-send-evidence
+          {{- include "insight.admission.clientEnv" . | nindent 10 }}
+          - name: ADMISSION_MANAGED
+            value: "{{`{{inputs.parameters.admission_managed}}`}}"
+          - name: ADMISSION_STAGE
+            value: bronze
+          - name: ADMISSION_ATTEMPT
+            value: "{{`{{inputs.parameters.attempt}}`}}"
+{{- end }}
           # OAuth client_credentials against /api/v1/applications/token. The
           # legacy self-minted HMAC JWT is rejected by Airbyte 1.7+ (the
           # request hangs ~5 min then RST). Per ADR-0013, every workflow
@@ -191,16 +395,52 @@ spec:
           maxDuration: "5m"
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.identityInputs" . | nindent 10 }}
+          - name: connection_id
+            default: ""
+          - name: attempt
+            default: "1"
+{{- end }}
           - name: job_id
           - name: airbyte_url
       # INVARIANT: Airbyte owns job deadlines; stopping this pod does not cancel its job.
+{{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
+      metadata:
+        labels:
+          insight.cyberfabric.com/stage: bronze
+          insight.cyberfabric.com/attempt: "{{`{{inputs.parameters.attempt}}`}}"
+      outputs:
+        parameters:
+          - name: airbyte-evidence
+            valueFrom:
+              path: /tmp/airbyte-evidence
+              default: ""
+{{- end }}
       container:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
         # IfNotPresent so dev clusters use the locally-built toolbox image loaded
         # into Kind via `kind load docker-image` (same convention as dbt-run.yaml).
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_poll.py]
+{{- if .Values.connectors.stageAdmission.enabled }}
+        {{- include "insight.admission.tokenMount" . | nindent 8 }}
+{{- end }}
         env:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.clientEnv" . | nindent 10 }}
+          - name: ADMISSION_MANAGED
+            value: "{{`{{inputs.parameters.admission_managed}}`}}"
+          - name: ADMISSION_STAGE
+            value: bronze
+          - name: ADMISSION_ATTEMPT
+            value: "{{`{{inputs.parameters.attempt}}`}}"
+          - name: CONNECTION_ID
+            value: "{{`{{inputs.parameters.connection_id}}`}}"
+          - name: AIRBYTE_EVIDENCE_PATH
+            value: /tmp/airbyte-evidence
+{{- end }}
           # Same K8s-API credential read as trigger-sync (see the comment
           # there): the auth Secret may live in Airbyte's own namespace.
           # Read per poll iteration, so a rotated credential is picked up

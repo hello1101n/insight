@@ -16,4 +16,5 @@ FROM destination
 COPY --from=build /build/lib/io.airbyte.airbyte-integrations.connectors-destination-clickhouse.jar /airbyte/lib/
 COPY --chmod=755 entrypoint.py /airbyte/insight-entrypoint
 ENV AIRBYTE_ENTRYPOINT=/airbyte/insight-entrypoint
+USER airbyte
 ENTRYPOINT ["/airbyte/insight-entrypoint"]

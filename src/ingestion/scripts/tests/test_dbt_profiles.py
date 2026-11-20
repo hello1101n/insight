@@ -232,3 +232,14 @@ def test_a_url_that_names_no_host_is_refused(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="names no host"):
         connection_from_env()
+
+
+def test_queries_identify_the_workflow_stage_and_attempt(monkeypatch):
+    monkeypatch.setenv("SYNC_ID", "workflow-one")
+    monkeypatch.setenv("ADMISSION_STAGE", "transform-legacy")
+    monkeypatch.setenv("ADMISSION_ATTEMPT", "2")
+    settings = _output(correlated_subqueries=True)["custom_settings"]
+    assert settings == {
+        "allow_experimental_correlated_subqueries": 1,
+        "log_comment": "insight:sync=workflow-one:stage=transform-legacy:attempt=2",
+    }

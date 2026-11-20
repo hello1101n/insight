@@ -32,8 +32,14 @@ spec:
     - name: run
       inputs:
         parameters:
+{{- if .Values.connectors.stageAdmission.enabled }}
+          {{- include "insight.admission.workInputs" . | nindent 10 }}
+{{- end }}
           - name: identity_image
             default: "{{ .Values.identityResolution.image.repository }}:{{ $identityTag }}"
+{{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.workMetadata" . | nindent 6 }}
+{{- end }}
       activeDeadlineSeconds: 900
       retryStrategy:
         # Safe to repeat: the advisory lock and the operations journal make a
@@ -54,6 +60,11 @@ spec:
           # this needs writable under a read-only root.
           - name: data
             mountPath: /app/data
+{{- if .Values.connectors.stageAdmission.enabled }}
+        env:
+          - name: INSIGHT_QUERY_TAG
+            value: "{{`{{=inputs.parameters.admission_stage == '' ? '' : 'insight:sync='+workflow.uid+':stage='+inputs.parameters.admission_stage+':attempt=1'}}`}}"
+{{- end }}
         envFrom:
           - secretRef:
               name: {{ .Values.identityResolution.existingSecret | quote }}

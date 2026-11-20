@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
 import time
 import urllib.request
 from enum import StrEnum
+from pathlib import Path
 from typing import NamedTuple
 
 import insight_logging
+import stage_admission
 from airbyte_auth import FatalError, airbyte_api_url, oauth_token
 
 Progress = tuple[str | None, int, int, int]
@@ -112,6 +115,72 @@ def job_status(resp: object) -> JobStatus | None:
         return None
 
 
+def native_attempt_evidence(item: object) -> dict:
+    attempt = item.get("attempt") if isinstance(item, dict) else None
+    if not isinstance(attempt, dict):
+        return {}
+    stats = attempt.get("totalStats")
+    failure = attempt.get("failureSummary")
+    result = {"status": attempt.get("status")}
+    for output, value in [
+        ("attempt_id", attempt.get("id")),
+        ("ended_at", attempt.get("endedAt")),
+        ("records_emitted", stats.get("recordsEmitted") if isinstance(stats, dict) else None),
+        ("records_committed", stats.get("recordsCommitted") if isinstance(stats, dict) else None),
+    ]:
+        if type(value) is int and value >= 0:
+            result[output] = value
+    if isinstance(failure, dict):
+        result["failure_origins"] = [f.origin for f in attempt_failures({"attempts": [item]})]
+        if isinstance(failure.get("partialSuccess"), bool):
+            result["partial_success"] = failure["partialSuccess"]
+    return result
+
+
+def save_terminal_evidence(job_id: int, resp: dict, status: str) -> None:
+    path = os.environ.get("AIRBYTE_EVIDENCE_PATH")
+    if not path or str(resp["job"].get("id")) != str(job_id):
+        return
+    attempt = _latest_attempt(resp) or {}
+    stats = attempt.get("totalStats") or {}
+    evidence = {"job_id": job_id, "status": status}
+    if isinstance(resp.get("attempts"), list):
+        evidence["attempts"] = [native_attempt_evidence(item) for item in resp["attempts"]]
+    for key, total_key, legacy_key in [
+        ("records_reported", "recordsEmitted", "recordsSynced"),
+        ("volume_bytes", "bytesEmitted", "bytesSynced"),
+    ]:
+        count = stats.get(total_key, attempt.get(legacy_key)) if isinstance(stats, dict) else None
+        if type(count) is int and count >= 0:
+            evidence[key] = count
+    Path(path).write_text(json.dumps(evidence))
+
+
+def airbyte_job(airbyte_url: str, token: str, action: str, job_id: int) -> dict:
+    request = urllib.request.Request(
+        f"{airbyte_url}/api/v1/jobs/{action}",
+        data=json.dumps({"id": job_id}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+    )
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def cancel_if_pending(airbyte_url: str, token: str, job_id: int) -> bool:
+    if stage_admission.request("POST", "/airbyte-poll", max_wait_seconds=0, job_id=job_id).get("cancel") is not True:
+        return False
+    current = airbyte_job(airbyte_url, token, "get", job_id)
+    if str((current.get("job") or {}).get("id")) != str(job_id):
+        return False
+    if job_status(current) not in (JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING):
+        return False
+    if stage_admission.request("POST", "/airbyte-poll", max_wait_seconds=0, job_id=job_id).get("cancel") is not True:
+        return False
+    airbyte_job(airbyte_url, token, "cancel", job_id)
+    return True
+
+
 def main() -> int:
     log = insight_logging.configure("airbyte-sync")
 
@@ -127,6 +196,8 @@ def main() -> int:
     t0 = time.monotonic()
     last_progress: Progress | None = None
     last_readable_at = t0
+    cancel_sent = False
+    managed = os.environ.get("ADMISSION_MANAGED") == "true"
 
     def emit_completed(status: str, exit_code: int) -> None:
         progress = last_progress or (None, 0, 0, 0)
@@ -171,12 +242,7 @@ def main() -> int:
     while True:
         try:
             token = oauth_token()
-            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-            request = urllib.request.Request(
-                f"{airbyte_url}/api/v1/jobs/get", data=json.dumps({"id": job_id}).encode(), headers=headers
-            )
-            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            resp = json.load(urllib.request.urlopen(request, timeout=30))
+            resp = airbyte_job(airbyte_url, token, "get", job_id)
         except FatalError as error:
             log.error(f"FAIL: {error}", extra={"event": "sync.poll_failed", "job_id": job_id})
             return 1
@@ -186,7 +252,7 @@ def main() -> int:
             continue
 
         status = job_status(resp)
-        if status is None:
+        if status is None or (managed and str(resp["job"].get("id")) != str(job_id)):
             if not retry_or_give_up("unusable job status"):
                 return 2
             continue
@@ -218,18 +284,26 @@ def main() -> int:
                 extra={"event": "sync.not_run", "job_id": job_id, "streams": attempt_stream_count(resp)},
             )
             emit_failure_reasons(resp)
+            save_terminal_evidence(job_id, resp, "failed")
             emit_completed("failed", 1)
             return 1
         if status == JobStatus.SUCCEEDED:
             log.info("Sync complete")
+            save_terminal_evidence(job_id, resp, "succeeded")
             emit_completed("succeeded", 0)
             return 0
         if status in (JobStatus.FAILED, JobStatus.CANCELLED):
             log.error(f"Sync failed: {status}")
             emit_failure_reasons(resp)
+            save_terminal_evidence(job_id, resp, status.value)
             emit_completed(status, 1)
             return 1
 
+        if managed and not cancel_sent:
+            try:
+                cancel_sent = cancel_if_pending(airbyte_url, token, job_id)
+            except (OSError, ValueError, http.client.HTTPException, stage_admission.AdmissionError) as error:
+                log.warning("cannot confirm pending cancellation for Airbyte job %s: %s", job_id, error)
         time.sleep(poll_interval)
 
 

@@ -60,6 +60,11 @@ spec:
             - name: tmp
               mountPath: /tmp
           ports:
+            {{- if .Values.stageAdmission.enabled }}
+            - name: admission
+              containerPort: 8089
+              protocol: TCP
+            {{- end }}
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP

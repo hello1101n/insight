@@ -114,6 +114,13 @@ data:
           cluster:
             enabled: {{ .Values.cluster.enabled }}
           namespace: {{ .Release.Namespace | quote }}
+          admission_enabled: {{ .Values.stageAdmission.enabled }}
+          {{- if .Values.stageAdmission.enabled }}
+          airbyte_namespace: {{ .Values.stageAdmission.airbyteNamespace | default .Release.Namespace | quote }}
+          argo_url: {{ tpl .Values.stageAdmission.argoUrl . | quote }}
+          workflow_sa: {{ tpl .Values.stageAdmission.workflowServiceAccount . | quote }}
+          clickhouse_cluster: {{ if .Values.clickhouse.clusterMode }}{{ required "clickhouse.clusterName is required for distributed admission" .Values.clickhouse.clusterName | quote }}{{ else }}""{{ end }}
+          {{- end }}
           {{- if .Values.cluster.enabled }}
           tenant_id: {{ required "tenantId is required" .Values.tenantId | quote }}
           {{- end }}

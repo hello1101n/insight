@@ -11,8 +11,8 @@ use toolkit_canonical_errors::CanonicalError;
 use super::error::ConnectorHealthError;
 use super::{ADMIN_ONLY, AppState, require_admin};
 use crate::domain::connector_health::{
-    ConnectorHealthResponse, ConnectorName, HISTORY_WINDOW, SourceId, SyncHistoryResponse,
-    TenantId, read_health, read_syncs,
+    ConnectorHealthResponse, ConnectorName, HISTORY_WINDOW, LedgerFacts, SourceId,
+    SyncHistoryResponse, TenantId, read_health, read_syncs,
 };
 
 /// Which installation of the connector the window is asked for.
@@ -34,7 +34,11 @@ pub async fn get_connector_health(
 ) -> Result<impl IntoResponse, CanonicalError> {
     require_admin(&state, &headers, admin_only).await?;
 
-    let facts = read_health(&state.ch).await.map_err(read_error)?;
+    let (facts, ledger_error) = match read_health(&state.ch).await {
+        Ok(facts) => (facts, None),
+        Err(error) if state.cluster.admission_enabled => (LedgerFacts::default(), Some(error)),
+        Err(error) => return Err(read_error(error)),
+    };
 
     let mut response = ConnectorHealthResponse::from_facts(facts, Utc::now());
     if let Err(error) =
@@ -50,6 +54,23 @@ pub async fn get_connector_health(
         }
     }
 
+    if state.cluster.admission_enabled {
+        crate::domain::admission::history::enrich(
+            &state.db,
+            &state.cluster.namespace,
+            &mut response,
+        )
+        .await
+        .map_err(history_error)?;
+    }
+    if let Some(error) = ledger_error {
+        if response.connectors.is_empty() {
+            return Err(read_error(error));
+        }
+        tracing::warn!(%error,"connector inventory unavailable; serving durable run history");
+        response.schedule_read_error =
+            Some("Current connector configuration and schedules could not be read.".into());
+    }
     Ok(Json(response))
 }
 
@@ -63,21 +84,48 @@ pub async fn get_connector_syncs(
 
     let name = ConnectorName::parse(&connector).ok_or_else(unnamed_connector)?;
     let instance = parse_scope(&scope)?;
-    let syncs = read_syncs(&state.ch, name.as_str(), instance.as_ref())
-        .await
-        .map_err(read_error)?;
+    let syncs = read_syncs(&state.ch, name.as_str(), instance.as_ref()).await;
 
     let (tenant_id, source_id) = match instance {
         Some((tenant, source)) => (Some(tenant.into_string()), Some(source.into_string())),
         None => (None, None),
     };
-    Ok(Json(SyncHistoryResponse::build(
+    let runs = if state.cluster.admission_enabled {
+        crate::domain::admission::history::runs(
+            &state.db,
+            &state.cluster.namespace,
+            name.as_str(),
+            tenant_id.as_deref(),
+            source_id.as_deref(),
+        )
+        .await
+        .map_err(history_error)?
+    } else {
+        Vec::new()
+    };
+    let syncs = match syncs {
+        Ok(syncs) => syncs,
+        Err(error) if !runs.is_empty() => {
+            tracing::warn!(%error,"legacy sync history unavailable");
+            Vec::new()
+        }
+        Err(error) => return Err(read_error(error)),
+    };
+    let mut result = SyncHistoryResponse::build(
         name.into_string(),
         tenant_id,
         source_id,
         syncs,
         HISTORY_WINDOW,
-    )))
+    );
+    result.runs = runs;
+    Ok(Json(result))
+}
+
+#[expect(clippy::needless_pass_by_value, reason = "used directly as map_err")]
+fn history_error(error: sea_orm::DbErr) -> CanonicalError {
+    tracing::error!(%error,"could not read ingestion history");
+    CanonicalError::internal("failed to read ingestion history").create()
 }
 
 fn parse_scope(scope: &SyncScopeQuery) -> Result<Option<(TenantId, SourceId)>, CanonicalError> {

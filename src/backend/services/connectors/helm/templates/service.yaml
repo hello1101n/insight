@@ -11,5 +11,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.stageAdmission.enabled }}
+    - port: 8089
+      targetPort: admission
+      protocol: TCP
+      name: admission
+    {{- end }}
   selector:
     {{- include "insight-connectors.selectorLabels" . | nindent 4 }}

@@ -21,6 +21,7 @@ insight-migration = { workspace = true }
 kube = { workspace = true, features = ["client", "rustls-tls", "aws-lc-rs"] }
 k8s-openapi = { workspace = true, features = ["latest"] }
 tokio-util = { workspace = true }
+futures-util = { workspace = true }
 clickhouse = { workspace = true }
 axum = { workspace = true }
 sea-orm = { workspace = true }
