@@ -77,95 +77,87 @@ Do not merge these changes. They exist only to compare the two renderers.
 
 The entries are in the order the spike hit them.
 
-1. **The npm cache refused writes.**
-   - What happened: `npm ci` in the template clone failed with `EPERM` on the user npm cache. The sandbox of the agent caused it.
-   - Workaround: the install used a temporary cache folder.
-   - Real build: nothing.
-2. **Insight has no route for widget bundles.**
+1. **Insight has no route for widget bundles.**
    - What happened: the FrontX dashboard loads each widget bundle at runtime from `/widgets/`.
    - Workaround: a Vite middleware serves the folder that `FRONTX_WIDGETS_DIR` names.
    - Real build: an Insight change. nginx must serve `/widgets/`. Hashed files under `assets/` can stay in the cache. The lists, the parts and `shared/` must revalidate.
-3. **CEL cannot find a column by name.**
+2. **CEL cannot find a column by name.**
    - What happened: the run endpoint answers `{columns, rows}` with positional rows. The CEL library has no list `indexOf`, so a transform cannot find the position of a column.
    - Workaround: the host adds `at`, a map from each column name to its position.
    - Real build: a FrontX change (CEL list functions) or an Insight change (an answer with keyed rows).
-4. **CEL cannot group rows.**
+3. **CEL cannot group rows.**
    - What happened: a bar widget with a `series` column needs one series for each value of that column. CEL has no group or distinct function. The `render.series` list must also name each series before the data arrives.
    - Workaround: none. Each row becomes its own series. The chart shows eight thin bars and eight legend entries in place of two stacked series.
    - Real build: a FrontX change.
-5. **The root reads the dashboard file only once.**
+4. **The root reads the dashboard file only once.**
    - What happened: a `DashboardRoot` loads its served file once and keeps it. Insight users make and edit dashboards at runtime.
    - Workaround: one root for each dashboard file. A changed dashboard gets a new root.
    - Real build: a FrontX change. The root must load or replace one dashboard at runtime, and a root must have a dispose function.
-6. **The dashboard packages are not published.**
+5. **The dashboard packages are not published.**
    - What happened: the two template packages are private. npm does not have them.
    - Workaround: the spike copies the dashboard root package into `vendor/`.
    - Real build: a FrontX change (publish the packages), or an Insight process to update a vendored copy.
-7. **The packages pin exact versions.**
+6. **The packages pin exact versions.**
    - What happened: the root package pins React 19.2.4 and ui-kit 0.5.0. Insight uses React 19.3.1 and ui-kit 0.5.1.
    - Workaround: pnpm overrides.
    - Real build: a FrontX change (peer ranges).
-8. **Two exports have the same name.**
+7. **Two exports have the same name.**
    - What happened: the package index exports the `Dashboard` component, which hides the `Dashboard` contract type.
    - Workaround: the spike imports the types from `@gears-frontx/frontx-dashboard-root/contract`.
    - Real build: a FrontX change (rename one of them).
-9. **The TypeScript source fails an Insight compiler option.**
+8. **The TypeScript source fails an Insight compiler option.**
    - What happened: the package ships TypeScript source. `tsc -b` reported seven errors: `erasableSyntaxOnly` rejects the constructor parameter properties in `binding.ts` and `registry.ts`.
    - Workaround: the spike sets `erasableSyntaxOnly` to `false`.
    - Real build: a FrontX change (ship JavaScript and declaration files, or use only erasable syntax).
-10. **The served file type is too narrow.**
-    - What happened: `ServedFile.instances` is `Record<string, unknown>[]`. The contract `Dashboard` interface does not match that type.
-    - Workaround: the adapter puts a spread copy of the dashboard in the list.
-    - Real build: a FrontX change (minor).
-11. **The sandbox refused the dev server port.**
-    - What happened: `vite` failed with `listen EPERM` in the sandbox of the agent.
-    - Workaround: the dev server ran outside the sandbox.
-    - Real build: nothing.
-12. **The router read the switch as a number.**
+9. **The served file type is too narrow.**
+   - What happened: `ServedFile.instances` is `Record<string, unknown>[]`. The contract `Dashboard` interface does not match that type.
+   - Workaround: the adapter puts a spread copy of the dashboard in the list.
+   - Real build: a FrontX change (minor).
+10. **The router read the switch as a number.**
     - What happened: TanStack Router parses `?frontx=1` as the number 1. The search check accepted only a string, so the page stayed on the current renderer.
     - Workaround: the search check accepts the number.
     - Real build: nothing. The switch is spike-only.
-13. **CEL types both branches of a conditional.**
+11. **CEL types both branches of a conditional.**
     - What happened: every cell failed with "Ternary branches must have the same type". A nullable number has a `null` branch and a `double` branch.
     - Workaround: both branches go through `dyn()`.
     - Real build: nothing. A FrontX note on this pattern would help authors.
-14. **The x axis showed raw dates.**
+12. **The x axis showed raw dates.**
     - What happened: a category axis shows `2026-10-03` where the current renderer shows `Oct 3`.
     - Workaround: the adapter sets `x_axis.type` to `time` when the x column is `bucket`.
     - Real build: nothing. Other date columns need the same rule.
-15. **Percent values show as fractions.**
+13. **Percent values show as fractions.**
     - What happened: the current renderer reads the `percents` list in each run answer. The dashboard file sets each FrontX `value_format` before any answer arrives. The mock rate shows as `0.128` where the current renderer shows `0.13%`.
     - Workaround: none.
     - Real build: an Insight change (put the percent columns into the widget read) or a FrontX change (a format that comes from the data). The two renderers also scale percent values differently.
-16. **Stylesheets loaded again after each redraw.**
+14. **Stylesheets loaded again after each redraw.**
     - What happened: each widget adds its stylesheets as `<link>` elements in its shadow root. With `cache-control: no-cache`, the browser asked for them again after a range change.
     - Workaround: the middleware marks the hashed files under `assets/` as immutable.
     - Real build: an Insight change in the nginx cache rules.
-17. **A new root loads every part again.**
+15. **A new root loads every part again.**
     - What happened: the page switched to another dashboard. The new root fetched all 16 parts and its widget code again (274 KB). The two roots share no load.
     - Workaround: none.
-    - Real build: a FrontX change (see entry 5).
-18. **Every root loads the parts of all widget types.**
+    - Real build: a FrontX change (see entry 4).
+16. **Every root loads the parts of all widget types.**
     - What happened: the widget list names 15 widget types. Each dashboard load fetched all 15 parts, even when the dashboard used two types.
     - Workaround: none. Insight can publish a shorter widget list.
     - Real build: a FrontX change (one joined file, or parts that load on demand).
-19. **The widget bundles bring their own React and recharts.**
+17. **The widget bundles bring their own React and recharts.**
     - What happened: the widgets share React 19.2.4 and recharts among themselves, but not with the host. The page holds two copies of each. The shared `recharts.js` is not minified and has 1.38 MB before compression.
     - Workaround: none.
     - Real build: a FrontX change.
-20. **The timing run needed mocks in a production build.**
+18. **The timing run needed mocks in a production build.**
     - What happened: Insight starts the mock service worker only in dev mode.
     - Workaround: a temporary local change in `main.tsx`. The branch does not keep it.
     - Real build: nothing.
-21. **The preview server answered asset requests with 404.**
+19. **The preview server answered asset requests with 404.**
     - What happened: `vite preview` answered 71 requests for each page load under `/dashboards/assets/` with 404. Both renderers had them.
     - Workaround: none. They come from the relative asset base of the Insight build, not from FrontX. The spike did not examine them further.
     - Real build: nothing for FrontX.
-22. **The larger view opens under the sidebar.**
+20. **The larger view opens under the sidebar.**
     - What happened: the larger view dialog stays inside the dashboard element. The Insight `main` element has `isolation: isolate`, so the sidebar paints over the left part of the dialog. The dialog title is not visible.
     - Workaround: none.
     - Real build: a FrontX change (render the dialog into a host portal) or an Insight change (remove the stacking context from `main`).
-23. **The copied package fails the Insight lint rules.**
+21. **The copied package fails the Insight lint rules.**
     - What happened: `eslint .` reported 18 errors and 3 warnings in `vendor/frontx-dashboard-root`, for example `no-control-regex`.
     - Workaround: `eslint.config.js` ignores `vendor`.
     - Real build: a FrontX change (ship built JavaScript), or an Insight rule that excludes vendored code.
@@ -174,17 +166,17 @@ The entries are in the order the spike hit them.
 
 The list starts with the most important blocker.
 
-| Rank | Blocker | Owner | Effect |
-| --- | --- | --- | --- |
-| 1 | The root cannot load, replace or release one dashboard at runtime. | FrontX | Blocks a real build |
-| 2 | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong. | FrontX (or Insight, with grouped answers) | Blocks a real build |
-| 3 | The larger view opens under the Insight sidebar. | FrontX (or Insight) | Blocks a real build |
-| 4 | The packages are private, ship TypeScript source and pin exact versions. | FrontX | Blocks a real build |
-| 5 | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements". | FrontX | Quality gap |
-| 6 | Percent columns and other value formats are known only at run time. | Insight (or FrontX) | Quality gap |
-| 7 | The admin drilldown and the missing-column message are not available. | Insight and FrontX | Quality gap |
-| 8 | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The spike did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work |
-| 9 | Widget texts are English only, cells have fixed heights, and the grid holds 500 rows at most. | FrontX | Quality gap |
+| Rank | Blocker                                                                                                                                                     | Owner                                         | Effect                                        |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
+| 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                          | FrontX                                        | Blocks a real build                           |
+| 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.              | FrontX (or Insight, with grouped answers)     | Blocks a real build                           |
+| 3    | The larger view opens under the Insight sidebar.                                                                                                            | FrontX (or Insight)                           | Blocks a real build                           |
+| 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                    | FrontX                                        | Blocks a real build                           |
+| 5    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                 | FrontX                                        | Quality gap                                   |
+| 6    | Percent columns and other value formats are known only at run time.                                                                                         | Insight (or FrontX)                           | Quality gap                                   |
+| 7    | The admin drilldown and the missing-column message are not available.                                                                                       | Insight and FrontX                            | Quality gap                                   |
+| 8    | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The spike did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work |
+| 9    | Widget texts are English only, cells have fixed heights, and the grid holds 500 rows at most.                                                               | FrontX                                        | Quality gap                                   |
 
 ## Gaps against the current dashboards
 
@@ -212,17 +204,17 @@ How the spike measured:
 
 The table shows the results for the light theme. The dark theme gave the same values within the ranges.
 
-| Value | Current | FrontX |
-| --- | --- | --- |
-| Drawn, dashboard with eight widgets | 836 ms (816 to 843) | 1671 ms (1613 to 1727) |
-| Drawn, dashboard with one table | 746 ms (735 to 803) | 1219 ms (1209 to 1226) |
-| Heap, dashboard with eight widgets | 16.4 MB | 45.6 MB |
-| Heap, dashboard with one table | 10.5 MB | 19.7 MB |
-| Data requests, eight widgets | 8 | 8 |
-| Widget part files, eight widgets | 0 | 16 |
-| Widget code files, eight widgets | 0 | 15 |
-| Widget files, eight widgets, size | 0 | 3.07 MB, 716 KB after gzip |
-| Lazy FrontX chunk of the host | none | 878 KB, 250 KB after gzip |
+| Value                               | Current             | FrontX                     |
+| ----------------------------------- | ------------------- | -------------------------- |
+| Drawn, dashboard with eight widgets | 836 ms (816 to 843) | 1671 ms (1613 to 1727)     |
+| Drawn, dashboard with one table     | 746 ms (735 to 803) | 1219 ms (1209 to 1226)     |
+| Heap, dashboard with eight widgets  | 16.4 MB             | 45.6 MB                    |
+| Heap, dashboard with one table      | 10.5 MB             | 19.7 MB                    |
+| Data requests, eight widgets        | 8                   | 8                          |
+| Widget part files, eight widgets    | 0                   | 16                         |
+| Widget code files, eight widgets    | 0                   | 15                         |
+| Widget files, eight widgets, size   | 0                   | 3.07 MB, 716 KB after gzip |
+| Lazy FrontX chunk of the host       | none                | 878 KB, 250 KB after gzip  |
 
 The drawn values are medians of five runs, with the range in parentheses.
 
