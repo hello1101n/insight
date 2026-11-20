@@ -1501,7 +1501,7 @@ fn item_value_expr(
         ComputationSpec::Median { value } => {
             // OrNull so an entity present in the batch (via another measure)
             // but with no rows for this measure comes back NULL, not 0 — the
-            // builder never zero-fills medians (honest-null).
+            // builder never zero-fills (honest-null).
             params.push(value.source_key.clone());
             params.push(value.measure_key.clone());
             let window = window_term(window, params);
@@ -1532,9 +1532,9 @@ fn item_value_expr(
         ComputationSpec::DistinctCount { value } => {
             // OrNull like sum: an entity present via another measure but with
             // no rows for this one comes back NULL, not 0, so it never enters
-            // a peer pool as a fabricated observation. The builder zero-fills
-            // distinct counts (0 distinct subjects is a genuine zero) exactly
-            // as it does sums. Counts distinct `subject_key`, not `value`.
+            // a peer pool as a fabricated observation. The builder passes the
+            // NULL through, as it does for sums; it never zero-fills.
+            // Counts distinct `subject_key`, not `value`.
             params.push(value.source_key.clone());
             params.push(value.measure_key.clone());
             let window = window_term(window, params);
@@ -3517,8 +3517,8 @@ mod tests {
     fn median_batches_as_a_quantile_ornull_column() {
         // A median metric joins the period/peer batch as one wide column.
         // OrNull so an entity present via another measure but with no rows
-        // for this one comes back NULL, not 0 (the builder never zero-fills
-        // medians). Placeholder/param lockstep still holds.
+        // for this one comes back NULL, not 0 (the builder never zero-fills).
+        // Placeholder/param lockstep still holds.
         for query in [
             compile_period_batch_query(&[&median_metric()], &request(), &[]),
             compile_peer_batch_query(
@@ -3621,7 +3621,7 @@ mod tests {
         // A distinct-count metric joins the period/peer batch as one wide
         // column counting distinct subject_key. OrNull so an entity present
         // via another measure but with no rows here comes back NULL, not 0 —
-        // the builder zero-fills distinct counts like sums. Lockstep holds.
+        // the builder passes it through, as for sums. Lockstep holds.
         for query in [
             compile_period_batch_query(&[&distinct_count_metric()], &request(), &[]),
             compile_peer_batch_query(

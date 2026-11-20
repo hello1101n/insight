@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
-from playwright.sync_api import Locator, Page
+from playwright.sync_api import Locator, Page, Request, expect
 
 from ..steps import step
 
@@ -73,7 +74,31 @@ class PortalShell:
 
     def go(self) -> None:
         with step("Open Insight"):
-            self.page.goto(self.PATH, wait_until="domcontentloaded")
+            failed: list[str] = []
+
+            def record(request: Request) -> None:
+                if request.resource_type in ("script", "stylesheet") and (
+                    request.failure != "net::ERR_ABORTED"
+                ):
+                    failed.append(f"{urlsplit(request.url).path} {request.failure}")
+
+            self.page.on("requestfailed", record)
+            try:
+                self.page.goto(self.PATH, wait_until="load")
+                if failed:
+                    # A connection reset between the runner and the CDN leaves the
+                    # shell blank for good; a person would reload, and so do we, once.
+                    first_load = len(failed)
+                    self.page.reload(wait_until="load")
+                    assert len(failed) == first_load, (
+                        f"The portal shell failed to load twice: {failed}"
+                    )
+                expect(
+                    self.rail.zones().first,
+                    f"The portal shell did not render; failed loads: {failed}",
+                ).to_be_visible(timeout=30_000)
+            finally:
+                self.page.remove_listener("requestfailed", record)
 
     def safe_navigation(self, buttons: Locator) -> Locator:
         return buttons.and_(self.page.locator(SAFE_NAV)).filter(

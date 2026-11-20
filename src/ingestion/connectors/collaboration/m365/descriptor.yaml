@@ -31,7 +31,12 @@ name: m365
 #   account reported in two letter cases no longer yields two rows per day
 #   (#4295). MAJOR so reconcile dispatches the one-shot `dbt --full-refresh`
 #   that replaces rows already materialised under case-sensitive keys.
-version: "4.0.0"
+# 5.0.0 (major): every m365 staging feeder replaces rows by key (delete+insert
+#   on ReplacingMergeTree). It builds every day extracted after the newest
+#   extract it already built, so a gap of more than 3 days heals (#4323,
+#   #4317). MAJOR so reconcile runs the one-shot `dbt --full-refresh` that
+#   removes the stored duplicate keys and creates the new table engine.
+version: "5.0.0"
 schedule: 0 2 * * *
 dbt_select: tag:m365+
 workflow: sync

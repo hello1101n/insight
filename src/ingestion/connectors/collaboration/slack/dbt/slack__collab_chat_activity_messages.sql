@@ -1,7 +1,9 @@
 {{ config(
     materialized='incremental',
     unique_key='unique_key',
+    incremental_strategy='delete+insert',
     on_schema_change='append_new_columns',
+    engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
     schema='staging',
@@ -21,7 +23,8 @@ WITH posted AS (
         insight_source_id,
         user_id,
         toDate(parseDateTimeBestEffortOrNull(date)) AS day,
-        channel_type
+        channel_type,
+        _airbyte_extracted_at
     FROM {{ source('bronze_slack', 'messages') }} FINAL
     WHERE user_id IS NOT NULL
       AND user_id != ''
@@ -32,11 +35,13 @@ WITH posted AS (
       AND (subtype IS NULL OR subtype IN ('thread_broadcast', 'file_share', 'me_message'))
       AND parseDateTimeBestEffortOrNull(date) IS NOT NULL
 {% if is_incremental() %}
+      -- INVARIANT: the window starts at the newest extract this model has already built for
+      -- the source instance, so days extracted while runs failed are built on the next run.
       AND toDate(parseDateTimeBestEffortOrNull(date)) IN (
           SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
           FROM {{ source('bronze_slack', 'messages') }}
           WHERE _airbyte_extracted_at
-                > (SELECT max(_airbyte_extracted_at) FROM {{ source('bronze_slack', 'messages') }}) - INTERVAL 3 DAY
+                > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
       )
 {% endif %}
 ),
@@ -49,7 +54,8 @@ member_days AS (
         day,
         count() AS total_chat_messages,
         countIf(channel_type IN ('public_channel', 'private_channel')) AS channel_posts,
-        countIf(channel_type IN ('im', 'mpim')) AS direct_and_group_messages
+        countIf(channel_type IN ('im', 'mpim')) AS direct_and_group_messages,
+        max(_airbyte_extracted_at) AS extracted_at
     FROM posted
     GROUP BY
         tenant_id,
@@ -91,6 +97,7 @@ counted_days AS (
         d.total_chat_messages,
         d.channel_posts,
         d.direct_and_group_messages,
+        d.extracted_at,
         m.email
     FROM member_days AS d
     LEFT JOIN member_flags AS m
@@ -141,7 +148,7 @@ SELECT
     CAST(NULL AS Nullable(Int64)) AS channel_replies,
     CAST(NULL AS Nullable(Int64)) AS urgent_messages,
     CAST(NULL AS Nullable(String)) AS report_period,
-    now() AS collected_at,
+    toDateTime(extracted_at) AS collected_at,
     'insight_slack' AS data_source,
     'slack' AS account_source_type,
     coalesce(insight_source_id, '') AS account_source_id,

@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use sea_orm::prelude::DateTime;
 use uuid::Uuid;
 
+use super::employee_id::RosterEmployeeIds;
 use super::observation_slot::SlotAllocator;
 use super::provenance::{Provenance, ROSTER_MINT_REASON};
 use super::resolution::{BINDING_VALUE_TYPE, EXCLUDED_PERSON};
@@ -112,6 +113,8 @@ pub enum AssignmentKind {
     ReusedKnown,
     /// The group's email already maps to an existing person.
     LinkedByEmail,
+    /// The group has no address match, and its employee ID names one roster person.
+    LinkedByEmployeeId,
     /// A fresh person was minted for the group.
     Minted,
     /// A fresh person was minted for a roster account carrying no address —
@@ -133,6 +136,7 @@ pub struct ResolveOutcome {
     pub assignments: Vec<PersonAssignment>,
     pub reused_known: usize,
     pub linked_by_email: usize,
+    pub linked_by_employee_id: usize,
     pub minted: usize,
     pub skipped_closed: usize,
     pub skipped_no_email: usize,
@@ -208,134 +212,228 @@ pub fn group_by_email(profiles: Vec<SeedProfile>) -> Vec<ProfileGroup> {
 /// the account). `mint` is injected so tests are deterministic.
 ///
 /// `roster` names the source allowed to mint without an address. `None` — the
-/// default — keeps an addressless account unresolved, as before.
+/// default — keeps an addressless account unresolved, as before. With a roster,
+/// a group that no address claims links to the person its roster employee ID
+/// names. Roster groups go first, so the IDs they mint in this run count too.
 #[must_use]
 pub fn resolve_assignments(
     groups: Vec<ProfileGroup>,
     known: &HashMap<SourceAccountKey, KnownBinding>,
     email_to_person: &HashMap<String, Uuid>,
+    mut employee_ids: RosterEmployeeIds,
     roster: Option<&RosterSource>,
     mut mint: impl FnMut() -> Uuid,
 ) -> ResolveOutcome {
     let mut out = ResolveOutcome::default();
 
-    for group in groups {
-        // 0. Excluded accounts (bound to the sentinel) are not persons: they
-        //    contribute no new observations, and they leave the group before
-        //    any linking decision so their values claim nobody. The exclusion
-        //    itself stays in force — its journal row is already the latest.
-        let (excluded, remaining): (Vec<_>, Vec<_>) = group.profiles.into_iter().partition(|p| {
-            known
-                .get(&p.account)
-                .is_some_and(|b| b.person_id == EXCLUDED_PERSON)
-        });
-        out.skipped_excluded += excluded.len();
-        if remaining.is_empty() {
-            continue;
+    for group in roster_groups_first(groups, roster) {
+        let assigned_before = out.assignments.len();
+        resolve_group(
+            group,
+            known,
+            email_to_person,
+            &employee_ids,
+            roster,
+            &mut mint,
+            &mut out,
+        );
+        if let Some(roster) = roster {
+            employee_ids.learn(&out.assignments[assigned_before..], roster);
         }
-
-        // The group's address — shared by every profile in an e-mail group; an
-        // addressless group is a singleton with none. (`first` is always `Some`
-        // here, groups being non-empty by construction, but avoid the panicking
-        // index.)
-        let email = remaining
-            .first()
-            .and_then(|p| p.latest_email.as_deref())
-            .map(normalize_email)
-            .filter(|e| !e.trim().is_empty());
-
-        // The person that address already names, if any. A binding automation
-        // wrote and nobody confirmed gives way to it: leaving such an account on
-        // its minted person would hand one human two persons AND give the
-        // address two claimants, which resolves to NOBODY downstream — so the
-        // human's activity would reach no metric at all.
-        let claimed_by = email
-            .as_deref()
-            .and_then(|e| email_to_person.get(e).copied())
-            .filter(|pid| *pid != EXCLUDED_PERSON);
-
-        // 1. Known bindings win — and each bound account keeps its own person.
-        //    A group whose accounts are bound to different persons is an
-        //    intentional split when any binding is operator-authored (ADR-0003);
-        //    otherwise it is a conflict to surface. Either way the e-mail is
-        //    contested evidence, so unbound group members are not auto-linked.
-        let (bound, unbound): (Vec<_>, Vec<_>) = remaining.into_iter().partition(|p| {
-            known
-                .get(&p.account)
-                .is_some_and(|b| !yields_to_address(b, claimed_by))
-        });
-        if !bound.is_empty() {
-            let bindings: Vec<KnownBinding> = bound.iter().map(|p| known[&p.account]).collect();
-            let first_person = bindings[0].person_id;
-            let divergent = bindings.iter().any(|b| b.person_id != first_person);
-
-            if divergent {
-                record_divergent_group(bound, &unbound, &bindings, known, &mut out);
-                continue;
-            }
-
-            let mut profiles = bound;
-            profiles.extend(unbound);
-            out.reused_known += profiles.len();
-            out.assignments.push(PersonAssignment {
-                person_id: first_person,
-                kind: AssignmentKind::ReusedKnown,
-                profiles,
-            });
-            continue;
-        }
-        let group = ProfileGroup { profiles: unbound };
-
-        if email.is_none() {
-            record_addressless_group(group, roster, &mut mint, &mut out);
-            continue;
-        }
-
-        // 2. Email matches an existing person → link. A map entry naming the
-        //    excluded sentinel (legacy rows from before exclusions stopped
-        //    re-emitting) is no person and links nobody — fall through to mint.
-        if let Some(pid) = claimed_by {
-            out.linked_by_email += group.profiles.len();
-            out.assignments.push(PersonAssignment {
-                person_id: pid,
-                kind: AssignmentKind::LinkedByEmail,
-                profiles: group.profiles,
-            });
-            continue;
-        }
-
-        // 3/4. No binding and no email match. A wholly-closed group creates no
-        //      person — tested first, because a closed account never reaches the
-        //      review queue and counting it as unbindable would promise operator
-        //      work that never appears there.
-        if !group.profiles.iter().any(|p| !p.is_closed) {
-            out.skipped_closed += group.profiles.len();
-            continue;
-        }
-
-        //      Mint only if some account here states an id the seed can bind.
-        //      Without one the person would be a bag of observations no account
-        //      belongs to, and no later run could fix that: the queue surfaces
-        //      the account for an operator instead.
-        if !group.profiles.iter().any(states_a_bindable_id) {
-            out.skipped_no_source_id += group.profiles.len();
-            continue;
-        }
-
-        out.minted += group.profiles.len();
-        let person_id = mint();
-        out.assignments.push(PersonAssignment {
-            person_id,
-            kind: AssignmentKind::Minted,
-            profiles: group.profiles,
-        });
     }
 
     out
 }
 
+/// The evidence that names an existing person for an unbound group.
+#[derive(Debug, Clone, Copy)]
+enum Claim {
+    Address(Uuid),
+    EmployeeId(Uuid),
+}
+
+impl Claim {
+    fn person(self) -> Uuid {
+        match self {
+            Self::Address(person) | Self::EmployeeId(person) => person,
+        }
+    }
+}
+
+fn roster_groups_first(
+    groups: Vec<ProfileGroup>,
+    roster: Option<&RosterSource>,
+) -> Vec<ProfileGroup> {
+    let Some(roster) = roster else {
+        return groups;
+    };
+
+    let (mut first, rest): (Vec<_>, Vec<_>) = groups
+        .into_iter()
+        .partition(|group| holds_a_roster_account(&group.profiles, roster));
+    first.extend(rest);
+    first
+}
+
+fn holds_a_roster_account(profiles: &[SeedProfile], roster: &RosterSource) -> bool {
+    profiles
+        .iter()
+        .any(|profile| roster.speaks_for(&profile.account.source_type))
+}
+
+/// The person that the group's roster employee ID names. A roster group states
+/// its own IDs, so it claims nothing through them.
+fn employee_id_claim(
+    profiles: &[SeedProfile],
+    employee_ids: &RosterEmployeeIds,
+    roster: Option<&RosterSource>,
+) -> Option<Uuid> {
+    let roster = roster?;
+    if holds_a_roster_account(profiles, roster) {
+        return None;
+    }
+    employee_ids.claim(profiles)
+}
+
+fn resolve_group(
+    group: ProfileGroup,
+    known: &HashMap<SourceAccountKey, KnownBinding>,
+    email_to_person: &HashMap<String, Uuid>,
+    employee_ids: &RosterEmployeeIds,
+    roster: Option<&RosterSource>,
+    mint: &mut impl FnMut() -> Uuid,
+    out: &mut ResolveOutcome,
+) {
+    // 0. Excluded accounts (bound to the sentinel) are not persons: they
+    //    contribute no new observations, and they leave the group before
+    //    any linking decision so their values claim nobody. The exclusion
+    //    itself stays in force — its journal row is already the latest.
+    let (excluded, remaining): (Vec<_>, Vec<_>) = group.profiles.into_iter().partition(|p| {
+        known
+            .get(&p.account)
+            .is_some_and(|b| b.person_id == EXCLUDED_PERSON)
+    });
+    out.skipped_excluded += excluded.len();
+    if remaining.is_empty() {
+        return;
+    }
+
+    // The group's address — shared by every profile in an e-mail group; an
+    // addressless group is a singleton with none. (`first` is always `Some`
+    // here, groups being non-empty by construction, but avoid the panicking
+    // index.)
+    let email = remaining
+        .first()
+        .and_then(|p| p.latest_email.as_deref())
+        .map(normalize_email)
+        .filter(|e| !e.trim().is_empty());
+
+    // The person that address already names, if any. A binding automation
+    // wrote and nobody confirmed gives way to it: leaving such an account on
+    // its minted person would hand one human two persons AND give the
+    // address two claimants, which resolves to NOBODY downstream — so the
+    // human's activity would reach no metric at all.
+    let email_claim = email
+        .as_deref()
+        .and_then(|e| email_to_person.get(e).copied())
+        .filter(|pid| *pid != EXCLUDED_PERSON);
+    let claim = email_claim
+        .map(Claim::Address)
+        .or_else(|| employee_id_claim(&remaining, employee_ids, roster).map(Claim::EmployeeId));
+    let claimed_by = claim.map(Claim::person);
+
+    // 1. Known bindings win — and each bound account keeps its own person.
+    //    A group whose accounts are bound to different persons is an
+    //    intentional split when any binding is operator-authored (ADR-0003);
+    //    otherwise it is a conflict to surface. Either way the e-mail is
+    //    contested evidence, so unbound group members are not auto-linked.
+    let (bound, unbound): (Vec<_>, Vec<_>) = remaining.into_iter().partition(|p| {
+        known
+            .get(&p.account)
+            .is_some_and(|b| !yields_to_address(b, claimed_by))
+    });
+    if !bound.is_empty() {
+        let bindings: Vec<KnownBinding> = bound.iter().map(|p| known[&p.account]).collect();
+        let first_person = bindings[0].person_id;
+        let divergent = bindings.iter().any(|b| b.person_id != first_person);
+
+        if divergent {
+            record_divergent_group(bound, &unbound, &bindings, known, out);
+            return;
+        }
+
+        let mut profiles = bound;
+        profiles.extend(unbound);
+        out.reused_known += profiles.len();
+        out.assignments.push(PersonAssignment {
+            person_id: first_person,
+            kind: AssignmentKind::ReusedKnown,
+            profiles,
+        });
+        return;
+    }
+    let group = ProfileGroup { profiles: unbound };
+
+    // 2. An address or a roster employee ID names an existing person → link.
+    //    A map entry naming the excluded sentinel (legacy rows from before
+    //    exclusions stopped re-emitting) is no person and links nobody.
+    if let Some(claim) = claim {
+        let kind = match claim {
+            Claim::Address(_) => {
+                out.linked_by_email += group.profiles.len();
+                AssignmentKind::LinkedByEmail
+            }
+
+            Claim::EmployeeId(_) => {
+                out.linked_by_employee_id += group.profiles.len();
+                AssignmentKind::LinkedByEmployeeId
+            }
+        };
+        out.assignments.push(PersonAssignment {
+            person_id: claim.person(),
+            kind,
+            profiles: group.profiles,
+        });
+        return;
+    }
+
+    if email.is_none() {
+        record_addressless_group(group, roster, mint, out);
+        return;
+    }
+
+    // 3/4. No binding and no email match. A wholly-closed group creates no
+    //      person — tested first, because a closed account never reaches the
+    //      review queue and counting it as unbindable would promise operator
+    //      work that never appears there.
+    if !group.profiles.iter().any(|p| !p.is_closed) {
+        out.skipped_closed += group.profiles.len();
+        return;
+    }
+
+    //      Mint only if some account here states an id the seed can bind.
+    //      Without one the person would be a bag of observations no account
+    //      belongs to, and no later run could fix that: the queue surfaces
+    //      the account for an operator instead.
+    if !group.profiles.iter().any(states_a_bindable_id) {
+        out.skipped_no_source_id += group.profiles.len();
+        return;
+    }
+
+    out.minted += group.profiles.len();
+    let person_id = mint();
+    out.assignments.push(PersonAssignment {
+        person_id,
+        kind: AssignmentKind::Minted,
+        profiles: group.profiles,
+    });
+}
+
 /// Reason stamped on observations linked via the email branch (forensics).
 pub const AUTO_SEED_LINK_REASON: &str = "auto-seed-link";
+
+/// Reason stamped on observations linked by a roster employee ID.
+pub const EMPLOYEE_ID_LINK_REASON: &str = "auto-seed-employee-id-link";
 
 /// The reason to stamp on one account's observations.
 ///
@@ -360,6 +458,7 @@ fn reason_for(
 
     match assignment.kind {
         AssignmentKind::LinkedByEmail => AUTO_SEED_LINK_REASON,
+        AssignmentKind::LinkedByEmployeeId => EMPLOYEE_ID_LINK_REASON,
         AssignmentKind::MintedFromRoster => ROSTER_MINT_REASON,
         AssignmentKind::ReusedKnown | AssignmentKind::Minted => "",
     }
@@ -666,7 +765,14 @@ mod tests {
         email_to_person: &HashMap<String, Uuid>,
         mint: impl FnMut() -> Uuid,
     ) -> ResolveOutcome {
-        resolve_assignments(groups, known, email_to_person, None, mint)
+        resolve_assignments(
+            groups,
+            known,
+            email_to_person,
+            RosterEmployeeIds::default(),
+            None,
+            mint,
+        )
     }
 
     /// A profile as a connector describes one: it states its own account id,
@@ -1337,6 +1443,7 @@ mod tests {
             groups,
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1370,6 +1477,7 @@ mod tests {
             group_by_email(vec![rostered("bamboohr", "e-1", false)]),
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1394,6 +1502,7 @@ mod tests {
             groups,
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1422,6 +1531,7 @@ mod tests {
             groups,
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1515,6 +1625,7 @@ mod tests {
             group_by_email(vec![silent]),
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1537,6 +1648,7 @@ mod tests {
             group_by_email(vec![addressed]),
             &HashMap::new(),
             &known_person,
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1568,6 +1680,7 @@ mod tests {
             group_by_email(vec![rostered("bamboohr", "e-1", false)]),
             &known,
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1652,6 +1765,7 @@ mod tests {
             group_by_email(vec![rostered("bamboohr", "e-1", false)]),
             &known,
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1692,6 +1806,7 @@ mod tests {
             group_by_email(vec![rostered("bamboohr", "e-1", false)]),
             &known,
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1734,6 +1849,7 @@ mod tests {
             group_by_email(vec![addressed]),
             &known,
             &email_map,
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1772,6 +1888,7 @@ mod tests {
             group_by_email(vec![addressed]),
             &known,
             &email_map,
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1804,6 +1921,7 @@ mod tests {
             group_by_email(vec![rostered("bamboohr", "svc-1", false)]),
             &known,
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );
@@ -1833,6 +1951,7 @@ mod tests {
             group_by_email(vec![oversized]),
             &HashMap::new(),
             &HashMap::new(),
+            RosterEmployeeIds::default(),
             RosterSource::parse("bamboohr").as_ref(),
             counter(),
         );

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.fixture
 
 SPEC = "collab_chat_slack_null_guest_flag"
 
-CHECK = "assert_slack_bronze_rows_reach_metrics"
+CHECK = "assert_slack_members_resolve"
 
 MESSAGES = {
     "alice@example.com": 3,
