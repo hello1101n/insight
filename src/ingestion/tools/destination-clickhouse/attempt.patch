@@ -1,0 +1,9 @@
+--- ClickhouseBeanFactory.kt
++++ ClickhouseBeanFactory.kt
+@@ -60,0 +61,6 @@
++        val job = System.getenv("WORKER_JOB_ID")?.toLongOrNull()
++        val attempt = System.getenv("WORKER_JOB_ATTEMPT")?.toIntOrNull()
++        if (job != null && attempt != null) {
++            builder.serverSetting("log_comment", "airbyte:job=$job:attempt=$attempt")
++        }
++
