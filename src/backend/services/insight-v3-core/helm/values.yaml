@@ -11,6 +11,7 @@ global:
   mcp:
     enabled: false
     publicUrl: ""
+    jwksUrl: ""
 
 # The custom-surface MCP server's own listener. Enabled by global.mcp.
 mcp:

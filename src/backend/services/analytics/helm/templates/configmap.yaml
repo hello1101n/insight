@@ -154,6 +154,7 @@ data:
             enabled: {{ .Values.global.mcp.enabled }}
             bind_addr: "0.0.0.0:{{ .Values.mcp.port }}"
             public_url: {{ if .Values.global.mcp.enabled }}{{ required "global.mcp.publicUrl is required when MCP is enabled" .Values.global.mcp.publicUrl | quote }}{{ else }}""{{ end }}
+            jwks_url: {{ tpl ((((.Values.global).mcp).jwksUrl) | default "") . | quote }}
             max_concurrent_queries: {{ .Values.mcp.maxConcurrentQueries }}
             clickhouse_user: {{ .Values.mcp.clickhouseUser | quote }}
             allow_insecure_private_network: {{ (((.Values.global).mcp).allowInsecurePrivateNetwork) | default false }}
