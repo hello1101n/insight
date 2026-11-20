@@ -146,7 +146,7 @@ function CustomDashboardBody({
 
   const dashboard = read.body;
   const items = dashboardItems(dashboard);
-  const frontx = search.frontx === "1";
+  const frontx = search.frontx === 1;
 
   const picksRange = offered !== undefined && offered.length > 0 && range;
 

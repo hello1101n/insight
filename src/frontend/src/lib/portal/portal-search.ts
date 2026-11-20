@@ -72,7 +72,7 @@ export interface DashboardSearch {
   /** The widget drawn over the whole window, by its id. */
   widget?: string;
   /** Spike: draw the board through the FrontX dashboard template. */
-  frontx?: string;
+  frontx?: 1;
 }
 
 /** Everything any portal route may carry; a page reads only its own keys. */
@@ -193,7 +193,8 @@ export function validateDashboardSearch(raw: Record<string, unknown>): Dashboard
     // to the board's default.
     range: isRangeToken(str(raw.range) ?? "") ? str(raw.range) : undefined,
     widget: str(raw.widget),
-    frontx: String(raw.frontx) === "1" ? "1" : undefined,
+    // The router reads `?frontx=1` as a number.
+    frontx: String(raw.frontx) === "1" ? 1 : undefined,
   };
 }
 
