@@ -457,14 +457,16 @@ After each sync, the Argo workflow `ingestion-pipeline` runs these steps:
 3. dbt `tag:slack+`: silver and gold
 4. Connector checks: `dbt test --select tag:connector_quality,tag:slack`
 
-The data-quality check `assert_slack_bronze_rows_reach_metrics` finds Activity rows that do not get to the metrics:
+Two data-quality checks find Activity rows that do not get to the metrics. The checks do not report guest rows or bot rows.
 
-| Problem | Meaning |
-|---|---|
-| `refused_day_row` | A row without `user_id` or `date`. The old connector wrote these rows. |
-| `missing_counter` | A non-guest row with a NULL message counter |
-| `unmapped_member` | A non-guest member without an identity binding |
-| `unresolved_null_guest` | A row with a NULL `is_guest` whose member resolves to no person (section 8). The metrics do not count it. |
+| Check | Tier | Problem | Meaning |
+|---|---|---|---|
+| `assert_slack_bronze_rows_reach_metrics` | `error` | `refused_day_row` | A row without `user_id` or `date`. The old connector wrote these rows. The check reports the row after each sync until an operator deletes it. |
+| `assert_slack_bronze_rows_reach_metrics` | `error` | `missing_counter` | A member row with a NULL message counter |
+| `assert_slack_members_resolve` | `warn` | `unmapped_member` | A member (`is_guest` false) without an identity binding. One finding for each tenant, source and member. |
+| `assert_slack_members_resolve` | `warn` | `unresolved_null_guest` | A row with a NULL `is_guest` whose member resolves to no person (section 8). The metrics do not count it. |
+
+A finding with the tier `error` makes an alert. A finding with the tier `warn` goes to the log only. An unmapped member is a task for identity resolution, not a sync problem.
 
 Monitoring alerts (Grafana):
 
@@ -493,6 +495,4 @@ The streams with an issue in section 1 do not exist in `main`.
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |
 | Huddles are counted as meetings (section 10) | Huddles are not used. | #4321 |
-| Data-quality problems make an alert (section 11) | The check has the tier `warn`. It only writes to the log. | #4324 |
-| `unmapped_member`: a non-guest member without an identity binding (section 11) | No check. A member without an email gets to gold under its account, and nothing reports a member without a binding. | #4324 |
 | The move to a new connector type never loses the cursor (section 12) | The state backup is in the reconcile pod. | #4315 |
