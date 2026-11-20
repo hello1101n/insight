@@ -47,8 +47,8 @@ models:
 
   - name: class_git_ci_runs
     description: >
-      Vendor-neutral CI pipeline runs (GitHub Actions today; GitLab and
-      Bitbucket pipelines are not collected yet). One row per run attempt.
+      Vendor-neutral CI pipeline runs (GitHub Actions, GitLab pipelines and
+      Bitbucket Pipelines). One row per run attempt.
       The ONLY archive of CI history — source APIs retain a bounded window
       (GitHub ~90 days), so a --full-refresh irreversibly destroys older
       history. Gate semantics: is_gate = commit-triggered AND decided outcome
@@ -73,7 +73,8 @@ models:
       - name: pipeline_key
         description: >
           Stable pipeline identity — the workflow file path, not its editable
-          display name.
+          display name (GitLab: the project path; Bitbucket: the selector,
+          such as branches:main).
       - name: trigger_category
         description: "Class trigger vocabulary: push | pull_request | merge_queue | schedule | manual | other"
       - name: outcome
@@ -121,11 +122,11 @@ models:
       - name: finished_at
         description: "Last attempt's finish (the vendor's updated_at)"
       - name: data_source
-        description: "Owning connector (insight_github today)"
+        description: "Owning connector (insight_github, insight_gitlab, insight_bitbucket_cloud)"
 
   - name: class_git_deployments
     description: >
-      Vendor-neutral deployments (GitHub today). Carries NO outcome: fold the
+      Vendor-neutral deployments (GitHub, GitLab, Bitbucket). Carries NO outcome: fold the
       latest class_git_deployment_events row per deployment_id in; a deployment
       without an event is pending and stays visible. Accumulates past the
       source API retention window — never --full-refresh.
@@ -162,11 +163,11 @@ models:
       - name: created_at
         description: "Deployment creation time; the metric date"
       - name: data_source
-        description: "Owning connector (insight_github today)"
+        description: "Owning connector (insight_github, insight_gitlab, insight_bitbucket_cloud)"
 
   - name: class_git_deployment_events
     description: >
-      Deployment status event log (GitHub today). Latest event per
+      Deployment status event log (GitHub, GitLab, Bitbucket). Latest event per
       deployment_id is the deployment's outcome; kept as events because a
       status can land syncs after its deployment. Accumulates past the source
       API retention window — never --full-refresh.
@@ -204,7 +205,7 @@ models:
       - name: created_at
         description: "Event time; the fold takes the latest per deployment_id"
       - name: data_source
-        description: "Owning connector (insight_github today)"
+        description: "Owning connector (insight_github, insight_gitlab, insight_bitbucket_cloud)"
 
   - name: class_git_repository_branches
     description: "Unified git repository branches from all sources (GitHub, Bitbucket, GitLab)"

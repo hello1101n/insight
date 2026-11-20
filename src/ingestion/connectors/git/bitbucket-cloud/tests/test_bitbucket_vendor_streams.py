@@ -1988,47 +1988,354 @@ def test_a_pipeline_stamped_with_nine_fractional_digits_advances_the_cursor(http
     assert_records_conform(output.records, _CONNECTOR, "pipelines", strict=True)
 
 
+_PIPELINES_URL = f"{BB_URL}/repositories/acme/app/pipelines/"
+_DEPLOYMENTS_URL = f"{BB_URL}/repositories/acme/app/deployments/"
+_PRODUCTION = {"uuid": "{e-1}", "name": "Production", "environment_type": {"name": "Production"}}
+
+
+def _values_page(*rows: dict[str, Any]) -> HttpResponse:
+    return HttpResponse(body=json.dumps({"values": list(rows)}), status_code=200)
+
+
+def _deployment(
+    uuid: str,
+    *,
+    created_on: str,
+    last_update_time: str | None,
+    state: dict[str, Any],
+    version: int = 1,
+    environment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "uuid": uuid,
+        "created_on": created_on,
+        "state": state,
+        "version": version,
+        "environment": environment or _PRODUCTION,
+        "deployable": {"commit": {"hash": "a" * 12}, "pipeline": {"uuid": "{p-1}"}},
+    }
+    if last_update_time is not None:
+        row["last_update_time"] = last_update_time
+    return row
+
+
+def _emitted(output) -> dict[str, dict[str, Any]]:
+    return {r.record.data["uuid"]: r.record.data for r in output.records}
+
+
 @freezegun.freeze_time(_FROZEN)
-def test_a_deployment_stamped_with_nine_fractional_digits_is_kept_and_advances_the_cursor(
+@pytest.mark.parametrize(
+    ("last_update_time", "cursor"),
+    [
+        pytest.param("2026-06-25T10:05:00.123456789Z", "2026-06-25T10:05:00.123456", id="last-update-time"),
+        pytest.param(None, "2026-06-25T10:00:00.123456", id="falls-back-to-created-on"),
+    ],
+)
+def test_a_deployment_stamped_with_nine_fractional_digits_is_kept_and_its_last_update_becomes_the_cursor(
+    http_mocker: HttpMocker, last_update_time: str | None, cursor: str
+) -> None:
+    """Deployments are bounded on the client by their last update, so an
+    unreadable stamp would both fail to advance the cursor and leave the bound
+    unable to place the row. Both stamps are cut before the bound reads them, and
+    a deployment that names no last update is placed by its creation."""
+    config = BitbucketCloudConfigBuilder().build()
+    row = _deployment(
+        "{d-1}",
+        created_on=_NINE_DIGIT_STAMP,
+        last_update_time=last_update_time,
+        state={"name": "COMPLETED", "status": {"name": "SUCCESSFUL"}},
+    )
+    row["deployable"]["created_on"] = row.pop("created_on")
+    http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+    http_mocker.get(HttpRequest(_DEPLOYMENTS_URL, query_params=ANY_QUERY_PARAMS), _values_page(row))
+
+    output = read_stream(_CONNECTOR, "deployments", config, sync_mode=SyncMode.incremental)
+
+    assert not output.errors
+    assert [r.record.data["created_on"] for r in output.records] == [_SIX_DIGIT_STAMP]
+    assert [r.record.data["last_update_time"] for r in output.records] == [f"{cursor}Z"]
+    assert not _cursor_update_skipped(output), _cursor_update_skipped(output)
+    saved = json.dumps(output.state_messages[-1].state.stream.stream_state.__dict__)
+    assert cursor in saved, f"the deployment's last update must become the cursor: {saved}"
+    assert_records_conform(output.records, _CONNECTOR, "deployments", strict=True)
+
+
+@freezegun.freeze_time(_FROZEN)
+def test_a_deployment_whose_state_changes_after_the_cursor_passed_its_creation_is_read_again(
     http_mocker: HttpMocker,
 ) -> None:
-    """Deployments are bounded on the client, so an unreadable stamp would both
-    fail to advance the cursor and leave the bound unable to place the row. The
-    bound reads the stamp after it is cut, and the row is kept."""
+    """A manual deploy step creates its deployment as a placeholder and runs it
+    later, after newer deployments in the repository have moved the cursor past
+    the placeholder's creation. The run changes its state, and the next sync must
+    carry that outcome to bronze."""
+    config = BitbucketCloudConfigBuilder().build()
+    manual = {"uuid": "{d-manual}", "created_on": "2026-06-10T10:00:00.000000000Z"}
+    newer = _deployment(
+        "{d-newer}",
+        created_on="2026-06-20T10:00:00.000000000Z",
+        last_update_time="2026-06-20T10:05:00.000000000Z",
+        state={"name": "COMPLETED", "status": {"name": "SUCCESSFUL"}},
+        version=3,
+    )
+    http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+    http_mocker.get(
+        HttpRequest(_DEPLOYMENTS_URL, query_params=ANY_QUERY_PARAMS),
+        _values_page(
+            _deployment(**manual, last_update_time="2026-06-10T10:00:00.000000000Z", state={"name": "UNDEPLOYED"}),
+            newer,
+        ),
+    )
+
+    first = read_stream(_CONNECTOR, "deployments", config, sync_mode=SyncMode.incremental)
+
+    assert not first.errors
+    assert _emitted(first)["{d-manual}"]["state_name"] == "UNDEPLOYED"
+
+    resume_mocker = HttpMocker()
+    with resume_mocker:
+        resume_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+        resume_mocker.get(
+            HttpRequest(_DEPLOYMENTS_URL, query_params=ANY_QUERY_PARAMS),
+            _values_page(
+                _deployment(
+                    **manual,
+                    last_update_time="2026-06-25T10:00:00.000000000Z",
+                    state={"name": "COMPLETED", "status": {"name": "SUCCESSFUL"}},
+                    version=4,
+                ),
+                newer,
+            ),
+        )
+
+        second = read_stream(
+            _CONNECTOR,
+            "deployments",
+            config,
+            state=[m.state for m in first.state_messages][-1:],
+            sync_mode=SyncMode.incremental,
+        )
+
+    assert not second.errors
+    outcome = _emitted(second).get("{d-manual}")
+    assert outcome is not None, "the run deployment must reach bronze again"
+    assert (outcome["state_name"], outcome["state_status"], outcome["version"]) == ("COMPLETED", "SUCCESSFUL", 4)
+
+
+@freezegun.freeze_time(_FROZEN)
+def test_state_saved_on_created_on_rereads_deployments_from_the_start_date(http_mocker: HttpMocker) -> None:
+    """State written while the cursor was created_on names no last update, so
+    the first sync after the cursor moved reads from the start date: a deployment
+    created and last updated before the saved cursor still reaches bronze, and
+    the state the sync leaves is keyed on the last update."""
+    config = BitbucketCloudConfigBuilder().build()
+    saved_cursor = {"created_on": "2026-06-20T10:00:00.000000+0000"}
+    saved = AirbyteStateMessage(
+        type=AirbyteStateType.STREAM,
+        stream=AirbyteStreamState(
+            stream_descriptor=StreamDescriptor(name="deployments"),
+            stream_state=AirbyteStateBlob(
+                {
+                    "use_global_cursor": False,
+                    "states": [
+                        {
+                            "partition": {"parent_slice": {"workspace": "acme"}, "repo_full_name": "acme/app"},
+                            "cursor": saved_cursor,
+                        }
+                    ],
+                    "state": saved_cursor,
+                    "lookback_window": 0,
+                    "parent_state": {
+                        "repositories": {
+                            "use_global_cursor": False,
+                            "states": [
+                                {"partition": {"workspace": "acme"}, "cursor": {"updated_on": "2026-06-20T10:00:00Z"}}
+                            ],
+                            "state": {"updated_on": "2026-06-20T10:00:00Z"},
+                            "lookback_window": 0,
+                        }
+                    },
+                }
+            ),
+        ),
+    )
+    http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+    http_mocker.get(
+        HttpRequest(_DEPLOYMENTS_URL, query_params=ANY_QUERY_PARAMS),
+        _values_page(
+            _deployment(
+                "{d-1}",
+                created_on="2026-06-10T10:00:00.000000000Z",
+                last_update_time="2026-06-12T10:00:00.000000000Z",
+                state={"name": "COMPLETED", "status": {"name": "FAILED"}},
+            )
+        ),
+    )
+
+    output = read_stream(_CONNECTOR, "deployments", config, state=[saved], sync_mode=SyncMode.incremental)
+
+    assert not output.errors, output.errors
+    assert list(_emitted(output)) == ["{d-1}"]
+    left = output.state_messages[-1].state.stream.stream_state.__dict__
+    assert "last_update_time" in left["state"], f"the new state must be keyed on the last update: {left}"
+
+
+@freezegun.freeze_time(_FROZEN)
+@pytest.mark.parametrize(
+    ("environment", "expected"),
+    [
+        pytest.param(
+            _PRODUCTION,
+            {"environment_name": "Production", "environment_type": "Production", "version": 7},
+            id="production",
+        ),
+        pytest.param(
+            {"uuid": "{e-2}", "name": "eu-staging", "environment_type": {"name": "Staging"}},
+            {"environment_name": "eu-staging", "environment_type": "Staging", "version": 7},
+            id="staging",
+        ),
+        pytest.param(
+            {"uuid": "{e-3}", "name": None, "environment_type": None},
+            {"environment_name": "", "environment_type": "", "version": 7},
+            id="unnamed",
+        ),
+    ],
+)
+def test_deployments_keep_the_environment_name_type_and_state_version(
+    http_mocker: HttpMocker, environment: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    """The list response embeds the environment, and its type is what separates
+    production from staging; the version rises with each state change and keys
+    one event per observed state downstream."""
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
-        HttpRequest(f"{BB_URL}/repositories/acme/app/deployments/", query_params=ANY_QUERY_PARAMS),
-        HttpResponse(
-            body=json.dumps(
-                {
-                    "values": [
-                        {
-                            "uuid": "{d-1}",
-                            "state": {"name": "COMPLETED", "status": {"name": "SUCCESSFUL"}},
-                            "environment": {"uuid": "{e-1}"},
-                            "deployable": {
-                                "commit": {"hash": "a" * 12},
-                                "pipeline": {"uuid": "{p-1}"},
-                                "created_on": _NINE_DIGIT_STAMP,
-                            },
-                            "last_update_time": "2026-06-25T10:05:00.000000000Z",
-                        }
-                    ]
-                }
-            ),
-            status_code=200,
+        HttpRequest(_DEPLOYMENTS_URL, query_params=ANY_QUERY_PARAMS),
+        _values_page(
+            _deployment(
+                "{d-1}",
+                created_on="2026-06-20T10:00:00.000000000Z",
+                last_update_time="2026-06-20T10:05:00.000000000Z",
+                state={"name": "IN_PROGRESS"},
+                version=7,
+                environment=environment,
+            )
         ),
     )
 
     output = read_stream(_CONNECTOR, "deployments", config, sync_mode=SyncMode.incremental)
 
     assert not output.errors
-    assert [r.record.data["created_on"] for r in output.records] == [_SIX_DIGIT_STAMP]
-    assert not _cursor_update_skipped(output), _cursor_update_skipped(output)
-    saved = json.dumps(output.state_messages[-1].state.stream.stream_state.__dict__)
-    assert "2026-06-25T10:00:00" in saved, f"the deployment's date must become the cursor: {saved}"
+    (row,) = (r.record.data for r in output.records)
+    assert {key: row.get(key) for key in expected} == expected
+    _no_literal_none(output.records)
     assert_records_conform(output.records, _CONNECTOR, "deployments", strict=True)
+
+
+@freezegun.freeze_time(_FROZEN)
+@pytest.mark.parametrize(
+    ("pipeline", "expected"),
+    [
+        pytest.param(
+            {
+                "state": {"name": "COMPLETED", "result": {"name": "SUCCESSFUL"}},
+                "target": {
+                    "type": "pipeline_pullrequest_target",
+                    "source": "feature/login",
+                    "destination": "main",
+                    "selector": {"type": "pull-requests", "pattern": "**"},
+                    "commit": {"hash": "b" * 12},
+                },
+                "trigger": {"name": "PUSH"},
+                "run_number": 1,
+            },
+            {
+                "target_type": "pipeline_pullrequest_target",
+                "selector_type": "pull-requests",
+                "selector_pattern": "**",
+                "source_branch": "feature/login",
+                "target_ref": "",
+                "state_stage": "",
+                "run_number": 1,
+            },
+            id="pull-request-target",
+        ),
+        pytest.param(
+            {
+                "state": {"name": "IN_PROGRESS", "stage": {"name": "PAUSED"}},
+                "target": {
+                    "type": "pipeline_ref_target",
+                    "ref_name": "main",
+                    "selector": {"type": "branches", "pattern": "main"},
+                    "commit": {"hash": "c" * 12},
+                },
+                "trigger": {"name": "PUSH"},
+                "run_number": 2,
+            },
+            {
+                "target_type": "pipeline_ref_target",
+                "selector_type": "branches",
+                "selector_pattern": "main",
+                "source_branch": "",
+                "target_ref": "main",
+                "state_stage": "PAUSED",
+                "run_number": 2,
+            },
+            id="paused-rerun",
+        ),
+        pytest.param(
+            {
+                "state": {"name": "PENDING", "stage": None},
+                "target": {
+                    "type": "pipeline_ref_target",
+                    "ref_name": "main",
+                    "selector": {"type": "default", "pattern": None},
+                    "commit": {"hash": "d" * 12},
+                },
+                "trigger": {"name": "PUSH"},
+                "run_number": 1,
+            },
+            {
+                "target_type": "pipeline_ref_target",
+                "selector_type": "default",
+                "selector_pattern": "",
+                "source_branch": "",
+                "target_ref": "main",
+                "state_stage": "",
+                "run_number": 1,
+            },
+            id="default-selector",
+        ),
+    ],
+)
+def test_pipelines_keep_the_selector_target_stage_and_attempt_of_each_run(
+    http_mocker: HttpMocker, pipeline: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    """The selector names the pipeline definition, the target says whether a push
+    built a pull request and from which branch, the stage says a run is paused on
+    a manual step, and the run number counts reruns of the same pipeline."""
+    config = BitbucketCloudConfigBuilder().build()
+    http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+    http_mocker.get(
+        HttpRequest(_PIPELINES_URL, query_params=ANY_QUERY_PARAMS),
+        _values_page(
+            {
+                "uuid": "{p-1}",
+                "build_number": 42,
+                "created_on": "2026-06-25T10:00:00.000000000Z",
+                "run_creation_date": "2026-06-26T09:00:00.123456789Z",
+                **pipeline,
+            }
+        ),
+    )
+
+    output = read_stream(_CONNECTOR, "pipelines", config)
+
+    assert not output.errors
+    (row,) = (r.record.data for r in output.records)
+    assert {key: row.get(key) for key in expected} == expected
+    assert row["run_creation_date"] == "2026-06-26T09:00:00.123456789Z"
+    _no_literal_none(output.records)
+    assert_records_conform(output.records, _CONNECTOR, "pipelines", strict=True)
 
 
 _PR_LISTING_URL = f"{BB_URL}/repositories/acme/app/pullrequests"

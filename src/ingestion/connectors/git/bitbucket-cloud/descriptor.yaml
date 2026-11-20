@@ -64,7 +64,17 @@ name: bitbucket-cloud
 #   newest commit predates it is not looked up at the vendor. MINOR per
 #   ADR-0015: the catalog is unchanged in shape and nothing stored changes
 #   meaning; republished so the request carries the bound.
-version: "7.10.0"
+# 7.11.0: `pipelines` keeps the selector, the target type, a pull request's
+#   source branch, the paused stage and the rerun counter, and `deployments`
+#   keeps the environment's name and type and the state version, so both feed
+#   the CI classes. `deployments` moves its cursor from `created_on` to
+#   `last_update_time`: a deployment created before a newer one never passed
+#   the old bound again, so a manual deploy that ran late kept its placeholder
+#   state. MINOR per ADR-0015: the catalog gains columns and a cursor, so
+#   reconcile must republish the connection; saved state names the old cursor
+#   and is ignored, so a repository's deployments are read from the start date
+#   again at its next visit, and stored rows keep their meaning.
+version: "7.11.0"
 # Every four hours, off the hours other connectors use: replication pods sharing
 # a slot with other connector syncs can be starved of workers, which surfaces as
 # startup and activity timeouts rather than as a connector error.

@@ -1,0 +1,28 @@
+# Derived from the bronze_bitbucket_cloud tables the Airbyte destination creates.
+schemas:
+  bronze_bitbucket_cloud.deployments:
+    $schema: http://json-schema.org/draft-07/schema#
+    type: object
+    additionalProperties: false
+    properties:
+      _airbyte_raw_id: { type: string }
+      _airbyte_extracted_at: { type: string, format: date-time }
+      _airbyte_meta: { type: string }
+      _airbyte_generation_id: { type: integer }
+      unique_key: { type: [string, "null"] }
+      tenant_id: { type: [string, "null"] }
+      source_id: { type: [string, "null"] }
+      data_source: { type: [string, "null"] }
+      collected_at: { type: [string, "null"] }
+      uuid: { type: [string, "null"] }
+      repo_full_name: { type: [string, "null"] }
+      state_name: { type: [string, "null"] }
+      state_status: { type: [string, "null"] }
+      version: { type: [integer, "null"] }
+      environment_uuid: { type: [string, "null"] }
+      environment_name: { type: [string, "null"] }
+      environment_type: { type: [string, "null"] }
+      deployable_commit_sha: { type: [string, "null"] }
+      deployable_pipeline_uuid: { type: [string, "null"] }
+      created_on: { type: [string, "null"] }
+      last_update_time: { type: [string, "null"] }
