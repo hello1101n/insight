@@ -1,10 +1,9 @@
 use uuid::Uuid;
 
 use super::resolution::BindingRow;
-use super::seed::SourceAccountKey;
+use super::seed::{MAX_VALUE_ID_CHARS, SourceAccountKey};
 use crate::infra::identity_evidence::ObservedAccount;
 
-pub const MAX_VALUE_ID_CHARS: usize = 320;
 pub const MAX_SOURCE_TYPE_CHARS: usize = 30;
 
 pub const LOGIN_BOOTSTRAP_REASON: &str = "login-bootstrap";

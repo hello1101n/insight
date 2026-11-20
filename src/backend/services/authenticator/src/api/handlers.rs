@@ -22,6 +22,7 @@ use crate::jwt::GatewayClaims;
 use crate::session::{LoginState, NewSession, SessionRecord};
 
 const ROLES_CONVERGE_BUDGET_SECS: u64 = 3;
+const JWT_TRAVEL_MARGIN_SECONDS: u64 = 60;
 
 static X_GATEWAY_JWT: HeaderName = HeaderName::from_static("x-gateway-jwt");
 
@@ -1309,7 +1310,9 @@ fn no_content_ok() -> Response {
 
 #[must_use]
 pub fn cache_control_for(exp: u64, now: u64, authz_cache_max_age: u64) -> String {
-    let travel_bound = exp.saturating_sub(now).saturating_sub(60);
+    let travel_bound = exp
+        .saturating_sub(now)
+        .saturating_sub(JWT_TRAVEL_MARGIN_SECONDS);
     let max_age = authz_cache_max_age.min(travel_bound);
     if max_age == 0 {
         "no-store".to_owned()
