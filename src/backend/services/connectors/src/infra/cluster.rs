@@ -42,6 +42,7 @@ pub(crate) struct Cluster {
     pub(crate) client: Option<Client>,
     pub(crate) admission_enabled: bool,
     pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_reader: crate::config::AirbyteReader,
     pub(crate) argo_url: String,
     #[expect(
         clippy::struct_field_names,
@@ -62,6 +63,7 @@ impl Cluster {
             client: None,
             admission_enabled: false,
             airbyte_namespace: String::new(),
+            airbyte_reader: crate::config::AirbyteReader::default(),
             argo_url: String::new(),
             clickhouse_cluster: String::new(),
             workflow_sa: String::new(),

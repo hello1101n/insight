@@ -76,7 +76,9 @@ export function ConnectorSyncHistory({
       <ConnectorRunHistory
         latest={instance.latest_run}
         lastSuccess={instance.last_successful_run}
-        runs={(data.runs ?? []).slice(0, MAX_RUNS)}
+        runs={data.runs ?? []}
+        syncs={data.syncs}
+        limit={MAX_RUNS}
         asOf={asOf}
       />
     );

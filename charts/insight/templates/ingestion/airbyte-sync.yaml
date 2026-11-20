@@ -392,7 +392,12 @@ spec:
         backoff:
           duration: "30s"
           factor: 2
+{{- if .Values.connectors.stageAdmission.enabled }}
+          cap: "5m"
+          maxDuration: "{{`{{=inputs.parameters.admission_managed == 'true' ? '' : '5m'}}`}}"
+{{- else }}
           maxDuration: "5m"
+{{- end }}
       inputs:
         parameters:
 {{- if .Values.connectors.stageAdmission.enabled }}

@@ -15,6 +15,7 @@ use kube::{
 pub(super) struct Sample {
     pub present: bool,
     pub pending: bool,
+    indeterminate: bool,
     pub unscheduled: bool,
     pub assigned: bool,
     pub working: bool,
@@ -25,6 +26,12 @@ pub(super) struct Sample {
     pub started: Option<DateTime<Utc>>,
     pub memory: Option<u64>,
     pub cpu: Option<u64>,
+}
+
+impl Sample {
+    pub(super) fn may_work(&self) -> bool {
+        self.working || self.pending || self.indeterminate
+    }
 }
 
 fn units(value: &str, cpu: bool) -> Option<u64> {
@@ -203,8 +210,15 @@ pub(super) async fn observe(state: &AppState, row: &StageRow) -> Result<Sample> 
         {
             continue;
         }
-        let Some(status) = pod.status else { continue };
         s.present = true;
+        let Some(status) = pod.status else {
+            s.indeterminate = true;
+            continue;
+        };
+        s.indeterminate |= !matches!(
+            status.phase.as_deref(),
+            Some("Pending" | "Running" | "Succeeded" | "Failed")
+        );
         s.assigned |= pod.spec.as_ref().is_some_and(|p| p.node_name.is_some());
         s.unscheduled |= status.phase.as_deref() == Some("Pending")
             && pod.spec.as_ref().is_some_and(|p| p.node_name.is_none());
@@ -295,6 +309,21 @@ fn receipt(logs: &str, connection: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pending_or_unobserved_worker_still_blocks_completion() {
+        let mut pod = Sample {
+            pending: true,
+            ..Sample::default()
+        };
+        assert!(pod.may_work());
+        assert!(pod.started.is_none());
+        pod.pending = false;
+        pod.indeterminate = true;
+        assert!(pod.may_work());
+        pod.indeterminate = false;
+        assert!(!pod.may_work());
+    }
 
     #[test]
     fn only_uniquely_attributed_trigger_log_is_a_receipt() {

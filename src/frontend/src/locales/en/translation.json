@@ -1047,6 +1047,7 @@
       "latest": "Latest {{count}}",
       "heading": "Recent syncs",
       "statuses_label": "Recorded sync statuses, newest on the right",
+      "load_utc": "Historical load (UTC)",
       "run_label": "Run {{index}}: {{state}}, started {{started}}",
       "empty": "No sync has been recorded for this connector.",
       "started_utc": "Started (UTC)",

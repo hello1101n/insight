@@ -1486,6 +1486,75 @@ describe("connector workflow runs", () => {
     expect(timeline.getByText("1m 40s")).toBeVisible();
   });
 
+  it("keeps the 49 most recent historical loads alongside the first workflow", async () => {
+    const latest = run(2);
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true, latest_run: latest }],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      window: 50,
+      runs: [latest],
+      syncs: Array.from({ length: 50 }, (_, i) => ({
+        job_id: String(100 + i),
+        started_at: run(i === 0 ? 1 : i + 2).started_at,
+        status: "succeeded",
+        records_reported: 1234 + i,
+        duration_ms: 3000,
+      })).reverse(),
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    const marks = within(
+      screen.getByRole("list", { name: /status/i })
+    ).getAllByRole("button");
+    expect(marks).toHaveLength(50);
+    expect(marks[0]).toHaveAccessibleName("2026-01-15 11:10:00Z · sync ok");
+    expect(marks.at(-2)).toHaveAccessibleName("2026-01-15 11:58:00Z · Failed");
+    expect(marks.at(-1)).toHaveAccessibleName("2026-01-15 11:59:00Z · sync ok");
+    await userEvent.click(marks[0]!);
+    const details = within(
+      screen
+        .getByRole("heading", { name: "Historical load (UTC)" })
+        .closest("section")!
+    );
+    expect(details.getByText("1,282")).toBeVisible();
+    expect(details.getByText("3.0 s")).toBeVisible();
+    expect(details.queryByText("Ready")).not.toBeInTheDocument();
+    expect(details.queryByText("Transformations")).not.toBeInTheDocument();
+  });
+
+  it("folds recorded jobs from every Bronze attempt into their workflow by job ID", async () => {
+    const latest = {
+      ...run(1),
+      stages: ["441", "442"].map((jobId, index) => ({
+        stage: "bronze",
+        attempt: index + 1,
+        status: "succeeded",
+        airbyte_job_id: jobId,
+      })),
+    };
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true, latest_run: latest }],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      window: 50,
+      runs: [latest],
+      syncs: ["441", "442", "443"].map((jobId) => ({
+        job_id: jobId,
+        started_at: latest.started_at,
+        status: "succeeded",
+      })),
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    const history = within(screen.getByRole("list", { name: /status/i }));
+    expect(history.getAllByRole("button")).toHaveLength(2);
+    expect(history.getByRole("button", { name: /sync ok$/ })).toBeVisible();
+    expect(history.getByRole("button", { name: /Failed$/ })).toBeVisible();
+  });
+
   it("opens an empty run history before a new connector has synced", async () => {
     mocks.summary.data = summary({
       connectors: [{ connector: "jira", configured: true }],

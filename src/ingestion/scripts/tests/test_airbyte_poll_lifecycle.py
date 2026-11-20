@@ -158,3 +158,28 @@ def test_a_success_that_never_started_fails_the_step_and_logs_why(
     assert '"event": "sync.failure_reason"' in output
     assert '"failure_origin": "airbyte_platform"' in output
     assert '"status": "failed"' in output
+
+
+def test_managed_poller_recovers_its_existing_job_after_a_long_outage(run_poll, monkeypatch, tmp_path):
+    monkeypatch.setenv("ADMISSION_MANAGED", "true")
+    monkeypatch.setenv("POLL_INTERVAL_SECONDS", "30")
+    monkeypatch.setenv("STATUS_UNREADABLE_THRESHOLD_SECONDS", "60")
+    evidence = tmp_path / "evidence"
+    monkeypatch.setenv("AIRBYTE_EVIDENCE_PATH", str(evidence))
+    requests = []
+    original = poll.airbyte_job
+
+    def get(url, token, action, job_id):
+        requests.append((action, job_id))
+        assert not evidence.exists()
+        return original(url, token, action, job_id)
+
+    monkeypatch.setattr(poll, "airbyte_job", get)
+    # A readable response for a different Job is still no observation of 123.
+    mismatched = {"job": {"id": 124, "status": "failed"}}
+    succeeded = {"job": {"id": 123, "status": "succeeded"}, "attempts": [{"attempt": {"streamStats": [{}]}}]}
+    result, elapsed = run_poll([OSError("offline")] * 10 + [mismatched, succeeded])
+    assert result == 0
+    assert 60 < elapsed <= 11 * 300
+    assert requests == [("get", 123)] * 12
+    assert json.loads(evidence.read_text())["job_id"] == 123

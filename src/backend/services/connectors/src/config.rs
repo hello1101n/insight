@@ -3,6 +3,15 @@ use serde::Deserialize;
 use toolkit::bootstrap::AppConfig;
 use url::Url;
 
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct AirbyteReader {
+    pub url: String,
+    pub secret: String,
+    pub client_id_key: String,
+    pub client_secret_key: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub(crate) struct GearConfig {
@@ -23,6 +32,7 @@ pub(crate) struct GearConfig {
     pub(crate) reconcile_workflow_name: String,
     pub(crate) admission_enabled: bool,
     pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_reader: AirbyteReader,
     pub(crate) argo_url: String,
     pub(crate) workflow_sa: String,
     pub(crate) clickhouse_cluster: String,
@@ -48,6 +58,7 @@ impl Default for GearConfig {
             reconcile_workflow_name: String::new(),
             admission_enabled: false,
             airbyte_namespace: String::new(),
+            airbyte_reader: AirbyteReader::default(),
             argo_url: String::new(),
             workflow_sa: String::new(),
             clickhouse_cluster: String::new(),

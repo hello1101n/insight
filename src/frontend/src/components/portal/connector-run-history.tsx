@@ -2,10 +2,13 @@ import { Fragment, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@gears-frontx/ui-kit";
 
-import type { ConnectorRun } from "@/api/connector-health-client";
+import type { ConnectorRun, SyncFact } from "@/api/connector-health-client";
 import {
+  describeDuration,
+  describeSync,
   elapsedMs,
   formatDuration,
+  formatRecords,
   formatStarted,
 } from "@/lib/portal/connector-health";
 import {
@@ -193,13 +196,65 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
 
 interface Props {
   runs: ConnectorRun[];
+  syncs: SyncFact[];
+  limit: number;
   latest?: ConnectorRun | null;
   lastSuccess?: ConnectorRun | null;
   asOf: string;
 }
 
+function recentHistory(runs: ConnectorRun[], syncs: SyncFact[], limit: number) {
+  const representedJobs = new Set(
+    runs.flatMap((run) => run.stages.map((stage) => stage.airbyte_job_id))
+  );
+  const history: (ConnectorRun | SyncFact)[] = [
+    ...runs,
+    ...syncs.filter((sync) => !representedJobs.has(sync.job_id)),
+  ];
+  const start = (record: ConnectorRun | SyncFact) =>
+    Date.parse(record.started_at ?? "") || 0;
+  return history
+    .sort((a, b) => start(b) - start(a))
+    .slice(0, limit)
+    .map((record) => ({
+      id:
+        "sync_id" in record ? `run:${record.sync_id}` : `job:${record.job_id}`,
+      record,
+    }));
+}
+
+function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
+  const { t } = useTranslation();
+  const status = describeSync(sync);
+  return (
+    <section className="space-y-2">
+      <h4 className="text-sm font-semibold">
+        {t("connectors.history.load_utc")}
+      </h4>
+      <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
+        <time>{formatStarted(sync.started_at)}</time>
+        <Badge className={TONE_STYLE[status.tone]}>{status.label}</Badge>
+      </div>
+      <dl className="flex flex-wrap gap-4 text-xs">
+        <div>
+          <dt className="text-muted-foreground">{t("connectors.duration")}</dt>
+          <dd>{describeDuration(sync, asOf).text}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">
+            {t("connectors.history.records")}
+          </dt>
+          <dd>{formatRecords(sync.records_reported)}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 export function ConnectorRunHistory({
   runs,
+  syncs,
+  limit,
   latest,
   lastSuccess,
   asOf,
@@ -207,8 +262,12 @@ export function ConnectorRunHistory({
   const { t } = useTranslation();
   const heading = useId();
   const [selectedId, select] = useState<string | null>(null);
-  const selected =
-    runs.find((run) => run.sync_id === selectedId) ?? runs[0] ?? latest;
+  const managed =
+    latest && !runs.some((run) => run.sync_id === latest.sync_id)
+      ? [latest, ...runs]
+      : runs;
+  const history = recentHistory(managed, syncs, limit);
+  const selected = history.find((item) => item.id === selectedId) ?? history[0];
   const recent = latest ?? runs[0];
   return (
     <div className="@container min-w-0 space-y-4 whitespace-normal">
@@ -227,17 +286,20 @@ export function ConnectorRunHistory({
       <section aria-labelledby={heading} className="space-y-2">
         <h3 id={heading} className="text-sm font-semibold">
           {t("connectors.history.heading")}
-          {runs.length > 0 && ` · ${runs.length}`}
+          {history.length > 0 && ` · ${history.length}`}
         </h3>
         <ol
           aria-label={t("connectors.history.statuses_label")}
           className="flex flex-wrap gap-0.5"
         >
-          {runs.toReversed().map((run) => {
-            const state = describeRun(run.status);
-            const label = `${formatStarted(run.started_at)} · ${state.label}`;
+          {history.toReversed().map(({ id, record }) => {
+            const state =
+              "sync_id" in record
+                ? describeRun(record.status)
+                : describeSync(record);
+            const label = `${formatStarted(record.started_at)} · ${state.label}`;
             return (
-              <li key={run.sync_id}>
+              <li key={id}>
                 <button
                   type="button"
                   className={cn(
@@ -246,14 +308,19 @@ export function ConnectorRunHistory({
                   )}
                   aria-label={label}
                   title={label}
-                  aria-pressed={run.sync_id === selected?.sync_id}
-                  onClick={() => select(run.sync_id)}
+                  aria-pressed={id === selected?.id}
+                  onClick={() => select(id)}
                 />
               </li>
             );
           })}
         </ol>
-        {selected && <Timeline run={selected} asOf={asOf} />}
+        {selected &&
+          ("sync_id" in selected.record ? (
+            <Timeline run={selected.record} asOf={asOf} />
+          ) : (
+            <HistoricalLoad sync={selected.record} asOf={asOf} />
+          ))}
       </section>
     </div>
   );

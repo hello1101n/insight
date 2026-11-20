@@ -116,6 +116,7 @@ data:
           namespace: {{ .Release.Namespace | quote }}
           admission_enabled: {{ .Values.stageAdmission.enabled }}
           {{- if .Values.stageAdmission.enabled }}
+          airbyte_reader: {{ .Values.stageAdmission.airbyteReader | toJson }}
           airbyte_namespace: {{ .Values.stageAdmission.airbyteNamespace | default .Release.Namespace | quote }}
           argo_url: {{ tpl .Values.stageAdmission.argoUrl . | quote }}
           workflow_sa: {{ tpl .Values.stageAdmission.workflowServiceAccount . | quote }}

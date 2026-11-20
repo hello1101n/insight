@@ -45,6 +45,7 @@ impl Gear for ConnectorsGear {
         .with_reconcile_workflow(config.reconcile_workflow_name);
         cluster.admission_enabled = config.admission_enabled;
         cluster.airbyte_namespace = config.airbyte_namespace;
+        cluster.airbyte_reader = config.airbyte_reader;
         cluster.argo_url = config.argo_url;
         cluster.workflow_sa = config.workflow_sa;
         cluster.clickhouse_cluster = config.clickhouse_cluster;

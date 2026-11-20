@@ -175,16 +175,20 @@ pub(super) async fn evidence(state: &AppState, row: &StageRow) -> anyhow::Result
     .await??)
 }
 
-pub(super) async fn idle(state: &AppState) -> anyhow::Result<bool> {
+pub(super) async fn idle_before(
+    state: &AppState,
+    end: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<bool> {
     let processes = table(&state.cluster.clickhouse_cluster, "processes")?;
     let sql = format!(
-        "SELECT count() FROM {processes} WHERE Settings['log_comment'] != 'insight:admission:probe' AND query_id != currentQueryID() AND initial_query_id != initialQueryID() SETTINGS skip_unavailable_shards=0"
+        "SELECT count() FROM {processes} WHERE Settings['log_comment'] != 'insight:admission:probe' AND query_id != currentQueryID() AND initial_query_id != initialQueryID() AND (toUnixTimestamp64Milli(now64(3))-toInt64(elapsed*1000)) <= ? SETTINGS skip_unavailable_shards=0"
     );
     let count: u64 = tokio::time::timeout(
         Duration::from_secs(3),
         state
             .ch
             .query(&sql)
+            .bind(end.timestamp_millis().saturating_add(1000))
             .with_setting("log_comment", "insight:admission:probe")
             .fetch_one(),
     )

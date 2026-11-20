@@ -10,6 +10,7 @@ use crate::domain::connector_health::{ConnectorHealth, ConnectorHealthResponse};
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub(crate) struct RunStage {
+    pub airbyte_job_id: Option<String>,
     pub stage: String,
     pub attempt: u32,
     pub status: String,
@@ -37,6 +38,7 @@ pub(crate) struct Run {
 
 #[derive(Clone, FromQueryResult)]
 struct Record {
+    airbyte_job_id: Option<String>,
     sync_id: String,
     tenant: String,
     connector: String,
@@ -56,7 +58,7 @@ struct Record {
     records_reported: Option<u64>,
 }
 
-const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,s.stage,s.attempt,s.status,s.queued_at,s.granted_at,s.started_at,s.finished_at,s.reason,s.records_reported";
+const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,s.airbyte_job_id,s.stage,s.attempt,s.status,s.queued_at,s.granted_at,s.started_at,s.finished_at,s.reason,s.records_reported";
 fn ms(from: DateTime<Utc>, to: DateTime<Utc>) -> u64 {
     u64::try_from((to - from).num_milliseconds()).unwrap_or_default()
 }
@@ -121,6 +123,7 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             reported = r.records_reported;
         }
         stages.push(RunStage {
+            airbyte_job_id: r.airbyte_job_id.clone(),
             stage: r.stage.clone(),
             attempt: r.attempt,
             status: stage_status(r, now),

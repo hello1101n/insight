@@ -197,6 +197,7 @@ def main() -> int:
     last_progress: Progress | None = None
     last_readable_at = t0
     cancel_sent = False
+    unreadable_delay = min(max(poll_interval, 1), 300)
     managed = os.environ.get("ADMISSION_MANAGED") == "true"
 
     def emit_completed(status: str, exit_code: int) -> None:
@@ -228,7 +229,18 @@ def main() -> int:
             )
 
     def retry_or_give_up(reason: str) -> bool:
+        nonlocal unreadable_delay
         unreadable_for = time.monotonic() - last_readable_at
+        if managed:
+            log.warning(
+                "cannot read existing Airbyte job; retrying in %ss: %s",
+                unreadable_delay,
+                reason,
+                extra={"event": "sync.poll_unreadable", "job_id": job_id, "unreadable_for_s": int(unreadable_for)},
+            )
+            time.sleep(unreadable_delay)
+            unreadable_delay = min(300, unreadable_delay * 2)
+            return True
         if unreadable_for >= unreadable_threshold:
             log.error(
                 "Cannot read Airbyte job status; sync outcome is unknown",
@@ -244,6 +256,9 @@ def main() -> int:
             token = oauth_token()
             resp = airbyte_job(airbyte_url, token, "get", job_id)
         except FatalError as error:
+            if managed:
+                retry_or_give_up(str(error))
+                continue
             log.error(f"FAIL: {error}", extra={"event": "sync.poll_failed", "job_id": job_id})
             return 1
         except Exception as error:  # noqa: BLE001
@@ -257,6 +272,7 @@ def main() -> int:
                 return 2
             continue
         last_readable_at = time.monotonic()
+        unreadable_delay = min(max(poll_interval, 1), 300)
         try:
             progress = attempt_progress(resp)
         except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError):

@@ -112,7 +112,7 @@ pub(super) fn bronze<'a>(
     status: &'a Value,
     row: &StageRow,
     o: &mut Observation,
-) -> (Option<&'a Value>, Option<String>) {
+) -> (Option<&'a Value>, Option<super::airbyte::Completion>) {
     let trigger = trigger(status, row);
     let id = trigger
         .and_then(|n| n["outputs"]["result"].as_str())
@@ -141,7 +141,17 @@ pub(super) fn bronze<'a>(
         o.bronze_replay_safe = Some(v["status"] == "failed" && empty_failed_attempts(&v));
         o.records_reported = v["records_reported"].as_u64();
         o.volume_bytes = v["volume_bytes"].as_u64();
-        return (poll, v["status"].as_str().map(str::to_owned));
+        let last = v["attempts"]
+            .as_array()
+            .and_then(|a| a.iter().max_by_key(|t| t["attempt_id"].as_u64()));
+        let receipt = super::airbyte::Completion::observed(
+            v["status"].as_str().unwrap_or(""),
+            o.records_reported,
+            last.and_then(|a| a["records_committed"].as_u64()),
+            o.volume_bytes,
+            last.and_then(|a| a["ended_at"].as_i64()),
+        );
+        return (poll, receipt);
     }
     (poll, None)
 }

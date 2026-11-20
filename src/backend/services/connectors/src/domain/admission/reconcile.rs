@@ -1,3 +1,4 @@
+mod airbyte;
 mod nodes;
 mod pods;
 
@@ -156,10 +157,10 @@ async fn reconcile(
     let Some(wf) =
         tokio::time::timeout(Duration::from_secs(6), api.get_opt(&row.workflow_name)).await??
     else {
-        return vanished(state, row).await;
+        return vanished(state, http, row).await;
     };
     if wf.metadata.uid.as_deref() != Some(&row.sync_id) {
-        return vanished(state, row).await;
+        return vanished(state, http, row).await;
     }
     let status = &wf.data["status"];
     let phase = status["phase"].as_str().unwrap_or("");
@@ -194,7 +195,7 @@ async fn reconcile(
                 o.finished_at = Some(Utc::now());
             }
         } else {
-            o = observe_work(state, row, status, terminal).await?;
+            o = observe_work(state, http, row, status, terminal).await?;
             if o.status.as_deref() == Some("stopping_pod_wait")
                 && row.stage != "bronze"
                 && wf.data["spec"]["shutdown"].is_null()
@@ -224,7 +225,7 @@ async fn reconcile(
     store::observe(&state.db, &state.cluster.namespace, row, o).await
 }
 
-async fn vanished(state: &AppState, row: &StageRow) -> Result<()> {
+async fn vanished(state: &AppState, http: &reqwest::Client, row: &StageRow) -> Result<()> {
     let mut o = Observation::default();
     if row.granted_at.is_none()
         || row.finished_at.is_some()
@@ -234,15 +235,14 @@ async fn vanished(state: &AppState, row: &StageRow) -> Result<()> {
         o.finished_at = Some(Utc::now());
         o.run_status = Some("cancelled".into());
         o.run_finished_at = o.finished_at;
+    } else if row.stage != "bronze" || row.airbyte_job_id.is_some() {
+        o = observe_work(state, http, row, &Value::Null, true).await?;
+        if o.finished_at.is_some() {
+            o.run_status = Some("cancelled".into());
+            o.run_finished_at = o.finished_at;
+        }
     } else {
-        o.status = Some(
-            if row.stage == "bronze" && row.airbyte_claimed && row.airbyte_job_id.is_none() {
-                "checking_start"
-            } else {
-                "unknown"
-            }
-            .into(),
-        );
+        o.status = Some("checking_start".into());
         o.reason = Some("workflow_not_found".into());
     }
     store::observe(&state.db, &state.cluster.namespace, row, o).await
@@ -307,14 +307,15 @@ pub(super) async fn can_cancel_pending(state: &AppState, row: &StageRow) -> Resu
         && waiting_for_node(&pods::observe(state, row).await?))
 }
 
-async fn observe_work(
+async fn observed_node<'a>(
     state: &AppState,
+    http: &reqwest::Client,
     row: &StageRow,
-    status: &Value,
+    status: &'a Value,
     terminal: bool,
-) -> Result<Observation> {
+    o: &mut Observation,
+) -> Result<(Option<&'a Value>, Option<airbyte::Completion>)> {
     let bronze = row.stage == "bronze";
-    let mut o = Observation::default();
     if bronze
         && row.airbyte_claimed
         && row.airbyte_job_id.is_none()
@@ -322,11 +323,37 @@ async fn observe_work(
     {
         o.airbyte_job_id = pods::trigger_receipt(state, row, trigger).await;
     }
-    let (node, job) = if bronze {
-        nodes::bronze(status, row, &mut o)
+    let (node, mut job) = if bronze {
+        nodes::bronze(status, row, o)
     } else {
         (nodes::work(status, row), None)
     };
+    if bronze
+        && job.is_none()
+        && row.airbyte_job_id.is_some()
+        && (terminal
+            || node.is_some_and(|n| matches!(n["phase"].as_str(), Some("Failed" | "Error"))))
+    {
+        job = airbyte::terminal_job(state, http, row).await?;
+    }
+    if let Some(r) = &job {
+        o.records_reported = r.records;
+        o.volume_bytes = r.bytes;
+    }
+    Ok((node, job))
+}
+
+async fn observe_work(
+    state: &AppState,
+    http: &reqwest::Client,
+    row: &StageRow,
+    status: &Value,
+    terminal: bool,
+) -> Result<Observation> {
+    let bronze = row.stage == "bronze";
+    let mut o = Observation::default();
+    let (node, receipt) = observed_node(state, http, row, status, terminal, &mut o).await?;
+    let job = receipt.as_ref().map(|r| r.status.as_str());
     let evidence = capacity::evidence(state, row).await?;
     query_usage(&mut o, &evidence, bronze);
     let pod = pods::observe(state, row).await?;
@@ -339,39 +366,46 @@ async fn observe_work(
         o.reason.clone_from(&pod.oom);
     }
     let node_phase = node.and_then(|n| n["phase"].as_str()).unwrap_or("");
-    let completed = job.as_deref().map_or_else(
+    let completed = job.map_or_else(
         || !bronze && matches!(node_phase, "Succeeded" | "Failed" | "Error"),
         |job| matches!(job, "succeeded" | "failed" | "cancelled"),
     );
-    let unstarted = terminal && !row.airbyte_claimed && node.is_none() && !pod.present;
-    if completed || unstarted {
+    let orphaned = terminal && !row.airbyte_claimed && node.is_none() && !pod.may_work();
+    let unstarted = orphaned && row.started_at.is_none() && pod.started.is_none();
+    if completed || orphaned {
         let log_pending = evidence.completed == 0
             && node
                 .and_then(|n| nodes::time(n, "finishedAt"))
                 .is_some_and(|end| (Utc::now() - end).num_seconds() < 10);
+        let end = receipt
+            .as_ref()
+            .and_then(|r| r.end)
+            .unwrap_or_else(|| stage_end(node, row));
+        let drained =
+            unstarted || evidence.completed > 0 || receipt.as_ref().is_some_and(|r| r.committed);
         if log_pending
             || evidence.running != 0
-            || pod.working
-            || (evidence.completed == 0 && !capacity::idle(state).await?)
+            || pod.may_work()
+            || (!drained && !capacity::idle_before(state, end).await?)
         {
-            o.status = Some("unknown".into());
+            if row.status != "stopping_pod_wait" {
+                o.status = Some("unknown".into());
+            }
             return Ok(o);
         }
         o.status = Some(
             if row.status == "stopping_pod_wait" {
                 "wait_timeout"
-            } else if unstarted {
+            } else if orphaned {
                 "cancelled"
-            } else if matches!(job.as_deref(), Some("succeeded"))
-                || !bronze && node_phase == "Succeeded"
-            {
+            } else if matches!(job, Some("succeeded")) || !bronze && node_phase == "Succeeded" {
                 "succeeded"
             } else {
                 "failed"
             }
             .into(),
         );
-        o.finished_at = Some(stage_end(node, row));
+        o.finished_at = Some(end);
         o.reason = finish_reason(row, &evidence, &pod, o.status.as_deref());
     } else if bronze
         && row.airbyte_claimed
@@ -394,16 +428,6 @@ async fn observe_work(
     } else if terminal {
         o.status = Some("unknown".into());
     }
-    if o.started_at.is_none()
-        && (pod.working
-            || completed
-            || matches!(o.status.as_deref(), Some("loading" | "transforming")))
-    {
-        o.started_at = pod
-            .started
-            .or_else(|| node.and_then(|n| nodes::time(n, "startedAt")))
-            .or(row.started_at)
-            .or_else(|| (bronze && !pod.pending).then(Utc::now));
-    }
+    o.started_at = pod.started.or(row.started_at);
     Ok(o)
 }

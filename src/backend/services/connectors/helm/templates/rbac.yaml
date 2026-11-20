@@ -20,6 +20,14 @@ rules:
   - apiGroups: [""]
     resources: [pods/log]
     verbs: [get]
+  {{- if eq (.Values.stageAdmission.airbyteNamespace | default .Release.Namespace) .Release.Namespace }}
+  {{- with .Values.stageAdmission.airbyteReader.secret }}
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ . | quote }}]
+    verbs: [get]
+  {{- end }}
+  {{- end }}
   - apiGroups: [metrics.k8s.io]
     resources: [pods]
     verbs: [get, list]
@@ -74,6 +82,12 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [get, list]
+  {{- with .Values.stageAdmission.airbyteReader.secret }}
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ . | quote }}]
+    verbs: [get]
+  {{- end }}
   - apiGroups: [metrics.k8s.io]
     resources: [pods]
     verbs: [get, list]

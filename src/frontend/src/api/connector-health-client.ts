@@ -23,6 +23,7 @@ export interface SyncFact {
 export interface ConnectorRunStage {
   stage: string;
   attempt: number;
+  airbyte_job_id?: string | null;
   status: string;
   queued_at?: string | null;
   granted_at?: string | null;

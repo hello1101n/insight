@@ -94,3 +94,11 @@ def test_bronze_resolves_once_then_sizes_the_source_before_either_send(charts):
     assert "AIRBYTE_EVIDENCE_PATH" in str(airbyte["poll-job"]["container"]["env"])
     assert "airbyte-send-evidence" in str(airbyte["trigger-sync"]["outputs"])
     assert "stage-auth" not in str(airbyte["prepare-source"])
+
+
+def test_deleted_managed_poller_can_be_replaced_after_a_long_running_job(charts):
+    retry = charts[True]["airbyte-sync"]["poll-job"]["retryStrategy"]
+    assert retry["retryPolicy"] == "OnError" and retry["limit"] > 0
+    assert retry["backoff"]["maxDuration"] == "{{=inputs.parameters.admission_managed == 'true' ? '' : '5m'}}"
+    assert retry["backoff"]["cap"] == "5m"
+    assert charts[False]["airbyte-sync"]["poll-job"]["retryStrategy"]["backoff"]["maxDuration"] == "5m"
