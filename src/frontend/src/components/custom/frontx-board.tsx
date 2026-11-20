@@ -117,6 +117,7 @@ function FrontxBoard({ id, read, range }: FrontxBoardProps) {
         theme={theme}
         language="en"
         variables={range ? { range } : {}}
+        overlayContainer={document.body}
       />
     </div>
   );

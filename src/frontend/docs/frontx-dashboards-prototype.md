@@ -6,7 +6,7 @@ This prototype is throwaway code. It examines one decision: should Insight move 
 
 The question: can the FrontX dashboard template show the saved Insight dashboards inside the Insight frontend, and how does it behave?
 
-The answer: it partly works. The FrontX renderer shows all six Insight widget kinds, headings and texts from the existing run endpoint, with no console errors. Stacked bars, tables with more than 500 rows and the larger view are wrong, and a dashboard takes about twice as long to draw. Percent values are right only with a new field in the widgets answer, which the prototype mocks. Do not start a real build until the FrontX team answers the blocker questions.
+The answer: it partly works. The FrontX renderer shows all six Insight widget kinds, headings and texts from the existing run endpoint, with no console errors. Stacked bars and tables with more than 500 rows are wrong, and a dashboard takes about twice as long to draw. Percent values are right only with a new field in the widgets answer, which the prototype mocks. Do not start a real build until the FrontX team answers the blocker questions.
 
 ## How to run the prototype
 
@@ -158,8 +158,8 @@ The entries are in the order the prototype hit them.
     - Real build: nothing for FrontX.
 20. **The larger view opens under the sidebar.**
     - What happened: the larger view dialog stays inside the dashboard element. The Insight `main` element has `isolation: isolate`, so the sidebar paints over the left part of the dialog. The dialog title is not visible.
-    - Workaround: none.
-    - Real build: a FrontX change (render the dialog into a host portal) or an Insight change (remove the stacking context from `main`).
+    - Workaround: the copied package has a new `overlayContainer` prop on `Dashboard`. The host passes `document.body`, so the dialog opens above the sidebar in the light and dark themes. Insight cannot remove `isolation: isolate`: it keeps the sticky top bar under the fixed sidebar.
+    - Real build: a FrontX change (the same prop, or an overlay that mounts in the page body).
 21. **The copied package fails the Insight lint rules.**
     - What happened: `eslint .` reported 18 errors and 3 warnings in `vendor/frontx-dashboard-root`, for example `no-control-regex`.
     - Workaround: `eslint.config.js` ignores `vendor`.
@@ -189,7 +189,7 @@ The list starts with the most important blocker.
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------ |
 | 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                              | FrontX                                        | Blocks a real build                              |
 | 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.                  | FrontX (or Insight, with grouped answers)     | Blocks a real build                              |
-| 3    | The larger view opens under the Insight sidebar.                                                                                                                | FrontX (or Insight)                           | Blocks a real build                              |
+| 3    | The larger view opens under the Insight sidebar. A one-prop FrontX change fixes it (bump 20).                                                                   | FrontX (or Insight)                           | Blocks a real build                              |
 | 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                        | FrontX                                        | Blocks a real build                              |
 | 5    | Nothing that a viewer reads before the run names the percent columns. The widgets answer needs a `percents` field (bump 13).                                    | Insight                                       | Blocks a real build until Insight adds the field |
 | 6    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                     | FrontX                                        | Quality gap                                      |

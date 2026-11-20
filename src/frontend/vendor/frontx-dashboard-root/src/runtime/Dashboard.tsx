@@ -36,9 +36,14 @@ export interface DashboardProps {
    * number or a boolean, fails its cell. A change of a value re-runs only the cells whose request names it.
    */
   variables?: VariableValues;
+  /**
+   * Prototype change, not in the template: where the larger view mounts. Without it the overlay stays inside the
+   * dashboard element, so a host that puts its content in a stacking context under a fixed sidebar hides part of it.
+   */
+  overlayContainer?: HTMLElement | null;
 }
 
-export function Dashboard({ root, dashboardId, theme, language, texts, variables }: DashboardProps) {
+export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
   // Both values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
   const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
@@ -80,7 +85,7 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
           loaded={loaded}
           texts={texts?.dashboard}
           frameTexts={frameTexts}
-          container={container}
+          container={overlayContainer ?? container}
           values={variables}
         />
       ) : (
