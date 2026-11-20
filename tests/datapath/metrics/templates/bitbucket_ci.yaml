@@ -1,0 +1,61 @@
+# Reusable Bitbucket Cloud pipeline and deployment bronze records for the CI
+# specs. Each base carries every schema column; variants override. Vendor
+# stamps keep the nine fractional digits Bitbucket sends where the connector
+# passes them through raw.
+templates:
+  # A push to main that passed on its first run, three minutes long.
+  pipeline:
+    _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
+    _airbyte_extracted_at: "2026-03-10T00:00:00"
+    _airbyte_meta: "{}"
+    _airbyte_generation_id: 0
+    unique_key: bb-pipe-1
+    tenant_id: "{{ tenant }}"
+    source_id: bitbucket-test
+    data_source: insight_bitbucket_cloud
+    collected_at: "2026-03-10T00:00:00Z"
+    uuid: "{pipe-1}"
+    build_number: 1
+    run_number: 1
+    repo_full_name: acme/app
+    state_name: COMPLETED
+    result_name: SUCCESSFUL
+    state_stage: ""
+    target_ref: main
+    target_commit_sha: "0000000000000000000000000000000000000001"
+    target_type: pipeline_ref_target
+    selector_type: branches
+    selector_pattern: main
+    source_branch: ""
+    trigger_name: PUSH
+    creator_uuid: "{user-1}"
+    creator_account_id: dev1-acct
+    creator_display_name: Dev One
+    duration_in_seconds: 180
+    created_on: "2026-03-01T10:00:00.000000Z"
+    run_creation_date: "2026-03-01T10:00:00.123456789Z"
+    completed_on: "2026-03-01T10:03:00.123456789Z"
+
+  # A completed production deployment.
+  deployment:
+    _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
+    _airbyte_extracted_at: "2026-03-10T00:00:00"
+    _airbyte_meta: "{}"
+    _airbyte_generation_id: 0
+    unique_key: bb-dep-1
+    tenant_id: "{{ tenant }}"
+    source_id: bitbucket-test
+    data_source: insight_bitbucket_cloud
+    collected_at: "2026-03-10T00:00:00Z"
+    uuid: "{dep-1}"
+    repo_full_name: acme/app
+    state_name: COMPLETED
+    state_status: SUCCESSFUL
+    version: 3
+    environment_uuid: "{env-production}"
+    environment_name: Production
+    environment_type: Production
+    deployable_commit_sha: "0000000000000000000000000000000000000001"
+    deployable_pipeline_uuid: "{pipe-1}"
+    created_on: "2026-03-01T12:00:00.000000Z"
+    last_update_time: "2026-03-01T12:05:00.000000Z"

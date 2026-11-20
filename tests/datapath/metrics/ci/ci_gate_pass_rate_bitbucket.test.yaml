@@ -1,0 +1,129 @@
+description: >
+  Metric: ci.gate_pass_rate — share of commit-triggered CI runs that passed,
+  from Bitbucket Pipelines (tenant-grain). ci.runs, ci.gate_retry_share and
+  ci.gate_first_try_pass_rate read the same seed.
+  How it's computed (bronze → silver → gold):
+    • bronze: Bitbucket pipelines, one row per pipeline holding its latest
+      run; a rerun keeps the pipeline and raises its run counter
+    • silver: each run attempt is its own row; a push that built a pull
+      request is the pull_request trigger; a run paused on a manual step
+      passed; an expired run timed out; a halted or pending run is undecided
+    • gold:   a rerun pipeline counts once, at its last attempt, dated at
+      that attempt's start; pass rate = passed gate runs / gate runs, where
+      the gate is a push or pull_request run with a decided outcome
+
+  Seeded runs on branches:main: success (plus an exact re-sync duplicate),
+  failure, error (synced before the run start was kept), paused on a manual
+  step, a pipeline rerun on Mar 02 that failed then passed, and an expired
+  run; one pull-request run that passed; one tag push that passed → gate 8,
+  passed 5 → 62.5%. A schedule run, a manual run, an on-demand run and a
+  stopped push are decided outside the gate; a halted and a pending push are
+  undecided and appear nowhere.
+  Cases: gate definition and per-pipeline split (62.5%; main 50%, the
+  pull-request and tag pipelines 100%); runs by trigger and the rerun dated
+  at its last start; the rerun is a retry and not a first-try pass.
+bronze:
+  bronze_bitbucket_cloud.pipelines:
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-2
+      uuid: "{pipe-2}"
+      build_number: 2
+      result_name: FAILED
+    # A row synced before the run start was kept: the run dates by its creation.
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-3
+      uuid: "{pipe-3}"
+      build_number: 3
+      result_name: ERROR
+      run_creation_date: null
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-4
+      uuid: "{pipe-4}"
+      build_number: 4
+      target_type: pipeline_pullrequest_target
+      target_ref: ""
+      source_branch: feature/login
+      selector_type: pull-requests
+      selector_pattern: "**"
+    # Paused on a manual step after every automatic step passed.
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-5
+      uuid: "{pipe-5}"
+      build_number: 5
+      state_name: IN_PROGRESS
+      result_name: ""
+      state_stage: PAUSED
+      completed_on: null
+    # One pipeline, rerun on Mar 02: bronze replaces the failed first run with
+    # the passing second one.
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-6
+      uuid: "{pipe-6}"
+      build_number: 6
+      result_name: FAILED
+      _airbyte_extracted_at: "2026-03-01T12:00:00"
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-6
+      uuid: "{pipe-6}"
+      build_number: 6
+      run_number: 2
+      run_creation_date: "2026-03-02T09:00:00.123456789Z"
+      completed_on: "2026-03-02T09:04:00.123456789Z"
+      duration_in_seconds: 240
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-7
+      uuid: "{pipe-7}"
+      build_number: 7
+      result_name: EXPIRED
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-8
+      uuid: "{pipe-8}"
+      build_number: 8
+      target_ref: v1.0
+      selector_type: tags
+      selector_pattern: v*
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-9
+      uuid: "{pipe-9}"
+      build_number: 9
+      trigger_name: SCHEDULE
+      selector_type: custom
+      selector_pattern: nightly
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-10
+      uuid: "{pipe-10}"
+      build_number: 10
+      trigger_name: MANUAL
+      selector_type: custom
+      selector_pattern: deploy
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-11
+      uuid: "{pipe-11}"
+      build_number: 11
+      trigger_name: ON_DEMAND
+      selector_type: custom
+      selector_pattern: deploy
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-12
+      uuid: "{pipe-12}"
+      build_number: 12
+      result_name: STOPPED
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-13
+      uuid: "{pipe-13}"
+      build_number: 13
+      state_name: IN_PROGRESS
+      result_name: ""
+      state_stage: HALTED
+      completed_on: null
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-14
+      uuid: "{pipe-14}"
+      build_number: 14
+      state_name: PENDING
+      result_name: ""
+      run_creation_date: null
+      completed_on: null
+      duration_in_seconds: null
