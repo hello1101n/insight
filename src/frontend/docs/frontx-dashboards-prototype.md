@@ -6,7 +6,7 @@ This prototype is throwaway code. It examines one decision: should Insight move 
 
 The question: can the FrontX dashboard template show the saved Insight dashboards inside the Insight frontend, and how does it behave?
 
-The answer: it partly works. The FrontX renderer shows all six Insight widget kinds, headings and texts from the existing run endpoint, with no console errors. Stacked bars, percent values and the larger view are wrong, and a dashboard takes about twice as long to draw. Do not start a real build until the FrontX team answers the blocker questions.
+The answer: it partly works. The FrontX renderer shows all six Insight widget kinds, headings and texts from the existing run endpoint, with no console errors. Stacked bars, tables with more than 500 rows and the larger view are wrong, and a dashboard takes about twice as long to draw. Percent values are right only with a new field in the widgets answer, which the prototype mocks. Do not start a real build until the FrontX team answers the blocker questions.
 
 ## How to run the prototype
 
@@ -35,10 +35,10 @@ You need Node 24.14 or later, pnpm, and a clone of `gears-frontx-templates` (ups
      VITE_ENABLE_MOCKS=true pnpm exec vite --port 5176 --strictPort
    ```
 
-5. Open these pages:
+5. Open a mock dashboard. Add `?frontx=1` to see it through FrontX:
    - `http://localhost:5176/dashboards/delivery-pulse?frontx=1` shows the mock dashboard with eight widgets through FrontX.
    - `http://localhost:5176/dashboards/delivery-pulse` shows the same dashboard through the current renderer.
-   - `http://localhost:5176/dashboards/delivery-overview?frontx=1` shows the mock dashboard with one table.
+   - "Example dashboards" lists the other mock dashboards.
 
 If `FRONTX_WIDGETS_DIR` is not set, the dev server writes a warning. The `?frontx=1` page then shows a message that names the variable.
 
@@ -54,11 +54,12 @@ Do not merge these changes. They exist only to compare the two renderers.
 - `tsconfig.app.json` sets `erasableSyntaxOnly` to `false`.
 - `eslint.config.js` ignores `vendor`.
 - `vite.frontx-widgets.ts` serves the widget bundles under `/widgets/`. `vite.config.ts` adds it and dedupes React.
-- The dev mocks hold a new dashboard, `delivery-pulse`. It has one widget of each kind, two headings, one text and three time ranges.
+- The dev mocks hold seven example dashboards in `src/mocks/example-dashboards.ts`. "Example dashboards" lists them.
+- `DashboardWidget` in `src/api/custom-types.ts` has an optional `percents` field. Only the dev mocks send it. See bump 13.
 
 ## What works
 
-- The adapter in `src/lib/custom/frontx-board.ts` makes a FrontX dashboard file from the Insight dashboard and its widgets. It has about 200 lines.
+- The adapter in `src/lib/custom/frontx-board.ts` makes a FrontX dashboard file from the Insight dashboard and its widgets. It has about 250 lines.
 - The host in `src/components/custom/frontx-board.tsx` sends each data request through `fetchWithAuth` to the existing run endpoint. The FrontX code makes no network request for data on its own.
 - Each Insight widget kind has a FrontX widget type:
   - `table` uses `grid`.
@@ -72,6 +73,8 @@ Do not merge these changes. They exist only to compare the two renderers.
 - The larger view opens and sends one run request. The data view of a chart sends no request.
 - A widget with no clock shows "All time" under its title.
 - A date bucket on the x axis shows formatted dates.
+- The widgets keep the two columns of the current renderer. The adapter turns off the flexible FrontX layout.
+- A percent column shows as a percent when the widgets answer names it. A stat, a chart or a pie gets the FrontX percent format, and the transform divides the value by 100. A table writes the column as text, such as `24.3%`. Both renderers show the mock change failure rate as `12.8%`.
 
 ## Bumps log
 
@@ -125,10 +128,10 @@ The entries are in the order the prototype hit them.
     - What happened: a category axis shows `2026-10-03` where the current renderer shows `Oct 3`.
     - Workaround: the adapter sets `x_axis.type` to `time` when the x column is `bucket`.
     - Real build: nothing. Other date columns need the same rule.
-13. **Percent values show as fractions.**
-    - What happened: the current renderer reads the `percents` list in each run answer. The dashboard file sets each FrontX `value_format` before any answer arrives. The mock rate shows as `0.128` where the current renderer shows `0.13%`.
-    - Workaround: none.
-    - Real build: an Insight change (put the percent columns into the widget read) or a FrontX change (a format that comes from the data). The two renderers also scale percent values differently.
+13. **The percent columns arrive only with the run answer.**
+    - What happened: an Insight percent column holds 0 to 100. The current renderer adds `%` to each column in the `percents` list of the run answer. A FrontX percent format reads a fraction (0.25 shows as 25%), and the dashboard file sets it before any answer arrives. The metric definition marks each percent field, but only an administrator can read a metric definition. The dashboard read and the widgets answer do not carry the flag. So nothing that a dashboard viewer reads before the run names the percent columns.
+    - Workaround: the dev mocks add `percents` to each item of the widgets answer. With it, the adapter sets the percent format and divides by 100 in the transform.
+    - Real build: an Insight change. `GET /v1/dashboards/{id}/widgets` must return the percent columns of the drawn metric beside `clock`. The service already reads that metric to find the clock. Without the field, a percent shows as a plain number, such as `12.8` for 12.8%.
 14. **Stylesheets loaded again after each redraw.**
     - What happened: each widget adds its stylesheets as `<link>` elements in its shadow root. With `cache-control: no-cache`, the browser asked for them again after a range change.
     - Workaround: the middleware marks the hashed files under `assets/` as immutable.
@@ -161,37 +164,81 @@ The entries are in the order the prototype hit them.
     - What happened: `eslint .` reported 18 errors and 3 warnings in `vendor/frontx-dashboard-root`, for example `no-control-regex`.
     - Workaround: `eslint.config.js` ignores `vendor`.
     - Real build: a FrontX change (ship built JavaScript), or an Insight rule that excludes vendored code.
+22. **Insight widgets have no multi-series line and no grouped bar.**
+    - What happened: the example dashboards could not show a line or an area with several series, or a grouped bar. An Insight `line` or `area` widget names one `y` column. A `bar` widget with a `series` column always stacks.
+    - Workaround: the `breakdowns` dashboard says so in a text.
+    - Real build: nothing. The FrontX `cartesian_chart` can draw these, so a later Insight widget change can use them.
+23. **The flexible FrontX grid put three widgets in a row.**
+    - What happened: the FrontX grid shrinks medium cells to fill a row, so a row of the `trends` dashboard held three widgets. The current renderer always draws two columns.
+    - Workaround: the adapter sets `layout.flexible` to `false`.
+    - Real build: nothing.
+24. **A grid with more than 500 rows fails its cell.**
+    - What happened: the table with 650 rows shows "This widget cannot be shown". The console names the cause: "Too many items in `#/rows`, should be `500` at most". The current renderer shows the first 200 of 650 rows.
+    - Workaround: none. The host can cut the rows before the transform, but that is data code in the host.
+    - Real build: a FrontX change (grid paging from the request, or a higher limit), or an Insight change in the host.
+25. **A grid has one value format.**
+    - What happened: FrontX formats every number of a grid with one `value_format`, so a table cannot hold one percent column among plain numbers.
+    - Workaround: the transform writes a percent column as text with one decimal, such as `24.3%`. The column then sorts as text.
+    - Real build: a FrontX change (a format for each column).
 
 ## Blockers for the custom v3 dashboards
 
 The list starts with the most important blocker.
 
-| Rank | Blocker                                                                                                                                                         | Owner                                         | Effect                                        |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
-| 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                              | FrontX                                        | Blocks a real build                           |
-| 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.                  | FrontX (or Insight, with grouped answers)     | Blocks a real build                           |
-| 3    | The larger view opens under the Insight sidebar.                                                                                                                | FrontX (or Insight)                           | Blocks a real build                           |
-| 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                        | FrontX                                        | Blocks a real build                           |
-| 5    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                     | FrontX                                        | Quality gap                                   |
-| 6    | Percent columns and other value formats are known only at run time.                                                                                             | Insight (or FrontX)                           | Quality gap                                   |
-| 7    | The admin drilldown and the missing-column message are not available.                                                                                           | Insight and FrontX                            | Quality gap                                   |
-| 8    | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The prototype did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work |
-| 9    | Widget texts are English only, cells have fixed heights, and the grid holds 500 rows at most.                                                                   | FrontX                                        | Quality gap                                   |
+| Rank | Blocker                                                                                                                                                         | Owner                                         | Effect                                           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------ |
+| 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                              | FrontX                                        | Blocks a real build                              |
+| 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.                  | FrontX (or Insight, with grouped answers)     | Blocks a real build                              |
+| 3    | The larger view opens under the Insight sidebar.                                                                                                                | FrontX (or Insight)                           | Blocks a real build                              |
+| 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                        | FrontX                                        | Blocks a real build                              |
+| 5    | Nothing that a viewer reads before the run names the percent columns. The widgets answer needs a `percents` field (bump 13).                                    | Insight                                       | Blocks a real build until Insight adds the field |
+| 6    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                     | FrontX                                        | Quality gap                                      |
+| 7    | The admin drilldown and the missing-column message are not available.                                                                                           | Insight and FrontX                            | Quality gap                                      |
+| 8    | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The prototype did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work    |
+| 9    | A grid with more than 500 rows fails its cell, and a grid has one value format for all its columns.                                                             | FrontX (or Insight, in the host)              | Quality gap                                      |
+| 10   | Widget texts are English only, cells have fixed heights, and failed cells do not say why.                                                                       | FrontX                                        | Quality gap                                      |
 
 ## Gaps against the current dashboards
 
-- Stacked or grouped bars by a `series` column draw as one series for each row.
-- Percent values show as fractions.
+- Stacked bars by a `series` column draw as one series for each row. The legend then repeats each value and can run past the cell.
+- Percent values need the `percents` field in the widgets answer. Without it, a percent shows as a plain number. A percent table column is text and sorts as text.
+- A table with more than 500 rows fails its cell. The current renderer shows its first 200 rows.
 - The admin "Show data" drilldown into a detail metric is not available. The FrontX data view shows only the rows of the widget.
 - The admin message that names a missing column becomes "This widget cannot be shown" and a console line.
 - The empty-window text "Nothing in this window. Try a wider range." becomes "No data to show". All widget texts are English.
+- A failed run shows "This widget cannot be shown" and "Try again". The current renderer shows the reason from the service to an administrator, and "Busy, try again." for a busy service.
+- A stat with no value shows "No data to show" and loses its label. The current renderer shows a dash and keeps the label. A stat with no label shows no caption, where the current renderer shows the column name.
+- FrontX shows up to two decimals, such as `47.25`. The current renderer shows one decimal for a value of 10 or more, such as `47.3`.
+- Date ticks include the year, such as `Oct 1, 2026`. A wide table scrolls sideways inside its cell.
 - Cells have fixed heights. A table shows five rows and then pages. The grid data holds 500 rows at most.
 - The "All time" badge becomes a line under the title. Headings lose the small uppercase style. Table headers are uppercase and the row-number column is gone. Axis titles show the column names.
 - The `?widget=` link to an expanded widget has no FrontX equivalent.
 
+## Example dashboards
+
+The dev mocks hold these dashboards. Every number is synthetic. The paired screenshots of the pull request show each dashboard in both renderers.
+
+- `delivery-pulse`: one widget of each kind, two headings, one text and three time ranges. The change failure rate is a percent stat.
+- `delivery-overview`: one table and no time range.
+- `kpi-overview`: eight stats. They show plain numbers, percents above and below 10, amounts in USD, a large number, a negative number and an empty value.
+- `breakdowns`: a stacked bar with four severities over six teams, bars with labels, and a percent bar. It also has a pie with 14 slices, a percent pie with no clock, and a bar over 16 long service names.
+- `trends`: daily lines and an area over a quarter, a percent line, a bar over days, and a line with gaps.
+- `pipeline-runs`: a long dashboard title and no time range. It holds a table with 12 columns and 650 rows, a table with 9 rows and a percent column, and a line with no clock.
+- `edge-cases`: a long heading, a long text, a long widget title and a long stat label. It also has a line and a table with no rows, a run that fails, a busy run, and a pie that names a column the metric does not return.
+- `reading-notes`: headings and texts only.
+
+The notable differences per dashboard:
+
+- `kpi-overview`: the stat values agree. FrontX cells are taller, `47.25` shows where the current renderer shows `47.3`, and the empty stat loses its label.
+- `breakdowns`: the stacked bar breaks in FrontX (bump 3). The current pie legend with 14 slices runs past the card edge. The FrontX pie legend shows 7 of 14 entries.
+- `trends`: the charts agree. FrontX shows the year in each date tick.
+- `pipeline-runs`: the 650-row table fails in FrontX (bump 24). The 9-row table shows three rows and pages, and its percent column is off to the right.
+- `edge-cases`: every failure stays in its cell in both renderers. FrontX says "This widget cannot be shown" for the failed run, the busy run and the wrong column alike.
+- `reading-notes`: both renderers show the text. FrontX headings are larger and not uppercase.
+
 ## Measurements
 
-The measurements compare the two renderers on the two mock dashboards. They come from a local mock build, so the absolute numbers are not production numbers. The differences between the renderers are the result.
+The measurements compare the two renderers on `delivery-pulse` and `delivery-overview`. They predate the other example dashboards. They come from a local mock build, so the absolute numbers are not production numbers. The differences between the renderers are the result.
 
 How the prototype measured:
 
@@ -250,7 +297,7 @@ The upgrade from ui-kit 0.4.10 to 0.5.1 breaks nothing in Insight:
 1. Can a host load or replace one dashboard at runtime, for example after an edit? Can a host release a `DashboardRoot`?
 2. Can CEL get list functions, such as `indexOf`, a group function or two-variable comprehensions?
 3. Can a cartesian chart stack series that come from the data, for example with a default `stack_group`?
-4. Can a value format come from the data, or can a percent format read values from 0 to 100?
+4. Can a value format come from the data? Can a percent format read values from 0 to 100? Can a grid format each column on its own?
 5. Can the larger view render into a portal that the host gives, such as `document.body`?
 6. Can the widgets use the React, recharts and ui-kit of the host? Why is the shared `recharts.js` not minified?
 7. Can a dashboard load only the parts of the widget types it uses, or one joined file? Can the data requests start before the root registers the parts?
@@ -260,6 +307,6 @@ The upgrade from ui-kit 0.4.10 to 0.5.1 breaks nothing in Insight:
 
 ## Recommendation
 
-Do not start a real build of the FrontX dashboards now. The adapter is small, but the move makes the page slower and heavier, and it loses features. Ask the FrontX team questions 1, 2, 3, 5 and 6 first. Start a real build when FrontX resolves blockers 1 to 4.
+Do not start a real build of the FrontX dashboards now. The adapter is small, but the move makes the page slower and heavier, and it loses features. Ask the FrontX team questions 1, 2, 3, 5 and 6 first. Start a real build when FrontX resolves blockers 1 to 4 and Insight adds the `percents` field of blocker 5.
 
 Ship the ui-kit 0.5.1 upgrade on its own. It needs no other change.
