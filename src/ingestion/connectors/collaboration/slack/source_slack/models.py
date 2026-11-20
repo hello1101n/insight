@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, JsonValue, StrictBool, ValidationError
+from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field, JsonValue, StrictBool, ValidationError
 
 NonBlank = Annotated[str, Field(pattern=r"\S")]
 
@@ -19,7 +19,7 @@ class SlackConfig(BaseModel):
 
     insight_tenant_id: NonBlank
     insight_source_id: NonBlank
-    slack_bot_token: NonBlank
+    slack_user_token: NonBlank = Field(validation_alias=AliasChoices("slack_user_token", "slack_bot_token"))
     slack_start_date: date
 
 
