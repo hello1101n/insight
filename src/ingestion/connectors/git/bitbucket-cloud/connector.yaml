@@ -2173,17 +2173,24 @@ streams:
           collected_at: {type: [string, "null"]}
           uuid: {type: [string, "null"]}
           build_number: {type: [integer, "null"]}
+          run_number: {type: [integer, "null"]}
           repo_full_name: {type: [string, "null"]}
           state_name: {type: [string, "null"]}
           result_name: {type: [string, "null"]}
+          state_stage: {type: [string, "null"]}
           target_ref: {type: [string, "null"]}
           target_commit_sha: {type: [string, "null"]}
+          target_type: {type: [string, "null"]}
+          selector_type: {type: [string, "null"]}
+          selector_pattern: {type: [string, "null"]}
+          source_branch: {type: [string, "null"]}
           trigger_name: {type: [string, "null"]}
           creator_uuid: {type: [string, "null"]}
           creator_account_id: {type: [string, "null"]}
           creator_display_name: {type: [string, "null"]}
           duration_in_seconds: {type: [integer, "null"]}
           created_on: {type: [string, "null"]}
+          run_creation_date: {type: [string, "null"]}
           completed_on: {type: [string, "null"]}
         required:
           - unique_key
@@ -2319,12 +2326,32 @@ streams:
             value: "{{ ((record.get('state') or {}).get('result') or {}).get('name') or '' }}"
             value_type: string
           - type: AddedFieldDefinition
+            path: [state_stage]
+            value: "{{ ((record.get('state') or {}).get('stage') or {}).get('name') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
             path: [target_ref]
             value: "{{ (record.get('target') or {}).get('ref_name') or '' }}"
             value_type: string
           - type: AddedFieldDefinition
             path: [target_commit_sha]
             value: "{{ ((record.get('target') or {}).get('commit') or {}).get('hash') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [target_type]
+            value: "{{ (record.get('target') or {}).get('type') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [selector_type]
+            value: "{{ ((record.get('target') or {}).get('selector') or {}).get('type') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [selector_pattern]
+            value: "{{ ((record.get('target') or {}).get('selector') or {}).get('pattern') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [source_branch]
+            value: "{{ (record.get('target') or {}).get('source') or '' }}"
             value_type: string
           - type: AddedFieldDefinition
             path: [trigger_name]
@@ -2356,9 +2383,7 @@ streams:
 
   # ── Deployments (Bitbucket API) ─────────────────────────────────────────
   # Same pipelines-module shape; outcome (`state`) IS in the list, unlike
-  # GitHub. Sort support here is thinner than on /pipelines/ — verify
-  # `sort=-created_on` on the live smoke; the data-feed stop keeps
-  # correctness either way.
+  # GitHub.
   - type: DeclarativeStream
     name: deployments
     primary_key:
@@ -2378,7 +2403,10 @@ streams:
           repo_full_name: {type: [string, "null"]}
           state_name: {type: [string, "null"]}
           state_status: {type: [string, "null"]}
+          version: {type: [integer, "null"]}
           environment_uuid: {type: [string, "null"]}
+          environment_name: {type: [string, "null"]}
+          environment_type: {type: [string, "null"]}
           deployable_commit_sha: {type: [string, "null"]}
           deployable_pipeline_uuid: {type: [string, "null"]}
           created_on: {type: [string, "null"]}
@@ -2408,12 +2436,12 @@ streams:
           # No sort and no q, and neither is an oversight. VERIFIED live:
           # `sort=created_on` is rejected 400 ("Invalid sort attribute"), and a
           # `q` on created_on is ACCEPTED AND SILENTLY IGNORED — a cutoff years
-          # in the future still returns every row. The start-date bound cannot
-          # be pushed to this endpoint at all, so it is applied to the records
-          # instead (incremental_sync below): the requests still walk a
-          # repository's whole deploy history, but nothing older than the bound
-          # reaches bronze. Every other stream filters server-side; this one
-          # cannot.
+          # in the future still returns every row. The bound cannot be pushed
+          # to this endpoint at all, so it is applied to the records instead
+          # (incremental_sync below): the requests still walk a repository's
+          # whole deploy history, but only deployments whose state changed
+          # since the last sync reach bronze. Every other stream filters
+          # server-side; this one cannot.
           pagelen: "100"
         error_handler:
           type: DefaultErrorHandler
@@ -2446,8 +2474,8 @@ streams:
         extractor:
           type: DpathExtractor
           field_path: [values]
-        # The client-side bound reads created_on; it must see the truncated
-        # value the transformation writes, not the raw one.
+        # The client-side bound reads last_update_time; it must see the
+        # truncated value the transformation writes, not the raw one.
         transform_before_filtering: true
       paginator:
         type: DefaultPaginator
@@ -2472,15 +2500,19 @@ streams:
               $ref: "#/streams/0"
     incremental_sync:
       type: DatetimeBasedCursor
-      cursor_field: created_on
+      # INVARIANT: never created_on. A manual deploy runs after newer
+      # deployments have moved such a cursor past it, so its outcome would
+      # never pass the bound; last_update_time moves on every state change.
+      cursor_field: last_update_time
       datetime_format: "%Y-%m-%dT%H:%M:%S.%f%z"
       cursor_datetime_formats:
         - "%Y-%m-%dT%H:%M:%S.%f%z"
         - "%Y-%m-%dT%H:%M:%S%z"
       # The endpoint cannot filter or order (see the requester above), so the
       # bound is enforced on the records after the fetch. This drops
-      # pre-start-date deployments rather than letting a repository's whole
-      # history accumulate in bronze forever.
+      # deployments unchanged since the last sync, and pre-start-date ones,
+      # rather than letting a repository's whole history accumulate in bronze
+      # forever.
       is_client_side_incremental: true
       start_datetime:
         type: MinMaxDatetime
@@ -2518,6 +2550,14 @@ streams:
             value: "{{ (record.get('environment') or {}).get('uuid') or '' }}"
             value_type: string
           - type: AddedFieldDefinition
+            path: [environment_name]
+            value: "{{ (record.get('environment') or {}).get('name') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [environment_type]
+            value: "{{ ((record.get('environment') or {}).get('environment_type') or {}).get('name') or '' }}"
+            value_type: string
+          - type: AddedFieldDefinition
             path: [deployable_commit_sha]
             value: "{{ ((record.get('deployable') or {}).get('commit') or {}).get('hash') or '' }}"
             value_type: string
@@ -2532,6 +2572,14 @@ streams:
             value: >-
               {%- set created = record.get('created_on') or (record.get('deployable') or {}).get('created_on') or '' -%}
               {{ format_datetime(created, '%Y-%m-%dT%H:%M:%S.%fZ') if created else '' }}
+            value_type: string
+          - type: AddedFieldDefinition
+            path: [last_update_time]
+            # WORKAROUND: the same nine-digit stamp as created_on, and this is
+            # the cursor. Reads the created_on written above when absent.
+            value: >-
+              {%- set updated = record.get('last_update_time') or record.get('created_on') or '' -%}
+              {{ format_datetime(updated, '%Y-%m-%dT%H:%M:%S.%fZ') if updated else '' }}
             value_type: string
           - type: AddedFieldDefinition
             path: [unique_key]

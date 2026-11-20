@@ -103,7 +103,7 @@ kubectl apply -f src/ingestion/secrets/connectors/bitbucket-cloud.yaml
 | `pull_request_activity` | `/pullrequests/{id}/activity` | windowed PR parent, full refresh per PR | — |
 | `workspace_members` | `/workspaces/{w}/members` | full refresh | — |
 | `pipelines` | `/repositories/{r}/pipelines` | newest-first data feed, per repository pushed to | `created_on` |
-| `deployments` | `/repositories/{r}/deployments` | newest-first data feed, per repository pushed to | `created_on` |
+| `deployments` | `/repositories/{r}/deployments` | client-side bound on every listed deployment, per repository pushed to | `last_update_time` |
 | `commit_authors` | proxy `/v1/authors/changes`, then `/repositories/{r}/commit/{sha}` | incremental, one lookup per changed author | `changed_at` |
 
 ### How the streams fit together
@@ -255,8 +255,11 @@ One stream cannot comply. The deployments endpoint rejects `sort=created_on`
 (400) and **accepts a `q` on `created_on` while silently ignoring it** — a
 cutoff years in the future still returns every row. Its bound is therefore
 applied to the records after the fetch (`is_client_side_incremental`): the
-requests still walk a repository's whole deploy history, but nothing older than
-the bound reaches bronze.
+requests still walk a repository's whole deploy history, but only a deployment
+whose state changed since the last sync reaches bronze. The bound reads
+`last_update_time`, which moves with every state change, not `created_on`: a
+manual deploy runs after newer deployments exist, and a `created_on` bound
+would never pass its outcome.
 
 ## Partial clone support: settled
 
