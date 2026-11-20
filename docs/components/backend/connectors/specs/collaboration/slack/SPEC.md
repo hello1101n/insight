@@ -415,7 +415,7 @@ In metrics, these rows have the dimension `tool = slack`.
 | `messages_posted_count` | `total_chat_messages` | `collab.messages_sent`, `collab.msgs_per_active_day` |
 | `channel_messages_posted_count` | `channel_posts` | `collab.channel_posts` |
 | Messages minus channel messages (0 minimum) | `direct_and_group_messages`, with `split_chat_messages` as denominator | `collab.dm_ratio` |
-| A day with messages > 0 | `chat_active_day`, `active_day` | `collab.msgs_per_active_day`, `collab.active_days`, and the work days for `collab.meeting_free_days` and `collab.focus_time_pct` |
+| A day with messages > 0 | `chat_active_day`, `active_day` | `collab.msgs_per_active_day`, `collab.chat_active_days`, `collab.active_days`, and the work days for `collab.meeting_free_days` and `collab.focus_time_pct` |
 | `slack_huddles_count` | `meetings_attended` (count only: no duration, no participants) | `collab.meetings_count`. A day with a huddle is **not** meeting-free. |
 
 A Slack day is the UTC day from Slack. There is no time-zone change.
