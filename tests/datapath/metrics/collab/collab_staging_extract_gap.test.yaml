@@ -1,0 +1,24 @@
+spec_version: 1
+description: >
+  Slack, Microsoft 365 and Zoom staging build every day extracted since their own
+  last build, however long the gap (#4317), and keep one row per key over repeated
+  runs (#4323). Each connector starts with a Dec 1 row, built once. The test then
+  syncs Dec 2 and, more than three days of extracts later, Dec 3, and builds again:
+  Dec 2 is older than the newest extract minus three days, so a window anchored on
+  bronze would never build it.
+
+bronze:
+  bronze_slack.users_details:
+    - { $ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U001, email_address: alice@example.com, date: "2026-12-01", unique_key: gap-slack-20261201, messages_posted_count: 3, channel_messages_posted_count: 1, _airbyte_extracted_at: "2030-01-01T00:00:00" }
+
+  bronze_m365.email_activity:
+    - { $ref: ../templates/m365_email.yaml#/templates/alice_email, reportRefreshDate: "2026-12-01", unique_key: gap-m365-20261201, sendCount: 3, _airbyte_extracted_at: "2030-01-01T00:00:00" }
+
+  bronze_zoom.users: []
+
+  bronze_zoom.meetings:
+    - { $ref: ../templates/zoom.yaml#/templates/zoom_meeting, unique_key: gap-zoom-1201, id: 301, uuid: gap-zoom-1201, email: alice@example.com, start_time: "2026-12-01T10:00:00Z", end_time: "2026-12-01T10:30:00Z", _airbyte_extracted_at: "2030-01-01T00:00:00" }
+
+  bronze_zoom.participants:
+    - { $ref: ../templates/zoom.yaml#/templates/alice_participant, unique_key: gap-zoom-1201-alice, meeting_uuid: gap-zoom-1201, participant_uuid: alice-1201, join_time: "2026-12-01T10:00:00Z", leave_time: "2026-12-01T10:30:00Z", _airbyte_extracted_at: "2030-01-01T00:00:00" }
+    - { $ref: ../templates/zoom.yaml#/templates/bob_participant, unique_key: gap-zoom-1201-bob, meeting_uuid: gap-zoom-1201, participant_uuid: bob-1201, join_time: "2026-12-01T10:00:00Z", leave_time: "2026-12-01T10:30:00Z", _airbyte_extracted_at: "2030-01-01T00:00:00" }

@@ -222,7 +222,7 @@ identityResolution:
     limits:   { cpu: 500m, memory: 512Mi }
 
 frontend:
-  # The SPA image is pulled from ghcr (ghcr.io/constructorfabric/insight-frontend,
+  # The SPA image is pulled from ghcr (ghcr.io/hello1101n/insight-frontend,
   # chart appVersion tag) — no local build needed. It deploys but may not fully
   # work against the current backend yet.
   deploy: true
@@ -231,3 +231,10 @@ frontend:
   # proxies "/" to the frontend), so only the gateway holds an HTTPRoute.
   route:
     enabled: false
+
+connectors:
+  image:
+    repository: insight-connectors
+    tag: dev
+    pullPolicy: IfNotPresent
+  replicaCount: 1

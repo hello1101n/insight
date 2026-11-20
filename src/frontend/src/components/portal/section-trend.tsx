@@ -1,27 +1,23 @@
-import { ComingSoon } from "@/components/widgets/coming-soon";
+import { useTranslation } from "react-i18next";
+import { CartesianGrid, ComposedChart, ReferenceLine, XAxis } from "recharts";
 import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  Skeleton,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
-  CartesianGrid,
-  ChartArea,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLine,
-  ChartTooltip,
-  ChartTooltipContent,
-  ComposedChart,
-  ReferenceLine,
-  type ChartConfig,
-  XAxis,
-  YAxis,
-} from "@/components/ui/chart";
-import { Skeleton } from "@gears-frontx/ui-kit";
+} from "@gears-frontx/ui-kit";
+
+import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
+import { ComingSoon } from "@/components/widgets/coming-soon";
+import { chartColor } from "@/lib/chart-palette";
 
 /** One plotted series: its metric key, its label, and how to draw it. */
 export type SectionTrendSeries = {
@@ -65,8 +61,6 @@ export interface SectionTrendProps {
   onBucketClick?: (bucket: string) => void;
 }
 
-const DEFAULT_CHART_KEYS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
-
 /** The shared trend card: one chart, the same states, wherever a trend appears. */
 export function SectionTrend({
   title,
@@ -81,6 +75,7 @@ export function SectionTrend({
   onRetry,
   onBucketClick,
 }: SectionTrendProps) {
+  const { t } = useTranslation();
   if (isPending) {
     return <Skeleton className="h-48 w-full rounded-lg" />;
   }
@@ -88,7 +83,7 @@ export function SectionTrend({
     return (
       <ComingSoon
         state="error"
-        label={`${title} — unable to load`}
+        label={t("common.chart.unable_to_load_named", { title })}
         onRetry={onRetry}
       />
     );
@@ -98,7 +93,7 @@ export function SectionTrend({
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          <CardDescription>No trend data yet.</CardDescription>
+          <CardDescription>{t("common.chart.no_trend")}</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -127,7 +122,7 @@ export function SectionTrend({
   const config: ChartConfig = Object.fromEntries(
     safeSeries.map((s, i) => [
       s.key,
-      { label: s.label, color: `var(--${DEFAULT_CHART_KEYS[i % DEFAULT_CHART_KEYS.length]})` },
+      { label: s.label, color: chartColor(i) },
     ]),
   );
 
@@ -228,7 +223,7 @@ export function SectionTrend({
                   yAxisId={yAxisId}
                   dataKey={s.key}
                   name={s.label}
-                  type={s.type === "step" ? "stepAfter" : "linear"}
+                  type={s.type === "step" ? "stepAfter" : undefined}
                   stroke={color}
                   strokeWidth={2}
                 />

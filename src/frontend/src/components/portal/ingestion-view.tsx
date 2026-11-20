@@ -1,5 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type {
   IngestionGrain,
   IngestionIntensity,
@@ -7,20 +10,15 @@ import type {
 } from "@/api/ingestion-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { Button } from "@gears-frontx/ui-kit";
 import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
+  Button,
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+} from "@gears-frontx/ui-kit";
 import {
   LOG_FLOOR,
   bandLabel,
@@ -35,10 +33,10 @@ import {
   totalsByKey,
   type PivotRow,
 } from "@/lib/ingestion-chart";
-import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search";
 import { useIngestionIntensity } from "@/queries/ingestion";
 import { formatAxisTick, formatMetricNumber, formatUtcClock } from "@/lib/format";
 import { TEXT_BODY, TEXT_LABEL, TEXT_NAME, TEXT_TITLE } from "@/lib/type-scale";
+import { chartColor } from "@/lib/chart-palette";
 
 /**
  * How far back the trend reads. Long enough to show a weekly rhythm and a
@@ -56,12 +54,12 @@ const RECENT_REFRESH_MS = 60_000;
  *
  * Two pages, one component: the overview bands every connector, and picking one
  * re-bands the same three charts by the streams inside it. The selected
- * connector lives in the URL (`conn`), so a reload and a shared link both land
+ * connector lives in the path, so a reload and a shared link both land
  * on the same drill-down.
  */
-export function IngestionView() {
-  const { conn } = usePortalSearch();
-  const setSearch = useSetPortalSearch();
+export function IngestionView({ connector }: { connector?: string }) {
+  const conn = connector;
+  const navigate = useNavigate();
   const scope = conn ? scopeForConnector(conn) : null;
 
   // `lookbackDays` rather than a resolved `from`: the client turns it into an
@@ -92,7 +90,7 @@ export function IngestionView() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setSearch({ conn: undefined })}
+              onClick={() => void navigate({ to: "/manage/ingestion" })}
             >
               ← All connectors
             </Button>
@@ -315,7 +313,7 @@ function IntensityChart({
             key={key}
             dataKey={key}
             stackId={stacked ? "rows" : undefined}
-            fill={stacked ? seriesColorVar(key) : "var(--chart-1)"}
+            fill={stacked ? seriesColorVar(key) : chartColor(0)}
             radius={0}
           />
         ))}
@@ -336,7 +334,7 @@ function ConnectorRoster({
 }: {
   query: ReturnType<typeof useIngestionIntensity>;
 }) {
-  const setSearch = useSetPortalSearch();
+  const navigate = useNavigate();
   const rows = useMemo(
     () => (query.data ? totalsByKey(query.data.points) : []),
     [query.data],
@@ -353,7 +351,7 @@ function ConnectorRoster({
             key={row.key}
             type="button"
             className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/50"
-            onClick={() => setSearch({ conn: row.key })}
+            onClick={() => void navigate({ to: "/manage/ingestion/$connector", params: { connector: row.key } })}
           >
             <span
               aria-hidden

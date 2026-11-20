@@ -6,7 +6,7 @@ vi.mock("@/lib/portal/use-cohort-label", () => ({
  * MetricGroupsView routing/gating semantics: honest empty + error + loading
  * states, KPI-row gating via content, section-card wiring and the
  * inline-select vs modal-drilldown split. The v2 leaf widgets (KpiTile,
- * MetricGroupCard, drilldown) predate this PR and are stubbed; assertions
+ * drilldown) predate this PR and are stubbed; assertions
  * target THIS view's own decisions.
  */
 import { render, screen } from "@testing-library/react";
@@ -79,8 +79,8 @@ vi.mock("@/lib/portal/use-person-cohort", () => ({
 }));
 // This view only mounts on "At a glance", so no section is ever open under it;
 // `use-person-sections.test.tsx` covers the window scope on both routes.
-vi.mock("@/lib/portal/portal-nav", () => ({
-  usePortalItem: () => null,
+vi.mock("@/lib/portal/use-nav-location", () => ({
+  useNavLocation: () => ({ zone: "person", item: null, person: "", dir: "", lens: "" }),
 }));
 vi.mock("@/hooks/use-portal-period", () => ({
   usePortalPeriod: () => ({
@@ -109,13 +109,6 @@ vi.mock("@/components/widgets/dashboard/kpi-tile", () => ({
 }));
 vi.mock("@/components/widgets/dashboard/ic-needs-attention", () => ({
   IcNeedsAttention: () => <div data-testid="needs-attention" />,
-}));
-vi.mock("@/components/widgets/metric-views/metric-group-card", () => ({
-  MetricGroupCard: ({ def, onOpen }: { def: { id: string; title: string }; onOpen: () => void }) => (
-    <button data-testid={`group-card-${def.id}`} onClick={onOpen}>
-      {def.title}
-    </button>
-  ),
 }));
 vi.mock("@/components/widgets/dashboard/group-drilldown-sheet", () => ({
   GroupDrilldownSheet: ({ open, def }: { open: boolean; def: { id: string } }) =>

@@ -1,12 +1,15 @@
 import { http, HttpResponse } from "msw";
 
 import type { AppliedSchedule } from "@/api/connector-health-client";
+import { CONNECTORS_BASE } from "@/api/connectors-client";
 import { FEEDBACK_MESSAGE_MAX } from "@/api/feedback-client";
 import type { MetricDrilldownRequest } from "@/api/metric-drilldown-client";
 import type { MetricResultsRequest } from "@/api/metric-results-client";
 import { isPersonId } from "@/lib/metrics/entity";
 
 import { ADMIN_ASSIGNMENTS } from "./admin-assignments";
+import { seedConnectorScheduleScenarios } from "./connector-schedule-scenarios";
+import { connectorScheduleMocks } from "./connector-schedules";
 import { buildMetricDefinitions } from "./metric-definitions-factory";
 import { dashboardHandlers } from "./dashboard-handlers";
 import {
@@ -919,7 +922,7 @@ const BRONZE_SLUG = /^bronze_[a-z0-9_]{1,120}$/;
 
 function ingestionHandlers() {
   return [
-    http.get("/api/analytics/v1/ingestion/intensity", ({ request }) => {
+    http.get(`${CONNECTORS_BASE}/ingestion/intensity`, ({ request }) => {
       const params = new URL(request.url).searchParams;
       const grain = params.get("grain") ?? "15m";
       const series = params.get("series");
@@ -1072,6 +1075,10 @@ function connectorHealthHandlers() {
   // in the handler — because a fixed `as_of` would freeze the elapsed time the
   // page derives from it and the running row would never advance while polling.
   const anchor = new Date();
+  const scenarios =
+    import.meta.env.VITE_CONNECTOR_SCHEDULE_SCENARIOS === "true"
+      ? seedConnectorScheduleScenarios(anchor)
+      : null;
   const minutesAgo = (minutes: number) =>
     new Date(anchor.getTime() - minutes * 60_000).toISOString();
 
@@ -1117,18 +1124,22 @@ function connectorHealthHandlers() {
   const summaryRow = (
     connector: string,
     configured: boolean,
-    schedule: AppliedSchedule | null
+    schedule: AppliedSchedule | null,
+    sourceId = `${connector}-main`,
+    scenario = false
   ) => ({
     connector,
     tenant_id: "00000000-0000-4000-8000-000000000001",
-    source_id: `${connector}-main`,
+    source_id: sourceId,
     configured,
-    schedule,
+    ...connectorScheduleMocks.summary(connector, sourceId, schedule, scenario),
     last_sync: histories[connector]?.[0] ?? null,
   });
 
   return [
-    http.get("/api/analytics/v1/connector-health", () => {
+    ...(scenarios?.handlers ?? []),
+    ...connectorScheduleMocks.handlers,
+    http.get(`${CONNECTORS_BASE}/connector-health`, () => {
       const now = new Date();
       return HttpResponse.json({
         as_of: now.toISOString(),
@@ -1136,11 +1147,20 @@ function connectorHealthHandlers() {
         typical_read_interval_ms: 15 * 60_000,
         history_available: true,
         connectors: [
+          ...(scenarios?.rows.map(({ connector, sourceId }) =>
+            summaryRow(
+              connector,
+              true,
+              connectorScheduleMocks.read(connector, sourceId).live ?? null,
+              sourceId,
+              true
+            )
+          ) ?? []),
           summaryRow("example-tracker", true, {
             suspended: false,
             crons: ["0 22 * * *", "0 10 * * *"],
             timezone: "Europe/Sofia",
-            origin: "annotation",
+            origin: "api",
           }),
           summaryRow("example-directory", true, {
             suspended: false,
@@ -1165,7 +1185,7 @@ function connectorHealthHandlers() {
         ],
       });
     }),
-    http.get("/api/analytics/v1/connector-health/:connector/syncs", ({ params }) => {
+    http.get(`${CONNECTORS_BASE}/connector-health/:connector/syncs`, ({ params }) => {
       const connector = String(params.connector);
       return HttpResponse.json({
         connector,
@@ -1283,13 +1303,13 @@ const PAGE_ROWS = [
   { path: "/portal/people", views: 61, visitors: 3 },
   { path: "/portal/manage/connector-health", views: 42, visitors: 2 },
   { path: "/portal/manage/platform-usage", views: 23, visitors: 1 },
-  { path: "/portal/custom/:id", views: 31, visitors: 3 },
-  { path: "/portal/custom/q3-hiring-plan", views: 17, visitors: 2 },
-  { path: "/portal/custom/release-health", views: 12, visitors: 2 },
-  { path: "/portal/custom/metrics", views: 9, visitors: 2 },
-  { path: "/portal/custom/metrics/deploy-frequency", views: 6, visitors: 1 },
-  { path: "/portal/custom/edit/dashboards/release-health", views: 4, visitors: 1 },
-  { path: "/portal/custom/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
+  { path: "/dashboards/:id", views: 31, visitors: 3 },
+  { path: "/dashboards/q3-hiring-plan", views: 17, visitors: 2 },
+  { path: "/dashboards/release-health", views: 12, visitors: 2 },
+  { path: "/dashboards/metrics", views: 9, visitors: 2 },
+  { path: "/dashboards/metrics/deploy-frequency", views: 6, visitors: 1 },
+  { path: "/dashboards/edit/dashboards/release-health", views: 4, visitors: 1 },
+  { path: "/dashboards/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
 ];
 
 function aiAssistHandlers() {

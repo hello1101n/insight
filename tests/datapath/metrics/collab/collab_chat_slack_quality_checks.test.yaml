@@ -1,0 +1,42 @@
+spec_version: 1
+description: >
+  The Slack connector checks report a real data problem and pass clean data.
+
+  Checks (bronze → findings):
+    • assert_slack_bronze_rows_reach_metrics (tier error): a row without a user or
+      a date (refused_day_row), and a member row without a message counter
+      (missing_counter). A guest row and a bot row are dropped anyway, so their
+      counters are not checked.
+    • assert_slack_members_resolve (tier warn): a member account without an
+      identity binding (unmapped_member), one finding for each tenant, source
+      and member.
+
+  Cast (Engineering), Slack rows in 2026-12:
+    alice — U201, alice@example.com, the seed binds the account → clean.
+    dave  — U202, no email, the operator binds the account → clean.
+    erin  — U203, no email, never bound, two days → unmapped_member, days 2.
+    frank — U204, no email, no messages_posted_count → missing_counter.
+    guest — U205, guest, no counter, never bound → no finding.
+    bot   — B201, the members list flags a bot, no counter → no finding.
+    blank — no user_id → refused_day_row.
+
+identity_accounts:
+  - {source_type: slack, source_id: slack-test, account_id: U202, person: dave@example.com}
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/dave
+
+  bronze_slack.users_details:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U201, email_address: alice@example.com, date: "2026-12-20", unique_key: slq-alice-20261220, messages_posted_count: 3, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U202, date: "2026-12-20", unique_key: slq-dave-20261220,  messages_posted_count: 4, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U203, date: "2026-12-20", unique_key: slq-erin-20261220,  messages_posted_count: 5, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U203, date: "2026-12-21", unique_key: slq-erin-20261221,  messages_posted_count: 6, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U204, date: "2026-12-20", unique_key: slq-frank-20261220, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U205, date: "2026-12-20", unique_key: slq-guest-20261220, is_guest: true}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: B201, date: "2026-12-20", unique_key: slq-bot-20261220}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, date: "2026-12-20", unique_key: slq-blank-20261220}
+
+  bronze_slack.users:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: B201, unique_key: slq-member-B201, is_bot: true}

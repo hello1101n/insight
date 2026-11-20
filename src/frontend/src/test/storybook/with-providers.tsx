@@ -30,7 +30,8 @@ export const WithProviders: Decorator = (Story, context) => {
       }),
     [],
   );
-  const { router, reset } = useMemo(() => createTestingRouter(), []);
+  const zone: string | undefined = context.parameters.zone;
+  const { router, reset } = useMemo(() => createTestingRouter(zone), [zone]);
 
   // Render the story as the memory-router's not-found component. This gives
   // the story full router context (Link / useNavigate / useRouterState)

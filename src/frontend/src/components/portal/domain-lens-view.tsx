@@ -2,8 +2,9 @@ import { ExplainWithAi } from "@/components/widgets/dashboard/explain-with-ai";
 import { trendSnapshot } from "@/lib/insight/explain-snapshot";
 import { Fragment, useMemo, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 import { resolveText } from "@/i18n/localized-text";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { AttentionList } from "@/components/portal/attention-list";
 import { personDisplayName } from "@/lib/identities/person-display";
@@ -14,8 +15,12 @@ import {
   type SectionTrendPoint,
   type SectionTrendSeries,
 } from "@/components/portal/section-trend";
-import { Card, CardContent } from "@/components/ui/card";
+import { ChartBar, YAxis } from "@/components/chart-series";
 import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
   Table,
   TableBody,
   TableCell,
@@ -25,18 +30,9 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import {
   attentionSummary,
@@ -133,6 +129,7 @@ import {
 import { useMemberGridData } from "@/queries/member-grid";
 import { TEXT_EYEBROW, TEXT_FIGURE, TEXT_NAME } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
+import { chartColor } from "@/lib/chart-palette";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const NO_METRICS: readonly string[] = [];
@@ -659,7 +656,7 @@ export function DomainLensView({
   };
 
   return (
-    <div data-testid={testId} className={cn("flex flex-col gap-6", embedded ? "home-metrics" : "p-4 md:p-6")}>
+    <div data-testid={testId} className={cn("flex flex-col gap-6", !embedded && "p-4 md:p-6")}>
       {scoped ? (
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm">
           <button
@@ -683,8 +680,11 @@ export function DomainLensView({
           <p className="text-sm text-muted-foreground">
             {personId
               ? null
-              : `${orgScope.label} · ${members.length} ${members.length === 1 ? "person" : "people"} · `}
-            {config.tagline ?? "trend & balance"}
+              : t("common.lens.scope_line", {
+                  scope: orgScope.label,
+                  count: members.length,
+                })}
+            {resolveText(t, config.tagline ?? { key: "common.lens.default_tagline" })}
           </p>
         </div>
         {drawable.length > 0 && trendBucket ? (
@@ -705,6 +705,7 @@ export function DomainLensView({
         <Section
           key={`${s.kind}-${i}`}
           spec={s}
+          embedded={embedded}
           grid={grid}
           trend={trend}
           trendWindow={trendWindow}
@@ -812,6 +813,7 @@ function Section({
   onOpenChart,
   onOpenValue,
   onOpenBlock,
+  embedded,
 }: {
   spec: SectionSpec;
   grid: GridData;
@@ -842,6 +844,7 @@ function Section({
   onOpenValue?: (value: string) => void;
   /** The records of one hour block of a heatmap. */
   onOpenBlock?: (block: string) => void;
+  embedded: boolean;
 }) {
   switch (spec.kind) {
     case "headline":
@@ -853,6 +856,7 @@ function Section({
           memberIds={memberIds}
           roster={{ nameByEntity, personIdByEntity }}
           unattributedByKey={unattributedByKey}
+          embedded={embedded}
         />
       );
     case "stat-tiles":
@@ -1100,6 +1104,7 @@ function HeadlineSection({
   memberIds,
   roster,
   unattributedByKey,
+  embedded,
 }: {
   metrics: readonly string[];
   labelSource?: "short";
@@ -1107,6 +1112,7 @@ function HeadlineSection({
   memberIds: readonly string[];
   roster: RosterLookups;
   unattributedByKey: Map<string, number | null>;
+  embedded: boolean;
 }) {
   const cards = metrics
     .map((key) => headlineCard(key, grid, memberIds, roster, unattributedByKey))
@@ -1120,7 +1126,14 @@ function HeadlineSection({
           Per person
         </p>
       )}
-      <div data-slot="headline-grid" className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4">
+      <div
+        className={cn(
+          "grid gap-4",
+          embedded
+            ? "grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3"
+            : "grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]"
+        )}
+      >
         {cards.map((c) =>
           c.kind === "members" ? (
             <HeadlineCard key={c.key} card={c} labelSource={labelSource} />
@@ -1243,7 +1256,6 @@ function HeadlineCard({
           text={labelSource === "short" ? (c.r.short_label ?? c.r.label) : undefined}
           className={TEXT_NAME}
           truncate
-          focusable={!evidence}
         />
         <Delta now={c.reading.value} prev={c.prev} direction={c.r.direction} showUnavailable />
       </div>
@@ -1669,7 +1681,7 @@ function DistributionSection({
               <ChartBar
                 dataKey="count"
                 name="People"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>
@@ -1799,7 +1811,7 @@ function EventHistogramSection({
               <ChartBar
                 dataKey="count"
                 name="Events"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>
@@ -2747,6 +2759,7 @@ function DirectionCardsSection({
   personal: boolean;
   personalReach: ReadonlySet<string> | null;
 }) {
+  const { t } = useTranslation();
   const { openDirection } = usePortalNavActions();
   const showPlanned = usePortalShowPlanned();
   const cards = overviewCardDirections(showPlanned)
@@ -2778,16 +2791,16 @@ function DirectionCardsSection({
   return (
     <section className="flex flex-col gap-3">
       <p className={TEXT_EYEBROW}>
-        By direction
+        {t("nav.items.by_direction")}
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
         {cards.map((c) => {
           const body = (
             <div className="flex flex-col gap-2 p-4">
-              <div className="text-sm font-semibold">{c.name}</div>
+              <div className="text-sm font-semibold">{resolveText(t, c.name)}</div>
               {!c.connected ? (
                 <span className="text-xs text-muted-foreground">
-                  this data source is not connected yet
+                  {t("directions.not_connected")}
                 </span>
               ) : !c.observed ? (
                 <span className="text-xs text-muted-foreground">
@@ -2813,7 +2826,6 @@ function DirectionCardsSection({
                         text={r.label}
                         className="text-muted-foreground"
                         truncate
-                        focusable={personal}
                       />
                       <span className="flex items-center gap-2">
                         <span className="font-medium tabular-nums">

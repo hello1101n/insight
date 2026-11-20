@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use uuid::Uuid;
 
+use super::employee_id::RosterEmployeeIds;
 use super::people::{self, PersonChange};
 use super::resolution::EXCLUDED_PERSON;
 use super::roster::RosterSource;
@@ -39,6 +40,14 @@ pub trait SeedStore {
         &self,
         tenant_id: Uuid,
     ) -> anyhow::Result<HashMap<String, Uuid>>;
+
+    /// The latest employee ID that the roster source states for each person,
+    /// as `(employee_id, person_id)` pairs.
+    async fn roster_employee_ids(
+        &self,
+        tenant_id: Uuid,
+        roster: &RosterSource,
+    ) -> anyhow::Result<Vec<(String, Uuid)>>;
 
     async fn apply(
         &self,
@@ -76,6 +85,8 @@ pub struct SeedSummary {
     pub reused_known: usize,
     #[serde(rename = "accounts_linked_by_email")]
     pub linked_by_email: usize,
+    #[serde(rename = "accounts_linked_by_employee_id")]
+    pub linked_by_employee_id: usize,
     #[serde(rename = "accounts_minted_new")]
     pub minted: usize,
     #[serde(rename = "accounts_skipped_closed")]
@@ -131,13 +142,20 @@ where
     let groups = group_by_email(profiles);
     let known = store.known_account_bindings(tenant_id).await?;
     let email_to_person = store.latest_email_to_person(tenant_id).await?;
-    let outcome = resolve_assignments(groups, &known, &email_to_person, roster, mint);
+    let employee_ids = match roster {
+        Some(roster) => {
+            RosterEmployeeIds::from_pairs(store.roster_employee_ids(tenant_id, roster).await?)
+        }
+        None => RosterEmployeeIds::default(),
+    };
+    let outcome = resolve_assignments(groups, &known, &email_to_person, employee_ids, roster, mint);
     tracing::info!(
         accounts = accounts_read,
         minted = outcome.minted,
         minted_from_roster = outcome.minted_from_roster,
         reused = outcome.reused_known,
         linked = outcome.linked_by_email,
+        linked_by_employee_id = outcome.linked_by_employee_id,
         roster = roster.map(RosterSource::name),
         "persons-seed: resolved"
     );
@@ -173,6 +191,7 @@ where
         accounts_read,
         reused_known: outcome.reused_known,
         linked_by_email: outcome.linked_by_email,
+        linked_by_employee_id: outcome.linked_by_employee_id,
         minted: outcome.minted,
         skipped_closed: outcome.skipped_closed,
         skipped_no_email: outcome.skipped_no_email,
@@ -276,9 +295,11 @@ mod tests {
     use super::*;
     use crate::domain::provenance::Provenance;
 
+    #[derive(Default)]
     struct FakeStore {
         known: HashMap<SourceAccountKey, KnownBinding>,
         emails: HashMap<String, Uuid>,
+        employee_ids: Vec<(String, Uuid)>,
     }
     #[async_trait]
     impl SeedStore for FakeStore {
@@ -293,6 +314,13 @@ mod tests {
             _tenant: Uuid,
         ) -> anyhow::Result<HashMap<String, Uuid>> {
             Ok(self.emails.clone())
+        }
+        async fn roster_employee_ids(
+            &self,
+            _tenant: Uuid,
+            _roster: &RosterSource,
+        ) -> anyhow::Result<Vec<(String, Uuid)>> {
+            Ok(self.employee_ids.clone())
         }
         async fn apply(
             &self,
@@ -358,6 +386,7 @@ mod tests {
         let store = FakeStore {
             known: HashMap::new(),
             emails: HashMap::new(),
+            employee_ids: Vec::new(),
         };
 
         let summary = seed_from_rows(
@@ -403,6 +432,7 @@ mod tests {
         let store = FakeStore {
             known,
             emails: HashMap::new(),
+            employee_ids: Vec::new(),
         };
 
         let summary = seed_from_rows(
@@ -434,6 +464,7 @@ mod tests {
         let store = FakeStore {
             known: HashMap::new(),
             emails: HashMap::new(),
+            employee_ids: Vec::new(),
         };
         let Some(roster) = RosterSource::parse("bamboohr") else {
             panic!("a named source must parse");
@@ -465,6 +496,7 @@ mod tests {
         let store = FakeStore {
             known: HashMap::new(),
             emails: HashMap::new(),
+            employee_ids: Vec::new(),
         };
 
         let summary = seed_from_rows(

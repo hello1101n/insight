@@ -10,7 +10,6 @@
     unique_key_col='unique_key',
     check_cols=[
         'email',
-        'is_guest',
-        'is_billable_seat'
+        'display_name'
     ]
 ) }}

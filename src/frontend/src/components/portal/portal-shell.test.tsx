@@ -16,13 +16,17 @@ import { portalRouter } from "@/test/portal-router";
 
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Tooltip, TooltipContent, TooltipTrigger } from "@gears-frontx/ui-kit";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 
 const mocks = vi.hoisted(() => ({
   personId: null as string | null,
   isManager: true,
   isPending: false,
-  zone: { activeZone: "overview", activePerson: "" },
+  topBar: null as ReactNode,
 }));
 
 vi.mock("@/auth", () => ({
@@ -39,9 +43,6 @@ vi.mock("@/queries/identity-me", () => ({
 vi.mock("@/lib/portal/use-viewer-is-manager", () => ({
   useViewerIsManager: () => ({ isManager: mocks.isManager, isPending: mocks.isPending }),
 }));
-vi.mock("@/lib/portal/use-active-zone", () => ({
-  useActiveZone: () => mocks.zone,
-}));
 vi.mock("@/lib/portal/use-cohort-label", () => ({
   useCohortLabel: () => "team",
 }));
@@ -51,8 +52,10 @@ vi.mock("@/queries/ic-dashboard", () => ({
 
 // Leaf views become labelled placeholders so routing is observable.
 vi.mock("@/components/portal/domain-lens-view", () => ({
-  DomainLensView: ({ config }: { config: { title: string } }) => (
-    <div data-testid="domain-lens">{config.title}</div>
+  DomainLensView: ({ config }: { config: { title: string | { key: string } } }) => (
+    <div data-testid="domain-lens">
+      {typeof config.title === "string" ? config.title : config.title.key}
+    </div>
   ),
   Pending: ({ label }: { label: string }) => <div data-testid="pending">{label}</div>,
 }));
@@ -92,19 +95,24 @@ vi.mock("@/components/portal/person-header", () => ({
     <div data-testid="person-header">{person}</div>
   ),
 }));
-vi.mock("@/components/portal/lens-rail", () => ({ LensRail: () => <div /> }));
-vi.mock("@/components/portal/context-pane", () => ({ ContextPane: () => <div /> }));
-vi.mock("@/components/portal/portal-topbar", () => ({ PortalTopBar: () => <div /> }));
+vi.mock("@/components/portal/lens-rail", () => ({
+  LensRail: () => <div />,
+  RailItems: () => <div />,
+  RailFooterItems: () => <div />,
+}));
+vi.mock("@/components/portal/context-pane", () => ({
+  ContextPane: () => <div />,
+  ZonePages: () => <div />,
+}));
+vi.mock("@/components/portal/portal-topbar", () => ({
+  PortalTopBar: () => <div>{mocks.topBar}</div>,
+}));
 vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
 }));
 
-import {
-  usePortalScope,
-  usePortalSlice,
-  usePortalZone,
-} from "@/lib/portal/portal-nav";
+import { usePortalScope, usePortalSlice } from "@/lib/portal/portal-nav";
 import { setPortalShowPlanned } from "@/lib/portal/portal-store";
 import { renderHook } from "@testing-library/react";
 
@@ -113,7 +121,6 @@ import { PeopleView } from "./people-view";
 import { PersonView } from "./person-view";
 import { PortalLayout } from "./portal-layout";
 import { SliceSelect } from "./slice-select";
-import { ZoneContent } from "./zone-content";
 
 // SidebarProvider (inside PortalLayout) reads a media query; jsdom has none.
 beforeEach(() => {
@@ -129,36 +136,13 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
   mocks.isManager = true;
   mocks.isPending = false;
+  mocks.topBar = null;
   mocks.personId = pid("boss");
   resetRouteScopeSync();
-  mocks.zone = { activeZone: "overview", activePerson: pid("boss") };
   act(() => {
-    portalRouter.set({ zone: undefined });
-    portalRouter.set({ item: undefined });
-    portalRouter.set({ dir: "dev" });
-    portalRouter.set({ lens: "Delivery" });
-    portalRouter.set({ slice: undefined });
-    portalRouter.set({ scope: undefined, direct: false });
+    portalRouter.reset("/home");
     setPortalShowPlanned(true);
   });
-});
-
-describe("ZoneContent routing", () => {
-  const cases: Array<[string, string]> = [
-    ["person", "person-header"],
-    ["overview", "domain-lens"],
-    ["directions", "domain-lens"],
-    ["aicost", "ai-cost"],
-    ["people", "team-state"],
-    ["manage", "manage"],
-    ["reports", "report-builder"],
-  ];
-  it.each(cases)("zone %s renders its view", (zone, testid) => {
-    mocks.zone = { activeZone: zone, activePerson: pid("boss") };
-    render(<ZoneContent />);
-    expect(screen.getByTestId(testid)).toBeInTheDocument();
-  });
-
 });
 
 describe("DirectionView", () => {
@@ -196,7 +180,7 @@ describe("DirectionView", () => {
 
 describe("PersonView", () => {
   it("defaults to the at-a-glance dashboard with the person's header", () => {
-    render(<PersonView person={pid("a")} />);
+    render(<PersonView person={pid("a")} section={null} />);
     expect(screen.getByTestId("person-header")).toHaveTextContent(pid("a"));
     expect(screen.getByTestId("page-person-at-a-glance")).toHaveTextContent(pid("a"));
     expect(screen.queryByTestId("page-person")).not.toBeInTheDocument();
@@ -209,8 +193,7 @@ describe("PersonView", () => {
     ["ai_adoption", "page-person-ai-adoption"],
     ["wiki", "page-person-wiki"],
   ])("identifies the selected %s section", (item, testId) => {
-    act(() => portalRouter.set({ item }));
-    render(<PersonView person={pid("a")} />);
+    render(<PersonView person={pid("a")} section={item} />);
     expect(screen.getByTestId(testId)).toHaveTextContent(item);
     expect(screen.queryByTestId("page-person-at-a-glance")).not.toBeInTheDocument();
     expect(screen.queryByTestId("page-person")).not.toBeInTheDocument();
@@ -243,42 +226,54 @@ describe("PeopleView", () => {
   });
 });
 
-describe("PortalLayout landing", () => {
-  it("reads a zone id the portal no longer has as no zone", () => {
-    act(() => portalRouter.set({ zone: "scorecard" }));
-    const zone = renderHook(() => usePortalZone());
-    expect(zone.result.current).toBeNull();
-  });
+describe("PortalLayout zone guard", () => {
+  const sentHome = () =>
+    portalRouter.navigations.some((navigation) => navigation.to === "/" && navigation.replace);
 
-  it("leaves a bare /portal as it is while the viewer's reach resolves", () => {
+  it("leaves a zone alone while the viewer's reach resolves", () => {
+    mocks.isManager = false;
     mocks.isPending = true;
-    const zone = renderHook(() => usePortalZone());
+    act(() => portalRouter.go("/explore/dev/delivery"));
     render(<PortalLayout />);
-    expect(zone.result.current).toBeNull();
+    expect(sentHome()).toBe(false);
     expect(screen.queryByRole("status", { name: "Loading" })).toBeNull();
   });
 
   it("keeps an IC on Home", () => {
     mocks.isManager = false;
-    act(() => portalRouter.set({ zone: "overview" }));
-    const zone = renderHook(() => usePortalZone());
     render(<PortalLayout />);
-    expect(zone.result.current).toBe("overview");
+    expect(sentHome()).toBe(false);
   });
 
-  it("never overrides a zone the manager picked while their role resolved", () => {
-    act(() => portalRouter.set({ zone: "directions" }));
-    const zone = renderHook(() => usePortalZone());
+  it("keeps a manager on an org zone", () => {
+    act(() => portalRouter.go("/explore/dev/delivery"));
     render(<PortalLayout />);
-    expect(zone.result.current).toBe("directions");
+    expect(sentHome()).toBe(false);
   });
 
-  it("resets an IC stranded on an org zone (hidden for them) to Home", () => {
+  it("sends an IC off an org zone they cannot see", () => {
     mocks.isManager = false;
-    act(() => portalRouter.set({ zone: "directions" }));
-    const zone = renderHook(() => usePortalZone());
+    act(() => portalRouter.go("/explore/dev/delivery"));
     render(<PortalLayout />);
-    expect(zone.result.current).toBeNull();
+    expect(sentHome()).toBe(true);
+  });
+});
+
+describe("PortalLayout tooltips", () => {
+  it("keeps a tooltip in the content closed until the app delay passes", async () => {
+    mocks.topBar = (
+      <Tooltip>
+        <TooltipTrigger>Help</TooltipTrigger>
+        <TooltipContent>Explained</TooltipContent>
+      </Tooltip>
+    );
+    render(<PortalLayout />);
+
+    await userEvent.hover(screen.getByText("Help"));
+    await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS / 4));
+    expect(screen.queryByText("Explained")).toBeNull();
+
+    expect(await screen.findByText("Explained")).toBeInTheDocument();
   });
 });
 

@@ -1,18 +1,19 @@
-import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
+import { ComposedChart, XAxis } from "recharts";
 import {
-  ChartContainer,
-  ChartLine,
-  ComposedChart,
-  XAxis,
-  YAxis,
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
+import type { MetricBucket } from "@/api/metric-results-client";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { bucketNote, smallMultiples } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const MULTIPLE_CONFIG: ChartConfig = { value: { label: "Value" } };
 
@@ -67,7 +68,7 @@ export function SmallMultiplesSection({
                   <YAxis hide domain={[0, max]} />
                   <ChartLine
                     dataKey="value"
-                    stroke="var(--chart-1)"
+                    stroke={chartColor(0)}
                     strokeWidth={1.5}
                   />
                 </ComposedChart>

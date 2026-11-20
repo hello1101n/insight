@@ -428,6 +428,49 @@ services:
   # definition tables. The server never migrates them itself — compose must
   # run `migrate` first, exactly like analytics/identity-resolution above.
   # Exits 0 and stays exited; the server gates on it.
+  connectors-migrate:
+    !!merge <<: *backend-common
+    image: ${CONNECTORS_IMAGE:-insight-connectors:dev}
+    container_name: ${COMPOSE_PROJECT_NAME:-insight}-connectors-migrate
+    build:
+      context: src/backend
+      dockerfile: Dockerfile
+      target: connectors
+    depends_on:
+      mariadb: {condition: service_healthy, required: false}
+    environment:
+      APP__gears__connectors__config__database_url: "mysql://${MARIADB_USER:-insight}:${MARIADB_PASSWORD:-insight-local}@${MARIADB_HOST:-mariadb}:${MARIADB_INTERNAL_PORT:-3306}/connectors"
+    volumes:
+      - ./deploy/compose/connectors-fullauth.yaml:/app/config/insight.yaml:ro
+    command: ["/app/connectors", "--", "/app/connectors", "-c", "/app/config/insight.yaml", "migrate"]
+
+  connectors:
+    !!merge <<: *backend-common
+    image: ${CONNECTORS_IMAGE:-insight-connectors:dev}
+    container_name: ${COMPOSE_PROJECT_NAME:-insight}-connectors
+    build:
+      context: src/backend
+      dockerfile: Dockerfile
+      target: connectors
+    depends_on:
+      mariadb: {condition: service_healthy, required: false}
+      clickhouse: {condition: service_healthy, required: false}
+      connectors-migrate: {condition: service_completed_successfully}
+    environment:
+      !!merge <<: *backend-env
+      APP__gears__connectors__config__database_url: "mysql://${MARIADB_USER:-insight}:${MARIADB_PASSWORD:-insight-local}@${MARIADB_HOST:-mariadb}:${MARIADB_INTERNAL_PORT:-3306}/connectors"
+      APP__gears__connectors__config__clickhouse_url: "http://${CLICKHOUSE_HOST:-clickhouse}:${CLICKHOUSE_INTERNAL_HTTP_PORT:-8123}"
+      APP__gears__connectors__config__clickhouse_database: "${CLICKHOUSE_DATABASE:-insight}"
+      APP__gears__connectors__config__clickhouse_user: "presentation"
+      APP__gears__connectors__config__clickhouse_password: "${CLICKHOUSE_PRESENTATION_PASSWORD:-presentation-local}"
+      APP__gears__connectors__config__identity_url: "http://identity-resolution:8082"
+    volumes:
+      - ./deploy/compose/connectors-fullauth.yaml:/app/config/insight.yaml:ro
+      - ./deploy/compose/authn-tls-certs:/certs:ro
+    command: ["/app/connectors", "--", "/app/connectors", "-c", "/app/config/insight.yaml", "run"]
+    ports:
+      - "127.0.0.1:${CONNECTORS_PORT:-8088}:8088"
+
   insight-v3-core-migrate:
     # backend-common supplies the insight network (without it the migrator lands
     # on the default network, can't resolve `clickhouse`, and the server blocks
@@ -686,6 +729,7 @@ services:
     depends_on:
       authenticator: {condition: service_started}
       analytics: {condition: service_started}
+      connectors: {condition: service_started}
       identity-resolution: {condition: service_started}
       insight-v3-core: {condition: service_started}
     environment:
@@ -764,7 +808,7 @@ services:
     profiles: ["front-ghcr"]
     # No platform pin: the published tags are multi-arch manifests covering
     # linux/amd64 and linux/arm64, so Apple-silicon hosts pull arm64 natively.
-    image: ${FRONTEND_IMAGE:-ghcr.io/constructorfabric/insight-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/hello1101n/insight-frontend:latest}
     container_name: ${COMPOSE_PROJECT_NAME:-insight}-front
     networks:
       insight:
@@ -900,6 +944,9 @@ services:
       # cross-tenant refusal against it; a cluster stand turns it off, where a
       # second tenant would abort identity-resolution's scheduled projection.
       SEED_CROSS_TENANT_FIXTURE: "${SEED_CROSS_TENANT_FIXTURE:-1}"
+      # INVARIANT: set this flag only on a stand that holds the schedule fixture.
+      # `dev-compose.sh test-stand up` inserts the fixture and sets the flag.
+      SEED_CONNECTOR_SCHEDULES: "${SEED_CONNECTOR_SCHEDULES:-0}"
       # ClickHouse — same convention as MariaDB above.
       CLICKHOUSE_HOST: "${CLICKHOUSE_HOST:-clickhouse}"
       CLICKHOUSE_HTTP_PORT: "${CLICKHOUSE_INTERNAL_HTTP_PORT:-8123}"

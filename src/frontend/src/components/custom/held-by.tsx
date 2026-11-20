@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { DefinitionKind, Holder } from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { hiddenHolders } from "@/lib/custom/hidden-holders";
 import { dependentsQuery } from "@/queries/custom";
@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 
 /** Where a holder of each kind is looked at. */
 const PAGE: Record<Holder["kind"], string> = {
-  metrics: "/portal/custom/metrics/$name",
-  widgets: "/portal/custom/widgets/$name",
-  dashboards: "/portal/custom/$name",
+  metrics: "/dashboards/metrics/$name",
+  widgets: "/dashboards/widgets/$name",
+  dashboards: "/dashboards/$name",
 };
 
 /**

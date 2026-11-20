@@ -20,6 +20,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::domain::people::PersonChange;
+use crate::domain::roster::RosterSource;
 use crate::domain::seed::{KnownBinding, SeedObservationRow, SourceAccountKey, normalize_email};
 use crate::domain::seed_service::{ApplyCounts, SeedStore};
 use crate::infra::db::{people_repo, resolution_repo};
@@ -57,6 +58,17 @@ impl SeedStore for MariaDbSeedStore<'_> {
         let started = std::time::Instant::now();
         let result = latest_email_to_person(self.db, tenant_id).await;
         metrics::record_db_query(DbQuery::LatestEmailToPerson, started.elapsed());
+        result
+    }
+
+    async fn roster_employee_ids(
+        &self,
+        tenant_id: Uuid,
+        roster: &RosterSource,
+    ) -> anyhow::Result<Vec<(String, Uuid)>> {
+        let started = std::time::Instant::now();
+        let result = roster_employee_ids(self.db, tenant_id, roster.name()).await;
+        metrics::record_db_query(DbQuery::RosterEmployeeIds, started.elapsed());
         result
     }
 
@@ -226,6 +238,58 @@ pub async fn latest_email_to_person(
         map.insert(normalize_email(&email), Uuid::from_slice(&person_id)?);
     }
     Ok(map)
+}
+
+/// The latest employee ID of each person and roster instance, as
+/// `(employee_id, person_id)` pairs. One ID can come back for two persons: the
+/// caller treats that ID as contested.
+///
+/// # Errors
+///
+/// Returns an error if the query fails or a row does not decode.
+pub async fn roster_employee_ids(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    roster_source_type: &str,
+) -> anyhow::Result<Vec<(String, Uuid)>> {
+    const SQL: &str = r"
+        WITH ranked AS (
+            SELECT
+                value_id AS employee_id,
+                person_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY insight_tenant_id, person_id, insight_source_id
+                    ORDER BY created_at DESC, id DESC
+                ) AS rn
+            FROM persons
+            WHERE value_type = 'employee_id'
+              AND insight_source_type = ?
+              AND value_id IS NOT NULL
+              AND value_id != ''
+              AND insight_tenant_id = ?
+        )
+        SELECT employee_id, person_id
+        FROM ranked
+        WHERE rn = 1
+    ";
+
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::MySql,
+        SQL,
+        [
+            roster_source_type.into(),
+            tenant_id.as_bytes().to_vec().into(),
+        ],
+    );
+
+    let rows = db.query_all_raw(stmt).await?;
+    let mut pairs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let employee_id: String = row.try_get("", "employee_id")?;
+        let person_id: Vec<u8> = row.try_get("", "person_id")?;
+        pairs.push((employee_id, Uuid::from_slice(&person_id)?));
+    }
+    Ok(pairs)
 }
 
 /// Rebuild the tenant's `org_chart` from `persons` inside an open transaction.

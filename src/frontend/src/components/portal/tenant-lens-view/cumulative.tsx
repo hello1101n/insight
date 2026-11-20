@@ -1,11 +1,12 @@
 import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { formatMetricValue } from "@/lib/format";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { cumulativeShares } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const CUMULATIVE_LIMIT = 12;
 
@@ -50,12 +51,16 @@ export function CumulativeSection({
               <div className="relative h-3 flex-1 overflow-hidden rounded-[2px] bg-muted">
                 {/* Running total behind, this row's own share in front. */}
                 <div
-                  className="absolute inset-y-0 left-0 bg-[var(--chart-2)] opacity-30"
-                  style={{ width: `${row.cumulativeShare}%` }}
+                  className="absolute inset-y-0 left-0 opacity-30"
+                  style={{
+                    width: `${row.cumulativeShare}%`,
+                    backgroundColor: chartColor(1),
+                  }}
                 />
                 <div
-                  className="absolute inset-y-0 bg-[var(--chart-1)]"
+                  className="absolute inset-y-0"
                   style={{
+                    backgroundColor: chartColor(0),
                     left: `${row.cumulativeShare - row.share}%`,
                     width: `${row.share}%`,
                   }}

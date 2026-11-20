@@ -1,17 +1,20 @@
 import { Layers, LayoutGrid, Search, User } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { OrgTree } from "@/components/org-tree";
 import { ItemButton } from "@/components/portal/pane-nav";
-import { Input, ScrollArea } from "@gears-frontx/ui-kit";
-import { PaneGroupLabel } from "@/components/portal/pane-group-label";
 import {
+  Input,
+  ScrollArea,
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
+import { PaneGroupLabel } from "@/components/portal/pane-group-label";
+import { resolveText } from "@/i18n/localized-text";
 import { visibleGroups } from "@/lib/insight/groups";
 import {
   orderByReadiness,
@@ -20,9 +23,9 @@ import {
   zoneIsPlanned,
 } from "@/lib/portal/nav-model";
 import { personSectionPlanned } from "@/lib/portal/nav-policy";
-import { usePortalItem, usePortalNavActions } from "@/lib/portal/portal-nav";
+import { usePortalNavActions } from "@/lib/portal/portal-nav";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
-import { useActiveZone } from "@/lib/portal/use-active-zone";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useDismissDrawer } from "@/lib/portal/use-dismiss-drawer";
 import type { ZoneNav } from "@/lib/portal/use-zone-nav";
 import {
@@ -44,13 +47,14 @@ export function PeopleNav({ nav }: { nav: ZoneNav }) {
 }
 
 function PeopleViews({ nav }: { nav: ZoneNav }) {
+  const { t } = useTranslation();
   const { zones, activeZone, me, selectZone } = nav;
   const { setItem } = usePortalNavActions();
   const dismiss = useDismissDrawer();
-  const { activePerson } = useActiveZone();
+  const { person: activePerson, item: picked } = useNavLocation();
   const { isFlat } = useVisibilityPolicy();
   const showPlanned = usePortalShowPlanned();
-  const item = resolveZoneItem("people", usePortalItem());
+  const item = resolveZoneItem("people", picked);
   const personZone = zones.find((zone) => zone.id === "person");
   const peopleZone = zones.find((zone) => zone.id === "people");
   const teamViews = peopleZone
@@ -59,7 +63,7 @@ function PeopleViews({ nav }: { nav: ZoneNav }) {
 
   return (
     <SidebarGroup>
-      <PaneGroupLabel>Views</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.groups.views")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {personZone ? (
@@ -73,7 +77,7 @@ function PeopleViews({ nav }: { nav: ZoneNav }) {
                 }}
               >
                 <User />
-                <span>Me</span>
+                <span>{t("nav.items.me")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           ) : null}
@@ -98,6 +102,7 @@ function PeopleViews({ nav }: { nav: ZoneNav }) {
 }
 
 function WorkChart() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   // A chart is what a reporting line draws. With no lines there is a roster,
   // and calling it a chart would name a structure the reader cannot see.
@@ -110,8 +115,8 @@ function WorkChart() {
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Find someone"
-        aria-label="Find someone in the org"
+        placeholder={t("nav.find_someone")}
+        aria-label={t("nav.find_someone_org")}
         className="h-8 ps-7 text-sm"
       />
     </div>
@@ -121,7 +126,7 @@ function WorkChart() {
   // draw its scrollbar and rows over the search.
   return (
     <SidebarGroup className="min-h-0 flex-1">
-      {isFlat ? null : <PaneGroupLabel>WorkChart</PaneGroupLabel>}
+      {isFlat ? null : <PaneGroupLabel>{t("nav.groups.workchart")}</PaneGroupLabel>}
       <SidebarGroupContent className="flex min-h-0 flex-1 flex-col gap-2">
         {find}
         <ScrollArea data-slot="scroll-area" className="min-h-0 flex-1">
@@ -133,10 +138,10 @@ function WorkChart() {
 }
 
 function PersonSectionsNav() {
+  const { t } = useTranslation();
   const { setItem } = usePortalNavActions();
   const dismiss = useDismissDrawer();
-  const active = usePortalItem();
-  const { activePerson } = useActiveZone();
+  const { item: active, person: activePerson } = useNavLocation();
   // Costs no request: these are the section screens' own queries, so
   // react-query serves them from cache.
   const standings = usePersonSectionStandings(activePerson);
@@ -146,7 +151,7 @@ function PersonSectionsNav() {
   const glance = useSelectedPersonSection() == null;
   return (
     <SidebarGroup>
-      <PaneGroupLabel>Sections</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.groups.sections")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -158,7 +163,7 @@ function PersonSectionsNav() {
               }}
             >
               <LayoutGrid />
-              <span>At a glance</span>
+              <span>{t("nav.items.at_a_glance")}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           {groups.map((g) => {
@@ -187,12 +192,12 @@ function PersonSectionsNav() {
                       : standing.hasData
                         ? standing.phrase
                         : standing.peersHaveData
-                          ? "No data this period"
-                          : "No data source is connected for this section"
+                          ? t("nav.no_data_period")
+                          : t("nav.no_source_connected")
                   }
                 >
                   <Layers />
-                  <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                  <span className="min-w-0 flex-1 truncate">{resolveText(t, g.title)}</span>
                   {/* The mark that answers "which section is worth opening",
                       beside the thing you click.
 

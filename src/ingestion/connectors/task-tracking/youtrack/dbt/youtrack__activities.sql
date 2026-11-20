@@ -28,10 +28,14 @@ WITH raw AS (
                 activity_type = 'ProjectActivityItem', 'project',
                 JSONExtractString(payload, 'targetMember') IN ('summary', 'description'), JSONExtractString(payload, 'targetMember'),
                 '') AS field_id,
-        if(activity_type = 'ProjectActivityItem', {{ youtrack_project_values('removed') }},
-           {{ youtrack_values('removed') }}) AS before_pairs,
-        if(activity_type = 'ProjectActivityItem', {{ youtrack_project_values('added') }},
-           {{ youtrack_values('added') }}) AS after_pairs,
+        activity_type IN ('TextMarkupActivityItem', 'TextCustomFieldActivityItem')
+            OR JSONExtractString(payload, 'targetMember') IN ('summary', 'description') AS is_text,
+        multiIf(activity_type = 'ProjectActivityItem', {{ youtrack_project_values('removed') }},
+                is_text, {{ youtrack_text_values('removed') }},
+                {{ youtrack_values('removed') }}) AS before_pairs,
+        multiIf(activity_type = 'ProjectActivityItem', {{ youtrack_project_values('added') }},
+                is_text, {{ youtrack_text_values('added') }},
+                {{ youtrack_values('added') }}) AS after_pairs,
         arrayConcat({{ youtrack_value_types('removed') }}, {{ youtrack_value_types('added') }}) AS value_types
     FROM raw
     WHERE JSONExtractString(target, '$type') = 'Issue'

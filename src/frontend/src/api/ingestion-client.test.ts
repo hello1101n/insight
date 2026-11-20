@@ -13,7 +13,7 @@ vi.mock("@/api/fetch-with-auth", () => ({ fetchWithAuth: vi.fn() }));
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 
 import { getIngestionIntensity, intensityParams } from "./ingestion-client";
-import { AnalyticsApiError } from "./analytics-client";
+import { ConnectorsApiError } from "./connectors-client";
 
 const mockFetch = fetchWithAuth as unknown as ReturnType<typeof vi.fn>;
 
@@ -81,12 +81,12 @@ describe("intensityParams", () => {
 });
 
 describe("getIngestionIntensity", () => {
-  it("addresses the analytics prefix the gateway strips to", async () => {
+  it("addresses the connectors prefix the gateway strips to", async () => {
     mockFetch.mockResolvedValueOnce(response(ORG_WIDE));
 
     await expect(getIngestionIntensity({ grain: "15m" })).resolves.toEqual(ORG_WIDE);
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/ingestion/intensity?grain=15m",
+      "/api/connectors/v1/ingestion/intensity?grain=15m",
     );
   });
 
@@ -103,7 +103,7 @@ describe("getIngestionIntensity", () => {
     const body = await getIngestionIntensity({ grain: "15m", scope: "bronze_demo_tasks" });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/ingestion/intensity?grain=15m&scope=bronze_demo_tasks",
+      "/api/connectors/v1/ingestion/intensity?grain=15m&scope=bronze_demo_tasks",
     );
     expect(body.scope).toBe("bronze_demo_tasks");
     expect(body.series).toBe("stream");
@@ -138,7 +138,7 @@ describe("getIngestionIntensity", () => {
     );
 
     await expect(getIngestionIntensity({ grain: "15m" })).rejects.toBeInstanceOf(
-      AnalyticsApiError,
+      ConnectorsApiError,
     );
   });
 });

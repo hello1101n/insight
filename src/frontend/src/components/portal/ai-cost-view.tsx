@@ -6,7 +6,6 @@ import { PANE_ITEM_COMING_SOON } from "@/lib/portal/aicost-configs";
 import { orgScopeGate } from "@/components/portal/org-scope-gate";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { MembersGrid } from "@/components/widgets/dashboard/members-grid";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -14,6 +13,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
 import { formatMetricValue } from "@/lib/format";

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { metricHelp } from "@/lib/insight/metric-help";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
@@ -8,15 +8,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@/components/ui/preview-card";
 import { formatMetricValue, isDurationUnit } from "@/lib/format";
 import { absenceLabel } from "@/lib/metrics/absence";
 import {
@@ -147,18 +142,6 @@ function columnFor(metric: NormalizedMetricResult): Column {
     direction: metric.direction,
     metric,
   };
-}
-
-/**
- * Which end of the scale reads as "better", or `null` for a neutral metric
- * that carries no better/worse judgment. Never collapse `direction` to a
- * boolean: a neutral metric is a fact, not a score, and must not be tinted
- * or ranked as if higher were good.
- */
-function betterWhenHigher(direction: MetricDirection): boolean | null {
-  if (direction === "higher_is_better") return true;
-  if (direction === "lower_is_better") return false;
-  return null;
 }
 
 interface CellShape {
@@ -528,7 +511,7 @@ function MemberRow({
         <div className="flex min-h-12 flex-col justify-center gap-0.5">
           <div className="flex items-center gap-1.5">
             <Link
-              to="/ic/$person/personal"
+              to="/people/$person"
               params={{ person: member.entityId }}
               className="min-w-0 truncate text-sm leading-tight font-medium hover:underline"
             >
@@ -625,10 +608,10 @@ function GridCell({
   // render it as a second line.
   const showStanding = observed && cell.status !== "neutral";
   return (
-    // PreviewCard is base-ui's hover-only surface — no click-to-open at all,
+    // HoverCard wraps base-ui's hover-only PreviewCard — no click-to-open at all,
     // so a pressed cell can never pin its detail open.
-    <PreviewCard>
-      <PreviewCardTrigger
+    <HoverCard>
+      <HoverCardTrigger
         delay={150}
         // Close immediately on mouse-out — the default 300ms lets the old
         // card linger while the next cell's opens, flashing two at once.
@@ -671,7 +654,7 @@ function GridCell({
           </button>
         }
       />
-      <PreviewCardContent className="w-64 p-3">
+      <HoverCardContent>
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold">{col.label}</p>
           <p className="text-xs text-muted-foreground">{memberName}</p>
@@ -717,8 +700,8 @@ function GridCell({
             <p className="mt-1 text-xs text-muted-foreground">{leaveLabel}</p>
           ) : null}
         </div>
-      </PreviewCardContent>
-    </PreviewCard>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -749,66 +732,39 @@ function ColumnHeader({
   direction: "ascending" | "descending" | undefined;
   onClick: () => void;
 }) {
-  const help = metricHelp(col.metric);
+  const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onClick}
-            className={cn(
-              "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
-              active && "text-foreground"
-            )}
-            aria-label={`${col.label} — sort by this column`}
-          >
-            {/* Label stays centered; the arrow hugs its right edge (left-full)
-                like the value cell, rather than pinning to the column edge. */}
-            <span className="relative inline-flex max-w-full items-center">
-              <span className="truncate">{col.heading}</span>
-              <SortArrow
-                direction={direction}
-                className="absolute left-full ml-0.5"
-              />
-            </span>
-          </button>
-        }
-      />
-      <TooltipContent side="top" className="max-w-56">
-        <span className="flex flex-col gap-0.5 leading-snug">
-          <span className="font-medium">{col.label}</span>
-          {/* What the column counts, in the catalog's words. A header reading
-              "AI LINES +" is otherwise a guess, and the grid is where a
-              reader compares people on it. */}
-          {help?.description ? <span>{help.description}</span> : null}
-          {/* The catalog sometimes supplies only the longer explanation, and a
-              header showing neither leaves the column a guess. */}
-          {help?.explanation ? (
-            <span className="text-background/70">{help.explanation}</span>
-          ) : null}
-          <span className="text-background/70">
-            {col.unit ? `${col.unit} · ` : ""}
-            {betterWhenHigher(col.direction) === true
-              ? "higher is better · "
-              : betterWhenHigher(col.direction) === false
-                ? "lower is better · "
-                : ""}
-            click to sort
-          </span>
-        </span>
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
+        active && "text-foreground"
+      )}
+      aria-label={t("common.legend.sort_column", { column: col.label })}
+      title={col.label}
+    >
+      {/* Label stays centered; the arrow hugs its right edge (left-full)
+          like the value cell, rather than pinning to the column edge. */}
+      <span className="relative inline-flex max-w-full items-center">
+        <span className="truncate">{col.heading}</span>
+        <SortArrow
+          direction={direction}
+          className="absolute left-full ml-0.5"
+        />
+      </span>
+    </button>
   );
 }
 
 function Legend() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-4 px-3 text-xs text-muted-foreground">
-      <LegendSwatch className={PEER_FILL.top}>Top 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.in_pack}>Near the median</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.bottom}>Bottom 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.neutral}>No comparison</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.top}>{t("common.legend.top")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.in_pack}>{t("common.legend.near_median")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.bottom}>{t("common.legend.bottom")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.neutral}>{t("common.legend.no_comparison")}</LegendSwatch>
     </div>
   );
 }

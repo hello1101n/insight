@@ -1,15 +1,14 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { CartesianGrid, ComposedChart, XAxis } from "recharts";
 import {
-  CartesianGrid,
+  type ChartConfig,
   ChartContainer,
-  ChartLine,
   ChartTooltip,
   ChartTooltipContent,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
 import {
   formatHoursDuration,
   formatMetricValue,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
+import { chartColor } from "@/lib/chart-palette";
 import { cn } from "@/lib/utils";
 
 import { halvesComparison, type HalfComparison } from "./derived";
@@ -28,7 +28,6 @@ const SLOPE_LIMIT = 8;
 const MOMENTUM_LIMIT = 12;
 const STAGE_FIRST = "First half";
 const STAGE_SECOND = "Second half";
-const LINE_COLORS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
 function resolveHalves(
   section: Extract<TenantSectionSpec, { kind: "slope" | "momentum" }>,
@@ -126,7 +125,7 @@ export function SlopeSection({
                   key={row.value}
                   dataKey={keys[index]}
                   name={row.label}
-                  stroke={`var(--${LINE_COLORS[index % LINE_COLORS.length]})`}
+                  stroke={chartColor(index)}
                   strokeWidth={2}
                 />
               ))}

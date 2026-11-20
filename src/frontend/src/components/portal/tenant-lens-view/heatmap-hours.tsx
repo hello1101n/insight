@@ -1,10 +1,11 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { fmtCompact } from "@/lib/portal/metric-stats";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { dayHourMatrix, HOUR_BLOCKS, WEEKDAY_LABELS } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 /** Day-of-week × two-hour block magnitude ramp — when CI actually runs. */
 export function HeatmapHoursSection({
@@ -84,7 +85,7 @@ function HeatmapRow({
             background:
               value <= 0
                 ? "var(--muted)"
-                : `color-mix(in srgb, var(--chart-1) ${Math.round(
+                : `color-mix(in srgb, ${chartColor(0)} ${Math.round(
                     12 + (value / max) * 78
                   )}%, transparent)`,
           }}

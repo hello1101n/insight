@@ -9,14 +9,16 @@
 import { Lock, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { Button, Input, Textarea } from "@gears-frontx/ui-kit";
 import {
+  Button,
+  Input,
+  Textarea,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
 import { useIsAdmin } from "@/queries/identity-me";
 import {
   useAiConfig,

@@ -1,5 +1,6 @@
 import { BarChart, LabelList } from "recharts";
 
+import { ChartBar } from "@/components/chart-series";
 import type { MetricResult } from "@/api/custom-client";
 import {
   type ChartConfig,
@@ -16,7 +17,6 @@ import {
   ChartLegendContent,
   SeriesAxes,
 } from "@/components/custom/chart-frame";
-import { ChartBar } from "@/components/ui/chart";
 
 export interface CustomBarChartProps {
   result: MetricResult;

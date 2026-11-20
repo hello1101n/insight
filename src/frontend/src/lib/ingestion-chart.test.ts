@@ -102,10 +102,8 @@ describe("colour follows the entity", () => {
   });
 
   it("resolves to a palette slot that exists", () => {
-    // index.css defines --chart-1 … --chart-12 and repeats them in the
-    // dark-mode block. An index past 12 is an undefined var(), which paints the
-    // band the fallback colour instead of failing loudly — so the ceiling is
-    // asserted over enough keys to catch a wrong PALETTE_SIZE.
+    // An index past the palette is an undefined var(), which paints the band
+    // the fallback colour instead of failing loudly.
     const keys = [
       "jira", "slack", "zoom", "_boards", "m365", "cursor", "bamboohr",
       "confluence", "bitbucket_cloud", "claude_enterprise", "demo_tasks",

@@ -15,6 +15,7 @@
     query_settings={
         'max_bytes_before_external_group_by': 2000000000,
         'max_bytes_before_external_sort': 2000000000,
+        'query_plan_join_swap_table': 'false',
     },
     pre_hook=[
         "{{ jira_journal_drop_rows_bronze_cannot_account_for() }}",
@@ -74,18 +75,18 @@ WITH kinds AS (
 
 -- One row per issue: identity, creation time, reporter. Same two-pass dedup as
 -- the snapshot model — the aggregation carries only a raw id, never the JSON.
-issue_winner AS (
-    -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
-    -- within a source, (source_id, jira_id): unmerged parts hold several rows
-    -- per issue, and `unique_key` exists for the merge alone.
-    SELECT source_id, jira_id, argMax(_airbyte_raw_id, _airbyte_extracted_at) AS raw_id
-    FROM {{ source('bronze_jira', 'jira_issue') }}
-    WHERE {{ jira_journal_in_batch("CAST(source_id AS String)", "CAST(jira_id AS String)") }}
-    GROUP BY source_id, jira_id
-),
+-- Read-time dedup of the ReplacingMergeTree by the issue's stable key within a
+-- source, (source_id, jira_id): unmerged parts hold several rows per issue,
+-- and `unique_key` exists for the merge alone.
+{%- set issue_winner_ids %}
+        SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
+        FROM {{ source('bronze_jira', 'jira_issue') }}
+        WHERE {{ jira_journal_in_batch("CAST(source_id AS String)", "CAST(jira_id AS String)") }}
+        GROUP BY source_id, jira_id
+{%- endset %}
 
 -- The scope predicate is repeated on every read of the issue table rather than
--- left to the join on `raw_id`: it is what lets the scan skip the JSON of the
+-- left to the `raw_id` filter: it is what lets the scan skip the JSON of the
 -- issues this run does not recompute.
 issues AS (
     SELECT
@@ -97,8 +98,9 @@ issues AS (
         i.reporter_id                                     AS reporter_id,
         toDateTime64(i._airbyte_extracted_at, 3)          AS observed_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN issue_winner AS w ON i._airbyte_raw_id = w.raw_id
     WHERE {{ jira_journal_in_batch("CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+      AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
+      )
 ),
 
 -- The same winning bronze row, carrying the payload and the moment it was
@@ -114,8 +116,9 @@ issue_json AS (
             JSONExtractString(COALESCE(i.custom_fields_json, '{}'), 'resolutiondate'), 3)
                                                           AS resolved_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN issue_winner AS w ON i._airbyte_raw_id = w.raw_id
     WHERE {{ jira_journal_in_batch("CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+      AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
+      )
 ),
 
 changelog_items AS (
