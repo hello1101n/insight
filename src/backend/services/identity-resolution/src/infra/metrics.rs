@@ -51,6 +51,7 @@ impl RunOutcome {
 pub(crate) enum DbQuery {
     KnownAccountBindings,
     LatestEmailToPerson,
+    RosterEmployeeIds,
     Apply,
 }
 
@@ -59,6 +60,7 @@ impl DbQuery {
         match self {
             Self::KnownAccountBindings => "known_account_bindings",
             Self::LatestEmailToPerson => "latest_email_to_person",
+            Self::RosterEmployeeIds => "roster_employee_ids",
             Self::Apply => "apply",
         }
     }
@@ -103,6 +105,7 @@ fn instruments() -> &'static Instruments {
 pub(crate) fn record_seed_outcomes(summary: &SeedSummary) {
     let resolved = summary.reused_known
         + summary.linked_by_email
+        + summary.linked_by_employee_id
         + summary.minted
         + summary.minted_from_roster;
     let ambiguous = summary.skipped_contested_email;
@@ -156,6 +159,7 @@ mod tests {
             DbQuery::LatestEmailToPerson.as_str(),
             "latest_email_to_person"
         );
+        assert_eq!(DbQuery::RosterEmployeeIds.as_str(), "roster_employee_ids");
         assert_eq!(DbQuery::Apply.as_str(), "apply");
     }
 
