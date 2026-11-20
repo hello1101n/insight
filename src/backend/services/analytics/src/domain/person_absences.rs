@@ -1,9 +1,11 @@
 use std::time::Duration;
 
+use chrono::NaiveDate;
+use insight_clickhouse::{Param, Sql, sql};
 use serde::{Deserialize, Serialize};
 
+use crate::domain::metric_results::ValidatedMetricResultsRequest;
 use crate::domain::metric_results::compiler::{account_id_expr, account_source_uuid_expr};
-use crate::domain::metric_results::{CompiledQuery, ValidatedMetricResultsRequest};
 use crate::infra::metrics::QueryKind;
 use crate::infra::query::fetch_json_rows;
 
@@ -26,8 +28,7 @@ pub(crate) async fn load(
 
     let context = fetch_json_rows(
         client,
-        &query.sql,
-        &query.params,
+        &query,
         QueryKind::AbsenceContext,
         "metric-results:absence-context",
     );
@@ -42,25 +43,15 @@ pub(crate) async fn load(
     }
 }
 
-fn compile(request: &ValidatedMetricResultsRequest) -> Option<CompiledQuery> {
+fn compile(request: &ValidatedMetricResultsRequest) -> Option<Sql> {
     let ids = request.entity.person_ids()?;
     if ids.is_empty() {
         return None;
     }
 
-    let mut params = vec![request.to.to_string(), request.from.to_string()];
     let comparison = request.compare_to.map_or_else(
-        || "CAST(NULL AS Nullable(Bool))".to_owned(),
-        |window| {
-            params.extend([window.to.to_string(), window.from.to_string()]);
-            "toBool(max(a.start_date <= toDate(?) AND a.end_date >= toDate(?)))".to_owned()
-        },
-    );
-    params.push(
-        ids.iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(","),
+        || Sql::raw("CAST(NULL AS Nullable(Bool))"),
+        |window| overlap(window.from, window.to),
     );
     let earliest = request
         .compare_to
@@ -68,40 +59,55 @@ fn compile(request: &ValidatedMetricResultsRequest) -> Option<CompiledQuery> {
     let latest = request
         .compare_to
         .map_or(request.to, |window| request.to.max(window.to));
-    params.extend([latest.to_string(), earliest.to_string()]);
     let tenant_filter = if request.enforce_tenant_scope {
-        params.push(request.tenant_id.to_string());
-        "AND a.insight_tenant_id = ?"
+        sql!(
+            "AND a.insight_tenant_id = {tenant}",
+            tenant = Param::string(request.tenant_id.to_string()),
+        )
     } else {
-        ""
+        Sql::default()
     };
-    let source_id = account_source_uuid_expr("a");
-    let account_id = account_id_expr("a");
-    let sql = format!(
+    Some(sql!(
         "SELECT toString(binding.person_id) AS person_id,
-            toBool(max(a.start_date <= toDate(?) AND a.end_date >= toDate(?))) AS period_overlap,
+            {period_overlap} AS period_overlap,
             {comparison} AS compare_to_overlap
          FROM silver.class_person_absences AS a FINAL
          INNER JOIN identity.account_assignment AS binding
              ON binding.source_type = a.account_source_type
             AND binding.source_id = {source_id}
             AND binding.account_id = {account_id}
-         WHERE toString(binding.person_id) IN splitByChar(',', ?)
-           AND a.start_date <= toDate(?) AND a.end_date >= toDate(?)
+         WHERE binding.person_id IN {person_ids}
+           AND a.start_date <= {latest} AND a.end_date >= {earliest}
            {tenant_filter}
          GROUP BY binding.person_id
          HAVING period_overlap OR coalesce(compare_to_overlap, false)
          ORDER BY person_id
          SETTINGS max_execution_time = 5, max_rows_to_read = 1000000,
              max_bytes_to_read = 67108864, max_result_rows = 5000,
-             max_result_bytes = 1048576, result_overflow_mode = 'throw'"
-    );
-    Some(CompiledQuery { sql, params })
+             max_result_bytes = 1048576, result_overflow_mode = 'throw'",
+        period_overlap = overlap(request.from, request.to),
+        comparison = comparison,
+        source_id = Sql::raw(account_source_uuid_expr("a")),
+        account_id = Sql::raw(account_id_expr("a")),
+        person_ids = Param::uuids(ids.iter().copied()),
+        latest = Param::date(latest),
+        earliest = Param::date(earliest),
+        tenant_filter = tenant_filter,
+    ))
+}
+
+fn overlap(from: NaiveDate, to: NaiveDate) -> Sql {
+    sql!(
+        "toBool(max(a.start_date <= {to} AND a.end_date >= {from}))",
+        to = Param::date(to),
+        from = Param::date(from),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use insight_clickhouse::Param;
     use uuid::Uuid;
 
     use super::{PersonAbsenceContext, compile};
@@ -164,16 +170,36 @@ mod tests {
         })
     }
 
+    fn date(raw: &str) -> Result<Param, chrono::ParseError> {
+        Ok(Param::date(NaiveDate::parse_from_str(raw, "%Y-%m-%d")?))
+    }
+
+    fn named(name: &str, param: Param) -> (String, Param) {
+        (name.to_owned(), param)
+    }
+
     #[test]
     fn only_authorized_person_ids_and_bound_dates_enter_the_query() -> R {
-        let query = compile(&request()?).ok_or("missing query")?;
+        let query = compile(&request()?).ok_or("missing query")?.render();
         assert!(query.sql.contains("FINAL"));
-        assert!(query.sql.contains("a.insight_tenant_id = ?"));
+        assert!(query.sql.contains("a.insight_tenant_id = {tenant:String}"));
         assert!(query.sql.contains("CAST(NULL AS Nullable(Bool))"));
-        assert_eq!(query.sql.matches('?').count(), query.params.len());
-        assert_eq!(query.params[0], "2025-05-31");
-        assert_eq!(query.params[1], "2025-05-01");
-        assert_eq!(query.params[2], Uuid::from_u128(2).to_string());
+        assert!(
+            query
+                .sql
+                .contains("WHERE binding.person_id IN {person_ids:Array(UUID)}")
+        );
+        assert_eq!(
+            query.params,
+            [
+                named("to", date("2025-05-31")?),
+                named("from", date("2025-05-01")?),
+                named("person_ids", Param::uuids([Uuid::from_u128(2)])),
+                named("latest", date("2025-05-31")?),
+                named("earliest", date("2025-05-01")?),
+                named("tenant", Param::string(Uuid::from_u128(1).to_string())),
+            ]
+        );
         Ok(())
     }
 
@@ -206,10 +232,22 @@ mod tests {
             from: NaiveDate::parse_from_str("2025-04-01", "%Y-%m-%d")?,
             to: NaiveDate::parse_from_str("2025-04-30", "%Y-%m-%d")?,
         });
-        let query = compile(&request).ok_or("missing query")?;
-        assert_eq!(query.sql.matches('?').count(), query.params.len());
-        assert_eq!(&query.params[2..4], ["2025-04-30", "2025-04-01"]);
-        assert_eq!(&query.params[5..7], ["2025-05-31", "2025-04-01"]);
+        let query = compile(&request).ok_or("missing query")?.render();
+        assert!(query.sql.contains(
+            "toBool(max(a.start_date <= {to_1:Date} AND a.end_date >= {from_1:Date})) AS compare_to_overlap"
+        ));
+        for expected in [
+            named("to_1", date("2025-04-30")?),
+            named("from_1", date("2025-04-01")?),
+            named("latest", date("2025-05-31")?),
+            named("earliest", date("2025-04-01")?),
+        ] {
+            assert!(
+                query.params.contains(&expected),
+                "{expected:?} in {:?}",
+                query.params
+            );
+        }
         Ok(())
     }
 

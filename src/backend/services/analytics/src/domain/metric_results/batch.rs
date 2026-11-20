@@ -540,6 +540,7 @@ mod tests {
 
     use super::*;
     use chrono::NaiveDate;
+    use insight_clickhouse::Param;
     use serde_json::json;
 
     use crate::domain::metric_definitions::definition::{
@@ -751,11 +752,9 @@ mod tests {
         );
         assert!(rankings.iter().all(|ranking| {
             ranking.key.rank_metric_key == "m_rank"
-                && ranking
-                    .query
-                    .params
-                    .iter()
-                    .any(|value| value == "00000000-0000-0000-0000-000000000001")
+                && ranking.query.sql.render().params.iter().any(|(_, param)| {
+                    *param == Param::strings(["00000000-0000-0000-0000-000000000001"])
+                })
         }));
     }
 

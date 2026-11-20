@@ -1,3 +1,4 @@
+use insight_clickhouse::{Param, Sql, sql};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::metric_results::compiler::sql_string_literal;
@@ -94,10 +95,16 @@ impl ColumnSql {
         }
     }
 
-    pub(super) fn cursor_binding(&self) -> &'static str {
+    pub(super) fn cursor_binding(&self, sort_value: &str) -> Sql {
+        let cursor_sort_value = Param::string(sort_value);
         match self.r#type {
-            MetricDrilldownColumnType::Number => "toFloat64(?)",
-            MetricDrilldownColumnType::String | MetricDrilldownColumnType::Date => "?",
+            MetricDrilldownColumnType::Number => sql!(
+                "toFloat64({cursor_sort_value})",
+                cursor_sort_value = cursor_sort_value
+            ),
+            MetricDrilldownColumnType::String | MetricDrilldownColumnType::Date => {
+                sql!("{cursor_sort_value}", cursor_sort_value = cursor_sort_value)
+            }
         }
     }
 
@@ -325,8 +332,14 @@ mod tests {
             RowShape::Record,
         )
         .unwrap_or_else(|| panic!("value must be readable"));
-        assert_eq!(number.cursor_binding(), "toFloat64(?)");
-        assert_eq!(text(DATE_KEY).cursor_binding(), "?");
+        assert_eq!(
+            number.cursor_binding("12.5").render().sql,
+            "toFloat64({cursor_sort_value:String})"
+        );
+        assert_eq!(
+            text(DATE_KEY).cursor_binding("2026-07-01").render().sql,
+            "{cursor_sort_value:String}"
+        );
     }
 
     #[test]

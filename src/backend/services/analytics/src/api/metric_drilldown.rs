@@ -467,15 +467,12 @@ async fn fetch_rows_inner(
     // INVARIANT: the permit is held across the awaited ClickHouse execution and
     // byte collection below — the hold is the MAX_CONCURRENT_QUERIES cap.
     let _permit = acquire_query_permit().await?;
-    let (sql, params) = compile_query(req)?;
+    let sql = compile_query(req)?;
     let base = state
         .ch
-        .query(&sql)
+        .query_sql(&sql)
         .with_setting("log_comment", log_comment);
-    let mut query = with_evidence_query_limits(base).with_setting("max_threads", "2");
-    for param in params {
-        query = query.bind(param);
-    }
+    let query = with_evidence_query_limits(base).with_setting("max_threads", "2");
     let mut cursor = match query.fetch_bytes("JSONEachRow") {
         Ok(cursor) => cursor,
         Err(error) => return read_outcome(&error.to_string(), kind, log_comment),
