@@ -64,6 +64,38 @@ pub fn bind_named<N: AsRef<str>>(
     Ok((out, values))
 }
 
+pub fn named_clauses(
+    prefix: &str,
+    values: impl IntoIterator<Item = Value>,
+    clause: impl Fn(&str) -> String,
+) -> (String, Vec<(String, Value)>) {
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let name = format!("{prefix}_{index}");
+            (clause(&name), (name, value))
+        })
+        .unzip()
+}
+
+pub fn named_list(
+    prefix: &str,
+    values: impl IntoIterator<Item = Value>,
+) -> (String, Vec<(String, Value)>) {
+    let params: Vec<(String, Value)> = values
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| (format!("{prefix}_{index}"), value))
+        .collect();
+    let list = params
+        .iter()
+        .map(|(name, _)| format!("@{name}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    (list, params)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,6 +131,31 @@ mod tests {
         let (out, values) = bind_named::<&str>("a @ b", &[])?;
         assert_eq!(out, "a @ b");
         assert!(values.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn a_named_list_binds_each_value_in_its_own_slot() -> anyhow::Result<()> {
+        let (list, params) = named_list("id", [Value::from(7_i32), Value::from(8_i32)]);
+
+        let (out, values) = bind_named(&format!("IN ({list})"), &params)?;
+
+        assert_eq!(out, "IN (?, ?)");
+        assert_eq!(values, vec![Value::from(7_i32), Value::from(8_i32)]);
+        Ok(())
+    }
+
+    #[test]
+    fn each_named_clause_binds_its_own_value() -> anyhow::Result<()> {
+        let (clauses, params) =
+            named_clauses("t", [Value::from(7_i32), Value::from(8_i32)], |name| {
+                format!(" AND x = @{name}")
+            });
+
+        let (out, values) = bind_named(&format!("WHERE 1 = 1{clauses}"), &params)?;
+
+        assert_eq!(out, "WHERE 1 = 1 AND x = ? AND x = ?");
+        assert_eq!(values, vec![Value::from(7_i32), Value::from(8_i32)]);
         Ok(())
     }
 
