@@ -1,5 +1,3 @@
-//! The metrics a composite combines, read from the store and admitted.
-
 use crate::domain::datasets::{self, Datasets, Ready};
 use crate::domain::definition::{DefinitionKind, Lookup};
 use crate::domain::kinds::KindError;
@@ -14,11 +12,8 @@ use crate::domain::query::metric_query::{
 };
 use crate::domain::query::time_window::Window;
 
-/// A composite's children, each read as the plain query it is and admitted:
-/// each answers one row per key.
 #[derive(Debug)]
 pub(crate) struct Children {
-    /// In the order the composite combines them.
     children: Vec<Child>,
     admitted: Admitted,
 }
@@ -27,16 +22,21 @@ pub(crate) struct Children {
 struct Child {
     alias: Alias,
     query: MetricQuery,
-    /// The dataset it reads, when it reads one rather than a table.
-    dataset: Option<Ready>,
-    /// How its table is read. A dataset's records are read the same way
-    /// whatever this says.
-    engine: TableEngine,
+    source: Source,
+}
+
+#[derive(Debug)]
+enum Source {
+    Dataset(Ready),
+    Table(TableEngine),
 }
 
 impl Child {
     fn candidate(&self) -> Candidate<'_> {
-        let declaration = self.dataset.as_ref().map(|ready| &ready.declaration);
+        let declaration = match &self.source {
+            Source::Dataset(ready) => Some(&ready.declaration),
+            Source::Table(_) => None,
+        };
 
         Candidate {
             alias: &self.alias,
@@ -47,17 +47,13 @@ impl Child {
     }
 
     fn clock(&self) -> Option<EffectiveClock> {
-        match &self.dataset {
-            Some(ready) => EffectiveClock::of(&self.query, &ready.declaration),
-            None => EffectiveClock::of_table(&self.query),
+        match &self.source {
+            Source::Dataset(ready) => EffectiveClock::of(&self.query, &ready.declaration),
+            Source::Table(_) => EffectiveClock::of_table(&self.query),
         }
     }
 }
 
-/// Reads every metric a composite combines and admits them together.
-///
-/// A child can be edited after the composite is stored, so every run reads
-/// and admits them again rather than trusting the write that came before.
 pub(crate) async fn children(
     composite: &Composite,
     definitions: &dyn Lookup,
@@ -91,21 +87,20 @@ pub(crate) async fn children(
                 }));
             }
         };
-        let dataset = match query.dataset() {
-            Some(named) => Some(
+        let source = match query.dataset() {
+            Some(named) => Source::Dataset(
                 datasets::ready(datasets, named)
                     .await
                     .map_err(KindError::Datasets)?
                     .ok_or_else(|| KindError::DatasetNotReady(named.to_owned()))?,
             ),
-            None => None,
+            None => Source::Table(TableEngine::Other),
         };
 
         children.push(Child {
             alias: combined.alias.clone(),
             query,
-            dataset,
-            engine: TableEngine::Other,
+            source,
         });
     }
 
@@ -116,18 +111,14 @@ pub(crate) async fn children(
 }
 
 impl Children {
-    /// Whether a window over the composite has a date to select by.
     pub(crate) fn dated(&self) -> bool {
         self.admitted.dated()
     }
 
-    /// What each result column holds, in result order.
     pub(crate) fn column_kinds(&self, clocked: bool) -> Vec<(String, ColumnKind)> {
         self.admitted.column_kinds(clocked)
     }
 
-    /// The clock a window over the composite selects by: the first child's,
-    /// when every child has one.
     pub(crate) fn clock(&self) -> Option<EffectiveClock> {
         if !self.dated() {
             return None;
@@ -136,14 +127,13 @@ impl Children {
         self.children.first().and_then(Child::clock)
     }
 
-    /// How each child's table is read, as the warehouse holds it now.
     pub(crate) async fn read_engines(
         &mut self,
         runner: &MetricRunner,
     ) -> Result<(), MetricRunError> {
         for child in &mut self.children {
-            if child.dataset.is_none() {
-                child.engine = runner
+            if let Source::Table(engine) = &mut child.source {
+                *engine = runner
                     .engine_of(child.query.database(), child.query.table_name())
                     .await?;
             }
@@ -152,8 +142,6 @@ impl Children {
         Ok(())
     }
 
-    /// The composite over a window: each child compiled as a subquery, then
-    /// stacked and folded. `database` is where every dataset's records are.
     pub(crate) fn compile(
         &self,
         composite: &Composite,
@@ -163,14 +151,20 @@ impl Children {
     ) -> Result<CompiledQuery, CompositeError> {
         let mut stacked = Vec::with_capacity(self.children.len());
         for child in &self.children {
-            let over = child.dataset.as_ref().map(|ready| Over {
-                declaration: &ready.declaration,
-                database,
-                table: &ready.table,
-            });
+            let (engine, over) = match &child.source {
+                Source::Dataset(ready) => (
+                    TableEngine::Other,
+                    Some(Over {
+                        declaration: &ready.declaration,
+                        database,
+                        table: &ready.table,
+                    }),
+                ),
+                Source::Table(engine) => (*engine, None),
+            };
             let compiled = child
                 .query
-                .compile_inner(people, window, child.engine, over)
+                .compile_subquery(people, window, engine, over)
                 .map_err(|source| CompositeError::Compile {
                     alias: child.alias.as_str().to_owned(),
                     source,
@@ -183,8 +177,6 @@ impl Children {
             });
         }
 
-        let bucketed = window.grain().is_some() && self.dated();
-
-        Ok(composite.compile(&stacked, bucketed))
+        Ok(composite.compile(&self.admitted, &stacked, window.grain().is_some()))
     }
 }

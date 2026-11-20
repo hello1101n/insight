@@ -33,8 +33,7 @@ const A_WINDOW: Window = Window::Requested {
 /// get, so one that cannot be read as a metric at all is refused here rather
 /// than at each of them. What the metric asks of its dataset is settled here
 /// too: the declaration is what says whether a field exists, what type it
-/// holds, and so whether the question has an answer. A composite reads the
-/// metrics it combines, which may be arriving in the same batch.
+/// holds, and so whether the question has an answer.
 pub(crate) async fn check(
     body: &Value,
     definitions: &dyn Lookup,
@@ -86,8 +85,6 @@ async fn check_query(
     compiles(metric, over.people, Some(relation), dated)
 }
 
-/// Whether a composite's children can be combined, and the query that
-/// combines them built, as [`compiles`] asks of a plain metric.
 async fn check_composite(
     composite: &Composite,
     definitions: &dyn Lookup,
@@ -172,9 +169,6 @@ fn reaches_past_the_declaration(metric: &MetricQuery) -> Result<(), KindError> {
     ))
 }
 
-/// The metrics a composite combines, when its body names them readably. A
-/// plain metric names no other definition: it reads a dataset, which is not
-/// one.
 pub(crate) fn refers_to(body: &Value) -> Vec<Reference> {
     let Some(combined) = body.get(COMBINE_KEY).and_then(Value::as_object) else {
         return Vec::new();
@@ -191,7 +185,6 @@ pub(crate) fn refers_to(body: &Value) -> Vec<Reference> {
     named
 }
 
-/// The same composite, combining `to` wherever it combined `from`.
 pub(crate) fn rename_reference(mut body: Value, from: &str, to: &str) -> Value {
     let Some(combined) = body.get_mut(COMBINE_KEY).and_then(Value::as_object_mut) else {
         return body;

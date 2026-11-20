@@ -1,11 +1,3 @@
-//! Live `ClickHouse` tests for a composite metric: two stored metrics over
-//! tables of their own, combined, run for real through the same path a reader
-//! takes, and asserted on the rows that come back.
-//!
-//! Each test owns its tables, named after a fresh id, and drops them again.
-//! The rows are synthetic and written here. Like the window tests, these skip
-//! when `INTEGRATION_TESTS_CLICKHOUSE_URL` is unset.
-
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -19,14 +11,11 @@ use crate::window_live_tests::{execute, live_client};
 
 const COMPOSITE: &str = "incidents-per-deploy";
 
-/// A warehouse holding the tables a case made, and a store holding the
-/// metrics over them.
 struct Stand {
     client: insight_clickhouse::Client,
     definitions: MemoryDefinitions,
     datasets: MemoryDatasets,
     suffix: String,
-    /// Every relation this case made, dropped when it is done.
     made: Vec<String>,
 }
 
@@ -41,7 +30,6 @@ impl Stand {
         }
     }
 
-    /// Makes a table of this case's own under a name that starts `prefix`.
     async fn table(&mut self, prefix: &str, schema: &str, rows: &[&str]) -> String {
         let table = format!("{prefix}_{}", self.suffix);
         execute(&self.client, &format!("CREATE TABLE {table} {schema}")).await;
@@ -94,7 +82,6 @@ fn request(range: Option<&str>) -> WindowRequest {
     WindowRequest::parse(range, None).unwrap_or_else(|error| panic!("`{range:?}` parses: {error}"))
 }
 
-/// Every cell as text: a string as it reads, anything else as JSON writes it.
 fn cells(result: &RunResult) -> Vec<Vec<String>> {
     result
         .rows
@@ -117,8 +104,6 @@ fn rows(expected: &[&[&str]]) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Incidents of severity 2 and up, and deploys to production, per team. Each
-/// side holds a team the other has no row for, and rows its filter leaves out.
 async fn incidents_and_deploys(stand: &mut Stand) {
     let incidents = stand
         .table(
@@ -200,8 +185,6 @@ async fn incidents_and_deploys(stand: &mut Stand) {
         .await;
 }
 
-/// A team only one side has a row for reads 0 for the count it lacks, and a
-/// ratio over a missing denominator reads nothing rather than a number.
 #[tokio::test]
 async fn a_composite_answers_every_team_either_side_has_once() {
     let Some(client) = live_client() else {
@@ -273,8 +256,6 @@ async fn a_windowed_composite_answers_each_team_once_per_bucket() {
     stand.drop_all().await;
 }
 
-/// A child that resolves a person's name opens with the `WITH` clauses that
-/// read identity; stacked as a subquery, it still names each person once.
 #[tokio::test]
 async fn a_child_resolving_people_by_name_combines_on_the_name() {
     let Some(client) = live_client() else {

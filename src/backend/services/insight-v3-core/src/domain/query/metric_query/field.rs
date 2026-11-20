@@ -308,9 +308,6 @@ impl Field {
     }
 }
 
-/// One selected column over another, where both are aliases of the same
-/// select list. `nullIf` keeps a zero denominator a missing rate instead of
-/// an error.
 pub(crate) fn ratio_sql(numerator: &str, denominator: &str, percent: bool) -> String {
     let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
 

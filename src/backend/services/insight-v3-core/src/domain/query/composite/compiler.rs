@@ -1,15 +1,11 @@
-//! Compiling a composite: its children's rows stacked into one relation, then
-//! folded to one row per key.
-
 use std::collections::HashMap;
 
-use super::{Alias, Composite, Field};
+use super::{Admitted, Alias, Composite, Field, RESERVED_PREFIX};
 use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
 use crate::domain::query::metric_query::{
-    Bound, CompiledQuery, FieldType, FilterBind, MetricQuery, bound_by, ratio_sql,
+    Bound, CompiledQuery, FieldType, FilterBind, MetricQuery, OrderBy, bound_by, ratio_sql,
 };
 
-/// One combined metric, compiled as a subquery for the composite to stack.
 #[derive(Debug)]
 pub(crate) struct Stacked<'a> {
     pub(crate) alias: &'a Alias,
@@ -17,7 +13,6 @@ pub(crate) struct Stacked<'a> {
     pub(crate) compiled: CompiledQuery,
 }
 
-/// The fold's select list, and what a reader is told about its columns.
 #[derive(Debug, Default)]
 struct Folded {
     parts: Vec<String>,
@@ -27,7 +22,6 @@ struct Folded {
 }
 
 impl Folded {
-    /// A picked column reads as it did in the child it came from.
     fn carry(&mut self, child: &Stacked<'_>, column: &str, as_name: &str) {
         if let Some(field_type) = child.compiled.column_type(column) {
             self.column_types.insert(as_name.to_owned(), field_type);
@@ -42,12 +36,16 @@ impl Folded {
 }
 
 impl Composite {
-    /// The composite over its children, given in the order it combines them.
-    ///
-    /// INVARIANT: stacked and folded, never joined. A join fills a side with
-    /// no row with its type's default unless `join_use_nulls` is set, and
-    /// leaves two copies of each key to merge; the fold has neither problem.
-    pub(crate) fn compile(&self, children: &[Stacked<'_>], bucketed: bool) -> CompiledQuery {
+    // INVARIANT: stacked and folded, never joined. A join fills a side with
+    // no row with its type's default unless `join_use_nulls` is set, and
+    // leaves two copies of each key to merge; the fold has neither problem.
+    pub(crate) fn compile(
+        &self,
+        admitted: &Admitted,
+        children: &[Stacked<'_>],
+        windowed: bool,
+    ) -> CompiledQuery {
+        let bucketed = windowed && admitted.dated();
         let mut keys: Vec<String> = Vec::with_capacity(self.group_by.len() + 1);
         if bucketed {
             keys.push(BUCKET_COLUMN.to_owned());
@@ -70,13 +68,14 @@ impl Composite {
             sql.push_str(&backticked.join(", "));
         }
 
-        // INVARIANT: a run that does not window has no bucket to order by,
-        // so the keys order it then.
-        let ordering = self
-            .order_by
-            .as_ref()
-            .filter(|order| bucketed || order.field != BUCKET_COLUMN);
-        bound_by(&mut sql, Bound::Whole, self.limit, ordering, &keys, &[]);
+        bound_by(
+            &mut sql,
+            Bound::Whole,
+            self.limit,
+            self.ordering(bucketed),
+            &keys,
+            &[],
+        );
 
         CompiledQuery::composed(
             sql,
@@ -87,8 +86,12 @@ impl Composite {
         )
     }
 
-    /// One arm per child: its keys, the values it is picked for each in a
-    /// slot of their own, and `NULL` in every other slot.
+    fn ordering(&self, bucketed: bool) -> Option<&OrderBy> {
+        self.order_by
+            .as_ref()
+            .filter(|order| bucketed || order.field != BUCKET_COLUMN)
+    }
+
     fn stacked(&self, children: &[Stacked<'_>], keys: &[String]) -> (Vec<String>, Vec<FilterBind>) {
         let mut arms = Vec::with_capacity(children.len());
         let mut binds = Vec::new();
@@ -112,16 +115,12 @@ impl Composite {
                 columns.join(", "),
                 child.compiled.sql()
             ));
-            // INVARIANT: binds are positional, so they follow the order the
-            // children's SQL appears in.
             binds.extend_from_slice(child.compiled.binds());
         }
 
         (arms, binds)
     }
 
-    /// Each field over the stacked rows of one key: a pick is the one value
-    /// its child holds there, a ratio divides two earlier fields.
     fn folded(&self, children: &[Stacked<'_>]) -> Folded {
         let mut folded = Folded::default();
         if let Some(first) = children.first() {
@@ -171,8 +170,6 @@ impl Composite {
     }
 }
 
-/// A slot folded to its key's one value. A key a child has no row for counts
-/// nothing there, and a count or a sum of nothing is 0.
 fn picked(index: usize, adds_up: bool) -> String {
     let one = format!("any(`{}`)", slot(index));
 
@@ -183,7 +180,6 @@ fn picked(index: usize, adds_up: bool) -> String {
     }
 }
 
-/// The column a field's values are stacked under.
 fn slot(index: usize) -> String {
-    format!("__c{index}")
+    format!("{RESERVED_PREFIX}c{index}")
 }

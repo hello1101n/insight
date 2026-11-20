@@ -1,6 +1,3 @@
-//! A composite: what it may combine, what it keeps standing, and what draws
-//! or drills into it.
-
 use super::*;
 use crate::domain::kinds::metric::answerable::ClockSource;
 use crate::domain::query::composite::CompositeError;
@@ -11,8 +8,6 @@ const INCIDENTS: &str = "incident-counts";
 const DEPLOYS: &str = "deploy-counts";
 const COMPOSITE: &str = "incidents-per-deploy";
 
-/// A metric over its own table answering one row per team, windowed by when
-/// each row happened.
 fn per_team(table: &str) -> Value {
     json!({
         "table": table,
@@ -38,14 +33,12 @@ fn incidents_per_deploy() -> Value {
     })
 }
 
-/// The same composite with one key of its body replaced.
 fn with(key: &str, value: Value) -> Value {
     let mut body = incidents_per_deploy();
     body[key] = value;
     body
 }
 
-/// Stores both children unchecked, as a store holding them already would.
 async fn children_stored(fixture: &Fixture, incidents: &Value) -> R {
     stored_unchecked(fixture, INCIDENTS, incidents).await?;
     stored_unchecked(fixture, DEPLOYS, &per_team("deploys")).await
@@ -60,7 +53,6 @@ async fn stored_unchecked(fixture: &Fixture, id: &str, body: &Value) -> R {
     Ok(())
 }
 
-/// A stand holding both children and the composite over them.
 async fn composite_stored() -> Result<Fixture, Box<dyn Error>> {
     let fixture = Fixture::new().await;
     children_stored(&fixture, &per_team("incidents")).await?;
@@ -91,8 +83,6 @@ async fn a_composite_over_metrics_that_each_answer_one_row_per_key_is_stored() -
     Ok(())
 }
 
-/// A composite may read a dataset beside a table, so long as both answer the
-/// same keys the same way.
 #[tokio::test]
 async fn a_composite_may_combine_a_dataset_with_a_table() -> R {
     let fixture = Fixture::new().await;
@@ -136,11 +126,8 @@ async fn a_composite_may_combine_a_dataset_with_a_table() -> R {
     Ok(())
 }
 
-/// A child the composite cannot combine, the composite naming it, and
-/// whether a refusal is for the rule that child breaks.
 type Refusal = (&'static str, Value, Value, fn(&CompositeError) -> bool);
 
-/// Stores each case's children, then refuses its composite for its rule.
 async fn refused_for_their_rule(cases: Vec<Refusal>) -> R {
     for (case, incidents, composite, refused_for) in cases {
         let fixture = Fixture::new().await;
@@ -169,7 +156,6 @@ async fn refused_for_their_rule(cases: Vec<Refusal>) -> R {
     Ok(())
 }
 
-/// Each child that would answer more or fewer than one row per key.
 #[tokio::test]
 async fn a_child_that_could_count_a_fact_twice_or_lose_a_key_is_refused_on_write() -> R {
     refused_for_their_rule(vec![
@@ -231,8 +217,6 @@ async fn a_child_that_could_count_a_fact_twice_or_lose_a_key_is_refused_on_write
     .await
 }
 
-/// Each child that answers one row per key, but not the same keys the same
-/// way as the others.
 #[tokio::test]
 async fn a_child_that_disagrees_with_the_others_on_a_key_or_a_window_is_refused_on_write() -> R {
     refused_for_their_rule(vec![
@@ -304,8 +288,6 @@ async fn a_child_that_disagrees_with_the_others_on_a_key_or_a_window_is_refused_
     .await
 }
 
-/// A body naming what only a plain metric may, or a name that resolves to
-/// nothing, is refused before any child is read.
 #[tokio::test]
 async fn a_composite_body_outside_its_vocabulary_is_refused_on_write() -> R {
     let cases = [
@@ -463,8 +445,6 @@ async fn drilling_into_a_composite_is_refused() -> R {
     Ok(())
 }
 
-/// A child may change after the composite is stored; every run holds it to
-/// the rules again, before anything is sent to the warehouse.
 #[tokio::test]
 async fn a_child_changed_after_the_composite_was_stored_is_refused_when_it_runs() -> R {
     let fixture = composite_stored().await?;

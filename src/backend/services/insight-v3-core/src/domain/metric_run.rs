@@ -114,12 +114,10 @@ impl<'a> MetricRuns<'a> {
             .ok_or_else(|| missing_metric(id))
     }
 
-    /// A stored metric, read as a plain query or a composite.
     async fn metric_of(&self, id: &DefinitionId) -> Result<Metric, CustomError> {
         Metric::parse(self.body_of(id).await?).map_err(CustomError::Body)
     }
 
-    /// Every metric a composite combines, read and admitted now.
     async fn children_of(&self, composite: &Composite) -> Result<Children, CustomError> {
         composite::children(composite, self.definitions, self.datasets)
             .await
@@ -137,8 +135,7 @@ impl<'a> MetricRuns<'a> {
     }
 
     /// The columns a stored metric answers, from its definition and its
-    /// dataset's declaration, or from the metrics a composite combines.
-    /// Nothing is run.
+    /// dataset's declaration. Nothing is run.
     pub(crate) async fn columns(&self, name: &DefinitionId) -> Result<Columns, CustomError> {
         let metric = self.metric_of(name).await?;
 
@@ -150,8 +147,6 @@ impl<'a> MetricRuns<'a> {
         Ok(columns_of(&metric, kinds))
     }
 
-    /// What a plain metric's columns hold, from its dataset's declaration
-    /// when it reads one.
     async fn query_kinds(
         &self,
         query: &MetricQuery,
@@ -194,7 +189,6 @@ impl<'a> MetricRuns<'a> {
         })
     }
 
-    /// A plain metric's rows, and what each of its columns holds.
     async fn run_query_named(
         &self,
         query: &MetricQuery,
@@ -298,8 +292,6 @@ impl<'a> MetricRuns<'a> {
         })
     }
 
-    /// Runs a composite once: each child compiled over the window as a
-    /// subquery, stacked and folded. It counts no undated rows of its own.
     async fn run_composite(
         &self,
         composite: &Composite,
@@ -495,8 +487,6 @@ fn missing_metric(id: &DefinitionId) -> CustomError {
     }
 }
 
-/// What a definition says its rows hold, given what each column holds as
-/// what it reads decides.
 fn columns_of(metric: &Metric, kinds: Vec<(String, ColumnKind)>) -> Columns {
     Columns {
         kinds,

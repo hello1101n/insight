@@ -65,10 +65,9 @@ pub(crate) enum KindError {
 /// Checks a body against the rules of its kind, before it is stored.
 ///
 /// A lookup is passed because a kind may need what another definition holds:
-/// a widget draws its metric's columns, so it reads that metric, and a
-/// composite reads the metrics it combines. The datasets are passed for the
-/// same reason: a metric reads one, and what that dataset declares is what
-/// decides whether the metric has an answer.
+/// a widget draws its metric's columns, so it reads that metric. The datasets
+/// are passed for the same reason: a metric reads one, and what that dataset
+/// declares is what decides whether the metric has an answer.
 pub(crate) async fn check(
     kind: DefinitionKind,
     body: &Value,

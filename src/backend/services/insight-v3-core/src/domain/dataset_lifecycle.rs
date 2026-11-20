@@ -166,7 +166,6 @@ impl<'a> DatasetLifecycle<'a> {
         let mut broken = Vec::new();
 
         for (reader, body) in self.readers(name).await? {
-            // INVARIANT: a composite names no dataset, so no reader is one.
             let Ok(Metric::Query(written)) = Metric::parse(body) else {
                 continue;
             };

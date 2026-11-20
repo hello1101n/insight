@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use super::*;
+use crate::domain::kinds::metric::answerable::EffectiveClock;
 use crate::domain::query::metric_query::{
     CompiledQuery, FieldType, MetricQuery, People, TableEngine,
 };
@@ -14,8 +15,6 @@ fn query(body: Value) -> MetricQuery {
     serde_json::from_value(body).unwrap_or_else(|error| panic!("the child parses: {error}"))
 }
 
-/// A child over its own table: one row per team, and optionally a day clock
-/// and a filter of its own.
 fn per_team(table: &str, extra_fields: &[Value], filters: &[Value]) -> MetricQuery {
     let mut fields = vec![json!({ "column": "team", "type": "string", "as_name": "team" })];
     fields.extend(extra_fields.iter().cloned());
@@ -62,15 +61,13 @@ fn last_week(bucketed: bool) -> Window {
     }
 }
 
-/// The composite over these children, each named by its alias and stacked in
-/// the order the composite combines them, as a run stacks them.
 fn compiled(
     composite: &Composite,
     children: &[(&str, MetricQuery)],
     window: &Window,
 ) -> CompiledQuery {
     let people = People::new("identity");
-    let stacked: Vec<Stacked<'_>> = composite
+    let paired: Vec<(&Alias, &MetricQuery)> = composite
         .combine()
         .iter()
         .map(|combined| {
@@ -80,24 +77,44 @@ fn compiled(
             else {
                 panic!("the case gives `{}` a child", combined.alias.as_str());
             };
+            (&combined.alias, child)
+        })
+        .collect();
+
+    let candidates: Vec<Candidate<'_>> = paired
+        .iter()
+        .map(|&(alias, child)| Candidate {
+            alias,
+            query: child,
+            kinds: child.column_kinds(None, false),
+            dated: EffectiveClock::of_table(child).is_some(),
+        })
+        .collect();
+    let admitted = composite
+        .admit(&candidates)
+        .unwrap_or_else(|error| panic!("the children are admitted: {error}"));
+
+    let stacked: Vec<Stacked<'_>> = paired
+        .iter()
+        .map(|&(alias, child)| {
             let compiled = child
-                .compile_inner(&people, window, TableEngine::MergeTree, None)
+                .compile_subquery(&people, window, TableEngine::MergeTree, None)
                 .unwrap_or_else(|error| panic!("the child compiles: {error}"));
 
             Stacked {
-                alias: &combined.alias,
+                alias,
                 query: child,
                 compiled,
             }
         })
         .collect();
 
-    composite.compile(&stacked, window.grain().is_some())
+    composite.compile(&admitted, &stacked, window.grain().is_some())
 }
 
-fn inner_sql(child: &MetricQuery, window: &Window) -> String {
+fn subquery_sql(child: &MetricQuery, window: &Window) -> String {
     child
-        .compile_inner(
+        .compile_subquery(
             &People::new("identity"),
             window,
             TableEngine::MergeTree,
@@ -120,7 +137,7 @@ fn a_child_compiled_for_a_composite_keeps_every_row_in_no_order() {
         "order_by": { "field": "count", "direction": "desc" }
     }));
 
-    let sql = inner_sql(&ordered, &Window::legacy());
+    let sql = subquery_sql(&ordered, &Window::legacy());
 
     assert_eq!(
         sql,
@@ -128,15 +145,13 @@ fn a_child_compiled_for_a_composite_keeps_every_row_in_no_order() {
     );
 }
 
-/// The body's map holds its aliases in name order, so `deploys` stacks
-/// first; each field keeps the slot its place in `fields` gives it.
 #[test]
 fn a_composite_stacks_its_children_and_folds_them_by_key() {
     let incidents = per_team("incidents", &[counted()], &[]);
     let deploys = per_team("deploys", &[counted()], &[]);
     let window = Window::legacy();
-    let incidents_sql = inner_sql(&incidents, &window);
-    let deploys_sql = inner_sql(&deploys, &window);
+    let incidents_sql = subquery_sql(&incidents, &window);
+    let deploys_sql = subquery_sql(&deploys, &window);
 
     let compiled = compiled(
         &incidents_per_deploy(),
@@ -162,8 +177,8 @@ fn a_windowed_composite_folds_by_the_bucket_each_child_carries() {
     let incidents = per_team("incidents", &[counted()], &[]);
     let deploys = per_team("deploys", &[counted()], &[]);
     let window = last_week(true);
-    let incidents_sql = inner_sql(&incidents, &window);
-    let deploys_sql = inner_sql(&deploys, &window);
+    let incidents_sql = subquery_sql(&incidents, &window);
+    let deploys_sql = subquery_sql(&deploys, &window);
 
     let compiled = compiled(
         &incidents_per_deploy(),
@@ -204,7 +219,6 @@ fn an_unbucketed_window_folds_by_the_keys_alone() {
     );
 }
 
-/// What a pick reads where its child has no row for the key.
 #[test]
 fn only_a_count_or_a_sum_reads_zero_where_its_child_has_no_row() {
     let incidents = per_team(
@@ -370,7 +384,6 @@ fn a_ratio_and_the_picks_say_what_their_columns_hold() {
     assert_eq!(compiled.column_type("team"), Some(FieldType::String));
 }
 
-/// What a body may say is refused before any child is read.
 #[test]
 fn a_composite_body_that_does_not_hold_together_is_refused() {
     let cases = [

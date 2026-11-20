@@ -375,7 +375,7 @@ impl<'a> Surfaces<'a> {
     ///
     /// Only a metric does, and a metric over a dataset may inherit it, so its
     /// stored body is not enough to tell a reader whether a card drawn from it
-    /// follows the board's window. A composite follows its first child's.
+    /// follows the board's window.
     pub(crate) async fn clock_of(
         &self,
         kind: DefinitionKind,
@@ -405,7 +405,6 @@ impl<'a> Surfaces<'a> {
         EffectiveClock::of(&metric, &ready.declaration)
     }
 
-    /// A composite whose children cannot be read now follows no window.
     async fn composite_clock(&self, composite: &Composite) -> Option<EffectiveClock> {
         let read =
             kinds::metric::composite::children(composite, self.definitions, self.datasets).await;

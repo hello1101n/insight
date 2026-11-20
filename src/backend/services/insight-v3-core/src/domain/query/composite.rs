@@ -1,10 +1,3 @@
-//! A metric that combines the numbers of two to four other metrics, each over
-//! its own dataset or table, on the keys they all group by.
-//!
-//! INVARIANT: every metric a composite combines answers exactly one row per
-//! key, so stacking their rows and folding them by key never counts a fact
-//! twice. [`Composite::admit`] is what holds each one to that.
-
 mod admission;
 mod compiler;
 #[cfg(test)]
@@ -25,11 +18,8 @@ pub(crate) use compiler::Stacked;
 const FEWEST_COMBINED: usize = 2;
 const MOST_COMBINED: usize = 4;
 
-/// The start of the names a composite stacks its children's values under,
-/// which none of its own fields may take.
 const RESERVED_PREFIX: &str = "__";
 
-/// The name a composite gives one of the metrics it combines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Alias(String);
 
@@ -47,20 +37,15 @@ impl Alias {
     }
 }
 
-/// One metric a composite combines, under the name the composite gives it.
 #[derive(Debug)]
 pub(crate) struct Combined {
     pub(crate) alias: Alias,
     pub(crate) metric: DefinitionId,
 }
 
-/// A stored composite, read whole: every name in it resolves to a metric it
-/// combines or to a column it produces.
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "RawComposite")]
 pub(crate) struct Composite {
-    /// In the order the body's map holds them, which decides the order the
-    /// children are stacked in and which one's clock a run reports.
     combine: Vec<Combined>,
     group_by: Vec<String>,
     fields: Vec<Field>,
@@ -68,17 +53,14 @@ pub(crate) struct Composite {
     limit: Option<u32>,
 }
 
-/// One value column of a composite.
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "RawField")]
 enum Field {
-    /// A value column of one combined metric, as it reads there.
     Pick {
         as_name: String,
         alias: String,
         column: String,
     },
-    /// Two earlier fields of this composite, divided.
     Ratio {
         as_name: String,
         numerator: String,
@@ -182,9 +164,6 @@ impl TryFrom<RawComposite> for Composite {
     }
 }
 
-/// Whether every name in the body resolves: each key and field is a column
-/// of its own, each pick reads a combined metric, each ratio divides earlier
-/// fields, every combined metric is read, and the order names a column.
 fn check_names(
     combine: &[Combined],
     group_by: &[String],
@@ -264,12 +243,10 @@ fn check_names(
 }
 
 impl Composite {
-    /// The metrics this composite combines.
     pub(crate) fn combine(&self) -> &[Combined] {
         &self.combine
     }
 
-    /// The keys every child is folded on.
     pub(crate) fn groups(&self) -> &[String] {
         &self.group_by
     }
@@ -278,8 +255,6 @@ impl Composite {
         imposed_limit(self.limit)
     }
 
-    /// The columns a result carries, in order: the bucket when a window has
-    /// one, then the keys, then the fields.
     pub(crate) fn column_names(&self, clocked: bool) -> Vec<String> {
         let mut names = Vec::with_capacity(self.group_by.len() + self.fields.len() + 1);
         if clocked {
@@ -292,7 +267,6 @@ impl Composite {
     }
 }
 
-/// Why a composite cannot be stored or run.
 #[derive(Debug, Error)]
 pub(crate) enum CompositeError {
     #[error("a composite combines 2 to 4 metrics; this one combines {0}")]

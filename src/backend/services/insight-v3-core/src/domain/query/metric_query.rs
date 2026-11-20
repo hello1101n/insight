@@ -274,13 +274,10 @@ impl MetricQuery {
         &self.group_by
     }
 
-    /// Whether this metric cuts its own rows at a limit it names.
     pub(crate) fn names_a_limit(&self) -> bool {
         self.limit.is_some()
     }
 
-    /// Whether this column counts or sums, so a group with no rows at all
-    /// holds 0 in it rather than nothing.
     pub(crate) fn adds_up(&self, column: &str) -> bool {
         self.fields.iter().any(|field| {
             field.as_name == column
@@ -407,7 +404,6 @@ pub(crate) struct CompiledQuery {
 }
 
 impl CompiledQuery {
-    /// A query assembled outside this compiler from queries it compiled.
     pub(crate) fn composed(
         sql: String,
         binds: Vec<FilterBind>,
@@ -450,7 +446,6 @@ impl CompiledQuery {
         self.numbered
     }
 
-    /// What a result column holds, as the runner reads it back.
     pub(crate) fn column_type(&self, column: &str) -> Option<FieldType> {
         self.column_types.get(column).copied()
     }

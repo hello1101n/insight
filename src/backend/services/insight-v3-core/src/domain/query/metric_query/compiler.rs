@@ -48,9 +48,7 @@ pub(crate) enum Bound {
     /// wrote survives, and then the order behind it is made total so the
     /// same N rows answer every page.
     Paged,
-    /// Every row, in no order: a subquery whose rows something outside it
-    /// combines, orders and cuts.
-    Inner,
+    Subquery,
 }
 
 /// What the field list compiled to.
@@ -301,16 +299,14 @@ impl MetricQuery {
         self.assemble(people, window, engine, over, Bound::Whole)
     }
 
-    /// The same query as a subquery, with every row it groups and nothing
-    /// ordering or cutting them.
-    pub(crate) fn compile_inner(
+    pub(crate) fn compile_subquery(
         &self,
         people: &People,
         window: &Window,
         engine: TableEngine,
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
-        self.assemble(people, window, engine, over, Bound::Inner)
+        self.assemble(people, window, engine, over, Bound::Subquery)
     }
 
     /// The same query for a reader that orders and pages it itself.
@@ -615,7 +611,7 @@ pub(crate) fn bound_by(
     let limit = match bound {
         Bound::Whole => Some(limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT)),
         Bound::Paged => limit.map(|limit| limit.min(MAX_LIMIT)),
-        Bound::Inner => None,
+        Bound::Subquery => None,
     };
     let Some(limit) = limit else {
         return;

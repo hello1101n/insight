@@ -1,5 +1,3 @@
-//! Holding each metric a composite combines to one row per key.
-
 use std::collections::BTreeSet;
 
 use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
@@ -7,32 +5,25 @@ use crate::domain::query::metric_query::{ColumnKind, MetricQuery};
 
 use super::{Alias, Composite, CompositeError, Field};
 
-/// One combined metric, as admission weighs it.
 #[derive(Debug)]
 pub(crate) struct Candidate<'a> {
     pub(crate) alias: &'a Alias,
     pub(crate) query: &'a MetricQuery,
-    /// What each of its result columns holds.
     pub(crate) kinds: Vec<(String, ColumnKind)>,
-    /// Whether a window over it has a date to select by.
     pub(crate) dated: bool,
 }
 
-/// What a composite's columns hold once its children are admitted.
 #[derive(Debug)]
 pub(crate) struct Admitted {
     dated: bool,
-    /// The keys, then the fields, each with what it holds.
     kinds: Vec<(String, ColumnKind)>,
 }
 
 impl Admitted {
-    /// Whether every child has a date to window by; admission refuses a mix.
     pub(crate) fn dated(&self) -> bool {
         self.dated
     }
 
-    /// What each result column holds, in result order.
     pub(crate) fn column_kinds(&self, clocked: bool) -> Vec<(String, ColumnKind)> {
         let mut kinds = Vec::with_capacity(self.kinds.len() + usize::from(clocked));
         if clocked {
@@ -45,9 +36,6 @@ impl Admitted {
 }
 
 impl Composite {
-    /// Whether these children can be combined without a fact being counted
-    /// twice or a key being lost, given in the order [`Composite::combine`]
-    /// names them. A refusal names the child and the rule it breaks.
     pub(crate) fn admit(&self, children: &[Candidate<'_>]) -> Result<Admitted, CompositeError> {
         let keys: BTreeSet<&str> = self.group_by.iter().map(String::as_str).collect();
         for child in children {
@@ -104,8 +92,6 @@ impl Composite {
     }
 }
 
-/// Rules one to three of a child: it aggregates, it keeps every key, and it
-/// groups by exactly the composite's keys.
 fn one_row_per_key(child: &Candidate<'_>, keys: &BTreeSet<&str>) -> Result<(), CompositeError> {
     let alias = child.alias.as_str();
     if !child.query.groups_its_rows() {
@@ -122,7 +108,6 @@ fn one_row_per_key(child: &Candidate<'_>, keys: &BTreeSet<&str>) -> Result<(), C
     Ok(())
 }
 
-/// The columns a child groups by, leaving out the bucket a window adds.
 fn keys_of(query: &MetricQuery) -> BTreeSet<&str> {
     query
         .groups()
@@ -140,8 +125,6 @@ fn keys_differ(child: &Candidate<'_>, keys: &BTreeSet<&str>) -> CompositeError {
     }
 }
 
-/// What a picked column holds, once it is known to be a value column of the
-/// child it names rather than one of its keys.
 fn value_kind(
     children: &[Candidate<'_>],
     keys: &BTreeSet<&str>,
