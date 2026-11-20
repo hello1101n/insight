@@ -52,6 +52,7 @@ PY
 }
 kubectl() {
   case " $* " in
+    *" get secret "*) printf '{}' ;;
     *" get "*)
       [[ -z "${GET_FAILS:-}" ]] || { echo 'connection refused'; return 1; }
       python3 - "$CRONS" <<'PY'
@@ -90,6 +91,7 @@ def run(tmp_path: Path, command: str, **env: str) -> Pass:
     script = f"""
     set -uo pipefail
     export INSIGHT_NAMESPACE=insight CONNECTORS_DIR="{ROOT}/../connectors" AIRBYTE_URL=http://127.0.0.1:1
+    export RECONCILE_STATE_BACKUP_SECRET=insight-reconcile-state
     export CONNECTIONS="{tmp_path / "connections.json"}" CRONS="{tmp_path / "crons.json"}" CALLS="{calls}" {exports}
     source "{ROOT}/lib/reconcile.sh"
     {STUBS}

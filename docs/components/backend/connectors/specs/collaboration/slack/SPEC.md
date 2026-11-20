@@ -495,4 +495,3 @@ The streams with an issue in section 1 do not exist in `main`.
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |
 | Huddles are counted as meetings (section 10) | Huddles are not used. | #4321 |
-| The move to a new connector type never loses the cursor (section 12) | The state backup is in the reconcile pod. | #4315 |
