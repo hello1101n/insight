@@ -20,6 +20,11 @@ import {
   TableRow,
 } from "@gears-frontx/ui-kit";
 import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pane";
+import {
+  describeRun,
+  isActiveRun,
+  runDuration,
+} from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
@@ -138,7 +143,16 @@ export function ConnectorHealthPane() {
             </TableHeader>
             <TableBody>
               {data.connectors.map((row) => {
-                const state = describeConnector(row);
+                const run = row.latest_run;
+                const state =
+                  run &&
+                  (row.configured ||
+                    isActiveRun(run) ||
+                    data.checked_at == null ||
+                    Date.parse(run.started_at) > Date.parse(data.checked_at))
+                    ? describeRun(run.status)
+                    : describeConnector(row);
+                const latest = run ?? row.last_sync;
                 const key = instanceKey(row);
                 const open = expanded === key;
                 const panelId = panelIdFor(row);
@@ -172,11 +186,17 @@ export function ConnectorHealthPane() {
                       </Badge>
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {formatStarted(row.last_sync?.started_at ?? null)}
+                      {formatStarted(latest?.started_at ?? null)}
                     </TableCell>
-                    <DurationCell sync={row.last_sync} asOf={data.as_of} />
+                    {run ? (
+                      <TableCell className="text-right tabular-nums">
+                        {runDuration(run, data.as_of)}
+                      </TableCell>
+                    ) : (
+                      <DurationCell sync={row.last_sync} asOf={data.as_of} />
+                    )}
                     <TableCell className="text-right tabular-nums">
-                      {formatRecords(row.last_sync?.records_reported ?? null)}
+                      {formatRecords(latest?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
                   open ? (

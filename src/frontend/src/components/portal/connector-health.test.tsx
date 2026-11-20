@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ConnectorHealthSummary,
+  ConnectorRun,
   ConnectorSyncHistory,
 } from "@/api/connector-health-client";
 
@@ -1341,4 +1342,182 @@ it("names the page Connectors", () => {
   expect(
     screen.getByRole("heading", { name: "Connectors", level: 1 })
   ).toBeInTheDocument();
+});
+
+describe("connector workflow runs", () => {
+  const run = (index: number): ConnectorRun => ({
+    sync_id: `sync-${index}`,
+    status: "failed",
+    started_at: new Date(Date.parse(NOW) - index * 60_000).toISOString(),
+    finished_at: NOW,
+    duration_ms: 15_000,
+    stages: [],
+  });
+
+  it.each([
+    { status: "loading", finished_at: null, checked_at: NOW, label: "Loading" },
+    { status: "failed", finished_at: NOW, checked_at: null, label: "Failed" },
+    {
+      status: "failed",
+      finished_at: NOW,
+      checked_at: NOW,
+      label: "no longer configured",
+    },
+  ])(
+    "shows $label for a managed row missing from inventory",
+    ({ status, finished_at, checked_at, label }) => {
+      mocks.summary.data = summary({
+        checked_at,
+        connectors: [
+          {
+            connector: "jira",
+            configured: false,
+            latest_run: { ...run(1), status, finished_at },
+          },
+        ],
+      });
+      render(<ConnectorHealthPane />);
+      expect(within(rowFor("jira")).getByText(label)).toBeVisible();
+    }
+  );
+
+  it("compares the active run to a success outside the window and opens distinct same-day timelines", async () => {
+    const latest = {
+      ...run(1),
+      status: "waiting_clickhouse",
+      finished_at: null,
+      duration_ms: null,
+      wait_ms: 60_000,
+      load_ms: 0,
+      transform_ms: null,
+      records_reported: 0,
+      stages: [
+        {
+          stage: "bronze",
+          attempt: 1,
+          status: "waiting_clickhouse",
+          queued_at: run(1).started_at,
+        },
+      ],
+    };
+    const failure = {
+      ...run(2),
+      stages: [
+        {
+          stage: "transform-jira-silver",
+          attempt: 2,
+          status: "failed",
+          reason: "clickhouse_memory_limit",
+          queued_at: "2026-01-15T11:58:00Z",
+          started_at: "2026-01-15T11:58:20Z",
+          finished_at: NOW,
+          duration_ms: 100_000,
+        },
+      ],
+    };
+    const lastSuccess = {
+      ...run(70),
+      status: "succeeded",
+      wait_ms: 0,
+      load_ms: 120_000,
+      transform_ms: 20_000,
+    };
+    mocks.summary.data = summary({
+      connectors: [
+        {
+          connector: "jira",
+          configured: true,
+          latest_run: latest,
+          last_successful_run: lastSuccess,
+          last_sync: {
+            job_id: "legacy",
+            status: "succeeded",
+            records_reported: 99,
+          },
+        },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      syncs: [],
+      window: 50,
+      runs: [
+        latest,
+        failure,
+        ...Array.from({ length: 50 }, (_, i) => run(i + 3)),
+      ],
+    };
+    render(<ConnectorHealthPane />);
+    const row = rowFor("jira");
+    expect(within(row).getByText("Waiting for ClickHouse")).toBeVisible();
+    expect(within(row).getByText("0")).toBeVisible();
+    expect(within(row).getByText("1m 0s so far")).toBeVisible();
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    await userEvent.click(row);
+    const card = (heading: string) =>
+      within(
+        screen.getByRole("heading", { name: heading }).closest("section")!
+      );
+    const current = card("Current run");
+    expect(current.getByText("Loading")).toBeVisible();
+    expect(current.getByText("1m 0s")).toBeVisible();
+    expect(current.getByText("0 ms")).toBeVisible();
+    expect(current.getByText("—")).toBeVisible();
+    const success = card("Last successful sync");
+    expect(success.getByText("2m 0s")).toBeVisible();
+    expect(success.getByText("20.0 s")).toBeVisible();
+    const history = screen.getByRole("list", { name: /status/i });
+    const marks = within(history).getAllByRole("button");
+    expect(marks).toHaveLength(50);
+    expect(marks.at(-1)).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Load source data")).toBeVisible();
+    await userEvent.click(
+      within(history).getByRole("button", {
+        name: "2026-01-15 11:58:00Z · Failed",
+      })
+    );
+    expect(screen.getByText("Transform Jira models")).toBeVisible();
+    expect(screen.getByText("ClickHouse memory limit exceeded")).toBeVisible();
+    expect(screen.getByText("Attempt 2")).toBeVisible();
+    expect(screen.getByText("Sync finished")).toBeVisible();
+    expect(screen.queryByText("Load source data")).not.toBeInTheDocument();
+    const timeline = card("Run timeline (UTC)");
+    expect(timeline.getByText("20.0 s")).toBeVisible();
+    expect(timeline.getByText("1m 40s")).toBeVisible();
+  });
+
+  it("opens an empty run history before a new connector has synced", async () => {
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true }],
+    });
+    mocks.syncs.data = { connector: "jira", syncs: [], window: 50, runs: [] };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    expect(screen.getByText("No active run")).toBeVisible();
+    expect(screen.getByText("No successful sync yet")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { pressed: true })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not present a terminal or unmeasured run as in progress or successful", async () => {
+    const terminal = { ...run(1), status: "wait_timeout" };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "github", configured: true, latest_run: terminal },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "github",
+      syncs: [],
+      window: 50,
+      runs: [terminal],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("github"));
+    expect(screen.getByText("No active run")).toBeVisible();
+    expect(screen.getByText("No successful sync yet")).toBeVisible();
+    expect(screen.getByText("No recorded stages")).toBeVisible();
+    expect(rowFor("github")).toHaveTextContent("Failed · waited over 6 hours");
+  });
 });

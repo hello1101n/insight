@@ -238,7 +238,7 @@ function staleAfter(interval: number | null | undefined): number | null {
   return clamped * STALE_AFTER_INTERVALS;
 }
 
-function elapsedMs(
+export function elapsedMs(
   asOf: string,
   since: string | null | undefined
 ): number | null {

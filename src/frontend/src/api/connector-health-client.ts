@@ -20,6 +20,31 @@ export interface SyncFact {
   records_reported?: number | null;
 }
 
+export interface ConnectorRunStage {
+  stage: string;
+  attempt: number;
+  status: string;
+  queued_at?: string | null;
+  granted_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  reason?: string | null;
+}
+
+export interface ConnectorRun {
+  sync_id: string;
+  status: string;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  wait_ms?: number | null;
+  load_ms?: number | null;
+  transform_ms?: number | null;
+  records_reported?: number | null;
+  stages: ConnectorRunStage[];
+}
+
 export interface ConnectorInstance {
   tenant_id?: string | null;
   source_id?: string | null;
@@ -49,6 +74,8 @@ export interface ConnectorHealth extends ConnectorInstance {
   schedule?: AppliedSchedule | null;
   schedule_request?: ScheduleRequestState | null;
   last_sync?: SyncFact | null;
+  latest_run?: ConnectorRun | null;
+  last_successful_run?: ConnectorRun | null;
 }
 
 export type SchedulePendingReason =
@@ -148,6 +175,7 @@ export interface ConnectorHealthSummary {
 export interface ConnectorSyncHistory extends ConnectorInstance {
   connector: string;
   syncs: SyncFact[];
+  runs?: ConnectorRun[];
   window: number;
 }
 

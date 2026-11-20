@@ -3,12 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useId, useState } from "react";
 
 import type {
+  ConnectorHealth,
   ConnectorInstanceRef,
   SyncFact,
 } from "@/api/connector-health-client";
 import { Badge, Button } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
+import { ConnectorRunHistory } from "./connector-run-history";
 import { TONE_BADGE, TONE_BAR_STYLE } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
@@ -48,7 +50,8 @@ export function ConnectorSyncHistory({
   instance,
   asOf,
 }: {
-  instance: ConnectorInstanceRef;
+  instance: ConnectorInstanceRef &
+    Pick<ConnectorHealth, "latest_run" | "last_successful_run">;
   asOf: string;
 }) {
   const { t } = useTranslation();
@@ -62,6 +65,20 @@ export function ConnectorSyncHistory({
       <div className="max-w-md">
         <ComingSoon variant="card" state="error" onRetry={() => refetch()} />
       </div>
+    );
+  }
+
+  if (
+    instance.latest_run ||
+    (data.runs && (data.runs.length > 0 || data.syncs.length === 0))
+  ) {
+    return (
+      <ConnectorRunHistory
+        latest={instance.latest_run}
+        lastSuccess={instance.last_successful_run}
+        runs={(data.runs ?? []).slice(0, MAX_RUNS)}
+        asOf={asOf}
+      />
     );
   }
 
