@@ -34,7 +34,7 @@ export function OutcomeAlert({ outcome }: { outcome: CorrectionResponse }) {
           </Badge>
         ) : null}
         {refused > 0 ? (
-          <Badge variant="secondary">
+          <Badge variant="destructive">
             {t("identities.outcomes.refused", { count: refused })}
           </Badge>
         ) : null}

@@ -6,6 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -326,27 +327,29 @@ function FlatGridCard({ entry }: { entry: PeerStoryEntry }) {
   return (
     <Card className="relative">
       <MetricCardActions evidence={entry.evidence} label={entry.label} />
-      <div className="min-w-0 pr-8">
-        <div
-          className="truncate text-sm font-semibold text-muted-foreground"
-          title={entry.label}
-        >
-          {entry.label}
-        </div>
-        {entry.sublabel ? (
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {entry.sublabel}
+      <CardContent>
+        <div className="min-w-0 pr-8">
+          <div
+            className="truncate text-sm font-semibold text-muted-foreground"
+            title={entry.label}
+          >
+            {entry.label}
           </div>
-        ) : null}
-      </div>
-      <div className={cn("mt-5", TEXT_FIGURE)}>
-        {formatMetricFigure(entry.value, entry.format, entry.unit)}
-        {unit ? (
-          <span className="ml-1 text-xs font-normal text-muted-foreground">
-            {unit}
-          </span>
-        ) : null}
-      </div>
+          {entry.sublabel ? (
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              {entry.sublabel}
+            </div>
+          ) : null}
+        </div>
+        <div className={cn("mt-5", TEXT_FIGURE)}>
+          {formatMetricFigure(entry.value, entry.format, entry.unit)}
+          {unit ? (
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              {unit}
+            </span>
+          ) : null}
+        </div>
+      </CardContent>
     </Card>
   );
 }
