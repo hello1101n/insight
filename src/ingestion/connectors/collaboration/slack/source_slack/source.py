@@ -62,7 +62,7 @@ def _config(config: Mapping[str, Any]) -> SlackConfig:
 
 
 def _client(config: SlackConfig) -> SlackClient:
-    return SlackClient(config.slack_bot_token)
+    return SlackClient(config.slack_user_token)
 
 
 def _streams(config: SlackConfig) -> list[UsersDetails | Messages | Users | UsergroupMembers]:

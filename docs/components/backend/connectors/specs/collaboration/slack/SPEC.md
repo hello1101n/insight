@@ -118,7 +118,7 @@ The connection check shows the plan, the streams that the connector will read, a
 |---|---|---|
 | annotation `insight.cyberfabric.com/connector` | Yes | `slack` |
 | annotation `insight.cyberfabric.com/source-id` | Yes | Instance ID, for example `slack-main` |
-| `slack_bot_token` | Yes | The user token (section 2). The name of the key is historical. |
+| `slack_user_token` | Yes | The user token (section 2). The connector also reads the old key `slack_bot_token` when `slack_user_token` is absent. |
 | `slack_start_date` | Yes | The first day to read, `YYYY-MM-DD`, for all streams with dates. The operator sets it. There is no default. For Activity and Channels, it must be in the last 13 months. |
 | `slack_alert_channels` | No | The channels for the Alerts stream (#4351). |
 
@@ -489,7 +489,6 @@ The streams with an issue in section 1 do not exist in `main`.
 |---|---|---|
 | Optional key `slack_alert_channels` (section 4) | The key does not exist. | #4351 |
 | Connector management configures the connector (section 4) | Kubernetes Secret. No connector management. | #670 |
-| The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
 | Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Bots send no identity input, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |
