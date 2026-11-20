@@ -47,6 +47,25 @@ after changing the token. In Kubernetes, update the token Secret and roll the
 analytics Deployment: environment-injected secrets are read only at startup.
 During a rolling rotation, old and new pods may temporarily accept different tokens.
 
+## Personal tokens
+
+To create a personal token, an admin does these steps:
+
+1. Open **Manage → People & access → SQL API tokens**.
+2. Select **Create token**.
+3. Pick the person. Analytics refuses a person who is not in the tenant roster
+   with 400.
+4. Give the token a label.
+5. Copy the token from the dialog. The dialog shows it once.
+
+Analytics stores only the token's SHA-256 in MariaDB. A personal token opens
+this endpoint only, not MCP. It works until an admin removes it. The next
+request with a removed token gets 401. The instance token keeps working beside
+personal tokens.
+
+Each query made with a personal token logs `person_id` and `token_label` on its
+`SQL explorer query completed` or `SQL explorer query failed` line.
+
 ## Query
 
 With `INSIGHT_SQL_TOKEN` supplied by your secret manager:
@@ -81,18 +100,25 @@ The scan limits apply when database provisioning runs, including on upgrades.
 Exceeding a limit fails the query;
 results are not silently truncated.
 
-Responses use canonical problem JSON for errors: 400 for invalid requests/SQL,
-401 for missing or invalid tokens, 413 for oversized bodies or SQL, 429 for
-query capacity, result-size, or database resource limits, 504 for query timeouts,
-and 500 for other backend failures. Recognized database exceptions are classified
+Errors use canonical problem JSON:
+
+- 400: an invalid request or invalid SQL.
+- 401: a missing or invalid token. The reason is `INVALID_INSTANCE_TOKEN` for a
+  refused instance token and for a refused personal token.
+- 413: a body or SQL over its size limit.
+- 429: a query capacity, result-size, or database resource limit.
+- 504: a query timeout.
+- 500: any other backend failure, including a failed personal-token lookup.
+
+Recognized database exceptions are classified
 using [ClickHouse's numeric error codes](https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp);
 unrecognized exceptions remain generic backend failures. Responses are marked `Cache-Control:
 no-store`. Database details and the token are not returned in errors.
 
 ## Access scope
 
-The instance token grants all SQL explorer access, not access on behalf of an
-individual user. There are no personal role checks, per-user revocation, or
-automatic tenant-row filters on this endpoint. Distribute it only to trusted
-operators authorized to access the entire allowed dataset, and require HTTPS.
-Revoke access by rotating the token or disabling `global.sqlApi.enabled`.
+Every token grants all SQL explorer access. A personal token names its holder
+but adds no role checks or tenant-row filters. Distribute tokens only to people
+authorized to access the entire allowed dataset, and require HTTPS. Remove a
+personal token to revoke one holder; revoke the instance token by rotating it
+or disabling `global.sqlApi.enabled`.

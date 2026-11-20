@@ -1,17 +1,23 @@
+use std::time::Duration;
+
 use axum::extract::{DefaultBodyLimit, Request, State, rejection::JsonRejection};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
+use sea_orm::DatabaseConnection;
 use secrecy::ExposeSecret as _;
 use serde::Deserialize;
 use toolkit_canonical_errors::{CanonicalError, Http, resource_error};
-use toolkit_security::crypto::{constant_time_eq, hash::Sha256};
+use toolkit_security::crypto::constant_time_eq;
 
-use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure};
+use super::executor::{MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor, QueryFailure};
 use crate::config::SqlApiConfig;
+use crate::domain::sql_token::{TokenHash, looks_minted, store};
+
+const TOKEN_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[resource_error("gts.cf.insight.analytics_api.sql_query.v1~")]
 struct SqlQueryError;
@@ -25,32 +31,41 @@ struct QueryRequest {
     sql: String,
 }
 
-pub(super) fn router(config: &SqlApiConfig, executor: QueryExecutor) -> Router {
-    let token_hash = Sha256::digest(config.token.expose_secret().as_bytes());
+#[derive(Debug, Clone)]
+struct TokenCheck {
+    instance: TokenHash,
+    token_store: DatabaseConnection,
+}
+
+pub(super) fn router(
+    config: &SqlApiConfig,
+    executor: QueryExecutor,
+    token_store: DatabaseConnection,
+) -> Router {
+    let check = TokenCheck {
+        instance: TokenHash::of(config.token.expose_secret()),
+        token_store,
+    };
     Router::new()
         .route("/api/sql/query", post(query))
         .with_state(executor)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(token_hash, authenticate))
+        .layer(middleware::from_fn_with_state(check, authenticate))
 }
 
 async fn authenticate(
-    State(expected): State<[u8; 32]>,
+    State(check): State<TokenCheck>,
     headers: HeaderMap,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
-    let mut response = if valid_token(&headers, &expected) {
-        next.run(request).await
-    } else {
-        let mut response = CanonicalError::unauthenticated()
-            .with_reason("INVALID_INSTANCE_TOKEN")
-            .create()
-            .into_response();
-        response
-            .headers_mut()
-            .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-        response
+    let mut response = match caller(&check, &headers).await {
+        Ok(Some(caller)) => {
+            request.extensions_mut().insert(caller);
+            next.run(request).await
+        }
+        Ok(None) => unauthenticated(),
+        Err(error) => error.into_response(),
     };
     response
         .headers_mut()
@@ -58,29 +73,81 @@ async fn authenticate(
     response
 }
 
-fn valid_token(headers: &HeaderMap, expected: &[u8; 32]) -> bool {
-    if headers.get_all(AUTHORIZATION).iter().count() != 1 {
-        return false;
+async fn caller(
+    check: &TokenCheck,
+    headers: &HeaderMap,
+) -> Result<Option<QueryCaller>, CanonicalError> {
+    let Some(token) = bearer_token(headers) else {
+        return Ok(None);
+    };
+
+    let hash = TokenHash::of(token);
+    if constant_time_eq(hash.as_bytes(), check.instance.as_bytes()) {
+        return Ok(Some(QueryCaller::InstanceToken));
     }
-    let Some(value) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
-        return false;
+
+    if !looks_minted(token) {
+        return Ok(None);
+    }
+
+    let lookup = tokio::time::timeout(
+        TOKEN_LOOKUP_TIMEOUT,
+        store::holder(&check.token_store, &hash),
+    );
+    let holder = match lookup.await {
+        Ok(Ok(holder)) => holder,
+        Ok(Err(error)) => {
+            tracing::error!(
+                %error,
+                "Personal SQL token lookup in MariaDB failed. The SQL API request returns 500."
+            );
+            return Err(lookup_failed());
+        }
+        Err(_) => {
+            tracing::error!(
+                timeout_ms = TOKEN_LOOKUP_TIMEOUT.as_millis(),
+                "Personal SQL token lookup in MariaDB passed its time bound. The SQL API request returns 500."
+            );
+            return Err(lookup_failed());
+        }
     };
-    let Some((scheme, token)) = value.split_once(' ') else {
-        return false;
-    };
+    Ok(holder.map(QueryCaller::PersonalToken))
+}
+
+fn lookup_failed() -> CanonicalError {
+    CanonicalError::internal("failed to verify credentials").create()
+}
+
+fn unauthenticated() -> Response {
+    let mut response = CanonicalError::unauthenticated()
+        .with_reason("INVALID_INSTANCE_TOKEN")
+        .create()
+        .into_response();
+    response
+        .headers_mut()
+        .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+    response
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    if headers.get_all(AUTHORIZATION).iter().count() != 1 {
+        return None;
+    }
+    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
     if !scheme.eq_ignore_ascii_case("bearer")
         || token.is_empty()
         || token.len() > 1024
         || !token.bytes().all(|b| b.is_ascii_graphic())
     {
-        return false;
+        return None;
     }
-    let actual = Sha256::digest(token.as_bytes());
-    constant_time_eq(&actual, expected)
+    Some(token)
 }
 
 async fn query(
     State(executor): State<QueryExecutor>,
+    Extension(caller): Extension<QueryCaller>,
     body: Result<Json<QueryRequest>, JsonRejection>,
 ) -> Result<Response, CanonicalError> {
     let Json(request) = body.map_err(|error| {
@@ -91,7 +158,7 @@ async fn query(
         }
     })?;
     let bytes = executor
-        .query(request.sql, |result| serde_json::to_vec(&result))
+        .query(request.sql, &caller, |result| serde_json::to_vec(&result))
         .await
         .map_err(|error| query_error(&error))?;
     Ok(([(CONTENT_TYPE, "application/json")], bytes).into_response())

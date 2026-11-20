@@ -161,6 +161,7 @@ describe("manageGroupsFor", () => {
       Data: ["Connectors", "Data exclusions", "Org snapshots"],
       "People & access": [
         "Identities · roles & taxonomy",
+        "SQL API tokens",
         "Access",
         "Group management",
       ],

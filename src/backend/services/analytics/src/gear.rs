@@ -115,6 +115,7 @@ impl Gear for AnalyticsApiGear {
             cfg.reports.max_concurrent_artifacts,
         ));
 
+        let token_store = db.clone();
         let state = api::AppState {
             db,
             ch,
@@ -136,6 +137,7 @@ impl Gear for AnalyticsApiGear {
             &sql_api,
             &mcp_clickhouse_url,
             &mcp_clickhouse_database,
+            token_store,
             ctx.cancellation_token().child_token(),
         )
         .await?;

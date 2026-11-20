@@ -15,3 +15,4 @@ pub mod query_gate;
 pub mod reports;
 pub mod saved_query;
 pub(crate) mod spreadsheet;
+pub(crate) mod sql_token;

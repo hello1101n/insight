@@ -167,6 +167,17 @@ class CreateSavedQueryRequest(BaseModel):
     sql: str
 
 
+class CreatedSqlToken(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    created_at: str
+    label: str
+    person_id: str
+    token: str = Field(..., description='Shown in this response only; the service keeps its hash.')
+    token_id: str
+
+
 class EntityType(StrEnum):
     person = 'person'
     tenant = 'tenant'
@@ -943,6 +954,24 @@ class SnapshotSeries(BaseModel):
     points: list[float | None] = Field(..., description='Readings per bucket, oldest first; a gap is null.')
 
 
+class SqlTokenPerson(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    display_name: str
+    email: str | None = None
+    person_id: str
+    username: str
+
+
+class SqlTokenRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    label: str
+    person_id: UUID
+
+
 class TelemetryRecord(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1372,6 +1401,24 @@ class SavedQueryListResponse(BaseModel):
         extra='forbid',
     )
     items: list[SavedQuerySummary]
+
+
+class SqlTokenEntry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    created_at: str
+    created_by: SqlTokenPerson
+    label: str
+    person: SqlTokenPerson
+    token_id: str
+
+
+class SqlTokenListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    items: list[SqlTokenEntry]
 
 
 class TimeseriesDto(BaseModel):

@@ -20,7 +20,9 @@ use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 
 use crate::config::SqlApiConfig;
-use crate::sql_explorer::executor::{MAX_RESULT_BYTES, MAX_SQL_BYTES, QueryExecutor, QueryFailure};
+use crate::sql_explorer::executor::{
+    MAX_RESULT_BYTES, MAX_SQL_BYTES, QueryCaller, QueryExecutor, QueryFailure,
+};
 use crate::sql_explorer::{start, validate_config};
 
 use super::{
@@ -201,13 +203,16 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     ));
     let busy = SqlExplorer::new(QueryExecutor::new(client, 0))
         .executor
-        .query("SELECT 1".to_owned(), Ok)
+        .query("SELECT 1".to_owned(), &QueryCaller::Mcp, Ok)
         .await;
     assert!(matches!(busy, Err(QueryFailure::Busy)));
 
     let (invalid, invalid_server) = spawn_clickhouse(StatusCode::OK, b"not-json".to_vec()).await?;
     assert!(matches!(
-        invalid.executor.query("SELECT 1".to_owned(), Ok).await,
+        invalid
+            .executor
+            .query("SELECT 1".to_owned(), &QueryCaller::Mcp, Ok)
+            .await,
         Err(QueryFailure::InvalidResponse(_))
     ));
     invalid_server.abort();
@@ -215,7 +220,10 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     let (failed, failed_server) =
         spawn_clickhouse(StatusCode::INTERNAL_SERVER_ERROR, Vec::new()).await?;
     assert!(matches!(
-        failed.executor.query("SELECT 1".to_owned(), Ok).await,
+        failed
+            .executor
+            .query("SELECT 1".to_owned(), &QueryCaller::Mcp, Ok)
+            .await,
         Err(QueryFailure::ClickHouse(_))
     ));
     failed_server.abort();
@@ -223,7 +231,10 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     let (large, large_server) =
         spawn_clickhouse(StatusCode::OK, vec![b'x'; MAX_RESULT_BYTES + 1]).await?;
     assert!(matches!(
-        large.executor.query("SELECT 1".to_owned(), Ok).await,
+        large
+            .executor
+            .query("SELECT 1".to_owned(), &QueryCaller::Mcp, Ok)
+            .await,
         Err(QueryFailure::ResultTooLarge)
     ));
     large_server.abort();
@@ -274,6 +285,7 @@ async fn start_accepts_valid_configuration_and_cancellation() -> anyhow::Result<
         &SqlApiConfig::default(),
         "http://127.0.0.1:1",
         "gold",
+        sea_orm::MockDatabase::new(sea_orm::DatabaseBackend::MySql).into_connection(),
         cancellation.clone(),
     )
     .await?;

@@ -699,6 +699,41 @@
     "sent": "Thanks — your feedback was sent.",
     "failed": "Could not send your feedback. Try again."
   },
+  "sql_tokens": {
+    "title": "SQL API tokens",
+    "subtitle": "Personal tokens for the SQL API. A token opens the SQL API only and works until it is removed.",
+    "create_token": "Create token",
+    "list": {
+      "load_failed": "Tokens could not be loaded",
+      "empty": "No personal tokens yet",
+      "person": "Person",
+      "label": "Label",
+      "created": "Created",
+      "created_by": "Created by",
+      "remove": "Remove",
+      "remove_named": "Remove {{label}}"
+    },
+    "remove": {
+      "title": "Remove {{label}}?",
+      "description": "{{person}} loses SQL API access with this token. The next query with it is refused.",
+      "confirm": "Remove",
+      "failed": "The token could not be removed"
+    },
+    "create": {
+      "title": "Create a SQL API token",
+      "description": "The token is shown once. Send it to the person; it works until removed.",
+      "change_person": "Change",
+      "label": "Label",
+      "label_placeholder": "laptop, CI job, …",
+      "failed": "The token could not be created",
+      "submit": "Create",
+      "done": "Done"
+    },
+    "shown": {
+      "token": "Token",
+      "once": "Copy it now. It is not shown again."
+    }
+  },
   "worth_a_look": {
     "title": "Worth a look",
     "overview_title": "Overview · Worth a look",
@@ -779,6 +814,7 @@
       "identities": "Identities · roles & taxonomy",
       "access": "Access",
       "group_mgmt": "Group management",
+      "sql_tokens": "SQL API tokens",
       "ingestion": "Ingestion",
       "previews": "Previews",
       "ai_assistant": "AI assistant config",

@@ -23,7 +23,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::McpConfig;
-use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor};
+use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor};
 
 const MAX_JWKS_BYTES: usize = 1024 * 1024;
 const JWKS_REFRESH_COOLDOWN: Duration = Duration::from_secs(5);
@@ -98,7 +98,9 @@ impl SqlExplorer {
     async fn run_query_sql(&self, sql: String) -> CallToolResult {
         match self
             .executor
-            .query(sql, |value| Ok(CallToolResult::structured(value)))
+            .query(sql, &QueryCaller::Mcp, |value| {
+                Ok(CallToolResult::structured(value))
+            })
             .await
         {
             Ok(result) => result,

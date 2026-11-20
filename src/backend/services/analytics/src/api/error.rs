@@ -31,6 +31,9 @@ pub struct UsageError;
 #[resource_error("gts.cf.insight.analytics_api.feedback.v1~")]
 pub struct FeedbackError;
 
+#[resource_error("gts.cf.insight.analytics_api.sql_token.v1~")]
+pub struct SqlTokenError;
+
 /// Resource namespace for `/v1/ai*` (written context, the tenant system
 /// prompt, per-person keys, and the explain call).
 #[resource_error("gts.cf.insight.analytics_api.ai_assist.v1~")]

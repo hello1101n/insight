@@ -186,11 +186,7 @@ fn entry(
     names: &HashMap<Uuid, PersonName>,
     roster: &Roster,
 ) -> FeedbackEntry {
-    let (display_name, username) = names
-        .get(&row.person_id)
-        .map(|sender| (sender.display_name.clone(), sender.username.clone()))
-        .unwrap_or_default();
-    let naming = Naming::of(roster.get(&row.person_id), display_name, username);
+    let naming = Naming::of_person(row.person_id, names, roster);
 
     FeedbackEntry {
         feedback_id: row.id.to_string(),
