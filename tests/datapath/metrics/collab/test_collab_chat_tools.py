@@ -4,7 +4,8 @@ Messages sent add every tool's total. Channel posts come only from tools that
 report channel messages. The DM ratio divides direct messages by the totals of the
 tools that tell direct from channel messages apart, so a total without that split
 never dilutes it. Messages per active day divide by the distinct days with messages
-in any tool, so a day spent in two tools, or under two addresses, counts once.
+in any tool, so a day spent in two tools, or under two addresses, counts once. Chat
+active days count those same days.
 """
 
 from __future__ import annotations
@@ -60,6 +61,10 @@ def _period(person: str, metric_key: str) -> dict[str, object]:
         pytest.param(
             BOB, "collab.msgs_per_active_day", 12, id="single-tool-messages-per-active-day"
         ),
+        pytest.param(
+            ALICE, "collab.chat_active_days", 2, id="a-day-in-two-tools-is-one-chat-active-day"
+        ),
+        pytest.param(CAROL, "collab.chat_active_days", 1, id="slack-day-is-a-chat-active-day"),
     ],
 )
 def test_chat_metrics_across_tools(

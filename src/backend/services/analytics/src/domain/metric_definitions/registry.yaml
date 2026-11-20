@@ -2173,6 +2173,24 @@ metrics:
         measure_key: chat_active_day
     dimensions:
       - tool
+  - metric_key: collab.chat_active_days
+    source_key: collab
+    subject: messaging
+    label: Chat active days
+    short_label: Chat days
+    description: Days with chat messages
+    explanation: Distinct days on which a person sent at least one chat message in any tool, so a day spent in two tools counts once. Email, meetings and files do not count; Active days counts those too.
+    unit: days
+    format: integer
+    direction: neutral
+    entity_type: person
+    computation: distinct_count
+    peer_cohort_key: org_unit
+    inputs:
+      - input_role: value
+        measure_key: chat_active_day
+    dimensions:
+      - tool
   - metric_key: collab.active_days
     source_key: collab
     subject: activity
