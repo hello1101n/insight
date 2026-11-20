@@ -515,7 +515,11 @@ jobs:
           uv venv --allow-existing .venv-cov
           PY=".venv-cov/bin/python"
           export VIRTUAL_ENV="$PWD/.venv-cov"
-          if ! uv pip install --python "$PY" -e ".[dev]" pytest-cov; then
+          # INVARIANT: a committed lock is what the image installs; --locked fails on a stale lock.
+          if [ -f uv.lock ]; then
+            UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV" uv sync --locked --extra dev
+            uv pip install --python "$PY" pytest-cov
+          elif ! uv pip install --python "$PY" -e ".[dev]" pytest-cov; then
             echo "::notice::[dev] extra unavailable — installing base deps + pytest"
             uv pip install --python "$PY" -e . pytest pytest-cov
           fi
