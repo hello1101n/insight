@@ -354,9 +354,10 @@ async fn observe_work(
     let mut o = Observation::default();
     let (node, receipt) = observed_node(state, http, row, status, terminal, &mut o).await?;
     let job = receipt.as_ref().map(|r| r.status.as_str());
+    // A terminating pod can submit its last query until it stops.
+    let pod = pods::observe(state, row).await?;
     let evidence = capacity::evidence(state, row).await?;
     query_usage(&mut o, &evidence, bronze);
-    let pod = pods::observe(state, row).await?;
     o.pod_cpu_millis = pod.cpu;
     o.pod_peak_bytes = pod.memory;
     o.source_peak_bytes = pod.source_memory;
