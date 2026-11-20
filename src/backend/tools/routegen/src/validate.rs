@@ -104,9 +104,6 @@ fn parse_upstream(raw: &str) -> Result<(), String> {
     if url.host_str().is_none_or(str::is_empty) {
         return Err("missing host".to_owned());
     }
-    if url.port_or_known_default().is_none() {
-        return Err("missing port".to_owned());
-    }
     if url.path() != "/" && !url.path().is_empty() {
         return Err(format!(
             "must not carry a path ('{}'); strip_prefix controls path rewriting",

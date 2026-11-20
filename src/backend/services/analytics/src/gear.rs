@@ -8,6 +8,9 @@ use crate::config::GearConfig;
 use crate::domain::external_links::ExternalSourceRegistry;
 use crate::{api, infra};
 
+const CH_QUERY_MAX_THREADS: u32 = 4;
+const CH_QUERY_MAX_MEMORY_BYTES: u64 = 1_536 * 1024 * 1024;
+
 #[toolkit::gear(
     name = "analytics",
     capabilities = [rest]
@@ -50,8 +53,8 @@ impl Gear for AnalyticsApiGear {
 
         let mut ch_config =
             insight_clickhouse::Config::new(&cfg.clickhouse_url, &cfg.clickhouse_database)
-                .with_query_max_threads(4)
-                .with_query_max_memory_bytes(1_610_612_736);
+                .with_query_max_threads(CH_QUERY_MAX_THREADS)
+                .with_query_max_memory_bytes(CH_QUERY_MAX_MEMORY_BYTES);
         if let (Some(user), Some(password)) = (&cfg.clickhouse_user, &cfg.clickhouse_password) {
             ch_config = ch_config.with_auth(user, password);
         }

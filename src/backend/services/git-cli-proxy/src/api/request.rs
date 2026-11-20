@@ -20,7 +20,6 @@ pub const STALENESS_HEADER: &str = "x-max-staleness";
 pub const SIZE_HINT_HEADER: &str = "x-repo-size-hint";
 
 const MAX_PAGE_SIZE: usize = 1_000;
-const DEFAULT_PAGE_SIZE: usize = 1_000;
 const MAX_PATCH_BYTES: usize = 8 * 1024 * 1024;
 const DEFAULT_PATCH_BYTES: usize = 1024 * 1024;
 
@@ -197,7 +196,7 @@ impl Paging {
 #[must_use]
 pub fn clamp_page_size(requested: Option<u32>) -> usize {
     match requested {
-        Some(0) | None => DEFAULT_PAGE_SIZE,
+        Some(0) | None => MAX_PAGE_SIZE,
         Some(value) => (value as usize).min(MAX_PAGE_SIZE),
     }
 }
@@ -415,8 +414,8 @@ mod tests {
     #[test]
     fn page_size_is_clamped_to_the_documented_bounds() {
         let cases = vec![
-            ("absent", None, DEFAULT_PAGE_SIZE),
-            ("zero", Some(0), DEFAULT_PAGE_SIZE),
+            ("absent", None, MAX_PAGE_SIZE),
+            ("zero", Some(0), MAX_PAGE_SIZE),
             ("in range", Some(250), 250),
             ("above max", Some(50_000), MAX_PAGE_SIZE),
         ];

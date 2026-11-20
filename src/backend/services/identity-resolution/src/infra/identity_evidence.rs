@@ -5,9 +5,8 @@ use insight_clickhouse::{Client, Config, MissingRelation};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::domain::login_bootstrap::MAX_VALUE_ID_CHARS;
 use crate::domain::review_queue::AccountDescription;
-use crate::domain::seed::SourceAccountKey;
+use crate::domain::seed::{MAX_VALUE_ID_CHARS, SourceAccountKey};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
