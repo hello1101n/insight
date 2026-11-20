@@ -1,6 +1,6 @@
 # Bitbucket Cloud CI streams
 
-This is a proposal. Bitbucket's OpenAPI spec and live API responses confirm the endpoints, fields and enum values below.
+Phase 1 is implemented. Phases 2 to 4 are proposals. Bitbucket's OpenAPI spec and live API responses confirm the endpoints, fields and enum values below.
 
 ## Goal
 
@@ -11,14 +11,15 @@ This is a proposal. Bitbucket's OpenAPI spec and live API responses confirm the 
 
 - `pipelines` and `deployments` land in bronze, but no dbt model maps them to a class. A Bitbucket workspace shows no CI metrics.
 - `pipelines` copies a few fields out of `target`, `trigger` and `state`, then drops those objects. The stream loses the selector that identifies the pipeline, the pull request the run belongs to, and the rerun count.
-- `deployments` carries only an environment uuid. No column separates production from staging.
+- `deployments` keeps only the environment uuid. No column separates production from staging.
+- `deployments` filters records by `created_on` against the saved cursor. Once a newer deployment exists in the repository, an older one never updates in bronze. A manual production deploy that runs later keeps its placeholder state forever.
 
 ## Summary
 
 | Change | Endpoint | Extra calls per sync | Enables |
 |---|---|---|---|
 | Extend `pipelines` | existing | none | all `ci.*` run metrics |
-| `environments` | `/repositories/{repo}/environments/` | 1 per repository visited | `ci.deployments` split by production |
+| Extend `deployments` | existing | none | `ci.deployments` split by production, and outcomes of deploys that run late |
 | `pipeline_steps` | `/pipelines/{uuid}/steps/` | 1 per newly finished pipeline run | slow steps, flaky steps, queue time |
 | `pipeline_test_reports` | `/pipelines/{uuid}/steps/{step}/test_reports` | 1 per newly finished step | test counts and failure rate |
 | `pull_request_statuses` | `/pullrequests/{id}/statuses` | 1 per pull request in the window | CI that runs outside Bitbucket Pipelines |
@@ -31,38 +32,37 @@ Keep these fields:
 
 - `selector_type` and `selector_pattern`, from `target.selector`. The selector type is `branches`, `tags`, `bookmarks`, `default`, `custom` or `pull-requests`.
 - `target_type`, from `target.type`. It is `pipeline_ref_target`, `pipeline_commit_target` or `pipeline_pullrequest_target`.
-- `pullrequest_id`, from `target.pullrequest.id`, and `source_branch`, from `target.source`. Bitbucket sets both only on pull-request targets. A pull-request target has no `ref_name`.
+- `source_branch`, from `target.source`. Bitbucket sets it only on pull-request targets. A pull-request target has no `ref_name`.
 - `trigger_name`, which the stream keeps already. It is `PUSH`, `MANUAL`, `SCHEDULE` or `ON_DEMAND`.
 - `state_stage`, from `state.stage.name`. It is `RUNNING`, `PAUSED` or `HALTED`.
 - `run_number` and `run_creation_date`. A rerun keeps the pipeline's `uuid`, `build_number` and `created_on`. It raises `run_number` and moves `run_creation_date` to the latest run.
-- `build_seconds_used`, the billed build time.
 
 Unfinished runs need no new mechanism. The stream stops paging at the first page that holds an already-synced pipeline, but it still emits that whole page. So each visit to a repository re-reads at least its 100 newest pipelines. A run that was in progress, or that was rerun, gets its new state on the next visit to its repository.
 
-### New environments stream
+### Extend the deployments stream
 
-- The stream makes one call per repository visited. It runs as a full refresh.
-- Fields: `uuid`, `name`, `slug`, `rank` and `environment_type.name`, which is `Test`, `Staging` or `Production`.
-- It feeds `environment` and `is_production` in `class_git_deployments`. GitLab uses the same join.
+- Keep `environment_name` and `environment_type` from the deployment's embedded `environment`. The list response embeds the whole environment, so no environments stream is needed. `environment_type` is `Test`, `Staging` or `Production`.
+- Keep `version`. Bitbucket raises it each time the deployment changes state.
+- Move the cursor from `created_on` to `last_update_time`. Bitbucket moves `last_update_time` on every state change, so the client-side filter passes a deployment again whenever its state changed. The endpoint has no server-side filter, so this costs no extra calls.
 
 ### dbt models
 
 | Model | Class | Built from |
 |---|---|---|
 | `bitbucket_cloud__ci_runs` | `class_git_ci_runs` | `pipelines` |
-| `bitbucket_cloud__deployments` | `class_git_deployments` | `deployments` joined to `environments` |
-| `bitbucket_cloud__deployment_events` | `class_git_deployment_events` | `deployments`, one event per deployment state, as GitLab does |
+| `bitbucket_cloud__deployments` | `class_git_deployments` | `deployments` |
+| `bitbucket_cloud__deployment_events` | `class_git_deployment_events` | `deployments`, one event per `version` a sync observed |
 
 How pipeline fields map to `class_git_ci_runs`:
 
 | Class column | Bitbucket |
 |---|---|
 | `pipeline_key`, `pipeline_name` | `selector_type:selector_pattern`, or `selector_type` alone when there is no pattern |
-| `run_id`, `run_number` | `uuid`, `build_number` |
-| `attempt`, `is_retry` | `run_number`, `run_number > 1` |
+| `run_id`, `run_number` | `build_number` for both. The `uuid` is a string, and the class column is a number. |
+| `attempt`, `is_retry` | `run_number`, `run_number > 1`. The row key carries `run_number`, so silver keeps one row per attempt it observed. |
 | `trigger_category` | `PUSH` on a pull-request target is `pull_request`. Any other `PUSH` is `push`. `MANUAL` and `ON_DEMAND` are `manual`. `SCHEDULE` is `schedule`. |
 | `outcome` | `SUCCESSFUL` is `success`. `FAILED` and `ERROR` are `failure`. `STOPPED` is `cancelled`. `EXPIRED` is `timed_out`. Stage `PAUSED` is `success`. `PENDING`, `RUNNING` and `HALTED` are empty, which means undecided. |
-| `created_at`, `started_at`, `finished_at` | `created_on`, `run_creation_date`, `completed_on` |
+| `created_at`, `started_at`, `finished_at` | `created_on`, `run_creation_date`, `completed_on`. `started_at` falls back to `created_on` on rows synced before `run_creation_date` was kept. |
 | `duration_s` | `duration_in_seconds` |
 | `branch`, `commit_sha` | The branch is `target.ref_name`, or `source_branch` on a pull request. The commit is `target.commit.hash`. |
 
@@ -76,9 +76,10 @@ Mapping decisions:
 
 How deployments map:
 
-- `environment` and `is_production` come from the joined environment. `is_production` is true when `environment_type.name` is `Production`.
+- `environment` and `is_production` come from the embedded environment. `is_production` is true when `environment_type` is `Production`.
 - `is_transient` is always `0`, because Bitbucket has no throwaway preview environments.
 - A `COMPLETED` deployment becomes a `success`, `failure` or `cancelled` event when its result is `SUCCESSFUL`, `FAILED` or `STOPPED`. An `IN_PROGRESS` deployment becomes an `in_progress` event.
+- Bronze keeps only a deployment's latest state. Each `version` a sync observes becomes one event in silver. `version` is the event id, and `last_update_time` is the event time.
 - The model skips `UNDEPLOYED` rows. Bitbucket creates such a row as a placeholder for a manual deploy step that has not run. The row enters the class once the step runs.
 
 ## Phase 2. Steps, which are Bitbucket's jobs
@@ -137,6 +138,6 @@ This spec leaves out step logs, per-test results, caches, variables, schedules, 
 
 ## Known limits
 
-- `pipelines`, `deployments` and `environments` visit only repositories pushed to since the last sync. A run that finishes after the last visit to its repository gets its outcome at the next push. Until then it stays undecided and outside every metric.
+- `pipelines` and `deployments` visit only repositories pushed to since the last sync. A run that finishes after the last visit to its repository gets its outcome at the next push. Until then it stays undecided and outside every metric.
 - The stream re-reads a run only while the run is among its repository's 100 newest pipelines. It misses a rerun of an older pipeline.
 - Steps and test reports add calls against the hourly budget, `bitbucket_api_calls_per_hour`, which defaults to 1000. Steps cost one call per finished run. Test reports cost one call per finished step.
