@@ -19,7 +19,6 @@ import type { MetricFamily } from "@/lib/reports/families";
 import { cn } from "@/lib/utils";
 import { TEXT_EYEBROW } from "@/lib/type-scale";
 
-import styles from "./report-builder-metrics.module.css";
 
 const ALL_FAMILIES = "all";
 
@@ -91,10 +90,7 @@ export function ReportMetricPicker({
           onValueChange={(value) => setPickedFamily(String(value))}
         >
           <div className="flex overflow-x-auto overflow-y-hidden border-b px-4">
-            <TabsList
-              variant="line"
-              className={cn("w-max", styles.tabsList)}
-            >
+            <TabsList variant="line" className="w-max">
               <FamilyTab
                 value={ALL_FAMILIES}
                 label="All metrics"

@@ -21,7 +21,7 @@ import {
 } from "@gears-frontx/ui-kit";
 import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pane";
 import { ConnectorSyncHistory } from "./connector-sync-history";
-import { TONE_STYLE } from "./connector-health-tone";
+import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
   UNMEASURED,
@@ -198,10 +198,7 @@ export function ConnectorHealthPane() {
                     <InstanceCell instance={row} />
                     <ScheduleCell row={row} />
                     <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn(TONE_STYLE[state.tone])}
-                      >
+                      <Badge variant={TONE_BADGE[state.tone]}>
                         {state.label}
                       </Badge>
                     </TableCell>

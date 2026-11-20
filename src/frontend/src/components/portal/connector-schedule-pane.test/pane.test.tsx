@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
+import { badgeVariants } from "@gears-frontx/ui-kit";
 import { ConnectorsApiError } from "@/api/connectors-client";
 import { scheduleClock } from "@/lib/portal/connector-schedule-time";
 import { ConnectorSchedulePane } from "../connector-schedule-pane";
@@ -148,7 +149,7 @@ it.each([false, true])(
       !cleared
     );
     expect(screen.getByText("Pending").closest("[title]")).toHaveClass(
-      "text-warning"
+      ...badgeVariants({ variant: "warning" }).split(" ")
     );
     expect(
       screen.getByText("Takes effect after the next check.")

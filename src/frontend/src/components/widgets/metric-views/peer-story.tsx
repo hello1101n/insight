@@ -23,7 +23,6 @@ import {
 } from "@/lib/metrics/peer-story";
 import { formatGapMagnitude } from "@/lib/metrics/gap";
 import { PEER_FILL, PEER_TEXT, type PeerCohortLabel } from "@/lib/peers";
-import { STATUS_STRIPE_LEFT, STATUS_STRIPE_TOP } from "@/lib/status";
 import { TEXT_FIGURE, TEXT_LABEL, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
@@ -61,12 +60,7 @@ function HeroCard({
   const color = isBad ? "bottom" : "top";
   const unit = metricDisplayUnit(entry.format, entry.unit);
   return (
-    <Card
-      className={cn(
-        "relative flex h-full min-h-72 flex-col gap-0",
-        STATUS_STRIPE_TOP[isBad ? "bad" : "good"]
-      )}
-    >
+    <Card className="relative flex h-full min-h-72 flex-col gap-0">
       <MetricCardActions evidence={entry.evidence} label={entry.label} />
       <div className="flex flex-1 flex-col gap-3 p-5 sm:p-6">
         <div className="flex items-center gap-1.5 pr-8">
@@ -187,15 +181,7 @@ function SideCard({
 }) {
   const unit = metricDisplayUnit(entry.format, entry.unit);
   return (
-    <Card
-      className={cn(
-        "relative min-h-28",
-        stretch && "h-full",
-        PEER_TEXT[entry.status],
-        entry.status === "top" && STATUS_STRIPE_LEFT.good,
-        entry.status === "bottom" && STATUS_STRIPE_LEFT.bad
-      )}
-    >
+    <Card className={cn("relative min-h-28", stretch && "h-full")}>
       <MetricCardActions evidence={entry.evidence} label={entry.label} />
       <div className="flex h-full">
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-4">
@@ -218,7 +204,7 @@ function SideCard({
                 which outgrows these cards), so chips are the only
                 tooltip-gated tier. */}
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className={TEXT_FIGURE}>
+              <span className={cn(TEXT_FIGURE, PEER_TEXT[entry.status])}>
                 {formatMetricFigure(entry.value, entry.format, entry.unit)}
                 {unit ? (
                   <span className="ml-1 text-xs font-normal text-muted-foreground">

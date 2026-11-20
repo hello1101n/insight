@@ -9,7 +9,7 @@ import type {
 import { Badge, Button } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { TONE_BAR_STYLE, TONE_STYLE } from "./connector-health-tone";
+import { TONE_BADGE, TONE_BAR_STYLE } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
   UNMEASURED,
@@ -195,10 +195,8 @@ function SyncRow({ sync, asOf }: { sync: SyncFact; asOf: string }) {
     <tr className="border-b last:border-0">
       <td className="px-1 py-2 align-top">
         <Badge
-          className={cn(
-            "max-w-full whitespace-normal",
-            TONE_STYLE[state.tone]
-          )}
+          variant={TONE_BADGE[state.tone]}
+          className="max-w-full whitespace-normal"
         >
           {state.label}
         </Badge>

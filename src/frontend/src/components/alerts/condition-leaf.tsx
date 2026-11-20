@@ -108,8 +108,6 @@ export function NumberInput({
   );
 }
 
-const TEXT = "h-9 w-48";
-
 const AGE_UNITS: readonly (Option & { prefix: string; suffix: string })[] = [
   { value: "minutes", label: "minutes", prefix: "PT", suffix: "M" },
   { value: "hours", label: "hours", prefix: "PT", suffix: "H" },
@@ -201,7 +199,7 @@ function ValueInput({
           aria-label="Value"
           {...described(saidOn())}
           value={textOfValue(value)}
-          className={TEXT}
+          className="w-48"
           onChange={(event) => onChange(event.target.value)}
         />
       );

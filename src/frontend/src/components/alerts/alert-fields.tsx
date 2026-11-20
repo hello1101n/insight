@@ -241,10 +241,7 @@ export function AlertFields({
             errors.context_columns ? "alert-context-columns-said" : undefined
           }
         >
-          <FieldLegend
-            variant="label"
-            className={cn(TEXT_LABEL, "mb-1")}
-          >
+          <FieldLegend variant="label" className="mb-1">
             Show in notification
           </FieldLegend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
