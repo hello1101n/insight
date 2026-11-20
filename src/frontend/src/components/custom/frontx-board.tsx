@@ -18,6 +18,7 @@ import { fetchWithAuth } from "@/api/fetch-with-auth";
 import { frontxBoard } from "@/lib/custom/frontx-board";
 import { dashboardWidgetsQuery } from "@/queries/custom";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
+import { ComingSoon } from "@/components/widgets/coming-soon";
 
 const WIDGET_LIST = "/widgets/widgets.json";
 
@@ -74,15 +75,27 @@ function useAppliedTheme(): string {
   );
 }
 
-export default function FrontxBoard({
-  id,
-  read,
-  range,
-}: {
+interface FrontxBoardProps {
   id: string;
   read: DashboardRead;
   range: string | undefined;
-}) {
+}
+
+export default function FrontxBoardPage(props: FrontxBoardProps) {
+  // Set by vite.frontx-widgets.ts from FRONTX_WIDGETS_DIR.
+  if (import.meta.env.VITE_FRONTX_WIDGETS_SET !== true) {
+    return (
+      <ComingSoon
+        variant="card"
+        state="error"
+        label="FRONTX_WIDGETS_DIR is not set. Build the FrontX widget bundles, set it to their dist folder and restart the dev server."
+      />
+    );
+  }
+  return <FrontxBoard {...props} />;
+}
+
+function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   const widgets = useQuery(dashboardWidgetsQuery(id));
   const theme = useAppliedTheme();
   const board = useMemo(
