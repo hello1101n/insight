@@ -15,5 +15,11 @@ saveExact: true
 
 engineStrict: true
 
+# Refuse git and tarball sources in transitive dependencies.
+blockExoticSubdeps: true
+
+# Refuse a version that is published with less trust evidence than an earlier version.
+trustPolicy: no-downgrade
+
 # Transitive pins for advisories with no fixed release from the direct dependency
 # yet. exceljs 4.4.0 still asks for the vulnerable ranges.
