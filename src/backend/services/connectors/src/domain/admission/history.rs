@@ -99,10 +99,10 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
         let until = r.finished_at.or(r.workflow_end).unwrap_or(now);
         let before = r.started_at.unwrap_or(until);
         let unobserved_start = r.started_at.is_none()
-            && matches!(
+            && (matches!(
                 r.status.as_str(),
                 "succeeded" | "failed" | "loading" | "transforming"
-            );
+            ) || r.status == "cancelled" && r.granted_at.is_some());
         if unobserved_start && r.stage != "connector-checks" {
             wait_known = false;
         }
@@ -282,7 +282,7 @@ pub(crate) async fn runs(
 mod tests {
     use super::*;
     #[test]
-    fn unobserved_bronze_start_keeps_load_and_wait_durations_unknown() {
+    fn unobserved_worker_start_keeps_stage_and_wait_durations_unknown() {
         let now = Utc::now();
         let record = Record {
             airbyte_job_id: Some("12".into()),
@@ -304,11 +304,24 @@ mod tests {
             reason: None,
             records_reported: Some(120),
         };
-        let run = build(&[record], now);
+        let run = build(std::slice::from_ref(&record), now);
         assert_eq!(run.records_reported, Some(120));
         assert_eq!(run.wait_ms, None);
         assert_eq!(run.load_ms, None);
         assert_eq!(run.stages[0].duration_ms, None);
+        assert_eq!(run.transform_ms, Some(0));
+
+        let mut cancelled = Record {
+            stage: "transform-staging".into(),
+            status: "cancelled".into(),
+            ..record
+        };
+        let run = build(std::slice::from_ref(&cancelled), now);
+        assert_eq!(run.wait_ms, None);
+        assert_eq!(run.transform_ms, None);
+        cancelled.granted_at = None;
+        let run = build(&[cancelled], now);
+        assert_eq!(run.wait_ms, Some(18 * 60 * 1000));
         assert_eq!(run.transform_ms, Some(0));
     }
 
