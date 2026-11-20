@@ -71,7 +71,7 @@ toolbox image because the poller's environment variable also changed.
 
 Set `connectors.stageAdmission.enabled=true` to enable per-stage admission and run history. Set `connectors.stageAdmission.argoUrl` to the in-cluster Argo Server URL when it runs in a separate namespace. For a distributed warehouse, configure `clickhouse.clusterMode` and `clickhouse.clusterName` so the worker checks every replica. Pod CPU and memory measurements come from the Kubernetes Metrics API.
 
-The Connectors page shows each run’s waiting, loading and transformation times. A new stage waits when ClickHouse measurements are unavailable. A continuous resource wait raises a warning after three hours and times out after six. A lost Airbyte launch response remains under reconciliation until the original trigger produces its Job ID.
+The Connectors page shows each run’s waiting, loading and transformation times. A new stage waits when ClickHouse measurements are unavailable. A continuous resource wait raises a warning after three hours and times out after six. A lost Airbyte launch response remains under reconciliation until the original trigger produces its Job ID. Once the ID is recorded, the worker can confirm that exact job with Airbyte even if the Workflow disappears. A timed-out job with an unscheduled replication pod keeps its place until Airbyte cancels the job and Kubernetes clears the pod.
 
 The release can register a dedicated ClickHouse destination for new append and append-dedup connections. Its queries carry Airbyte Job and Attempt IDs. Existing Airbyte connections retain their destination and sync state. Stages with insufficient attributable measurements run individually.
 

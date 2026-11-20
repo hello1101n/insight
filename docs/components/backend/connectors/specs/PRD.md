@@ -107,12 +107,19 @@ request gets 401.
 ### 4.6 Sync history in the expanded row
 
 1. The schedule is shown full width at the top of the expanded row.
-2. Below it:
+2. For instances with only legacy loads, the history below the schedule contains
    - a strip of up to the last 50 syncs, one small coloured bar each, with the share of finished syncs
      that succeeded, for example "94% succeeded";
    - a table of the latest 10 syncs with column headers (status, start in UTC, duration,
      records), which expands to show the rest.
-3. The heading states how many syncs it shows, for example "Latest 10 of 50 recorded".
+3. With per-stage admission enabled, the row shows the current run and the last successful
+   run. Each shows elapsed time waiting, loading and transforming. Selecting a bar opens its
+   timeline. Reports become ready when the final transformation succeeds.
+4. The strip includes older loads and multiple runs on the same day, up to 50 in total.
+   A load associated with a managed run by Airbyte Job ID appears once. Selecting an older
+   load shows the measurements that Airbyte recorded.
+5. For instances with only legacy loads, the heading states how many loads the table shows,
+   for example "Latest 10 of 50 recorded".
 
 ## 5. Constraints
 
