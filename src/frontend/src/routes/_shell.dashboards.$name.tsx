@@ -1,5 +1,5 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Ellipsis, Maximize2, Table2 } from "lucide-react";
 
@@ -51,6 +51,8 @@ import { dashboardSubject } from "@/lib/portal/document-title";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
 import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
+
+const FrontxBoard = lazy(() => import("@/components/custom/frontx-board"));
 
 export const Route = createFileRoute("/_shell/dashboards/$name")({
   validateSearch: validateDashboardSearch,
@@ -113,6 +115,7 @@ function CustomDashboardBody({
   offered: string[] | undefined;
   onSelectRange: (token: string) => void;
 }) {
+  const search = usePortalSearch();
   if (isLoading)
     return (
       <CenteredSpinner
@@ -143,6 +146,7 @@ function CustomDashboardBody({
 
   const dashboard = read.body;
   const items = dashboardItems(dashboard);
+  const frontx = search.frontx === 1;
 
   const picksRange = offered !== undefined && offered.length > 0 && range;
 
@@ -192,6 +196,10 @@ function CustomDashboardBody({
           state="empty"
           label="This dashboard holds no widgets yet."
         />
+      ) : frontx ? (
+        <Suspense fallback={<CenteredSpinner className="min-h-40" />}>
+          <FrontxBoard id={id} read={read} range={range} />
+        </Suspense>
       ) : (
         <DashboardItems dashboard={id} items={items} range={range} />
       )}

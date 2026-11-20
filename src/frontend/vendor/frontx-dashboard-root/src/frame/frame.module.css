@@ -1,0 +1,101 @@
+/* The cell fills its Grid item; the body takes the height the header leaves. */
+.cell {
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+/* The grid groups and the frameless cells between them, one under another. The gap is the Grid's own gap at the
+   current width; DashboardGrid sets the variable from the kit's grid config, starting from the smallest step's gap. */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dashboard-group-gap);
+  min-inline-size: 0;
+}
+
+/* A frameless cell: a full-width block between the grid groups, as tall as its content, with no border or background.
+   Its content starts where a small card's content starts (the card's border and its inline spacing), so a section
+   heading lines up with the cards around it. */
+.frameless {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  padding-inline: calc(var(--border-width) + var(--space-3));
+}
+
+/* The description under the title stays on one line; the full text is in its title attribute. */
+.description {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  /* The kit Card clips its content; the body owns the scrolling, so a tall widget scrolls inside its cell. */
+  overflow: auto;
+}
+
+.widget {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.loading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonLine {
+  block-size: var(--space-4);
+  inline-size: 40%;
+}
+
+.skeletonBlock {
+  flex: 1;
+  min-block-size: var(--space-8);
+}
+
+.cannot {
+  margin: auto;
+  text-align: center;
+}
+
+/* The cannot-be-shown text with the retry button under it, centred together. */
+.cannotRetry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: auto;
+}
+
+.cannotRetry > .cannot {
+  margin: 0;
+}
+
+/* The kit caps a large dialog at 36rem through its size attribute; the larger view takes most of the viewport instead.
+   The header keeps its own height and the body takes the rest. The doubled class outranks the kit's
+   class and attribute rule whatever order the stylesheets load in. */
+.overlay.overlay,
+.overlay.overlay[data-size] {
+  grid-template-rows: auto minmax(0, 1fr);
+  block-size: min(90vh, 60rem);
+  inline-size: min(95vw, 90rem);
+  max-inline-size: min(95vw, 90rem);
+}
+
+.overlayBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}

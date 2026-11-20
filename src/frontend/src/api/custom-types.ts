@@ -214,6 +214,11 @@ export interface DashboardWidget {
   body: Widget;
   /** Absent when a window over its metric has no date to select by. */
   clock?: EffectiveClock | null;
+  /**
+   * Prototype: the drawn metric's percent columns. The service does not send
+   * this yet; only the dev mocks do.
+   */
+  percents?: string[];
 }
 
 export type GrantLevel = "viewer" | "editor";

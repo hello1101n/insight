@@ -1,0 +1,101 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DataWidget",
+  "description": "Abstract base of the data widget types: a widget with a binding and the data_type trait.",
+  "x-gts-abstract": true,
+  "x-gts-traits-schema": {
+    "type": "object",
+    "required": [
+      "data_type"
+    ],
+    "properties": {
+      "data_type": {
+        "type": "string",
+        "x-gts-type-ref": "gts.frontx.dashboard.widget_data.widget_data.v1~",
+        "description": "The data type the widget type needs."
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "data"
+      ],
+      "properties": {
+        "value_format": {
+          "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+          "description": "How the widget formats the numbers it shows. percent 0.25 means 25%."
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "object",
+              "unevaluatedProperties": false,
+              "required": [
+                "request",
+                "transform"
+              ],
+              "description": "own: send a request and evaluate the transform on the response.",
+              "properties": {
+                "request": {
+                  "$ref": "gts://gts.frontx.dashboard.widget.request.v1~"
+                },
+                "transform": {
+                  "type": "string",
+                  "description": "A CEL expression whose single variable is response, the parsed JSON body."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "unevaluatedProperties": false,
+              "required": [
+                "source",
+                "transform"
+              ],
+              "description": "shared: evaluate the transform on a shared response and params.",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                  "description": "Names an entry in the dashboard's requests object."
+                },
+                "params": {
+                  "type": "object",
+                  "description": "Any JSON object. Absent means {}."
+                },
+                "transform": {
+                  "type": "string",
+                  "description": "A CEL expression whose variables are response (the shared response) and params."
+                }
+              }
+            },
+            {
+              "type": "object",
+              "unevaluatedProperties": false,
+              "required": [
+                "transform"
+              ],
+              "description": "static: evaluate the transform on params, with no request.",
+              "properties": {
+                "params": {
+                  "type": "object",
+                  "description": "Any JSON object. Absent means {}."
+                },
+                "transform": {
+                  "type": "string",
+                  "description": "A CEL expression whose single variable is params."
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
