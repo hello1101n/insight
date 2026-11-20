@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
+use insight_clickhouse::{Sql, sql};
+
 use super::clock::{TimeField, add_window_predicates, bucket_expression, clock_expression};
 use super::field::{Field, FieldType, OrderBy, is_identifier};
-use super::filter::FilterBind;
 use super::over::Over;
 use super::people::{People, PersonHandle};
 use super::{
@@ -37,12 +38,11 @@ enum Bound {
 
 #[derive(Debug)]
 struct Selection<'a> {
-    parts: Vec<String>,
+    parts: Vec<Sql>,
     as_names: HashSet<&'a str>,
     column_types: HashMap<String, FieldType>,
     joins: String,
     handles: Vec<PersonHandle>,
-    binds: Vec<FilterBind>,
 }
 
 impl MetricQuery {
@@ -165,7 +165,6 @@ impl MetricQuery {
             column_types: HashMap::with_capacity(self.fields.len()),
             joins: String::new(),
             handles: Vec::new(),
-            binds: Vec::new(),
         };
 
         for (index, field) in self.fields.iter().enumerate() {
@@ -184,7 +183,7 @@ impl MetricQuery {
                 selection.as_names.insert(field.as_name.as_str());
                 selection
                     .parts
-                    .push(format!("{ratio} AS `{}`", field.as_name));
+                    .push(Sql::raw(format!("{ratio} AS `{}`", field.as_name)));
                 continue;
             }
             selection.as_names.insert(field.as_name.as_str());
@@ -222,15 +221,15 @@ impl MetricQuery {
                     );
                     let resolved =
                         format!("coalesce(nullIf(`{alias}`.`display_name`, ''), {shown})");
-                    let condition = field.condition(over, qualifier, &mut selection.binds)?;
+                    let condition = field.condition(over, qualifier)?;
 
-                    field.aggregated_if(resolved, condition)
+                    field.aggregated_if(Sql::raw(resolved), condition)
                 }
-                None => field.expression(over, qualifier, &mut selection.binds)?,
+                None => field.expression(over, qualifier)?,
             };
-            selection
-                .parts
-                .push(format!("{expression} AS `{}`", field.as_name));
+            let mut part = expression;
+            part.push(Sql::raw(format!(" AS `{}`", field.as_name)));
+            selection.parts.push(part);
         }
 
         Ok(selection)
@@ -297,7 +296,6 @@ impl MetricQuery {
             column_types,
             joins,
             handles,
-            mut binds,
         } = self.selection(over, qualifier)?;
 
         let time_expression = self.time_expression(window, over, qualifier, &as_names)?;
@@ -306,7 +304,10 @@ impl MetricQuery {
         if let Some((grain, clock)) = bucket {
             parts.insert(
                 0,
-                format!("{} AS `{BUCKET_COLUMN}`", bucket_expression(grain, clock)),
+                Sql::raw(format!(
+                    "{} AS `{BUCKET_COLUMN}`",
+                    bucket_expression(grain, clock)
+                )),
             );
             as_names.insert(BUCKET_COLUMN);
         }
@@ -316,14 +317,8 @@ impl MetricQuery {
         let (hidden, numbered) = self.distinguished(bound, over.is_some(), qualifier, &mut parts);
 
         let mut where_parts = Vec::with_capacity(self.filters.len() + 2);
-        binds.reserve(self.filters.len() + 2);
-        add_window_predicates(
-            window,
-            time_expression.as_deref(),
-            &mut where_parts,
-            &mut binds,
-        )?;
-        self.add_filters(over, qualifier, &mut where_parts, &mut binds)?;
+        add_window_predicates(window, time_expression.as_deref(), &mut where_parts)?;
+        self.add_filters(over, qualifier, &mut where_parts)?;
 
         let from = self.table_source(over, qualifier, engine);
         let prelude = if handles.is_empty() {
@@ -331,10 +326,18 @@ impl MetricQuery {
         } else {
             people.prelude(&handles)?
         };
-        let mut sql = format!("{prelude}SELECT {} FROM {from}{joins}", parts.join(", "));
+        let mut sql = sql!(
+            "{prelude}SELECT {parts} FROM {from}{joins}",
+            prelude = Sql::raw(prelude),
+            parts = Sql::join(parts, ", "),
+            from = Sql::raw(from),
+            joins = Sql::raw(joins),
+        );
         if !where_parts.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&where_parts.join(" AND "));
+            sql.push(sql!(
+                " WHERE {conditions}",
+                conditions = Sql::join(where_parts, " AND ")
+            ));
         }
         let mut groups: Vec<String> = self
             .group_by
@@ -354,8 +357,7 @@ impl MetricQuery {
 
         let backticked: Vec<String> = groups.iter().map(|group| format!("`{group}`")).collect();
         if !groups.is_empty() {
-            sql.push_str(" GROUP BY ");
-            sql.push_str(&backticked.join(", "));
+            sql.push(Sql::raw(format!(" GROUP BY {}", backticked.join(", "))));
         }
 
         let mut columns: Vec<String> = self
@@ -372,7 +374,6 @@ impl MetricQuery {
 
         Ok(CompiledQuery {
             sql,
-            binds,
             column_types,
             percents: self.names_marked(|field| field.percent),
             exacts: self.names_marked(|field| field.exact),
@@ -386,7 +387,7 @@ impl MetricQuery {
         bound: Bound,
         over_a_dataset: bool,
         qualifier: Option<&str>,
-        parts: &mut Vec<String>,
+        parts: &mut Vec<Sql>,
     ) -> (Vec<String>, bool) {
         if bound != Bound::Paged || self.groups_its_rows() {
             return (Vec::new(), false);
@@ -399,14 +400,14 @@ impl MetricQuery {
             Some(alias) => format!("`{alias}`.`id`"),
             None => "`id`".to_owned(),
         };
-        parts.push(format!("{id} AS `{RECORD_COLUMN}`"));
+        parts.push(Sql::raw(format!("{id} AS `{RECORD_COLUMN}`")));
 
         (vec![RECORD_COLUMN.to_owned()], false)
     }
 
     fn bound_by(
         &self,
-        sql: &mut String,
+        sql: &mut Sql,
         bound: Bound,
         ordering: Option<&OrderBy>,
         groups: &[String],
@@ -436,24 +437,23 @@ impl MetricQuery {
                     .map(|column| format!("`{column}`")),
             );
         }
+        let mut clause = String::new();
         if !terms.is_empty() {
-            sql.push_str(" ORDER BY ");
-            sql.push_str(&terms.join(", "));
+            clause.push_str(" ORDER BY ");
+            clause.push_str(&terms.join(", "));
         }
-        let _ = write!(sql, " LIMIT {limit}");
+        let _ = write!(clause, " LIMIT {limit}");
+        sql.push(Sql::raw(clause));
     }
 
     fn add_filters(
         &self,
         over: Option<Over<'_>>,
         qualifier: Option<&str>,
-        where_parts: &mut Vec<String>,
-        binds: &mut Vec<FilterBind>,
+        where_parts: &mut Vec<Sql>,
     ) -> Result<(), MetricQueryError> {
         for filter in &self.filters {
-            let (condition, bound) = filter.predicate(over, qualifier)?;
-            where_parts.push(condition);
-            binds.push(bound);
+            where_parts.push(filter.predicate(over, qualifier)?);
         }
 
         Ok(())
@@ -500,19 +500,20 @@ impl MetricQuery {
         };
 
         let mut where_parts = Vec::with_capacity(self.filters.len());
-        let mut binds = Vec::with_capacity(self.filters.len());
-        self.add_filters(over, None, &mut where_parts, &mut binds)?;
+        self.add_filters(over, None, &mut where_parts)?;
 
-        let mut sql = format!(
+        let mut sql = Sql::raw(format!(
             "SELECT countIf(isNull({clock})) AS undated FROM {}",
             self.table_source(over, None, engine)
-        );
+        ));
         if !where_parts.is_empty() {
-            sql.push_str(" WHERE ");
-            sql.push_str(&where_parts.join(" AND "));
+            sql.push(sql!(
+                " WHERE {conditions}",
+                conditions = Sql::join(where_parts, " AND ")
+            ));
         }
 
-        Ok(Some(UndatedQuery { sql, binds }))
+        Ok(Some(UndatedQuery { sql }))
     }
 
     fn undated_clock(&self, over: Option<Over<'_>>) -> Result<Option<String>, MetricQueryError> {

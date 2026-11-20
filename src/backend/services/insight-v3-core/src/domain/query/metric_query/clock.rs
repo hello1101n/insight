@@ -1,8 +1,8 @@
+use insight_clickhouse::{Param, Sql, sql};
 use serde::Deserialize;
 
 use super::MetricQueryError;
 use super::field::{FieldType, Source};
-use super::filter::FilterBind;
 use crate::domain::query::time_window::{Bounds, Grain, Window};
 
 #[derive(Debug, Deserialize)]
@@ -72,8 +72,7 @@ pub(super) fn bucket_expression(grain: Grain, clock: &str) -> String {
 pub(super) fn add_window_predicates(
     window: &Window,
     time_expression: Option<&str>,
-    where_parts: &mut Vec<String>,
-    binds: &mut Vec<FilterBind>,
+    where_parts: &mut Vec<Sql>,
 ) -> Result<(), MetricQueryError> {
     let Window::Requested { bounds, .. } = window else {
         return Ok(());
@@ -84,12 +83,18 @@ pub(super) fn add_window_predicates(
 
     match *bounds {
         Bounds::Finite { from, to } => {
-            where_parts.push(format!("{clock} >= fromUnixTimestamp64Milli(?, 'UTC')"));
-            where_parts.push(format!("{clock} < fromUnixTimestamp64Milli(?, 'UTC')"));
-            binds.push(FilterBind::Int(from.timestamp_millis()));
-            binds.push(FilterBind::Int(to.timestamp_millis()));
+            where_parts.push(sql!(
+                "{clock} >= fromUnixTimestamp64Milli({from}, 'UTC')",
+                clock = Sql::raw(clock),
+                from = Param::int64(from.timestamp_millis()),
+            ));
+            where_parts.push(sql!(
+                "{clock} < fromUnixTimestamp64Milli({to}, 'UTC')",
+                clock = Sql::raw(clock),
+                to = Param::int64(to.timestamp_millis()),
+            ));
         }
-        Bounds::Unbounded => where_parts.push(format!("{clock} IS NOT NULL")),
+        Bounds::Unbounded => where_parts.push(Sql::raw(format!("{clock} IS NOT NULL"))),
     }
 
     Ok(())

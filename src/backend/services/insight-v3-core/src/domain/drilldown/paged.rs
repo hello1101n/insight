@@ -1,9 +1,9 @@
-use std::fmt::Write as _;
+use insight_clickhouse::{Sql, sql};
 
 use super::Column;
 use super::cursor::CursorKey;
 use super::order::{INNER, OrderKey};
-use crate::domain::query::metric_query::{CompiledQuery, FilterBind, TWIN_COLUMN};
+use crate::domain::query::metric_query::{CompiledQuery, TWIN_COLUMN};
 
 const INNERMOST: &str = "__i";
 
@@ -13,35 +13,35 @@ pub(super) fn wrap(
     resume: Option<&CursorKey>,
     limit: usize,
     columns: &[Column],
-) -> (String, Vec<FilterBind>) {
-    let mut binds = inner.binds().to_vec();
-    let mut sql = format!(
-        "SELECT {INNER}.*{} FROM ({}) AS {INNER}",
-        order.projection(),
-        source(inner, columns)
+) -> Sql {
+    let mut sql = sql!(
+        "SELECT {INNER}.*{projection} FROM ({source}) AS {INNER}",
+        projection = Sql::raw(order.projection()),
+        source = source(inner, columns),
     );
 
     if let Some(key) = resume {
-        let predicate = order.cursor_predicate(key, &mut binds);
-        let _ = write!(sql, " WHERE {predicate}");
+        sql.push(sql!(
+            " WHERE {predicate}",
+            predicate = order.cursor_predicate(key)
+        ));
     }
 
-    let _ = write!(
-        sql,
+    sql.push(Sql::raw(format!(
         " ORDER BY {} LIMIT {}",
         order.order_by(),
         limit.saturating_add(1)
-    );
+    )));
 
-    (sql, binds)
+    sql
 }
 
 /// INVARIANT: numbered before the cursor is compared, in a layer of their
 /// own. A window function is computed after `WHERE`, so a comparison in the
 /// same select could not see the number.
-fn source(inner: &CompiledQuery, columns: &[Column]) -> String {
+fn source(inner: &CompiledQuery, columns: &[Column]) -> Sql {
     if !inner.numbered() {
-        return inner.sql().to_owned();
+        return inner.sql().clone();
     }
 
     let partition: Vec<String> = columns
@@ -49,9 +49,9 @@ fn source(inner: &CompiledQuery, columns: &[Column]) -> String {
         .map(|column| format!("{INNERMOST}.`{}`", column.key))
         .collect();
 
-    format!(
-        "SELECT {INNERMOST}.*, row_number() OVER (PARTITION BY {}) AS `{TWIN_COLUMN}` FROM ({}) AS {INNERMOST}",
-        partition.join(", "),
-        inner.sql()
+    sql!(
+        "SELECT {INNERMOST}.*, row_number() OVER (PARTITION BY {partition}) AS `{TWIN_COLUMN}` FROM ({inner}) AS {INNERMOST}",
+        partition = Sql::raw(partition.join(", ")),
+        inner = inner.sql().clone(),
     )
 }

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use clickhouse::sql::Identifier;
-use insight_clickhouse::{Ddl, MissingRelation, TableSpec, Unfinished};
+use insight_clickhouse::{Ddl, MissingRelation, Param, Sql, TableSpec, Unfinished, sql};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -16,9 +16,6 @@ const COLUMNS: [(&str, &str); 4] = [
 ];
 const SORT_KEY: [&str; 3] = ["table_name", "received_at", "id"];
 const INGEST_SORTING_KEY: &str = "table_name, received_at, id";
-const READ_PAGE: &str = "SELECT id, received_at, raw_data FROM ?
-ORDER BY {order}, received_at DESC, id DESC
-LIMIT ? OFFSET ?";
 const COUNT_ROWS: &str = "SELECT count() AS total FROM ?";
 const READ_SHAPE: &str = "SELECT sorting_key FROM system.tables
 WHERE database = currentDatabase() AND name = ?";
@@ -101,25 +98,27 @@ impl DatasetTables {
         Ok(())
     }
 
-    /// SAFETY: `order` is an expression, not a value, so it is written into
-    /// the statement rather than bound. A caller only names a declared field;
-    /// the expression itself is built by
+    /// SAFETY: `table` and `order` are SQL text, not values, so they are
+    /// written into the statement rather than bound. `table` is a name this
+    /// service minted for the dataset. A caller only names a declared field;
+    /// the `order` expression itself is built by
     /// [`crate::domain::kinds::dataset::read`], whose `literal` escapes every
-    /// declared path segment into a ClickHouse string literal — including the
-    /// `?` that would otherwise shift this statement's bindings.
+    /// declared path segment into a ClickHouse string literal.
     pub(crate) async fn page(
         &self,
         table: &str,
         page: Page<'_>,
     ) -> Result<Vec<Record>, DatasetTableError> {
-        let statement = READ_PAGE.replace("{order}", page.order);
-        let rows = self
-            .client
-            .query(&statement)
-            .bind(Identifier(table))
-            .bind(page.limit)
-            .bind(page.offset)
-            .fetch_all::<PreviewRow>();
+        let statement = sql!(
+            "SELECT id, received_at, raw_data FROM {table} \
+             ORDER BY {order}, received_at DESC, id DESC \
+             LIMIT {limit} OFFSET {offset}",
+            table = Sql::raw(format!("`{table}`")),
+            order = Sql::raw(page.order),
+            limit = Param::uint64(page.limit),
+            offset = Param::uint64(page.offset),
+        );
+        let rows = self.client.query_sql(&statement).fetch_all::<PreviewRow>();
         let found = tokio::time::timeout(self.read_timeout, rows)
             .await
             .map_err(|_| DatasetTableError::Timeout)??;

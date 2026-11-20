@@ -9,6 +9,7 @@ mod runner;
 
 use std::collections::HashMap;
 
+use insight_clickhouse::Sql;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -19,7 +20,6 @@ use crate::domain::query::time_window::MaximumRange;
 
 pub(crate) use engine::TableEngine;
 use field::FieldType;
-pub(crate) use filter::FilterBind;
 pub(crate) use people::People;
 pub(crate) use runner::{MetricRunError, MetricRunner, RunResult};
 
@@ -302,14 +302,12 @@ impl MetricQuery {
 
 #[derive(Debug)]
 pub(crate) struct UndatedQuery {
-    sql: String,
-    binds: Vec<FilterBind>,
+    sql: Sql,
 }
 
 #[derive(Debug)]
 pub(crate) struct CompiledQuery {
-    sql: String,
-    binds: Vec<FilterBind>,
+    sql: Sql,
     column_types: HashMap<String, FieldType>,
     percents: Vec<String>,
     exacts: Vec<String>,
@@ -318,12 +316,8 @@ pub(crate) struct CompiledQuery {
 }
 
 impl CompiledQuery {
-    pub(crate) fn sql(&self) -> &str {
+    pub(crate) fn sql(&self) -> &Sql {
         &self.sql
-    }
-
-    pub(crate) fn binds(&self) -> &[FilterBind] {
-        &self.binds
     }
 
     pub(crate) fn percents(&self) -> &[String] {

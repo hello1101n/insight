@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 use std::fmt::Write as _;
 
+use insight_clickhouse::{Sql, sql};
 use serde::Deserialize;
 
 use super::MetricQueryError;
-use super::filter::{Filter, FilterBind};
+use super::filter::Filter;
 use super::over::Over;
 use super::people::PersonHandle;
 use crate::domain::kinds::dataset::declaration::FieldType as DeclaredType;
@@ -141,39 +142,35 @@ impl Field {
         &self,
         over: Option<Over<'_>>,
         qualifier: Option<&str>,
-        binds: &mut Vec<FilterBind>,
-    ) -> Result<String, MetricQueryError> {
+    ) -> Result<Sql, MetricQueryError> {
         if self.agg == Some(Agg::Count) && self.reads_nothing() {
-            return Ok(match self.condition(over, qualifier, binds)? {
-                Some(condition) => format!("countIf({condition})"),
-                None => "count()".to_owned(),
+            return Ok(match self.condition(over, qualifier)? {
+                Some(condition) => sql!("countIf({condition})", condition = condition),
+                None => Sql::raw("count()"),
             });
         }
 
-        let read = self.read(over, qualifier, binds)?;
-        let condition = self.condition(over, qualifier, binds)?;
+        let read = self.read(over, qualifier)?;
+        let condition = self.condition(over, qualifier)?;
 
-        Ok(match (self.agg, condition) {
-            (Some(agg), Some(condition)) => format!("{}If({read}, {condition})", agg.sql()),
-            (Some(agg), None) => format!("{}({read})", agg.sql()),
-            (None, _) => read,
-        })
+        Ok(self.aggregated_if(read, condition))
     }
 
     fn read(
         &self,
         over: Option<Over<'_>>,
         qualifier: Option<&str>,
-        binds: &mut Vec<FilterBind>,
-    ) -> Result<String, MetricQueryError> {
+    ) -> Result<Sql, MetricQueryError> {
         if let Some(over) = over {
-            return over.read(self.declared.as_deref(), &self.as_name, qualifier);
+            return over
+                .read(self.declared.as_deref(), &self.as_name, qualifier)
+                .map(Sql::raw);
         }
 
         let source = self.source()?;
 
         let Some(selector) = &self.r#where else {
-            return source.sql(self.r#type, qualifier);
+            return source.sql(self.r#type, qualifier).map(Sql::raw);
         };
 
         let Source::Json { path, .. } = source else {
@@ -185,38 +182,40 @@ impl Field {
             return Err(MetricQueryError::Selector(self.as_name.clone()));
         };
 
-        let matched = selector.r#type.extract("x", key)?;
-        binds.push(selector.bind(selected)?);
-
         // ClickHouse refuses `Array(String)` inside a `Nullable`, and an
         // ingested JSON column may be declared `Nullable(String)`.
-        let element = format!(
-            "arrayFirst(x -> {matched} {} ?, JSONExtractArrayRaw(ifNull({}, '')))",
-            selector.op.sql(),
-            source.payload_sql(qualifier)?
+        let element = sql!(
+            "arrayFirst(x -> {matched} {operator} {selected}, JSONExtractArrayRaw(ifNull({payload}, '')))",
+            matched = Sql::raw(selector.r#type.extract("x", key)?),
+            operator = Sql::raw(selector.op.sql()),
+            selected = selector.bind(selected)?,
+            payload = Sql::raw(source.payload_sql(qualifier)?),
         );
 
-        self.r#type.extract(&element, path)
+        Ok(sql!(
+            "{function}({element}{keys})",
+            function = Sql::raw(self.r#type.function()),
+            element = element,
+            keys = Sql::raw(json_keys(path)?),
+        ))
     }
 
     pub(super) fn condition(
         &self,
         over: Option<Over<'_>>,
         qualifier: Option<&str>,
-        binds: &mut Vec<FilterBind>,
-    ) -> Result<Option<String>, MetricQueryError> {
+    ) -> Result<Option<Sql>, MetricQueryError> {
         if self.when.is_empty() {
             return Ok(None);
         }
 
-        let mut parts = Vec::with_capacity(self.when.len());
-        for one in &self.when {
-            let (condition, bound) = one.predicate(over, qualifier)?;
-            parts.push(condition);
-            binds.push(bound);
-        }
+        let parts = self
+            .when
+            .iter()
+            .map(|one| one.predicate(over, qualifier))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Some(parts.join(" AND ")))
+        Ok(Some(Sql::join(parts, " AND ")))
     }
 
     fn reads_nothing(&self) -> bool {
@@ -259,11 +258,20 @@ impl Field {
         }))
     }
 
-    pub(super) fn aggregated_if(&self, read: String, condition: Option<String>) -> String {
-        match (self.agg, condition) {
-            (Some(agg), Some(condition)) => format!("{}If({read}, {condition})", agg.sql()),
-            (Some(agg), None) => format!("{}({read})", agg.sql()),
-            (None, _) => read,
+    pub(super) fn aggregated_if(&self, read: Sql, condition: Option<Sql>) -> Sql {
+        let Some(agg) = self.agg else {
+            return read;
+        };
+        let function = Sql::raw(agg.sql());
+
+        match condition {
+            Some(condition) => sql!(
+                "{function}If({read}, {condition})",
+                function = function,
+                read = read,
+                condition = condition,
+            ),
+            None => sql!("{function}({read})", function = function, read = read),
         }
     }
 }
@@ -342,22 +350,32 @@ pub(crate) enum FieldType {
 
 impl FieldType {
     pub(super) fn extract(self, payload: &str, path: &str) -> Result<String, MetricQueryError> {
-        let function = match self {
+        Ok(format!(
+            "{}({payload}{})",
+            self.function(),
+            json_keys(path)?
+        ))
+    }
+
+    fn function(self) -> &'static str {
+        match self {
             Self::String => "JSONExtractString",
             Self::Int => "JSONExtractInt",
             Self::Float => "JSONExtractFloat",
-        };
-
-        let mut keys = String::new();
-        for segment in path.split('.') {
-            if segment.is_empty() || segment.chars().count() > MAX_IDENTIFIER_CHARS {
-                return Err(MetricQueryError::JsonKey(path.to_owned()));
-            }
-            let _ = write!(keys, ", {}", json_key_literal(segment));
         }
-
-        Ok(format!("{function}({payload}{keys})"))
     }
+}
+
+fn json_keys(path: &str) -> Result<String, MetricQueryError> {
+    let mut keys = String::new();
+    for segment in path.split('.') {
+        if segment.is_empty() || segment.chars().count() > MAX_IDENTIFIER_CHARS {
+            return Err(MetricQueryError::JsonKey(path.to_owned()));
+        }
+        let _ = write!(keys, ", {}", json_key_literal(segment));
+    }
+
+    Ok(keys)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -395,16 +413,8 @@ pub(super) fn is_identifier(value: &str) -> bool {
         && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-/// `?` doubles because the driver binds by scanning the raw query text with
-/// no regard for quoting, so a single `?` here would take a bound parameter
-/// and shift every later one.
 fn json_key_literal(key: &str) -> String {
-    format!(
-        "'{}'",
-        key.replace('\\', r"\\")
-            .replace('\'', r"\'")
-            .replace('?', "??")
-    )
+    format!("'{}'", key.replace('\\', r"\\").replace('\'', r"\'"))
 }
 
 /// `ClickHouse`'s `JSON` format serialises wide integers as JSON strings;

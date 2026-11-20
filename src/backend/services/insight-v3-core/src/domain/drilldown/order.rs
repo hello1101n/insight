@@ -1,8 +1,10 @@
 use std::fmt::Write as _;
 
+use insight_clickhouse::{Param, Sql, sql};
+
 use super::cursor::{CursorError, CursorKey, KeyValue};
 use super::{Column, Sort};
-use crate::domain::query::metric_query::{ColumnKind, FilterBind, RECORD_COLUMN, TWIN_COLUMN};
+use crate::domain::query::metric_query::{ColumnKind, RECORD_COLUMN, TWIN_COLUMN};
 
 pub(super) const INNER: &str = "__m";
 const FLAG: &str = "__drilldown_flag";
@@ -128,23 +130,30 @@ impl OrderKey {
         Ok(())
     }
 
-    pub(super) fn cursor_predicate(&self, key: &CursorKey, binds: &mut Vec<FilterBind>) -> String {
+    pub(super) fn cursor_predicate(&self, key: &CursorKey) -> Sql {
         let mut elements = vec![self.flag_sql(), self.key_sql()];
         elements.extend(self.ties.iter().map(|tie| Self::tie_sql(tie)));
 
-        binds.push(FilterBind::Bool(key.flag));
-        binds.push(match &key.value {
-            KeyValue::Number(number) => FilterBind::Float(*number),
-            KeyValue::Text(text) => FilterBind::Str(text.clone()),
-        });
-        binds.extend(key.ties.iter().map(|tie| FilterBind::Str(tie.clone())));
-
-        let placeholders = vec!["?"; elements.len()].join(", ");
+        let value = match &key.value {
+            KeyValue::Number(number) => Param::float64(*number),
+            KeyValue::Text(text) => Param::string(text.as_str()),
+        };
+        let mut values = vec![
+            sql!("{flag}", flag = Param::bool(key.flag)),
+            sql!("{key}", key = value),
+        ];
+        values.extend(
+            key.ties
+                .iter()
+                .map(|tie| sql!("{tie}", tie = Param::string(tie.as_str()))),
+        );
         let operator = if self.descending { "<" } else { ">" };
 
-        format!(
-            "tuple({}) {operator} tuple({placeholders})",
-            elements.join(", ")
+        sql!(
+            "tuple({elements}) {operator} tuple({values})",
+            elements = Sql::raw(elements.join(", ")),
+            operator = Sql::raw(operator),
+            values = Sql::join(values, ", "),
         )
     }
 

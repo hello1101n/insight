@@ -53,6 +53,8 @@ fn compiled(body: serde_json::Value, window: &Window) -> String {
         .compile_over(&people(), window, over)
         .unwrap_or_else(|error| panic!("the metric compiles: {error}"))
         .sql
+        .render()
+        .sql
 }
 
 fn requested(token: &str) -> Window {
@@ -102,7 +104,7 @@ fn a_filter_compares_the_declared_field_and_binds_its_value() {
     let sql = compiled(body, &Window::legacy());
 
     assert!(
-        sql.contains("JSONExtract(raw_data, 'author', 'Nullable(String)') = ?"),
+        sql.contains("JSONExtract(raw_data, 'author', 'Nullable(String)') = {filter:String}"),
         "{sql}"
     );
 }
@@ -183,8 +185,16 @@ fn the_records_a_window_left_out_are_counted_over_the_same_relation_as_the_rows(
         .unwrap_or_else(|error| panic!("the count compiles: {error}"))
         .unwrap_or_else(|| panic!("a dataset with a main date has a count"));
 
-    assert!(counted.sql.contains("LIMIT 1 BY"), "{}", counted.sql);
-    assert!(counted.sql.contains("countIf(isNull("), "{}", counted.sql);
+    assert!(
+        counted.sql.render().sql.contains("LIMIT 1 BY"),
+        "{}",
+        counted.sql.render().sql
+    );
+    assert!(
+        counted.sql.render().sql.contains("countIf(isNull("),
+        "{}",
+        counted.sql.render().sql
+    );
 }
 
 #[test]
@@ -214,6 +224,8 @@ fn a_declared_person_is_resolved_to_the_name_a_reader_knows() {
     let sql = written
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("a declared person compiles: {error}"))
+        .sql
+        .render()
         .sql;
 
     assert!(sql.contains("LEFT JOIN"), "{sql}");
@@ -243,6 +255,8 @@ fn a_person_is_looked_up_by_the_record_s_own_value() {
     let sql = written
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("a declared person compiles: {error}"))
+        .sql
+        .render()
         .sql;
     let Some((shown, key)) = sql.split_once("LEFT JOIN") else {
         panic!("the join is there: {sql}");
@@ -274,6 +288,8 @@ fn a_windowed_run_that_aggregates_nothing_reports_the_bucket_without_grouping_by
     let sql = listing
         .compile_over(&people(), &requested("P7D"), over)
         .unwrap_or_else(|error| panic!("a listing metric compiles: {error}"))
+        .sql
+        .render()
         .sql;
 
     assert!(sql.contains("AS `bucket`"), "{sql}");
@@ -296,6 +312,8 @@ fn a_windowed_run_that_aggregates_groups_by_the_bucket() {
     let sql = counted
         .compile_over(&people(), &requested("P7D"), over)
         .unwrap_or_else(|error| panic!("a counting metric compiles: {error}"))
+        .sql
+        .render()
         .sql;
 
     assert!(sql.contains("GROUP BY `bucket`"), "{sql}");
@@ -324,6 +342,8 @@ fn a_filter_is_judged_against_the_record_s_own_value() {
     let sql = filtered
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("a filtered metric compiles: {error}"))
+        .sql
+        .render()
         .sql;
     let Some((selected, condition)) = sql.split_once(" WHERE ") else {
         panic!("the filter is there: {sql}");
@@ -365,6 +385,8 @@ fn a_condition_on_a_person_field_keeps_the_rows_it_names() {
     let sql = counted
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("a conditioned person field compiles: {error}"))
+        .sql
+        .render()
         .sql;
 
     assert!(sql.contains("countIf("), "{sql}");
@@ -391,6 +413,8 @@ fn ordering_by_the_bucket_falls_back_when_the_run_does_not_bucket() {
     let sql = trend
         .compile_over(&people(), &requested("P7D").unbucketed(), over)
         .unwrap_or_else(|error| panic!("an unbucketed run compiles: {error}"))
+        .sql
+        .render()
         .sql;
 
     assert!(sql.contains("ORDER BY `author`"), "{sql}");

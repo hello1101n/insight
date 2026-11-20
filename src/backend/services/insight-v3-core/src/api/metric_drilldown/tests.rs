@@ -261,9 +261,20 @@ async fn the_next_page_resumes_past_the_cursor_and_ends_where_the_rows_do() -> R
     let sql = last_read(&seen);
     assert!(sql.contains(") AS __m WHERE tuple("), "{sql}");
     assert!(
-        sql.contains(") > tuple(0, '2026-09-02', '2026-09-02', '5') ORDER BY"),
+        sql.contains(") > tuple({flag:Bool}, {key:String}, {tie:String}, {tie_1:String}) ORDER BY"),
         "{sql}"
     );
+    for (name, value) in [
+        ("flag", "false"),
+        ("key", "2026-09-02"),
+        ("tie", "2026-09-02"),
+        ("tie_1", "5"),
+    ] {
+        assert!(
+            sql.contains(&format!("name=\"param_{name}\"\r\n\r\n{value}\r\n")),
+            "should bind {name} to {value}: {sql}"
+        );
+    }
 
     Ok(())
 }
