@@ -162,7 +162,11 @@ export function EmployeesView() {
                 <TableCell>
                   {e.status ? (
                     <Badge
-                      variant="secondary"
+                      variant={
+                        e.status.toLowerCase() === "active"
+                          ? "success"
+                          : "secondary"
+                      }
                     >
                       {e.status}
                     </Badge>

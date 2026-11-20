@@ -120,7 +120,7 @@ export function PeriodSelectorBar({
         size="default"
       >
         {TABS.map(({ value }) => (
-          <ToggleGroupItem key={value} value={value}>
+          <ToggleGroupItem key={value} value={value} className="aria-pressed:bg-selection-subtle">
             <span className="hidden sm:inline">{t(`common.period.${value}`)}</span>
             <span className="sm:hidden">{t(`common.period.${value}_short`)}</span>
           </ToggleGroupItem>
@@ -130,6 +130,7 @@ export function PeriodSelectorBar({
             render={
               <ToggleGroupItem
                 value="custom"
+                className="aria-pressed:bg-selection-subtle"
                 // Below `sm` the label is hidden and only the icon remains, so
                 // without this the control has no accessible name at all.
                 aria-label={t("common.period.custom_range", { range: activeRangeLabel })}

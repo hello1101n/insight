@@ -87,6 +87,8 @@ export function restyleCategory(token, tag, siblings) {
 
   if (/^-?p[xytblrse]?-/.test(base)) {
     if (UNPADDED.has(tag)) return null;
+    // The kit places the dialog close button over the header's end, so header actions must stop short of it.
+    if (tag === "DialogHeader" && /^p[re]-/.test(base)) return null;
     return "padding";
   }
   if (TEXT_SIZE.test(base)) return "text size";
@@ -102,6 +104,14 @@ export function restyleCategory(token, tag, siblings) {
   )
     return "type";
   if (/^text-/.test(base) && !TEXT_LAYOUT.test(base)) return "text colour";
+  // WORKAROUND: the kit fills a pressed toggle with --secondary, which in light
+  // mode is almost the page background, so the selected item does not show.
+  if (
+    tag === "ToggleGroupItem" &&
+    variants.includes("aria-pressed") &&
+    /^bg-/.test(base)
+  )
+    return null;
   if (/^bg-/.test(base)) return "background";
   // The kit Sidebar draws no edge, so this line is what separates the rail from the page.
   if (tag === "Sidebar" && /^border-[eslr]$/.test(base)) return null;

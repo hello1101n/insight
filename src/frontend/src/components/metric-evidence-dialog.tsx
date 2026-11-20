@@ -289,7 +289,7 @@ export function MetricEvidenceDialog({
     >
       {state && (activeTarget || showPeople) ? (
         <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden sm:h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[90rem]">
-          <DialogHeader className="shrink-0">
+          <DialogHeader className="shrink-0 pr-14">
             {people && drilled ? (
               <div className="flex">
                 <button
