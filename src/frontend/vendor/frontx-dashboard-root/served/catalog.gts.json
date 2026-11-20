@@ -1,0 +1,2024 @@
+{
+  "types": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.summary_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "SummaryCardData",
+      "description": "Data of a summary_card widget: one row per line, in delivered order.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "description": "One row per line, in delivered order.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.metric_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MetricCardData",
+      "description": "Data of a metric_card widget.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "previous_value": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "sparkline": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "reference_value": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Optional value the headline is compared with, such as last week's, shown under it with the difference: absolute, and in percent when the reference is not 0. The difference is coloured by the render's better rule, as the trend is. Absent or null shows no comparison."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.ranked_list_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RankedListCardData",
+      "description": "Data of a ranked_list_card widget.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "description": "Rows in the delivered order. secondary is omitted when the data has no secondary value; status and href are optional.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "secondary": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional status of the row, shown as a badge after its label, toned by the render's status_tones (neutral when it names none). Null or absent shows no badge."
+                  },
+                  "href": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Optional link target of the row: its label becomes a link, checked by the shared link rule (https, http, mailto, or a path from the site root (/x, not //x)). A refused target shows the label as text. Null or absent shows no link."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.progress_list_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ProgressListCardData",
+      "description": "Data of a progress_list_card widget.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "description": "Rows in the delivered order.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "current",
+                  "target"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "current": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "target": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "goal": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Optional goal of the row: a mark on its bar at goal over target, and the goal in the bar's text alternative and tooltip. The bar runs from 0 to target: a goal outside it extends nothing, its mark stands at the nearer end and the text says it is outside the bar; with a null or zero target the goal shows in the text alone. Null or absent shows no goal."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radial_progress.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgressData",
+      "description": "Data of a radial_progress widget: one value against its target.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "current",
+            "target"
+          ],
+          "properties": {
+            "current": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The value the ring fills by, over target; at or above 0 (a negative one fails the cell, a cross-check the widget runs). Full when it reaches or exceeds target; the text alternative says it is over the target only when it is above target. Null shows the empty state."
+            },
+            "target": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The value of a full ring; above 0 (one at or below 0 fails the cell, a cross-check the widget runs). Null shows the empty state."
+            },
+            "goal": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Optional goal: a tick on the ring at goal over target, and the goal in the text alternative and tooltip. A goal outside the ring extends nothing, its tick stands at the nearer end and the text says it is outside the ring. Null or absent shows no goal."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.grid.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GridData",
+      "description": "Data of a grid widget. One positional array per row, in display order. A position that holds no value holds null.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "maxItems": 500,
+              "description": "One positional array per row, in the order of render.columns. A position that holds no value holds null. Capped at 500 rows; an over-cap result fails data validation.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": [
+                        "string",
+                        "number",
+                        "null"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "href"
+                      ],
+                      "additionalProperties": false,
+                      "description": "A link: its text, and its target, checked by the shared link rule of the widgets: https, http, mailto, or a path from the site root (/x, not //x). Any other target shows the text alone. A link to another origin opens in a new tab; any other link opens in the same tab.",
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "href": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "maxItems": 60,
+                      "description": "A sparkline: one point per step, a null point being a gap. Allowed in a sparkline column only: in any other column it fails the grid's own check.",
+                      "items": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChartData",
+      "description": "Data of a cartesian_chart widget, in long format.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "series"
+          ],
+          "properties": {
+            "series": {
+              "type": "array",
+              "description": "One entry per series, each with its name and points.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "points"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "string",
+                            "number",
+                            "null"
+                          ],
+                          "description": "On a value axis, a number. On a time axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds. On a category axis, any value. A mismatch is checked by the widget."
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "On a series of a log y axis, above zero. A y not above zero there is checked by the widget."
+                        },
+                        "size": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "A scatter series only (on another type, a cross-check the widget runs): the point's size; its area grows in proportion to it, within the radius range the widget sets. Null or absent draws the smallest point."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.pie_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "PieChartData",
+      "description": "Data of a pie_chart widget.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "slices"
+          ],
+          "properties": {
+            "slices": {
+              "type": "array",
+              "description": "One slice per segment, in delivered order.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radar_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadarChartData",
+      "description": "Data of a radar_chart widget: the values of the series on the axes, in the long format.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "points"
+          ],
+          "properties": {
+            "points": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 120,
+              "description": "Three to 120 points in the delivered order. The widget shows 3 to 12 distinct axes and at most 5 distinct series, one per tone of the kit palette, and fails the cell outside them (a cross-check it runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks).",
+              "items": {
+                "type": "object",
+                "required": [
+                  "axis",
+                  "series",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "axis": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "series": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "The name of the series, or null for the one unnamed series."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChartData",
+      "description": "Data of a treemap_chart widget: the items of the treemap, each a labelled value, optionally in a group.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 60,
+              "description": "One to 60 items in the delivered order. When any item names a group, the widget nests the items one level by group in first-seen order, and a null group goes under its Other group. All values zero or null shows the empty state.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value",
+                  "group"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "description": "The name of the item, which its tile writes while it fits."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The value of the item; at or above 0 (a negative one fails the cell, naming the item's position, a cross-check the widget runs). A tile is as large as its value's share of the total. Null draws no tile, and the item stays in the data view."
+                  },
+                  "group": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "The name of the group the item is nested under, or null to nest it under the widget's Other group. Without any group the tiles take their colours one by one, and with groups they take their group's colour."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChartData",
+      "description": "Data of a waterfall_chart widget: the steps of a running sum, each a labelled change or a total.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "steps"
+          ],
+          "properties": {
+            "steps": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 24,
+              "description": "Two to 24 steps in the delivered order, of the running sum the chart starts at 0. A delta moves the running sum by its value (a negative one down); a null delta draws nothing and leaves the sum unchanged. A total draws the running sum from 0, and the first step may be a total: the start of the sum, its value the sum begins at. A total's own value stays null or the running sum itself, which the widget cross-checks; a step that moves the running sum out of the finite range fails the cell. All bars of no extent shows the empty state.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "description": "The name of the step, which its band writes on the axis."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The change of a delta step, or the running sum a total step draws: a total's value stays null or the running sum of the steps before it (the widget cross-checks the two, and a mismatch fails the cell naming the step's position). A null delta draws nothing and keeps the sum. A value out of the finite range fails the cell."
+                  },
+                  "kind": {
+                    "enum": [
+                      "delta",
+                      "total"
+                    ],
+                    "default": "delta",
+                    "description": "Whether the step moves the running sum by its value (delta), or draws the running sum from zero (total). Without it, delta."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeedData",
+      "description": "Data of an activity_feed widget: the items of the feed, in the delivered order the list keeps.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "maxItems": 200,
+              "description": "0 to 200 items in the delivered order, which the feed keeps and shows, its Show more button revealing them by page. An empty list is the empty state. Each item needs a time and a title, and may carry a text, a tone of the shared tones, and a link target, which the shared link rule judges. A time no date reads as is legal here: the widget's own cross-check fails the cell naming the item by its position.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "time",
+                  "title"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "time": {
+                    "type": "string",
+                    "description": "When the item happened: an ISO 8601 date-time, its zone as Z or an offset written +hh:mm, +hhmm or +hh (each with its minus form), a date-time without a zone reading in the viewer's zone, or a bare YYYY-MM-DD date (its UTC midnight, the one date rule of the widgets). The widget cross-checks that a date reads as one, and a time that does not fails the cell naming the item's position."
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "description": "The one line of the item, beside its time: the link text when the item carries a target."
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "description": "An optional line under the title, which wraps."
+                  },
+                  "tone": {
+                    "enum": [
+                      "neutral",
+                      "success",
+                      "warning",
+                      "danger",
+                      "info"
+                    ],
+                    "description": "The shared tone of the item's mark beside its title, written in text for assistive technology; a neutral item draws no mark. Without it, no mark."
+                  },
+                  "href": {
+                    "type": "string",
+                    "description": "The link target of the title, judged by the shared link rule: a refused one shows the title as text, and the cell does not fail."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.funnel_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "FunnelChartData",
+      "description": "Data of a funnel_chart widget: the stages of a process, each with how many items reached it.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "stages"
+          ],
+          "properties": {
+            "stages": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 12,
+              "description": "One to twelve stages in the delivered order, from the first step of the process to the last. All values zero or null shows the empty state.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "description": "The name of the stage."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "How many items reached the stage; at or above 0 (a negative one fails the cell, naming the stage's position, a cross-check the widget runs). A stage larger than the one before is drawn wider, and its conversion reads above 100%. Null draws an empty stage with a hyphen, and neither it nor the next stage shows a conversion."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.heatmap.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "HeatmapData",
+      "description": "Data of a heatmap widget.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "description": "One row per cell value. An omitted y counts as null.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "x": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "y": {
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.summary_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "SummaryCardRender",
+      "description": "Render of a summary_card widget. It has no presentation fields, so render is an empty object.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {}
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.metric_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MetricCardRender",
+      "description": "Render of a metric_card widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_label": {
+              "type": "string",
+              "description": "Optional caption of the headline value. Without it, no caption shows."
+            },
+            "better": {
+              "enum": [
+                "higher",
+                "lower",
+                "neutral"
+              ],
+              "default": "higher",
+              "description": "Optional direction of an improvement, which sets the trend's colour: higher (the default) paints a rise as success and a fall as danger; lower paints a fall as success and a rise as danger, for numbers where less is better such as lead time; neutral paints every change in the neutral (secondary) badge, for numbers where neither direction is better. The icon and its accessible name always follow the value's own direction."
+            },
+            "reference_label": {
+              "type": "string",
+              "description": "Optional name of reference_value, such as Last week, written before it. Without it, Reference."
+            },
+            "link": {
+              "type": "object",
+              "required": [
+                "text",
+                "href"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "The link's text."
+                },
+                "href": {
+                  "type": "string",
+                  "description": "The link's target, checked by the shared link rule: https, http, mailto, or a path from the site root (/x, not //x). Any other target shows the text alone. A link to another origin opens in a new tab."
+                }
+              },
+              "description": "Optional link at the card's foot."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.ranked_list_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RankedListCardRender",
+      "description": "Render of a ranked_list_card widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_label": {
+              "type": "string",
+              "description": "Optional heading of the primary value."
+            },
+            "secondary_label": {
+              "type": "string",
+              "description": "Optional heading of the secondary value."
+            },
+            "status_tones": {
+              "$ref": "gts://gts.frontx.dashboard.widget.tones.v1~",
+              "description": "Optional tone of each row status value; a status with no tone draws neutral."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.progress_list_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ProgressListCardRender",
+      "description": "Render of a progress_list_card widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "goal_label": {
+              "type": "string",
+              "description": "Optional name of a row goal, in the bar's text alternative and tooltip. Without it, Goal."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radial_progress_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgressRender",
+      "description": "Render of a radial_progress widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "display": {
+              "enum": [
+                "percent",
+                "value",
+                "both"
+              ],
+              "default": "percent",
+              "description": "What the centre of the ring shows: percent, the share of target; value, current formatted by value_format; both, the percent with the value under it. Without it, percent."
+            },
+            "center_label": {
+              "type": "string",
+              "description": "Optional short caption under the centre number. Left out in a low cell. Where it does not fit the hole, it stands under the ring when the cell is taller than the ring by its line, and is left out otherwise."
+            },
+            "goal_label": {
+              "type": "string",
+              "description": "Optional name of the goal, in the ring's text alternative and tooltip. Without it, Goal."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.grid_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GridRender",
+      "description": "Render of a grid widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "columns"
+          ],
+          "properties": {
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Displayed columns, in display order. Each describes one data position. The consistency checks are validated by cpt-frontx-dashboard-algo-widget-catalog-grid-checks.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                    "description": "Unique column key. column_groups[].members and row_color refer to this key."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Optional heading."
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional width in pixels. The table is at least as wide as the sum of its column widths, counting 160 pixels for a column without one; a grid wider than its cell scrolls sideways inside it."
+                  },
+                  "format": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Optional number format. notation applies to number-valued cells of a text or badge column only: standard shows the full number and compact shows the abbreviated number of the host language. A progress column shows a percent and takes no format.",
+                    "properties": {
+                      "notation": {
+                        "enum": [
+                          "standard",
+                          "compact"
+                        ]
+                      }
+                    }
+                  },
+                  "align": {
+                    "enum": [
+                      "start",
+                      "end",
+                      "center"
+                    ],
+                    "default": "start",
+                    "description": "Optional alignment of the column body, in logical terms: start and end follow the writing direction of the host language."
+                  },
+                  "sortable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether a click on the header sorts by this column. Without it, true, except in a sparkline column, which never sorts: there it is false, and true fails the grid's own check. A badge column sorts by its text, a progress column by its number."
+                  },
+                  "overflow": {
+                    "enum": [
+                      "wrap",
+                      "truncate"
+                    ],
+                    "default": "wrap",
+                    "description": "wrap shows the whole value on as many lines as it needs; truncate keeps one line per cell, ends a long value in an ellipsis and keeps its full text as the cell's title. Without it, wrap."
+                  },
+                  "kind": {
+                    "enum": [
+                      "text",
+                      "badge",
+                      "progress",
+                      "sparkline"
+                    ],
+                    "default": "text",
+                    "description": "Optional way a cell draws its value. text (the default) shows it as text. badge shows a string as a badge toned by tones (null or a blank string is an empty cell). progress shows a number from 0 to 1 as a bar with its percent as text (null is an empty cell; a value that is not a number or lies outside 0 to 1 fails the grid's own check). sparkline shows a list of numbers or nulls as a small line in the theme's chart colour, with no axes, its text alternative naming the first, last, lowest and highest values (null is an empty cell; a value that is not a list fails the grid's own check). Without it, text."
+                  },
+                  "tones": {
+                    "$ref": "gts://gts.frontx.dashboard.widget.tones.v1~",
+                    "description": "Optional tone of each value of a badge column; a value with no tone draws neutral. Allowed with kind badge only: with any other kind it fails the grid's own check."
+                  }
+                }
+              }
+            },
+            "page_sizes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "default": [
+                10,
+                25,
+                50,
+                100,
+                500
+              ],
+              "description": "Optional page sizes offered. The first entry is the initial page size. Defaults to [10, 25, 50, 100, 500]."
+            },
+            "frozen_columns": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of leading columns that stay visible during horizontal scrolling. 0 or absent freezes no column. More than the column count freezes all."
+            },
+            "column_groups": {
+              "type": "array",
+              "description": "Grouped column headings. A heading only: it never reorders rows or collapses columns.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "members"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "members": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                      "description": "A column key."
+                    }
+                  }
+                }
+              }
+            },
+            "row_color": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "description": "Optional column key. Its value in a row names the row colour: success, warning, error, or info."
+            },
+            "search": {
+              "type": "boolean",
+              "default": false,
+              "description": "Optional search box above the grid. It keeps the rows whose shown text (formatted numbers, badge text, progress percents and link text; sparklines are not searched) contains the typed text, ignoring case, in any column, and shows the first page. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.cartesian_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChartRender",
+      "description": "Render of a cartesian_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "series": {
+              "type": "array",
+              "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The series name, matching a series name in the data."
+                  },
+                  "type": {
+                    "enum": [
+                      "bar",
+                      "line",
+                      "area",
+                      "scatter"
+                    ],
+                    "description": "How the series is drawn."
+                  },
+                  "y_axis": {
+                    "enum": [
+                      "primary",
+                      "secondary"
+                    ],
+                    "default": "primary",
+                    "description": "Which y axis the series uses. Without it, the primary axis."
+                  },
+                  "stack_group": {
+                    "type": "string",
+                    "description": "Optional stack group. Series with the same stack group on the same y axis are stacked in delivered order: bars and areas together, lines together."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "A line or area only: a name written at the end of the series, at its last point, for example a target."
+                  },
+                  "line_style": {
+                    "enum": [
+                      "solid",
+                      "dashed"
+                    ],
+                    "default": "solid",
+                    "description": "A line or area only. Without it, solid."
+                  },
+                  "mark_extremes": {
+                    "enum": [
+                      "min",
+                      "max",
+                      "both"
+                    ],
+                    "description": "A line or area only (on another type, a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks): a mark with its value on the series' lowest point, highest point, or both; of equal values, the first point in axis order (the drawn order), skipping nulls."
+                  }
+                }
+              }
+            },
+            "x_axis": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "category",
+                    "value",
+                    "time"
+                  ],
+                  "default": "category",
+                  "description": "Without it, category."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written under the x axis ticks, and the x column heading of the data view and the text alternative."
+                },
+                "tick_labels": {
+                  "enum": [
+                    "auto",
+                    "every"
+                  ],
+                  "default": "auto",
+                  "description": "auto skips tick labels that would collide; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. Without it, auto."
+                },
+                "tick_angle": {
+                  "enum": [
+                    0,
+                    -45,
+                    -90
+                  ],
+                  "default": 0,
+                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them. Without it, 0."
+                }
+              }
+            },
+            "y_axis": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "value",
+                    "log"
+                  ],
+                  "default": "value",
+                  "description": "Without it, value."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written along the primary y axis, outside its ticks."
+                }
+              }
+            },
+            "y_axis_secondary": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Settings of the secondary y axis, used by series whose y_axis is secondary.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "value",
+                    "log"
+                  ],
+                  "default": "value",
+                  "description": "Without it, value."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written along the secondary y axis, outside its ticks."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Written after every tick value of the secondary axis, for example %."
+                }
+              }
+            },
+            "legend_position": {
+              "enum": [
+                "top",
+                "right",
+                "bottom",
+                "left",
+                "none"
+              ],
+              "default": "bottom",
+              "description": "none hides the legend. Without it, bottom."
+            },
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "never",
+              "description": "Values written at the end of the bars (above a bar that grows up, below one that grows down; a zero bar has none): always, never, or auto when every bar is wide enough for its value. Without it, never."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a mark. Without it, false."
+            },
+            "orientation": {
+              "enum": [
+                "vertical",
+                "horizontal"
+              ],
+              "default": "vertical",
+              "description": "horizontal puts the categories on the vertical axis and the values on the horizontal one, for every series type; it needs a category x axis (a cross-check the widget runs). tick_angle does not apply to a horizontal chart. Without it, vertical."
+            },
+            "stack_mode": {
+              "enum": [
+                "absolute",
+                "percent"
+              ],
+              "default": "absolute",
+              "description": "percent draws each stack group as shares of 100% at each x, its axis in percents and the tooltip with the value and its share. Every series on such an axis is in a stack group, no stacked value is negative (cross-checks the widget runs), and an x where a group sums to 0 draws 0% for each member. Without it, absolute."
+            },
+            "size_label": {
+              "type": "string",
+              "description": "The name of a scatter point's size, in the tooltip and the data view column. Without it, Size."
+            },
+            "reference_lines": {
+              "type": "array",
+              "maxItems": 8,
+              "description": "Lines across the plot at a value, in the muted tone of the axes. A line outside the data extends its axis to hold it.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "axis": {
+                    "enum": [
+                      "y",
+                      "y_secondary",
+                      "x"
+                    ],
+                    "default": "y",
+                    "description": "The axis the value is on. y_secondary needs a series on the secondary axis (a cross-check the widget runs). Without it, y."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "string"
+                    ],
+                    "description": "A number on a value axis (on a percent stacked axis, a share from 0 to 1; on a log axis, above zero); on a time x axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds, as a point's x there; a category on a category x axis. A string anywhere else, a number on a category x axis, or a value outside these rules fails a cross-check the widget runs."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Text written at the line's end."
+                  },
+                  "line_style": {
+                    "enum": [
+                      "dashed",
+                      "solid"
+                    ],
+                    "default": "dashed",
+                    "description": "Without it, dashed."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.pie_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "PieChartRender",
+      "description": "Render of a pie_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "radius": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9]{1,4}(\\.[0-9]{1,2})?(%|px)$"
+              },
+              "description": "Optional outer radius, or inner and outer radius, each a percentage or a pixel value, for example [\"50%\", \"70%\"] for a donut or [\"60px\"]. Two items make a donut."
+            },
+            "legend_position": {
+              "enum": [
+                "top",
+                "right",
+                "bottom",
+                "left",
+                "none"
+              ],
+              "default": "bottom",
+              "description": "none hides the legend. Without it, bottom."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a segment. Without it, false."
+            },
+            "center": {
+              "enum": [
+                "none",
+                "total"
+              ],
+              "default": "none",
+              "description": "total writes the sum of the slice values, formatted by value_format, in the middle of a donut; it needs a radius of two items with an inner radius above 0 (a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-card-checks). Without it, none."
+            },
+            "center_label": {
+              "type": "string",
+              "description": "Optional short caption under the total. Allowed with center total only (a cross-check the widget runs)."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radar_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadarChartRender",
+      "description": "Render of a radar_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scale_max": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Optional value the outer circle stands for at least: a larger delivered value extends the circle to that value. Without it, the largest delivered value, rounded up by the ticks rule of the radius axis."
+            },
+            "fill": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether each series draws its polygon as a filled area over its stroke. Without it, true."
+            },
+            "legend_position": {
+              "enum": [
+                "top",
+                "right",
+                "bottom",
+                "left",
+                "none"
+              ],
+              "default": "bottom",
+              "description": "none hides the legend, which one series never shows. Without it, bottom."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a spoke. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.treemap_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChartRender",
+      "description": "Render of a treemap_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "auto",
+              "description": "Where a tile writes its label and value, formatted by value_format: auto when the label fits its tile, and its value with it when both fit (estimated from their lengths); a tile too small for even the label writes neither, and its name and value stay in its tooltip, the text alternative and the data view. always writes both whatever the tile fits, and never writes neither. Without it, auto."
+            },
+            "show_share": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether a tile writes its value as a share of the total beside its value, and names it in its tooltip, the text alternative and the data view, formatted like the other percents. Without it, false."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a tile. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.waterfall_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChartRender",
+      "description": "Render of a waterfall_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "connectors": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether a thin line joins one bar's end to the next bar's start, at the level both stand at. Without it, true."
+            },
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "auto",
+              "description": "Where a bar writes its change over its top edge, formatted by value_format: a delta's change with its sign (+4.1, -2), a total's running sum as the bare value, with no sign. auto writes it when the label fits the band the bar stands in, estimated from its length, and never in a low cell; the label stays in the tooltip, the text alternative and the data view below that. always writes it whatever the band fits, and never writes none. Without it, auto."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a bar. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeedRender",
+      "description": "Render of an activity_feed widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "time_style": {
+              "enum": [
+                "relative",
+                "absolute"
+              ],
+              "default": "relative",
+              "description": "How an item writes its time: relative from the host clock, in the host language's relative wording (such as \"3 days ago\"), or absolute as the host language writes the date and, for a date-time, its time of day. Without it, relative."
+            },
+            "page_size": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 50,
+              "default": 10,
+              "description": "How many items the feed shows before its Show more button, which reveals the next page_size items in the delivered order, and disappears when everything is shown. Without it, 10."
+            },
+            "show_tone": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether an item of a tone carries its mark beside the title, named in text for assistive technology. Without it, true."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.funnel_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "FunnelChartRender",
+      "description": "Render of a funnel_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "show_conversion": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether each stage after the first shows its value over the previous stage's value as a percent, in its text line while its label keeps at least 3 em beside it (the tooltip, text alternative and data view always); the first stage shows none, and a stage after a previous value of 0 or null, or with a null value, shows a hyphen. Without it, true."
+            },
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "auto",
+              "description": "Whether each stage writes its value, formatted by value_format: auto when the stage's label, value and conversion fit its width together (estimated from their lengths), and never in a low cell; always, the conversion and then the label giving way; never. Without it, auto."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a stage. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.heatmap_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "HeatmapRender",
+      "description": "Render of a heatmap widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "x_axis_label": {
+              "type": "string",
+              "description": "Optional x-axis title."
+            },
+            "y_axis_label": {
+              "type": "string",
+              "description": "Optional y-axis title."
+            },
+            "min_value": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Optional lower end of the colour scale. Null or absent takes the lowest value in the rows. When both ends are set, it is not greater than max_value (a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-heatmap-checks)."
+            },
+            "max_value": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Optional upper end of the colour scale. Null or absent takes the highest value in the rows."
+            },
+            "show_cell_values": {
+              "type": "boolean",
+              "description": "Whether to show each cell's value inside the cell."
+            },
+            "mode": {
+              "enum": [
+                "matrix",
+                "calendar"
+              ],
+              "default": "matrix",
+              "description": "matrix draws the x categories by the y categories. calendar draws one tile per day: a column per week, a row per weekday, the month names over the columns; every row's x is then a YYYY-MM-DD date and its y is omitted or null (a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-heatmap-checks). Without it, matrix."
+            },
+            "week_start": {
+              "enum": [
+                "monday",
+                "sunday"
+              ],
+              "default": "monday",
+              "description": "Calendar mode only: the weekday each week column starts on. Set with the matrix mode, it fails the widget's cross-check. Without it, monday."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the heatmap offers its data view and opens it from a click on a tile; the tiles are then buttons. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.markdown_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MarkdownCardRender",
+      "description": "Render of a markdown_card widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The markdown to show: CommonMark, including links and images. Embedded HTML is shown as text."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.summary_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "SummaryCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.summary_card.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.summary_card.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.summary_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.metric_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MetricCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.metric_card.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.metric_card.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.metric_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.ranked_list_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RankedListCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.ranked_list_card.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.ranked_list_card.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.ranked_list_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.progress_list_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ProgressListCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.progress_list_card.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.progress_list_card.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.progress_list_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.radial_progress.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgress",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.radial_progress.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radial_progress.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radial_progress_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.grid.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "Grid",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.grid.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.grid.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.grid_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.cartesian_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.cartesian_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.cartesian_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.pie_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "PieChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.pie_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.pie_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.pie_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.radar_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadarChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.radar_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radar_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radar_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.treemap_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.treemap_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.treemap_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.waterfall_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.waterfall_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.waterfall_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeed",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.funnel_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "FunnelChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.funnel_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.funnel_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.funnel_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.heatmap.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "Heatmap",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.heatmap.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.heatmap.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.heatmap_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.markdown_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MarkdownCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.markdown_card.v1"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.markdown_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ],
+  "instances": []
+}

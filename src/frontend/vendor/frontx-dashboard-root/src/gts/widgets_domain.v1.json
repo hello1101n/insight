@@ -1,0 +1,18 @@
+{
+  "id": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard.mfe.widgets.v1",
+  "sharedProperties": [
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+    "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+  ],
+  "actions": [
+    "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.mount_ext.v1~",
+    "gts.frontx.mfes.comm.action.v1~frontx.mfes.ext.unmount_ext.v1~"
+  ],
+  "extensionsActions": [
+    "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+  ],
+  "extensionsTypeId": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard.mfe.widget_ext.v1~",
+  "defaultActionTimeout": 30000,
+  "lifecycleStages": [],
+  "extensionsLifecycleStages": []
+}

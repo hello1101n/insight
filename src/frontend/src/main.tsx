@@ -25,7 +25,7 @@ import { recordScreens } from "@/usage-collection";
 import { router } from "./router";
 
 async function enableMocking(): Promise<void> {
-  if (!import.meta.env.DEV) return;
+  // Spike: mocks also run in a production build, to time it with mock data.
   if (import.meta.env.VITE_ENABLE_MOCKS !== "true") return;
   const { worker } = await import("@/mocks/browser");
   await worker.start({ onUnhandledRequest: "bypass" });

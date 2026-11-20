@@ -7,6 +7,7 @@ import path from "path";
 import { defineConfig, loadEnv } from "vite";
 
 import { backendProxy } from "./vite.backend-proxy";
+import { frontxWidgets } from "./vite.frontx-widgets";
 import { uiKitLayer } from "./vite.ui-kit-layer";
 
 // CI passes the image tag as VITE_APP_RELEASE. Everywhere else, name the
@@ -42,8 +43,10 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       uiKitLayer(),
       backendProxy(env),
+      frontxWidgets(),
     ],
     resolve: {
+      dedupe: ["react", "react-dom"],
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
