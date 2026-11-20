@@ -90,6 +90,7 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
     let mut waits = Vec::new();
     let mut loads = Vec::new();
     let mut transforms = Vec::new();
+    let mut wait_known = true;
     let mut load_known = true;
     let mut transform_known = true;
     let mut stages = Vec::new();
@@ -97,10 +98,18 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
     for r in records {
         let until = r.finished_at.or(r.workflow_end).unwrap_or(now);
         let before = r.started_at.unwrap_or(until);
-        if r.status == "checking_start" || r.status == "unknown" {
+        let unobserved_start = r.started_at.is_none()
+            && matches!(
+                r.status.as_str(),
+                "succeeded" | "failed" | "loading" | "transforming"
+            );
+        if unobserved_start && r.stage != "connector-checks" {
+            wait_known = false;
+        }
+        if r.status == "checking_start" || r.status == "unknown" || unobserved_start {
             if r.stage == "bronze" {
                 load_known = false;
-            } else {
+            } else if r.stage != "connector-checks" {
                 transform_known = false;
             }
         }
@@ -152,7 +161,7 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
         started_at: first.run_start,
         finished_at: first.run_end,
         duration_ms: Some(ms(first.run_start, end)),
-        wait_ms: Some(total(&mut waits)),
+        wait_ms: wait_known.then(|| total(&mut waits)),
         load_ms: load_known.then(|| total(&mut loads)),
         transform_ms: transform_known.then(|| total(&mut transforms)),
         records_reported: reported,
@@ -272,6 +281,37 @@ pub(crate) async fn runs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unobserved_bronze_start_keeps_load_and_wait_durations_unknown() {
+        let now = Utc::now();
+        let record = Record {
+            airbyte_job_id: Some("12".into()),
+            sync_id: "uid".into(),
+            tenant: "tenant".into(),
+            connector: "jira".into(),
+            source_id: "source".into(),
+            run_status: Some("cancelled".into()),
+            run_start: now - chrono::Duration::minutes(20),
+            run_end: Some(now),
+            workflow_end: Some(now),
+            stage: "bronze".into(),
+            attempt: 1,
+            status: "succeeded".into(),
+            queued_at: now - chrono::Duration::minutes(18),
+            granted_at: Some(now - chrono::Duration::minutes(15)),
+            started_at: None,
+            finished_at: Some(now),
+            reason: None,
+            records_reported: Some(120),
+        };
+        let run = build(&[record], now);
+        assert_eq!(run.records_reported, Some(120));
+        assert_eq!(run.wait_ms, None);
+        assert_eq!(run.load_ms, None);
+        assert_eq!(run.stages[0].duration_ms, None);
+        assert_eq!(run.transform_ms, Some(0));
+    }
+
     #[test]
     fn overlap_counts_elapsed_time_once() {
         let at = DateTime::<Utc>::UNIX_EPOCH;
