@@ -41,8 +41,16 @@ const cel = JSON.stringify;
 const column = (name: string) => `int(response.at[${cel(name)}])`;
 
 // CEL types both ternary branches alike, so a nullable number goes through dyn.
-const number = (row: string, at: string) =>
-  `(${row}[${at}] == null ? dyn(null) : dyn(double(${row}[${at}])))`;
+// An Insight percent column holds 0 to 100; a FrontX percent format reads a fraction.
+const number = (row: string, at: string, percent = false) =>
+  `(${row}[${at}] == null ? dyn(null) : dyn(double(${row}[${at}])${percent ? " / 100.0" : ""}))`;
+
+// A grid has one value format, so a percent column becomes text. CEL has no
+// round, so the one decimal the current table shows is kept by hand.
+const percentText = (cell: string) =>
+  `(${cell} == null ? dyn(null) : dyn(string(double(int(double(${cell}) * 10.0 + (double(${cell}) < 0.0 ? -0.5 : 0.5))) / 10.0) + '%'))`;
+
+const PERCENT = { value_type: "percent" } as const;
 
 function dataWidgetId(type: string, key: string): string {
   return `${DATA_WIDGET_TYPE_ID}frontx.dashboard.widget.${type}.v1~${uuidv5(key, NAMESPACE)}`;
@@ -77,9 +85,11 @@ interface Drawn {
 
 function series(
   widget: Widget & { x: string; y: string },
-  kind: string
+  kind: string,
+  percent: boolean
 ): Drawn {
   return {
+    ...(percent ? { value_format: PERCENT } : {}),
     type: "cartesian_chart",
     render: {
       series: [{ name: widget.y, type: kind }],
@@ -91,11 +101,13 @@ function series(
       legend_position: "none",
       drill_down: true,
     },
-    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, {'series': [{'name': ${cel(widget.y)}, 'points': response.rows.map(r, {'x': r[x], 'y': ${number("r", "y")}})}]}))`,
+    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, {'series': [{'name': ${cel(widget.y)}, 'points': response.rows.map(r, {'x': r[x], 'y': ${number("r", "y", percent)}})}]}))`,
   };
 }
 
-function drawn(widget: Widget): Drawn {
+function drawn(widget: Widget, percents: readonly string[]): Drawn {
+  const percent = (name: string) => percents.includes(name);
+
   switch (widget.type) {
     case "table":
       return {
@@ -106,17 +118,18 @@ function drawn(widget: Widget): Drawn {
             title: name,
           })),
         },
-        transform: `{'rows': response.rows.map(r, [${widget.columns.map((name) => `r[${column(name)}]`).join(", ")}])}`,
+        transform: `{'rows': response.rows.map(r, [${widget.columns.map((name) => (percent(name) ? percentText(`r[${column(name)}]`) : `r[${column(name)}]`)).join(", ")}])}`,
       };
     case "line":
     case "area":
-      return series(widget, widget.type);
+      return series(widget, widget.type, percent(widget.y));
     case "bar":
       if (!widget.series) {
+        const bars = series(widget, "bar", percent(widget.y));
         return {
-          ...series(widget, "bar"),
+          ...bars,
           render: {
-            ...series(widget, "bar").render,
+            ...bars.render,
             value_labels: widget.labels ? "always" : "never",
           },
         };
@@ -124,6 +137,7 @@ function drawn(widget: Widget): Drawn {
       // CEL cannot group rows by a column, so each row is its own series.
       return {
         type: "cartesian_chart",
+        ...(percent(widget.y) ? { value_format: PERCENT } : {}),
         render: {
           x_axis: {
             type: widget.x === "bucket" ? "time" : "category",
@@ -133,23 +147,25 @@ function drawn(widget: Widget): Drawn {
           legend_position: "bottom",
           drill_down: true,
         },
-        transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, cel.bind(s, ${column(widget.series)}, {'series': response.rows.map(r, {'name': string(r[s]), 'points': [{'x': r[x], 'y': ${number("r", "y")}}]})})))`,
+        transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, cel.bind(s, ${column(widget.series)}, {'series': response.rows.map(r, {'name': string(r[s]), 'points': [{'x': r[x], 'y': ${number("r", "y", percent(widget.y))}}]})})))`,
       };
     case "stat":
       return {
         type: "metric_card",
+        ...(percent(widget.value) ? { value_format: PERCENT } : {}),
         render: widget.label ? { value_label: widget.label } : {},
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v")}}))`,
+        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent(widget.value))}}))`,
       };
     case "pie":
       return {
         type: "pie_chart",
+        ...(percent(widget.value) ? { value_format: PERCENT } : {}),
         render: {
           radius: ["50%", "80%"],
           legend_position: "right",
           drill_down: true,
         },
-        transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v")}})}))`,
+        transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
       };
   }
 }
@@ -160,7 +176,7 @@ function widgetCell(
   index: number,
   windowed: boolean
 ): DashboardCell {
-  const shape = drawn(widget.body);
+  const shape = drawn(widget.body, widget.percents ?? []);
   const title = widget.body.title ?? widget.name;
   const instance = (role: string): WidgetInstance => ({
     id: dataWidgetId(shape.type, `${dashboard}/${index}/${widget.id}/${role}`),
@@ -218,7 +234,8 @@ export function frontxBoard(
   const dashboard: FrontxDashboard = {
     id: dashboardId,
     title: read.body.title || read.name,
-    layout: { cells },
+    // A flexible grid packs three medium cells into a row; Insight draws two.
+    layout: { cells, flexible: false },
   };
 
   return {
