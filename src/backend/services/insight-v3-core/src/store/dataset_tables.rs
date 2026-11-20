@@ -98,10 +98,9 @@ impl DatasetTables {
         Ok(())
     }
 
-    /// SAFETY: `table` and `order` are SQL text, not values, so they are
-    /// written into the statement rather than bound. `table` is a name this
-    /// service minted for the dataset. A caller only names a declared field;
-    /// the `order` expression itself is built by
+    /// SAFETY: `order` is an expression, not a value, so it is written into
+    /// the statement rather than bound. A caller only names a declared field;
+    /// the expression itself is built by
     /// [`crate::domain::kinds::dataset::read`], whose `literal` escapes every
     /// declared path segment into a ClickHouse string literal.
     pub(crate) async fn page(
@@ -113,7 +112,7 @@ impl DatasetTables {
             "SELECT id, received_at, raw_data FROM {table} \
              ORDER BY {order}, received_at DESC, id DESC \
              LIMIT {limit} OFFSET {offset}",
-            table = Sql::raw(format!("`{table}`")),
+            table = Param::identifier(table),
             order = Sql::raw(page.order),
             limit = Param::uint64(page.limit),
             offset = Param::uint64(page.offset),
