@@ -103,13 +103,12 @@ export function EmployeesView() {
                 })}
           </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="w-full max-w-xs">
           <Input
+            icon={<Search />}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("people.search_placeholder")}
-            className="pl-8"
           />
         </div>
       </div>

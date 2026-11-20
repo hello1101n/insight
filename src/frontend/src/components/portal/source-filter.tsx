@@ -77,20 +77,14 @@ export function SourceFilter({
           </Button>
         </PopoverHeader>
 
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("identities.sources.search")}
-            aria-label={t("identities.sources.search")}
-            className="ps-8"
-          />
-        </div>
+        <Input
+          type="search"
+          icon={<Search />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("identities.sources.search")}
+          aria-label={t("identities.sources.search")}
+        />
 
         <div className="max-h-64 space-y-1 overflow-y-auto">
           {options.map((source, index) => {

@@ -73,17 +73,14 @@ export function ReportMetricPicker({
     <div className="flex flex-col">
       <div className="flex flex-col gap-3 pt-3">
         <div className="px-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("reports.search_metrics")}
-              aria-label={t("reports.search_metrics")}
-              className="ps-8"
-            />
-          </div>
+          <Input
+            type="search"
+            icon={<Search />}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("reports.search_metrics")}
+            aria-label={t("reports.search_metrics")}
+          />
         </div>
         <Tabs
           value={activeFamily}

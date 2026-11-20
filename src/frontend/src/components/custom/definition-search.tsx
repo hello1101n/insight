@@ -22,17 +22,13 @@ export function DefinitionSearch({
   className?: string;
 }) {
   return (
-    <div className={cn("relative w-full max-w-64", className)}>
-      <Search
-        className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
+    <div className={cn("w-full max-w-64", className)}>
       <Input
         type="search"
+        icon={<Search />}
         value={value}
         aria-label={label}
         placeholder={label}
-        className="ps-9"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>

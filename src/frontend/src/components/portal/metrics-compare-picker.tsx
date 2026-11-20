@@ -69,20 +69,14 @@ export function MetricsComparePicker({
         }
       />
       <PopoverContent align="end" className="w-80">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find a person or a team"
-            aria-label="Find a person or a team"
-            className="ps-8"
-          />
-        </div>
+        <Input
+          type="search"
+          icon={<Search />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Find a person or a team"
+          aria-label="Find a person or a team"
+        />
 
         <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
           {teams.some((team) => matches(team.name)) ? (

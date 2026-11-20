@@ -27,7 +27,6 @@ const CONTROLS = new Set([
   "Textarea",
   "ToggleGroupItem",
 ]);
-const INPUTS = new Set(["Input", "ComboboxInput"]);
 // The kit draws nothing on these parts, so every class on them is our own layout.
 const UNSTYLED = new Set(["Collapsible", "CollapsibleContent"]);
 const UNPADDED = new Set(["TabsContent"]);
@@ -87,8 +86,6 @@ export function restyleCategory(token, tag, siblings) {
     return null;
 
   if (/^-?p[xytblrse]?-/.test(base)) {
-    // Inputs keep the padding that clears an overlaid icon until they move to the kit `icon`/`end` slots.
-    if (INPUTS.has(tag) && /^p[slre]-/.test(base)) return null;
     if (UNPADDED.has(tag)) return null;
     return "padding";
   }

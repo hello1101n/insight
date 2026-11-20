@@ -124,23 +124,18 @@ export function PersonPicker({
         asSurface && "min-h-0 flex-1",
       )}
     >
-      <div className="relative w-full shrink-0">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="w-full shrink-0">
         <Input
           type="search"
-          className={cn(
-            "ps-8",
-            loading && "pe-8 [&::-webkit-search-cancel-button]:hidden"
-          )}
+          icon={<Search />}
+          end={loading ? <Spinner /> : undefined}
+          className={cn(loading && "[&::-webkit-search-cancel-button]:hidden")}
           placeholder={t("identities.picker.placeholder")}
           aria-label={t("identities.picker.placeholder")}
           maxLength={MAX_SEARCH_CHARS}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {loading ? (
-          <Spinner className="absolute end-2.5 top-1/2 -translate-y-1/2" />
-        ) : null}
       </div>
       {asked && list.isError ? (
         <p className="text-sm text-destructive">

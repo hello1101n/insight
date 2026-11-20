@@ -109,15 +109,14 @@ function WorkChart() {
   const { isFlat } = useVisibilityPolicy();
 
   const find = (
-    <div className="relative px-2">
-      <Search className="pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
+    <div className="px-2">
       <Input
         type="search"
+        icon={<Search />}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={t("nav.find_someone")}
         aria-label={t("nav.find_someone_org")}
-        className="ps-7"
       />
     </div>
   );

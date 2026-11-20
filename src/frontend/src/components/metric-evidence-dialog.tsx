@@ -413,15 +413,14 @@ export function MetricEvidenceDialog({
             ) : null}
             {showPeople && people ? (
               <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-0 flex-1 sm:max-w-xs">
-                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="min-w-0 flex-1 sm:max-w-xs">
                   <Input
                     type="search"
+                    icon={<Search />}
                     value={peopleSearch}
                     onChange={(event) => setPeopleSearch(event.target.value)}
                     placeholder="Search people"
                     aria-label="Search people"
-                    className="ps-8"
                   />
                 </div>
                 <p
@@ -433,10 +432,10 @@ export function MetricEvidenceDialog({
               </div>
             ) : query.isPending || (query.isError && !query.data) ? null : (
               <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-0 flex-1 sm:max-w-xs">
-                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="min-w-0 flex-1 sm:max-w-xs">
                   <Input
                     type="search"
+                    icon={<Search />}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search records"
@@ -447,7 +446,6 @@ export function MetricEvidenceDialog({
                         ? undefined
                         : "Searching records needs a newer server"
                     }
-                    className="ps-8"
                   />
                 </div>
                 <p
