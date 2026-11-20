@@ -43,7 +43,7 @@ export const REPORT_VIEWS: SlugTable = [
 ];
 
 export const MANAGE_SURFACES: SlugTable = [
-  ["health", "connector-health"],
+  ["connectors", "connector-health"],
   ["exclusions", "exclusions"],
   ["snapshots", "snapshots"],
   ["identities", "identities"],

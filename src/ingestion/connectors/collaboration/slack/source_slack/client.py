@@ -1,4 +1,4 @@
-"""Slack Web API over HTTP: the workspace plan, the members list, message history and admin.analytics.getFile.
+"""Slack Web API over HTTP: the workspace plan, the members list, user groups, message history and admin.analytics.getFile.
 
 Slack answers a served day with a gzip file of JSON Lines and a refused day with
 HTTP 200 and a JSON body `{"ok": false, "error": "<code>"}`. The two share a
@@ -38,6 +38,9 @@ from source_slack.models import (
     MessagesPage,
     Page,
     Refusal,
+    Usergroup,
+    UsergroupsAnswer,
+    UsergroupUsersAnswer,
     UsersPage,
     describe,
 )
@@ -50,6 +53,8 @@ USERS_URL = "https://slack.com/api/users.list"
 CONVERSATIONS_URL = "https://slack.com/api/conversations.list"
 HISTORY_URL = "https://slack.com/api/conversations.history"
 REPLIES_URL = "https://slack.com/api/conversations.replies"
+USERGROUPS_URL = "https://slack.com/api/usergroups.list"
+USERGROUP_USERS_URL = "https://slack.com/api/usergroups.users.list"
 CONVERSATION_TYPES = "public_channel,private_channel,mpim,im"
 MAX_ANSWER_BYTES = 64 * 1024
 LIST_PAGE_SIZE = 200
@@ -340,6 +345,19 @@ class SlackClient:
         """Every member on all pages of users.list."""
         for page in self._pages(USERS_URL, "users.list", UsersPage, {"limit": str(LIST_PAGE_SIZE)}):
             yield from page.members
+
+    def usergroups(self) -> tuple[Usergroup, ...]:
+        """The enabled user groups, without members. usergroups.list has no pages."""
+        answer, _ = self._call("GET", USERGROUPS_URL, "usergroups.list", UsergroupsAnswer, MAX_PAGE_BYTES)
+        return answer.usergroups
+
+    def usergroup_users(self, usergroup: str) -> tuple[str, ...]:
+        """The member IDs of one user group. usergroups.users.list has no pages."""
+        params = {"usergroup": usergroup}
+        answer, _ = self._call(
+            "GET", USERGROUP_USERS_URL, "usergroups.users.list", UsergroupUsersAnswer, MAX_PAGE_BYTES, params
+        )
+        return answer.users
 
     def conversations(self) -> Iterator[Conversation]:
         """Every channel, private channel, DM and group DM that the token can see, archived included."""

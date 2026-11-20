@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Slack user group membership from usergroups.list and usergroups.users.list, one row per group, member and sync day. The rows of one day are the membership on that day. Source fields are [type, \"null\"]: the destination stores NULL for a value it cannot convert and records it in _airbyte_meta.",
+  "properties": {
+    "unique_key": {
+      "type": "string"
+    },
+    "insight_tenant_id": {
+      "type": "string"
+    },
+    "insight_source_id": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "usergroup_id": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "usergroup_handle": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "usergroup_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "usergroup_auto_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "unique_key",
+    "insight_tenant_id",
+    "insight_source_id",
+    "date",
+    "usergroup_id",
+    "user_id"
+  ],
+  "additionalProperties": true
+}

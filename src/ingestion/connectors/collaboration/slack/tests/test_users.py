@@ -179,4 +179,6 @@ def test_a_token_without_the_email_scope_skips_the_members() -> None:
 
     assert not output.errors and not output.records
     assert not [r for r in http.request_history if r.url.startswith(USERS_URL)]
-    assert status.message == "Plan Business+ (plus). Streams to read: users_details. Missing scopes: users:read.email."
+    assert status.message == (
+        "Plan Business+ (plus). Streams to read: users_details. Missing scopes: usergroups:read, users:read.email."
+    )

@@ -19,11 +19,11 @@ it("shows UTC next chips and UTC-only exact attribution and badge tooltips", asy
     "Sat 23:30",
   ]);
   expect(container.textContent).not.toMatch(/your time|01:30|13:58|14:00/);
+  expect(screen.getByText("Saved by you at 11:58 UTC.")).toBeInTheDocument();
   const user = userEvent.setup();
   for (const [trigger, exact] of [
-    [times[0], "2026-01-15 23:30:00 UTC"],
-    [screen.getByText("set by you · 2 min ago"), "2026-01-15 11:58:00 UTC"],
-    [screen.getByText("Applied"), "2026-01-15 12:00:00 UTC"],
+    [times[0], "23:30 UTC"],
+    [screen.getByText("Set by admin"), "Running · as of 12:00"],
   ] as const) {
     await user.hover(trigger.closest("[tabindex]")!);
     const tooltip = await screen.findByRole("tooltip");
@@ -47,9 +47,7 @@ it("keeps editor preview chips and their exact tooltip in UTC", async () => {
   ]);
   expect(container.textContent).not.toMatch(/your time|01:30/);
   await userEvent.hover(times[0].closest("[tabindex]")!);
-  expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "2026-01-15 23:30:00 UTC"
-  );
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("23:30 UTC");
   expect(screen.getByRole("tooltip")).not.toHaveTextContent(/your time|01:30/);
 });
 
@@ -76,13 +74,11 @@ it("shows reconcile hints and their exact badge tooltip in UTC", async () => {
   mocks.query.data!.schedule.next_reconcile_at = "2026-01-15T12:15:00Z";
   const { container } = render(pane());
   expect(
-    screen.getByText("Next reconcile expected around 12:15 UTC")
+    screen.getByText("The deployment schedule is shown after 12:15 UTC.")
   ).toBeInTheDocument();
-  await userEvent.hover(
-    screen.getByText("Waiting for reconcile").closest("[tabindex]")!
-  );
+  await userEvent.hover(screen.getByText("Pending").closest("[tabindex]")!);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "Next reconcile: 2026-01-15 12:15:00 UTC"
+    "The deployment schedule is shown after 12:15 UTC."
   );
   expect(container.textContent).not.toMatch(/your time|14:15/);
   expect(screen.getByRole("tooltip")).not.toHaveTextContent(/your time|14:15/);
@@ -93,7 +89,7 @@ it("dates a conflict reload in UTC", async () => {
   const next = read();
   next.etag = '"3"';
   next.schedule.revision = 3;
-  next.schedule.requested!.updated_at = "2026-01-15T12:29:00Z";
+  next.schedule.requested!.updated_at = "2026-01-14T12:29:34Z";
   mocks.query.refetch.mockResolvedValue({ data: next });
   mocks.save.mockRejectedValue(new ConnectorsApiError(412, null));
   const { container } = render(pane());
@@ -103,7 +99,23 @@ it("dates a conflict reload in UTC", async () => {
   });
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "You changed this schedule in another tab at 12:29 UTC."
+    "You changed this schedule in another tab on 14 Jan at 12:29 UTC."
   );
   expect(container.textContent).not.toMatch(/your time|14:29/);
+});
+
+it("dates both the pane and badge attribution on another UTC day", async () => {
+  const schedule = mocks.query.data!.schedule;
+  schedule.status = "applied";
+  schedule.requested!.updated_at = "2025-11-12T16:48:00Z";
+  schedule.live!.crons = schedule.requested!.crons;
+  schedule.live!.origin = "api";
+  render(pane());
+
+  const message = "Saved by you on 12 Nov 2025 at 16:48 UTC.";
+  expect(screen.getByText(message)).toBeInTheDocument();
+  await userEvent.hover(
+    screen.getByText("Set by admin").closest("[tabindex]")!
+  );
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(message);
 });

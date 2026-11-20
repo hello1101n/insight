@@ -8,15 +8,15 @@ it.each([
   [
     "applied",
     null,
-    "Applied",
+    "Set by admin",
     "text-success",
     "lucide-check",
-    "Request revision 2 is running",
+    "Running · as of",
   ],
   [
     "pending",
     "different_schedule",
-    "Waiting for reconcile",
+    "Pending",
     "text-warning",
     "lucide-clock",
     "The sync job runs a different schedule",
@@ -24,10 +24,10 @@ it.each([
   [
     "pending",
     "awaiting_reconcile",
-    "Waiting for reconcile",
+    "Pending",
     "text-warning",
     "lucide-clock",
-    "The sync job is not yet prepared",
+    "The deployment schedule is shown after the next check",
   ],
   [
     "pending",
@@ -40,10 +40,10 @@ it.each([
   [
     "pending",
     null,
-    "Waiting for reconcile",
+    "Pending",
     "text-warning",
     "lucide-clock",
-    "Runs now, checked at",
+    "Running · as of",
   ],
   [
     "inherited",
@@ -51,7 +51,7 @@ it.each([
     "Default",
     "text-muted-foreground",
     "lucide-minus",
-    "connector descriptor",
+    "Runs the connector's default schedule.",
   ],
 ] as const)(
   "uses one %s %s badge with an icon and details only in its tooltip",
@@ -78,11 +78,12 @@ it.each([
         : null
     );
     expect(container.textContent).not.toMatch(
-      /First sync|✓ Saved|Saved and applied at|Runs the deployment schedule/i
+      /First sync|✓ Saved|Saved and applied at/i
     );
     expect(screen.queryByText("Synthetic fixed error")).not.toBeInTheDocument();
     if (status === "applied" || status === "inherited")
       expect(container.querySelector('[data-slot="schedule-hint"]')).toBeNull();
+    if (status === "inherited") expect(container).not.toHaveTextContent(detail);
     await userEvent.hover(badge.closest("[tabindex]")!);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(detail);
   }
@@ -93,21 +94,16 @@ it.each([
     "pending",
     "different_schedule",
     false,
-    "Takes effect at the next reconcile pass",
+    "Takes effect after the next check.",
   ],
   [
     "pending",
     "awaiting_reconcile",
     true,
-    "Next reconcile expected around 12:15 UTC",
+    "The deployment schedule is shown after 12:15 UTC.",
   ],
-  [
-    "pending",
-    "no_cronworkflow",
-    false,
-    "Takes effect at the next reconcile pass",
-  ],
-  ["pending", null, false, "Takes effect at the next reconcile pass"],
+  ["pending", "no_cronworkflow", false, "Takes effect after the next check."],
+  ["pending", null, false, "Takes effect after the next check."],
 ] as const)("shows a single hint for %s %s", (status, reason, known, hint) => {
   const schedule = mocks.query.data!.schedule;
   schedule.status = status;
@@ -118,7 +114,7 @@ it.each([
     container.querySelectorAll('[data-slot="schedule-hint"]')
   ).toHaveLength(1);
   expect(screen.getByText(new RegExp(hint))).toBeInTheDocument();
-  expect(screen.getByText(/until then runs/)).toHaveTextContent(
+  expect(screen.getByText(/Until then:/)).toHaveTextContent(
     "every day at 03:00"
   );
 });
@@ -172,12 +168,12 @@ it("does not toast initial applied data, and announces immediate saves while the
   expect(screen.getByRole("button", { name: "Edit" })).toHaveFocus();
 });
 
-it("puts exact dates behind the short UTC Next chips and relative attribution", async () => {
+it("puts exact dates behind the short UTC Next chips and shows the save time", async () => {
   mocks.query.data!.schedule.status = "applied";
   mocks.query.data!.schedule.live!.crons = ["*/5 * * * *"];
   mocks.query.data!.schedule.requested!.updated_at = "2026-01-15T11:59:20Z";
   render(pane());
-  expect(screen.getByText("set by you · just now")).toHaveClass(
+  expect(screen.getByText("Saved by you at 11:59 UTC.")).toHaveClass(
     "text-muted-foreground"
   );
   const preview = screen.getByText("Next (UTC)").parentElement!;
@@ -186,9 +182,7 @@ it("puts exact dates behind the short UTC Next chips and relative attribution", 
   expect(first).toHaveTextContent("12:05");
   expect(first).not.toHaveTextContent(/UTC|2026|in 5/);
   await userEvent.hover(first.closest("[tabindex]")!);
-  expect(await screen.findByRole("tooltip")).toHaveTextContent(
-    "2026-01-15 12:05:00 UTC"
-  );
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("12:05 UTC");
   expect(screen.getByRole("tooltip")).not.toHaveTextContent("your time");
 });
 
@@ -199,12 +193,12 @@ it("keeps drift waiting without a toast and reports unreadable jobs", () => {
   schedule.pending_reason = "different_schedule";
   schedule.revision++;
   rerender(pane());
-  expect(screen.getByText("Waiting for reconcile")).toBeInTheDocument();
+  expect(screen.getByText("Pending")).toBeInTheDocument();
   expect(mocks.toast).not.toHaveBeenCalled();
   schedule.status = null;
   schedule.read_error = "The live sync job cannot be read.";
   rerender(pane());
-  expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  expect(screen.getByText("Can't read")).toBeInTheDocument();
   expect(screen.getByText(schedule.read_error)).toBeInTheDocument();
   expect(screen.getByText("0 6 * * *")).toBeInTheDocument();
   expect(mocks.toast).not.toHaveBeenCalled();

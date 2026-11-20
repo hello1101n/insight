@@ -52,6 +52,7 @@ import { formatDate, formatMetricNumber, formatUtcClock } from "@/lib/format";
 import { screenLabel } from "@/lib/portal/screen-label";
 import { TEXT_FIGURE, TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";
 import type { CustomRange, PeriodValue } from "@/types/insight";
+import { chartColor } from "@/lib/chart-palette";
 
 function daysBetween(from: string, to: string): number {
   return differenceInCalendarDays(parseISO(to), parseISO(from));
@@ -154,7 +155,7 @@ function UsageSummary({ range }: { range: UsageRange }) {
 }
 
 const CHART_CONFIG = {
-  visits: { label: "Visits", color: "var(--chart-1)" },
+  visits: { label: "Visits", color: chartColor(0) },
 } satisfies ChartConfig;
 
 function dayTick(day: string): string {

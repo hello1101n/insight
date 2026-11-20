@@ -222,7 +222,7 @@ export function ConnectorHealthPane() {
                       >
                         <div className="min-w-0 [contain:inline-size]">
                           <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
-                            {row.configured && row.source_id != null && (
+                            {row.configured && (
                               <div className="@container min-w-0 rounded-md border bg-background p-4">
                                 <ConnectorSchedulePane
                                   row={row}

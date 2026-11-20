@@ -5,7 +5,7 @@ import type { ConnectorSchedule } from "@/api/connector-health-client";
 import { ConnectorScheduleTooltip } from "@/components/portal/connector-schedule-tooltip";
 import { Badge } from "@gears-frontx/ui-kit";
 import { scheduleStatusView } from "@/lib/portal/connector-schedule-status";
-import { scheduleTooltipLines } from "@/lib/portal/connector-schedule-tooltip";
+import { scheduleTooltip } from "@/lib/portal/connector-schedule-tooltip";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
 
 export function ConnectorScheduleHeader({
@@ -37,9 +37,7 @@ export function ConnectorScheduleHeader({
             {t("common.states.loading")}
           </span>
         ) : (
-          <ConnectorScheduleTooltip
-            lines={scheduleTooltipLines(schedule, person)}
-          >
+          <ConnectorScheduleTooltip content={scheduleTooltip(schedule, person)}>
             <Badge
               variant="secondary"
               title={label}

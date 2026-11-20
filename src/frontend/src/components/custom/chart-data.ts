@@ -2,6 +2,7 @@ import type { ChartConfig } from "@gears-frontx/ui-kit";
 import type { MouseHandlerDataParam } from "recharts";
 
 import type { MetricResult } from "@/api/custom-client";
+import { chartColor } from "@/lib/chart-palette";
 
 /**
  * A metric result as a chart reads it: one object per row, keyed by column.
@@ -32,10 +33,8 @@ export interface Stacks {
 
 const STACK_TOTAL = "stack-total";
 const STACK_TOP = "stack-top";
-const STACK_COLORS = 12;
-
 export function stackColor(index: number): string {
-  return `var(--chart-${(index % STACK_COLORS) + 1})`;
+  return chartColor(index);
 }
 
 /**
@@ -87,12 +86,10 @@ export function stacks(
   };
 }
 
-export const CHART_COLORS = 5;
-
 /** One series, painted from the kit's chart palette. */
 export function seriesConfig(key: string, index = 0): ChartConfig {
   return {
-    [key]: { label: key, color: `var(--chart-${(index % CHART_COLORS) + 1})` },
+    [key]: { label: key, color: chartColor(index) },
   };
 }
 

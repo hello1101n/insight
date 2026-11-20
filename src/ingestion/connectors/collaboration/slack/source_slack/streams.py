@@ -48,6 +48,7 @@ CONFIG_ERRORS = frozenset(
         "not_an_admin",
         "not_authed",
         "org_level_email_display_disabled",
+        "plan_upgrade_required",
         "token_expired",
         "team_access_not_granted",
         "token_revoked",

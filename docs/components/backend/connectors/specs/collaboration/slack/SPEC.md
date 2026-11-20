@@ -1,6 +1,6 @@
 # Slack connector
 
-The Slack connector reads data from Slack: member activity, messages, channels, huddles, alerts, AI use, apps and workflows, and organization data.
+The Slack connector reads data from Slack: member activity, messages, channels, huddles, alerts, AI use, apps and workflows, and user groups.
 Now, Insight uses only member activity, for chat and meeting metrics (section 10).
 
 The data that the connector reads depends on the Slack plan of the customer.
@@ -24,7 +24,7 @@ For all the data that Slack supplies, refer to [DATA-SOURCES.md](DATA-SOURCES.md
 | AI use | `admin.analytics.slackbot.tools`, `.skills`, Audit Logs `slack_ai_*`, `mcp_slack_*`, `agentforce_*` | Enterprise | `admin.analytics:read`, `auditlogs:read` | `ai_usage_daily`, `ai_events` (proposal, section 7.3) | #4353 |
 | Message metadata | `admin.analytics.messages.metadata` | Enterprise | `admin.analytics:read` | `messages` (proposal, section 7.3) | #4354 |
 | Apps and workflows | `admin.apps.approved.list`, `admin.workflows.search`, `admin.apps.activities.list` | Enterprise | `admin.apps:read`, `admin.workflows:read`, `admin.app_activities:read` | `apps`, `workflows`, `app_activities` (proposal, section 7.3) | #4355 |
-| User groups, SCIM | `usergroups.list`, `usergroups.users.list`, SCIM API | All (groups), B+ (SCIM) | `usergroups:read`, `admin` | `usergroup_members`, `member_org` (proposal, section 7.3) | #4356, decision open |
+| User groups | `usergroups.list`, `usergroups.users.list` | Pro, B+, Enterprise | `usergroups:read` | `usergroup_members` (section 7.4) | In `main` |
 
 Plan names:
 
@@ -39,14 +39,17 @@ Streams for each plan:
 
 | Plan | Streams |
 |---|---|
-| Free, Pro | Members, Message activity, Alerts, User groups |
-| B+ | Activity, Members, Channels, Alerts, User groups, SCIM |
+| Free | Members, Message activity, Alerts |
+| Pro | Members, Message activity, Alerts, User groups |
+| B+ | Activity, Members, Channels, Alerts, User groups |
 | Enterprise | All streams except Message activity |
 
 The main stream gives the daily activity of each member. On B+ and Enterprise, the main stream is Activity. On Free and Pro, the main stream is Message activity. All other streams are optional.
 
 Each issue in the "Status" column sets the columns and the sync rules of its stream.
-Sections 5, 6, 7.1, 7.2, 8 and 9 give the rules for Activity and Members. The other sections apply to all streams.
+Sections 5, 6, 7.1, 7.2, 7.4, 8 and 9 give the rules for Activity, Members and User groups. The other sections apply to all streams.
+
+The connector does not read the SCIM API. The SCIM API needs the `admin` scope. This scope also lets the token change members. Section 9 gives the decision (#4356).
 
 ## 2. Slack access
 
@@ -78,6 +81,16 @@ Each file lists **all members of the workspace**. Inactive members have zero cou
 | Pages | The connector reads all pages in each sync. |
 
 The connector calls `users.list` without `team_id`. On Enterprise, a token of the organization level can need a `team_id` for each workspace. Nobody tested this on a real organization. If Slack refuses the call, the sync fails and the message names the Slack code (section 6.1).
+
+### 2.3 User groups
+
+| Item | Value |
+|---|---|
+| Request | `GET https://slack.com/api/usergroups.list`, then `GET https://slack.com/api/usergroups.users.list?usergroup=<id>` for each group |
+| Pages | None. Each method sends the full list in one answer. |
+| Rate limit | Tier 2 (about 20 requests for each minute). An HTTP 429 answer gets a retry (section 6.1). |
+
+The connector calls these methods without `team_id`. On Enterprise, a token of the organization level needs a `team_id`. Nobody tested this on a real organization. If Slack refuses the call, the sync fails and the message names the Slack code (section 6.1).
 
 ## 3. Plan detection
 
@@ -149,6 +162,13 @@ Limits:
 - A reply to a thread that started before the window does not get to Insight.
 - On Free, Slack shows the messages of the last 90 days only.
 
+### 5.4 User groups
+
+- Each sync calls `usergroups.list` once. Slack returns the enabled groups only. Disabled groups are not read.
+- For each group, the sync calls `usergroups.users.list`. Neither method has pages.
+- This stream has no state. The day of the sync is part of the key (section 7.4). The rows of one day are the membership on that day.
+- If Slack refuses a group with `no_such_subteam`, the group was deleted during the sync. The connector writes a warning and reads the next group.
+
 ## 6. Errors
 
 ### 6.1 All streams
@@ -158,7 +178,7 @@ Limits:
 | HTTP 429 or 5xx | The connector tries again 5 times. It waits for the time in `Retry-After` (seconds or HTTP date). If there is no `Retry-After`, it waits 2, 4, 8, 16 and 32 s. Each wait is 300 s maximum. Then the sync fails (`system_error`). |
 | Network error or timeout (60 s) | The connector tries again in the same way. Then the sync fails (`transient_error`). |
 | Temporary Slack codes: `ratelimited`, `internal_error`, `fatal_error`, `service_unavailable`, `request_timeout` | The connector tries again in the same way. Then the sync fails (`system_error`). |
-| Token, scope and plan codes: `invalid_auth`, `not_authed`, `token_revoked`, `token_expired`, `account_inactive`, `missing_scope`, `not_allowed_token_type`, `not_an_admin`, `no_permission`, `access_denied`, `feature_not_available`, `ekm_access_denied`, `team_access_not_granted`, `two_factor_setup_required`, `enterprise_is_restricted` | The sync fails (`config_error`). The message names the code. For a missing scope of an optional stream, refer to section 3. |
+| Token, scope and plan codes: `invalid_auth`, `not_authed`, `token_revoked`, `token_expired`, `account_inactive`, `missing_scope`, `not_allowed_token_type`, `not_an_admin`, `no_permission`, `access_denied`, `feature_not_available`, `plan_upgrade_required`, `ekm_access_denied`, `team_access_not_granted`, `two_factor_setup_required`, `enterprise_is_restricted` | The sync fails (`config_error`). The message names the code. For a missing scope of an optional stream, refer to section 3. |
 | Other Slack codes | The sync fails (`system_error`). The message names the code. |
 
 After a failure, the data that the connector read before the failure keeps its rows and its state. The next sync starts again from the state.
@@ -214,7 +234,7 @@ A table contains one type of data. The API that supplies the data does not set t
 | Engine, cluster | `ReplicatedReplacingMergeTree(_airbyte_extracted_at)`, `ORDER BY unique_key`. The destination creates each table `ON CLUSTER <name>`. Each replica has all rows. There is no `Distributed` table. The destination writes without a quorum, so a replica can be behind for a short time. Helm values `clickhouse.clusterMode` and `clickhouse.clusterName` select the mode. |
 | Valid row | The newest load of a key. Read with `FINAL`. |
 | Platform columns | `insight_tenant_id` and `insight_source_id`. The connector copies them from its configuration (section 4). |
-| Not nullable | `insight_tenant_id`, `insight_source_id`, `unique_key`, and the key fields of each table: `user_id` and `date` in Activity, `user_id` in Members. The connector does not send a row without these values (section 6). |
+| Not nullable | `insight_tenant_id`, `insight_source_id`, `unique_key`, and the key fields of each table: `user_id` and `date` in Activity, `user_id` in Members, `usergroup_id`, `user_id` and `date` in User groups. The connector does not send a row without these values (section 6). |
 | Nullable | All other columns. If the destination cannot convert a value, it stores NULL and records the change in `_airbyte_meta.changes`. The load does not fail. |
 | Retention | **No limit.** Slack keeps some data for a limited time, for example the analytics files for 13 months. Bronze is the long-term record. |
 | Airbyte columns | `_airbyte_raw_id`, `_airbyte_extracted_at`, `_airbyte_meta`, `_airbyte_generation_id` |
@@ -276,8 +296,6 @@ These streams do not exist now. The table names and the row grain are proposals.
 | Apps and workflows | `apps` | App | `<app_id>` | #4355 |
 | Apps and workflows | `workflows` | Workflow | `<workflow_id>` | #4355 |
 | Apps and workflows | `app_activities` | Run event of a workflow or a function | `<trace_id>-<event_type>-<ts>` | #4355 |
-| User groups | `usergroup_members` | Group and member | `<group_id>-<user_id>` | #4356 |
-| SCIM | `member_org` | Member: department, manager, title | `<user_id>` | #4356 |
 
 All rules of section 7 apply to these tables.
 
@@ -321,6 +339,28 @@ Link rules:
 - `link_count` is the number of links in the message.
 - `link_hosts` is the sorted list of the distinct hosts of these links, for example `github.com`. The connector does not keep the path or the query of a URL, because they can contain names and IDs.
 
+### 7.4 User groups: `usergroup_members`
+
+`unique_key` = `<insight_tenant_id>-<insight_source_id>-<usergroup_id>-<user_id>-<date>`.
+
+- There is one row for each group, member and day of a sync. A group without members has no row.
+- To get the membership on a day, read the rows of the latest successful sync on or before that day. A member that leaves a group has no row on the later days.
+- A day without a sync has no rows. A sync that fails writes the groups that it read before the failure. The next sync on the same day writes all groups again.
+- If the connector reads a day again, the new rows replace the rows of that day. A member that left the group on that day keeps the old row of that day.
+
+| Column | Type | Meaning | Use |
+|---|---|---|---|
+| `date` | String `YYYY-MM-DD` | UTC day of the sync | Key |
+| `usergroup_id` | String | Slack group ID (`S…`) | Key |
+| `usergroup_handle` | String | Group handle, for example `example-team` | – |
+| `usergroup_name` | String | Group name | – |
+| `usergroup_auto_type` | String | `admins` or `owner` for a group that Slack keeps. NULL for a group that a person made. | – |
+| `user_id` | String | Slack member ID | Key |
+| `insight_tenant_id`, `insight_source_id` | String | Platform columns | Tenant, instance |
+| `unique_key` | String | Key | Key |
+
+No model reads this table now (section 9).
+
 ## 8. Who is counted
 
 These rules apply to the main stream (section 1) on all plans. The issue of each other stream sets its rules.
@@ -358,6 +398,11 @@ Inactive members are counted with zeros. Their message metrics are `0`. They add
 - Identity resolution gives each member one `person_id`. Identity resolution solves conflicts, for example one email on more than one person. The connector does not.
 - Person and team views do not show rows without a person.
 - The identity resolution service shows these members as unmapped Slack members. It shows the `user_id`, the email and the name (from Members). An operator can then bind each member to a person.
+
+Decisions for user groups and SCIM (#4356):
+
+- User groups stay in bronze. Teams and identity do not use them. Many groups are not teams, for example an on-call group. A rule that maps a group to a team does not exist.
+- The connector does not read the SCIM API. SCIM gives an employee ID, a department, a title and a manager on B+ and Enterprise. The SCIM API needs the `admin` scope. This scope also lets the token make, change and deactivate members. Insight does not ask for this scope.
 
 ## 10. Metrics
 

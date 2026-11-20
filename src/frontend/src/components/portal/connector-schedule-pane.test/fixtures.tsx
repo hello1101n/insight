@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   save: vi.fn(),
+  write: { isPending: false },
   toast: vi.fn(),
 }));
 vi.mock("@/queries/connector-schedule-author", () => ({
@@ -29,7 +30,10 @@ vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
 }));
 vi.mock("@/queries/connector-health", () => ({
   useConnectorSchedule: () => mocks.query,
-  useWriteConnectorSchedule: () => ({ mutateAsync: mocks.save }),
+  useWriteConnectorSchedule: () => ({
+    ...mocks.write,
+    mutateAsync: mocks.save,
+  }),
 }));
 vi.mock("@/queries/identity-me", () => ({
   useMe: () => ({
@@ -83,15 +87,16 @@ beforeEach(() => {
   mocks.query.isPending = false;
   mocks.query.refetch.mockReset();
   mocks.save.mockReset();
+  mocks.write.isPending = false;
   mocks.toast.mockReset();
 });
 
 afterEach(() => vi.useRealTimers());
 
-export function pane() {
+export function pane(instance = row) {
   return (
     <AppTooltips>
-      <ConnectorSchedulePane row={row} polling={false} />
+      <ConnectorSchedulePane row={instance} polling={false} />
     </AppTooltips>
   );
 }

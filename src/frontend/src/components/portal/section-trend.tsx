@@ -17,6 +17,7 @@ import {
 
 import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
 import { ComingSoon } from "@/components/widgets/coming-soon";
+import { chartColor } from "@/lib/chart-palette";
 
 /** One plotted series: its metric key, its label, and how to draw it. */
 export type SectionTrendSeries = {
@@ -59,8 +60,6 @@ export interface SectionTrendProps {
    */
   onBucketClick?: (bucket: string) => void;
 }
-
-const DEFAULT_CHART_KEYS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
 /** The shared trend card: one chart, the same states, wherever a trend appears. */
 export function SectionTrend({
@@ -123,7 +122,7 @@ export function SectionTrend({
   const config: ChartConfig = Object.fromEntries(
     safeSeries.map((s, i) => [
       s.key,
-      { label: s.label, color: `var(--${DEFAULT_CHART_KEYS[i % DEFAULT_CHART_KEYS.length]})` },
+      { label: s.label, color: chartColor(i) },
     ]),
   );
 
