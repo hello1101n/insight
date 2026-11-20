@@ -83,7 +83,7 @@ interface FrontxBoardProps {
 
 export default function FrontxBoardPage(props: FrontxBoardProps) {
   // Set by vite.frontx-widgets.ts from FRONTX_WIDGETS_DIR.
-  if (import.meta.env.VITE_FRONTX_WIDGETS_SET !== true) {
+  if (!import.meta.env.VITE_FRONTX_WIDGETS_SET) {
     return (
       <ComingSoon
         variant="card"
