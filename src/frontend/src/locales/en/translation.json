@@ -555,6 +555,7 @@
       "exclude": "Excluded",
       "linked": "Linked",
       "auto_seed_link": "Linked by address",
+      "auto_seed_employee_id_link": "Linked by employee ID",
       "to": "to",
       "by_operator": "by an operator",
       "login_bootstrap": "First sign-in",

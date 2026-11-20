@@ -231,22 +231,25 @@ describe("AccountDetail", () => {
   // somebody who is not a candidate stops being a bare id.
   // The seed writes this literal for a binding it made by matching the address;
   // unmapped, the row rendered the raw code at the reader.
-  it("names the resolver's own link instead of printing its code", () => {
+  it.each([
+    ["auto-seed-link", /linked by address/i],
+    ["auto-seed-employee-id-link", /linked by employee id/i],
+  ])("names the resolver's own link %s instead of printing its code", (reason, label) => {
     binding.q.data = bound({
       history: [
         {
           person_id: BOB.person_id,
           author_person_id: "00000000-0000-0000-0000-000000000000",
           by_operator: false,
-          reason: "auto-seed-link",
+          reason,
           recorded_at: "2026-07-01T10:15:00.000000",
         },
       ],
     });
     render(<AccountDetail accountRef={REF} queueItem={queueItem()} />);
 
-    expect(screen.getByText(/linked by address/i)).toBeInTheDocument();
-    expect(screen.queryByText("auto-seed-link")).not.toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
   });
 
   it("names the person an entry points at, candidate or not", () => {
