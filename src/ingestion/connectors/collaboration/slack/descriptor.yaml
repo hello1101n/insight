@@ -37,7 +37,8 @@ dbt_select: tag:slack+
 workflow: sync
 connection:
   namespace: bronze_slack
+# INVARIANT: the token key is not listed. A Secret can name it slack_user_token
+# or slack_bot_token, and the connection check reports a missing token.
 secret:
   required_fields:
-    - slack_bot_token
     - slack_start_date
