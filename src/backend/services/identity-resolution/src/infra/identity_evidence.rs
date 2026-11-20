@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use clickhouse::Row;
-use insight_clickhouse::{Client, Config, MissingRelation};
+use insight_clickhouse::{Client, Config, MissingRelation, Param, Sql, sql};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -30,7 +30,9 @@ pub struct EvidenceSnapshot {
 /// Aggregates break ties on `(_synced_at, _version)`: a `ReplacingMergeTree(_version)` holds
 /// duplicate rows until a merge, and `_synced_at` alone would pick between them arbitrarily;
 /// the replacing version picks the row `FINAL` would keep.
-const FOLD_SQL_TEMPLATE: &str = r"
+fn fold() -> Sql {
+    sql!(
+        r"
     SELECT
         ifNull(insight_source_type, '')                 AS source_type,
         ifNull(toString(insight_source_id), '')         AS source_id,
@@ -75,15 +77,13 @@ const FOLD_SQL_TEMPLATE: &str = r"
         argMaxIf(
             ifNull(value, ''), (_synced_at, _version),
             value_type = 'id' AND operation_type = 'UPSERT' AND value != ''
-            AND lengthUTF8(value) <= {MAX_ID_CHARS}
+            AND lengthUTF8(value) <= {MAX_VALUE_ID_CHARS}
         )                                               AS binding_id
     FROM identity.identity_inputs
     WHERE source_account_id IS NOT NULL AND source_account_id != ''
     GROUP BY source_type, source_id, account_id
-";
-
-fn fold_sql() -> String {
-    FOLD_SQL_TEMPLATE.replace("{MAX_ID_CHARS}", &MAX_VALUE_ID_CHARS.to_string())
+"
+    )
 }
 
 const FOLD_COLUMNS: &str = "source_type, source_id, account_id, latest_op, email, username, \
@@ -93,36 +93,16 @@ const FOLD_COLUMNS: &str = "source_type, source_id, account_id, latest_op, email
 const COMPOSED_NAME_SQL: &str = "trimBoth(concatWithSeparator(' ', first_name, last_name))";
 
 /// `lowerUTF8`, not `lower`: ClickHouse's `lower` folds ASCII only.
-const ORDER_LABEL_SQL: &str = "lowerUTF8(if(email != '', email, \
-     if(username != '', username, \
-     if(display_name != '', display_name, \
-     if({COMPOSED} != '', {COMPOSED}, account_id)))))";
-
-const LIST_SQL: &str = r"
-    SELECT {COLUMNS}, {LABEL} AS order_label
-    FROM ({FOLD})
-    WHERE latest_op != 'DELETE'{SOURCES}{FILTER}{RESUME}
-    ORDER BY order_label, source_type, source_id, account_id
-    LIMIT ?
-";
-
-const SOURCE_PREDICATE_SQL: &str = "
-      AND has(?, source_type)";
-
-const FILTER_SQL: &str = "
-      AND (positionCaseInsensitiveUTF8(email, ?) > 0
-           OR positionCaseInsensitiveUTF8(username, ?) > 0
-           OR positionCaseInsensitiveUTF8(account_id, ?) > 0
-           OR positionCaseInsensitiveUTF8(display_name, ?) > 0
-           OR positionCaseInsensitiveUTF8({SOURCE_SEGMENTS}, {NEEDLE_SEGMENT}) > 0
-           OR positionCaseInsensitiveUTF8({COMPOSED}, ?) > 0)";
+fn order_label() -> Sql {
+    sql!(
+        "lowerUTF8(if(email != '', email, \
+         if(username != '', username, \
+         if(display_name != '', display_name, \
+         if({COMPOSED_NAME_SQL} != '', {COMPOSED_NAME_SQL}, account_id)))))"
+    )
+}
 
 const SOURCE_SEGMENTS_SQL: &str = "concat('_', replaceAll(source_type, '-', '_'))";
-
-const NEEDLE_SEGMENT_SQL: &str = "concat('_', replaceAll(?, '-', '_'))";
-
-const RESUME_SQL: &str = "
-      AND ({LABEL}, source_type, source_id, account_id) > (?, ?, ?, ?)";
 
 const MAX_EVIDENCE_ACCOUNTS: usize = 200_000;
 
@@ -186,12 +166,12 @@ impl ClickHouseEvidenceReader {
 
     // SAFETY: tenancy shortcut (#1550): no tenant predicate, for the same reason as `identity_inputs`.
     pub async fn accounts(&self) -> anyhow::Result<EvidenceSnapshot> {
-        let fold = fold_sql();
-        let sql = format!(
+        let sql = sql!(
             "SELECT {FOLD_COLUMNS}, '' AS order_label FROM ({fold}) \
-             ORDER BY source_type, source_id, account_id LIMIT {MAX_EVIDENCE_ACCOUNTS}"
+             ORDER BY source_type, source_id, account_id LIMIT {MAX_EVIDENCE_ACCOUNTS}",
+            fold = fold(),
         );
-        let rows: Vec<FoldedRow> = match self.client.query(&sql).fetch_all().await {
+        let rows: Vec<FoldedRow> = match self.client.query_sql(&sql).fetch_all().await {
             Ok(rows) => rows,
             Err(e) if MissingRelation::from_error(&e).is_some() => {
                 return Ok(EvidenceSnapshot {
@@ -313,24 +293,58 @@ fn map_row(row: FoldedRow) -> anyhow::Result<AccountEvidence> {
     })
 }
 
-fn list_sql(filtered: bool, by_source: bool, resuming: bool) -> String {
-    LIST_SQL
-        .replace("{COLUMNS}", FOLD_COLUMNS)
-        .replace("{FOLD}", &fold_sql())
-        .replace(
-            "{SOURCES}",
-            if by_source { SOURCE_PREDICATE_SQL } else { "" },
-        )
-        .replace("{FILTER}", if filtered { FILTER_SQL } else { "" })
-        .replace("{RESUME}", if resuming { RESUME_SQL } else { "" })
-        .replace("{LABEL}", ORDER_LABEL_SQL)
-        .replace("{SOURCE_SEGMENTS}", SOURCE_SEGMENTS_SQL)
-        .replace("{NEEDLE_SEGMENT}", NEEDLE_SEGMENT_SQL)
-        .replace("{COMPOSED}", COMPOSED_NAME_SQL)
+fn list_sql(
+    needle: Option<&str>,
+    sources: &[String],
+    after: Option<AfterAccount<'_>>,
+    page_size: u64,
+) -> Sql {
+    let mut kept = Sql::raw("latest_op != 'DELETE'");
+    if !sources.is_empty() {
+        kept.push(sql!(
+            " AND has({sources}, source_type)",
+            sources = Param::strings(sources),
+        ));
+    }
+    if let Some(needle) = needle {
+        kept.push(matching(needle));
+    }
+    if let Some(after) = after {
+        kept.push(past(after));
+    }
+
+    sql!(
+        "SELECT {FOLD_COLUMNS}, {label} AS order_label FROM ({fold}) WHERE {kept} \
+         ORDER BY order_label, source_type, source_id, account_id LIMIT {limit}",
+        label = order_label(),
+        fold = fold(),
+        kept = kept,
+        limit = Param::uint64(page_size + 1),
+    )
 }
 
-fn needle_probes() -> usize {
-    FILTER_SQL.matches('?').count() + NEEDLE_SEGMENT_SQL.matches('?').count()
+fn matching(needle: &str) -> Sql {
+    sql!(
+        " AND (positionCaseInsensitiveUTF8(email, {needle}) > 0 \
+         OR positionCaseInsensitiveUTF8(username, {needle}) > 0 \
+         OR positionCaseInsensitiveUTF8(account_id, {needle}) > 0 \
+         OR positionCaseInsensitiveUTF8(display_name, {needle}) > 0 \
+         OR positionCaseInsensitiveUTF8({SOURCE_SEGMENTS_SQL}, concat('_', replaceAll({needle}, '-', '_'))) > 0 \
+         OR positionCaseInsensitiveUTF8({COMPOSED_NAME_SQL}, {needle}) > 0)",
+        needle = Param::string(needle),
+    )
+}
+
+fn past(after: AfterAccount<'_>) -> Sql {
+    sql!(
+        " AND ({label}, source_type, source_id, account_id) \
+         > ({after_label}, {after_type}, {after_source}, {after_account})",
+        label = order_label(),
+        after_label = Param::string(after.order_label),
+        after_type = Param::string(after.source_type),
+        after_source = Param::string(after.source_id),
+        after_account = Param::string(after.account_id),
+    )
 }
 
 fn compose_name(first: Option<String>, last: Option<String>) -> Option<String> {
@@ -349,26 +363,9 @@ impl ClickHouseEvidenceReader {
         after: Option<AfterAccount<'_>>,
         page_size: u64,
     ) -> anyhow::Result<AccountPage> {
-        let sql = list_sql(needle.is_some(), !sources.is_empty(), after.is_some());
+        let sql = list_sql(needle, sources, after, page_size);
 
-        let mut query = self.client.query(&sql);
-        if !sources.is_empty() {
-            query = query.bind(sources);
-        }
-        if let Some(needle) = needle {
-            for _ in 0..needle_probes() {
-                query = query.bind(needle);
-            }
-        }
-        if let Some(after) = after {
-            query = query
-                .bind(after.order_label)
-                .bind(after.source_type)
-                .bind(after.source_id)
-                .bind(after.account_id);
-        }
-
-        let mut rows: Vec<FoldedRow> = match query.bind(page_size + 1).fetch_all().await {
+        let mut rows: Vec<FoldedRow> = match self.client.query_sql(&sql).fetch_all().await {
             Ok(rows) => rows,
             Err(e) if MissingRelation::from_error(&e).is_some() => {
                 return Ok(AccountPage::default());
@@ -485,7 +482,10 @@ mod tests {
     #[test]
     fn the_fold_caps_the_id_at_the_seed_s_limit() {
         assert!(
-            fold_sql().contains(&format!("lengthUTF8(value) <= {MAX_VALUE_ID_CHARS}")),
+            fold()
+                .render()
+                .sql
+                .contains(&format!("lengthUTF8(value) <= {MAX_VALUE_ID_CHARS}")),
             "the fold must carry the seed's cap, not a second opinion"
         );
     }
@@ -588,49 +588,43 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn every_placeholder_of_the_listing_has_a_value_bound_to_it() {
-        for (case, filtered, by_source, resuming, expected) in [
-            ("browse", false, false, false, 1),
-            ("search", true, false, false, 1 + needle_probes()),
-            ("browse, resumed", false, false, true, 5),
-            ("search, resumed", true, false, true, 5 + needle_probes()),
-            ("browse one source", false, true, false, 2),
-            ("search one source", true, true, false, 2 + needle_probes()),
-            ("everything on", true, true, true, 6 + needle_probes()),
-        ] {
-            assert_eq!(
-                list_sql(filtered, by_source, resuming).matches('?').count(),
-                expected,
-                "placeholder count changed for: {case}"
-            );
-        }
+    const AFTER: AfterAccount<'static> = AfterAccount {
+        order_label: "ann@example.com",
+        source_type: "github",
+        source_id: "00000000-0000-0000-0000-000000000001",
+        account_id: "gh-1",
+    };
+
+    fn listed(needle: Option<&str>, sources: &[&str], after: Option<AfterAccount<'_>>) -> String {
+        let sources: Vec<String> = sources.iter().map(|&source| source.to_owned()).collect();
+
+        list_sql(needle, &sources, after, 50).render().sql
     }
 
     #[test]
     fn an_unfiltered_listing_carries_no_source_predicate() {
-        let sql = list_sql(true, false, true);
+        let sql = listed(Some("ann"), &[], Some(AFTER));
 
         assert!(
-            !sql.contains(SOURCE_PREDICATE_SQL.trim()),
+            !sql.contains("has("),
             "unexpected source predicate in: {sql}"
         );
     }
 
     #[test]
     fn the_source_predicate_narrows_the_fold_output_not_the_fold() {
-        let sql = list_sql(false, true, false);
+        let sql = listed(None, &["github"], None);
 
-        let fold = fold_sql();
+        let fold = fold().render().sql;
         let fold_end = sql.find(&fold).map(|at| at + fold.len());
-        let predicate = sql.find(SOURCE_PREDICATE_SQL.trim());
+        let predicate = sql.find("has({sources:Array(String)}, source_type)");
 
         assert!(
             fold_end.is_some() && predicate > fold_end,
             "the predicate must sit after the fold's closing: {sql}"
         );
         assert_eq!(
-            sql.matches(SOURCE_PREDICATE_SQL.trim()).count(),
+            sql.matches("has(").count(),
             1,
             "exactly one source predicate: {sql}"
         );
@@ -652,64 +646,83 @@ mod tests {
 
     #[test]
     fn a_needle_and_sources_are_both_joined_with_and() {
-        let sql = list_sql(true, true, false);
+        let sql = listed(Some("ann"), &["github"], None);
         let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
 
         assert!(
-            normalized
-                .contains("WHERE latest_op != 'DELETE' AND has(?, source_type) AND (positionCase"),
+            normalized.contains(
+                "WHERE latest_op != 'DELETE' AND has({sources:Array(String)}, source_type) \
+                 AND (positionCase"
+            ),
             "the source predicate and the needle filter must each be ANDed: {sql}"
-        );
-        assert!(
-            sql.find(SOURCE_PREDICATE_SQL.trim()) < sql.find("AND (positionCase"),
-            "the needle filter must follow the source predicate: {sql}"
         );
     }
 
     #[test]
     fn a_needle_is_probed_against_every_value_a_row_can_show() {
-        let sql = list_sql(true, false, false);
+        let rendered = list_sql(Some("ann"), &[], None, 50).render();
+        let sql = rendered.sql;
 
         assert_eq!(
-            needle_probes(),
+            sql.matches("positionCaseInsensitiveUTF8").count(),
             6,
             "one probe per displayable value: address, handle, id, name, source, \
-             composed name"
+             composed name: {sql}"
         );
         assert_eq!(
-            sql.matches("positionCaseInsensitiveUTF8").count(),
-            needle_probes(),
-            "a probe without its placeholder, or the other way round"
+            sql.matches("{needle:String}").count(),
+            6,
+            "a probe without the needle: {sql}"
         );
         assert!(
             sql.contains(&format!(
-                "positionCaseInsensitiveUTF8({COMPOSED_NAME_SQL}, ?)"
+                "positionCaseInsensitiveUTF8({COMPOSED_NAME_SQL}, {{needle:String}})"
             )),
             "the composed name is not searched: {sql}"
         );
         assert!(
             sql.contains(&format!(
-                "positionCaseInsensitiveUTF8({SOURCE_SEGMENTS_SQL}, {NEEDLE_SEGMENT_SQL})"
+                "positionCaseInsensitiveUTF8({SOURCE_SEGMENTS_SQL}, \
+                 concat('_', replaceAll({{needle:String}}, '-', '_')))"
             )),
             "the source is not probed by segment: {sql}"
+        );
+        assert_eq!(
+            rendered.params,
+            [
+                ("needle".to_owned(), Param::string("ann")),
+                ("limit".to_owned(), Param::uint64(51))
+            ]
         );
     }
 
     #[test]
-    fn the_listing_leaves_no_template_hole_unfilled() {
-        let sql = list_sql(true, true, true);
+    fn a_resumed_listing_starts_past_the_last_account_it_showed() {
+        let rendered = list_sql(None, &[], Some(AFTER), 50).render();
 
-        assert!(!sql.contains('{'), "unsubstituted hole in: {sql}");
+        assert!(
+            rendered.sql.contains(
+                ", source_type, source_id, account_id) > \
+                 ({after_label:String}, {after_type:String}, {after_source:String}, \
+                 {after_account:String})"
+            ),
+            "{}",
+            rendered.sql
+        );
         assert_eq!(
-            sql.matches("lowerUTF8").count(),
-            2,
-            "the order key and the resume comparison must be the same expression"
+            rendered.params[..4],
+            [
+                ("after_label".to_owned(), Param::string(AFTER.order_label)),
+                ("after_type".to_owned(), Param::string(AFTER.source_type)),
+                ("after_source".to_owned(), Param::string(AFTER.source_id)),
+                ("after_account".to_owned(), Param::string(AFTER.account_id)),
+            ]
         );
     }
 
     #[test]
     fn the_order_key_falls_back_the_way_the_row_reads() {
-        let sql = list_sql(false, false, false);
+        let sql = listed(None, &[], None);
 
         for value in [
             "email",
