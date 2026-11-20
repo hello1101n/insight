@@ -4,7 +4,7 @@ mod coordination;
 pub mod ddl;
 pub mod error;
 pub mod missing_relation;
-pub mod query;
+pub mod sql;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod topology;
@@ -14,7 +14,7 @@ pub use coordination::{DDL_TASK_TIMEOUT, Unfinished};
 pub use ddl::{Ddl, TableSpec};
 pub use error::Error;
 pub use missing_relation::MissingRelation;
-pub use query::QueryBuilder;
+pub use sql::{Param, Sql};
 pub use topology::Topology;
 
 use clickhouse::Client as ChClient;
@@ -42,10 +42,23 @@ impl Client {
         Self { inner, config }
     }
 
-    /// Use bind parameters (`?`) for all user-supplied values.
-    /// **Never** interpolate values into the SQL string.
+    /// Do not interpolate a value into `sql`. Bind the value by name through
+    /// [`query_sql`](Self::query_sql).
     pub fn query(&self, sql: &str) -> clickhouse::query::Query {
         self.bounded(self.inner.query(sql))
+    }
+
+    /// Returns a query that sends the text of `sql` without changes. The query
+    /// binds each value as the named server-side parameter that its placeholder
+    /// declares.
+    pub fn query_sql(&self, sql: &Sql) -> clickhouse::query::Query {
+        let rendered = sql.render();
+        let query = self.bounded(self.inner.query_raw(&rendered.sql));
+
+        rendered
+            .params
+            .iter()
+            .fold(query, |query, (name, param)| param.bind(query, name))
     }
 
     fn bounded(&self, mut q: clickhouse::query::Query) -> clickhouse::query::Query {
@@ -183,18 +196,6 @@ impl Client {
         Ok(())
     }
 
-    /// Returns a [`QueryBuilder`] scoped to the given tenant.
-    ///
-    /// The builder automatically adds `WHERE insight_tenant_id = ?` and binds the
-    /// tenant ID. All subsequent filters are appended with `AND`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidQuery`] if the table name contains unsafe characters.
-    pub fn tenant_query(&self, table: &str, tenant_id: uuid::Uuid) -> Result<QueryBuilder, Error> {
-        QueryBuilder::new(self.clone(), table, tenant_id)
-    }
-
     #[must_use]
     pub fn inner(&self) -> &ChClient {
         &self.inner
@@ -210,7 +211,6 @@ impl Client {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use uuid::Uuid;
 
     #[test]
     fn new_applies_auth_credentials() {
@@ -266,23 +266,6 @@ mod tests {
     fn inner_exposes_the_raw_handle() {
         let client = Client::new(Config::new("http://localhost:8123", "insight"));
         let _raw = client.inner();
-    }
-
-    #[test]
-    fn tenant_query_scopes_to_the_table() -> Result<(), Error> {
-        let client = Client::new(Config::new("http://localhost:8123", "insight"));
-        let sql = client
-            .tenant_query("gold.pr_cycle_time", Uuid::nil())?
-            .to_sql();
-        assert!(sql.contains("insight_tenant_id"));
-        Ok(())
-    }
-
-    #[test]
-    fn tenant_query_rejects_an_unsafe_table_name() {
-        let client = Client::new(Config::new("http://localhost:8123", "insight"));
-        let err = client.tenant_query("gold.pr; DROP TABLE x", Uuid::nil());
-        assert!(matches!(err, Err(Error::InvalidQuery(_))));
     }
 
     fn create_in(database: &str) -> Ddl {

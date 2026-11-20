@@ -1,5 +1,21 @@
 use super::*;
 
+pub(super) fn window_binds() -> WindowBinds {
+    WindowBinds {
+        tenant: Uuid::from_u128(0x7e),
+        since: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
+        until: NaiveDate::from_ymd_opt(2026, 1, 31).unwrap_or_default(),
+    }
+}
+
+pub(super) fn window_params(binds: &WindowBinds) -> [(String, Param); 3] {
+    [
+        ("tenant".to_owned(), Param::uuid(binds.tenant)),
+        ("since".to_owned(), Param::date(binds.since)),
+        ("until".to_owned(), Param::date(binds.until)),
+    ]
+}
+
 #[test]
 fn the_widest_window_is_the_one_the_message_promises() {
     let window = |since: &str, until: &str| {

@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::{Extension, Query};
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
+use insight_clickhouse::{Param, Sql, sql};
 use serde::{Deserialize, Serialize};
 use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
@@ -15,19 +16,22 @@ use super::super::{AppState, forwarded_authorization, require_admin};
 use super::search::PersonSearch;
 use super::sort::{ActionsSort, Order, PagesSort, PeopleSort, SortKey};
 use super::{
-    NIL_UUID, PAGE_VIEW, SESSION_START, TABLE, VISITS, WINDOW, WindowBinds, admin_only,
-    parse_range, read_error, visitors,
+    NIL_UUID, PAGE_VIEW, SESSION_START, TABLE, VISITS, WindowBinds, admin_only, parse_range,
+    read_error, visitors,
 };
 use crate::domain::date_window::Window;
 
 const BREAKDOWN_LIMIT: u32 = 200;
 
-fn by_page_sql(visitors: &str, order: Order<PagesSort>) -> String {
-    let order = order.clause("");
-    format!(
+fn by_page_sql(binds: &WindowBinds, visitors: &str, order: Order<PagesSort>) -> Sql {
+    let order = Sql::raw(order.clause(""));
+    sql!(
         "SELECT path, count() AS views, {visitors} AS visitors \
-         FROM {TABLE} WHERE {WINDOW} AND event_name = '{PAGE_VIEW}' AND path != '' \
-         GROUP BY path ORDER BY {order} LIMIT {BREAKDOWN_LIMIT}"
+         FROM {TABLE} WHERE {window} AND event_name = '{PAGE_VIEW}' AND path != '' \
+         GROUP BY path ORDER BY {order} LIMIT {BREAKDOWN_LIMIT}",
+        window = binds.window(),
+        visitors = Sql::raw(visitors),
+        order = order,
     )
 }
 
@@ -37,37 +41,25 @@ struct PeopleSearch<'a> {
     rostered: &'a [Uuid],
 }
 
-fn people_query(
-    ch: &insight_clickhouse::Client,
+fn people_sql(
     binds: &WindowBinds,
     order: Order<PeopleSort>,
     search: Option<&PeopleSearch<'_>>,
-) -> clickhouse::query::Query {
-    let mut query = binds.query(ch, &people_sql(order, search));
-    if let Some(search) = search {
-        query = query
-            .bind(binds.tenant.as_str())
-            .bind(search.needle.as_str())
-            .bind(search.needle.as_str())
-            .bind(search.rostered);
-    }
-
-    query.bind(binds.tenant.as_str())
-}
-
-fn people_sql(order: Order<PeopleSort>, search: Option<&PeopleSearch<'_>>) -> String {
-    let named = named_persons();
-    let capped = order.clause("");
-    let joined = order.clause("u.");
-    let matching = search.map_or_else(String::new, |_| {
-        format!(
+) -> Sql {
+    let capped = Sql::raw(order.clause(""));
+    let joined = Sql::raw(order.clause("u."));
+    let matching = search.map_or_else(Sql::default, |search| {
+        sql!(
             " AND (person_id IN (SELECT person_id FROM {named} \
-             WHERE positionCaseInsensitiveUTF8(display_name, ?) > 0 \
-             OR positionCaseInsensitiveUTF8(username, ?) > 0) \
-             OR person_id IN ?)"
+             WHERE positionCaseInsensitiveUTF8(display_name, {needle}) > 0 \
+             OR positionCaseInsensitiveUTF8(username, {needle}) > 0) \
+             OR person_id IN {rostered})",
+            named = named_persons(binds.tenant),
+            needle = Param::string(search.needle.as_str()),
+            rostered = Param::uuids(search.rostered.iter().copied()),
         )
     });
-    format!(
+    sql!(
         "SELECT u.person AS person_id, \
          coalesce(p.display_name, '') AS display_name, \
          coalesce(p.username, '') AS username, \
@@ -76,21 +68,29 @@ fn people_sql(order: Order<PeopleSort>, search: Option<&PeopleSearch<'_>>) -> St
            SELECT person_id AS person, {VISITS} AS visits, \
            countIf(event_name = '{PAGE_VIEW}') AS page_views, \
            max(ts) AS last_ts, toString(last_ts) AS last_seen \
-           FROM {TABLE} WHERE {WINDOW} AND person_id != toUUID('{NIL_UUID}'){matching} \
+           FROM {TABLE} WHERE {window} AND person_id != toUUID('{NIL_UUID}'){matching} \
            GROUP BY person ORDER BY {capped} \
            LIMIT {BREAKDOWN_LIMIT}) AS u \
          LEFT JOIN {named} AS p ON p.person_id = u.person \
-         ORDER BY {joined}"
+         ORDER BY {joined}",
+        window = binds.window(),
+        matching = matching,
+        named = named_persons(binds.tenant),
+        capped = capped,
+        joined = joined,
     )
 }
 
-fn actions_sql(visitors: &str, order: Order<ActionsSort>) -> String {
-    let order = order.clause("");
-    format!(
+fn actions_sql(binds: &WindowBinds, visitors: &str, order: Order<ActionsSort>) -> Sql {
+    let order = Sql::raw(order.clause(""));
+    sql!(
         "SELECT event_name, target, count() AS opens, {visitors} AS people \
-         FROM {TABLE} WHERE {WINDOW} \
+         FROM {TABLE} WHERE {window} \
          AND event_name NOT IN ('{PAGE_VIEW}', '{SESSION_START}') \
-         GROUP BY event_name, target ORDER BY {order} LIMIT {BREAKDOWN_LIMIT}"
+         GROUP BY event_name, target ORDER BY {order} LIMIT {BREAKDOWN_LIMIT}",
+        window = binds.window(),
+        visitors = Sql::raw(visitors),
+        order = order,
     )
 }
 
@@ -236,7 +236,9 @@ pub async fn get_usage_people(
         needle,
         rostered: &rostered,
     });
-    let rows = people_query(&state.ch, &binds, order, search.as_ref())
+    let rows = state
+        .ch
+        .query_sql(&people_sql(&binds, order, search.as_ref()))
         .fetch_all::<UsagePersonRow>()
         .await
         .map_err(read_error)?;
@@ -245,8 +247,8 @@ pub async fn get_usage_people(
     let items = rows.into_iter().map(|row| named(row, &roster)).collect();
 
     Ok(Json(UsagePeopleResponse {
-        since: binds.since,
-        until: binds.until,
+        since: binds.since.to_string(),
+        until: binds.until.to_string(),
         items,
     }))
 }
@@ -262,15 +264,16 @@ pub async fn get_usage_pages(
     let (window, order) = query.plan::<PagesSort>()?;
     let binds = WindowBinds::new(&ctx, &window);
 
-    let items = binds
-        .query(&state.ch, &by_page_sql(&visitors(), order))
+    let items = state
+        .ch
+        .query_sql(&by_page_sql(&binds, &visitors(), order))
         .fetch_all::<UsagePage>()
         .await
         .map_err(read_error)?;
 
     Ok(Json(UsagePagesResponse {
-        since: binds.since,
-        until: binds.until,
+        since: binds.since.to_string(),
+        until: binds.until.to_string(),
         items,
     }))
 }
@@ -286,15 +289,16 @@ pub async fn get_usage_actions(
     let (window, order) = query.plan::<ActionsSort>()?;
     let binds = WindowBinds::new(&ctx, &window);
 
-    let items = binds
-        .query(&state.ch, &actions_sql(&visitors(), order))
+    let items = state
+        .ch
+        .query_sql(&actions_sql(&binds, &visitors(), order))
         .fetch_all::<UsageEvent>()
         .await
         .map_err(read_error)?;
 
     Ok(Json(UsageActionsResponse {
-        since: binds.since,
-        until: binds.until,
+        since: binds.since.to_string(),
+        until: binds.until.to_string(),
         items,
     }))
 }

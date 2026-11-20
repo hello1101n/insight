@@ -1,6 +1,9 @@
+use chrono::NaiveDate;
+use insight_clickhouse::{Param, Sql, sql};
 use serde::Deserialize;
 use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
+use uuid::Uuid;
 
 use super::ADMIN_ONLY;
 use super::error::UsageError;
@@ -26,9 +29,6 @@ const PAGE_VIEW: &str = "page_view";
 const SESSION_START: &str = "session_start";
 
 const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
-
-const WINDOW: &str =
-    "tenant_id = toUUID(?) AND toDate(ts) >= toDate(?) AND toDate(ts) <= toDate(?)";
 
 const VISITS: &str = "uniqExactIf(session_id, session_id != '')";
 
@@ -62,25 +62,27 @@ fn visitors() -> String {
 
 #[derive(Debug)]
 struct WindowBinds {
-    tenant: String,
-    since: String,
-    until: String,
+    tenant: Uuid,
+    since: NaiveDate,
+    until: NaiveDate,
 }
 
 impl WindowBinds {
     fn new(ctx: &SecurityContext, window: &Window) -> Self {
         Self {
-            tenant: ctx.subject_tenant_id().to_string(),
-            since: window.since.to_string(),
-            until: window.until.to_string(),
+            tenant: ctx.subject_tenant_id(),
+            since: window.since,
+            until: window.until,
         }
     }
 
-    fn query(&self, ch: &insight_clickhouse::Client, sql: &str) -> clickhouse::query::Query {
-        ch.query(sql)
-            .bind(self.tenant.as_str())
-            .bind(self.since.as_str())
-            .bind(self.until.as_str())
+    fn window(&self) -> Sql {
+        sql!(
+            "tenant_id = {tenant} AND toDate(ts) >= {since} AND toDate(ts) <= {until}",
+            tenant = Param::uuid(self.tenant),
+            since = Param::date(self.since),
+            until = Param::date(self.until),
+        )
     }
 }
 
