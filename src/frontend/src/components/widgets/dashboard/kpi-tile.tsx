@@ -16,6 +16,7 @@ import {
 import type { KpiTileData } from "@/lib/insight/kpi-row";
 import type { GroupId } from "@/lib/insight/groups";
 import { STATUS_TEXT_CLASS } from "@/lib/status";
+import { TEXT_FIGURE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 export interface KpiTileProps {
@@ -85,7 +86,7 @@ export function KpiTile({
             line below, where it can say what it is comparing against
             instead of leaving "-13%" to be read as either comparison. */}
         <CardTitle className="col-span-full flex w-full flex-wrap items-baseline justify-between gap-x-2 gap-y-1 tabular-nums">
-          <span>{tile.value}</span>
+          <span className={TEXT_FIGURE}>{tile.value}</span>
           {/* Beside the number it describes, not in a block of its own: the
               question "and before that?" is asked here, and an answer one
               scroll away is an answer nobody reads.
@@ -145,7 +146,9 @@ export function KpiTilePlaceholder({ label }: { label?: string }) {
         <CardDescription className="min-w-0 truncate">
           {label ?? " "}
         </CardDescription>
-        <CardTitle className="tabular-nums">—</CardTitle>
+        <CardTitle>
+          <span className={TEXT_FIGURE}>—</span>
+        </CardTitle>
       </CardHeader>
       <CardFooter>
         <Sparkles className="size-3.5 shrink-0" aria-hidden />
