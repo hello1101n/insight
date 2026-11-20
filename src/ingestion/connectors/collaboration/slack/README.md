@@ -40,7 +40,7 @@ The connection check reports the plan, the streams to read and the missing scope
 2. Pick the workspace, name the app (e.g. `Insight Analytics`)
 3. **OAuth & Permissions** → add `team.billing:read`, `users:read`, `users:read.email` under **User Token Scopes**. Add `admin.analytics:read` on Business+ or Enterprise. Add the eight history and read scopes above on Free or Pro.
 4. Install the app by an org admin → copy the resulting OAuth token
-5. Store as `slack_bot_token` in the K8s Secret (field name kept for backward compatibility)
+5. Store the token as `slack_user_token` in the K8s Secret. The connector also reads the old key `slack_bot_token`.
 
 ## Streams
 
@@ -130,7 +130,7 @@ metadata:
     insight.cyberfabric.com/source-id: slack-main
 type: Opaque
 stringData:
-  slack_bot_token: "xoxp-..."       # user token: team.billing:read, users:read, users:read.email, and the plan scopes
+  slack_user_token: "xoxp-..."      # user token: team.billing:read, users:read, users:read.email, and the plan scopes
   slack_start_date: "2026-04-03"    # Earliest analytics date to fetch
 ```
 
@@ -138,7 +138,7 @@ stringData:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `slack_bot_token` | Yes | User OAuth token (`xoxp-*`) with `team.billing:read`, `users:read` and `users:read.email`. Add `admin.analytics:read` on Business+ or Enterprise, and the history and read scopes on Free or Pro. |
+| `slack_user_token` | Yes | User OAuth token (`xoxp-*`). The connector also reads the old key `slack_bot_token` when `slack_user_token` is absent. The token needs `team.billing:read`, `users:read` and `users:read.email`. Add `admin.analytics:read` on Business+ or Enterprise, and the history and read scopes on Free or Pro. |
 | `slack_start_date` | Yes | Earliest analytics date (YYYY-MM-DD). Recommended: 14 days ago. |
 
 ### Automatically injected
