@@ -182,7 +182,7 @@ export function ShareDialog({
             Shared with
           </h3>
           {grants.isPending || put.isPending ? (
-            <Spinner className="size-4" />
+            <Spinner />
           ) : null}
           {grants.isError ? (
             <p role="alert" className={cn(TEXT_BODY, "text-destructive")}>

@@ -101,7 +101,7 @@ function OrphanedDashboardCard({
   onTransfer: () => void;
 }) {
   return (
-    <Card size="sm" className="bg-muted/40">
+    <Card size="sm">
       <CardContent className="flex items-center gap-3">
         <UserX className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="flex min-w-0 flex-1 flex-col">

@@ -33,7 +33,7 @@ export function CumulativeSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {section.description ? (
             <p className="text-xs text-muted-foreground">{section.description}</p>
           ) : null}

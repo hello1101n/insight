@@ -26,11 +26,16 @@ export function scheduleStatusView(
               : i18n.t("connectors.schedule.status.unavailable");
   const Icon =
     status === "applied" ? Check : status === "pending" ? Clock : Minus;
-  const tone =
+  const variant =
     status === "applied"
-      ? "bg-success/15 text-success"
+      ? "success"
       : status === "pending"
-        ? "bg-warning/15 text-warning"
-        : "text-muted-foreground";
-  return { label, Icon, tone, iconClass: "size-3 shrink-0" };
+        ? "warning"
+        : "secondary";
+  const tone = {
+    success: "bg-success/15 text-success",
+    warning: "bg-warning/15 text-warning",
+    secondary: "text-muted-foreground",
+  }[variant];
+  return { label, Icon, variant, tone, iconClass: "size-3 shrink-0" } as const;
 }

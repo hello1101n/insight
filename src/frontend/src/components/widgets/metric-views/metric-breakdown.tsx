@@ -55,8 +55,8 @@ export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
     return (
       <Card className="relative shrink-0">
         <MetricCardActions evidence={evidence} label={metric.label} />
-        <CardHeader className="pr-12 pb-2">
-          <CardTitle className="text-sm font-semibold">
+        <CardHeader>
+          <CardTitle>
             {metric.label}
           </CardTitle>
         </CardHeader>
@@ -85,9 +85,9 @@ export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
   return (
     <Card className="relative shrink-0">
       <MetricCardActions evidence={evidence} label={metric.label} />
-      <CardHeader className="pr-12 pb-2">
-        <CardTitle className="text-sm font-semibold">{metric.label}</CardTitle>
-        <CardDescription className="text-xs">
+      <CardHeader>
+        <CardTitle>{metric.label}</CardTitle>
+        <CardDescription>
           {dimensions.length > 0
             ? `Period total by ${dimensions.join(" / ")}`
             : "Period total"}

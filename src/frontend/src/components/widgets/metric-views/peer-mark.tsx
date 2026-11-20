@@ -147,7 +147,7 @@ export function PeerMark({
       <TooltipTrigger render={<span className="inline-flex">{svg}</span>} />
       <TooltipContent
         side="top"
-        className="flex-col items-start gap-1 text-left leading-relaxed"
+        className="flex-col items-start text-left"
       >
         <p>{describe(spreads, metricLabel)}</p>
         {standing.stats ? (

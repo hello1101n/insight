@@ -96,7 +96,7 @@ function CatalogueGroup({
                   data-planned={planned || undefined}
                   isActive={pathname.startsWith(to)}
                   render={<Link to={to} />}
-                  className={planned ? "text-muted-foreground" : undefined}
+                  className={planned ? "" : undefined}
                 >
                   <Icon />
                   <span>{resolveText(t, label)}</span>

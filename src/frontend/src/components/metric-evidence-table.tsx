@@ -387,24 +387,24 @@ export function MetricEvidenceTable({
       >
         <TableHeader
           role="rowgroup"
-          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)] [&_tr]:border-b-0"
+          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)]"
         >
           <TableRow
             role="row"
-            className="grid w-full border-b-0 hover:bg-transparent"
+            className="grid w-full"
             style={{ gridTemplateColumns: gridTemplate }}
           >
             {numbered ? (
               <TableHead
                 role="columnheader"
-                className="flex h-10 items-center justify-end px-2 py-0 text-muted-foreground"
+                className="flex items-center justify-end"
               >
                 #
               </TableHead>
             ) : null}
             <TableHead
               role="columnheader"
-              className="flex h-10 items-center p-0"
+              className="flex items-center"
             >
               <span className="sr-only">Expand record</span>
             </TableHead>
@@ -430,7 +430,7 @@ export function MetricEvidenceTable({
                         : "none"
                   }
                   className={cn(
-                    "flex h-10 min-w-0 items-center px-3 py-0",
+                    "flex min-w-0 items-center",
                     numeric
                       ? "justify-end text-right"
                       : "justify-start text-left"
@@ -479,7 +479,7 @@ export function MetricEvidenceTable({
                 aria-rowindex={virtualRow.index + 2}
                 aria-expanded={isOpen}
                 onClick={() => toggleRow(key)}
-                className="absolute top-0 left-0 grid w-full cursor-pointer hover:bg-muted/20"
+                className="absolute top-0 left-0 grid w-full cursor-pointer"
                 style={{
                   gridTemplateColumns: gridTemplate,
                   transform: `translateY(${virtualRow.start}px)`,
@@ -488,14 +488,14 @@ export function MetricEvidenceTable({
                 {numbered ? (
                   <TableCell
                     role="cell"
-                    className="flex h-11 items-center justify-end px-2 py-0 text-muted-foreground tabular-nums"
+                    className="flex items-center justify-end tabular-nums"
                   >
                     {virtualRow.index + 1}
                   </TableCell>
                 ) : null}
                 <TableCell
                   role="cell"
-                  className="flex h-11 items-center justify-center p-0"
+                  className="flex items-center justify-center"
                 >
                   <Button
                     type="button"
@@ -505,7 +505,6 @@ export function MetricEvidenceTable({
                     aria-label={
                       isOpen ? "Hide full record" : "Show full record"
                     }
-                    className="text-muted-foreground"
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleRow(key);
@@ -526,7 +525,7 @@ export function MetricEvidenceTable({
                       role="cell"
                       key={column.key}
                       className={cn(
-                        "flex h-11 min-w-0 items-center px-3 py-0 tabular-nums",
+                        "flex min-w-0 items-center tabular-nums",
                         column.type === "number" && "justify-end text-right"
                       )}
                     >
@@ -560,7 +559,7 @@ export function MetricEvidenceTable({
                     // INVARIANT: selecting text here must not reach the row's
                     // expand toggle.
                     onClick={(event) => event.stopPropagation()}
-                    className="h-auto cursor-auto border-t bg-muted/40 px-3 py-3"
+                    className="h-auto cursor-auto"
                     // The record entire, under the row it belongs to: a track
                     // of its own across every column.
                     style={{ gridColumn: "1 / -1" }}

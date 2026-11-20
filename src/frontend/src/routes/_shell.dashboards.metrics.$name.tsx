@@ -82,7 +82,7 @@ function MetricPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className={TEXT_HEADING}>Query</CardTitle>
+          <CardTitle>Query</CardTitle>
         </CardHeader>
         <CardContent>
           <MetricSummary definition={metric.data.definition} />
@@ -111,7 +111,7 @@ function Run({ id, windowed }: { id: string; windowed: boolean }) {
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center gap-2">
-        <CardTitle className={TEXT_HEADING}>Result</CardTitle>
+        <CardTitle>Result</CardTitle>
         {windowed ? (
           <span className="ms-auto flex flex-wrap items-center gap-1">
             <Window

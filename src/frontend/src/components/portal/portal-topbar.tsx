@@ -104,7 +104,7 @@ function ViewFilters() {
             />
             <TooltipContent
               side="bottom"
-              className="max-w-xs text-xs leading-relaxed"
+              className="max-w-xs"
             >
               {t("common.cohort.tooltip")}
             </TooltipContent>

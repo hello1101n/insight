@@ -171,7 +171,7 @@ export function CustomChat({ onCreated }: CustomChatProps) {
                       "me-auto flex items-center gap-2 px-1"
                     )}
                   >
-                    <Spinner className="size-3" /> Thinking…
+                    <Spinner compact /> Thinking…
                   </span>
                 )}
               </li>
@@ -192,7 +192,7 @@ export function CustomChat({ onCreated }: CustomChatProps) {
           data-testid="chat-input"
           value={message}
           rows={2}
-          className="max-h-40 min-h-11 flex-1 resize-none bg-background"
+          className="max-h-40 flex-1 resize-none"
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -209,7 +209,7 @@ export function CustomChat({ onCreated }: CustomChatProps) {
           aria-label="Send"
           // `size="icon"` is 50x36 here: a wide box around a plane, 8px
           // shorter than the input beside it. Square it and the two line up.
-          className="size-10 shrink-0 text-primary disabled:opacity-40"
+          className="shrink-0"
           onClick={() => void handleSend()}
           disabled={sendChat.isPending || message.trim() === ""}
           icon={<SendHorizontal className="size-5 fill-current stroke-1" />}

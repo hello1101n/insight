@@ -181,7 +181,7 @@ export function MetricsView() {
           />
           <PopoverContent
             align="end"
-            className="max-h-[70svh] w-[min(56rem,90vw)] overflow-y-auto p-0"
+            className="max-h-[70svh] w-[min(56rem,90vw)] overflow-y-auto"
           >
             <div className="flex items-center justify-end gap-2 border-b px-4 py-2">
               <Button

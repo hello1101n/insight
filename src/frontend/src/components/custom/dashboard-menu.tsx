@@ -105,7 +105,6 @@ export function DashboardMenu({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${name}`}
               icon={<Ellipsis />}
             />

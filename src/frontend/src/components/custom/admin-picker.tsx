@@ -20,7 +20,7 @@ export function AdminPicker({
 }) {
   const admins = useAdmins();
 
-  if (admins.isPending) return <Spinner className="mx-auto size-4" />;
+  if (admins.isPending) return <Spinner className="mx-auto" />;
 
   // INVARIANT: a full page may leave administrators unread, and offering part
   // of them would answer "no match" for someone who is one.

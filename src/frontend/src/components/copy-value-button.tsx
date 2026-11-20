@@ -61,7 +61,7 @@ export function CopyValueButton({
       variant="ghost"
       size="sm"
       className={cn(
-        "shrink-0 text-muted-foreground hover:text-foreground",
+        "shrink-0",
         className,
       )}
       aria-label={copied ? copiedLabel : `${copyLabel} ${value}`}

@@ -1,6 +1,6 @@
 /** See docs/testing/storybook-component-tests.md. */
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { expect } from "storybook/test";
 
 import type {
@@ -248,6 +248,22 @@ export const NewAlert: Story = {
 export const EditAlert: Story = {
   args: { which: "edit" },
   decorators: at(CARD_PX_WIDE),
+};
+
+/** The check of the condition has not answered yet. */
+export const EditAlertChecking: Story = {
+  args: { which: "edit" },
+  decorators: at(CARD_PX_WIDE),
+  parameters: {
+    msw: {
+      handlers: [
+        http.post("*/api/v3/v1/alerts/preview", async () => {
+          await delay("infinite");
+        }),
+        ...handlers,
+      ],
+    },
+  },
 };
 
 export const TestBuilderFitsOnAPhone: Story = {

@@ -93,7 +93,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
           render={
             <ToggleGroupItem
               value="custom"
-              className="gap-1.5"
               aria-label={custom ? rangeLabel(selected) : "Custom date range"}
             >
               <CalendarIcon className="size-3.5" />
@@ -105,7 +104,7 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
         />
         <PopoverContent
           align="end"
-          className="w-auto gap-0 p-0"
+          className="w-auto"
           onKeyDown={keepNavigationKeysInside}
         >
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
@@ -119,7 +118,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
             fixedWeeks
             endMonth={latestEnd}
             disabled={{ after: latestEnd }}
-            className="p-3"
             resetOnSelect
             showOutsideDays={false}
             selected={showing}

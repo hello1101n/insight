@@ -130,7 +130,7 @@ export function PersonHeader({ person }: { person: string }) {
               className="max-h-80 w-64 overflow-y-auto"
             >
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                <DropdownMenuLabel>
                   {supervisorName ? `${supervisorName}'s team` : "Team"}
                 </DropdownMenuLabel>
                 {peers.map((p) => {
@@ -140,7 +140,6 @@ export function PersonHeader({ person }: { person: string }) {
                     <DropdownMenuItem
                       key={p.person_id}
                       onClick={() => goPerson(p.person_id)}
-                      className={cn(active && "font-medium")}
                     >
                       <Check
                         className={cn(
@@ -168,7 +167,6 @@ export function PersonHeader({ person }: { person: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1 text-muted-foreground"
             onClick={() => goPerson(supervisorPersonId)}
             icon={<ChevronUp className="size-3.5" />}
           >
@@ -179,7 +177,6 @@ export function PersonHeader({ person }: { person: string }) {
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
             onClick={() => goTeam(teamTarget)}
             icon={<Users className="size-3.5" />}
           >

@@ -163,7 +163,7 @@ export function AttentionList({
       </p>
 
       <Card>
-        <CardContent className="p-3 text-sm">{summary}</CardContent>
+        <CardContent>{summary}</CardContent>
       </Card>
 
       {themes.length > 0 ? (

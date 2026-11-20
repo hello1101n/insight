@@ -36,9 +36,8 @@ export function ConfirmRemove({
     <span className="flex flex-col items-end gap-1">
       <span className="flex items-center gap-1">
         <Button
-          variant="ghost"
+          variant="destructive"
           size="sm"
-          className="text-destructive"
           onClick={onRemove}
           loading={pending}
         >
