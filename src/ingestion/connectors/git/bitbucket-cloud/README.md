@@ -298,9 +298,17 @@ source that shares it.
 | `pull_requests` (participants) | `bitbucket_cloud__pull_requests_reviewers` | `class_git_pull_requests_reviewers` |
 | `pull_request_comments` | `bitbucket_cloud__pull_requests_comments` | `class_git_pull_requests_comments` |
 | `pull_request_commits` | `bitbucket_cloud__pull_requests_commits` | `class_git_pull_requests_commits` |
+| `pipelines` | `bitbucket_cloud__ci_runs` | `class_git_ci_runs` |
+| `deployments` | `bitbucket_cloud__deployments` | `class_git_deployments` |
+| `deployments` | `bitbucket_cloud__deployment_events` | `class_git_deployment_events` |
 
-`pipelines`, `deployments` and `workspace_members` land in bronze only; no class
-consumes them yet. `repository_visibility` is diagnostic and stays that way: one
+Bronze keeps only the latest state of a pipeline or a deployment. The CI models
+add the rerun counter (`run_number`) or the state version (`version`) to the row
+key, so silver keeps one row per run attempt and one event per deployment state
+that a sync observed.
+
+`workspace_members` lands in bronze only; no class consumes it yet.
+`repository_visibility` is diagnostic and stays that way: one
 row per workspace recording that the token reached something, fed to no class.
 
 ## Not in git
