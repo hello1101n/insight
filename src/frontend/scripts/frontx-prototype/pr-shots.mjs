@@ -1,4 +1,4 @@
-// Spike: paired screenshots, current against FrontX, for the pull request.
+// Prototype: paired screenshots, current against FrontX, for the pull request.
 // Every file name ends in -current.png or -frontx.png.
 // Usage: node pr-shots.mjs <origin> <out-dir>
 import fs from "node:fs";

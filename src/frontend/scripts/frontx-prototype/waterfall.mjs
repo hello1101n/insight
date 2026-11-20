@@ -1,4 +1,4 @@
-// Spike: the request phases and a CPU profile of one board load, to name the limiter.
+// Prototype: the request phases and a CPU profile of one board load, to name the limiter.
 // Usage: node waterfall.mjs <origin> <board> [frontx: 0|1]
 import { args, BOARDS, boardUrl, chromium, drawnProbe, waitDrawn } from "./common.mjs";
 

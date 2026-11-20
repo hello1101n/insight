@@ -2,9 +2,9 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Connect, Plugin } from "vite";
 
-// Spike: serves the FrontX widget bundles under /widgets/ for ?frontx=1.
+// Prototype: serves the FrontX widget bundles under /widgets/ for ?frontx=1.
 const ENV = "FRONTX_WIDGETS_DIR";
-const UNSET = `${ENV} is not set. Build the FrontX widget bundles and set ${ENV} to their dist folder (docs/frontx-dashboards-spike.md).`;
+const UNSET = `${ENV} is not set. Build the FrontX widget bundles and set ${ENV} to their dist folder (docs/frontx-dashboards-prototype.md).`;
 const TYPES: Record<string, string> = {
   ".js": "text/javascript",
   ".json": "application/json",

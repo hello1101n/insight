@@ -71,7 +71,7 @@ export interface DashboardSearch {
   range?: string;
   /** The widget drawn over the whole window, by its id. */
   widget?: string;
-  /** Spike: draw the board through the FrontX dashboard template. */
+  /** Prototype: draw the board through the FrontX dashboard template. */
   frontx?: 1;
 }
 

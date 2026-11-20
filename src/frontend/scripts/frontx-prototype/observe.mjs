@@ -1,4 +1,4 @@
-// Spike: the current renderer against FrontX on the mock boards.
+// Prototype: the current renderer against FrontX on the mock boards.
 // Time to the last cell drawn, heap, requests by kind, a range change, a
 // theme switch and a board switch. Writes report.json and screenshots.
 // Usage: node observe.mjs <origin> <out-dir> [runs]

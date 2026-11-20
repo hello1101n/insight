@@ -1,4 +1,4 @@
-// Spike: the share of pixels that differ between same-named PNG files in two folders.
+// Prototype: the share of pixels that differ between same-named PNG files in two folders.
 // A pixel differs when its summed RGB distance is above 30. Writes diff-<name>.png.
 // Usage: node pixdiff.mjs <dir-a> <dir-b> <out-dir>
 import fs from "node:fs";

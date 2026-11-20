@@ -1,6 +1,6 @@
-# FrontX dashboards spike
+# FrontX dashboards prototype
 
-This spike is throwaway code. It examines one decision: should Insight move the `/dashboards/<id>` pages of the custom v3 dashboards to the FrontX dashboard template? All data in this document comes from the mock service worker. No number or example comes from a deployed environment.
+This prototype is throwaway code. It examines one decision: should Insight move the `/dashboards/<id>` pages of the custom v3 dashboards to the FrontX dashboard template? All data in this document comes from the mock service worker. No number or example comes from a deployed environment.
 
 ## Question and answer
 
@@ -8,7 +8,7 @@ The question: can the FrontX dashboard template show the saved Insight dashboard
 
 The answer: it partly works. The FrontX renderer shows all six Insight widget kinds, headings and texts from the existing run endpoint, with no console errors. Stacked bars, percent values and the larger view are wrong, and a dashboard takes about twice as long to draw. Do not start a real build until the FrontX team answers the blocker questions.
 
-## How to run the spike
+## How to run the prototype
 
 You need Node 24.14 or later, pnpm, and a clone of `gears-frontx-templates` (upstream `constructorfabric/gears-frontx-templates`).
 
@@ -42,9 +42,9 @@ You need Node 24.14 or later, pnpm, and a clone of `gears-frontx-templates` (ups
 
 If `FRONTX_WIDGETS_DIR` is not set, the dev server writes a warning. The `?frontx=1` page then shows a message that names the variable.
 
-The scripts in `scripts/frontx-spike/` repeat the measurements. Each script takes the server origin and an output folder as arguments. For example, `node scripts/frontx-spike/observe.mjs http://localhost:5176 /tmp/frontx 5`.
+The scripts in `scripts/frontx-prototype/` repeat the measurements. Each script takes the server origin and an output folder as arguments. For example, `node scripts/frontx-prototype/observe.mjs http://localhost:5176 /tmp/frontx 5`.
 
-### Spike-only changes
+### Prototype-only changes
 
 Do not merge these changes. They exist only to compare the two renderers.
 
@@ -75,7 +75,7 @@ Do not merge these changes. They exist only to compare the two renderers.
 
 ## Bumps log
 
-The entries are in the order the spike hit them.
+The entries are in the order the prototype hit them.
 
 1. **Insight has no route for widget bundles.**
    - What happened: the FrontX dashboard loads each widget bundle at runtime from `/widgets/`.
@@ -95,7 +95,7 @@ The entries are in the order the spike hit them.
    - Real build: a FrontX change. The root must load or replace one dashboard at runtime, and a root must have a dispose function.
 5. **The dashboard packages are not published.**
    - What happened: the two template packages are private. npm does not have them.
-   - Workaround: the spike copies the dashboard root package into `vendor/`.
+   - Workaround: the prototype copies the dashboard root package into `vendor/`.
    - Real build: a FrontX change (publish the packages), or an Insight process to update a vendored copy.
 6. **The packages pin exact versions.**
    - What happened: the root package pins React 19.2.4 and ui-kit 0.5.0. Insight uses React 19.3.1 and ui-kit 0.5.1.
@@ -103,11 +103,11 @@ The entries are in the order the spike hit them.
    - Real build: a FrontX change (peer ranges).
 7. **Two exports have the same name.**
    - What happened: the package index exports the `Dashboard` component, which hides the `Dashboard` contract type.
-   - Workaround: the spike imports the types from `@gears-frontx/frontx-dashboard-root/contract`.
+   - Workaround: the prototype imports the types from `@gears-frontx/frontx-dashboard-root/contract`.
    - Real build: a FrontX change (rename one of them).
 8. **The TypeScript source fails an Insight compiler option.**
    - What happened: the package ships TypeScript source. `tsc -b` reported seven errors: `erasableSyntaxOnly` rejects the constructor parameter properties in `binding.ts` and `registry.ts`.
-   - Workaround: the spike sets `erasableSyntaxOnly` to `false`.
+   - Workaround: the prototype sets `erasableSyntaxOnly` to `false`.
    - Real build: a FrontX change (ship JavaScript and declaration files, or use only erasable syntax).
 9. **The served file type is too narrow.**
    - What happened: `ServedFile.instances` is `Record<string, unknown>[]`. The contract `Dashboard` interface does not match that type.
@@ -116,7 +116,7 @@ The entries are in the order the spike hit them.
 10. **The router read the switch as a number.**
     - What happened: TanStack Router parses `?frontx=1` as the number 1. The search check accepted only a string, so the page stayed on the current renderer.
     - Workaround: the search check accepts the number.
-    - Real build: nothing. The switch is spike-only.
+    - Real build: nothing. The switch is prototype-only.
 11. **CEL types both branches of a conditional.**
     - What happened: every cell failed with "Ternary branches must have the same type". A nullable number has a `null` branch and a `double` branch.
     - Workaround: both branches go through `dyn()`.
@@ -151,7 +151,7 @@ The entries are in the order the spike hit them.
     - Real build: nothing.
 19. **The preview server answered asset requests with 404.**
     - What happened: `vite preview` answered 71 requests for each page load under `/dashboards/assets/` with 404. Both renderers had them.
-    - Workaround: none. They come from the relative asset base of the Insight build, not from FrontX. The spike did not examine them further.
+    - Workaround: none. They come from the relative asset base of the Insight build, not from FrontX. The prototype did not examine them further.
     - Real build: nothing for FrontX.
 20. **The larger view opens under the sidebar.**
     - What happened: the larger view dialog stays inside the dashboard element. The Insight `main` element has `isolation: isolate`, so the sidebar paints over the left part of the dialog. The dialog title is not visible.
@@ -166,17 +166,17 @@ The entries are in the order the spike hit them.
 
 The list starts with the most important blocker.
 
-| Rank | Blocker                                                                                                                                                     | Owner                                         | Effect                                        |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
-| 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                          | FrontX                                        | Blocks a real build                           |
-| 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.              | FrontX (or Insight, with grouped answers)     | Blocks a real build                           |
-| 3    | The larger view opens under the Insight sidebar.                                                                                                            | FrontX (or Insight)                           | Blocks a real build                           |
-| 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                    | FrontX                                        | Blocks a real build                           |
-| 5    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                 | FrontX                                        | Quality gap                                   |
-| 6    | Percent columns and other value formats are known only at run time.                                                                                         | Insight (or FrontX)                           | Quality gap                                   |
-| 7    | The admin drilldown and the missing-column message are not available.                                                                                       | Insight and FrontX                            | Quality gap                                   |
-| 8    | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The spike did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work |
-| 9    | Widget texts are English only, cells have fixed heights, and the grid holds 500 rows at most.                                                               | FrontX                                        | Quality gap                                   |
+| Rank | Blocker                                                                                                                                                         | Owner                                         | Effect                                        |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
+| 1    | The root cannot load, replace or release one dashboard at runtime.                                                                                              | FrontX                                        | Blocks a real build                           |
+| 2    | A transform cannot group rows, and `render.series` cannot style series that come from the data. Bar widgets with a `series` column draw wrong.                  | FrontX (or Insight, with grouped answers)     | Blocks a real build                           |
+| 3    | The larger view opens under the Insight sidebar.                                                                                                                | FrontX (or Insight)                           | Blocks a real build                           |
+| 4    | The packages are private, ship TypeScript source and pin exact versions.                                                                                        | FrontX                                        | Blocks a real build                           |
+| 5    | A dashboard takes longer to draw, uses more memory and loads more code. See "Measurements".                                                                     | FrontX                                        | Quality gap                                   |
+| 6    | Percent columns and other value formats are known only at run time.                                                                                             | Insight (or FrontX)                           | Quality gap                                   |
+| 7    | The admin drilldown and the missing-column message are not available.                                                                                           | Insight and FrontX                            | Quality gap                                   |
+| 8    | Deployment needs the `/widgets/` route, a CSP that allows `blob:` scripts, and a bundle base for the `/exp/<name>/` previews. The prototype did not test a CSP. | Insight (FrontX for a bundle base at runtime) | Blocks deployment until Insight does the work |
+| 9    | Widget texts are English only, cells have fixed heights, and the grid holds 500 rows at most.                                                                   | FrontX                                        | Quality gap                                   |
 
 ## Gaps against the current dashboards
 
@@ -193,9 +193,9 @@ The list starts with the most important blocker.
 
 The measurements compare the two renderers on the two mock dashboards. They come from a local mock build, so the absolute numbers are not production numbers. The differences between the renderers are the result.
 
-How the spike measured:
+How the prototype measured:
 
-- A production build of the spike ran under `vite preview` on localhost. A temporary local change started the mock service worker in that build.
+- A production build of the prototype ran under `vite preview` on localhost. A temporary local change started the mock service worker in that build.
 - Headless Chromium from Playwright 1.62.1 opened each page at 1440 x 2400 pixels.
 - Each renderer had one warm-up load. Then each renderer had five loads for each dashboard and each theme. The two renderers alternated.
 - The machine has 12 cores. Other work ran on it, and the load average was about 14 during the runs.

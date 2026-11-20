@@ -82,7 +82,7 @@ const dashboards: Record<string, MockDashboard> = {
     owner: LEAVER,
     grants: [granted(EVERYONE, "viewer", LEAVER)],
   },
-  // Spike: one board with every widget kind, a heading, a text and a window.
+  // Prototype: one board with every widget kind, a heading, a text and a window.
   "delivery-pulse": {
     name: "Delivery pulse",
     body: {

@@ -1,4 +1,4 @@
-// Spike: helpers the FrontX measurement scripts share.
+// Prototype: helpers the FrontX measurement scripts share.
 import { chromium } from "playwright";
 
 export { chromium };

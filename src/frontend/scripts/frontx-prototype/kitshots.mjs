@@ -1,4 +1,4 @@
-// Spike: screenshots of current pages, to compare two ui-kit versions with pixdiff.mjs.
+// Prototype: screenshots of current pages, to compare two ui-kit versions with pixdiff.mjs.
 // Usage: node kitshots.mjs <origin> <out-dir>
 import fs from "node:fs";
 import path from "node:path";

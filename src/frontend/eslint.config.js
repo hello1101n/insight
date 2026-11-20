@@ -13,7 +13,7 @@ export default defineConfig([
     ".v2-extras",
     "public",
     "src/routeTree.gen.ts",
-    // Spike: a copy of the FrontX dashboard root package, not Insight code.
+    // Prototype: a copy of the FrontX dashboard root package, not Insight code.
     "vendor",
   ]),
   {

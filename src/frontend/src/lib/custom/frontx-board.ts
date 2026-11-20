@@ -23,7 +23,7 @@ import { dashboardItems } from "@/lib/custom/dashboard-items";
 import { drawsBucket } from "@/lib/custom/draws-bucket";
 
 /*
- * Spike: an Insight dashboard as a FrontX dashboard file.
+ * Prototype: an Insight dashboard as a FrontX dashboard file.
  *
  * Every widget keeps its own run request. The host answers it with the run
  * result plus `at`, each column's position, since CEL has no list indexOf.

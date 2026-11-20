@@ -1,4 +1,4 @@
-// Spike: open the FrontX larger view and data view, count the run requests each
+// Prototype: open the FrontX larger view and data view, count the run requests each
 // sends, and list the ancestors that decide where the larger view paints.
 // Usage: node larger.mjs <origin> <out-dir>
 import fs from "node:fs";
