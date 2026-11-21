@@ -79,6 +79,9 @@ spec:
           requests: {cpu: 50m, memory: 128Mi}
           limits: {cpu: 500m, memory: 512Mi}
       volumes:
+{{- if .Values.connectors.stageAdmission.enabled }}
+        {{- include "insight.admission.tokenVolume" . | trimPrefix "volumes:\n" | nindent 6 }}
+{{- end }}
         - name: identity-resolution-config
           configMap:
             name: {{ printf "%s-gears-config" (include "insight.identityResolution.host" .) | quote }}

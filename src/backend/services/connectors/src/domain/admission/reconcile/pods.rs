@@ -192,9 +192,9 @@ pub(super) async fn observe(state: &AppState, row: &StageRow) -> Result<Sample> 
             ),
         )
     };
-    let pods = Api::<Pod>::namespaced(client.clone(), namespace)
-        .list(&ListParams::default().labels(&selector))
-        .await?;
+    let api = Api::<Pod>::namespaced(client.clone(), namespace);
+    let params = ListParams::default().labels(&selector);
+    let pods = tokio::time::timeout(super::PERIOD, api.list(&params)).await??;
     let mut s = Sample::default();
     for pod in pods.items {
         if !bronze
@@ -234,7 +234,11 @@ pub(super) async fn observe(state: &AppState, row: &StageRow) -> Result<Sample> 
         }
         if running
             && let Some(name) = &pod.metadata.name
-            && let Some(usage) = metrics(client.clone(), namespace, name).await
+            && let Ok(Some(usage)) = tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                metrics(client.clone(), namespace, name),
+            )
+            .await
         {
             s.memory = Some(s.memory.unwrap_or_default().saturating_add(usage.memory));
             s.cpu = Some(s.cpu.unwrap_or_default().saturating_add(usage.cpu));

@@ -53,6 +53,7 @@ spec:
       # layer for a connector. 30m caps were observed killing the
       # job on hubspot full-refresh.
 {{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
       {{- include "insight.admission.workMetadata" . | nindent 6 }}
 {{- end }}
       activeDeadlineSeconds: 7200

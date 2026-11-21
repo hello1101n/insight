@@ -120,6 +120,7 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
               [
                 "queued",
                 "waiting_pod",
+                "placement_overdue",
                 "stopping_pod_wait",
                 "waiting_clickhouse",
                 "wait_warning",

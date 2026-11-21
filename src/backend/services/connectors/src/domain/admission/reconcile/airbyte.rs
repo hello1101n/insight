@@ -53,9 +53,9 @@ pub(super) async fn terminal_job(
         .client
         .clone()
         .context("missing Kubernetes client")?;
-    let creds = Api::<Secret>::namespaced(client, &state.cluster.airbyte_namespace)
-        .get(&config.secret)
-        .await?
+    let secrets = Api::<Secret>::namespaced(client, &state.cluster.airbyte_namespace);
+    let creds = tokio::time::timeout(super::PERIOD, secrets.get(&config.secret))
+        .await??
         .data
         .context("missing Airbyte credentials")?;
     let read = |key: &str| -> Result<&str> {

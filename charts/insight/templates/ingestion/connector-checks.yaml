@@ -49,6 +49,7 @@ spec:
           - name: clickhouse_user
             default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
 {{- if .Values.connectors.stageAdmission.enabled }}
+      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
       {{- include "insight.admission.workMetadata" . | nindent 6 }}
 {{- end }}
       activeDeadlineSeconds: 1800

@@ -67,6 +67,10 @@ volumeMounts:
 {{- end }}
 
 {{- define "insight.admission.workArgs" -}}
+- name: admission_connector
+  value: "{{`{{inputs.parameters.data_source}}`}}"
+- name: admission_source_id
+  value: "{{`{{inputs.parameters.insight_source_id}}`}}"
 - name: admission_stage
   value: {{ printf "{{=inputs.parameters.admission_managed == 'true' ? '%s' : ''}}" . | quote }}
 {{- $stage := . }}
@@ -77,13 +81,30 @@ volumeMounts:
 {{- end }}
 
 {{- define "insight.admission.workInputs" -}}
-{{- range list "admission_stage" "cpu_millis" "memory_bytes" }}
+- name: admission_start_guard
+  default: "workflow-v1"
+{{- range list "admission_connector" "admission_source_id" "admission_stage" "cpu_millis" "memory_bytes" }}
 - name: {{ . }}
   default: ""
 {{- end }}
 {{- end }}
 
 {{- define "insight.admission.workMetadata" -}}
+initContainers:
+  - name: authorize-work-start
+    image: {{ required "ingestion.toolboxImage is required" .Values.ingestion.toolboxImage | quote }}
+    imagePullPolicy: IfNotPresent
+    command: [python3, /ingestion/scripts/stage_admission.py, work-start]
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+    {{- include "insight.admission.tokenMount" . | nindent 4 }}
+    env:
+      {{- include "insight.admission.clientEnv" . | nindent 6 }}
+      - name: ADMISSION_STAGE
+        value: "{{`{{inputs.parameters.admission_stage}}`}}"
+      - name: ADMISSION_ATTEMPT
+        value: "1"
 metadata:
   labels:
     insight.cyberfabric.com/stage: "{{`{{inputs.parameters.admission_stage}}`}}"

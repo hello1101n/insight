@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::time::Duration;
+
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, FromQueryResult,
@@ -5,10 +8,15 @@ use sea_orm::{
 };
 use serde::Serialize;
 
-use super::{Observation, Request, StageRow};
+use super::{Observation, Request, StageRow, capacity::Snapshot};
 
 const MIB: u64 = 1024 * 1024;
-const FIELDS: &str = "s.id,s.sync_id,r.workflow_name,r.connector,r.source_id,s.reason,s.stage,s.attempt,s.status,s.decision,s.estimated_bytes,s.cold,s.queued_at,s.started_at,s.finished_at,s.granted_at,s.airbyte_job_id,s.connection_id,s.airbyte_claimed";
+const COLD_MIN_BYTES: u64 = 256 * MIB;
+const GRANTS_PER_CYCLE: usize = 32;
+
+// Wait for the database write lock without using up the pool needed by readers.
+static WRITE_QUEUE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+const FIELDS: &str = "s.id,s.sync_id,r.workflow_name,r.connector,r.source_id,s.reason,s.stage,s.attempt,s.status,s.decision,s.estimated_bytes,(s.cold OR (s.custom_selection IS NULL AND s.stage IN ('transform-jira-staging','transform-jira-silver'))) AS cold,s.queued_at,s.started_at,s.finished_at,s.granted_at,s.airbyte_job_id,s.connection_id,s.airbyte_claimed";
 const JOIN: &str = " FROM ingestion_stage_attempts s JOIN ingestion_runs r ON r.sync_id=s.sync_id ";
 const TERMINAL: &str = "'succeeded','failed','cancelled','wait_timeout'";
 
@@ -67,22 +75,27 @@ struct Saved {
     pod_cpu: u32,
     pod_memory: u64,
     airbyte_claimed: bool,
+    airbyte_sender: Option<String>,
     airbyte_job_id: Option<String>,
 }
 
 async fn locked(db: &DatabaseConnection, stand: &str) -> Result<DatabaseTransaction, WriteError> {
-    let tx = db.begin().await?;
-    tx.execute_raw(sql(
-        "INSERT INTO ingestion_stands(stand) VALUES(?) ON DUPLICATE KEY UPDATE stand=VALUES(stand)",
-        vec![stand.into()],
-    ))
-    .await?;
-    tx.query_one_raw(sql(
-        "SELECT stand FROM ingestion_stands WHERE stand=? FOR UPDATE",
-        vec![stand.into()],
-    ))
-    .await?;
-    Ok(tx)
+    let acquire = async {
+        let _turn = WRITE_QUEUE
+            .acquire()
+            .await
+            .map_err(|_| sea_orm::DbErr::Custom("admission write queue closed".into()))?;
+        let tx = db.begin().await?;
+        tx.execute_raw(sql(
+            "INSERT INTO ingestion_stands(stand) VALUES(?) ON DUPLICATE KEY UPDATE stand=VALUES(stand)",
+            vec![stand.into()],
+        ))
+        .await?;
+        Ok(tx)
+    };
+    tokio::time::timeout(Duration::from_secs(10), acquire)
+        .await
+        .map_err(|_| sea_orm::DbErr::Custom("admission write lock timed out".into()))?
 }
 
 fn key(req: &Request) -> Vec<Value> {
@@ -98,7 +111,7 @@ async fn saved(
     stand: &str,
     tenant: &str,
 ) -> Result<Option<Saved>, WriteError> {
-    let row=Saved::find_by_statement(sql(format!("SELECT r.mode_signature,s.status AS state,s.decision,s.pod_cpu,s.pod_memory,r.status AS run_status,r.stand,r.tenant,r.source_id,r.connector,r.workflow_name,s.connection_id,s.airbyte_claimed,s.airbyte_job_id
+    let row=Saved::find_by_statement(sql(format!("SELECT r.mode_signature,s.status AS state,s.decision,s.pod_cpu,s.pod_memory,r.status AS run_status,r.stand,r.tenant,r.source_id,r.connector,r.workflow_name,s.connection_id,s.airbyte_claimed,s.airbyte_job_id,s.airbyte_sender
               {JOIN}
               WHERE s.sync_id=?
               AND s.stage=?
@@ -138,68 +151,92 @@ fn margin(v: u64) -> u64 {
     v.saturating_add(v.div_ceil(4))
 }
 #[derive(FromQueryResult)]
-struct Used {
+struct ActiveStage {
+    id: u64,
+    stage: String,
     estimated_bytes: u64,
     cold: bool,
+    connection_id: Option<String>,
 }
 
-async fn occupied(
-    tx: &DatabaseTransaction,
-    stand: &str,
-) -> Result<(u64, bool, bool), sea_orm::DbErr> {
-    let active = Used::find_by_statement(sql(
-        format!(
-            "SELECT s.estimated_bytes,s.cold
-              {JOIN}
-              WHERE r.stand=?
-              AND s.granted_at IS NOT NULL
-              AND s.status NOT IN ({TERMINAL})"
-        ),
-        vec![stand.into()],
-    ))
-    .all(tx)
-    .await?;
-    Ok((
-        active
-            .iter()
-            .fold(0u64, |a, r| a.saturating_add(r.estimated_bytes)),
-        !active.is_empty(),
-        active.iter().any(|r| r.cold),
-    ))
-}
-fn fits(candidate: &StageRow, capacity: u64, used: (u64, bool, bool)) -> bool {
-    capacity > 0
-        && !used.2
-        && !(candidate.cold && used.1)
-        && (candidate.cold || candidate.estimated_bytes <= capacity.saturating_sub(used.0))
+#[derive(Default)]
+struct Occupied {
+    ids: HashSet<u64>,
+    bytes: u64,
+    any: bool,
+    cold: bool,
+    connections: HashSet<String>,
+    writers: HashSet<&'static str>,
 }
 
-async fn candidate(
-    tx: &DatabaseTransaction,
-    stand: &str,
-    capacity: u64,
-) -> Result<Option<StageRow>, sea_orm::DbErr> {
-    let used = occupied(tx, stand).await?;
-    let queue = StageRow::find_by_statement(sql(
-        format!(
-            "SELECT {FIELDS}
-              {JOIN}
-              WHERE r.stand=?
-              AND r.status IS NULL
-              AND s.status='queued'
-              AND NOT EXISTS (
-                  SELECT 1 FROM ingestion_stage_attempts active
-                  WHERE active.stand=r.stand AND active.connection_id=s.connection_id
-                  AND active.granted_at IS NOT NULL AND active.status NOT IN ({TERMINAL})
-              )
-              AND s.queued_at >= UTC_TIMESTAMP(3)-INTERVAL 6 HOUR
-              ORDER BY s.queued_at,s.id"
-        ),
+// All staging selections build identity.identity_inputs. Downstream selections intersect
+// on shared Silver/Gold tables. The resolver publishes identity tables independently.
+fn writer(stage: &str) -> Option<&'static str> {
+    match stage {
+        "transform-staging" | "transform-jira-staging" => Some("staging"),
+        "transform-legacy" | "transform-jira-silver" => Some("downstream"),
+        "identity-seed" => Some("identity"),
+        _ => None,
+    }
+}
+
+enum Eligibility {
+    Grant,
+    Skip,
+    WaitForActive,
+}
+
+impl Occupied {
+    fn account(&mut self, stage: &str, connection: Option<String>, bytes: u64, cold: bool) {
+        self.any = true;
+        self.cold |= cold;
+        self.bytes = self.bytes.saturating_add(bytes);
+        self.connections.extend(connection);
+        self.writers.extend(writer(stage));
+    }
+
+    fn eligibility(
+        &self,
+        stage: &str,
+        connection: Option<&str>,
+        bytes: u64,
+        cold: bool,
+        capacity: u64,
+    ) -> Eligibility {
+        if self.cold {
+            return Eligibility::WaitForActive;
+        }
+        let needed = if cold { COLD_MIN_BYTES } else { bytes };
+        if needed > capacity {
+            return Eligibility::Skip;
+        }
+        if cold && self.any {
+            return Eligibility::WaitForActive;
+        }
+        if connection.is_some_and(|c| self.connections.contains(c))
+            || writer(stage).is_some_and(|w| self.writers.contains(w))
+        {
+            return Eligibility::Skip;
+        }
+        if needed > capacity.saturating_sub(self.bytes) {
+            return Eligibility::WaitForActive;
+        }
+        Eligibility::Grant
+    }
+}
+
+async fn occupied(tx: &DatabaseTransaction, stand: &str) -> Result<Occupied, sea_orm::DbErr> {
+    let active=ActiveStage::find_by_statement(sql(
+        format!("SELECT id,stage,estimated_bytes,(cold OR (custom_selection IS NULL AND stage IN ('transform-jira-staging','transform-jira-silver'))) AS cold,connection_id FROM ingestion_stage_attempts
+            WHERE stand=? AND finished_at IS NULL AND granted_at IS NOT NULL AND status NOT IN ({TERMINAL})"),
         vec![stand.into()],
-    ))
-    .all(tx)
-    .await?;
-    Ok(queue.into_iter().find(|r| fits(r, capacity, used)))
+    )).all(tx).await?;
+    let mut result = Occupied::default();
+    for s in active {
+        result.ids.insert(s.id);
+        result.account(&s.stage, s.connection_id, s.estimated_bytes, s.cold);
+    }
+    Ok(result)
 }
 
 fn pod_resources(stage: &str, comparable: &[&Prior], retry_memory_floor: u64) -> Resources {
@@ -337,6 +374,7 @@ async fn estimate(
               AND r.connector=?
               AND s.stage=?
               AND s.status='succeeded'
+              AND NOT COALESCE(s.custom_selection,s.stage IN ('transform-jira-staging','transform-jira-silver'))
               AND r.mode_signature=(SELECT current_run.mode_signature FROM ingestion_runs current_run WHERE current_run.sync_id=?)
               AND s.peak_bytes IS NOT NULL
               ORDER BY s.finished_at DESC
@@ -365,9 +403,12 @@ async fn estimate(
         .transpose()?;
     let comparable: Vec<_> = prior
         .iter()
-        .filter(|p| match (volume, p.input_volume_bytes) {
-            (Some(v), Some(old)) => v <= margin(old),
-            _ => req.stage == "bronze",
+        .filter(|p| {
+            !req.custom_selection
+                && match (volume, p.input_volume_bytes) {
+                    (Some(v), Some(old)) => v <= margin(old),
+                    _ => req.stage == "bronze",
+                }
         })
         .collect();
     let cold = comparable.is_empty();
@@ -375,7 +416,7 @@ async fn estimate(
         .iter()
         .filter_map(|p| p.peak_bytes)
         .max()
-        .map_or(capacity.max(1), |v| margin(v).max(1));
+        .map_or(capacity.max(COLD_MIN_BYTES), |v| margin(v).max(1));
     let resources = pod_resources(&req.stage, &comparable, retry_memory_floor);
     Ok(Estimate {
         volume,
@@ -391,7 +432,7 @@ pub(crate) async fn register(
     tenant: &str,
     req: &Request,
     workflow_start: DateTime<Utc>,
-    capacity: u64,
+    capacity: impl Into<Snapshot>,
 ) -> Result<(bool, Reply), WriteError> {
     let tx = locked(db, stand).await?;
     if let Some(r) = saved(&tx, req, stand, tenant).await? {
@@ -407,6 +448,7 @@ pub(crate) async fn register(
             },
         ));
     }
+    let capacity = capacity.into();
     let sync = req.sync_id.to_string();
     let retry_memory_floor = prepare_run(&tx, stand, tenant, req, workflow_start).await?;
     let Estimate {
@@ -414,9 +456,17 @@ pub(crate) async fn register(
         cold,
         estimated,
         resources,
-    } = estimate(&tx, stand, tenant, req, retry_memory_floor, capacity).await?;
-    let inserted=tx.execute_raw(sql("INSERT INTO ingestion_stage_attempts(stand,sync_id,stage,attempt,connection_id,decision,status,queued_at,estimated_bytes,cold,pod_cpu,pod_memory,input_volume_bytes,resource_scope)
-              VALUES(?,?,?,?,?,'queued','queued',UTC_TIMESTAMP(3),?,?,?,?,?,?)",vec![
+    } = estimate(
+        &tx,
+        stand,
+        tenant,
+        req,
+        retry_memory_floor,
+        capacity.uncredited(),
+    )
+    .await?;
+    let inserted=tx.execute_raw(sql("INSERT INTO ingestion_stage_attempts(stand,sync_id,stage,attempt,connection_id,decision,status,queued_at,estimated_bytes,cold,pod_cpu,pod_memory,input_volume_bytes,resource_scope,custom_selection)
+              VALUES(?,?,?,?,?,'queued','queued',UTC_TIMESTAMP(3),?,?,?,?,?,?,?)",vec![
             stand.into(),
             sync.into(),
             req.stage.clone().into(),
@@ -428,10 +478,33 @@ pub(crate) async fn register(
             resources.memory_bytes.into(),
             volume.into(),
             resources.scope.into(),
+            req.custom_selection.into(),
         ])).await?;
-    let direct = candidate(&tx, stand, capacity)
-        .await?
-        .is_some_and(|r| r.id == inserted.last_insert_id());
+    let first = tx
+        .query_one_raw(sql(
+            "SELECT id FROM ingestion_stage_attempts
+              WHERE stand=? AND status='queued' AND queued_at>=UTC_TIMESTAMP(3)-INTERVAL 6 HOUR
+              ORDER BY queued_at,id LIMIT 1",
+            vec![stand.into()],
+        ))
+        .await?;
+    let direct = if capacity.with_managed > 0
+        && first.map(|r| r.try_get::<u64>("", "id")).transpose()? == Some(inserted.last_insert_id())
+    {
+        let used = occupied(&tx, stand).await?;
+        matches!(
+            used.eligibility(
+                &req.stage,
+                req.connection_id.as_deref(),
+                estimated,
+                cold,
+                capacity.for_active(&used.ids)
+            ),
+            Eligibility::Grant
+        )
+    } else {
+        false
+    };
     if direct {
         tx.execute_raw(sql(
             "UPDATE ingestion_stage_attempts
@@ -452,32 +525,65 @@ pub(crate) async fn register(
     ))
 }
 
-pub(crate) async fn promote(
+pub(crate) async fn promote_ready(
     db: &DatabaseConnection,
     stand: &str,
-    row: &StageRow,
-    capacity: u64,
-) -> anyhow::Result<bool> {
-    let tx = locked(db, stand).await?;
-    if candidate(&tx, stand, capacity)
-        .await?
-        .is_some_and(|r| r.id == row.id)
-    {
-        tracing::info!(connector=%row.connector,source_id=%row.source_id,stage=%row.stage,"granting queued ingestion stage");
-        tx.execute_raw(sql(
-            "UPDATE ingestion_stage_attempts
-              SET status='starting',
-                  granted_at=UTC_TIMESTAMP(3),
-                  estimated_bytes=IF(cold,?,estimated_bytes)
-              WHERE id=?
-              AND status='queued'",
-            vec![capacity.into(), row.id.into()],
-        ))
-        .await?;
+    ready: &HashSet<u64>,
+    capacity: impl Into<Snapshot>,
+) -> anyhow::Result<Vec<u64>> {
+    let capacity = capacity.into();
+    if ready.is_empty() || capacity.with_managed == 0 {
+        return Ok(Vec::new());
     }
-    let result=tx.query_one_raw(sql("SELECT id FROM ingestion_stage_attempts WHERE id=? AND decision='queued' AND status='starting'",vec![row.id.into()])).await?.is_some();
+    let tx = locked(db, stand).await?;
+    let mut used = occupied(&tx, stand).await?;
+    let capacity = capacity.for_active(&used.ids);
+    let queue = StageRow::find_by_statement(sql(
+        format!(
+            "SELECT {FIELDS} {JOIN}
+        WHERE s.stand=? AND r.status IS NULL AND s.status='queued'
+          AND s.queued_at>=UTC_TIMESTAMP(3)-INTERVAL 6 HOUR ORDER BY s.queued_at,s.id"
+        ),
+        vec![stand.into()],
+    ))
+    .all(&tx)
+    .await?;
+    let mut grants = Vec::new();
+    for row in queue.into_iter().filter(|row| ready.contains(&row.id)) {
+        match used.eligibility(
+            &row.stage,
+            row.connection_id.as_deref(),
+            row.estimated_bytes,
+            row.cold,
+            capacity,
+        ) {
+            Eligibility::Skip => continue,
+            Eligibility::WaitForActive => break,
+            Eligibility::Grant => {}
+        }
+        let bytes = if row.cold {
+            capacity
+        } else {
+            row.estimated_bytes
+        };
+        tx.execute_raw(sql("UPDATE ingestion_stage_attempts SET status='starting',granted_at=UTC_TIMESTAMP(3),estimated_bytes=? WHERE id=? AND status='queued'",vec![bytes.into(),row.id.into()])).await?;
+        tracing::info!(connector=%row.connector,source_id=%row.source_id,stage=%row.stage,"granting queued ingestion stage");
+        used.account(&row.stage, row.connection_id, bytes, row.cold);
+        grants.push(row.id);
+        if grants.len() == GRANTS_PER_CYCLE || used.cold {
+            break;
+        }
+    }
     tx.commit().await?;
-    Ok(result)
+    Ok(grants)
+}
+
+pub(super) async fn active_stages(
+    db: &DatabaseConnection,
+    stand: &str,
+) -> Result<Vec<StageRow>, sea_orm::DbErr> {
+    StageRow::find_by_statement(sql(format!("SELECT {FIELDS} {JOIN}
+        WHERE s.stand=? AND s.finished_at IS NULL AND s.granted_at IS NOT NULL AND s.status NOT IN ({TERMINAL})"),vec![stand.into()])).all(db).await
 }
 
 pub(crate) async fn unfinished(
@@ -488,11 +594,12 @@ pub(crate) async fn unfinished(
         format!(
             "SELECT {FIELDS}
               {JOIN}
-              WHERE r.stand=?
-              AND (r.status IS NULL OR s.status NOT IN ({TERMINAL}))
-              ORDER BY s.queued_at,s.id"
+              WHERE r.stand=? AND r.status IS NULL
+              UNION ALL SELECT {FIELDS} {JOIN}
+              WHERE s.stand=? AND s.finished_at IS NULL AND s.status NOT IN ({TERMINAL}) AND r.status IS NOT NULL
+              ORDER BY queued_at,id"
         ),
-        vec![stand.into()],
+        vec![stand.into(),stand.into()],
     ))
     .all(db)
     .await?)
@@ -598,12 +705,16 @@ pub(crate) struct Claim {
     pub decision: &'static str,
     pub job_id: Option<String>,
 }
+pub(crate) enum AirbyteWrite<'a> {
+    Claim(Option<uuid::Uuid>),
+    Receipt(&'a str),
+}
 pub(crate) async fn airbyte(
     db: &DatabaseConnection,
     stand: &str,
     tenant: &str,
     req: &Request,
-    job_id: Option<&str>,
+    operation: AirbyteWrite<'_>,
 ) -> Result<Claim, WriteError> {
     let tx = locked(db, stand).await?;
     let s = saved(&tx, req, stand, tenant)
@@ -612,6 +723,10 @@ pub(crate) async fn airbyte(
     if req.stage != "bronze" || s.state == "queued" || s.connection_id.is_none() {
         return Err(WriteError::Conflict);
     }
+    let (sender, job_id) = match operation {
+        AirbyteWrite::Claim(sender) => (sender.map(|id| id.to_string()), None),
+        AirbyteWrite::Receipt(job) => (None, Some(job)),
+    };
     let params = key(req);
     let (decision, job) = if let Some(job) = s.airbyte_job_id {
         if job_id.is_some_and(|j| j != job) {
@@ -634,7 +749,11 @@ pub(crate) async fn airbyte(
         tx.execute_raw(sql("UPDATE ingestion_stage_attempts SET airbyte_job_id=? WHERE sync_id=? AND stage=? AND attempt=?",vec![job.into(),params[0].clone(),params[1].clone(),params[2].clone()])).await?;
         ("poll", Some(job.to_owned()))
     } else if s.airbyte_claimed {
-        ("verify", None)
+        if sender.is_some() && sender == s.airbyte_sender {
+            ("send", None)
+        } else {
+            ("verify", None)
+        }
     } else {
         let other = tx
             .query_one_raw(sql(
@@ -655,11 +774,11 @@ pub(crate) async fn airbyte(
         }
         tx.execute_raw(sql(
             "UPDATE ingestion_stage_attempts
-              SET airbyte_claimed=1
+              SET airbyte_claimed=1, airbyte_sender=?
               WHERE sync_id=?
               AND stage=?
               AND attempt=?",
-            params,
+            [vec![sender.into()], params].concat(),
         ))
         .await?;
         ("send", None)

@@ -7,6 +7,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
+from uuid import UUID
 
 import pytest
 
@@ -100,8 +101,14 @@ def test_trigger_retains_the_job_before_printing_it(run, capsys):
     )
     assert airbyte_sync_trigger.main() == 0
     assert capsys.readouterr().out.strip() == "42"
+    sender = str(UUID(calls[0][3]["sender"]))
     assert calls == [
-        ("POST", stage_admission.BASE_PATH + "/airbyte-claim", "Bearer pod-token", stage_admission.stage_identity()),
+        (
+            "POST",
+            stage_admission.BASE_PATH + "/airbyte-claim",
+            "Bearer pod-token",
+            {**stage_admission.stage_identity(), "sender": sender},
+        ),
         ("POST", "/api/v1/connections/sync", "Bearer airbyte-token", {"connectionId": "connection-one"}),
         (
             "PUT",
@@ -128,7 +135,10 @@ def test_lost_start_reply_and_restarted_step_do_not_send_another_sync(run, capsy
     assert airbyte_sync_trigger.main() == 0
     assert capsys.readouterr().out.splitlines() == ["73", "73"]
     assert sum(c[1] == "/api/v1/connections/sync" for c in calls) == 1
-    assert sum(c[1].endswith("/airbyte-claim") for c in calls) == 4
+    claims = [c[3].get("sender") for c in calls if c[1].endswith("/airbyte-claim")]
+    assert len(claims) == 4
+    assert claims[0] and claims[3] and claims[0] != claims[3]
+    assert claims[1:3] == [None, None]
 
 
 def test_refused_claim_fails_before_airbyte(run):
@@ -241,33 +251,32 @@ def test_registration_survives_the_connectors_service_restarting(run, monkeypatc
     assert delays == [1]
 
 
-@pytest.mark.parametrize(
-    ("decisions", "reported_id", "status", "expected"),
-    [
-        ([False], 31, "pending", False),
-        ([True], 131, "pending", False),
-        ([True], 31, "succeeded", False),
-        ([True, False], 31, "running", False),
-        ([True, True], 31, "running", True),
-    ],
-)
-def test_cancels_only_the_exact_unfinished_job_after_fresh_placement_check(
-    run, monkeypatch, decisions, reported_id, status, expected
-):
+@pytest.mark.parametrize("first_id,first_status", [(31, "pending"), (131, "pending"), (31, "running")])
+def test_placement_observations_never_cancel_a_native_job(run, monkeypatch, first_id, first_status):
     import airbyte_sync_poll
 
     replies, calls = run
-    replies.extend((200, {"cancel": d}) for d in decisions)
+    replies.extend([(200, {"cancel": True})] * 3)
+    responses = [
+        {"job": {"id": first_id, "status": first_status}},
+        {"job": {"id": 31, "status": "succeeded"}, "attempts": [{"attempt": {"streamStats": [{}]}}]},
+    ]
     actions = []
 
     def job(_url, _token, action, job_id):
         actions.append((action, job_id))
-        return {"job": {"id": reported_id, "status": status}}
+        return responses.pop(0)
 
+    monkeypatch.setenv("JOB_ID", "31")
+    monkeypatch.setenv("POLL_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("STATUS_UNREADABLE_THRESHOLD_SECONDS", "0")
+    monkeypatch.setattr(airbyte_sync_poll, "airbyte_api_url", lambda: "local")
+    monkeypatch.setattr(airbyte_sync_poll, "oauth_token", lambda: "token")
+    monkeypatch.setattr(airbyte_sync_poll.time, "sleep", lambda _n: None)
     monkeypatch.setattr(airbyte_sync_poll, "airbyte_job", job)
-    assert airbyte_sync_poll.cancel_if_pending("local", "token", 31) == expected
-    assert ("cancel", 31) in actions if expected else ("cancel", 31) not in actions
-    assert all(c[3]["job_id"] == 31 for c in calls)
+    assert airbyte_sync_poll.main() == 0
+    assert actions == [("get", 31), ("get", 31)]
+    assert calls == []
 
 
 def test_only_the_selected_streams_and_their_modes_define_comparable_history():
@@ -289,3 +298,20 @@ def test_only_the_selected_streams_and_their_modes_define_comparable_history():
     assert signature(conn) != first
     del streams[1]["config"]["destinationSyncMode"]
     assert signature(conn) == ""
+
+
+def test_lost_claim_response_reuses_sender_before_one_native_post(run, monkeypatch):
+    replies, calls = run
+    monkeypatch.setattr(stage_admission.time, "sleep", lambda _: None)
+    replies.extend(
+        [
+            (503, {}),
+            (200, {"decision": "send"}),
+            (200, {"job": {"id": 42}}),
+            (200, {"decision": "poll", "job_id": "42"}),
+        ]
+    )
+    assert airbyte_sync_trigger.main() == 0
+    assert calls[0] == calls[1]
+    assert UUID(calls[0][3]["sender"]).version == 4
+    assert sum(c[1] == "/api/v1/connections/sync" for c in calls) == 1

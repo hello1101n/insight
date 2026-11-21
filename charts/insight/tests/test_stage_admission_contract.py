@@ -72,7 +72,12 @@ def test_queued_suspends_exact_stage_attempt_and_granted_goes_straight_to_work(c
         run = charts[True][name]["run"]
         assert "insight:sync=" in str(run) or "ADMISSION_STAGE" in str(run)
         assert "cpu_millis" in run["podSpecPatch"]
-        assert "stage-auth" not in str(run)
+        (init,) = run["initContainers"]
+        assert init["command"][-1] == "work-start"
+        assert {m["name"] for m in init["volumeMounts"]} == {"stage-auth"}
+        assert "stage-auth" not in str(run.get("container", run.get("script")))
+        assert any(v["name"] == "stage-auth" for v in run["volumes"])
+        assert "initContainers" not in charts[False][name]["run"]
 
 
 def test_bronze_resolves_once_then_sizes_the_source_before_either_send(charts):

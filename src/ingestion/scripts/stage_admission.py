@@ -59,23 +59,23 @@ def _exchange(method: str, path: str, body: dict) -> dict:
         conn.close()
 
 
-def request(method: str, path: str = "", *, max_wait_seconds: int = 180, **fields) -> dict:
+def request(method: str, path: str = "", *, max_wait_seconds: int | None = 180, **fields) -> dict:
     body = {**stage_identity(), **fields}
-    deadline = time.monotonic() + max_wait_seconds
+    deadline = time.monotonic() + max_wait_seconds if max_wait_seconds is not None else None
     delay = 1
     while True:
         try:
             return _exchange(method, path, body)
         except (OSError, http.client.HTTPException):
-            remaining = deadline - time.monotonic()
+            remaining = deadline - time.monotonic() if deadline is not None else delay
             if remaining <= 0:
                 raise
             time.sleep(min(delay, remaining))
             delay = min(delay * 2, 20)
 
 
-def claim() -> tuple[str, int | None]:
-    reply = request("POST", "/airbyte-claim")
+def claim(sender: str | None = None) -> tuple[str, int | None]:
+    reply = request("POST", "/airbyte-claim", max_wait_seconds=None, **({"sender": sender} if sender else {}))
     decision = reply.get("decision")
     if decision == "poll" and valid_job_id(reply.get("job_id")):
         return decision, int(reply["job_id"])
@@ -126,7 +126,11 @@ def register() -> str:
 
 if __name__ == "__main__":
     try:
-        print(register())  # noqa: T201 -- stdout supplies the gate's Argo outputs.result.
+        if sys.argv[1:] == ["work-start"]:
+            if os.environ.get("ADMISSION_STAGE"):
+                request("POST", "/work-start")
+        else:
+            print(register())  # noqa: T201 -- stdout supplies the gate's Argo outputs.result.
     except (AdmissionError, OSError, ValueError, http.client.HTTPException) as error:
         insight_logging.configure("stage-admission").error("cannot register stage: %s", error)
         sys.exit(1)

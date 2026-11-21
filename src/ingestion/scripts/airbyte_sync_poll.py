@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import http.client
 import json
 import os
 import sys
@@ -13,7 +12,6 @@ from pathlib import Path
 from typing import NamedTuple
 
 import insight_logging
-import stage_admission
 from airbyte_auth import FatalError, airbyte_api_url, oauth_token
 
 Progress = tuple[str | None, int, int, int]
@@ -167,20 +165,6 @@ def airbyte_job(airbyte_url: str, token: str, action: str, job_id: int) -> dict:
         return json.load(response)
 
 
-def cancel_if_pending(airbyte_url: str, token: str, job_id: int) -> bool:
-    if stage_admission.request("POST", "/airbyte-poll", max_wait_seconds=0, job_id=job_id).get("cancel") is not True:
-        return False
-    current = airbyte_job(airbyte_url, token, "get", job_id)
-    if str((current.get("job") or {}).get("id")) != str(job_id):
-        return False
-    if job_status(current) not in (JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING):
-        return False
-    if stage_admission.request("POST", "/airbyte-poll", max_wait_seconds=0, job_id=job_id).get("cancel") is not True:
-        return False
-    airbyte_job(airbyte_url, token, "cancel", job_id)
-    return True
-
-
 def main() -> int:
     log = insight_logging.configure("airbyte-sync")
 
@@ -196,7 +180,6 @@ def main() -> int:
     t0 = time.monotonic()
     last_progress: Progress | None = None
     last_readable_at = t0
-    cancel_sent = False
     unreadable_delay = min(max(poll_interval, 1), 300)
     managed = os.environ.get("ADMISSION_MANAGED") == "true"
 
@@ -315,11 +298,6 @@ def main() -> int:
             emit_completed(status, 1)
             return 1
 
-        if managed and not cancel_sent:
-            try:
-                cancel_sent = cancel_if_pending(airbyte_url, token, job_id)
-            except (OSError, ValueError, http.client.HTTPException, stage_admission.AdmissionError) as error:
-                log.warning("cannot confirm pending cancellation for Airbyte job %s: %s", job_id, error)
         time.sleep(poll_interval)
 
 

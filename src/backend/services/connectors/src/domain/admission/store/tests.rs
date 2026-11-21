@@ -1,3 +1,5 @@
+mod throughput;
+
 use super::*;
 use crate::domain::admission::history;
 use sea_orm_migration::MigratorTrait;
@@ -7,6 +9,7 @@ fn request(connector: &str, stage: &str) -> Request {
     Request {
         sync_id: id,
         workflow_name: format!("test-{id}"),
+        custom_selection: false,
         mode_signature: Some("a".repeat(64)),
         connector: connector.into(),
         source_id: format!("{connector}-test"),
@@ -38,6 +41,16 @@ async fn load(db: &DatabaseConnection, stand: &str, req: &Request) -> anyhow::Re
         })
         .ok_or_else(|| anyhow::anyhow!("missing stage"))
 }
+async fn promote(
+    db: &DatabaseConnection,
+    stand: &str,
+    row: &StageRow,
+    capacity: u64,
+) -> anyhow::Result<bool> {
+    promote_ready(db, stand, &HashSet::from([row.id]), capacity).await?;
+    Ok(db.query_one_raw(sql("SELECT id FROM ingestion_stage_attempts WHERE stand=? AND id=? AND decision='queued' AND status='starting'", vec![stand.into(),row.id.into()])).await?.is_some())
+}
+
 async fn assert_stale_cancel_rejected(
     db: &DatabaseConnection,
     stand: &str,
@@ -74,7 +87,7 @@ async fn record_bronze_input(
     bronze.workflow_name.clone_from(&req.workflow_name);
     bronze.source_id.clone_from(&req.source_id);
     bronze.mode_signature.clone_from(&req.mode_signature);
-    register(db, stand, "tenant", &bronze, now, 60).await?;
+    register(db, stand, "tenant", &bronze, now, 960 * MIB).await?;
     let row = load(db, stand, &bronze).await?;
     observe(
         db,
@@ -100,10 +113,13 @@ async fn concurrent_admissions_share_one_stand_and_keep_original_branch() -> any
     let stand = uuid::Uuid::now_v7().to_string();
     let now = Utc::now();
     let tenant = "tenant";
-    for connector in ["jira", "github"] {
-        let req = request(connector, "transform-staging");
+    for (connector, stage) in [
+        ("jira", "transform-jira-staging"),
+        ("github", "transform-legacy"),
+    ] {
+        let req = request(connector, stage);
         record_bronze_input(&db, &stand, &req, now, Some(100)).await?;
-        let (_, r) = register(&db, &stand, tenant, &req, now, 60).await?;
+        let (_, r) = register(&db, &stand, tenant, &req, now, 960 * MIB).await?;
         assert_eq!(r.decision, "granted");
         let row = load(&db, &stand, &req).await?;
         observe(
@@ -116,21 +132,21 @@ async fn concurrent_admissions_share_one_stand_and_keep_original_branch() -> any
                 finished_at: Some(now),
                 run_status: Some("succeeded".into()),
                 run_finished_at: Some(now),
-                peak_bytes: Some(24),
+                peak_bytes: Some(384 * MIB),
                 ..Default::default()
             },
         )
         .await?;
     }
     let (a, b) = (
-        request("jira", "transform-staging"),
-        request("github", "transform-staging"),
+        request("jira", "transform-jira-staging"),
+        request("github", "transform-legacy"),
     );
     record_bronze_input(&db, &stand, &a, now, Some(100)).await?;
     record_bronze_input(&db, &stand, &b, now, Some(100)).await?;
     let (r1, r2) = tokio::join!(
-        register(&db, &stand, tenant, &a, now, 45),
-        register(&db, &stand, tenant, &b, now, 45)
+        register(&db, &stand, tenant, &a, now, 720 * MIB),
+        register(&db, &stand, tenant, &b, now, 720 * MIB)
     );
     let (a_grant, b_grant) = (r1?.1.decision, r2?.1.decision);
     assert!(matches!(
@@ -143,8 +159,8 @@ async fn concurrent_admissions_share_one_stand_and_keep_original_branch() -> any
         (&b, &a)
     };
     let waiting_row = load(&db, &stand, waiting).await?;
-    assert!(!promote(&db, &stand, &waiting_row, 45).await?);
-    assert!(promote(&db, &stand, &waiting_row, 60).await?);
+    assert!(!promote(&db, &stand, &waiting_row, 720 * MIB).await?);
+    assert!(promote(&db, &stand, &waiting_row, 960 * MIB).await?);
     let (new, repeated) = register(&db, &stand, tenant, waiting, now, 0).await?;
     assert!(!new);
     assert_eq!(repeated.decision, "queued");
@@ -196,11 +212,11 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     let now = Utc::now();
     let tenant = "tenant";
     let mut req = request("jira", "bronze");
-    register(&db, &stand, tenant, &req, now, 60).await?;
+    register(&db, &stand, tenant, &req, now, 960 * MIB).await?;
     let before_claim = load(&db, &stand, &req).await?;
     let (a, b) = tokio::join!(
-        airbyte(&db, &stand, tenant, &req, None),
-        airbyte(&db, &stand, tenant, &req, None)
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None)),
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None))
     );
     assert!(matches!(
         (a?.decision, b?.decision),
@@ -208,20 +224,20 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     ));
     assert_stale_cancel_rejected(&db, &stand, &req, &before_claim, now).await?;
     assert_eq!(
-        airbyte(&db, &stand, tenant, &req, Some("8101"))
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Receipt("8101"))
             .await?
             .job_id
             .as_deref(),
         Some("8101")
     );
     assert_eq!(
-        airbyte(&db, &stand, tenant, &req, Some("8101"))
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Receipt("8101"))
             .await?
             .decision,
         "poll"
     );
     assert!(matches!(
-        airbyte(&db, &stand, tenant, &req, Some("8102")).await,
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Receipt("8102")).await,
         Err(WriteError::Conflict)
     ));
     assert_eq!(
@@ -234,7 +250,7 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     ));
     req.attempt = 2;
     assert!(matches!(
-        register(&db, &stand, tenant, &req, now, 60).await,
+        register(&db, &stand, tenant, &req, now, 960 * MIB).await,
         Err(WriteError::Conflict)
     ));
     req.attempt = 1;
@@ -254,28 +270,30 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     )
     .await?;
     assert_eq!(
-        retry_bronze(&db, &stand, tenant, &req, false, 60)
+        retry_bronze(&db, &stand, tenant, &req, false, 960 * MIB)
             .await?
             .decision,
         "stop"
     );
     assert_eq!(
-        retry_bronze(&db, &stand, tenant, &req, true, 60)
+        retry_bronze(&db, &stand, tenant, &req, true, 960 * MIB)
             .await?
             .decision,
         "retry"
     );
     req.attempt = 2;
-    let (_, r) = register(&db, &stand, tenant, &req, now, 60).await?;
+    let (_, r) = register(&db, &stand, tenant, &req, now, 960 * MIB).await?;
     assert_eq!(r.resources.scope, "airbyte_source");
     assert_eq!(r.resources.memory_bytes, 3072 * MIB);
     assert_eq!(r.resources.source_memory_bytes, Some(3072 * MIB));
     assert_eq!(
-        airbyte(&db, &stand, tenant, &req, None).await?.decision,
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None))
+            .await?
+            .decision,
         "send"
     );
     assert!(matches!(
-        airbyte(&db, &stand, tenant, &req, Some("8101")).await,
+        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Receipt("8101")).await,
         Err(WriteError::Conflict)
     ));
     Ok(())
@@ -289,7 +307,7 @@ async fn ready_time_survives_a_later_quality_failure() -> anyhow::Result<()> {
     let stand = uuid::Uuid::now_v7().to_string();
     let now = Utc::now();
     let mut req = request("jira", "transform-jira-silver");
-    register(&db, &stand, "tenant", &req, now, 60).await?;
+    register(&db, &stand, "tenant", &req, now, 960 * MIB).await?;
     let models = load(&db, &stand, &req).await?;
     observe(
         &db,
@@ -305,7 +323,7 @@ async fn ready_time_survives_a_later_quality_failure() -> anyhow::Result<()> {
     .await?;
     req.stage = "connector-checks".into();
     req.mode_signature = None;
-    register(&db, &stand, "tenant", &req, now, 60).await?;
+    register(&db, &stand, "tenant", &req, now, 960 * MIB).await?;
     let checks = load(&db, &stand, &req).await?;
     let mut inventory = ConnectorHealthResponse::from_facts(LedgerFacts::default(), now);
     history::enrich(&db, &stand, &mut inventory).await?;
@@ -348,7 +366,7 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
     let stand = uuid::Uuid::now_v7().to_string();
     let now = Utc::now();
     let baseline = request("jira", "bronze");
-    register(&db, &stand, "tenant", &baseline, now, 60).await?;
+    register(&db, &stand, "tenant", &baseline, now, 960 * MIB).await?;
     let baseline_row = load(&db, &stand, &baseline).await?;
     observe(
         &db,
@@ -364,10 +382,12 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
     )
     .await?;
     let first = request("jira", "bronze");
-    let (_, grant) = register(&db, &stand, "tenant", &first, now, 60).await?;
+    let (_, grant) = register(&db, &stand, "tenant", &first, now, 960 * MIB).await?;
     assert_eq!(grant.decision, "granted");
     assert_eq!(
-        airbyte(&db, &stand, "tenant", &first, None).await?.decision,
+        airbyte(&db, &stand, "tenant", &first, AirbyteWrite::Claim(None))
+            .await?
+            .decision,
         "send"
     );
     let row = load(&db, &stand, &first).await?;
@@ -384,20 +404,20 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
     let mut other = request("jira", "bronze");
     other.connection_id.clone_from(&first.connection_id);
     assert_eq!(
-        register(&db, &stand, "tenant", &other, now, 60)
+        register(&db, &stand, "tenant", &other, now, 960 * MIB)
             .await?
             .1
             .decision,
         "queued"
     );
     assert!(matches!(
-        airbyte(&db, &stand, "tenant", &other, None).await,
+        airbyte(&db, &stand, "tenant", &other, AirbyteWrite::Claim(None)).await,
         Err(WriteError::Conflict)
     ));
     let mut changed = request("jira", "bronze");
     changed.mode_signature = Some("b".repeat(64));
     assert_eq!(
-        register(&db, &stand, "tenant", &changed, now, 60)
+        register(&db, &stand, "tenant", &changed, now, 960 * MIB)
             .await?
             .1
             .decision,
@@ -420,7 +440,7 @@ async fn doubled_bronze_input_invalidates_transform_history() -> anyhow::Result<
         (None, true),
     ] {
         let mut req = request("jira", "bronze");
-        register(&db, &stand, "tenant", &req, now, 60).await?;
+        register(&db, &stand, "tenant", &req, now, 960 * MIB).await?;
         let row = load(&db, &stand, &req).await?;
         observe(
             &db,
@@ -438,7 +458,7 @@ async fn doubled_bronze_input_invalidates_transform_history() -> anyhow::Result<
         req.stage = "transform-jira-silver".into();
         req.connection_id = None;
         req.mode_signature = None;
-        register(&db, &stand, "tenant", &req, now, 60).await?;
+        register(&db, &stand, "tenant", &req, now, 960 * MIB).await?;
         let model = load(&db, &stand, &req).await?;
         assert_eq!(model.cold, cold, "input volume {volume:?}");
         observe(
@@ -455,5 +475,77 @@ async fn doubled_bronze_input_invalidates_transform_history() -> anyhow::Result<
         )
         .await?;
     }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn only_the_original_airbyte_sender_can_recover_a_lost_claim_response() -> anyhow::Result<()>
+{
+    let db = db().await?;
+    let stand = uuid::Uuid::now_v7().to_string();
+    let req = request("jira", "bronze");
+    register(&db, &stand, "tenant", &req, Utc::now(), 8 * 1024 * MIB).await?;
+    let sender = uuid::Uuid::now_v7();
+    let claim = |sender| airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Claim(sender));
+    assert_eq!(claim(Some(sender)).await?.decision, "send");
+    let (original, replacement, poll) = tokio::join!(
+        claim(Some(sender)),
+        claim(Some(uuid::Uuid::now_v7())),
+        claim(None)
+    );
+    assert_eq!(
+        (original?.decision, replacement?.decision, poll?.decision),
+        ("send", "verify", "verify")
+    );
+    airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Receipt("44")).await?;
+    assert_eq!(claim(Some(sender)).await?.job_id.as_deref(), Some("44"));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn departure_after_sample_removes_memory_credit_before_direct_and_queued_grants()
+-> anyhow::Result<()> {
+    let db = db().await?;
+    let stand = uuid::Uuid::now_v7().to_string();
+    let now = Utc::now();
+    let holder = request("jira", "bronze");
+    register(&db, &stand, "tenant", &holder, now, 512 * MIB).await?;
+    let active = load(&db, &stand, &holder).await?;
+    assert!(active.granted_at.is_some());
+    let sampled = Snapshot {
+        uncredited: 128 * MIB,
+        with_managed: 512 * MIB,
+        contributors: HashSet::from([active.id]),
+    };
+    observe(
+        &db,
+        &stand,
+        &active,
+        Observation {
+            status: Some("succeeded".into()),
+            started_at: Some(now),
+            finished_at: Some(now),
+            run_status: Some("succeeded".into()),
+            run_finished_at: Some(now),
+            ..Default::default()
+        },
+    )
+    .await?;
+    let next = request("github", "bronze");
+    let (_, response) = register(&db, &stand, "tenant", &next, now, sampled.clone()).await?;
+    assert_eq!(response.decision, "queued");
+    let waiting = load(&db, &stand, &next).await?;
+    let ready = HashSet::from([waiting.id]);
+    assert!(
+        promote_ready(&db, &stand, &ready, sampled)
+            .await?
+            .is_empty()
+    );
+    assert_eq!(
+        promote_ready(&db, &stand, &ready, 512 * MIB).await?,
+        vec![waiting.id]
+    );
     Ok(())
 }

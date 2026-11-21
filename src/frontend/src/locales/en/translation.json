@@ -906,6 +906,7 @@
       "running": "Running",
       "queued": "Queued",
       "waiting_pod": "Waiting for pod placement",
+      "placement_overdue": "Waiting for a pod · over 6h",
       "stopping_pod_wait": "Stopping after 6 hours waiting for pod placement",
       "waiting_clickhouse": "Waiting for ClickHouse",
       "loading": "Loading",

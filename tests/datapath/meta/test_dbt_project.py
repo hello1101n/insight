@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from insight_datapath.dbt_runner import PROFILE_SCHEMA, DbtError, DbtRunner
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -184,3 +185,35 @@ def test_the_gold_build_appends_the_always_tag_after_reading_any_override() -> N
     assert script.index(override) < script.index(append), (
         "the append must follow the override read, or an override drops them"
     )
+
+
+def test_parallel_staging_and_downstream_passes_write_distinct_tables(
+    manifest: dict[str, Any],
+) -> None:
+    """Admission can overlap staging and downstream. Table materializations cannot share backup names."""
+    models = _models(manifest)
+    identity = {key for key, model in models.items() if model["name"] == "identity_inputs"}
+    staging = set(identity)
+    downstream = set()
+    for descriptor in (REPO_ROOT / "src/ingestion/connectors").rglob("descriptor.yaml"):
+        spec = yaml.safe_load(descriptor.read_text(encoding="utf-8"))
+        connector = spec["name"]
+        tagged = _selected(manifest, f"tag:{connector}")
+        if connector == "jira":
+            staging.update(_selected(manifest, JIRA_SYNC_PASSES[0]))
+            assert spec["dbt_select"] == " ".join(JIRA_SYNC_PASSES[1:])
+            manual = (REPO_ROOT / "src/ingestion/run-sync.sh").read_text(encoding="utf-8")
+            assert f'DBT_SELECT_STAGING="{JIRA_SYNC_PASSES[0]}"' in manual
+            downstream.update(_selected(manifest, spec["dbt_select"]) - identity)
+        else:
+            staging.update(tagged)
+            downstream.update(_selected(manifest, f"tag:{connector}+") - tagged - identity)
+
+    def tables(keys: set[str]) -> set[tuple[str, str]]:
+        return {
+            (model["schema"], model["alias"])
+            for key in keys & models.keys()
+            if (model := models[key])["config"]["materialized"] not in ("view", "ephemeral")
+        }
+
+    assert tables(staging).isdisjoint(tables(downstream))

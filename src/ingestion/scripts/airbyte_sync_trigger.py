@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from uuid import uuid4
 
 import insight_logging
 import stage_admission
@@ -69,7 +70,7 @@ def main() -> int:
     request = urllib.request.Request(f"{airbyte_url}/api/v1/connections/sync", data=data, headers=headers)
     managed = os.environ.get("ADMISSION_MANAGED") == "true"
     if managed:
-        decision, known_id = stage_admission.claim()
+        decision, known_id = stage_admission.claim(str(uuid4()))
         if decision != "send":
             job_id = known_id if decision == "poll" else stage_admission.recover_job_id()
             print(job_id)  # noqa: T201 -- stdout supplies poll-job.

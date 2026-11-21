@@ -4,7 +4,7 @@ use std::time::Duration;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::routing::{post, put};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use chrono::{DateTime, Utc};
 use k8s_openapi::api::authentication::v1::{TokenReview, TokenReviewSpec};
 use k8s_openapi::api::core::v1::Pod;
@@ -15,7 +15,7 @@ use serde::Deserialize;
 use super::{Request, capacity, store};
 use crate::api::AppState;
 use crate::domain::connector_health::{ConnectorName, SourceId};
-use store::{Claim, Reply, WriteError};
+use store::{AirbyteWrite, Claim, Reply, WriteError};
 
 const AUDIENCE: &str = "insight-connectors";
 const STAGES: &[&str] = &[
@@ -31,10 +31,12 @@ const STAGES: &[&str] = &[
 pub(crate) fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/ingestion/stage-requests", post(register))
+        .route("/v1/ingestion/stage-requests/work-start", post(work_start))
         .route("/v1/ingestion/stage-requests/airbyte-claim", post(claim))
         .route("/v1/ingestion/stage-requests/airbyte-job", put(receipt))
         .route("/v1/ingestion/stage-requests/airbyte-retry", post(retry))
         .route("/v1/ingestion/stage-requests/airbyte-poll", post(poll))
+        .layer(Extension(Arc::new(tokio::sync::Semaphore::new(1))))
         .layer(DefaultBodyLimit::max(8192))
         .with_state(state)
 }
@@ -64,6 +66,7 @@ fn valid(req: &Request) -> bool {
 #[derive(Clone, Copy)]
 enum Caller {
     Gate,
+    Work,
     Trigger,
     Retry,
     Poll(u64),
@@ -93,6 +96,16 @@ fn matches_node(
         return false;
     }
     match caller {
+        Caller::Work => {
+            req.stage != "bronze"
+                && matches!(
+                    node["templateRef"]["name"].as_str(),
+                    Some("dbt-run" | "connector-checks" | "identity-seed-run")
+                )
+                && parameter("admission_start_guard") == Some("workflow-v1")
+                && parameter("admission_stage") == Some(&req.stage)
+                && attempt_label == Some(&attempt)
+        }
         Caller::Gate => {
             template == Some("request-stage")
                 && parameter("mode_signature").filter(|v| !v.is_empty())
@@ -125,7 +138,7 @@ async fn auth(
     headers: &HeaderMap,
     req: &Request,
     caller: Caller,
-) -> Result<DateTime<Utc>, StatusCode> {
+) -> Result<(DateTime<Utc>, bool), StatusCode> {
     if !valid(req) {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -220,7 +233,7 @@ async fn identity(
     token: &str,
     req: &Request,
     caller: Caller,
-) -> Result<DateTime<Utc>, StatusCode> {
+) -> Result<(DateTime<Utc>, bool), StatusCode> {
     let cluster = &state.cluster;
     let client = cluster
         .client
@@ -233,7 +246,8 @@ async fn identity(
         "v1alpha1",
         "Workflow",
     ));
-    let wf = Api::<DynamicObject>::namespaced_with(client.clone(), &cluster.namespace, &ar)
+    let api = Api::<DynamicObject>::namespaced_with(client.clone(), &cluster.namespace, &ar);
+    let wf = api
         .get_opt(&req.workflow_name)
         .await
         .map_err(unavailable)?
@@ -293,10 +307,74 @@ async fn identity(
     if !matches_node(node, req, caller, attempt) {
         return Err(StatusCode::FORBIDDEN);
     }
+    if matches!(caller, Caller::Work) {
+        allow_work_start(state, &api, &wf, req).await?;
+    }
+    let custom_selection =
+        custom_jira_selection(&req.stage, arg("dbt_select_staging"), arg("dbt_select"));
     wf.metadata
         .creation_timestamp
         .and_then(|ts| DateTime::from_timestamp_millis(ts.0.as_millisecond()))
+        .map(|started| (started, custom_selection))
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)
+}
+
+fn custom_jira_selection(stage: &str, staging: Option<&str>, downstream: Option<&str>) -> bool {
+    match stage {
+        "transform-jira-staging" => staging != Some("tag:staging,tag:jira"),
+        "transform-jira-silver" => downstream != Some("tag:silver,tag:jira+ tag:gold,tag:jira+"),
+        _ => false,
+    }
+}
+
+async fn allow_work_start(
+    state: &AppState,
+    api: &Api<DynamicObject>,
+    wf: &DynamicObject,
+    req: &Request,
+) -> Result<(), StatusCode> {
+    use sea_orm::ConnectionTrait;
+    let uid = req.sync_id.to_string();
+    let key = super::reconcile::placement::key(&req.stage, req.attempt);
+    let granted = state
+        .db
+        .query_one_raw(store::sql(
+            "SELECT 1 FROM ingestion_stage_attempts s JOIN ingestion_runs r USING(sync_id)
+         WHERE r.tenant=? AND r.stand=? AND s.sync_id=? AND s.stage=? AND s.attempt=?
+         AND s.granted_at IS NOT NULL AND s.finished_at IS NULL",
+            vec![
+                state.cluster.tenant_id.clone().into(),
+                state.cluster.namespace.clone().into(),
+                uid.clone().into(),
+                req.stage.clone().into(),
+                req.attempt.into(),
+            ],
+        ))
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if granted.is_none() {
+        return Err(StatusCode::CONFLICT);
+    }
+    if let Some(marker) = wf.metadata.annotations.as_ref().and_then(|a| a.get(&key)) {
+        return if marker == &uid {
+            Ok(())
+        } else {
+            Err(StatusCode::CONFLICT)
+        };
+    }
+    super::reconcile::placement::decide(api, wf, &key, false)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok(())
+}
+
+async fn work_start(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<Request>,
+) -> Result<StatusCode, StatusCode> {
+    auth(&state, &headers, &req, Caller::Work).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn outcome(e: WriteError) -> StatusCode {
@@ -310,14 +388,21 @@ fn outcome(e: WriteError) -> StatusCode {
 }
 async fn register(
     State(state): State<Arc<AppState>>,
+    Extension(capacity_probe): Extension<Arc<tokio::sync::Semaphore>>,
     headers: HeaderMap,
-    Json(req): Json<Request>,
+    Json(mut req): Json<Request>,
 ) -> Result<(StatusCode, Json<Reply>), StatusCode> {
-    let started = auth(&state, &headers, &req, Caller::Gate).await?;
-    let usable = capacity::sample(&state).await.unwrap_or_else(|e| {
-        tracing::warn!(error=%e,"ingestion capacity unavailable");
-        0
-    });
+    let (started, custom_selection) = auth(&state, &headers, &req, Caller::Gate).await?;
+    req.custom_selection = custom_selection;
+    // A burst of arrivals shares the worker's batched admission pass.
+    let usable = if let Ok(_permit) = capacity_probe.try_acquire() {
+        capacity::sample(&state).await.unwrap_or_else(|e| {
+            tracing::warn!(error=%e,"ingestion capacity unavailable");
+            capacity::Snapshot::default()
+        })
+    } else {
+        capacity::Snapshot::default()
+    };
     let (new, reply) = store::register(
         &state.db,
         &state.cluster.namespace,
@@ -337,18 +422,24 @@ async fn register(
         Json(reply),
     ))
 }
+#[derive(Deserialize)]
+struct ClaimRequest {
+    #[serde(flatten)]
+    req: Request,
+    sender: Option<uuid::Uuid>,
+}
 async fn claim(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Json(req): Json<Request>,
+    Json(body): Json<ClaimRequest>,
 ) -> Result<Json<Claim>, StatusCode> {
-    auth(&state, &headers, &req, Caller::Trigger).await?;
+    auth(&state, &headers, &body.req, Caller::Trigger).await?;
     store::airbyte(
         &state.db,
         &state.cluster.namespace,
         &state.cluster.tenant_id,
-        &req,
-        None,
+        &body.req,
+        AirbyteWrite::Claim(body.sender),
     )
     .await
     .map(Json)
@@ -381,7 +472,7 @@ async fn poll(
 ) -> Result<Json<Poll>, StatusCode> {
     let job = body.job()?;
     auth(&state, &headers, &body.req, Caller::Poll(job)).await?;
-    let row = store::poll_airbyte(
+    store::poll_airbyte(
         &state.db,
         &state.cluster.namespace,
         &state.cluster.tenant_id,
@@ -390,14 +481,7 @@ async fn poll(
     )
     .await
     .map_err(outcome)?;
-    let cancel = row.status == "stopping_pod_wait"
-        && super::reconcile::can_cancel_pending(&state, &row)
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error,"could not confirm pending Airbyte job");
-                StatusCode::SERVICE_UNAVAILABLE
-            })?;
-    Ok(Json(Poll { cancel }))
+    Ok(Json(Poll { cancel: false }))
 }
 
 async fn receipt(
@@ -412,7 +496,7 @@ async fn receipt(
         &state.cluster.namespace,
         &state.cluster.tenant_id,
         &body.req,
-        Some(&job),
+        AirbyteWrite::Receipt(&job),
     )
     .await
     .map(Json)
@@ -431,7 +515,10 @@ async fn retry(
     Json(body): Json<Retry>,
 ) -> Result<Json<Claim>, StatusCode> {
     auth(&state, &headers, &body.req, Caller::Retry).await?;
-    let capacity = capacity::sample(&state).await.unwrap_or_default();
+    let capacity = capacity::sample(&state)
+        .await
+        .unwrap_or_default()
+        .uncredited();
     store::retry_bronze(
         &state.db,
         &state.cluster.namespace,
@@ -451,10 +538,38 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn custom_jira_arguments_isolate_only_the_transform_that_uses_them() {
+        let staging = Some("tag:staging,tag:jira");
+        let downstream = Some("tag:silver,tag:jira+ tag:gold,tag:jira+");
+        for stage in ["transform-jira-staging", "transform-jira-silver"] {
+            assert!(!custom_jira_selection(stage, staging, downstream));
+            assert!(custom_jira_selection(stage, None, None));
+        }
+        assert!(custom_jira_selection(
+            "transform-jira-staging",
+            Some("tag:jira"),
+            downstream
+        ));
+        assert!(!custom_jira_selection(
+            "transform-jira-silver",
+            Some("tag:jira"),
+            downstream
+        ));
+        assert!(custom_jira_selection(
+            "transform-jira-silver",
+            staging,
+            Some("tag:jira+")
+        ));
+        assert!(!custom_jira_selection("transform-legacy", None, None));
+        assert!(!custom_jira_selection("bronze", None, None));
+    }
+
+    #[test]
     fn gate_can_register_only_its_own_stage_attempt_and_instance() {
         let mut request = Request {
             sync_id: uuid::Uuid::now_v7(),
             workflow_name: "scheduled-jira".into(),
+            custom_selection: false,
             mode_signature: None,
             connector: "jira".into(),
             source_id: "installation-a".into(),

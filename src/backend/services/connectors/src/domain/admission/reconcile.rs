@@ -1,9 +1,11 @@
 mod airbyte;
 mod nodes;
+pub(super) mod placement;
 mod pods;
 #[cfg(test)]
 mod tests;
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,14 +45,17 @@ fn workflows(state: &AppState) -> Result<Api<DynamicObject>> {
 }
 
 async fn watch(api: &Api<DynamicObject>, notify: &Notify) -> Result<()> {
-    let list = api.list_metadata(&ListParams::default().limit(1)).await?;
+    let list =
+        tokio::time::timeout(PERIOD, api.list_metadata(&ListParams::default().limit(1))).await??;
     let version = list
         .metadata
         .resource_version
         .context("missing Workflow list version")?;
-    let events = api
-        .watch(&WatchParams::default().timeout(60), &version)
-        .await?;
+    let events = tokio::time::timeout(
+        PERIOD,
+        api.watch(&WatchParams::default().timeout(60), &version),
+    )
+    .await??;
     tokio::pin!(events);
     while let Some(event) = events.next().await {
         if let kube::api::WatchEvent::Error(_) = event? {
@@ -112,12 +117,96 @@ pub(crate) async fn run(state: Arc<AppState>, cancel: CancellationToken) {
 
 async fn cycle(state: &AppState, api: &Api<DynamicObject>, http: &reqwest::Client) -> Result<()> {
     let stand = &state.cluster.namespace;
+    let mut runs = HashMap::<String, Vec<StageRow>>::new();
     for row in store::unfinished(&state.db, stand).await? {
-        if let Err(error) = reconcile(state, api, http, &row).await {
+        runs.entry(row.workflow_name.clone()).or_default().push(row);
+    }
+    let mut checks = futures_util::stream::iter(runs)
+        .map(|(name, rows)| check_workflow(state, api, http, name, rows))
+        .buffer_unordered(8);
+    let mut ready = HashSet::new();
+    while let Some(result) = checks.next().await {
+        match result {
+            Ok(ids) => ready.extend(ids),
+            Err(error) => tracing::warn!(%error,"could not read ingestion Workflow"),
+        }
+    }
+    if !ready.is_empty() {
+        let available = capacity::sample(state).await?;
+        store::promote_ready(&state.db, stand, &ready, available).await?;
+    }
+    Ok(())
+}
+
+async fn check_workflow(
+    state: &AppState,
+    api: &Api<DynamicObject>,
+    http: &reqwest::Client,
+    name: String,
+    rows: Vec<StageRow>,
+) -> Result<Vec<u64>> {
+    let workflow = tokio::time::timeout(Duration::from_secs(6), api.get_opt(&name)).await??;
+    let mut ready = Vec::new();
+    for row in rows {
+        let wf = workflow
+            .as_ref()
+            .filter(|wf| wf.metadata.uid.as_deref() == Some(&row.sync_id));
+        let result = if let Some(wf) = wf {
+            let status = &wf.data["status"];
+            if row.granted_at.is_none()
+                && row.status == "queued"
+                && wf.metadata.deletion_timestamp.is_none()
+                && wf.data["spec"]["shutdown"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .is_empty()
+                && status["phase"] == "Running"
+                && Utc::now() - row.queued_at <= chrono::Duration::hours(6)
+                && nodes::suspend(status, &row).is_some_and(|n| nodes::selector(n, &row).is_ok())
+            {
+                ready.push(row.id);
+                continue;
+            }
+            reconcile(state, api, http, &row, wf).await
+        } else {
+            vanished(state, http, &row).await
+        };
+        if let Err(error) = result {
             tracing::warn!(stage=%row.stage,sync_id=%row.sync_id,%error,"could not reconcile connector stage");
         }
     }
-    Ok(())
+    Ok(ready)
+}
+
+async fn upgrade_legacy_gate(
+    api: &Api<DynamicObject>,
+    wf: &DynamicObject,
+    row: &StageRow,
+    node: &Value,
+) -> Result<bool> {
+    let Some(inputs) = nodes::legacy_uid_inputs(node, row) else {
+        return Ok(false);
+    };
+    let id = node["id"].as_str().context("missing suspended node ID")?;
+    ensure!(
+        wf.data["status"]["nodes"][id] == *node,
+        "suspended node key mismatch"
+    );
+    let version = wf
+        .metadata
+        .resource_version
+        .as_deref()
+        .context("missing Workflow version")?;
+    let patch = Patch::Merge(json!({
+        "metadata":{"uid":row.sync_id,"resourceVersion":version},
+        "status":{"nodes":{(id):{"inputs":{"parameters":inputs}}}}
+    }));
+    tokio::time::timeout(
+        PERIOD,
+        api.patch(&row.workflow_name, &PatchParams::default(), &patch),
+    )
+    .await??;
+    Ok(true)
 }
 
 async fn argo(
@@ -141,12 +230,27 @@ async fn argo(
         ]);
     let token =
         tokio::fs::read_to_string("/var/run/secrets/kubernetes.io/serviceaccount/token").await?;
-    http.put(url)
+    let mut body = json!({"nodeFieldSelector":nodes::selector(node,row)?});
+    if action == "stop" {
+        body["message"] = json!(nodes::WAIT_TIMEOUT_MESSAGE);
+    }
+    let result = http
+        .put(url)
         .bearer_auth(token.trim())
-        .json(&json!({"nodeFieldSelector":nodes::selector(node,row)?}))
+        .json(&body)
         .send()
-        .await?
-        .error_for_status()?;
+        .await
+        .and_then(reqwest::Response::error_for_status);
+    if let Err(error) = result {
+        let api = workflows(state)?;
+        let current = tokio::time::timeout(PERIOD, api.get_opt(&row.workflow_name)).await??;
+        if !current.is_some_and(|wf| {
+            wf.metadata.uid.as_deref() == Some(&row.sync_id)
+                && nodes::confirmed_action(&wf.data["status"], node, row, action)
+        }) {
+            return Err(error.into());
+        }
+    }
     Ok(())
 }
 
@@ -155,15 +259,8 @@ async fn reconcile(
     api: &Api<DynamicObject>,
     http: &reqwest::Client,
     row: &StageRow,
+    wf: &DynamicObject,
 ) -> Result<()> {
-    let Some(wf) =
-        tokio::time::timeout(Duration::from_secs(6), api.get_opt(&row.workflow_name)).await??
-    else {
-        return vanished(state, http, row).await;
-    };
-    if wf.metadata.uid.as_deref() != Some(&row.sync_id) {
-        return vanished(state, http, row).await;
-    }
     let status = &wf.data["status"];
     let phase = status["phase"].as_str().unwrap_or("");
     let terminal = matches!(phase, "Succeeded" | "Failed" | "Error");
@@ -171,6 +268,9 @@ async fn reconcile(
     let mut o = Observation::default();
     if row.finished_at.is_none() {
         if let Some(node) = gate {
+            if upgrade_legacy_gate(api, wf, row, node).await? {
+                return Ok(());
+            }
             ensure!(
                 row.decision == "queued",
                 "unexpected suspend for immediate grant"
@@ -180,33 +280,20 @@ async fn reconcile(
                 o.status = Some("wait_timeout".into());
                 o.reason = Some("wait_timeout".into());
                 o.finished_at = Some(Utc::now());
-            } else if row.granted_at.is_some()
-                || store::promote(
-                    &state.db,
-                    &state.cluster.namespace,
-                    row,
-                    capacity::sample(state).await?,
-                )
-                .await?
-            {
+            } else if row.granted_at.is_some() {
                 argo(state, http, row, "resume", node).await?;
             }
+        } else if let Some(stopped) = nodes::stopped_gate(status, row) {
+            o.status = Some("wait_timeout".into());
+            o.reason = Some("wait_timeout".into());
+            o.finished_at = nodes::time(stopped, "finishedAt").or_else(|| Some(Utc::now()));
         } else if row.granted_at.is_none() {
             if terminal {
                 o.status = Some("cancelled".into());
                 o.finished_at = Some(Utc::now());
             }
         } else {
-            o = observe_work(state, http, row, status, terminal).await?;
-            if o.status.as_deref() == Some("stopping_pod_wait")
-                && row.stage != "bronze"
-                && wf.data["spec"]["shutdown"].is_null()
-            {
-                api.patch(&row.workflow_name, &PatchParams::default(), &Patch::Merge(json!({
-                    "metadata":{"uid":row.sync_id, "resourceVersion":wf.metadata.resource_version},
-                    "spec":{"shutdown":"Terminate"}
-                }))).await?;
-            }
+            o = placement::observe(state, api, http, row, wf, terminal).await?;
         }
     }
     if terminal && (o.finished_at.is_some() || row.finished_at.is_some()) {
@@ -223,6 +310,12 @@ async fn reconcile(
             .into(),
         );
         o.run_finished_at = nodes::time(status, "finishedAt");
+    }
+    if o.status.is_none()
+        && o.run_status.is_none()
+        && (row.granted_at.is_none() || row.finished_at.is_some() || gate.is_some())
+    {
+        return Ok(());
     }
     store::observe(&state.db, &state.cluster.namespace, row, o).await
 }
@@ -271,7 +364,7 @@ fn finish_reason(
     pod: &pods::Sample,
     status: Option<&str>,
 ) -> Option<String> {
-    if row.status == "stopping_pod_wait" {
+    if row.status == "stopping_pod_wait" && status == Some("wait_timeout") {
         return Some("wait_timeout".into());
     }
     if e.memory_errors > 0 {
@@ -302,13 +395,6 @@ fn waiting_for_node(sample: &pods::Sample) -> bool {
     sample.unscheduled && !sample.assigned && !sample.working && sample.started.is_none()
 }
 
-pub(super) async fn can_cancel_pending(state: &AppState, row: &StageRow) -> Result<bool> {
-    Ok(row.status == "stopping_pod_wait"
-        && row.stage == "bronze"
-        && row.started_at.is_none()
-        && waiting_for_node(&pods::observe(state, row).await?))
-}
-
 async fn observed_node<'a>(
     state: &AppState,
     http: &reqwest::Client,
@@ -323,7 +409,10 @@ async fn observed_node<'a>(
         && row.airbyte_job_id.is_none()
         && let Some(trigger) = nodes::trigger(status, row)
     {
-        o.airbyte_job_id = pods::trigger_receipt(state, row, trigger).await;
+        o.airbyte_job_id = tokio::time::timeout(PERIOD, pods::trigger_receipt(state, row, trigger))
+            .await
+            .ok()
+            .flatten();
     }
     let (node, mut job) = if bronze {
         nodes::bronze(status, row, o)
@@ -376,10 +465,12 @@ async fn observe_work(
     let orphaned = terminal && !row.airbyte_claimed && node.is_none() && !pod.may_work();
     let unstarted = orphaned && row.started_at.is_none() && pod.started.is_none();
     if completed || orphaned {
-        let log_pending = evidence.completed == 0
-            && node
-                .and_then(|n| nodes::time(n, "finishedAt"))
-                .is_some_and(|end| (Utc::now() - end).num_seconds() < 10);
+        // An early QueryFinish can be visible while the last batch is still buffered.
+        let last_work = node
+            .and_then(|n| nodes::time(n, "finishedAt"))
+            .max(receipt.as_ref().and_then(|r| r.end));
+        let log_pending = !unstarted
+            && last_work.is_some_and(|end| Utc::now() - end < chrono::Duration::seconds(10));
         let end = receipt
             .as_ref()
             .and_then(|r| r.end)
@@ -397,7 +488,7 @@ async fn observe_work(
             return Ok(o);
         }
         o.status = Some(
-            if row.status == "stopping_pod_wait" {
+            if row.status == "stopping_pod_wait" && (!bronze || job == Some("cancelled")) {
                 "wait_timeout"
             } else if orphaned {
                 "cancelled"
@@ -416,13 +507,28 @@ async fn observe_work(
         && o.airbyte_job_id.is_none()
     {
         o.status = Some("checking_start".into());
-    } else if (row.status == "stopping_pod_wait" && (!bronze || !pod.present))
-        || (waiting_for_node(&pod)
+    } else if (!bronze && row.status == "stopping_pod_wait")
+        || ((waiting_for_node(&pod) || (!bronze && !pod.present && nodes::quota_wait(node)))
             && row.started_at.is_none()
             && Utc::now() - row.queued_at > chrono::Duration::hours(6))
     {
-        o.status = Some("stopping_pod_wait".into());
-    } else if pod.pending {
+        o.status = Some(
+            if bronze {
+                "placement_overdue"
+            } else {
+                "stopping_pod_wait"
+            }
+            .into(),
+        );
+    } else if bronze
+        && !pod.present
+        && matches!(
+            row.status.as_str(),
+            "placement_overdue" | "stopping_pod_wait"
+        )
+    {
+        o.status = Some("placement_overdue".into());
+    } else if pod.pending || (!bronze && !pod.present && nodes::quota_wait(node)) {
         o.status = Some("waiting_pod".into());
     } else if pod.working || !bronze && node_phase == "Running" {
         o.status = Some(if bronze { "loading" } else { "transforming" }.into());

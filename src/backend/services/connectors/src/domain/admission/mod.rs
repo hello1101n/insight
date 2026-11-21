@@ -11,6 +11,8 @@ use serde::Deserialize;
 pub(crate) struct Request {
     pub sync_id: uuid::Uuid,
     pub workflow_name: String,
+    #[serde(skip)]
+    pub custom_selection: bool,
     pub mode_signature: Option<String>,
     pub connector: String,
     pub source_id: String,

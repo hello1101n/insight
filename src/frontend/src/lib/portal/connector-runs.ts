@@ -11,6 +11,7 @@ const statuses = {
   running: "active",
   queued: "idle",
   waiting_pod: "idle",
+  placement_overdue: "failing",
   stopping_pod_wait: "failing",
   waiting_clickhouse: "idle",
   loading: "active",
