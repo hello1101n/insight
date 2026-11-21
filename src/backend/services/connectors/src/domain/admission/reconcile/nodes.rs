@@ -166,6 +166,32 @@ fn empty_failed_attempts(proof: &Value) -> bool {
         })
 }
 
+pub(crate) fn bronze_volume(status: &Value) -> Option<super::super::BronzeVolume> {
+    let mut found = None;
+    for node in nodes(status).filter(|n| {
+        n["type"] == "Pod" && n["phase"] == "Succeeded" && template(n) == Some("poll-job")
+    }) {
+        let proof: Value =
+            serde_json::from_str(parameter(node, "outputs", "airbyte-evidence")?).ok()?;
+        let id = parameter(node, "inputs", "job_id")?.parse::<u64>().ok()?;
+        if proof["status"] != "succeeded" {
+            continue;
+        }
+        if id == 0 || proof["job_id"].as_u64() != Some(id) {
+            return None;
+        }
+        let volume = super::super::BronzeVolume {
+            job_id: id,
+            bytes: proof["volume_bytes"].as_u64()?,
+        };
+        if found.as_ref().is_some_and(|prior| prior != &volume) {
+            return None;
+        }
+        found = Some(volume);
+    }
+    found
+}
+
 pub(super) fn job_finished(poll: &Value, id: &str) -> Option<DateTime<Utc>> {
     let proof: Value =
         serde_json::from_str(parameter(poll, "outputs", "airbyte-evidence")?).ok()?;
@@ -234,6 +260,25 @@ pub(super) fn bronze<'a>(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn volume_requires_a_successful_poll_for_one_exact_job() {
+        let poll = |id, bytes, phase| {
+            json!({"type":"Pod","templateName":"poll-job","phase":phase,
+            "inputs":{"parameters":[{"name":"job_id","value":format!("{id}")}]},
+            "outputs":{"parameters":[{"name":"airbyte-evidence","value":json!({"status":"succeeded","job_id":id,"volume_bytes":bytes}).to_string()}]}})
+        };
+        let mut status = json!({"nodes":{"a":poll(42,0,"Succeeded"),"b":poll(41,78,"Failed")}});
+        assert_eq!(
+            bronze_volume(&status).map(|v| (v.job_id, v.bytes)),
+            Some((42, 0))
+        );
+        status["nodes"]["b"] = poll(41, 78, "Succeeded");
+        assert_eq!(bronze_volume(&status), None);
+        status["nodes"]["b"] = poll(42, 0, "Succeeded");
+        status["nodes"]["a"]["inputs"]["parameters"][0]["value"] = json!("999");
+        assert_eq!(bronze_volume(&status), None);
+    }
 
     fn row() -> StageRow {
         StageRow {

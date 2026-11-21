@@ -7,12 +7,20 @@ pub(crate) mod workload;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct BronzeVolume {
+    pub job_id: u64,
+    pub bytes: u64,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct Request {
     pub sync_id: uuid::Uuid,
     pub workflow_name: String,
     #[serde(skip)]
     pub custom_selection: bool,
+    #[serde(skip)]
+    pub bronze_volume: Option<BronzeVolume>,
     pub mode_signature: Option<String>,
     pub connector: String,
     pub source_id: String,

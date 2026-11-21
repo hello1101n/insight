@@ -386,21 +386,23 @@ async fn estimate(
             req.stage.clone().into(),
             sync.clone().into(),
         ])).all(tx).await?;
+    let job = req
+        .bronze_volume
+        .as_ref()
+        .map(|receipt| receipt.job_id.to_string());
+    let bytes = req.bronze_volume.as_ref().map(|receipt| receipt.bytes);
     let volume = tx
         .query_one_raw(sql(
-            "SELECT volume_bytes
-              FROM ingestion_stage_attempts
-              WHERE sync_id=?
-              AND stage='bronze'
-              AND status='succeeded'
-              AND volume_bytes IS NOT NULL
-              ORDER BY attempt DESC
-              LIMIT 1",
-            vec![sync.clone().into()],
+            "SELECT CASE WHEN status='succeeded' AND volume_bytes IS NOT NULL THEN volume_bytes
+                         WHEN airbyte_job_id=? THEN CAST(? AS UNSIGNED) END AS input_bytes
+               FROM ingestion_stage_attempts WHERE sync_id=? AND stage='bronze'
+               ORDER BY attempt DESC LIMIT 1",
+            vec![job.into(), bytes.into(), sync.clone().into()],
         ))
         .await?
-        .map(|row| row.try_get::<u64>("", "volume_bytes"))
-        .transpose()?;
+        .map(|row| row.try_get::<Option<u64>>("", "input_bytes"))
+        .transpose()?
+        .flatten();
     let comparable: Vec<_> = prior
         .iter()
         .filter(|p| {

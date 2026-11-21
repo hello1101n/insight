@@ -133,12 +133,18 @@ fn matches_node(
         }
     }
 }
+struct WorkflowFacts {
+    created_at: DateTime<Utc>,
+    custom_selection: bool,
+    bronze_volume: Option<super::BronzeVolume>,
+}
+
 async fn auth(
     state: &AppState,
     headers: &HeaderMap,
     req: &Request,
     caller: Caller,
-) -> Result<(DateTime<Utc>, bool), StatusCode> {
+) -> Result<WorkflowFacts, StatusCode> {
     if !valid(req) {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -233,7 +239,7 @@ async fn identity(
     token: &str,
     req: &Request,
     caller: Caller,
-) -> Result<(DateTime<Utc>, bool), StatusCode> {
+) -> Result<WorkflowFacts, StatusCode> {
     let cluster = &state.cluster;
     let client = cluster
         .client
@@ -315,7 +321,15 @@ async fn identity(
     wf.metadata
         .creation_timestamp
         .and_then(|ts| DateTime::from_timestamp_millis(ts.0.as_millisecond()))
-        .map(|started| (started, custom_selection))
+        .map(|created_at| WorkflowFacts {
+            created_at,
+            custom_selection,
+            bronze_volume: if matches!(caller, Caller::Gate) && req.stage != "bronze" {
+                super::reconcile::bronze_volume(&wf.data["status"])
+            } else {
+                None
+            },
+        })
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)
 }
 
@@ -392,8 +406,9 @@ async fn register(
     headers: HeaderMap,
     Json(mut req): Json<Request>,
 ) -> Result<(StatusCode, Json<Reply>), StatusCode> {
-    let (started, custom_selection) = auth(&state, &headers, &req, Caller::Gate).await?;
-    req.custom_selection = custom_selection;
+    let facts = auth(&state, &headers, &req, Caller::Gate).await?;
+    req.custom_selection = facts.custom_selection;
+    req.bronze_volume = facts.bronze_volume;
     // A burst of arrivals shares the worker's batched admission pass.
     let usable = if let Ok(_permit) = capacity_probe.try_acquire() {
         capacity::sample(&state).await.unwrap_or_else(|e| {
@@ -408,7 +423,7 @@ async fn register(
         &state.cluster.namespace,
         &state.cluster.tenant_id,
         &req,
-        started,
+        facts.created_at,
         usable,
     )
     .await
@@ -570,6 +585,7 @@ mod tests {
             sync_id: uuid::Uuid::now_v7(),
             workflow_name: "scheduled-jira".into(),
             custom_selection: false,
+            bronze_volume: None,
             mode_signature: None,
             connector: "jira".into(),
             source_id: "installation-a".into(),

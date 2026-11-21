@@ -1,5 +1,6 @@
 mod airbyte;
 mod nodes;
+pub(super) use nodes::bronze_volume;
 pub(super) mod placement;
 mod pods;
 #[cfg(test)]

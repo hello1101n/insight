@@ -10,6 +10,7 @@ fn request(connector: &str, stage: &str) -> Request {
         sync_id: id,
         workflow_name: format!("test-{id}"),
         custom_selection: false,
+        bronze_volume: None,
         mode_signature: Some("a".repeat(64)),
         connector: connector.into(),
         source_id: format!("{connector}-test"),
@@ -547,5 +548,31 @@ async fn departure_after_sample_removes_memory_credit_before_direct_and_queued_g
         promote_ready(&db, &stand, &ready, 512 * MIB).await?,
         vec![waiting.id]
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn registered_transform_uses_only_its_completed_airbyte_jobs_volume() -> anyhow::Result<()> {
+    let db = db().await?;
+    for (job_id, expected) in [(320, Some(1700_u64)), (321, None)] {
+        let stand = uuid::Uuid::now_v7().to_string();
+        let mut req = request("jira", "bronze");
+        register(&db, &stand, "tenant", &req, Utc::now(), 1024 * MIB).await?;
+        airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Claim(None)).await?;
+        airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Receipt("320")).await?;
+        req.stage = "transform-jira-staging".into();
+        req.connection_id = None;
+        req.bronze_volume = Some(crate::domain::admission::BronzeVolume {
+            job_id,
+            bytes: 1700,
+        });
+        register(&db, &stand, "tenant", &req, Utc::now(), 1024 * MIB).await?;
+        let rows = db.query_one_raw(sql("SELECT input_volume_bytes FROM ingestion_stage_attempts WHERE sync_id=? AND stage=?", vec![req.sync_id.to_string().into(), req.stage.into()])).await?.ok_or_else(|| anyhow::anyhow!("missing transformation"))?;
+        assert_eq!(
+            rows.try_get::<Option<u64>>("", "input_volume_bytes")?,
+            expected
+        );
+    }
     Ok(())
 }
