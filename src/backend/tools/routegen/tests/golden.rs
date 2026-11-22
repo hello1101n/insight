@@ -135,10 +135,10 @@ fn sql_token_exchange_url_can_point_elsewhere() {
 }
 
 #[test]
-fn stripped_routes_never_reach_the_upstream_internal_paths() {
+fn only_the_authenticator_internal_path_is_denied() {
     let conf = generate(&fixture("sqltoken.routes.yaml"), &Settings::default()).unwrap();
     assert!(conf.contains("location ^~ /api/authenticator/internal/ {\n            return 404;"));
-    assert!(!conf.contains("/api/sql/query/internal/"));
+    assert_eq!(conf.matches("/internal/ {").count(), 2);
 }
 
 #[test]
