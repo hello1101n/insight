@@ -94,12 +94,17 @@ def test_authenticator_route_reaches_only_its_v1_api(client):
         ("DELETE", "/api/authenticator/auth/admin/users/x/sessions"),
         ("GET", "/api/authenticator/auth/csrf"),
         ("GET", "/api/authenticator/internal/authz"),
+        ("GET", "/api/authenticator/internal/sql-token/authz"),
         ("GET", "/api/authenticatorinternal/authz"),
+        ("GET", "/api/authenticatorinternal/sql-token/authz"),
         ("GET", "/api/authenticator//internal/authz"),
+        ("GET", "/api/authenticator/internal"),
         ("GET", "/api/authenticator/v1"),
         ("GET", "/api/authenticator"),
     ):
+        assert client.request(f"{GW}{path}", method=method)[0] == 404, path
         assert client.request(f"{GW}{path}", headers=cookie, method=method)[0] == 404, path
+    assert client.request(f"{GW}/api/identity/internal/persons/by-email-override", headers=cookie)[0] == 200
     status, _, body = client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)
     assert status == 200, f"got {status}"
     assert json.loads(body)["path"] == "/v1/sql-tokens"
@@ -197,22 +202,6 @@ def test_instance_token_reaches_the_upstream_unchanged(client):
     assert echoed["authorization"] == "Bearer instance-token-" + "D" * 20
     assert "cookie" not in echoed
     assert _stub_calls(client) == before
-
-
-def test_authenticator_internal_paths_are_404(client):
-    cookie = {"Cookie": f"__Host-sid={client.login()}"}
-    for path in (
-        "/api/authenticator/internal/authz",
-        "/api/authenticator/internal/sql-token/authz",
-        "/api/authenticatorinternal/sql-token/authz",
-        "/api/authenticatorinternal/authz",
-        "/api/authenticator//internal/authz",
-        "/api/authenticator/internal",
-    ):
-        assert client.request(f"{GW}{path}")[0] == 404, path
-        assert client.request(f"{GW}{path}", headers=cookie)[0] == 404, path
-    assert client.request(f"{GW}/api/identity/internal/persons/by-email-override", headers=cookie)[0] == 200
-    assert client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)[0] == 200
 
 
 def _assert_sql_api_unavailable(response):
