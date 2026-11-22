@@ -104,22 +104,6 @@ pub(crate) struct TokenHolder {
     pub(crate) label: String,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum QueryCaller {
-    Mcp,
-    InstanceToken,
-    PersonalToken(TokenHolder),
-}
-
-impl QueryCaller {
-    fn holder(&self) -> Option<&TokenHolder> {
-        match self {
-            Self::PersonalToken(holder) => Some(holder),
-            Self::Mcp | Self::InstanceToken => None,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct QueryExecutor {
     client: insight_clickhouse::Client,
@@ -179,7 +163,7 @@ impl QueryExecutor {
     pub(crate) async fn query<T, F>(
         &self,
         sql: String,
-        caller: &QueryCaller,
+        holder: Option<&TokenHolder>,
         encode: F,
     ) -> Result<T, QueryFailure>
     where
@@ -203,7 +187,6 @@ impl QueryExecutor {
 
         let started = Instant::now();
         let query_hash = hex::encode(Sha256::digest(sql.as_bytes()));
-        let holder = caller.holder();
         let person_id = holder.map(|holder| holder.person_id.as_str());
         let token_id = holder.map(|holder| holder.token_id.as_str());
         let token_label = holder.map(|holder| holder.label.as_str());

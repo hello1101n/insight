@@ -10,9 +10,7 @@ use serde::Deserialize;
 use toolkit_canonical_errors::{CanonicalError, Http, resource_error};
 use toolkit_security::crypto::{constant_time_eq, hash::Sha256};
 
-use super::executor::{
-    MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor, QueryFailure, TokenHolder,
-};
+use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure, TokenHolder};
 use crate::config::SqlApiConfig;
 use crate::jwt_verifier::{JwksVerifier, VerifyFailure};
 
@@ -68,8 +66,8 @@ async fn authenticate(
     next: Next,
 ) -> Response {
     let mut response = match identify(&state, &headers).await {
-        Ok(caller) => {
-            request.extensions_mut().insert(caller);
+        Ok(holder) => {
+            request.extensions_mut().insert(holder);
             next.run(request).await
         }
         Err(VerifyFailure::Unauthorized) => {
@@ -93,16 +91,19 @@ async fn authenticate(
     response
 }
 
-async fn identify(state: &AuthState, headers: &HeaderMap) -> Result<QueryCaller, VerifyFailure> {
+async fn identify(
+    state: &AuthState,
+    headers: &HeaderMap,
+) -> Result<Option<TokenHolder>, VerifyFailure> {
     let token = bearer_credential(headers).ok_or(VerifyFailure::Unauthorized)?;
     if constant_time_eq(&Sha256::digest(token.as_bytes()), &state.token_hash) {
-        return Ok(QueryCaller::InstanceToken);
+        return Ok(None);
     }
     let claims = state.verifier.verify::<SqlTokenClaims>(token).await?;
     if claims.sub_type != SQL_TOKEN_SUB_TYPE {
         return Err(VerifyFailure::Unauthorized);
     }
-    Ok(QueryCaller::PersonalToken(TokenHolder {
+    Ok(Some(TokenHolder {
         person_id: claims.sub,
         token_id: claims.sid,
         label: claims.token_label,
@@ -127,7 +128,7 @@ fn bearer_credential(headers: &HeaderMap) -> Option<&str> {
 
 async fn query(
     State(executor): State<QueryExecutor>,
-    Extension(caller): Extension<QueryCaller>,
+    Extension(holder): Extension<Option<TokenHolder>>,
     body: Result<Json<QueryRequest>, JsonRejection>,
 ) -> Result<Response, CanonicalError> {
     let Json(request) = body.map_err(|error| {
@@ -138,7 +139,9 @@ async fn query(
         }
     })?;
     let bytes = executor
-        .query(request.sql, &caller, |result| serde_json::to_vec(&result))
+        .query(request.sql, holder.as_ref(), |result| {
+            serde_json::to_vec(&result)
+        })
         .await
         .map_err(|error| query_error(&error))?;
     Ok(([(CONTENT_TYPE, "application/json")], bytes).into_response())

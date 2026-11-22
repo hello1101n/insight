@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::McpConfig;
 use crate::jwt_verifier::{JwksVerifier, VerifyFailure, resolve_jwks_url};
-use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor};
+use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor};
 
 const MCP_SCOPE: &str = "mcp:query";
 
@@ -80,9 +80,7 @@ impl SqlExplorer {
     async fn run_query_sql(&self, sql: String) -> CallToolResult {
         match self
             .executor
-            .query(sql, &QueryCaller::Mcp, |value| {
-                Ok(CallToolResult::structured(value))
-            })
+            .query(sql, None, |value| Ok(CallToolResult::structured(value)))
             .await
         {
             Ok(result) => result,

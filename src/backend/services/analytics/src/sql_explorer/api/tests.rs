@@ -6,7 +6,9 @@ use serde_json::{Value, json};
 use tower::ServiceExt as _;
 
 use super::*;
-use crate::jwt_verifier::test_keys::{SigningMaterial, sign, signing_material, spawn_jwks};
+use crate::jwt_verifier::test_keys::{
+    SigningMaterial, sign, signing_material, spawn_app, spawn_jwks,
+};
 
 const TOKEN: &str = "synthetic-test-token-not-a-real-secret";
 const ISSUER: &str = "https://gateway.example.test";
@@ -226,6 +228,7 @@ fn now() -> u64 {
 }
 
 fn sql_claims() -> Value {
+    let now = now();
     json!({
         "sub": "11111111-1111-4111-8111-111111111111",
         "tenant_id": "22222222-2222-4222-8222-222222222222",
@@ -235,8 +238,8 @@ fn sql_claims() -> Value {
         "token_label": "synthetic-label",
         "iss": ISSUER,
         "aud": AUDIENCE,
-        "iat": now(),
-        "exp": now() + NOW_PLUS,
+        "iat": now,
+        "exp": now + NOW_PLUS,
         "jti": "44444444-4444-4444-8444-444444444444",
     })
 }
@@ -251,18 +254,13 @@ fn with(mut claims: Value, changes: &Value) -> Value {
 }
 
 async fn spawn_upstream() -> anyhow::Result<(String, tokio::task::JoinHandle<()>)> {
-    let upstream = Router::new().route(
+    spawn_app(Router::new().route(
         "/",
         post(|| async {
             Json(json!({"meta":[{"name":"answer","type":"UInt8"}],"data":[{"answer":1}]}))
         }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let address = listener.local_addr()?;
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, upstream).await;
-    });
-    Ok((format!("http://{address}"), server))
+    ))
+    .await
 }
 
 async fn body_of(response: Response) -> Result<Vec<u8>, Box<dyn std::error::Error>> {

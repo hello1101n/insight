@@ -5,7 +5,7 @@ use axum::Json;
 use axum::routing::get;
 use serde_json::{Value, json};
 
-use super::test_keys::{sign, signing_material, spawn_jwks};
+use super::test_keys::{sign, signing_material};
 use super::{JwksVerifier, VerifyFailure, decode_failure, resolve_jwks_url};
 
 #[test]
@@ -38,30 +38,6 @@ async fn an_empty_jwks_url_is_unavailable_not_unauthorized() -> anyhow::Result<(
         verifier.verify::<Value>("garbage").await,
         Err(VerifyFailure::Unauthorized)
     ));
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_valid_token_yields_its_claims() -> anyhow::Result<()> {
-    let material = signing_material()?;
-    let (origin, server) = spawn_jwks(&material).await?;
-    let verifier = JwksVerifier::new(
-        "https://issuer.example",
-        "aud",
-        &format!("{origin}/.well-known/jwks.json"),
-    )?;
-    let token = sign(
-        &material,
-        &json!({"sub": "s", "iss": "https://issuer.example", "aud": "aud", "exp": 4_102_444_800_u64}),
-    )?;
-
-    let claims: Value = verifier
-        .verify(&token)
-        .await
-        .map_err(|error| anyhow::anyhow!("{error:?}"))?;
-
-    assert_eq!(claims["sub"], "s");
-    server.abort();
     Ok(())
 }
 
