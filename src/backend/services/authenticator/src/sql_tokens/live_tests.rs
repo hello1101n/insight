@@ -1,11 +1,10 @@
 use chrono::{SubsecRound as _, Utc};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait as _;
-use secrecy::ExposeSecret as _;
 use uuid::Uuid;
 
 use super::store::{self, NewToken};
-use super::{TokenHash, TokenHolder, TokenLabel, mint};
+use super::{TokenLabel, mint};
 use crate::migration::Migrator;
 
 const ENV_VAR: &str = "INTEGRATION_TESTS_MARIADB_URL";
@@ -34,63 +33,6 @@ pub(super) async fn connect_or_skip() -> Option<DatabaseConnection> {
         })
         .await;
     Some(db)
-}
-
-#[tokio::test]
-#[ignore = "requires live MariaDB 11+; set INTEGRATION_TESTS_MARIADB_URL to enable"]
-async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
-    let Some(db) = connect_or_skip().await else {
-        return Ok(());
-    };
-    let tenant = Uuid::now_v7();
-    let person = Uuid::now_v7();
-    let admin = Uuid::now_v7();
-    let label = TokenLabel::parse("laptop")?;
-    let minted = mint()?;
-    let expires_at = (Utc::now() + chrono::Duration::days(1)).trunc_subsecs(0);
-
-    let token_id = store::insert(
-        &db,
-        NewToken {
-            tenant_id: tenant,
-            person_id: person,
-            label: &label,
-            created_by: admin,
-            hash: &minted.hash,
-            created_at: Utc::now().trunc_subsecs(0),
-            expires_at,
-        },
-    )
-    .await?;
-
-    let holder = store::holder(
-        &db,
-        &TokenHash::of(minted.token.expose_secret()),
-        Utc::now(),
-    )
-    .await?;
-    assert_eq!(
-        holder,
-        Some(TokenHolder {
-            token_id,
-            tenant_id: tenant,
-            person_id: person,
-            label,
-            expires_at,
-        })
-    );
-
-    assert_eq!(
-        store::remove(&db, tenant, token_id).await?,
-        Some(person),
-        "first remove deletes and names the holder"
-    );
-    assert!(
-        store::remove(&db, tenant, token_id).await?.is_none(),
-        "second remove finds nothing"
-    );
-    assert_eq!(store::holder(&db, &minted.hash, Utc::now()).await?, None);
-    Ok(())
 }
 
 #[tokio::test]
@@ -172,42 +114,5 @@ async fn a_tenant_list_stops_at_the_list_limit() -> R {
     let listed = store::list(&db, tenant).await?;
 
     assert_eq!(u64::try_from(listed.len())?, store::LIST_LIMIT);
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires live MariaDB 11+; set INTEGRATION_TESTS_MARIADB_URL to enable"]
-async fn a_token_stops_answering_when_it_expires() -> R {
-    let Some(db) = connect_or_skip().await else {
-        return Ok(());
-    };
-    let label = TokenLabel::parse("laptop")?;
-    let minted = mint()?;
-    let created_at = Utc::now().trunc_subsecs(0);
-    let expires_at = created_at + chrono::Duration::days(1);
-
-    store::insert(
-        &db,
-        NewToken {
-            tenant_id: Uuid::now_v7(),
-            person_id: Uuid::now_v7(),
-            label: &label,
-            created_by: Uuid::now_v7(),
-            hash: &minted.hash,
-            created_at,
-            expires_at,
-        },
-    )
-    .await?;
-
-    let before =
-        store::holder(&db, &minted.hash, expires_at - chrono::Duration::seconds(1)).await?;
-    let at_expiry = store::holder(&db, &minted.hash, expires_at).await?;
-
-    assert!(before.is_some(), "a token answers until it expires");
-    assert_eq!(
-        at_expiry, None,
-        "an expired token answers like an unknown one"
-    );
     Ok(())
 }

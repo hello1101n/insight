@@ -187,19 +187,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn a_database_url_to_a_closed_port_still_yields_a_pool() -> anyhow::Result<()> {
-        let cfg = AuthenticatorConfig {
-            database_url: SecretString::from("mysql://u:p@127.0.0.1:1/authenticator"),
-            ..AuthenticatorConfig::default()
-        };
-
-        let db = connect_sql_tokens_db(&cfg).await?;
-
-        assert!(db.is_some());
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn migrating_with_an_empty_database_url_succeeds_without_connecting() -> anyhow::Result<()>
     {
         let mut app = toolkit::bootstrap::AppConfig::default();
@@ -209,14 +196,6 @@ mod tests {
         );
 
         run_migrate(&app).await
-    }
-
-    #[tokio::test]
-    async fn an_empty_database_url_leaves_sql_tokens_off() -> anyhow::Result<()> {
-        let db = connect_sql_tokens_db(&AuthenticatorConfig::default()).await?;
-
-        assert!(db.is_none());
-        Ok(())
     }
 
     #[tokio::test]

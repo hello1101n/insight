@@ -104,7 +104,7 @@ fn a_logged_idp_config_renders_a_marker_never_the_client_secret() {
 #[test]
 #[ignore = "requires MariaDB and Redis; set INTEGRATION_TESTS_MARIADB_URL and INTEGRATION_TESTS_REDIS_URL"]
 fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
-    const SEEDED_LABEL: &str = "seeded-label-3192";
+    use crate::sql_tokens::exchange_tests::SEEDED_LABEL;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -126,6 +126,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
                 &identity,
                 Some(env.db.clone()),
                 uuid::Uuid::now_v7(),
+                crate::audit::AuditEmitter::disabled(),
             )
             .await?;
 

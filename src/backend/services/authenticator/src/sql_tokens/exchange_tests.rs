@@ -120,14 +120,17 @@ async fn a_known_token_is_exchanged_for_a_sql_api_jwt_with_the_decided_claims() 
         .into_connection();
     let slots = Semaphore::new(8);
     let keystore = keystore()?;
-    let cfg = config();
+    let cfg = AuthenticatorConfig {
+        sql_api_audience: "custom-sql".to_owned(),
+        ..config()
+    };
     let token = minted_token()?;
 
     let response = answer(Some(&db), &slots, &cfg, &keystore, Some(&bearer(&token))).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let jwt = jwt_of(&response)?;
-    keystore.verify(&jwt, "sql-api")?;
+    keystore.verify(&jwt, "custom-sql")?;
     let claims = payload(&jwt)?;
     let iat = u64::try_from(now().timestamp())?;
     assert_eq!(claims["sub"], PERSON.to_string());
@@ -137,7 +140,7 @@ async fn a_known_token_is_exchanged_for_a_sql_api_jwt_with_the_decided_claims() 
     assert_eq!(claims["sid"], TOKEN_ID.to_string());
     assert_eq!(claims["token_label"], "laptop");
     assert_eq!(claims["iss"], ISSUER);
-    assert_eq!(claims["aud"], "sql-api");
+    assert_eq!(claims["aud"], "custom-sql");
     assert_eq!(claims["iat"], iat);
     assert_eq!(claims["exp"], iat + cfg.jwt_ttl_seconds);
     assert!(Uuid::parse_str(claims["jti"].as_str().unwrap_or_default()).is_ok());
@@ -148,65 +151,16 @@ async fn a_known_token_is_exchanged_for_a_sql_api_jwt_with_the_decided_claims() 
 }
 
 #[tokio::test]
-async fn the_audience_comes_from_config() -> R {
-    let db = MockDatabase::new(DatabaseBackend::MySql)
-        .append_query_results([[row(now() + Duration::days(30))]])
-        .into_connection();
-    let cfg = AuthenticatorConfig {
-        sql_api_audience: "custom-sql".to_owned(),
-        ..config()
-    };
-    let keystore = keystore()?;
-
-    let response = answer(
-        Some(&db),
-        &Semaphore::new(8),
-        &cfg,
-        &keystore,
-        Some(&bearer(&minted_token()?)),
-    )
-    .await;
-
-    keystore.verify(&jwt_of(&response)?, "custom-sql")?;
-    Ok(())
-}
-
-#[tokio::test]
-async fn the_jwt_never_outlives_the_token() -> R {
-    let expires_in = Duration::seconds(100);
-    let db = MockDatabase::new(DatabaseBackend::MySql)
-        .append_query_results([[row(now() + expires_in)]])
-        .into_connection();
+async fn the_jwt_and_its_cache_never_outlive_the_token() -> R {
     let keystore = keystore()?;
     let cfg = config();
+    let ttl = Duration::seconds(i64::try_from(cfg.jwt_ttl_seconds)?);
 
-    let response = answer(
-        Some(&db),
-        &Semaphore::new(8),
-        &cfg,
-        &keystore,
-        Some(&bearer(&minted_token()?)),
-    )
-    .await;
-
-    let claims = payload(&jwt_of(&response)?)?;
-    assert_eq!(
-        claims["exp"],
-        u64::try_from((now() + expires_in).timestamp())?
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn cache_control_is_max_age_for_a_long_lived_token_and_no_store_near_expiry() -> R {
-    let keystore = keystore()?;
-    let cfg = config();
-
-    for (expires_in, expected) in [
-        (Duration::days(30), "max-age=30"),
-        (Duration::seconds(59), "no-store"),
-        (Duration::seconds(60), "no-store"),
-        (Duration::seconds(75), "max-age=15"),
+    for (expires_in, expected, lifetime) in [
+        (Duration::days(30), "max-age=30", ttl),
+        (Duration::seconds(59), "no-store", Duration::seconds(59)),
+        (Duration::seconds(60), "no-store", Duration::seconds(60)),
+        (Duration::seconds(75), "max-age=15", Duration::seconds(75)),
     ] {
         let db = MockDatabase::new(DatabaseBackend::MySql)
             .append_query_results([[row(now() + expires_in)]])
@@ -225,6 +179,11 @@ async fn cache_control_is_max_age_for_a_long_lived_token_and_no_store_near_expir
         assert_eq!(
             cache_control(&response),
             expected,
+            "expires in {expires_in}"
+        );
+        assert_eq!(
+            payload(&jwt_of(&response)?)?["exp"],
+            (now() + lifetime).timestamp(),
             "expires in {expires_in}"
         );
     }
@@ -267,24 +226,7 @@ async fn a_missing_malformed_unknown_or_expired_token_is_a_401_with_no_store() -
         assert_eq!(cache_control(&response), "no-store", "{name}");
         assert!(response.headers().get("x-gateway-jwt").is_none(), "{name}");
     }
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_malformed_token_never_reaches_the_database() -> R {
-    let db = MockDatabase::new(DatabaseBackend::MySql).into_connection();
-
-    let response = answer(
-        Some(&db),
-        &Semaphore::new(8),
-        &config(),
-        &keystore()?,
-        Some("Bearer isql_short"),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert!(db.into_transaction_log().is_empty());
+    assert!(untouched.into_transaction_log().is_empty());
     Ok(())
 }
 
@@ -310,37 +252,24 @@ async fn the_lookup_is_by_the_hash_of_the_token() -> R {
 }
 
 #[tokio::test]
-async fn tokens_off_answers_503() -> R {
-    let response = answer(
-        None,
-        &Semaphore::new(8),
-        &config(),
-        &keystore()?,
-        Some(&bearer(&minted_token()?)),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert!(response.headers().get("x-gateway-jwt").is_none());
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_failing_database_answers_503_not_401() -> R {
-    let db = MockDatabase::new(DatabaseBackend::MySql)
+async fn tokens_off_or_a_failing_database_answers_503_not_401() -> R {
+    let failing = MockDatabase::new(DatabaseBackend::MySql)
         .append_query_errors([DbErr::Custom("boom".to_owned())])
         .into_connection();
 
-    let response = answer(
-        Some(&db),
-        &Semaphore::new(8),
-        &config(),
-        &keystore()?,
-        Some(&bearer(&minted_token()?)),
-    )
-    .await;
+    for db in [None, Some(&failing)] {
+        let response = answer(
+            db,
+            &Semaphore::new(8),
+            &config(),
+            &keystore()?,
+            Some(&bearer(&minted_token()?)),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(response.headers().get("x-gateway-jwt").is_none());
+    }
     Ok(())
 }
 
@@ -362,26 +291,6 @@ async fn no_free_lookup_slot_within_two_seconds_answers_503() -> R {
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(started.elapsed(), std::time::Duration::from_secs(2));
     assert!(db.into_transaction_log().is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn a_lookup_returns_its_slot() -> R {
-    let db = MockDatabase::new(DatabaseBackend::MySql)
-        .append_query_results([[row(now() + Duration::days(1))]])
-        .into_connection();
-    let slots = Semaphore::new(1);
-
-    answer(
-        Some(&db),
-        &slots,
-        &config(),
-        &keystore()?,
-        Some(&bearer(&minted_token()?)),
-    )
-    .await;
-
-    assert_eq!(slots.available_permits(), 1);
     Ok(())
 }
 

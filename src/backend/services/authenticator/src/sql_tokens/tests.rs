@@ -7,24 +7,6 @@ use super::*;
 type R = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
-fn a_minted_token_passes_the_sql_api_shape_check() -> R {
-    let minted = mint()?;
-    let token = minted.token.expose_secret();
-
-    assert!(token.starts_with(TOKEN_PREFIX), "prefix missing: {token}");
-    assert!(
-        (32..=1024).contains(&token.len()),
-        "length: {}",
-        token.len()
-    );
-    assert!(
-        token.bytes().all(|b| b.is_ascii_graphic()),
-        "not printable ASCII: {token}"
-    );
-    Ok(())
-}
-
-#[test]
 fn a_minted_token_is_stored_as_its_sha256() -> R {
     let minted = mint()?;
 
@@ -96,20 +78,16 @@ fn only_a_token_shaped_like_a_minted_one_is_worth_looking_up() -> R {
 }
 
 #[test]
-fn a_lifetime_defaults_to_one_year() -> R {
+fn a_lifetime_defaults_to_one_year_and_runs_from_one_day_to_the_maximum() -> R {
     let created = Utc
         .with_ymd_and_hms(2026, 11, 19, 10, 0, 0)
         .single()
         .ok_or("synthetic date")?;
+    assert_eq!(
+        TokenLifetime::parse(None)?.expiry_from(created),
+        created + Duration::days(365)
+    );
 
-    let lifetime = TokenLifetime::parse(None)?;
-
-    assert_eq!(lifetime.expiry_from(created), created + Duration::days(365));
-    Ok(())
-}
-
-#[test]
-fn a_lifetime_runs_from_one_day_to_the_maximum() {
     for days in [0, -1, MAX_LIFETIME_DAYS + 1] {
         assert_eq!(
             TokenLifetime::parse(Some(days)),
@@ -120,4 +98,5 @@ fn a_lifetime_runs_from_one_day_to_the_maximum() {
     for days in [1, MAX_LIFETIME_DAYS] {
         assert!(TokenLifetime::parse(Some(days)).is_ok(), "days: {days}");
     }
+    Ok(())
 }

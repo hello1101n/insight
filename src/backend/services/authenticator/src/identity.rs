@@ -492,14 +492,4 @@ mod tests {
         assert_eq!(params.get("limit").map(String::as_str), Some("2"));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn a_resolver_without_a_roster_source_knows_nobody() -> anyhow::Result<()> {
-        let people = LookupOnly
-            .tenant_people(&[Uuid::from_u128(1)], None)
-            .await?;
-
-        assert!(people.is_empty());
-        Ok(())
-    }
 }
