@@ -67,6 +67,10 @@ pub(crate) async fn remove(
     Ok(deleted.rows_affected > 0)
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "used by the SQL token exchange")
+)]
 pub(crate) async fn holder(
     db: &impl ConnectionTrait,
     hash: &TokenHash,

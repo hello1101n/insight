@@ -8,3 +8,5 @@ routes:
     upstream: http://echo:9090
   - prefix: /api/identity
     upstream: http://echo:9090
+  - prefix: /api/authenticator
+    upstream: http://echo:9090

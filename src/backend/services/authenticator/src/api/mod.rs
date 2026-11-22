@@ -25,7 +25,6 @@ pub struct AppState {
     pub authn_client: Arc<dyn authenticator_sdk::AuthenticatorClientV1>,
     pub audit: crate::audit::AuditEmitter,
     pub mcp_oauth: McpOAuthStore,
-    #[allow(dead_code)]
     pub sql_tokens_db: Option<sea_orm::DatabaseConnection>,
 }
 
@@ -56,6 +55,7 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
     let router = register_auth_routes(router, openapi);
     let router = register_mcp_oauth_routes(router, openapi);
     let router = register_session_routes(router, openapi);
+    let router = register_sql_token_routes(router, openapi);
     let router = register_internal_routes(router, openapi);
     register_well_known_routes(router, openapi)
 }
@@ -253,6 +253,67 @@ fn register_session_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Rou
         .register(router, openapi);
 
     router
+}
+
+fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
+    use crate::sql_tokens::api;
+
+    let mut router = router;
+
+    router = OperationBuilder::get("/v1/sql-tokens")
+        .operation_id("authenticator.sql_tokens.list")
+        .summary("Personal SQL API tokens of the caller's tenant")
+        .tag("sql-tokens")
+        .authenticated()
+        .no_license_required()
+        .json_response_with_schema::<api::SqlTokenListResponse>(
+            openapi,
+            StatusCode::OK,
+            "At most 1000 tokens, newest first; never the token itself",
+        )
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_500(openapi)
+        .error_503(openapi)
+        .handler(api::list_sql_tokens)
+        .register(router, openapi);
+
+    router = OperationBuilder::post("/v1/sql-tokens")
+        .operation_id("authenticator.sql_tokens.create")
+        .summary("Create a personal SQL API token")
+        .tag("sql-tokens")
+        .authenticated()
+        .no_license_required()
+        .json_request::<api::SqlTokenRequest>(openapi, "Who the token is for")
+        .json_response_with_schema::<api::CreatedSqlToken>(
+            openapi,
+            StatusCode::CREATED,
+            "The token, shown this once",
+        )
+        .error_400(openapi)
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_415(openapi)
+        .error_500(openapi)
+        .error_503(openapi)
+        .handler(api::create_sql_token)
+        .register(router, openapi);
+
+    OperationBuilder::delete("/v1/sql-tokens/{token_id}")
+        .operation_id("authenticator.sql_tokens.remove")
+        .summary("Remove a personal SQL API token")
+        .tag("sql-tokens")
+        .authenticated()
+        .no_license_required()
+        .path_param("token_id", "Token id from the list")
+        .no_content_response(StatusCode::NO_CONTENT, "Removed")
+        .error_401(openapi)
+        .error_403(openapi)
+        .error_404(openapi)
+        .error_500(openapi)
+        .error_503(openapi)
+        .handler(api::remove_sql_token)
+        .register(router, openapi)
 }
 
 fn register_internal_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {

@@ -102,6 +102,9 @@ gateway:
     - prefix: /api/identity
       upstream: 'http://{{ .Release.Name }}-identity-resolution:8082'
       stripPrefix: true
+    - prefix: /api/authenticator
+      upstream: 'http://{{ .Release.Name }}-authenticator:8083'
+      stripPrefix: true
     - prefix: /api/previews
       upstream: 'http://{{ .Release.Name }}-previews:8085'
       stripPrefix: true

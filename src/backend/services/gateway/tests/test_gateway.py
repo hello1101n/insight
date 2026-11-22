@@ -7,7 +7,7 @@ import time
 
 from conftest import AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW
 
-ROUTES = ["/api/analytics", "/api/identity"]
+ROUTES = ["/api/analytics", "/api/identity", "/api/authenticator"]
 UUID_V7 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
 UNAUTHENTICATED_TYPE = "gts://gts.cf.core.errors.err.v1~cf.core.err.unauthenticated.v1~"
