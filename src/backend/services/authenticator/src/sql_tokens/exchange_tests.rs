@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use axum::body::to_bytes;
 use axum::http::StatusCode;
 use axum::http::header::CACHE_CONTROL;
@@ -26,8 +28,12 @@ const PERSON: Uuid = Uuid::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0011);
 const TOKEN_ID: Uuid = Uuid::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0012);
 const ISSUER: &str = "https://gw.example";
 
+static NOW: LazyLock<DateTime<Utc>> =
+    LazyLock::new(|| Utc.timestamp_opt(Utc::now().timestamp(), 0).unwrap());
+
+// KeyStore::verify checks exp against the wall clock, so a fixed date expires the minted JWT.
 fn now() -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(2026, 11, 22, 12, 0, 0).unwrap()
+    *NOW
 }
 
 fn config() -> AuthenticatorConfig {
