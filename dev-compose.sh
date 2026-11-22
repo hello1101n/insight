@@ -2053,6 +2053,11 @@ test_stand_write_env() {
   update_env_var "$TEST_STAND_ENV_FILE" SEEDED_LOCAL_MARIA ""
   update_env_var "$TEST_STAND_ENV_FILE" SEEDED_LOCAL_CH    ""
   update_env_var "$TEST_STAND_ENV_FILE" ANALYTICS_PERIODIC_VALIDATION_ENABLED "false"
+  if [[ "${SQL_API_ENABLED:-false}" == "true" ]]; then
+    update_env_var "$TEST_STAND_ENV_FILE" SQL_API_ENABLED "true"
+    update_env_var "$TEST_STAND_ENV_FILE" SQL_API_TOKEN "${SQL_API_TOKEN:?SQL_API_TOKEN is required with SQL_API_ENABLED=true}"
+    update_env_var "$TEST_STAND_ENV_FILE" CLICKHOUSE_MCP_PASSWORD "${CLICKHOUSE_MCP_PASSWORD:-$(openssl rand -hex 16)}"
+  fi
   # Point the authenticator at the same origin the realm registers and the
   # browser runner drives, so the callback lands where the session cookie
   # can be set. Left at its .env.compose.example default

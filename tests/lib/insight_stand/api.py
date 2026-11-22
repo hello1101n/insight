@@ -66,11 +66,13 @@ ANALYTICS_PREFIX = "/api/analytics"
 AUTHENTICATOR_PREFIX = "/api/authenticator"
 CONNECTORS_PREFIX = "/api/connectors"
 IDENTITY_PREFIX = "/api/identity"
+SQL_PREFIX = "/api/sql"
 GATEWAY_API_PREFIXES: tuple[str, ...] = (
     ANALYTICS_PREFIX,
     AUTHENTICATOR_PREFIX,
     CONNECTORS_PREFIX,
     IDENTITY_PREFIX,
+    SQL_PREFIX,
 )
 
 # Served by the edge itself rather than routed to a backend: the SPA at `/` and
@@ -343,6 +345,7 @@ __all__: Sequence[str] = (
     "EDGE_PATH_PREFIXES",
     "GATEWAY_API_PREFIXES",
     "IDENTITY_PREFIX",
+    "SQL_PREFIX",
     "ApiClient",
     "ApiResponse",
     "StandSession",
