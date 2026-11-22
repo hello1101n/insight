@@ -89,6 +89,19 @@ fn instance_token_route_bypasses_session_and_mcp_oauth() {
 }
 
 #[test]
+fn the_authenticator_route_reaches_only_its_v1_api() {
+    let routes = "version: 1\nroutes:\n  - prefix: /api/authenticator\n    upstream: http://authenticator:8083\n    strip_prefix: true\n";
+    let conf = generate(routes, &Settings::default()).unwrap();
+    assert!(
+        conf.contains(
+            "location ~ ^/api/authenticator(?!/v1/) {\n            return 404;\n        }"
+        )
+    );
+    assert!(conf.contains("location /api/authenticator {"));
+    assert_eq!(conf.matches("location ~ ").count(), 1);
+}
+
+#[test]
 fn every_session_location_has_the_hygiene_block() {
     let conf = generate(&fixture("full.routes.yaml"), &Settings::default()).unwrap();
     assert_eq!(
