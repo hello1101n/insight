@@ -7,8 +7,8 @@ const CREATE: &str = "CREATE TABLE IF NOT EXISTS sql_api_tokens (
     person_id BINARY(16) NOT NULL,
     label VARCHAR(255) NOT NULL,
     created_by BINARY(16) NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at DATETIME NOT NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    expires_at DATETIME(3) NOT NULL,
     UNIQUE KEY uq_sql_api_tokens_hash (token_hash),
     KEY idx_sql_api_tokens_tenant_created (insight_tenant_id, created_at)
 )";
