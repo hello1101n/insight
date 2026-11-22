@@ -183,7 +183,14 @@ def test_instance_token_reaches_the_upstream_unchanged(client):
 
 def test_authenticator_internal_paths_are_404(client):
     cookie = {"Cookie": f"__Host-sid={client.login()}"}
-    for path in ("/api/authenticator/internal/authz", "/api/authenticator/internal/sql-token/authz"):
+    for path in (
+        "/api/authenticator/internal/authz",
+        "/api/authenticator/internal/sql-token/authz",
+        "/api/authenticatorinternal/sql-token/authz",
+        "/api/authenticatorinternal/authz",
+        "/api/authenticator//internal/authz",
+        "/api/authenticator/internal",
+    ):
         assert client.request(f"{GW}{path}")[0] == 404, path
         assert client.request(f"{GW}{path}", headers=cookie)[0] == 404, path
     assert client.request(f"{GW}/api/identity/internal/persons/by-email-override", headers=cookie)[0] == 200

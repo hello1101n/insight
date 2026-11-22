@@ -137,8 +137,24 @@ fn sql_token_exchange_url_can_point_elsewhere() {
 #[test]
 fn only_the_authenticator_internal_path_is_denied() {
     let conf = generate(&fixture("sqltoken.routes.yaml"), &Settings::default()).unwrap();
-    assert!(conf.contains("location ^~ /api/authenticator/internal/ {\n            return 404;"));
-    assert_eq!(conf.matches("/internal/ {").count(), 2);
+    assert!(
+        conf.contains("location ~ ^/api/authenticator/*internal(/|$) {\n            return 404;")
+    );
+    assert!(!conf.contains("/api/identity"));
+    assert_eq!(conf.matches("location ~ ").count(), 1);
+}
+
+#[test]
+fn sql_token_is_refused_on_any_other_prefix() {
+    for prefix in ["/api/core", "/api/sql/query/x", "/api/sql"] {
+        let routes = format!(
+            "version: 1\nroutes:\n  - prefix: {prefix}\n    upstream: http://core:8086\n    auth: sql_token\n"
+        );
+        let err = generate(&routes, &Settings::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("/api/sql/query"), "{prefix}: {err}");
+    }
 }
 
 #[test]

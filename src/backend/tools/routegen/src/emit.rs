@@ -405,7 +405,7 @@ fn emit_server(
     c.push_str(
         "        # the authenticator's internal routes never route through /api/authenticator\n",
     );
-    c.push_str("        location ^~ /api/authenticator/internal/ {\n");
+    c.push_str("        location ~ ^/api/authenticator/*internal(/|$) {\n");
     c.push_str("            return 404;\n");
     c.push_str("        }\n\n");
     c.push_str("        # /internal/* never routes through the gateway (G4 layer 1)\n");

@@ -69,9 +69,12 @@ pub fn validate(config: &RouteConfig) -> Result<(), ValidationErrors> {
             Authentication::InstanceToken if !p.starts_with("/api/") => errors.push(format!(
                 "instance-token route prefix '{p}' must start with '/api/'"
             )),
-            Authentication::SqlToken if !p.starts_with("/api/") => errors.push(format!(
-                "sql-token route prefix '{p}' must start with '/api/'"
-            )),
+            Authentication::SqlToken if p != crate::schema::SQL_TOKEN_PREFIX => {
+                errors.push(format!(
+                    "sql-token route prefix '{p}' must be exactly {}",
+                    crate::schema::SQL_TOKEN_PREFIX
+                ));
+            }
             Authentication::Session
             | Authentication::Bearer
             | Authentication::InstanceToken

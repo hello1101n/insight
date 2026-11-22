@@ -88,7 +88,7 @@ gateway:
       stripPrefix: true
     - prefix: /api/core
       upstream: 'http://{{ .Release.Name }}-v3-core:8086'
-      auth: sql_token
+      auth: instance_token
       timeoutMs: 40000
       stripPrefix: true
       v3Only: true
