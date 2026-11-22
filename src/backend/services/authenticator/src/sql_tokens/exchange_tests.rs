@@ -31,7 +31,6 @@ const ISSUER: &str = "https://gw.example";
 static NOW: LazyLock<DateTime<Utc>> =
     LazyLock::new(|| Utc.timestamp_opt(Utc::now().timestamp(), 0).unwrap());
 
-// KeyStore::verify checks exp against the wall clock, so a fixed date expires the minted JWT.
 fn now() -> DateTime<Utc> {
     *NOW
 }
