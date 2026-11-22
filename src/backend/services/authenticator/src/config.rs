@@ -233,6 +233,8 @@ pub struct AuthenticatorConfig {
     pub authz_cache_max_age_seconds: u64,
     pub gateway_issuer: String,
     pub jwt_audience: String,
+    pub sql_api_audience: String,
+    pub sql_token_lookup_slots: usize,
 
     pub redirect_uri: String,
     #[serde(deserialize_with = "de_scopes")]
@@ -312,6 +314,8 @@ impl Default for AuthenticatorConfig {
             authz_cache_max_age_seconds: 30,
             gateway_issuer: String::new(),
             jwt_audience: "internal-services".to_owned(),
+            sql_api_audience: "sql-api".to_owned(),
+            sql_token_lookup_slots: 8,
             redirect_uri: String::new(),
             // offline_access omitted: survives-logout token, wrong for a BFF.
             oidc_scopes: vec![
@@ -356,6 +360,7 @@ impl AuthenticatorConfig {
         );
 
         validate_required_fields(self)?;
+        validate_sql_tokens(self)?;
 
         anyhow::ensure!(
             !(self.idp.resolve_by == ResolveBy::Email && self.idp.provision_on_login),
@@ -479,6 +484,18 @@ fn validate_required_fields(config: &AuthenticatorConfig) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn validate_sql_tokens(config: &AuthenticatorConfig) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !config.sql_api_audience.trim().is_empty(),
+        "sql_api_audience is required (empty)"
+    );
+    anyhow::ensure!(
+        config.sql_token_lookup_slots > 0,
+        "sql_token_lookup_slots must be > 0"
+    );
+    Ok(())
+}
+
 fn validate_mcp_oauth(config: &McpOAuthConfig) -> anyhow::Result<()> {
     if !config.enabled {
         return Ok(());
@@ -598,6 +615,29 @@ mod tests {
             };
             assert!(cfg.validate().is_err(), "should reject prefix {bad:?}");
         }
+    }
+
+    #[test]
+    fn the_sql_api_audience_and_lookup_slots_have_defaults_and_must_be_usable() {
+        let defaults = AuthenticatorConfig::default();
+        assert_eq!(defaults.sql_api_audience, "sql-api");
+        assert_eq!(defaults.sql_token_lookup_slots, 8);
+
+        for audience in ["", "  "] {
+            let cfg = AuthenticatorConfig {
+                sql_api_audience: audience.to_owned(),
+                ..valid_config()
+            };
+            assert!(
+                cfg.validate().is_err(),
+                "should reject audience {audience:?}"
+            );
+        }
+        let cfg = AuthenticatorConfig {
+            sql_token_lookup_slots: 0,
+            ..valid_config()
+        };
+        assert!(cfg.validate().is_err(), "should reject zero slots");
     }
 
     #[test]

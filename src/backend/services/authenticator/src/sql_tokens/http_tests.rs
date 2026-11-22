@@ -14,6 +14,7 @@ use p256::elliptic_curve::Generate as _;
 use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
+use tokio::sync::Semaphore;
 use toolkit::api::OpenApiRegistryImpl;
 use toolkit_security::SecurityContext;
 use tower::ServiceExt as _;
@@ -204,6 +205,7 @@ pub(crate) async fn app(
         resolver,
         audit: AuditEmitter::disabled(),
         sql_tokens_db: tokens_db,
+        sql_token_lookup_slots: Semaphore::new(8),
     });
 
     let openapi = OpenApiRegistryImpl::new();

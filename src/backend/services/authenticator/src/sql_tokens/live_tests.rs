@@ -47,6 +47,7 @@ async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
     let admin = Uuid::now_v7();
     let label = TokenLabel::parse("laptop")?;
     let minted = mint()?;
+    let expires_at = (Utc::now() + chrono::Duration::days(1)).trunc_subsecs(0);
 
     let token_id = store::insert(
         &db,
@@ -57,7 +58,7 @@ async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
             created_by: admin,
             hash: &minted.hash,
             created_at: Utc::now().trunc_subsecs(0),
-            expires_at: Utc::now() + chrono::Duration::days(1),
+            expires_at,
         },
     )
     .await?;
@@ -71,8 +72,11 @@ async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
     assert_eq!(
         holder,
         Some(TokenHolder {
+            token_id,
+            tenant_id: tenant,
             person_id: person,
             label,
+            expires_at,
         })
     );
 

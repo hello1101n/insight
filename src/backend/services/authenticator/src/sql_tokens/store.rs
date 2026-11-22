@@ -76,10 +76,6 @@ pub(crate) async fn remove(
     Ok((deleted.rows_affected > 0).then_some(row.person_id))
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the SQL token exchange")
-)]
 pub(crate) async fn holder(
     db: &impl ConnectionTrait,
     hash: &TokenHash,
@@ -93,7 +89,10 @@ pub(crate) async fn holder(
     Ok(row
         .filter(|row| row.expires_at > at)
         .map(|row| TokenHolder {
+            token_id: row.id,
+            tenant_id: row.insight_tenant_id,
             person_id: row.person_id,
             label: TokenLabel(row.label),
+            expires_at: row.expires_at,
         }))
 }

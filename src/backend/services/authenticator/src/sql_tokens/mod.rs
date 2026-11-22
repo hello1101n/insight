@@ -10,8 +10,11 @@ use crate::migration::sql_token_schema;
 pub(crate) mod api;
 pub(crate) mod db;
 pub(crate) mod entity;
+pub(crate) mod exchange;
 pub(crate) mod store;
 
+#[cfg(test)]
+pub(crate) mod exchange_tests;
 #[cfg(test)]
 pub(crate) mod http_tests;
 #[cfg(test)]
@@ -21,10 +24,6 @@ mod tests;
 
 const TOKEN_PREFIX: &str = "isql_";
 const TOKEN_ENTROPY_BYTES: usize = 32;
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the SQL token exchange")
-)]
 const TOKEN_BODY_CHARS: usize = 43;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,10 +58,6 @@ pub(crate) fn mint() -> Result<MintedToken, CryptoError> {
     })
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the SQL token exchange")
-)]
 pub(crate) fn looks_minted(token: &str) -> bool {
     let Some(body) = token.strip_prefix(TOKEN_PREFIX) else {
         return false;
@@ -130,12 +125,11 @@ impl TokenLifetime {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by the SQL token exchange")
-)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TokenHolder {
+    pub(crate) token_id: Uuid,
+    pub(crate) tenant_id: Uuid,
     pub(crate) person_id: Uuid,
     pub(crate) label: TokenLabel,
+    pub(crate) expires_at: DateTime<Utc>,
 }

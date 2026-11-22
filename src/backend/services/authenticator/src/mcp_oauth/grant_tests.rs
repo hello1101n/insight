@@ -114,6 +114,7 @@ async fn state(redis_url: &str, identity_url: &str) -> Result<Arc<AppState>, Box
         resolver,
         audit: AuditEmitter::disabled(),
         sql_tokens_db: None,
+        sql_token_lookup_slots: tokio::sync::Semaphore::new(8),
     }))
 }
 

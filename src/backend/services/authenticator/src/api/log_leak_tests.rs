@@ -191,3 +191,30 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
     );
     Ok(())
 }
+
+#[test]
+fn the_sql_token_exchange_logs_neither_the_token_nor_the_label_nor_a_name()
+-> crate::sql_tokens::http_tests::R {
+    use crate::sql_tokens::exchange_tests::{SEEDED_LABEL, exchange_outcomes};
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut outcome = Ok(Vec::new());
+
+    let output = capture_output(|| {
+        outcome = runtime.block_on(exchange_outcomes());
+    });
+
+    let tokens = outcome?;
+
+    assert_eq!(tokens.len(), 3, "the three exchanges must run");
+    for token in &tokens {
+        assert!(
+            !output.contains(token.as_str()),
+            "leaked the token: {output}"
+        );
+    }
+    assert!(!output.contains(SEEDED_LABEL), "leaked the label: {output}");
+    Ok(())
+}

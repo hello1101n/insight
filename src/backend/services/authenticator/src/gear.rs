@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use authenticator_sdk::AuthenticatorClientV1;
 use sea_orm::DatabaseConnection;
 use secrecy::ExposeSecret as _;
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use toolkit::api::OpenApiRegistry;
 use toolkit::{Gear, GearCtx, RestApiCapability, RunnableCapability};
@@ -84,6 +85,8 @@ impl Gear for AuthenticatorGear {
         let sql_tokens_db = connect_sql_tokens_db(&cfg).await?;
         tracing::info!(enabled = sql_tokens_db.is_some(), "personal SQL tokens");
 
+        let sql_token_lookup_slots = Semaphore::new(cfg.sql_token_lookup_slots);
+
         let state = Arc::new(AppState {
             cfg,
             sessions,
@@ -95,6 +98,7 @@ impl Gear for AuthenticatorGear {
             audit,
             mcp_oauth,
             sql_tokens_db,
+            sql_token_lookup_slots,
         });
         self.state
             .set(state)

@@ -780,6 +780,41 @@
         "x-toolkit-visibility": "exposed"
       }
     },
+    "/internal/sql-token/authz": {
+      "get": {
+        "operationId": "authenticator.sql_token_authz",
+        "responses": {
+          "200": {
+            "description": "JWT attached via X-Gateway-Jwt"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Exchange a personal SQL token for a SQL API JWT",
+        "tags": [
+          "internal"
+        ],
+        "x-toolkit-visibility": "exposed"
+      }
+    },
     "/v1/sql-tokens": {
       "get": {
         "operationId": "authenticator.sql_tokens.list",

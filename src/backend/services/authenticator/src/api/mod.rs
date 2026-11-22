@@ -26,6 +26,7 @@ pub struct AppState {
     pub audit: crate::audit::AuditEmitter,
     pub mcp_oauth: McpOAuthStore,
     pub sql_tokens_db: Option<sea_orm::DatabaseConnection>,
+    pub sql_token_lookup_slots: tokio::sync::Semaphore,
 }
 
 pub fn register_routes(
@@ -317,6 +318,18 @@ fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> R
 }
 
 fn register_internal_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
+    let router = OperationBuilder::get("/internal/sql-token/authz")
+        .operation_id("authenticator.sql_token_authz")
+        .summary("Exchange a personal SQL token for a SQL API JWT")
+        .tag("internal")
+        .anonymous()
+        .exposed()
+        .no_content_response(StatusCode::OK, "JWT attached via X-Gateway-Jwt")
+        .error_401(openapi)
+        .error_503(openapi)
+        .handler(handlers::sql_token_authz)
+        .register(router, openapi);
+
     OperationBuilder::get("/internal/authz")
         .operation_id("authenticator.authz")
         .summary("Exchange the session cookie for the linked gateway JWT")
