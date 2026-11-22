@@ -86,10 +86,7 @@ resources:
 # `existingSecret` to its name.
 existingSecret: ""
 
-# MariaDB schema holding personal SQL tokens. The Secret above carries
-# APP__gears__authenticator__config__database_url
-# (mysql://user:password@host:port/<databaseName>); the umbrella composes it.
-# Empty database_url turns personal SQL tokens off.
+# MariaDB schema of personal SQL tokens; the umbrella puts it in database_url.
 databaseName: authenticator
 
 # Hook-rendered Secret carrying only database_url, so the pre-install migrate

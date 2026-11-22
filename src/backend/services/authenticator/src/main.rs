@@ -68,6 +68,7 @@ enum Commands {
     Run,
     /// Validate configuration and exit.
     Check,
+    /// Apply the personal SQL token schema migrations and exit.
     Migrate,
     /// Print the OpenAPI document to stdout and exit. Built offline from the
     /// route table — no Redis, IdP, or config needed. Used to regenerate
