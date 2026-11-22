@@ -25,6 +25,8 @@ pub struct AppState {
     pub authn_client: Arc<dyn authenticator_sdk::AuthenticatorClientV1>,
     pub audit: crate::audit::AuditEmitter,
     pub mcp_oauth: McpOAuthStore,
+    #[allow(dead_code)]
+    pub sql_tokens_db: Option<sea_orm::DatabaseConnection>,
 }
 
 pub fn register_routes(

@@ -3,12 +3,14 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use authenticator_sdk::AuthenticatorClientV1;
+use sea_orm::DatabaseConnection;
+use secrecy::ExposeSecret as _;
 use tokio_util::sync::CancellationToken;
 use toolkit::api::OpenApiRegistry;
 use toolkit::{Gear, GearCtx, RestApiCapability, RunnableCapability};
 
 use crate::api::{self, AppState};
-use crate::config::AuthenticatorConfig;
+use crate::config::{AuthenticatorConfig, extract_gear_config};
 use crate::identity::{IdentityPersonResolver, PersonResolver};
 use crate::issuers::IssuerSelector;
 use crate::jwt::KeyStore;
@@ -79,6 +81,9 @@ impl Gear for AuthenticatorGear {
             cfg.audit.retention_ms,
         )?;
 
+        let sql_tokens_db = connect_sql_tokens_db(&cfg).await?;
+        tracing::info!(enabled = sql_tokens_db.is_some(), "personal SQL tokens");
+
         let state = Arc::new(AppState {
             cfg,
             sessions,
@@ -89,6 +94,7 @@ impl Gear for AuthenticatorGear {
             authn_client,
             audit,
             mcp_oauth,
+            sql_tokens_db,
         });
         self.state
             .set(state)
@@ -133,6 +139,86 @@ impl RunnableCapability for AuthenticatorGear {
     }
 
     async fn stop(&self, _deadline_token: CancellationToken) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+async fn connect_sql_tokens_db(
+    cfg: &AuthenticatorConfig,
+) -> anyhow::Result<Option<DatabaseConnection>> {
+    match cfg.sql_tokens_database_url()? {
+        Some(url) => Ok(Some(
+            crate::sql_tokens::db::connect_lazy(url.expose_secret()).await?,
+        )),
+        None => Ok(None),
+    }
+}
+
+pub(crate) async fn run_migrate(app: &toolkit::bootstrap::AppConfig) -> anyhow::Result<()> {
+    let cfg = extract_gear_config(app)?;
+    let url = cfg
+        .sql_tokens_database_url()?
+        .ok_or_else(|| anyhow::anyhow!("database_url is required to run migrations"))?;
+
+    insight_migration::with_migration_session(
+        url.expose_secret(),
+        crate::sql_tokens::db::MIGRATION_LOCK,
+        crate::sql_tokens::db::MIGRATION_LOCK_TIMEOUT,
+        |db| async move {
+            use sea_orm_migration::MigratorTrait as _;
+            crate::migration::Migrator::up(&db, None).await?;
+            Ok(())
+        },
+    )
+    .await?;
+    tracing::info!("migrations complete");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use secrecy::SecretString;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn a_database_url_to_a_closed_port_still_yields_a_pool() -> anyhow::Result<()> {
+        let cfg = AuthenticatorConfig {
+            database_url: SecretString::from("mysql://u:p@127.0.0.1:1/authenticator"),
+            ..AuthenticatorConfig::default()
+        };
+
+        let db = connect_sql_tokens_db(&cfg).await?;
+
+        assert!(db.is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_empty_database_url_leaves_sql_tokens_off() -> anyhow::Result<()> {
+        let db = connect_sql_tokens_db(&AuthenticatorConfig::default()).await?;
+
+        assert!(db.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_pool_to_a_closed_port_fails_a_query_fast() -> anyhow::Result<()> {
+        use sea_orm::ConnectionTrait as _;
+
+        let cfg = AuthenticatorConfig {
+            database_url: SecretString::from("mysql://u:p@127.0.0.1:1/authenticator"),
+            ..AuthenticatorConfig::default()
+        };
+        let db = connect_sql_tokens_db(&cfg)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("pool missing"))?;
+
+        let started = std::time::Instant::now();
+        let outcome = db.execute_unprepared("SELECT 1").await;
+
+        assert!(outcome.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
         Ok(())
     }
 }

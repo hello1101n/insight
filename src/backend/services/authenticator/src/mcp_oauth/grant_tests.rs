@@ -113,6 +113,7 @@ async fn state(redis_url: &str, identity_url: &str) -> Result<Arc<AppState>, Box
         keystore,
         resolver,
         audit: AuditEmitter::disabled(),
+        sql_tokens_db: None,
     }))
 }
 
