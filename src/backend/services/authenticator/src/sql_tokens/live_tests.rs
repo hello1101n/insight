@@ -10,6 +10,8 @@ use crate::migration::Migrator;
 
 const ENV_VAR: &str = "INTEGRATION_TESTS_MARIADB_URL";
 
+static MIGRATED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
 type R = Result<(), Box<dyn std::error::Error>>;
 
 async fn connect_or_skip() -> Option<DatabaseConnection> {
@@ -18,18 +20,19 @@ async fn connect_or_skip() -> Option<DatabaseConnection> {
         return None;
     };
     let mut opts = ConnectOptions::new(url);
-    opts.max_connections(2).sqlx_logging(false);
-    let db = match Database::connect(opts).await {
-        Ok(db) => db,
-        Err(e) => {
-            eprintln!("skipping: cannot connect to {ENV_VAR}: {e}");
-            return None;
-        }
-    };
-    if let Err(e) = Migrator::up(&db, None).await {
-        eprintln!("skipping: cannot migrate {ENV_VAR}: {e}");
-        return None;
-    }
+    opts.max_connections(2)
+        .acquire_timeout(std::time::Duration::from_secs(3))
+        .sqlx_logging(false);
+    let db = Database::connect(opts)
+        .await
+        .unwrap_or_else(|e| panic!("cannot connect to {ENV_VAR}: {e}"));
+    MIGRATED
+        .get_or_init(|| async {
+            Migrator::up(&db, None)
+                .await
+                .unwrap_or_else(|e| panic!("cannot migrate {ENV_VAR}: {e}"));
+        })
+        .await;
     Some(db)
 }
 

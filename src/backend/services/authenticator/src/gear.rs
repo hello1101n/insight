@@ -156,9 +156,10 @@ async fn connect_sql_tokens_db(
 
 pub(crate) async fn run_migrate(app: &toolkit::bootstrap::AppConfig) -> anyhow::Result<()> {
     let cfg = extract_gear_config(app)?;
-    let url = cfg
-        .sql_tokens_database_url()?
-        .ok_or_else(|| anyhow::anyhow!("database_url is required to run migrations"))?;
+    let Some(url) = cfg.sql_tokens_database_url()? else {
+        tracing::info!("database_url is empty, personal SQL tokens are off, nothing to migrate");
+        return Ok(());
+    };
 
     insight_migration::with_migration_session(
         url.expose_secret(),
@@ -192,6 +193,18 @@ mod tests {
 
         assert!(db.is_some());
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn migrating_with_an_empty_database_url_succeeds_without_connecting() -> anyhow::Result<()>
+    {
+        let mut app = toolkit::bootstrap::AppConfig::default();
+        app.gears.insert(
+            "authenticator".to_owned(),
+            serde_json::json!({"config": {}}),
+        );
+
+        run_migrate(&app).await
     }
 
     #[tokio::test]
