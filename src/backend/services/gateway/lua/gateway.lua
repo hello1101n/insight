@@ -17,7 +17,6 @@ local SQL_TOKEN_MISSES = "sql_token_misses"
 local SQL_TOKEN_PREFIX = "isql_"
 local SQL_TOKEN_MISS_RATE = 10
 local SQL_TOKEN_MISS_BURST = 20
-local SQL_TOKEN_SCOPE = "sql_api"
 
 local cfg = {
     authz_url = nil,
@@ -177,6 +176,11 @@ local function sha256_hex(value)
     return resty_string.to_hex(digest:final())
 end
 
+local function sql_token_unavailable(reason)
+    ngx.log(ngx.ERR, "sql token exchange failed: ", reason)
+    return errors.sql_api_unavailable
+end
+
 local function exchange_sql_token(token)
     local cache = ngx.shared[SQL_TOKEN_CACHE]
     local key = sha256_hex(token)
@@ -190,7 +194,7 @@ local function exchange_sql_token(token)
         if limit_err == "rejected" then
             return nil, errors.too_many_requests
         end
-        return nil, function() return errors.unavailable("sql token limiter: " .. tostring(limit_err)) end
+        return nil, sql_token_unavailable("limiter: " .. tostring(limit_err))
     end
 
     local httpc = http.new()
@@ -204,17 +208,17 @@ local function exchange_sql_token(token)
         headers = { ["Authorization"] = "Bearer " .. token },
     })
     if not res then
-        return nil, function() return errors.unavailable(err) end
+        return nil, sql_token_unavailable(err)
     end
     if res.status == 401 then
-        return nil, function() return errors.bearer_unauthorized(nil, SQL_TOKEN_SCOPE) end
+        return nil, errors.sql_api_unauthorized
     end
     if res.status ~= 200 then
-        return nil, function() return errors.unavailable("sql token authz status " .. tostring(res.status)) end
+        return nil, sql_token_unavailable("authz status " .. tostring(res.status))
     end
     jwt = res.headers["X-Gateway-Jwt"]
     if not jwt or jwt == "" then
-        return nil, function() return errors.unavailable("sql token authz 200 without X-Gateway-Jwt") end
+        return nil, sql_token_unavailable("authz 200 without X-Gateway-Jwt")
     end
 
     local ttl = parse_max_age(res.headers["Cache-Control"])

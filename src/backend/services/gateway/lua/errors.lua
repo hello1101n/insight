@@ -55,8 +55,21 @@ function _M.bearer_unauthorized(resource_metadata_url, scope)
     )
 end
 
+function _M.sql_api_unauthorized()
+    ngx.header["WWW-Authenticate"] = "Bearer"
+    ngx.header["Cache-Control"] = "no-store"
+    return problem(
+        401,
+        TYPE_UNAUTHENTICATED,
+        "Unauthenticated",
+        "Authentication required",
+        { reason = "INVALID_INSTANCE_TOKEN" }
+    )
+end
+
 function _M.too_many_requests()
     ngx.header["Retry-After"] = tostring(RATE_LIMIT_RETRY_AFTER)
+    ngx.header["Cache-Control"] = "no-store"
     return problem(
         429,
         TYPE_RESOURCE_EXHAUSTED,
@@ -75,6 +88,11 @@ function _M.unavailable(detail)
         detail or "The authentication service is unavailable.",
         { retry_after_seconds = RETRY_AFTER }
     )
+end
+
+function _M.sql_api_unavailable()
+    ngx.header["Cache-Control"] = "no-store"
+    return _M.unavailable()
 end
 
 return _M

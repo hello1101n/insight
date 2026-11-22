@@ -183,7 +183,8 @@ def test_refused_personal_token_is_401_and_asked_again(client):
     for attempt in (1, 2):
         status, headers, body = _sql(client, token)
         assert status == 401, f"got {status}"
-        assert "www-authenticate" in headers
+        assert headers["www-authenticate"] == "Bearer"
+        assert headers["cache-control"] == "no-store"
         assert json.loads(body)["type"] == UNAUTHENTICATED_TYPE
         assert _stub_calls(client, token) == attempt
 
@@ -214,6 +215,26 @@ def test_authenticator_internal_paths_are_404(client):
     assert client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)[0] == 200
 
 
+def _assert_sql_api_unavailable(response):
+    status, headers, body = response
+    assert status == 503, f"got {status}"
+    assert headers["cache-control"] == "no-store"
+    assert "retry-after" in headers
+    problem = json.loads(body)
+    assert problem["type"] == SERVICE_UNAVAILABLE_TYPE
+    assert problem["detail"] == "The authentication service is unavailable."
+
+
+def test_exchange_failure_is_a_no_store_503(client):
+    _assert_sql_api_unavailable(_sql(client, "isql_unavailable_" + "F" * 26))
+
+
+def test_unreachable_exchange_is_a_503_without_its_error(client, sql_token_stub_down):
+    response = _sql(client, "isql_known_unreachable_" + "G" * 20)
+    _assert_sql_api_unavailable(response)
+    assert b"sql-token-stub" not in response[2]
+
+
 def test_unknown_token_flood_is_429_and_auth_stays_open(client):
     sid = client.login()
     statuses = [_sql(client, f"isql_flood_{i:04d}_" + "E" * 20)[0] for i in range(80)]
@@ -221,5 +242,6 @@ def test_unknown_token_flood_is_429_and_auth_stays_open(client):
     assert set(statuses) <= {401, 429}, statuses
     status, headers, body = _sql(client, "isql_flood_after_" + "E" * 20)
     assert status == 429
+    assert headers["cache-control"] == "no-store"
     assert json.loads(body)["status"] == 429
     assert client.request(f"{GW}/auth/csrf", headers={"Cookie": f"__Host-sid={sid}"})[0] == 200

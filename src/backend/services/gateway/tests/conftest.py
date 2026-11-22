@@ -252,6 +252,14 @@ def authenticator_down(session_sid):
 
 
 @pytest.fixture
+def sql_token_stub_down():
+    _compose("kill", "sql-token-stub")
+    yield
+    _compose("start", "sql-token-stub")
+    _wait_http(f"{SQL_TOKEN_STUB}/calls", want={200})
+
+
+@pytest.fixture
 def echo_down():
     _compose("kill", "echo")
     yield

@@ -5,6 +5,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 KNOWN_PREFIX = "isql_known"
+UNAVAILABLE_PREFIX = "isql_unavailable"
 LOCK = threading.Lock()
 CALLS = {"total": 0, "by_token": {}}
 
@@ -37,6 +38,8 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {"X-Gateway-Jwt": f"Bearer stub-jwt-for.{token}", "Cache-Control": "max-age=30"},
             )
+        if token.startswith(UNAVAILABLE_PREFIX):
+            return self._send(503, {"Cache-Control": "no-store"})
         self._send(401, {"Cache-Control": "no-store"})
 
     def log_message(self, *_args):
