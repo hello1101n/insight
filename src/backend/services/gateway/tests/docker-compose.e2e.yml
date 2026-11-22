@@ -64,6 +64,14 @@ services:
       - ./echo-stub.py:/echo-stub.py:ro
     command: ["python", "/echo-stub.py", "0.0.0.0:9090"]
 
+  sql-token-stub:
+    image: python:3.12-slim
+    volumes:
+      - ./sql-token-stub.py:/sql-token-stub.py:ro
+    command: ["python", "/sql-token-stub.py", "0.0.0.0:9091"]
+    ports:
+      - "${SQL_TOKEN_STUB_E2E_PORT:-18091}:9091"
+
   gateway:
     image: insight-gateway:e2e-prebuilt
     build:
@@ -72,8 +80,10 @@ services:
     depends_on:
       authenticator: {condition: service_started}
       echo: {condition: service_started}
+      sql-token-stub: {condition: service_started}
     environment:
       GATEWAY_AUTHENTICATOR_URL: "http://authenticator:8083"
+      GATEWAY_SQL_TOKEN_AUTHZ_URL: "http://sql-token-stub:9091/internal/sql-token/authz"
       GATEWAY_FRONT_URL: "http://echo:9090"
     volumes:
       - ./routes.e2e.yaml:/etc/gateway/routes.yaml:ro

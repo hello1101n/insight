@@ -5,7 +5,7 @@ import json
 import re
 import time
 
-from conftest import AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW
+from conftest import AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW, SQL_TOKEN_STUB
 
 ROUTES = ["/api/analytics", "/api/identity", "/api/authenticator"]
 UUID_V7 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -127,3 +127,74 @@ def test_dead_upstream_5xx(client, echo_down):
     # Connection refused -> 502; unroutable (killed container) -> 504 at the
     # bounded proxy_connect_timeout. Either is the fail-fast dead-upstream path.
     assert status in (502, 504), f"got {status}"
+
+
+def _stub_calls(client, token=None):
+    _, _, body = client.request(f"{SQL_TOKEN_STUB}/calls")
+    calls = json.loads(body)
+    return calls["total"] if token is None else calls["by_token"].get(token, 0)
+
+
+def _sql(client, token):
+    return client.request(
+        f"{GW}/api/sql/query",
+        headers={"Authorization": f"Bearer {token}", "Cookie": "__Host-sid=ignored; keep=1"},
+        method="POST",
+        data={"q": "select 1"},
+    )
+
+
+def test_personal_token_is_exchanged_for_a_jwt(client):
+    token = "isql_known_exchange_" + "A" * 23
+    status, _, body = _sql(client, token)
+    assert status == 200, f"got {status}"
+    echoed = json.loads(body)["headers"]
+    assert echoed["authorization"] == f"Bearer stub-jwt-for.{token}"
+    assert "cookie" not in echoed
+    assert UUID_V7.match(echoed.get("x-correlation-id", ""))
+
+
+def test_personal_token_second_request_is_a_cache_hit(client):
+    token = "isql_known_cached_" + "B" * 25
+    assert _sql(client, token)[0] == 200
+    assert _sql(client, token)[0] == 200
+    assert _stub_calls(client, token) == 1
+
+
+def test_refused_personal_token_is_401_and_asked_again(client):
+    token = "isql_refused_" + "C" * 30
+    for attempt in (1, 2):
+        status, headers, body = _sql(client, token)
+        assert status == 401, f"got {status}"
+        assert "www-authenticate" in headers
+        assert json.loads(body)["type"] == UNAUTHENTICATED_TYPE
+        assert _stub_calls(client, token) == attempt
+
+
+def test_instance_token_reaches_the_upstream_unchanged(client):
+    before = _stub_calls(client)
+    status, _, body = _sql(client, "instance-token-" + "D" * 20)
+    assert status == 200, f"got {status}"
+    echoed = json.loads(body)["headers"]
+    assert echoed["authorization"] == "Bearer instance-token-" + "D" * 20
+    assert "cookie" not in echoed
+    assert _stub_calls(client) == before
+
+
+def test_authenticator_internal_paths_are_404(client):
+    cookie = {"Cookie": f"__Host-sid={client.login()}"}
+    for path in ("/api/authenticator/internal/authz", "/api/authenticator/internal/sql-token/authz"):
+        assert client.request(f"{GW}{path}")[0] == 404, path
+        assert client.request(f"{GW}{path}", headers=cookie)[0] == 404, path
+    assert client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)[0] == 200
+
+
+def test_unknown_token_flood_is_429_and_auth_stays_open(client):
+    sid = client.login()
+    statuses = [_sql(client, f"isql_flood_{i:04d}_" + "E" * 20)[0] for i in range(80)]
+    assert 429 in statuses, statuses
+    assert set(statuses) <= {401, 429}, statuses
+    status, headers, body = _sql(client, "isql_flood_after_" + "E" * 20)
+    assert status == 429
+    assert json.loads(body)["status"] == 429
+    assert client.request(f"{GW}/auth/csrf", headers={"Cookie": f"__Host-sid={sid}"})[0] == 200

@@ -37,6 +37,7 @@ pub enum Authentication {
     Session,
     Bearer,
     InstanceToken,
+    SqlToken,
 }
 
 impl Default for Defaults {

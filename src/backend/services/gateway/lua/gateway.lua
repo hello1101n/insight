@@ -5,13 +5,23 @@
 local http = require("resty.http")
 local uuid = require("resty.uuid")
 local errors = require("errors")
+local limit_req = require("resty.limit.req")
+local resty_sha256 = require("resty.sha256")
+local resty_string = require("resty.string")
 
 local _M = {}
 
 local CACHE = "jwt_cache"
+local SQL_TOKEN_CACHE = "sql_token_cache"
+local SQL_TOKEN_MISSES = "sql_token_misses"
+local SQL_TOKEN_PREFIX = "isql_"
+local SQL_TOKEN_MISS_RATE = 10
+local SQL_TOKEN_MISS_BURST = 20
+local SQL_TOKEN_SCOPE = "sql_api"
 
 local cfg = {
     authz_url = nil,
+    sql_token_authz_url = nil,
     mcp_resource_metadata_url = nil,
     authz_connect_timeout_ms = 2000,
     authz_read_timeout_ms = 2000,
@@ -19,6 +29,7 @@ local cfg = {
 
 function _M.init(opts)
     cfg.authz_url = opts.authz_url
+    cfg.sql_token_authz_url = opts.sql_token_authz_url
     cfg.mcp_resource_metadata_url = opts.mcp_resource_metadata_url
     cfg.authz_connect_timeout_ms = opts.authz_connect_timeout_ms or cfg.authz_connect_timeout_ms
     cfg.authz_read_timeout_ms = opts.authz_read_timeout_ms or cfg.authz_read_timeout_ms
@@ -147,6 +158,87 @@ function _M.pass_bearer(resource_metadata_url, scope)
 end
 
 function _M.pass_instance_token()
+    ngx.req.clear_header("Cookie")
+    set_request_context()
+end
+
+local miss_limiter
+
+local function sql_token_miss_limiter()
+    if not miss_limiter then
+        miss_limiter = assert(limit_req.new(SQL_TOKEN_MISSES, SQL_TOKEN_MISS_RATE, SQL_TOKEN_MISS_BURST))
+    end
+    return miss_limiter
+end
+
+local function sha256_hex(value)
+    local digest = resty_sha256:new()
+    digest:update(value)
+    return resty_string.to_hex(digest:final())
+end
+
+local function exchange_sql_token(token)
+    local cache = ngx.shared[SQL_TOKEN_CACHE]
+    local key = sha256_hex(token)
+    local jwt = cache:get(key)
+    if jwt then
+        return jwt
+    end
+
+    local delay, limit_err = sql_token_miss_limiter():incoming(ngx.var.remote_addr, true)
+    if not delay then
+        if limit_err == "rejected" then
+            return nil, errors.too_many_requests
+        end
+        return nil, function() return errors.unavailable("sql token limiter: " .. tostring(limit_err)) end
+    end
+
+    local httpc = http.new()
+    httpc:set_timeouts(
+        cfg.authz_connect_timeout_ms,
+        cfg.authz_read_timeout_ms,
+        cfg.authz_read_timeout_ms
+    )
+    local res, err = httpc:request_uri(cfg.sql_token_authz_url, {
+        method = "GET",
+        headers = { ["Authorization"] = "Bearer " .. token },
+    })
+    if not res then
+        return nil, function() return errors.unavailable(err) end
+    end
+    if res.status == 401 then
+        return nil, function() return errors.bearer_unauthorized(nil, SQL_TOKEN_SCOPE) end
+    end
+    if res.status ~= 200 then
+        return nil, function() return errors.unavailable("sql token authz status " .. tostring(res.status)) end
+    end
+    jwt = res.headers["X-Gateway-Jwt"]
+    if not jwt or jwt == "" then
+        return nil, function() return errors.unavailable("sql token authz 200 without X-Gateway-Jwt") end
+    end
+
+    local ttl = parse_max_age(res.headers["Cache-Control"])
+    if ttl and ttl > 0 then
+        cache:set(key, jwt, ttl)
+    end
+    return jwt
+end
+
+function _M.sql_token()
+    local scheme, token = string.match(ngx.var.http_authorization or "", "^(%S+) (%S+)$")
+    if not scheme or string.lower(scheme) ~= "bearer" then
+        token = nil
+    end
+    if not token or string.sub(token, 1, #SQL_TOKEN_PREFIX) ~= SQL_TOKEN_PREFIX then
+        return _M.pass_instance_token()
+    end
+
+    local jwt, deny = exchange_sql_token(token)
+    if not jwt then
+        return deny()
+    end
+
+    ngx.req.set_header("Authorization", jwt)
     ngx.req.clear_header("Cookie")
     set_request_context()
 end

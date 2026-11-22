@@ -38,7 +38,7 @@ Leave `global.mcp.enabled` and `global.mcp.publicUrl` unchanged.
 
 Inherit gateway route defaults. A custom `gateway.gateway.routes` list replaces
 the complete default list and must explicitly include `/api/sql/query` with
-`auth: instance_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
+`auth: sql_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
 `timeoutMs: 40000`, and `sqlApiOnly: true`.
 
 For Docker Compose, set `SQL_API_ENABLED=true`, `SQL_API_TOKEN`, and

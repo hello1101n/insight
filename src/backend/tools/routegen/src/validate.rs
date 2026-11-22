@@ -69,7 +69,13 @@ pub fn validate(config: &RouteConfig) -> Result<(), ValidationErrors> {
             Authentication::InstanceToken if !p.starts_with("/api/") => errors.push(format!(
                 "instance-token route prefix '{p}' must start with '/api/'"
             )),
-            Authentication::Session | Authentication::Bearer | Authentication::InstanceToken => {}
+            Authentication::SqlToken if !p.starts_with("/api/") => errors.push(format!(
+                "sql-token route prefix '{p}' must start with '/api/'"
+            )),
+            Authentication::Session
+            | Authentication::Bearer
+            | Authentication::InstanceToken
+            | Authentication::SqlToken => {}
         }
 
         match parse_upstream(&route.upstream) {

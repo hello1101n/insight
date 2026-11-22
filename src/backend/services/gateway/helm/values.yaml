@@ -63,7 +63,7 @@ gateway:
   routes:
     - prefix: /api/sql/query
       upstream: 'http://{{ .Release.Name }}-analytics:8086'
-      auth: instance_token
+      auth: sql_token
       timeoutMs: 40000
       sqlApiOnly: true
     - prefix: /mcp
@@ -88,7 +88,7 @@ gateway:
       stripPrefix: true
     - prefix: /api/core
       upstream: 'http://{{ .Release.Name }}-v3-core:8086'
-      auth: instance_token
+      auth: sql_token
       timeoutMs: 40000
       stripPrefix: true
       v3Only: true

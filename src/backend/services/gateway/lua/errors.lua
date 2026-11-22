@@ -8,7 +8,11 @@ local TYPE_UNAUTHENTICATED =
 local TYPE_SERVICE_UNAVAILABLE =
     "gts://gts.cf.core.errors.err.v1~cf.core.err.service_unavailable.v1~"
 
+local TYPE_RESOURCE_EXHAUSTED =
+    "gts://gts.cf.core.errors.err.v1~cf.core.err.resource_exhausted.v1~"
+
 local RETRY_AFTER = 5
+local RATE_LIMIT_RETRY_AFTER = 1
 
 local function problem(status, ptype, title, detail, context)
     ngx.status = status
@@ -48,6 +52,17 @@ function _M.bearer_unauthorized(resource_metadata_url, scope)
         "Unauthenticated",
         "A valid bearer token is required.",
         { reason = "invalid_bearer" }
+    )
+end
+
+function _M.too_many_requests()
+    ngx.header["Retry-After"] = tostring(RATE_LIMIT_RETRY_AFTER)
+    return problem(
+        429,
+        TYPE_RESOURCE_EXHAUSTED,
+        "Too Many Requests",
+        "Too many token lookups from this address; retry shortly.",
+        { retry_after_seconds = RATE_LIMIT_RETRY_AFTER }
     )
 end
 

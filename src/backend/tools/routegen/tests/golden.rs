@@ -89,6 +89,59 @@ fn instance_token_route_bypasses_session_and_mcp_oauth() {
 }
 
 #[test]
+fn golden_sql_token() {
+    assert_golden("sqltoken.routes.yaml", "sqltoken.nginx.conf");
+}
+
+#[test]
+fn sql_token_route_exchanges_through_lua_and_skips_session_and_mcp_oauth() {
+    let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: sql_token\n";
+    let conf = generate(routes, &Settings::default()).unwrap();
+    assert!(conf.contains("location = /api/sql/query {"));
+    assert_eq!(
+        conf.matches("access_by_lua_block { require(\"gateway\").sql_token() }")
+            .count(),
+        1
+    );
+    assert!(!conf.contains("require(\"gateway\").pass_instance_token()"));
+    assert!(!conf.contains("require(\"gateway\").exchange()"));
+    assert!(!conf.contains("require(\"gateway\").pass_bearer("));
+    assert!(conf.contains("lua_shared_dict sql_token_cache "));
+    assert!(conf.contains("lua_shared_dict sql_token_misses "));
+    assert!(conf.contains(
+        "sql_token_authz_url = \"http://authenticator.insight.svc.cluster.local:8083/internal/sql-token/authz\","
+    ));
+    assert!(
+        generate(
+            &routes.replace("/api/sql/query", "/mcp"),
+            &Settings::default()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn sql_token_exchange_url_can_point_elsewhere() {
+    let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: sql_token\n";
+    let conf = generate(
+        routes,
+        &Settings {
+            sql_token_authz_url: Some("http://sql-token-stub:9091/exchange".to_owned()),
+            ..Settings::default()
+        },
+    )
+    .unwrap();
+    assert!(conf.contains("sql_token_authz_url = \"http://sql-token-stub:9091/exchange\","));
+}
+
+#[test]
+fn stripped_routes_never_reach_the_upstream_internal_paths() {
+    let conf = generate(&fixture("sqltoken.routes.yaml"), &Settings::default()).unwrap();
+    assert!(conf.contains("location ^~ /api/authenticator/internal/ {\n            return 404;"));
+    assert!(!conf.contains("/api/sql/query/internal/"));
+}
+
+#[test]
 fn every_session_location_has_the_hygiene_block() {
     let conf = generate(&fixture("full.routes.yaml"), &Settings::default()).unwrap();
     assert_eq!(
