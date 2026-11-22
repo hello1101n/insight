@@ -29,8 +29,21 @@ Two consequences worth knowing while it stays this small:
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class CreatedSqlToken(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    created_at: str
+    expires_at: str
+    label: str
+    person_id: str
+    token: str = Field(..., description='Shown in this response only; the service keeps its hash.')
+    token_id: str
 
 
 class Problem(BaseModel):
@@ -47,3 +60,41 @@ class Problem(BaseModel):
     title: str
     trace_id: str | None = None
     type: str
+
+
+class SqlTokenPerson(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    display_name: str
+    email: str | None = None
+    person_id: str
+    username: str
+
+
+class SqlTokenRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    label: str
+    lifetime_days: int | None = Field(365, ge=1, le=730)
+    person_id: UUID
+
+
+class SqlTokenEntry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    created_at: str
+    created_by: SqlTokenPerson
+    expires_at: str
+    label: str
+    person: SqlTokenPerson
+    token_id: str
+
+
+class SqlTokenListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    items: list[SqlTokenEntry]
