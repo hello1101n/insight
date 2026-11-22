@@ -146,13 +146,17 @@ describe("SqlTokensView", () => {
     expect(
       within(dialog).getByRole("button", { name: "Create" })
     ).toBeDisabled();
+    const lifetime = within(dialog).getByRole("combobox", { name: "Lifetime" });
+    expect(lifetime).toHaveTextContent("1 year");
+    await user.click(lifetime);
+    await user.click(await screen.findByRole("option", { name: "30 days" }));
 
     await submitToken(user, dialog);
 
     expect(create).toHaveBeenCalledWith({
       person_id: "00000000-0000-4000-8000-000000000003",
       label: "ci",
-      lifetime_days: 365,
+      lifetime_days: 30,
     });
     expect(await within(dialog).findByDisplayValue(SECRET)).toBeInTheDocument();
     expect(within(dialog).getByText(/not shown again/i)).toBeInTheDocument();
@@ -165,29 +169,8 @@ describe("SqlTokensView", () => {
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
-  it("creates a token with the lifetime the admin picks", async () => {
-    const user = userEvent.setup();
-    list.mockResolvedValue({ items: [] });
-    create.mockResolvedValue(CREATED);
 
-    const dialog = await openCreateDialog(user);
-    expect(
-      within(dialog).getByRole("combobox", { name: "Lifetime" })
-    ).toHaveTextContent("1 year");
-    await user.click(
-      within(dialog).getByRole("combobox", { name: "Lifetime" })
-    );
-    await user.click(await screen.findByRole("option", { name: "30 days" }));
-    await submitToken(user, dialog);
-
-    expect(create).toHaveBeenCalledWith({
-      person_id: "00000000-0000-4000-8000-000000000003",
-      label: "ci",
-      lifetime_days: 30,
-    });
-  });
-
-  it("keeps the shown token on screen until Done, whatever else is pressed", async () => {
+  it("keeps the shown token on screen until Done and copies it", async () => {
     const user = userEvent.setup();
     list.mockResolvedValue({ items: [] });
     create.mockResolvedValue(CREATED);
@@ -203,21 +186,11 @@ describe("SqlTokensView", () => {
     expect(
       within(dialog).queryByRole("button", { name: "Close" })
     ).not.toBeInTheDocument();
-  });
-
-  it("copies the shown token", async () => {
-    const user = userEvent.setup();
-    list.mockResolvedValue({ items: [] });
-    create.mockResolvedValue(CREATED);
-
-    const dialog = await openCreateDialog(user);
-    await submitToken(user, dialog);
-    await within(dialog).findByDisplayValue(SECRET);
 
     await user.click(within(dialog).getByRole("button", { name: "Copy" }));
-
     expect(await navigator.clipboard.readText()).toBe(SECRET);
   });
+
 
   it("keeps the dialog open with the reason when creation is refused", async () => {
     const user = userEvent.setup();

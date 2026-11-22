@@ -1,4 +1,4 @@
-import { AnalyticsApiError } from "@/api/analytics-client";
+import { ensureOk, readJson } from "@/api/custom-client";
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 import type { VisitorNaming } from "@/lib/portal/visitor-label";
 
@@ -32,14 +32,8 @@ export interface CreatedSqlToken {
   expires_at: string;
 }
 
-async function refused(res: Response): Promise<AnalyticsApiError> {
-  return new AnalyticsApiError(res.status, await res.json().catch(() => null));
-}
-
 export async function listSqlTokens(): Promise<SqlTokenList> {
-  const res = await fetchWithAuth(`${BASE}/sql-tokens`);
-  if (!res.ok) throw await refused(res);
-  return (await res.json()) as SqlTokenList;
+  return readJson<SqlTokenList>(await fetchWithAuth(`${BASE}/sql-tokens`));
 }
 
 export async function createSqlToken(body: SqlTokenRequest): Promise<CreatedSqlToken> {
@@ -48,13 +42,12 @@ export async function createSqlToken(body: SqlTokenRequest): Promise<CreatedSqlT
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw await refused(res);
-  return (await res.json()) as CreatedSqlToken;
+  return readJson<CreatedSqlToken>(res);
 }
 
 export async function removeSqlToken(tokenId: string): Promise<void> {
   const res = await fetchWithAuth(`${BASE}/sql-tokens/${encodeURIComponent(tokenId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw await refused(res);
+  await ensureOk(res);
 }

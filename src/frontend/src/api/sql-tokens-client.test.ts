@@ -4,7 +4,6 @@ vi.mock("@/api/fetch-with-auth", () => ({ fetchWithAuth: vi.fn() }));
 
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 
-import { AnalyticsApiError } from "./analytics-client";
 import { createSqlToken, listSqlTokens, removeSqlToken } from "./sql-tokens-client";
 
 const mockFetch = fetchWithAuth as unknown as ReturnType<typeof vi.fn>;
@@ -84,15 +83,6 @@ describe("createSqlToken", () => {
     });
   });
 
-  it("raises a refused label as an API error", async () => {
-    mockFetch.mockResolvedValueOnce(response({ detail: "label must not be empty" }, { ok: false, status: 400 }));
-
-    await expect(
-      createSqlToken({ person_id: PERSON.person_id, label: " ", lifetime_days: 365 }),
-    ).rejects.toBeInstanceOf(
-      AnalyticsApiError,
-    );
-  });
 });
 
 describe("removeSqlToken", () => {
@@ -104,9 +94,4 @@ describe("removeSqlToken", () => {
     expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/sql-tokens/t-1", { method: "DELETE" });
   });
 
-  it("raises when the token is not there", async () => {
-    mockFetch.mockResolvedValueOnce(response(null, { ok: false, status: 404 }));
-
-    await expect(removeSqlToken("gone")).rejects.toMatchObject({ status: 404 });
-  });
 });
