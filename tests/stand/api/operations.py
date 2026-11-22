@@ -191,9 +191,6 @@ IDENTITY_OPERATIONS: Final[tuple[Operation, ...]] = (
     _i("POST", "/v1/visible-persons"),
 )
 
-#: authenticator — 3 operations, the admin API for personal SQL tokens. The
-#: browser endpoints under `/auth/*` are the edge's, not routed under
-#: `/api/authenticator`, and stay out.
 AUTHENTICATOR_OPERATIONS: Final[tuple[Operation, ...]] = (
     _t("GET", "/v1/sql-tokens"),
     _t("POST", "/v1/sql-tokens"),

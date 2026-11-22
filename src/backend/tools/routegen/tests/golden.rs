@@ -135,12 +135,15 @@ fn sql_token_exchange_url_can_point_elsewhere() {
 }
 
 #[test]
-fn only_the_authenticator_internal_path_is_denied() {
-    let conf = generate(&fixture("sqltoken.routes.yaml"), &Settings::default()).unwrap();
+fn the_authenticator_route_reaches_only_its_v1_api() {
+    let routes = "version: 1\nroutes:\n  - prefix: /api/authenticator\n    upstream: http://authenticator:8083\n    strip_prefix: true\n";
+    let conf = generate(routes, &Settings::default()).unwrap();
     assert!(
-        conf.contains("location ~ ^/api/authenticator/*internal(/|$) {\n            return 404;")
+        conf.contains(
+            "location ~ ^/api/authenticator(?!/v1/) {\n            return 404;\n        }"
+        )
     );
-    assert!(!conf.contains("/api/identity"));
+    assert!(conf.contains("location /api/authenticator {"));
     assert_eq!(conf.matches("location ~ ").count(), 1);
 }
 

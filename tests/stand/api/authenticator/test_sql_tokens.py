@@ -1,17 +1,3 @@
-"""The personal SQL token admin API behind `/api/authenticator/v1/sql-tokens`.
-
-    POST   create 201, the token shown once · 403 without the admin grant
-    GET    list 200 naming the holder · 403 without the admin grant
-    DELETE remove 204, then 404 · 403 without the admin grant
-
-Admin is the `admin` row in `identity.person_roles`, which the seed gives to the
-admin operator alone, so every non-admin case asks as a lead. The 401 half is in
-`test_gateway.py`, swept over every operation at once.
-
-A created token is removed in the test that created it, and registered with
-`scratch` so a leak fails the session.
-"""
-
 from __future__ import annotations
 
 import os
@@ -62,7 +48,6 @@ def _listed(session: PersonaSession) -> SqlTokenListResponse:
 def test_token_create_list_remove_round_trip(
     admin_operator_session: PersonaSession, stand_manifest: Manifest
 ) -> None:
-    """`POST` 201 → the list names the holder → `DELETE` 204 → it is gone."""
     client = admin_operator_session.client
     holder = stand_manifest.fixture("dev_lead")
     label = scratch.scratch_name("sql-token")
@@ -138,7 +123,6 @@ def test_a_non_admin_cannot_list_tokens(lead_session: PersonaSession) -> None:
 @pytest.mark.requires_seed("dev_lead")
 @pytest.mark.security
 def test_a_non_admin_cannot_remove_a_token(lead_session: PersonaSession) -> None:
-    """The gate comes before the lookup, so the answer is 403 and not 404."""
     response = lead_session.client.delete(
         authenticator_path(f"/v1/sql-tokens/{scratch.UNKNOWN_ID}")
     )

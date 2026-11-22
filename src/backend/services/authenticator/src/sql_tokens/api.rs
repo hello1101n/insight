@@ -19,6 +19,8 @@ use super::store::{self, NewToken};
 use super::{TokenLabel, TokenLifetime, mint};
 use crate::api::AppState;
 use crate::api::error::SqlTokenError;
+use crate::api::handlers::correlation_id;
+use crate::audit::AuditEvent;
 use crate::identity::RosterPerson;
 
 const ADMIN_ROLE: &str = "admin";
@@ -142,6 +144,13 @@ pub async fn create_sql_token(
         created_by = %ctx.subject_id(),
         "personal SQL token created"
     );
+    state.audit.emit(token_audit(
+        "sql_token_created",
+        &ctx,
+        token_id,
+        req.person_id,
+        &headers,
+    ));
 
     Ok((
         StatusCode::CREATED,
@@ -159,6 +168,7 @@ pub async fn create_sql_token(
 pub async fn remove_sql_token(
     Extension(state): Extension<Arc<AppState>>,
     Extension(ctx): Extension<SecurityContext>,
+    headers: HeaderMap,
     Path(token_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, CanonicalError> {
     let db = authorize(&state, &ctx).await?;
@@ -180,8 +190,36 @@ pub async fn remove_sql_token(
         removed_by = %ctx.subject_id(),
         "personal SQL token removed"
     );
+    state.audit.emit(token_audit(
+        "sql_token_removed",
+        &ctx,
+        token_id,
+        person_id,
+        &headers,
+    ));
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn token_audit(
+    action: &'static str,
+    ctx: &SecurityContext,
+    token_id: Uuid,
+    person_id: Uuid,
+    headers: &HeaderMap,
+) -> AuditEvent {
+    AuditEvent {
+        action,
+        outcome: "success",
+        tenant_id: ctx.subject_tenant_id().to_string(),
+        actor_person_id: ctx.subject_id().to_string(),
+        actor_ip: String::new(),
+        actor_user_agent: String::new(),
+        correlation_id: correlation_id(headers),
+        resource_type: "sql_token",
+        resource_id: token_id.to_string(),
+        details: serde_json::json!({ "person_id": person_id.to_string() }),
+    }
 }
 
 async fn authorize<'a>(
@@ -323,7 +361,42 @@ fn store_failed(operation: &str, error: &DbErr) -> CanonicalError {
 
 #[cfg(test)]
 mod tests {
-    use super::CreatedSqlToken;
+    use axum::http::{HeaderMap, HeaderValue};
+    use serde_json::json;
+    use toolkit_security::SecurityContext;
+    use uuid::Uuid;
+
+    use super::{CreatedSqlToken, token_audit};
+
+    #[test]
+    fn a_token_audit_event_names_the_token_its_holder_the_admin_and_the_tenant()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (tenant, admin, holder, token_id) = (
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+        );
+        let ctx = SecurityContext::builder()
+            .subject_id(admin)
+            .subject_type("user")
+            .subject_tenant_id(tenant)
+            .build()?;
+        let mut headers = HeaderMap::new();
+        headers.insert("x-correlation-id", HeaderValue::from_static("corr-7"));
+
+        let event = token_audit("sql_token_removed", &ctx, token_id, holder, &headers);
+
+        assert_eq!(event.action, "sql_token_removed");
+        assert_eq!(event.outcome, "success");
+        assert_eq!(event.tenant_id, tenant.to_string());
+        assert_eq!(event.actor_person_id, admin.to_string());
+        assert_eq!(event.correlation_id, "corr-7");
+        assert_eq!(event.resource_type, "sql_token");
+        assert_eq!(event.resource_id, token_id.to_string());
+        assert_eq!(event.details, json!({ "person_id": holder.to_string() }));
+        Ok(())
+    }
 
     #[test]
     fn a_created_token_never_prints_its_secret() {

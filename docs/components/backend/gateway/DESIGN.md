@@ -111,6 +111,7 @@ graph LR
 - The gateway owns security headers (HSTS on every response) -- they ride with the component all traffic crosses.
 - One hostname, one entry: `__Host-sid` pins the cookie to a single host, so the SPA is routed through the gateway too (`location /` to the insight-front static server). One origin, one TLS cert, one place where a path exists or does not.
 - `/internal/*` never routes (generated 404) -- nothing external can name the authenticator.
+- `/api/authenticator` reaches only the authenticator's `/v1/` API; every other path under it gets a generated 404.
 
 ## 2. Principles & Constraints
 

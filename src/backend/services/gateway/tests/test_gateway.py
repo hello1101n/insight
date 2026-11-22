@@ -7,7 +7,7 @@ import time
 
 from conftest import AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW, SQL_TOKEN_STUB
 
-ROUTES = ["/api/analytics", "/api/identity", "/api/authenticator"]
+ROUTES = ["/api/analytics", "/api/identity", "/api/authenticator/v1"]
 UUID_V7 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
 UNAUTHENTICATED_TYPE = "gts://gts.cf.core.errors.err.v1~cf.core.err.unauthenticated.v1~"
@@ -86,6 +86,23 @@ def test_spa_passthrough_on_root(client):
 def test_internal_and_unmatched_api_are_404(client):
     assert client.request(f"{GW}/internal/anything")[0] == 404
     assert client.request(f"{GW}/api/v1/nope")[0] == 404
+
+
+def test_authenticator_route_reaches_only_its_v1_api(client):
+    cookie = {"Cookie": f"__Host-sid={client.login()}"}
+    for method, path in (
+        ("DELETE", "/api/authenticator/auth/admin/users/x/sessions"),
+        ("GET", "/api/authenticator/auth/csrf"),
+        ("GET", "/api/authenticator/internal/authz"),
+        ("GET", "/api/authenticatorinternal/authz"),
+        ("GET", "/api/authenticator//internal/authz"),
+        ("GET", "/api/authenticator/v1"),
+        ("GET", "/api/authenticator"),
+    ):
+        assert client.request(f"{GW}{path}", headers=cookie, method=method)[0] == 404, path
+    status, _, body = client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)
+    assert status == 200, f"got {status}"
+    assert json.loads(body)["path"] == "/v1/sql-tokens"
 
 
 class TestAuthenticatorDown:

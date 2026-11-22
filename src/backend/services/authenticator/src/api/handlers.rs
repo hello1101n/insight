@@ -385,7 +385,7 @@ impl ClientInfo {
     }
 }
 
-fn correlation_id(headers: &axum::http::HeaderMap) -> String {
+pub(crate) fn correlation_id(headers: &axum::http::HeaderMap) -> String {
     headers
         .get("x-correlation-id")
         .and_then(|v| v.to_str().ok())

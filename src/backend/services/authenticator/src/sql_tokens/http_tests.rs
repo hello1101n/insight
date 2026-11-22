@@ -182,6 +182,23 @@ pub(crate) async fn app(
     tokens_db: Option<DatabaseConnection>,
     tenant: Uuid,
 ) -> Result<Router, Box<dyn Error>> {
+    app_with_audit(
+        redis_url,
+        identity,
+        tokens_db,
+        tenant,
+        AuditEmitter::disabled(),
+    )
+    .await
+}
+
+async fn app_with_audit(
+    redis_url: &str,
+    identity: &StubIdentity,
+    tokens_db: Option<DatabaseConnection>,
+    tenant: Uuid,
+    audit: AuditEmitter,
+) -> Result<Router, Box<dyn Error>> {
     let cfg = AuthenticatorConfig::default();
     let pem = p256::SecretKey::generate().to_pkcs8_pem(LineEnding::LF)?;
     let keystore = Arc::new(KeyStore::from_pem_for_test(&pem)?);
@@ -203,7 +220,7 @@ pub(crate) async fn app(
         sessions,
         keystore,
         resolver,
-        audit: AuditEmitter::disabled(),
+        audit,
         sql_tokens_db: tokens_db,
         sql_token_lookup_slots: Semaphore::new(8),
     });
@@ -572,6 +589,66 @@ async fn an_admin_creates_lists_and_removes_a_personal_token() -> R {
 
     let listed = body_json(answer(&app, request("GET", "/v1/sql-tokens", None)?).await?).await?;
     assert_eq!(listed["items"], json!([]));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires MariaDB and Redis; set INTEGRATION_TESTS_MARIADB_URL and INTEGRATION_TESTS_REDIS_URL"]
+async fn creating_and_removing_a_token_reach_the_audit_stream() -> R {
+    let Some(env) = env_or_skip().await else {
+        return Ok(());
+    };
+    let identity = spawn_identity(StubSpec::default()).await?;
+    let tenant = Uuid::now_v7();
+    let (audit, mut events) = AuditEmitter::recording();
+    let app = app_with_audit(
+        &env.redis_url,
+        &identity,
+        Some(env.db.clone()),
+        tenant,
+        audit,
+    )
+    .await?;
+
+    let created = body_json(
+        answer(
+            &app,
+            request(
+                "POST",
+                "/v1/sql-tokens",
+                Some(&create_body("audited-label")),
+            )?,
+        )
+        .await?,
+    )
+    .await?;
+    let token = created["token"].as_str().unwrap_or_default().to_owned();
+    let token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
+    let removed = answer(
+        &app,
+        request("DELETE", &format!("/v1/sql-tokens/{token_id}"), None)?,
+    )
+    .await?;
+    assert_eq!(removed.status(), StatusCode::NO_CONTENT);
+
+    for action in ["sql_token_created", "sql_token_removed"] {
+        let event = events.try_recv()?;
+        assert_eq!(event.action, action);
+        assert_eq!(event.tenant_id, tenant.to_string());
+        assert_eq!(event.actor_person_id, ADMIN.to_string());
+        assert_eq!(event.resource_id, token_id);
+        assert_eq!(
+            event.details,
+            json!({ "person_id": KNOWN_PERSON.to_string() })
+        );
+        let printed = format!("{event:?}");
+        assert!(!printed.contains(&token), "leaked the token: {printed}");
+        assert!(
+            !printed.contains("audited-label"),
+            "leaked the label: {printed}"
+        );
+    }
+    assert!(events.try_recv().is_err(), "an extra audit event");
     Ok(())
 }
 
