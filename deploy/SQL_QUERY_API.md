@@ -53,26 +53,16 @@ During a rolling rotation, old and new pods may temporarily accept different tok
 The authenticator service stores and manages personal tokens. It needs its
 `database_url`; when it is empty, the token API answers 503.
 
-To create a personal token, an admin does these steps:
-
-1. Open **Manage → People & access → SQL API tokens**.
-2. Select **Create token**.
-3. Pick the person. The authenticator refuses a person who is not in the tenant
-   roster with 400.
-4. Give the token a label.
-5. Pick the lifetime: 30 days, 90 days, 1 year, or 2 years. The default is
-   1 year.
-6. Copy the token from the dialog. The dialog shows it once.
+An admin creates a token in **Manage → People & access → SQL API tokens** for a
+person in the tenant roster, with a label and a lifetime of 30 days, 90 days,
+1 year (the default) or 2 years. The dialog shows the token once.
 
 The admin API is `GET`, `POST` and `DELETE` on
-`/api/authenticator/v1/sql-tokens`, with a session. `DELETE` takes the token id
-in the path. Only an admin can call it; any other caller gets 403.
-`POST` takes `lifetime_days` from 1 to 730 and uses 365 when it is absent. Any
-other value gets 400.
+`/api/authenticator/v1/sql-tokens` with a session. Only an admin can call it.
+`docs/components/backend/authenticator/openapi.json` has its contract.
 
 The authenticator stores only the token's SHA-256 in MariaDB. A personal token
-works until it expires or an admin removes it. The list shows each token's
-expiry date.
+works until it expires or an admin removes it.
 
 The gateway limits personal token lookups per client address. Behind an
 ingress, set `gateway.gateway.setRealIpFrom` to the ingress address range, or
