@@ -701,7 +701,7 @@
   },
   "sql_tokens": {
     "title": "SQL API tokens",
-    "subtitle": "Personal tokens for the SQL API. A token opens the SQL API only and works until it is removed.",
+    "subtitle": "Personal tokens for the SQL API. A token opens the SQL API only. It works until it expires or an admin removes it.",
     "create_token": "Create token",
     "list": {
       "load_failed": "Tokens could not be loaded",
@@ -722,7 +722,7 @@
     },
     "create": {
       "title": "Create a SQL API token",
-      "description": "The token is shown once. Send it to the person; it works until removed.",
+      "description": "The token is shown once. Send it to the person. It works until it expires or an admin removes it.",
       "change_person": "Change",
       "label": "Label",
       "label_placeholder": "laptop, CI job, …",
