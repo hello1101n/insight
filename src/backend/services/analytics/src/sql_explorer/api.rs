@@ -82,7 +82,10 @@ async fn authenticate(
                 .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
             response
         }
-        Err(VerifyFailure::Unavailable) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Err(VerifyFailure::Unavailable) => CanonicalError::service_unavailable()
+            .with_detail("credential verification is unavailable; retry shortly")
+            .create()
+            .into_response(),
     };
     response
         .headers_mut()

@@ -411,6 +411,10 @@ async fn an_unreachable_jwks_fails_a_jwt_with_503_and_spares_the_instance_token(
 
     assert_eq!(personal.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(personal.headers()[CACHE_CONTROL], "no-store");
+    let problem: Value = serde_json::from_slice(&body_of(personal).await?)?;
+    assert_eq!(problem["status"], 503);
+    assert!(problem["title"].is_string(), "{problem}");
+    assert!(!problem.to_string().contains("127.0.0.1"), "{problem}");
     assert_eq!(instance.status(), StatusCode::OK);
     assert_eq!(garbage.status(), StatusCode::UNAUTHORIZED);
     upstream_server.abort();
