@@ -18,6 +18,7 @@ import os
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from insight_stand import (
@@ -28,10 +29,12 @@ from insight_stand import (
     PersonaSession,
     authenticator_path,
 )
+from insight_stand.stand import candidate_env_files, parse_env_file
 
 from .. import scratch
 from ..schemas import CreatedSqlToken, ProblemDocument, SqlTokenListResponse
 
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 TOKENS = authenticator_path("/v1/sql-tokens")
 SQL_QUERY = "/api/sql/query"
 READ_ONLY_QUERY: dict[str, JsonValue] = {"sql": "SELECT 1 AS one"}
@@ -39,7 +42,9 @@ REVOCATION_DEADLINE_S = 35.0
 UNKNOWN_TOKEN = "isql_" + "A" * 43
 
 
-def _create_body(person_id: str, label: str, lifetime_days: int | None = None) -> dict[str, JsonValue]:
+def _create_body(
+    person_id: str, label: str, lifetime_days: int | None = None
+) -> dict[str, JsonValue]:
     body: dict[str, JsonValue] = {"person_id": person_id, "label": label}
     if lifetime_days is not None:
         body["lifetime_days"] = lifetime_days
@@ -153,13 +158,13 @@ class PersonalToken:
 
 @pytest.fixture
 def instance_token() -> str:
-    if os.environ.get("SQL_API_ENABLED", "").strip().lower() != "true":
-        pytest.skip("the SQL API is off on this stand: bring it up with SQL_API_ENABLED=true")
-    token = os.environ.get("SQL_API_TOKEN", "").strip()
-    if not token:
-        pytest.skip(
-            "SQL_API_TOKEN is not in the test environment, so the instance token is unknown"
-        )
+    candidates = candidate_env_files(_REPO_ROOT, os.environ)
+    env_file = next((path for path in candidates if path.is_file()), None)
+    stand_env = parse_env_file(env_file) if env_file else {}
+    if stand_env.get("SQL_API_ENABLED", "").strip().lower() != "true":
+        pytest.skip("the stand has the SQL API off: bring it up with SQL_API_ENABLED=true")
+    token = stand_env.get("SQL_API_TOKEN", "").strip()
+    assert token, f"the stand has the SQL API on but {env_file} holds no SQL_API_TOKEN"
     return token
 
 
