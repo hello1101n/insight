@@ -39,7 +39,8 @@ Leave `global.mcp.enabled` and `global.mcp.publicUrl` unchanged.
 Inherit gateway route defaults. A custom `gateway.gateway.routes` list replaces
 the complete default list and must explicitly include `/api/sql/query` with
 `auth: sql_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
-`timeoutMs: 40000`, and `sqlApiOnly: true`.
+`timeoutMs: 40000`, and `sqlApiOnly: true`. It must also keep `/api/authenticator`
+with `stripPrefix: true`.
 
 For Docker Compose, set `SQL_API_ENABLED=true`, `SQL_API_TOKEN`, and
 `CLICKHOUSE_MCP_PASSWORD` in your untracked environment file. Restart analytics
@@ -72,6 +73,10 @@ other value gets 400.
 The authenticator stores only the token's SHA-256 in MariaDB. A personal token
 works until it expires or an admin removes it. The list shows each token's
 expiry date.
+
+The gateway limits personal token lookups per client address. Behind an
+ingress, set `gateway.gateway.setRealIpFrom` to the ingress address range, or
+all clients share one limit.
 
 ## Query
 
