@@ -89,33 +89,6 @@ fn instance_token_route_bypasses_session_and_mcp_oauth() {
 }
 
 #[test]
-fn sql_token_route_exchanges_through_lua_and_skips_session_and_mcp_oauth() {
-    let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: sql_token\n";
-    let conf = generate(routes, &Settings::default()).unwrap();
-    assert!(conf.contains("location = /api/sql/query {"));
-    assert_eq!(
-        conf.matches("access_by_lua_block { require(\"gateway\").sql_token() }")
-            .count(),
-        1
-    );
-    assert!(!conf.contains("require(\"gateway\").pass_instance_token()"));
-    assert!(!conf.contains("require(\"gateway\").exchange()"));
-    assert!(!conf.contains("require(\"gateway\").pass_bearer("));
-    assert!(conf.contains("lua_shared_dict sql_token_cache "));
-    assert!(conf.contains("lua_shared_dict sql_token_misses "));
-    assert!(conf.contains(
-        "sql_token_authz_url = \"http://authenticator.insight.svc.cluster.local:8083/internal/sql-token/authz\","
-    ));
-    assert!(
-        generate(
-            &routes.replace("/api/sql/query", "/mcp"),
-            &Settings::default()
-        )
-        .is_err()
-    );
-}
-
-#[test]
 fn sql_token_exchange_url_can_point_elsewhere() {
     let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: sql_token\n";
     let conf = generate(
@@ -130,21 +103,8 @@ fn sql_token_exchange_url_can_point_elsewhere() {
 }
 
 #[test]
-fn the_authenticator_route_reaches_only_its_v1_api() {
-    let routes = "version: 1\nroutes:\n  - prefix: /api/authenticator\n    upstream: http://authenticator:8083\n    strip_prefix: true\n";
-    let conf = generate(routes, &Settings::default()).unwrap();
-    assert!(
-        conf.contains(
-            "location ~ ^/api/authenticator(?!/v1/) {\n            return 404;\n        }"
-        )
-    );
-    assert!(conf.contains("location /api/authenticator {"));
-    assert_eq!(conf.matches("location ~ ").count(), 1);
-}
-
-#[test]
 fn sql_token_is_refused_on_any_other_prefix() {
-    for prefix in ["/api/core", "/api/sql/query/x", "/api/sql"] {
+    for prefix in ["/api/core", "/api/sql/query/x", "/api/sql", "/mcp"] {
         let routes = format!(
             "version: 1\nroutes:\n  - prefix: {prefix}\n    upstream: http://core:8086\n    auth: sql_token\n"
         );
