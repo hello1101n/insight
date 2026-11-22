@@ -47,6 +47,32 @@ after changing the token. In Kubernetes, update the token Secret and roll the
 analytics Deployment: environment-injected secrets are read only at startup.
 During a rolling rotation, old and new pods may temporarily accept different tokens.
 
+## Personal tokens
+
+The authenticator service stores and manages personal tokens. It needs its
+`database_url`; when it is empty, the token API answers 503.
+
+To create a personal token, an admin does these steps:
+
+1. Open **Manage → People & access → SQL API tokens**.
+2. Select **Create token**.
+3. Pick the person. The authenticator refuses a person who is not in the tenant
+   roster with 400.
+4. Give the token a label.
+5. Pick the lifetime: 30 days, 90 days, 1 year, or 2 years. The default is
+   1 year.
+6. Copy the token from the dialog. The dialog shows it once.
+
+The admin API is `GET`, `POST` and `DELETE` on
+`/api/authenticator/v1/sql-tokens`, with a session. `DELETE` takes the token id
+in the path. Only an admin can call it; any other caller gets 403.
+`POST` takes `lifetime_days` from 1 to 730 and uses 365 when it is absent. Any
+other value gets 400.
+
+The authenticator stores only the token's SHA-256 in MariaDB. A personal token
+works until it expires or an admin removes it. The list shows each token's
+expiry date.
+
 ## Query
 
 With `INSIGHT_SQL_TOKEN` supplied by your secret manager:
@@ -92,7 +118,8 @@ no-store`. Database details and the token are not returned in errors.
 ## Access scope
 
 The instance token grants all SQL explorer access, not access on behalf of an
-individual user. There are no personal role checks, per-user revocation, or
-automatic tenant-row filters on this endpoint. Distribute it only to trusted
-operators authorized to access the entire allowed dataset, and require HTTPS.
-Revoke access by rotating the token or disabling `global.sqlApi.enabled`.
+individual user. A personal token names its holder but adds no role checks or
+tenant-row filters. Distribute tokens only to people authorized to access the
+entire allowed dataset, and require HTTPS. Remove a personal token to revoke one
+holder; revoke the instance token by rotating it or disabling
+`global.sqlApi.enabled`.

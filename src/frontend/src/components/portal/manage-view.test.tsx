@@ -27,6 +27,10 @@ vi.mock("@/components/portal/identities-view", () => ({
   IdentitiesView: () => <div data-testid="identities-view" />,
 }));
 
+vi.mock("@/components/portal/sql-tokens-view", () => ({
+  SqlTokensView: () => <div data-testid="sql-tokens-view" />,
+}));
+
 vi.mock("@/components/portal/connector-health", () => ({
   ConnectorHealthPane: () => <div data-testid="connector-health-pane" />,
 }));
@@ -88,6 +92,22 @@ describe("Manage · Connectors", () => {
     // What is reachable — and what a stale bookmark meets — is the nav model.
     expect(MANAGE_ITEMS.map((entry) => entry.id)).toContain("connector-health");
     expect(MANAGE_ITEMS.map((entry) => entry.id)).not.toContain("data-health");
+  });
+});
+
+describe("Manage · SQL API tokens", () => {
+  it("refuses a non-admin, since only an admin creates or removes tokens", () => {
+    render(<ManageView item="sql-tokens" />);
+
+    expect(screen.queryByTestId("sql-tokens-view")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("opens for an admin", () => {
+    adminGate.value = { ...adminGate.value, isAdmin: true };
+    render(<ManageView item="sql-tokens" />);
+
+    expect(screen.getByTestId("sql-tokens-view")).toBeInTheDocument();
   });
 });
 
