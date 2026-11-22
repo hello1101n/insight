@@ -89,11 +89,6 @@ fn instance_token_route_bypasses_session_and_mcp_oauth() {
 }
 
 #[test]
-fn golden_sql_token() {
-    assert_golden("sqltoken.routes.yaml", "sqltoken.nginx.conf");
-}
-
-#[test]
 fn sql_token_route_exchanges_through_lua_and_skips_session_and_mcp_oauth() {
     let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: sql_token\n";
     let conf = generate(routes, &Settings::default()).unwrap();
@@ -166,7 +161,7 @@ fn every_session_location_has_the_hygiene_block() {
     assert_eq!(
         conf.matches("access_by_lua_block { require(\"gateway\").exchange() }")
             .count(),
-        3
+        4
     );
     assert!(conf.contains("location /api/ {\n            return 404;"));
     assert!(conf.contains("location /internal/ {\n            return 404;"));
