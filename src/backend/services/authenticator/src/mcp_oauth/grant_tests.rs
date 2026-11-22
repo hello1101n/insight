@@ -9,8 +9,6 @@ use axum::routing::get;
 use axum::{Extension, Form, Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use p256::elliptic_curve::Generate as _;
-use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
 use redis::AsyncCommands as _;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -19,13 +17,7 @@ use uuid::Uuid;
 use crate::api::AppState;
 use crate::audit::AuditEmitter;
 use crate::config::AuthenticatorConfig;
-use crate::identity::IdentityPersonResolver;
-use crate::issuers::IssuerSelector;
-use crate::jwt::KeyStore;
-use crate::local_client::LocalClient;
-use crate::mcp_oauth::McpOAuthStore;
-use crate::service_token::ServiceRegistry;
-use crate::session::{SessionManager, SessionRecord};
+use crate::session::SessionRecord;
 
 use super::super::types::{
     AuthorizationCodeGrant, GRANT_LIFETIME_SECONDS, RefreshGrant, RevocationRequest, TokenRequest,
@@ -93,29 +85,7 @@ async fn state(redis_url: &str, identity_url: &str) -> Result<Arc<AppState>, Box
     let mut cfg = AuthenticatorConfig::default();
     cfg.mcp_oauth.enabled = true;
     cfg.mcp_oauth.public_url = "https://example.com".to_owned();
-    let pem = p256::SecretKey::generate().to_pkcs8_pem(LineEnding::LF)?;
-    let keystore = Arc::new(KeyStore::from_pem_for_test(&pem)?);
-    let sessions = SessionManager::connect(redis_url).await?;
-    let resolver = Arc::new(IdentityPersonResolver::new(
-        identity_url,
-        keystore.clone(),
-        cfg.gateway_issuer.clone(),
-        cfg.jwt_audience.clone(),
-        cfg.idp.source_type.clone(),
-    )?);
-    Ok(Arc::new(AppState {
-        oidc: IssuerSelector::build(&cfg)?,
-        service_registry: ServiceRegistry::build(&cfg.service_tokens)?,
-        authn_client: Arc::new(LocalClient::new(sessions.clone())),
-        mcp_oauth: McpOAuthStore::connect(redis_url).await?,
-        cfg,
-        sessions,
-        keystore,
-        resolver,
-        audit: AuditEmitter::disabled(),
-        sql_tokens_db: None,
-        sql_token_lookup_slots: tokio::sync::Semaphore::new(8),
-    }))
+    AppState::for_test(redis_url, identity_url, cfg, AuditEmitter::disabled(), None).await
 }
 
 #[tokio::test]

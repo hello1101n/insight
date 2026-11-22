@@ -11,11 +11,8 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::DateTime;
-use p256::elliptic_curve::Generate as _;
-use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
-use tokio::sync::Semaphore;
 use toolkit::api::OpenApiRegistryImpl;
 use toolkit_security::SecurityContext;
 use tower::ServiceExt as _;
@@ -25,14 +22,7 @@ use super::{MAX_LIFETIME_DAYS, store};
 use crate::api::AppState;
 use crate::audit::AuditEmitter;
 use crate::config::AuthenticatorConfig;
-use crate::identity::IdentityPersonResolver;
-use crate::issuers::IssuerSelector;
-use crate::jwt::KeyStore;
-use crate::local_client::LocalClient;
-use crate::mcp_oauth::McpOAuthStore;
 use crate::migration::sql_token_schema;
-use crate::service_token::ServiceRegistry;
-use crate::session::SessionManager;
 
 const REDIS_VAR: &str = "INTEGRATION_TESTS_REDIS_URL";
 const TOKENS: &str = "/v1/sql-tokens";
@@ -164,31 +154,7 @@ pub(crate) async fn app(
     audit: AuditEmitter,
 ) -> Result<Router, Box<dyn Error>> {
     let cfg = AuthenticatorConfig::default();
-    let pem = p256::SecretKey::generate().to_pkcs8_pem(LineEnding::LF)?;
-    let keystore = Arc::new(KeyStore::from_pem_for_test(&pem)?);
-    let sessions = SessionManager::connect(redis_url).await?;
-    let resolver = Arc::new(IdentityPersonResolver::new(
-        identity_url,
-        keystore.clone(),
-        cfg.gateway_issuer.clone(),
-        cfg.jwt_audience.clone(),
-        cfg.idp.source_type.clone(),
-    )?);
-
-    let state = Arc::new(AppState {
-        oidc: IssuerSelector::build(&cfg)?,
-        service_registry: ServiceRegistry::build(&cfg.service_tokens)?,
-        authn_client: Arc::new(LocalClient::new(sessions.clone())),
-        mcp_oauth: McpOAuthStore::connect(redis_url).await?,
-        cfg,
-        sessions,
-        keystore,
-        resolver,
-        audit,
-        sql_tokens_db: tokens_db,
-        sql_token_lookup_slots: Semaphore::new(8),
-    });
-
+    let state = AppState::for_test(redis_url, identity_url, cfg, audit, tokens_db).await?;
     let openapi = OpenApiRegistryImpl::new();
     Ok(crate::api::register_routes(Router::new(), &openapi, state)
         .layer(from_fn_with_state((tenant, ADMIN), inject_caller)))

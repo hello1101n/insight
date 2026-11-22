@@ -29,6 +29,45 @@ pub struct AppState {
     pub sql_token_lookup_slots: tokio::sync::Semaphore,
 }
 
+#[cfg(test)]
+impl AppState {
+    pub(crate) async fn for_test(
+        redis_url: &str,
+        identity_url: &str,
+        cfg: AuthenticatorConfig,
+        audit: crate::audit::AuditEmitter,
+        sql_tokens_db: Option<sea_orm::DatabaseConnection>,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+        use p256::elliptic_curve::Generate as _;
+        use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
+
+        let pem = p256::SecretKey::generate().to_pkcs8_pem(LineEnding::LF)?;
+        let keystore = Arc::new(KeyStore::from_pem_for_test(&pem)?);
+        let sessions = SessionManager::connect(redis_url).await?;
+        let resolver = Arc::new(crate::identity::IdentityPersonResolver::new(
+            identity_url,
+            keystore.clone(),
+            cfg.gateway_issuer.clone(),
+            cfg.jwt_audience.clone(),
+            cfg.idp.source_type.clone(),
+        )?);
+
+        Ok(Arc::new(Self {
+            oidc: IssuerSelector::build(&cfg)?,
+            service_registry: ServiceRegistry::build(&cfg.service_tokens)?,
+            authn_client: Arc::new(crate::local_client::LocalClient::new(sessions.clone())),
+            mcp_oauth: McpOAuthStore::connect(redis_url).await?,
+            cfg,
+            sessions,
+            keystore,
+            resolver,
+            audit,
+            sql_tokens_db,
+            sql_token_lookup_slots: tokio::sync::Semaphore::new(8),
+        }))
+    }
+}
+
 pub fn register_routes(
     host_router: Router,
     openapi: &dyn OpenApiRegistry,
