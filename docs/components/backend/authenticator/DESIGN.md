@@ -69,7 +69,7 @@ The authenticator is a standalone BFF service: no proxying, plus the two routing
 
 Three deliberate changes against the old BFF spec shape the design. First, the gateway JWT is **born at login together with the session** and stored linked 1:1 to it -- not minted lazily per request; the hot path serves a stored token and reissues it ahead of expiry. Second, the session's **identity is split from its credential**: a stable `session_id` (UUIDv7) keys everything server-side, while the cookie value is a rotating mapping to it -- rotation is one write plus one expiring key. Third, **IdP tokens are refreshed in the background**, so a session can never outlive the IdP's willingness to vouch for the user.
 
-The authenticator is a plain HTTP service: no proxying, no K8s API access, no streaming -- deliberately small and testable, because it is the security-critical core. It is an idiomatic gears-rust toolkit gear (see 3.10), stateless across pods, with all state in Redis and background workers behind a Redis leader lock. The `auth_request` pattern (Envoy `ext_authz`, Traefik `forwardAuth` are the same contract) keeps it edge-agnostic: if nginx is ever replaced, the authenticator survives untouched.
+The authenticator is a plain HTTP service: no proxying, no K8s API access, no streaming -- deliberately small and testable, because it is the security-critical core. It is an idiomatic gears-rust toolkit gear (see 3.10), stateless across pods, with session state in Redis and background workers behind a Redis leader lock. Personal SQL API tokens are the one durable record: they live in the `authenticator` schema on the existing MariaDB server, reached through a lazy pool, so a MariaDB outage never stops login or the exchange. The `auth_request` pattern (Envoy `ext_authz`, Traefik `forwardAuth` are the same contract) keeps it edge-agnostic: if nginx is ever replaced, the authenticator survives untouched.
 
 ### 1.2 Architecture Drivers
 
@@ -103,7 +103,7 @@ The authenticator is a plain HTTP service: no proxying, no K8s API access, no st
 | `cpt-insightspec-nfr-auth-cookie-attrs` | Hardened cookie attributes | Auth Controller | Single cookie helper; attributes hard-coded | Snapshot test on `Set-Cookie` |
 | `cpt-insightspec-nfr-auth-audit` | 100% auth-event audit | Audit Emitter | One emitter called from every state change | Integration test per auth action |
 | `cpt-insightspec-nfr-auth-rate-limit` | Layer-2 precise limits | Auth Controller | Redis token bucket by session/user + login-state cap | Flood test: 429 at cap, bounded Redis entries |
-| `cpt-insightspec-nfr-auth-fail-closed` | No auth without Redis | Session Manager | No local cache; readiness = Redis + keys loaded | Kill Redis; verify 401/503 + not-ready |
+| `cpt-insightspec-nfr-auth-fail-closed` | No auth without Redis | Session Manager | No local cache; readiness = Redis + keys loaded. MariaDB is not in readiness: with it down the service stays ready and only personal-token calls fail | Kill Redis; verify 401/503 + not-ready. Kill MariaDB; verify the service stays ready and sessions still work |
 
 **ADRs**:
 
@@ -266,6 +266,7 @@ The authenticator is an idiomatic gears-rust gear built on the published `cf-gea
 | `IdpRefreshSchedule` | Sessions due for IdP token refresh, scored by due time | Redis ZSET `{asm}:idp_refresh_due` |
 | `ServiceRegistryEntry` | Service name, public key(s) (inline or by file path), allowed roles | Gitops-reviewable config (mounted) |
 | `SigningKey` | Current + previous JWT signing keys | Mounted K8s Secret, in-process cache |
+| `PersonalSqlToken` | Long-lived SQL API token of one person: SHA-256 of the token, tenant, person, label, creator, creation and expiry time; the token itself is never stored | MariaDB table `sql_api_tokens` in schema `authenticator` |
 
 Relationships:
 - `Person` (owned by Identity Service) has 0..N `Session`s.
