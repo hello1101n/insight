@@ -86,6 +86,16 @@ resources:
 # `existingSecret` to its name.
 existingSecret: ""
 
+# MariaDB schema holding personal SQL tokens. The Secret above carries
+# APP__gears__authenticator__config__database_url
+# (mysql://user:password@host:port/<databaseName>); the umbrella composes it.
+# Empty database_url turns personal SQL tokens off.
+databaseName: authenticator
+
+# Hook-rendered Secret carrying only database_url, so the pre-install migrate
+# Job can run before `existingSecret` exists on a fresh install. Optional.
+migrateEnvSecret: ""
+
 # Secret holding the ES256 signing keys, mounted at `signingKeysPath`. Keys:
 #   current.pem   (PKCS#8 EC P-256 private key, required)
 #   previous.pem  (optional, during a rotation overlap)

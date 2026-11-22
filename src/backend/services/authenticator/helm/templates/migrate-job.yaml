@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "insight-authenticator.fullname" . }}-migrate
+  labels:
+    {{- include "insight-authenticator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: authenticator-migrate
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: migrate
+    spec:
+      {{- with .Values.global }}
+      {{- with .imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: migrate
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - bash
+            - -ec
+            - |
+              printf 'server:\n  home_dir: /tmp/gears\ngears:\n  authenticator:\n    config: {}\n' > /tmp/migrate.yaml
+              exec /app/authenticator -c /tmp/migrate.yaml migrate
+          envFrom:
+            - secretRef:
+                name: {{ required "existingSecret is required (umbrella provides `insight-authenticator-config`; standalone installs supply their own)" .Values.existingSecret | quote }}
+                optional: true
+            {{- with .Values.migrateEnvSecret }}
+            - secretRef:
+                name: {{ . | quote }}
+                optional: true
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}

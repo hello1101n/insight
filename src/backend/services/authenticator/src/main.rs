@@ -68,7 +68,6 @@ enum Commands {
     Run,
     /// Validate configuration and exit.
     Check,
-    /// Apply the authenticator database migrations and exit.
     Migrate,
     /// Print the OpenAPI document to stdout and exit. Built offline from the
     /// route table — no Redis, IdP, or config needed. Used to regenerate
