@@ -39,6 +39,7 @@ fn api_only_startup_requires_credentials_but_not_oauth_metadata() {
     let mut api = SqlApiConfig::default();
     assert!(validate_config(&mcp, &api).is_ok());
     api.enabled = true;
+    api.jwt_issuer = "https://gateway.example.test".to_owned();
     assert!(validate_config(&mcp, &api).is_err());
     mcp.clickhouse_password = SecretString::from("synthetic-db-password".to_owned());
     for token in ["", "short", "synthetic-token-with-a-space-in it"] {
@@ -71,7 +72,7 @@ async fn cloned_executors_share_capacity_and_release_it_after_completion()
     use serde_json::json;
     use tokio::sync::Notify;
 
-    use super::executor::{QueryExecutor, QueryFailure};
+    use super::executor::{QueryCaller, QueryExecutor, QueryFailure};
 
     let entered = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
@@ -98,16 +99,45 @@ async fn cloned_executors_share_capacity_and_release_it_after_completion()
     ));
     let executor = QueryExecutor::new(client, 1);
     let other = executor.clone();
-    let running = tokio::spawn(async move { other.query("SELECT 1".to_owned(), Ok).await });
+    let running = tokio::spawn(async move {
+        other
+            .query("SELECT 1".to_owned(), &QueryCaller::InstanceToken, Ok)
+            .await
+    });
     tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified()).await?;
-    let result = executor.query("SELECT 2".to_owned(), Ok).await;
+    let result = executor
+        .query("SELECT 2".to_owned(), &QueryCaller::InstanceToken, Ok)
+        .await;
     assert!(matches!(result, Err(QueryFailure::Busy)));
     release.notify_one();
     running.await??;
     let result = executor
-        .query("DROP TABLE gold.example".to_owned(), Ok)
+        .query(
+            "DROP TABLE gold.example".to_owned(),
+            &QueryCaller::InstanceToken,
+            Ok,
+        )
         .await;
     assert!(matches!(result, Err(QueryFailure::InvalidSql(_))));
     server.abort();
     Ok(())
+}
+
+#[test]
+fn an_enabled_api_requires_the_jwt_issuer_and_audience() {
+    let mcp = McpConfig {
+        clickhouse_password: SecretString::from("synthetic-db-password".to_owned()),
+        ..McpConfig::default()
+    };
+    let mut api = SqlApiConfig {
+        enabled: true,
+        token: SecretString::from("synthetic-test-token-not-a-real-secret".to_owned()),
+        ..SqlApiConfig::default()
+    };
+    assert_eq!(api.jwt_audience, "sql-api");
+    assert!(validate_config(&mcp, &api).is_err());
+    api.jwt_issuer = "https://gateway.example.test".to_owned();
+    assert!(validate_config(&mcp, &api).is_ok());
+    api.jwt_audience = "  ".to_owned();
+    assert!(validate_config(&mcp, &api).is_err());
 }

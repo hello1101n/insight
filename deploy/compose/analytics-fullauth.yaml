@@ -95,5 +95,8 @@ gears:
       clickhouse_database: "insight"
       identity_url: ""
       redis_url: ""
+      sql_api:
+        jwt_issuer: "https://authn-tls:8443"
+        jwt_audience: "sql-api"
       metric_catalog:
         tenant_metrics_enabled: true

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::extract::{Request, State};
@@ -7,9 +6,6 @@ use axum::http::header::{AUTHORIZATION, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use jsonwebtoken::errors::ErrorKind;
-use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode_header};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
@@ -19,14 +15,12 @@ use rmcp::transport::streamable_http_server::{
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::config::McpConfig;
-use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor};
+use crate::jwt_verifier::{JwksVerifier, VerifyFailure, resolve_jwks_url};
+use crate::sql_explorer::executor::{MAX_REQUEST_BODY_BYTES, QueryCaller, QueryExecutor};
 
-const MAX_JWKS_BYTES: usize = 1024 * 1024;
-const JWKS_REFRESH_COOLDOWN: Duration = Duration::from_secs(5);
 const MCP_SCOPE: &str = "mcp:query";
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -56,22 +50,10 @@ struct McpAccessClaims {
 
 #[derive(Clone)]
 struct TokenVerifier {
-    inner: Arc<TokenVerifierInner>,
-}
-
-struct TokenVerifierInner {
+    keys: JwksVerifier,
     issuer: String,
     audience: String,
     resource_metadata: String,
-    jwks_url: String,
-    client: reqwest::Client,
-    jwks: RwLock<Option<JwkSet>>,
-    jwks_refresh: Mutex<JwksRefresh>,
-}
-
-#[derive(Default)]
-struct JwksRefresh {
-    last_attempt: Option<Instant>,
 }
 
 #[derive(Debug)]
@@ -98,7 +80,9 @@ impl SqlExplorer {
     async fn run_query_sql(&self, sql: String) -> CallToolResult {
         match self
             .executor
-            .query(sql, |value| Ok(CallToolResult::structured(value)))
+            .query(sql, &QueryCaller::Mcp, |value| {
+                Ok(CallToolResult::structured(value))
+            })
             .await
         {
             Ok(result) => result,
@@ -196,55 +180,33 @@ impl TokenVerifier {
     ) -> anyhow::Result<Self> {
         validate_public_url(public_url, allow_insecure_private_network)?;
         let issuer = public_url.trim_end_matches('/').to_owned();
-        let jwks_url = match jwks_url.trim() {
-            "" => format!("{issuer}/.well-known/jwks.json"),
-            configured => configured.to_owned(),
-        };
-        let client = insight_http_client::client_builder()?
-            .connect_timeout(Duration::from_secs(3))
-            .timeout(Duration::from_secs(5))
-            .build()?;
+        let audience = format!("{issuer}/mcp");
+        let keys = JwksVerifier::new(&issuer, &audience, &resolve_jwks_url(jwks_url, &issuer))?;
         Ok(Self {
-            inner: Arc::new(TokenVerifierInner {
-                audience: format!("{issuer}/mcp"),
-                resource_metadata: format!("{issuer}/.well-known/oauth-protected-resource/mcp"),
-                jwks_url,
-                issuer,
-                client,
-                jwks: RwLock::new(None),
-                jwks_refresh: Mutex::new(JwksRefresh::default()),
-            }),
+            keys,
+            resource_metadata: format!("{issuer}/.well-known/oauth-protected-resource/mcp"),
+            audience,
+            issuer,
         })
     }
 
     async fn verify(&self, token: &str) -> Result<McpAccessClaims, AuthFailure> {
-        let header = decode_header(token).map_err(|_| AuthFailure::Unauthorized)?;
-        if header.alg != Algorithm::ES256 {
-            return Err(AuthFailure::Unauthorized);
-        }
-        let kid = header.kid.ok_or(AuthFailure::Unauthorized)?;
-        let mut jwks = self.cached_jwks().await?;
-        if jwks.find(&kid).is_none() {
-            jwks = self.refresh_jwks(Some(&kid)).await?;
-        }
-        let jwk = jwks.find(&kid).ok_or(AuthFailure::Unauthorized)?;
-        let key = DecodingKey::from_jwk(jwk).map_err(|_| AuthFailure::Unauthorized)?;
-
-        let mut validation = Validation::new(Algorithm::ES256);
-        validation.set_issuer(&[self.inner.issuer.as_str()]);
-        validation.set_audience(&[self.inner.audience.as_str()]);
-        validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
-        let claims = toolkit_security::jwt::decode::<McpAccessClaims>(token, &key, &validation)
-            .map_err(|error| decode_failure(&error))?
-            .claims;
+        let claims = self
+            .keys
+            .verify::<McpAccessClaims>(token)
+            .await
+            .map_err(|failure| match failure {
+                VerifyFailure::Unauthorized => AuthFailure::Unauthorized,
+                VerifyFailure::Unavailable => AuthFailure::Unavailable,
+            })?;
         if claims.sub_type != "user"
             || claims
                 .scope
                 .split_whitespace()
                 .all(|scope| scope != MCP_SCOPE)
             || claims.roles.split_whitespace().all(|role| role != "admin")
-            || claims.iss != self.inner.issuer
-            || claims.aud != self.inner.audience
+            || claims.iss != self.issuer
+            || claims.aud != self.audience
             || claims.iat > claims.exp
         {
             return Err(AuthFailure::InsufficientScope);
@@ -252,76 +214,10 @@ impl TokenVerifier {
         Ok(claims)
     }
 
-    async fn cached_jwks(&self) -> Result<JwkSet, AuthFailure> {
-        if let Some(jwks) = self.inner.jwks.read().await.clone() {
-            return Ok(jwks);
-        }
-        self.refresh_jwks(None).await
-    }
-
-    async fn refresh_jwks(&self, expected_kid: Option<&str>) -> Result<JwkSet, AuthFailure> {
-        let mut refresh = self.inner.jwks_refresh.lock().await;
-        let cached = self.inner.jwks.read().await.clone();
-        let cache_satisfies = match expected_kid {
-            Some(kid) => cached.as_ref().is_some_and(|jwks| jwks.find(kid).is_some()),
-            None => cached.is_some(),
-        };
-        if cache_satisfies {
-            return cached.ok_or(AuthFailure::Unavailable);
-        }
-        if refresh
-            .last_attempt
-            .is_some_and(|attempt| attempt.elapsed() < JWKS_REFRESH_COOLDOWN)
-        {
-            return cached.ok_or(AuthFailure::Unavailable);
-        }
-
-        refresh.last_attempt = Some(Instant::now());
-        // INVARIANT: holding the gate across fetch permits only one JWKS refresh.
-        self.fetch_jwks().await
-    }
-
-    async fn fetch_jwks(&self) -> Result<JwkSet, AuthFailure> {
-        let response = self
-            .inner
-            .client
-            .get(&self.inner.jwks_url)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "could not fetch MCP JWKS");
-                AuthFailure::Unavailable
-            })?
-            .error_for_status()
-            .map_err(|error| {
-                tracing::warn!(%error, "MCP JWKS endpoint returned an error");
-                AuthFailure::Unavailable
-            })?;
-        if response
-            .content_length()
-            .is_some_and(|length| length > MAX_JWKS_BYTES as u64)
-        {
-            return Err(AuthFailure::Unavailable);
-        }
-        let bytes = response.bytes().await.map_err(|error| {
-            tracing::warn!(%error, "could not read MCP JWKS response");
-            AuthFailure::Unavailable
-        })?;
-        if bytes.len() > MAX_JWKS_BYTES {
-            return Err(AuthFailure::Unavailable);
-        }
-        let jwks = serde_json::from_slice::<JwkSet>(&bytes).map_err(|error| {
-            tracing::warn!(%error, "could not parse MCP JWKS response");
-            AuthFailure::Unavailable
-        })?;
-        *self.inner.jwks.write().await = Some(jwks.clone());
-        Ok(jwks)
-    }
-
     fn challenge(&self, status: StatusCode, error: &str) -> Response {
         let value = format!(
             "Bearer resource_metadata=\"{}\", scope=\"{MCP_SCOPE}\", error=\"{error}\"",
-            self.inner.resource_metadata
+            self.resource_metadata
         );
         let mut response = status.into_response();
         if let Ok(value) = HeaderValue::from_str(&value) {
@@ -370,17 +266,6 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(message.into())])
-}
-
-/// A backend outage is not a bad token: `Provider` means the crypto facade
-/// could not run, so the caller gets 503, not 401.
-fn decode_failure(error: &jsonwebtoken::errors::Error) -> AuthFailure {
-    if matches!(error.kind(), ErrorKind::Provider(_)) {
-        tracing::error!(error = %error, "crypto backend unavailable for MCP token");
-        AuthFailure::Unavailable
-    } else {
-        AuthFailure::Unauthorized
-    }
 }
 
 #[cfg(test)]

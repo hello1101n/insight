@@ -22,6 +22,8 @@ service:
 sqlApi:
   tokenSecret: insight-sql-api-creds
   tokenKey: token
+  # Expected `aud` of the JWT the authenticator mints for a personal SQL token.
+  jwtAudience: sql-api
 
 mcp:
   port: 8086

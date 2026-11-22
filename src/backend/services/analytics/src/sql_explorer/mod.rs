@@ -5,6 +5,7 @@ use secrecy::ExposeSecret as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{McpConfig, SqlApiConfig};
+use crate::jwt_verifier::{JwksVerifier, resolve_jwks_url};
 
 mod api;
 pub(crate) mod executor;
@@ -37,6 +38,14 @@ pub(crate) fn validate_config(mcp: &McpConfig, api: &SqlApiConfig) -> anyhow::Re
         anyhow::ensure!(
             token.len() >= 32 && token.len() <= 1024 && token.bytes().all(|b| b.is_ascii_graphic()),
             "SQL API token must contain 32 to 1024 printable ASCII characters without whitespace"
+        );
+        anyhow::ensure!(
+            !api.jwt_issuer.trim().is_empty(),
+            "SQL API JWT issuer is empty"
+        );
+        anyhow::ensure!(
+            !api.jwt_audience.trim().is_empty(),
+            "SQL API JWT audience is empty"
         );
     }
     Ok(())
@@ -71,7 +80,12 @@ pub(crate) async fn start(
         )?);
     }
     if api.enabled {
-        router = router.merge(api::router(api, executor));
+        let verifier = JwksVerifier::new(
+            &api.jwt_issuer,
+            &api.jwt_audience,
+            &resolve_jwks_url(&mcp.jwks_url, &mcp.public_url),
+        )?;
+        router = router.merge(api::router(api, verifier, executor));
     }
     let listener = tokio::net::TcpListener::bind(&mcp.bind_addr).await?;
     tracing::info!(bind_addr = %mcp.bind_addr, "SQL explorer listening");

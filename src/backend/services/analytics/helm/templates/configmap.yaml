@@ -116,6 +116,8 @@ data:
           visibility_policy: {{ .Values.visibilityPolicy | default "org_chart" | quote }}
           sql_api:
             enabled: {{ .Values.global.sqlApi.enabled }}
+            jwt_issuer: {{ tpl (.Values.gateway.issuer | default "") . | quote }}
+            jwt_audience: {{ .Values.sqlApi.jwtAudience | default "sql-api" | quote }}
           mcp:
             enabled: {{ .Values.global.mcp.enabled }}
             bind_addr: "0.0.0.0:{{ .Values.mcp.port }}"

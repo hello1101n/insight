@@ -3,6 +3,7 @@ mod config;
 mod domain;
 mod gear;
 mod infra;
+mod jwt_verifier;
 mod mcp;
 mod migration;
 mod sql_explorer;
