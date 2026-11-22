@@ -51,6 +51,10 @@ pub(crate) fn validate_config(mcp: &McpConfig, api: &SqlApiConfig) -> anyhow::Re
     Ok(())
 }
 
+fn sql_api_jwks_url(mcp: &McpConfig, api: &SqlApiConfig) -> String {
+    resolve_jwks_url(&mcp.jwks_url, &api.jwt_issuer)
+}
+
 pub(crate) async fn start(
     mcp: &McpConfig,
     api: &SqlApiConfig,
@@ -83,7 +87,7 @@ pub(crate) async fn start(
         let verifier = JwksVerifier::new(
             &api.jwt_issuer,
             &api.jwt_audience,
-            &resolve_jwks_url(&mcp.jwks_url, &mcp.public_url),
+            &sql_api_jwks_url(mcp, api),
         )?;
         router = router.merge(api::router(api, verifier, executor));
     }
