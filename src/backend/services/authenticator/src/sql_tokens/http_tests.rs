@@ -12,8 +12,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use p256::elliptic_curve::Generate as _;
 use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-use sea_orm_migration::MigratorTrait as _;
+use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use toolkit::api::OpenApiRegistryImpl;
 use toolkit_security::SecurityContext;
@@ -29,11 +28,10 @@ use crate::issuers::IssuerSelector;
 use crate::jwt::KeyStore;
 use crate::local_client::LocalClient;
 use crate::mcp_oauth::McpOAuthStore;
-use crate::migration::{Migrator, sql_token_schema};
+use crate::migration::sql_token_schema;
 use crate::service_token::ServiceRegistry;
 use crate::session::SessionManager;
 
-const MARIADB_VAR: &str = "INTEGRATION_TESTS_MARIADB_URL";
 const REDIS_VAR: &str = "INTEGRATION_TESTS_REDIS_URL";
 
 pub(crate) const ADMIN: Uuid = Uuid::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0001);
@@ -45,33 +43,17 @@ pub(crate) const KNOWN_PERSON_EMAIL: &str = "ada@example.com";
 
 pub(crate) type R = Result<(), Box<dyn Error>>;
 
-static MIGRATED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-
 pub(crate) struct Env {
     pub(crate) db: DatabaseConnection,
     pub(crate) redis_url: String,
 }
 
 pub(crate) async fn env_or_skip() -> Option<Env> {
-    let (Ok(db_url), Ok(redis_url)) = (std::env::var(MARIADB_VAR), std::env::var(REDIS_VAR)) else {
-        eprintln!("skipping: {MARIADB_VAR} and {REDIS_VAR} must both be set");
+    let Ok(redis_url) = std::env::var(REDIS_VAR) else {
+        eprintln!("skipping: {REDIS_VAR} not set");
         return None;
     };
-    let mut options = ConnectOptions::new(db_url);
-    options
-        .max_connections(2)
-        .acquire_timeout(std::time::Duration::from_secs(3))
-        .sqlx_logging(false);
-    let db = Database::connect(options)
-        .await
-        .unwrap_or_else(|e| panic!("cannot connect to {MARIADB_VAR}: {e}"));
-    MIGRATED
-        .get_or_init(|| async {
-            Migrator::up(&db, None)
-                .await
-                .unwrap_or_else(|e| panic!("cannot migrate {MARIADB_VAR}: {e}"));
-        })
-        .await;
+    let db = super::live_tests::connect_or_skip().await?;
     Some(Env { db, redis_url })
 }
 

@@ -111,6 +111,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
         .build()?;
     let mut outcome: R = Ok(());
     let mut token = String::new();
+    let mut token_id = String::new();
     let mut ran = false;
 
     let output = capture_output(|| {
@@ -144,7 +145,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
             )
             .await?;
             token = created["token"].as_str().unwrap_or_default().to_owned();
-            let token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
+            token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
 
             tower::ServiceExt::oneshot(app.clone(), request("GET", "/v1/sql-tokens", None)?)
                 .await?;
@@ -170,9 +171,23 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
     ] {
         assert!(!output.contains(seeded), "leaked: {seeded} in {output}");
     }
+    let removal = output
+        .lines()
+        .find(|line| line.contains("sql_token_removed"))
+        .ok_or("no removal audit line")?;
+    for named in [
+        KNOWN_PERSON.to_string(),
+        ADMIN.to_string(),
+        token_id.clone(),
+    ] {
+        assert!(
+            removal.contains(&named),
+            "removal line lacks {named}: {removal}"
+        );
+    }
     assert!(
-        output.contains(&KNOWN_PERSON.to_string()) && output.contains(&ADMIN.to_string()),
-        "the audit lines must name the holder and the admin by id: {output}"
+        output.contains("sql_token_created"),
+        "no creation audit line: {output}"
     );
     Ok(())
 }

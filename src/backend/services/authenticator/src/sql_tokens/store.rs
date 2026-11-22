@@ -57,14 +57,23 @@ pub(crate) async fn remove(
     db: &impl ConnectionTrait,
     tenant_id: Uuid,
     token_id: Uuid,
-) -> Result<bool, DbErr> {
+) -> Result<Option<Uuid>, DbErr> {
+    let Some(row) = sql_api_tokens::Entity::find()
+        .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
+        .filter(sql_api_tokens::Column::Id.eq(token_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+
     let deleted = sql_api_tokens::Entity::delete_many()
         .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
         .filter(sql_api_tokens::Column::Id.eq(token_id))
         .exec(db)
         .await?;
 
-    Ok(deleted.rows_affected > 0)
+    Ok((deleted.rows_affected > 0).then_some(row.person_id))
 }
 
 #[cfg_attr(

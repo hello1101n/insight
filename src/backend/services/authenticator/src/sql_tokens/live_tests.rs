@@ -14,7 +14,7 @@ static MIGRATED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
-async fn connect_or_skip() -> Option<DatabaseConnection> {
+pub(super) async fn connect_or_skip() -> Option<DatabaseConnection> {
     let Ok(url) = std::env::var(ENV_VAR) else {
         eprintln!("skipping: {ENV_VAR} not set");
         return None;
@@ -76,12 +76,13 @@ async fn a_stored_token_answers_by_hash_until_it_is_removed() -> R {
         })
     );
 
-    assert!(
+    assert_eq!(
         store::remove(&db, tenant, token_id).await?,
-        "first remove deletes"
+        Some(person),
+        "first remove deletes and names the holder"
     );
     assert!(
-        !store::remove(&db, tenant, token_id).await?,
+        store::remove(&db, tenant, token_id).await?.is_none(),
         "second remove finds nothing"
     );
     assert_eq!(store::holder(&db, &minted.hash, Utc::now()).await?, None);
@@ -131,7 +132,7 @@ async fn a_tenant_lists_and_removes_only_its_own_tokens_newest_first() -> R {
     assert_eq!(listed, vec![stored[1], stored[0]]);
 
     assert!(
-        !store::remove(&db, tenant, stored[2]).await?,
+        store::remove(&db, tenant, stored[2]).await?.is_none(),
         "another tenant's token must not be removable"
     );
     assert_eq!(store::list(&db, other_tenant).await?.len(), 1);

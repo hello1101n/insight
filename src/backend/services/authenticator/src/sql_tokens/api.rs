@@ -166,16 +166,17 @@ pub async fn remove_sql_token(
     let removed = store::remove(db, ctx.subject_tenant_id(), token_id)
         .await
         .map_err(|error| store_failed("remove", &error))?;
-    if !removed {
+    let Some(person_id) = removed else {
         return Err(SqlTokenError::not_found("token not found")
             .with_resource(token_id.to_string())
             .create());
-    }
+    };
 
     tracing::info!(
         target: "audit",
         event = "sql_token_removed",
         %token_id,
+        %person_id,
         removed_by = %ctx.subject_id(),
         "personal SQL token removed"
     );
