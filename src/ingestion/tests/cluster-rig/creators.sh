@@ -131,17 +131,13 @@ discover_streams() {
   done
 }
 
-# The destination's `database` as the chart renders it for this topology —
-# read off the deploy Job, which shares the helper with the reconcile CronJob.
 destination_database() {
   render_migrate_job | yq -r '.spec.template.spec.containers[0].env[]
     | select(.name == "CLICKHOUSE_DESTINATION_DATABASE") | .value'
 }
 
 # One destination write, as reconcile configures it: <dest>/input.jsonl into
-# the streams of <dest>/configured_catalog.json. The connection check Airbyte
-# runs before every sync goes first; it is the one DDL the destination emits
-# into its own `database` rather than a stream's namespace.
+# the streams of <dest>/configured_catalog.json, after Airbyte's connection check.
 destination_write() {
   local dest="$1" database
   database="$(destination_database)"

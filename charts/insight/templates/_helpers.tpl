@@ -63,12 +63,7 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- required "clickhouse.database is required" .Values.clickhouse.database -}}
 {{- end -}}
 
-{{/* The `database` of the Bronze destination: where destination-clickhouse
-     puts its connection-check table and any stream without a namespace. On a
-     cluster the destination emits `ON CLUSTER` for both, which a Replicated
-     database refuses (Code 80), so cluster mode moves it off the app database
-     to an Atomic one create-databases.sh creates. Standalone keeps the app
-     database. ingestion.reconcile.destinationDatabase overrides either. */}}
+{{/* Atomic on a cluster: the Replicated app database refuses the destination's ON CLUSTER DDL. */}}
 {{- define "insight.clickhouse.destinationDatabase" -}}
 {{- if .Values.ingestion.reconcile.destinationDatabase -}}
 {{- .Values.ingestion.reconcile.destinationDatabase -}}
@@ -140,8 +135,6 @@ airbyte_destination
   value: {{ include "insight.clickhouse.clusterMode" . | quote }}
 - name: CLICKHOUSE_CLUSTER_NAME
   value: {{ include "insight.clickhouse.clusterName" . | quote }}
-# The Bronze destination's database, created here as Atomic when it is not
-# the app database (insight.clickhouse.destinationDatabase).
 - name: CLICKHOUSE_DESTINATION_DATABASE
   value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
 # Whether the script provisions the roles and grant-less users below at all;

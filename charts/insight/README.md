@@ -246,17 +246,9 @@ Atomic database the Airbyte destination creates, so nothing replays DDL issued
 in it, and a heal or migration that creates, drops, renames or exchanges a
 table there carries the clause.
 
-The destination's own `database` follows the same rule. It holds the
-connection-check table Airbyte creates before every sync, and any stream
-without a namespace, and the destination emits `ON CLUSTER` for both; the
-Replicated app database refuses the clause (`Code: 80 ... ON CLUSTER is not
-allowed for Replicated database`). So in cluster mode reconcile points the
-destination at `airbyte_destination`, an Atomic database `create-databases.sh`
-creates `ON CLUSTER` (`insight.clickhouse.destinationDatabase`; override with
-`ingestion.reconcile.destinationDatabase`, which the deploy refuses if it names
-a database it makes Replicated). Standalone, it stays the app database.
-Reconcile updates an existing destination to the new database on its next
-tick.
+The destination's own `database` (its connection-check table) is Atomic for the
+same reason: in cluster mode it is `airbyte_destination`, not the Replicated app
+database (`ingestion.reconcile.destinationDatabase` overrides it).
 
 With a replica down, a deploy does not start: the bronze-engine sweep needs
 every replica to answer, since the absent one may hold the table it looks for.

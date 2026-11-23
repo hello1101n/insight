@@ -46,7 +46,7 @@ conversion has to leave each database as if that creator had made it:
 | --- | --- | --- |
 | the nine the release owns: `staging`, `silver`, `identity`, `config`, `product_usage`, `ingestion_history`, `insight_datasets`, the app database (`clickhouse.database`, gold) and `presentation` | `Atomic`, created on one node; plain `MergeTree` / `ReplacingMergeTree` tables | `ENGINE = Replicated(...)`, created `ON CLUSTER`, so every later DDL replays on every replica; `Replicated*` tables |
 | every `bronze_<connector>` the Airbyte destination creates | `Atomic` on one node; plain tables | still `Atomic`, but created `ON CLUSTER` on every replica; `Replicated*` tables, each DDL carrying `ON CLUSTER` |
-| the Bronze destination's own database (`ingestion.reconcile.destinationDatabase`: its connection-check table, streams without a namespace) | the app database | `airbyte_destination`, `Atomic`, created `ON CLUSTER` by the deploy; reconcile repoints the destination on its next tick |
+| the Bronze destination's own database (`ingestion.reconcile.destinationDatabase`) | the app database | `airbyte_destination`, `Atomic`, created `ON CLUSTER` |
 | SQL-created roles and users (`presentation`, `grafana`, the MCP and the assistant readers) | the node's local access directory | a replicated access directory in Keeper, or provisioned by the operator on every replica |
 
 Nothing is rebuilt; every table is copied. The dbt layers look rebuildable

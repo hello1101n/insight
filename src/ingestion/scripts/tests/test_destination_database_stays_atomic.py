@@ -1,14 +1,5 @@
-"""The Bronze destination's database is never a Replicated one on a cluster.
-
-destination-clickhouse, told the cluster, puts `ON CLUSTER` on the connection
-check table it creates in its configured `database` before every sync, and a
-Replicated database refuses the clause (Code 80): no connection syncs. So
-`create-databases.sh` creates that database as Atomic `ON CLUSTER`, and refuses
-a deploy that names one it makes Replicated -- before anything is created.
-
-The transport is stubbed and the provisioning scripts are shadowed by a shim
-on PATH, so the test reads the statements the deploy would have sent.
-"""
+"""On a cluster the Bronze destination's database is Atomic: a Replicated one
+refuses the destination's ON CLUSTER DDL (Code 80)."""
 
 from __future__ import annotations
 
@@ -22,8 +13,7 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 TOPOLOGY_LIB = SCRIPTS / "lib" / "ch-topology.sh"
 CREATE_DATABASES = SCRIPTS / "create-databases.sh"
 
-#: A healthy cluster; the destination database stands with DESTINATION_ENGINE
-#: (empty: absent). Every statement is appended to SQL_LOG.
+#: DESTINATION_ENGINE is the destination database's engine (empty: absent).
 SCRIPTED = """
 _ch_http_query() {
   local sql
@@ -46,7 +36,6 @@ _ch_http_query() {
 def deploy(
     tmp_path: Path, *, destination: str | None, cluster_mode: str = "true", destination_engine: str = ""
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
-    """Run create-databases.sh; return the result and the CREATE DATABASEs sent."""
     shims = tmp_path / "bin"
     shims.mkdir(exist_ok=True)
     (shims / "bash").write_text("#!/bin/sh\n")
@@ -140,8 +129,6 @@ def test_a_destination_database_must_be_a_bare_identifier(tmp_path: Path, destin
 
 
 def test_a_cluster_deploy_that_names_no_destination_database_creates_the_default(tmp_path: Path) -> None:
-    """The compose bootstrap and the gitops hook run this script without the
-    chart's value; they get the chart's default, not the Replicated app database."""
     result, creates = deploy(tmp_path, destination=None)
 
     assert result.returncode == 0, result.stderr
