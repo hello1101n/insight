@@ -1106,6 +1106,7 @@ const COLLAB: Record<string, LensEntry> = {
         metrics: [
           "collab.messages_sent",
           "collab.msgs_per_active_day",
+          "collab.chat_active_days",
           "collab.active_days",
         ],
       },

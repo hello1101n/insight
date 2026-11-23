@@ -1,5 +1,3 @@
-//! Domain layer — DTOs and business logic (profile resolution/assembly).
-
 pub mod employee_id;
 pub mod login_bootstrap;
 pub mod observation_slot;

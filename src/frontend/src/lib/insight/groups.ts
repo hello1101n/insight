@@ -333,6 +333,10 @@ const COLLABORATION_COLLECTION: MetricCollectionConfig = {
       views: [{ view: "period" }, { view: "peer" }],
     },
     {
+      key: "collab.chat_active_days",
+      views: [{ view: "period" }, { view: "peer" }],
+    },
+    {
       key: "collab.active_days",
       views: [{ view: "period" }, { view: "peer" }],
     },
