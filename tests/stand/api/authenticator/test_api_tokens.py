@@ -19,14 +19,14 @@ from insight_stand.stand import candidate_env_files, parse_env_file
 
 from .. import scratch
 from ..operations import AUTHENTICATOR_OPERATIONS, Operation
-from ..schemas import CreatedSqlToken, ProblemDocument, SqlTokenListResponse
+from ..schemas import ApiTokenListResponse, CreatedApiToken, ProblemDocument
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-TOKENS = authenticator_path("/v1/sql-tokens")
+TOKENS = authenticator_path("/v1/api-tokens")
 SQL_QUERY = "/api/sql/query"
 READ_ONLY_QUERY: dict[str, JsonValue] = {"sql": "SELECT 1 AS one"}
 REVOCATION_DEADLINE_S = 35.0
-UNKNOWN_TOKEN = "isql_" + "A" * 43
+UNKNOWN_TOKEN = "iapi_" + "A" * 43
 
 
 def _create_body(
@@ -38,10 +38,10 @@ def _create_body(
     return body
 
 
-def _listed(session: PersonaSession) -> SqlTokenListResponse:
+def _listed(session: PersonaSession) -> ApiTokenListResponse:
     response = session.client.get(TOKENS)
     assert response.status_code == 200, f"list: {response.status_code} {response.text[:300]}"
-    return response.parse(SqlTokenListResponse)
+    return response.parse(ApiTokenListResponse)
 
 
 @pytest.mark.requires_seed("admin_operator", "dev_lead")
@@ -51,13 +51,13 @@ def test_token_create_list_remove_round_trip(
 ) -> None:
     client = admin_operator_session.client
     holder = stand_manifest.fixture("dev_lead")
-    label = scratch.scratch_name("sql-token")
+    label = scratch.scratch_name("api-token")
 
     created = client.post(TOKENS, json_body=_create_body(holder.uuid, label, 30))
     assert created.status_code == 201, f"create: {created.status_code} {created.text[:300]}"
-    token = created.parse(CreatedSqlToken)
+    token = created.parse(CreatedApiToken)
     token_id = scratch.track(TOKENS, "token_id", token.token_id)
-    token_path = authenticator_path(f"/v1/sql-tokens/{token_id}")
+    token_path = authenticator_path(f"/v1/api-tokens/{token_id}")
     try:
         assert token.label == label
         assert token.person_id == holder.uuid
@@ -100,7 +100,7 @@ def test_a_non_admin_cannot_manage_tokens(
     body = None
     if operation.method == "POST":
         body = _create_body(
-            stand_manifest.fixture("dev_lead").uuid, scratch.scratch_name("sql-token")
+            stand_manifest.fixture("dev_lead").uuid, scratch.scratch_name("api-token")
         )
 
     response = lead_session.client.request(operation.method, operation.path, json_body=body)
@@ -137,15 +137,15 @@ def personal_token(
     client = admin_operator_session.client
     holder = stand_manifest.fixture("dev_lead")
     created = client.post(
-        TOKENS, json_body=_create_body(holder.uuid, scratch.scratch_name("sql-token"), 1)
+        TOKENS, json_body=_create_body(holder.uuid, scratch.scratch_name("api-token"), 1)
     )
     assert created.status_code == 201, f"create: {created.status_code} {created.text[:300]}"
-    token = created.parse(CreatedSqlToken)
+    token = created.parse(CreatedApiToken)
     token_id = scratch.track(TOKENS, "token_id", token.token_id)
     try:
         yield PersonalToken(token.token, token_id)
     finally:
-        client.delete(authenticator_path(f"/v1/sql-tokens/{token_id}"))
+        client.delete(authenticator_path(f"/v1/api-tokens/{token_id}"))
 
 
 def _ask(client: ApiClient, token: str) -> ApiResponse:
@@ -171,7 +171,7 @@ def _rows(client: ApiClient, token: str) -> object:
 def test_a_personal_token_returns_the_rows_the_instance_token_does(
     api_client: ApiClient, instance_token: str, personal_token: PersonalToken
 ) -> None:
-    assert personal_token.token.startswith("isql_")
+    assert personal_token.token.startswith("iapi_")
 
     assert (
         _rows(api_client, personal_token.token) == _rows(api_client, instance_token) == [{"one": 1}]
@@ -189,7 +189,7 @@ def test_a_removed_token_gets_401_within_the_cache_window(
     assert _query(api_client, personal_token.token) == 200
 
     removed = admin_operator_session.client.delete(
-        authenticator_path(f"/v1/sql-tokens/{personal_token.token_id}")
+        authenticator_path(f"/v1/api-tokens/{personal_token.token_id}")
     )
     assert removed.status_code == 204, f"remove: {removed.status_code} {removed.text[:300]}"
 

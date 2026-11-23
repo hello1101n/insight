@@ -36,7 +36,7 @@ keycloak ─▶ authenticator ─▶ gateway ─▶ {analytics, identity-resolut
 4. Step-06 **service token** → analytics accepts it; `roles: ["service"]`.
 5. A request reaching analytics without a valid gateway JWT (models a gateway
    route shipped without `auth_request`, or a forged/browser token) → **401**.
-6. A validly-signed JWT with `aud` `sql-api` (a personal SQL token's JWT)
+6. A validly-signed JWT with `aud` `sql-api` (a personal API token's JWT)
    → identity-resolution answers **401**; the same claims with `aud`
    `internal-services` are not refused.
 

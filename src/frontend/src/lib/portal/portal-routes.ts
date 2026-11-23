@@ -47,7 +47,7 @@ export const MANAGE_SURFACES: SlugTable = [
   ["exclusions", "exclusions"],
   ["snapshots", "snapshots"],
   ["identities", "identities"],
-  ["sql-tokens", "sql-tokens"],
+  ["api-tokens", "api-tokens"],
   ["access", "access"],
   ["groups", "group-mgmt"],
   ["ingestion", "ingestion"],

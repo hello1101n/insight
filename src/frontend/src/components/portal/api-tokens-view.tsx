@@ -19,7 +19,7 @@ import {
 } from "@gears-frontx/ui-kit";
 
 import type { PersonSummary } from "@/api/identity-client";
-import type { CreatedSqlToken, SqlTokenEntry } from "@/api/sql-tokens-client";
+import type { CreatedApiToken, ApiTokenEntry } from "@/api/api-tokens-client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PersonPicker } from "@/components/portal/person-picker";
 import { PersonName } from "@/components/portal/usage-table";
@@ -29,23 +29,23 @@ import { personDisplayName } from "@/lib/identities/person-display";
 import { formatUtcClock } from "@/lib/format";
 import { TEXT_NAME } from "@/lib/type-scale";
 import {
-  useCreateSqlToken,
-  useRemoveSqlToken,
-  useSqlTokens,
-} from "@/queries/sql-tokens";
+  useCreateApiToken,
+  useRemoveApiToken,
+  useApiTokens,
+} from "@/queries/api-tokens";
 
 const LABEL_MAX_CHARS = 255;
 
 const LIFETIMES = [
-  { days: 30, label: "sql_tokens.create.lifetime_30" },
-  { days: 90, label: "sql_tokens.create.lifetime_90" },
-  { days: 365, label: "sql_tokens.create.lifetime_365" },
-  { days: 730, label: "sql_tokens.create.lifetime_730" },
+  { days: 30, label: "api_tokens.create.lifetime_30" },
+  { days: 90, label: "api_tokens.create.lifetime_90" },
+  { days: 365, label: "api_tokens.create.lifetime_365" },
+  { days: 730, label: "api_tokens.create.lifetime_730" },
 ] as const;
 
 const DEFAULT_LIFETIME_DAYS = 365;
 
-export function SqlTokensView() {
+export function ApiTokensView() {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
 
@@ -53,13 +53,13 @@ export function SqlTokensView() {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className={TEXT_NAME}>{t("sql_tokens.title")}</h2>
+          <h2 className={TEXT_NAME}>{t("api_tokens.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            {t("sql_tokens.subtitle")}
+            {t("api_tokens.subtitle")}
           </p>
         </div>
         <Button onClick={() => setCreating(true)}>
-          {t("sql_tokens.create_token")}
+          {t("api_tokens.create_token")}
         </Button>
       </div>
       <TokenList />
@@ -72,8 +72,8 @@ export function SqlTokensView() {
 
 function TokenList() {
   const { t } = useTranslation();
-  const tokens = useSqlTokens();
-  const [removing, setRemoving] = useState<SqlTokenEntry | null>(null);
+  const tokens = useApiTokens();
+  const [removing, setRemoving] = useState<ApiTokenEntry | null>(null);
 
   if (tokens.isPending) return <CenteredSpinner />;
   if (tokens.isError) {
@@ -81,7 +81,7 @@ function TokenList() {
       <ComingSoon
         variant="row"
         state="error"
-        label={t("sql_tokens.list.load_failed")}
+        label={t("api_tokens.list.load_failed")}
       />
     );
   }
@@ -90,7 +90,7 @@ function TokenList() {
       <ComingSoon
         variant="row"
         state="empty"
-        label={t("sql_tokens.list.empty")}
+        label={t("api_tokens.list.empty")}
       />
     );
   }
@@ -100,12 +100,12 @@ function TokenList() {
       <table className="w-full text-sm">
         <thead className="text-left text-xs text-muted-foreground">
           <tr>
-            <th className="py-2 font-medium">{t("sql_tokens.list.person")}</th>
-            <th className="py-2 font-medium">{t("sql_tokens.list.label")}</th>
-            <th className="py-2 font-medium">{t("sql_tokens.list.created")}</th>
-            <th className="py-2 font-medium">{t("sql_tokens.list.expires")}</th>
+            <th className="py-2 font-medium">{t("api_tokens.list.person")}</th>
+            <th className="py-2 font-medium">{t("api_tokens.list.label")}</th>
+            <th className="py-2 font-medium">{t("api_tokens.list.created")}</th>
+            <th className="py-2 font-medium">{t("api_tokens.list.expires")}</th>
             <th className="py-2 font-medium">
-              {t("sql_tokens.list.created_by")}
+              {t("api_tokens.list.created_by")}
             </th>
             <th className="py-2" />
           </tr>
@@ -130,12 +130,12 @@ function TokenList() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label={t("sql_tokens.list.remove_named", {
+                  aria-label={t("api_tokens.list.remove_named", {
                     label: entry.label,
                   })}
                   onClick={() => setRemoving(entry)}
                 >
-                  {t("sql_tokens.list.remove")}
+                  {t("api_tokens.list.remove")}
                 </Button>
               </td>
             </tr>
@@ -153,11 +153,11 @@ function RemoveTokenDialog({
   entry,
   onClose,
 }: {
-  entry: SqlTokenEntry;
+  entry: ApiTokenEntry;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const remove = useRemoveSqlToken();
+  const remove = useRemoveApiToken();
 
   return (
     <ConfirmDialog
@@ -165,14 +165,14 @@ function RemoveTokenDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={t("sql_tokens.remove.title", { label: entry.label })}
-      description={t("sql_tokens.remove.description", {
+      title={t("api_tokens.remove.title", { label: entry.label })}
+      description={t("api_tokens.remove.description", {
         person: personDisplayName(entry.person),
       })}
-      confirmLabel={t("sql_tokens.remove.confirm")}
+      confirmLabel={t("api_tokens.remove.confirm")}
       destructive
       isPending={remove.isPending}
-      error={remove.isError ? t("sql_tokens.remove.failed") : null}
+      error={remove.isError ? t("api_tokens.remove.failed") : null}
       onConfirm={() => remove.mutate(entry.token_id, { onSuccess: onClose })}
     />
   );
@@ -180,7 +180,7 @@ function RemoveTokenDialog({
 
 function CreateTokenDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const create = useCreateSqlToken();
+  const create = useCreateApiToken();
   const [person, setPerson] = useState<PersonSummary | null>(null);
   const [label, setLabel] = useState("");
   const [lifetimeDays, setLifetimeDays] = useState(DEFAULT_LIFETIME_DAYS);
@@ -196,9 +196,9 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onOpenChange={requestClose}>
       <DialogContent className="sm:max-w-lg" showCloseButton={closable}>
         <DialogHeader>
-          <DialogTitle>{t("sql_tokens.create.title")}</DialogTitle>
+          <DialogTitle>{t("api_tokens.create.title")}</DialogTitle>
           <DialogDescription>
-            {t("sql_tokens.create.description")}
+            {t("api_tokens.create.description")}
           </DialogDescription>
         </DialogHeader>
         {create.data ? (
@@ -213,7 +213,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
                   size="sm"
                   onClick={() => setPerson(null)}
                 >
-                  {t("sql_tokens.create.change_person")}
+                  {t("api_tokens.create.change_person")}
                 </Button>
               </div>
             ) : (
@@ -221,20 +221,20 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
             )}
             <label
               className="flex flex-col gap-1 text-sm"
-              htmlFor="sql-token-label"
+              htmlFor="api-token-label"
             >
-              {t("sql_tokens.create.label")}
+              {t("api_tokens.create.label")}
               <Input
-                id="sql-token-label"
+                id="api-token-label"
                 value={label}
                 maxLength={LABEL_MAX_CHARS}
-                placeholder={t("sql_tokens.create.label_placeholder")}
+                placeholder={t("api_tokens.create.label_placeholder")}
                 onChange={(event) => setLabel(event.target.value)}
               />
             </label>
             <div className="flex flex-col gap-1 text-sm">
-              <label htmlFor="sql-token-lifetime">
-                {t("sql_tokens.create.lifetime")}
+              <label htmlFor="api-token-lifetime">
+                {t("api_tokens.create.lifetime")}
               </label>
               <Select
                 value={String(lifetimeDays)}
@@ -242,7 +242,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
                   if (typeof next === "string") setLifetimeDays(Number(next));
                 }}
               >
-                <SelectTrigger id="sql-token-lifetime" className="w-full">
+                <SelectTrigger id="api-token-lifetime" className="w-full">
                   <SelectValue>
                     {lifetime ? t(lifetime.label) : null}
                   </SelectValue>
@@ -259,7 +259,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
             {create.isError ? (
               <Alert variant="destructive">
                 <AlertDescription>
-                  {t("sql_tokens.create.failed")}
+                  {t("api_tokens.create.failed")}
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -267,7 +267,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
         )}
         <DialogFooter>
           {create.data ? (
-            <Button onClick={onClose}>{t("sql_tokens.create.done")}</Button>
+            <Button onClick={onClose}>{t("api_tokens.create.done")}</Button>
           ) : (
             <Button
               disabled={!ready}
@@ -280,7 +280,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
                 });
               }}
             >
-              {t("sql_tokens.create.submit")}
+              {t("api_tokens.create.submit")}
             </Button>
           )}
         </DialogFooter>
@@ -289,7 +289,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ShownToken({ created }: { created: CreatedSqlToken }) {
+function ShownToken({ created }: { created: CreatedApiToken }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -298,7 +298,7 @@ function ShownToken({ created }: { created: CreatedSqlToken }) {
       <div className="flex gap-2">
         <Input
           readOnly
-          aria-label={t("sql_tokens.shown.token")}
+          aria-label={t("api_tokens.shown.token")}
           value={created.token}
           className="font-mono"
         />
@@ -313,7 +313,7 @@ function ShownToken({ created }: { created: CreatedSqlToken }) {
           {copied ? t("common.copied") : t("common.copy")}
         </Button>
       </div>
-      <p className="text-muted-foreground">{t("sql_tokens.shown.once")}</p>
+      <p className="text-muted-foreground">{t("api_tokens.shown.once")}</p>
     </div>
   );
 }

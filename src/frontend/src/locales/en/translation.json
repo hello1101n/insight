@@ -699,8 +699,8 @@
     "sent": "Thanks — your feedback was sent.",
     "failed": "Could not send your feedback. Try again."
   },
-  "sql_tokens": {
-    "title": "SQL API tokens",
+  "api_tokens": {
+    "title": "API tokens",
     "subtitle": "Personal tokens for the SQL API. A token opens the SQL API only. It works until it expires or an admin removes it.",
     "create_token": "Create token",
     "list": {
@@ -721,7 +721,7 @@
       "failed": "The token could not be removed"
     },
     "create": {
-      "title": "Create a SQL API token",
+      "title": "Create an API token",
       "description": "The token is shown once. Send it to the person. It works until it expires or an admin removes it.",
       "change_person": "Change",
       "label": "Label",
@@ -820,7 +820,7 @@
       "identities": "Identities · roles & taxonomy",
       "access": "Access",
       "group_mgmt": "Group management",
-      "sql_tokens": "SQL API tokens",
+      "api_tokens": "API tokens",
       "ingestion": "Ingestion",
       "previews": "Previews",
       "ai_assistant": "AI assistant config",

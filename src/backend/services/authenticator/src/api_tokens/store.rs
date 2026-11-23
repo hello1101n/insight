@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::entity::sql_api_tokens;
+use super::entity::api_tokens;
 use super::{TokenHash, TokenHolder, TokenLabel};
 
 pub(crate) const LIST_LIMIT: u64 = 1000;
@@ -24,7 +24,7 @@ pub(crate) struct NewToken<'a> {
 pub(crate) async fn insert(db: &impl ConnectionTrait, token: NewToken<'_>) -> Result<Uuid, DbErr> {
     let token_id = Uuid::now_v7();
 
-    sql_api_tokens::Entity::insert(sql_api_tokens::ActiveModel {
+    api_tokens::Entity::insert(api_tokens::ActiveModel {
         id: Set(token_id),
         insight_tenant_id: Set(token.tenant_id),
         token_hash: Set(token.hash.as_bytes().to_vec()),
@@ -43,11 +43,11 @@ pub(crate) async fn insert(db: &impl ConnectionTrait, token: NewToken<'_>) -> Re
 pub(crate) async fn list(
     db: &impl ConnectionTrait,
     tenant_id: Uuid,
-) -> Result<Vec<sql_api_tokens::Model>, DbErr> {
-    sql_api_tokens::Entity::find()
-        .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
-        .order_by(sql_api_tokens::Column::CreatedAt, Order::Desc)
-        .order_by(sql_api_tokens::Column::Id, Order::Desc)
+) -> Result<Vec<api_tokens::Model>, DbErr> {
+    api_tokens::Entity::find()
+        .filter(api_tokens::Column::InsightTenantId.eq(tenant_id))
+        .order_by(api_tokens::Column::CreatedAt, Order::Desc)
+        .order_by(api_tokens::Column::Id, Order::Desc)
         .limit(LIST_LIMIT)
         .all(db)
         .await
@@ -58,18 +58,18 @@ pub(crate) async fn remove(
     tenant_id: Uuid,
     token_id: Uuid,
 ) -> Result<Option<Uuid>, DbErr> {
-    let Some(row) = sql_api_tokens::Entity::find()
-        .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
-        .filter(sql_api_tokens::Column::Id.eq(token_id))
+    let Some(row) = api_tokens::Entity::find()
+        .filter(api_tokens::Column::InsightTenantId.eq(tenant_id))
+        .filter(api_tokens::Column::Id.eq(token_id))
         .one(db)
         .await?
     else {
         return Ok(None);
     };
 
-    let deleted = sql_api_tokens::Entity::delete_many()
-        .filter(sql_api_tokens::Column::InsightTenantId.eq(tenant_id))
-        .filter(sql_api_tokens::Column::Id.eq(token_id))
+    let deleted = api_tokens::Entity::delete_many()
+        .filter(api_tokens::Column::InsightTenantId.eq(tenant_id))
+        .filter(api_tokens::Column::Id.eq(token_id))
         .exec(db)
         .await?;
 
@@ -81,8 +81,8 @@ pub(crate) async fn holder(
     hash: &TokenHash,
     at: DateTime<Utc>,
 ) -> Result<Option<TokenHolder>, DbErr> {
-    let row = sql_api_tokens::Entity::find()
-        .filter(sql_api_tokens::Column::TokenHash.eq(hash.as_bytes().to_vec()))
+    let row = api_tokens::Entity::find()
+        .filter(api_tokens::Column::TokenHash.eq(hash.as_bytes().to_vec()))
         .one(db)
         .await?;
 

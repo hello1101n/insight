@@ -6,40 +6,40 @@ import {
 } from "@tanstack/react-query";
 
 import {
-  createSqlToken,
-  listSqlTokens,
-  removeSqlToken,
-  type SqlTokenList,
-  type SqlTokenRequest,
-} from "@/api/sql-tokens-client";
+  createApiToken,
+  listApiTokens,
+  removeApiToken,
+  type ApiTokenList,
+  type ApiTokenRequest,
+} from "@/api/api-tokens-client";
 import { sessionAuthorizationScope } from "@/auth/session-scope";
 import { useAuth } from "@/auth/use-auth";
 
-const LIST_KEY = ["sql-tokens", "list"] as const;
+const LIST_KEY = ["api-tokens", "list"] as const;
 
-export function useSqlTokens(): UseQueryResult<SqlTokenList> {
+export function useApiTokens(): UseQueryResult<ApiTokenList> {
   const { session } = useAuth();
   return useQuery({
     queryKey: [...LIST_KEY, sessionAuthorizationScope(session)],
-    queryFn: listSqlTokens,
+    queryFn: listApiTokens,
     staleTime: 0,
     refetchOnMount: "always",
   });
 }
 
-export function useCreateSqlToken() {
+export function useCreateApiToken() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: SqlTokenRequest) => createSqlToken(body),
+    mutationFn: (body: ApiTokenRequest) => createApiToken(body),
     gcTime: 0,
     onSuccess: () => client.invalidateQueries({ queryKey: LIST_KEY }),
   });
 }
 
-export function useRemoveSqlToken() {
+export function useRemoveApiToken() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (tokenId: string) => removeSqlToken(tokenId),
+    mutationFn: (tokenId: string) => removeApiToken(tokenId),
     onSuccess: () => client.invalidateQueries({ queryKey: LIST_KEY }),
   });
 }

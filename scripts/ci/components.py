@@ -214,7 +214,7 @@ COMPONENTS = [
         "live_db": True,
         "live_db_name": "authenticator",
         # Not include_ignored: the tests/e2e_* suites need the run-e2e.sh stack.
-        "live_test": "cargo test -p authenticator --bin authenticator -- --include-ignored sql_tokens:: api::log_leak_tests::",
+        "live_test": "cargo test -p authenticator --bin authenticator -- --include-ignored api_tokens:: api::log_leak_tests::",
         "paths": ["src/backend/services/authenticator", "docs/components/backend/authenticator/openapi.json"],
         "drift_test": True,
     },

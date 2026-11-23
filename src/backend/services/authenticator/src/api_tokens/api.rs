@@ -14,11 +14,11 @@ use toolkit_security::SecurityContext;
 use toolkit_security::crypto::CryptoError;
 use uuid::Uuid;
 
-use super::entity::sql_api_tokens;
+use super::entity::api_tokens;
 use super::store::{self, NewToken};
 use super::{TokenLabel, TokenLifetime, mint};
 use crate::api::AppState;
-use crate::api::error::SqlTokenError;
+use crate::api::error::ApiTokenError;
 use crate::api::handlers::correlation_id;
 use crate::audit::AuditEvent;
 use crate::identity::RosterPerson;
@@ -26,16 +26,16 @@ use crate::identity::RosterPerson;
 const ADMIN_ROLE: &str = "admin";
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
-pub struct SqlTokenRequest {
+pub struct ApiTokenRequest {
     pub person_id: Uuid,
     pub label: String,
     #[schema(minimum = 1, maximum = 730, default = 365)]
     pub lifetime_days: Option<i64>,
 }
-impl toolkit::api::api_dto::RequestApiDto for SqlTokenRequest {}
+impl toolkit::api::api_dto::RequestApiDto for ApiTokenRequest {}
 
 #[derive(Serialize, utoipa::ToSchema)]
-pub struct CreatedSqlToken {
+pub struct CreatedApiToken {
     pub token_id: String,
     /// Shown in this response only; the service keeps its hash.
     pub token: String,
@@ -44,12 +44,12 @@ pub struct CreatedSqlToken {
     pub created_at: String,
     pub expires_at: String,
 }
-impl toolkit::api::api_dto::ResponseApiDto for CreatedSqlToken {}
+impl toolkit::api::api_dto::ResponseApiDto for CreatedApiToken {}
 
-impl std::fmt::Debug for CreatedSqlToken {
+impl std::fmt::Debug for CreatedApiToken {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("CreatedSqlToken")
+            .debug_struct("CreatedApiToken")
             .field("token_id", &self.token_id)
             .field("person_id", &self.person_id)
             .field("label", &self.label)
@@ -60,7 +60,7 @@ impl std::fmt::Debug for CreatedSqlToken {
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
-pub struct SqlTokenPerson {
+pub struct ApiTokenPerson {
     pub person_id: String,
     pub display_name: String,
     pub username: String,
@@ -68,24 +68,24 @@ pub struct SqlTokenPerson {
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
-pub struct SqlTokenEntry {
+pub struct ApiTokenEntry {
     pub token_id: String,
     pub label: String,
     pub created_at: String,
     pub expires_at: String,
-    pub person: SqlTokenPerson,
-    pub created_by: SqlTokenPerson,
+    pub person: ApiTokenPerson,
+    pub created_by: ApiTokenPerson,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
-pub struct SqlTokenListResponse {
-    pub items: Vec<SqlTokenEntry>,
+pub struct ApiTokenListResponse {
+    pub items: Vec<ApiTokenEntry>,
 }
-impl toolkit::api::api_dto::ResponseApiDto for SqlTokenListResponse {}
+impl toolkit::api::api_dto::ResponseApiDto for ApiTokenListResponse {}
 
 type Roster = HashMap<Uuid, RosterPerson>;
 
-pub async fn list_sql_tokens(
+pub async fn list_api_tokens(
     Extension(state): Extension<Arc<AppState>>,
     Extension(ctx): Extension<SecurityContext>,
     headers: HeaderMap,
@@ -98,16 +98,16 @@ pub async fn list_sql_tokens(
 
     let roster = roster(&state, &people(&rows), forwarded_authorization(&headers)).await;
 
-    Ok(Json(SqlTokenListResponse {
+    Ok(Json(ApiTokenListResponse {
         items: rows.into_iter().map(|row| entry(row, &roster)).collect(),
     }))
 }
 
-pub async fn create_sql_token(
+pub async fn create_api_token(
     Extension(state): Extension<Arc<AppState>>,
     Extension(ctx): Extension<SecurityContext>,
     headers: HeaderMap,
-    Json(req): Json<SqlTokenRequest>,
+    Json(req): Json<ApiTokenRequest>,
 ) -> Result<impl IntoResponse, CanonicalError> {
     let db = authorize(&state, &ctx).await?;
 
@@ -138,14 +138,14 @@ pub async fn create_sql_token(
 
     tracing::info!(
         target: "audit",
-        event = "sql_token_created",
+        event = "api_token_created",
         %token_id,
         person_id = %req.person_id,
         created_by = %ctx.subject_id(),
-        "personal SQL token created"
+        "personal API token created"
     );
     state.audit.emit(token_audit(
-        "sql_token_created",
+        "api_token_created",
         &ctx,
         token_id,
         req.person_id,
@@ -154,7 +154,7 @@ pub async fn create_sql_token(
 
     Ok((
         StatusCode::CREATED,
-        Json(CreatedSqlToken {
+        Json(CreatedApiToken {
             token_id: token_id.to_string(),
             token: minted.token.expose_secret().to_owned(),
             person_id: req.person_id.to_string(),
@@ -165,7 +165,7 @@ pub async fn create_sql_token(
     ))
 }
 
-pub async fn remove_sql_token(
+pub async fn remove_api_token(
     Extension(state): Extension<Arc<AppState>>,
     Extension(ctx): Extension<SecurityContext>,
     headers: HeaderMap,
@@ -177,21 +177,21 @@ pub async fn remove_sql_token(
         .await
         .map_err(|error| store_failed("remove", &error))?;
     let Some(person_id) = removed else {
-        return Err(SqlTokenError::not_found("token not found")
+        return Err(ApiTokenError::not_found("token not found")
             .with_resource(token_id.to_string())
             .create());
     };
 
     tracing::info!(
         target: "audit",
-        event = "sql_token_removed",
+        event = "api_token_removed",
         %token_id,
         %person_id,
         removed_by = %ctx.subject_id(),
-        "personal SQL token removed"
+        "personal API token removed"
     );
     state.audit.emit(token_audit(
-        "sql_token_removed",
+        "api_token_removed",
         &ctx,
         token_id,
         person_id,
@@ -216,7 +216,7 @@ fn token_audit(
         actor_ip: String::new(),
         actor_user_agent: String::new(),
         correlation_id: correlation_id(headers),
-        resource_type: "sql_token",
+        resource_type: "api_token",
         resource_id: token_id.to_string(),
         details: serde_json::json!({ "person_id": person_id.to_string() }),
     }
@@ -227,14 +227,14 @@ async fn authorize<'a>(
     ctx: &SecurityContext,
 ) -> Result<&'a DatabaseConnection, CanonicalError> {
     if !is_admin(state, ctx).await {
-        return Err(SqlTokenError::permission_denied()
+        return Err(ApiTokenError::permission_denied()
             .with_reason("admin_role_required")
             .create());
     }
 
-    state.sql_tokens_db.as_ref().ok_or_else(|| {
+    state.api_tokens_db.as_ref().ok_or_else(|| {
         CanonicalError::service_unavailable()
-            .with_detail("personal SQL tokens are not configured")
+            .with_detail("personal API tokens are not configured")
             .create()
     })
 }
@@ -250,7 +250,7 @@ async fn is_admin(state: &AppState, ctx: &SecurityContext) -> bool {
     {
         Ok(roles) => roles.iter().any(|role| role == ADMIN_ROLE),
         Err(error) => {
-            tracing::warn!(error = %error, "could not confirm the admin role for a SQL token request");
+            tracing::warn!(error = %error, "could not confirm the admin role for an API token request");
             false
         }
     }
@@ -274,7 +274,7 @@ async fn require_known_person(
         .map_err(|error| {
             tracing::error!(
                 error = %error,
-                "tenant roster read for a SQL token holder failed. The request returns 500."
+                "tenant roster read for an API token holder failed. The request returns 500."
             );
             CanonicalError::internal("failed to verify the person").create()
         })?;
@@ -298,7 +298,7 @@ async fn roster(state: &AppState, ids: &[Uuid], authorization: Option<&str>) -> 
     }
 }
 
-fn people(rows: &[sql_api_tokens::Model]) -> Vec<Uuid> {
+fn people(rows: &[api_tokens::Model]) -> Vec<Uuid> {
     rows.iter()
         .flat_map(|row| [row.person_id, row.created_by])
         .collect::<BTreeSet<_>>()
@@ -306,8 +306,8 @@ fn people(rows: &[sql_api_tokens::Model]) -> Vec<Uuid> {
         .collect()
 }
 
-fn entry(row: sql_api_tokens::Model, roster: &Roster) -> SqlTokenEntry {
-    SqlTokenEntry {
+fn entry(row: api_tokens::Model, roster: &Roster) -> ApiTokenEntry {
+    ApiTokenEntry {
         token_id: row.id.to_string(),
         label: row.label,
         created_at: timestamp(row.created_at),
@@ -317,10 +317,10 @@ fn entry(row: sql_api_tokens::Model, roster: &Roster) -> SqlTokenEntry {
     }
 }
 
-fn person(person_id: Uuid, roster: &Roster) -> SqlTokenPerson {
+fn person(person_id: Uuid, roster: &Roster) -> ApiTokenPerson {
     let listed = roster.get(&person_id);
 
-    SqlTokenPerson {
+    ApiTokenPerson {
         person_id: person_id.to_string(),
         display_name: listed
             .and_then(|person| person.display_name.clone())
@@ -337,7 +337,7 @@ fn timestamp(at: DateTime<Utc>) -> String {
 }
 
 fn violation(field: &str, description: &str) -> CanonicalError {
-    SqlTokenError::invalid_argument()
+    ApiTokenError::invalid_argument()
         .with_field_violation(field, description, "INVALID")
         .create()
 }
@@ -345,7 +345,7 @@ fn violation(field: &str, description: &str) -> CanonicalError {
 fn mint_failed(error: CryptoError) -> CanonicalError {
     tracing::error!(
         error = %error,
-        "SQL token mint read from the crypto RNG failed. The request returns 500."
+        "API token mint read from the crypto RNG failed. The request returns 500."
     );
     CanonicalError::internal("failed to create the token").create()
 }
@@ -354,9 +354,9 @@ fn store_failed(operation: &str, error: &DbErr) -> CanonicalError {
     tracing::error!(
         error = %error,
         operation,
-        "personal SQL token query in MariaDB failed. The request returns 500."
+        "personal API token query in MariaDB failed. The request returns 500."
     );
-    CanonicalError::internal("personal SQL token store failed").create()
+    CanonicalError::internal("personal API token store failed").create()
 }
 
 #[cfg(test)]
@@ -366,7 +366,7 @@ mod tests {
     use toolkit_security::SecurityContext;
     use uuid::Uuid;
 
-    use super::{CreatedSqlToken, token_audit};
+    use super::{CreatedApiToken, token_audit};
 
     #[test]
     fn a_token_audit_event_names_the_token_its_holder_the_admin_and_the_tenant()
@@ -385,14 +385,14 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-correlation-id", HeaderValue::from_static("corr-7"));
 
-        let event = token_audit("sql_token_removed", &ctx, token_id, holder, &headers);
+        let event = token_audit("api_token_removed", &ctx, token_id, holder, &headers);
 
-        assert_eq!(event.action, "sql_token_removed");
+        assert_eq!(event.action, "api_token_removed");
         assert_eq!(event.outcome, "success");
         assert_eq!(event.tenant_id, tenant.to_string());
         assert_eq!(event.actor_person_id, admin.to_string());
         assert_eq!(event.correlation_id, "corr-7");
-        assert_eq!(event.resource_type, "sql_token");
+        assert_eq!(event.resource_type, "api_token");
         assert_eq!(event.resource_id, token_id.to_string());
         assert_eq!(event.details, json!({ "person_id": holder.to_string() }));
         Ok(())
@@ -400,9 +400,9 @@ mod tests {
 
     #[test]
     fn a_created_token_never_prints_its_secret() {
-        let created = CreatedSqlToken {
+        let created = CreatedApiToken {
             token_id: "t-1".to_owned(),
-            token: "isql_synthetic-token-never-printed".to_owned(),
+            token: "iapi_synthetic-token-never-printed".to_owned(),
             person_id: "p-1".to_owned(),
             label: "laptop".to_owned(),
             created_at: "2026-11-12T10:00:00Z".to_owned(),

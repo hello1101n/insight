@@ -22,7 +22,7 @@ routes:
 
   - prefix: /api/sql/query
     upstream: http://analytics.insight.svc.cluster.local:8086
-    auth: sql_token
+    auth: api_token
     timeout_ms: 40000
 
   - prefix: /api/authenticator

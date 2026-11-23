@@ -5,7 +5,7 @@ import json
 import re
 import time
 
-from conftest import AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW, SQL_TOKEN_STUB
+from conftest import API_TOKEN_STUB, AUTHENTICATOR, AUTHZ_CACHE_MAX_AGE, GW
 
 ROUTES = ["/api/analytics", "/api/identity", "/api/authenticator/v1"]
 UUID_V7 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -94,9 +94,9 @@ def test_authenticator_route_reaches_only_its_v1_api(client):
         ("DELETE", "/api/authenticator/auth/admin/users/x/sessions"),
         ("GET", "/api/authenticator/auth/csrf"),
         ("GET", "/api/authenticator/internal/authz"),
-        ("GET", "/api/authenticator/internal/sql-token/authz"),
+        ("GET", "/api/authenticator/internal/api-token/authz"),
         ("GET", "/api/authenticatorinternal/authz"),
-        ("GET", "/api/authenticatorinternal/sql-token/authz"),
+        ("GET", "/api/authenticatorinternal/api-token/authz"),
         ("GET", "/api/authenticator//internal/authz"),
         ("GET", "/api/authenticator/internal"),
         ("GET", "/api/authenticator/v1"),
@@ -105,9 +105,9 @@ def test_authenticator_route_reaches_only_its_v1_api(client):
         assert client.request(f"{GW}{path}", method=method)[0] == 404, path
         assert client.request(f"{GW}{path}", headers=cookie, method=method)[0] == 404, path
     assert client.request(f"{GW}/api/identity/internal/persons/by-email-override", headers=cookie)[0] == 200
-    status, _, body = client.request(f"{GW}/api/authenticator/v1/sql-tokens", headers=cookie)
+    status, _, body = client.request(f"{GW}/api/authenticator/v1/api-tokens", headers=cookie)
     assert status == 200, f"got {status}"
-    assert json.loads(body)["path"] == "/v1/sql-tokens"
+    assert json.loads(body)["path"] == "/v1/api-tokens"
 
 
 class TestAuthenticatorDown:
@@ -152,7 +152,7 @@ def test_dead_upstream_5xx(client, echo_down):
 
 
 def _stub_calls(client, token=None):
-    _, _, body = client.request(f"{SQL_TOKEN_STUB}/calls")
+    _, _, body = client.request(f"{API_TOKEN_STUB}/calls")
     calls = json.loads(body)
     return calls["total"] if token is None else calls["by_token"].get(token, 0)
 
@@ -167,7 +167,7 @@ def _sql(client, token):
 
 
 def test_personal_token_is_exchanged_for_a_jwt(client):
-    token = "isql_known_exchange_" + "A" * 23
+    token = "iapi_known_exchange_" + "A" * 23
     status, _, body = _sql(client, token)
     assert status == 200, f"got {status}"
     echoed = json.loads(body)["headers"]
@@ -177,14 +177,14 @@ def test_personal_token_is_exchanged_for_a_jwt(client):
 
 
 def test_personal_token_second_request_is_a_cache_hit(client):
-    token = "isql_known_cached_" + "B" * 25
+    token = "iapi_known_cached_" + "B" * 25
     assert _sql(client, token)[0] == 200
     assert _sql(client, token)[0] == 200
     assert _stub_calls(client, token) == 1
 
 
 def test_refused_personal_token_is_401_and_asked_again(client):
-    token = "isql_refused_" + "C" * 30
+    token = "iapi_refused_" + "C" * 30
     for attempt in (1, 2):
         status, headers, body = _sql(client, token)
         assert status == 401, f"got {status}"
@@ -215,21 +215,21 @@ def _assert_sql_api_unavailable(response):
 
 
 def test_exchange_failure_is_a_no_store_503(client):
-    _assert_sql_api_unavailable(_sql(client, "isql_unavailable_" + "F" * 26))
+    _assert_sql_api_unavailable(_sql(client, "iapi_unavailable_" + "F" * 26))
 
 
-def test_unreachable_exchange_is_a_503_without_its_error(client, sql_token_stub_down):
-    response = _sql(client, "isql_known_unreachable_" + "G" * 20)
+def test_unreachable_exchange_is_a_503_without_its_error(client, api_token_stub_down):
+    response = _sql(client, "iapi_known_unreachable_" + "G" * 20)
     _assert_sql_api_unavailable(response)
-    assert b"sql-token-stub" not in response[2]
+    assert b"api-token-stub" not in response[2]
 
 
 def test_unknown_token_flood_is_429_and_auth_stays_open(client):
     sid = client.login()
-    statuses = [_sql(client, f"isql_flood_{i:04d}_" + "E" * 20)[0] for i in range(80)]
+    statuses = [_sql(client, f"iapi_flood_{i:04d}_" + "E" * 20)[0] for i in range(80)]
     assert 429 in statuses, statuses
     assert set(statuses) <= {401, 429}, statuses
-    status, headers, body = _sql(client, "isql_flood_after_" + "E" * 20)
+    status, headers, body = _sql(client, "iapi_flood_after_" + "E" * 20)
     assert status == 429
     assert headers["cache-control"] == "no-store"
     assert json.loads(body)["status"] == 429

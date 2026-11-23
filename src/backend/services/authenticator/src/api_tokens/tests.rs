@@ -29,9 +29,9 @@ fn two_mints_never_share_a_token() -> R {
 
 #[test]
 fn a_label_is_trimmed_and_must_hold_text_within_its_column() {
-    let at_budget = "x".repeat(sql_token_schema::LABEL_CHARS);
-    let over_budget = "x".repeat(sql_token_schema::LABEL_CHARS + 1);
-    let multibyte_at_budget = "é".repeat(sql_token_schema::LABEL_CHARS);
+    let at_budget = "x".repeat(api_token_schema::LABEL_CHARS);
+    let over_budget = "x".repeat(api_token_schema::LABEL_CHARS + 1);
+    let multibyte_at_budget = "é".repeat(api_token_schema::LABEL_CHARS);
 
     for (raw, expected) in [
         ("  laptop  ", Ok("laptop")),
@@ -62,10 +62,10 @@ fn only_a_token_shaped_like_a_minted_one_is_worth_looking_up() -> R {
 
     let body = "a".repeat(43);
     for (candidate, expected) in [
-        (format!("isql_{body}"), true),
-        (format!("isql_{}", "a".repeat(42)), false),
-        (format!("isql_{}", "a".repeat(44)), false),
-        (format!("isql_{}+", "a".repeat(42)), false),
+        (format!("iapi_{body}"), true),
+        (format!("iapi_{}", "a".repeat(42)), false),
+        (format!("iapi_{}", "a".repeat(44)), false),
+        (format!("iapi_{}+", "a".repeat(42)), false),
         (format!("isqx_{body}"), false),
         (
             "synthetic-instance-token-0123456789abcdef".to_owned(),

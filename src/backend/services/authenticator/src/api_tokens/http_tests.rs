@@ -22,10 +22,10 @@ use super::{MAX_LIFETIME_DAYS, store};
 use crate::api::AppState;
 use crate::audit::AuditEmitter;
 use crate::config::AuthenticatorConfig;
-use crate::migration::sql_token_schema;
+use crate::migration::api_token_schema;
 
 const REDIS_VAR: &str = "INTEGRATION_TESTS_REDIS_URL";
-const TOKENS: &str = "/v1/sql-tokens";
+const TOKENS: &str = "/v1/api-tokens";
 
 pub(crate) const ADMIN: Uuid = Uuid::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0001);
 pub(crate) const KNOWN_PERSON: Uuid = Uuid::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0002);
@@ -223,7 +223,7 @@ async fn a_refused_request_stores_no_token() -> R {
     let laptop = create_body("laptop");
     let stranger = json!({"person_id": UNKNOWN_PERSON.to_string(), "label": "laptop"});
     let blank = create_body("   ");
-    let long = create_body(&"x".repeat(sql_token_schema::LABEL_CHARS + 1));
+    let long = create_body(&"x".repeat(api_token_schema::LABEL_CHARS + 1));
     let no_days = lifetime_body(0);
     let over_max = lifetime_body(MAX_LIFETIME_DAYS + 1);
     let (forbidden, invalid) = (StatusCode::FORBIDDEN, StatusCode::BAD_REQUEST);
@@ -303,7 +303,7 @@ async fn an_admin_creates_lists_and_removes_a_personal_token() -> R {
     let created = body_json(response).await?;
     let token = created["token"].as_str().unwrap_or_default().to_owned();
     let token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
-    assert!(token.starts_with("isql_"), "created: {created}");
+    assert!(token.starts_with("iapi_"), "created: {created}");
     assert_eq!(created["person_id"], json!(KNOWN_PERSON.to_string()));
     assert_eq!(created["label"], json!("laptop"));
     let lifetime =
@@ -355,7 +355,7 @@ async fn an_admin_creates_lists_and_removes_a_personal_token() -> R {
     let listed = body_json(answer(&app, request("GET", TOKENS, None)?).await?).await?;
     assert_eq!(listed["items"], json!([]));
 
-    for action in ["sql_token_created", "sql_token_removed"] {
+    for action in ["api_token_created", "api_token_removed"] {
         let event = events.try_recv()?;
         assert_eq!(
             (event.action, event.resource_id),

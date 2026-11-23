@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/i18n";
 
 vi.mock("@/auth/use-auth", () => ({ useAuth: () => ({ session: null }) }));
-vi.mock("@/api/sql-tokens-client", () => ({
-  listSqlTokens: vi.fn(),
-  createSqlToken: vi.fn(),
-  removeSqlToken: vi.fn(),
+vi.mock("@/api/api-tokens-client", () => ({
+  listApiTokens: vi.fn(),
+  createApiToken: vi.fn(),
+  removeApiToken: vi.fn(),
 }));
 vi.mock("@/components/portal/person-picker", () => ({
   PersonPicker: ({ onPick }: { onPick: (person: unknown) => void }) => (
@@ -28,13 +28,13 @@ vi.mock("@/components/portal/person-picker", () => ({
   ),
 }));
 
-import * as client from "@/api/sql-tokens-client";
+import * as client from "@/api/api-tokens-client";
 
-import { SqlTokensView } from "./sql-tokens-view";
+import { ApiTokensView } from "./api-tokens-view";
 
-const list = vi.mocked(client.listSqlTokens);
-const create = vi.mocked(client.createSqlToken);
-const remove = vi.mocked(client.removeSqlToken);
+const list = vi.mocked(client.listApiTokens);
+const create = vi.mocked(client.createApiToken);
+const remove = vi.mocked(client.removeApiToken);
 
 const ENTRY = {
   token_id: "t-1",
@@ -55,7 +55,7 @@ const ENTRY = {
   },
 };
 
-const SECRET = "isql_synthetic-token-shown-once";
+const SECRET = "iapi_synthetic-token-shown-once";
 
 const CREATED = {
   token_id: "t-2",
@@ -75,7 +75,7 @@ function renderView() {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <SqlTokensView />
+      <ApiTokensView />
     </QueryClientProvider>
   );
 }
@@ -103,7 +103,7 @@ beforeEach(() => {
   remove.mockReset();
 });
 
-describe("SqlTokensView", () => {
+describe("ApiTokensView", () => {
   it("lists each token's person, label, creation day, expiry day and creator", async () => {
     list.mockResolvedValue({ items: [ENTRY] });
 

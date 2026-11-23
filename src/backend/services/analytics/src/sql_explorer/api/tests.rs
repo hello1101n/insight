@@ -233,7 +233,7 @@ fn sql_claims() -> Value {
         "sub": "11111111-1111-4111-8111-111111111111",
         "tenant_id": "22222222-2222-4222-8222-222222222222",
         "roles": "sql_api",
-        "sub_type": "sql_token",
+        "sub_type": "api_token",
         "sid": "33333333-3333-4333-8333-333333333333",
         "token_label": "synthetic-label",
         "iss": ISSUER,

@@ -606,7 +606,7 @@ fn effective_roles(fetched: Option<Vec<String>>, default_roles: &[String]) -> Ve
     }
 }
 
-pub async fn sql_token_authz(
+pub async fn api_token_authz(
     Extension(state): Extension<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> Response {
@@ -614,10 +614,10 @@ pub async fn sql_token_authz(
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
 
-    crate::sql_tokens::exchange::respond(
-        &crate::sql_tokens::exchange::ExchangeEnv {
-            db: state.sql_tokens_db.as_ref(),
-            slots: &state.sql_token_lookup_slots,
+    crate::api_tokens::exchange::respond(
+        &crate::api_tokens::exchange::ExchangeEnv {
+            db: state.api_tokens_db.as_ref(),
+            slots: &state.api_token_lookup_slots,
             keystore: &state.keystore,
             cfg: &state.cfg,
         },

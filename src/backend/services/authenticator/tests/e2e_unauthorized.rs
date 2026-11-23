@@ -48,18 +48,18 @@ async fn session_routes_reject_missing_cookie_with_401() {
 
 #[tokio::test]
 #[ignore = "requires a running authenticator + Keycloak + Redis stack"]
-async fn sql_token_routes_reject_a_caller_without_credentials_with_401() {
+async fn api_token_routes_reject_a_caller_without_credentials_with_401() {
     let auth_base = env("AUTH_BASE", "http://localhost:8083");
     let http = common::client();
 
     for (method, path) in [
-        (Method::GET, "/v1/sql-tokens"),
-        (Method::POST, "/v1/sql-tokens"),
+        (Method::GET, "/v1/api-tokens"),
+        (Method::POST, "/v1/api-tokens"),
         (
             Method::DELETE,
-            "/v1/sql-tokens/00000000-0000-7000-8000-000000000000",
+            "/v1/api-tokens/00000000-0000-7000-8000-000000000000",
         ),
-        (Method::GET, "/internal/sql-token/authz"),
+        (Method::GET, "/internal/api-token/authz"),
     ] {
         let resp = http
             .request(method.clone(), format!("{auth_base}{path}"))

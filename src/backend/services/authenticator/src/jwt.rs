@@ -27,7 +27,7 @@ pub struct GatewayClaims {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SqlTokenClaims {
+pub struct ApiTokenClaims {
     pub sub: String,
     pub tenant_id: String,
     #[serde(with = "space_delimited")]
@@ -163,15 +163,15 @@ impl KeyStore {
             .context("sign gateway JWT")
     }
 
-    pub fn sign_sql_token(&self, claims: &SqlTokenClaims) -> anyhow::Result<String> {
+    pub fn sign_api_token(&self, claims: &ApiTokenClaims) -> anyhow::Result<String> {
         anyhow::ensure!(
             !claims.tenant_id.trim().is_empty(),
-            "refusing to sign a SQL token JWT with an empty tenant_id"
+            "refusing to sign an API token JWT with an empty tenant_id"
         );
         let mut header = Header::new(Algorithm::ES256);
         header.kid = Some(self.current.kid.clone());
         toolkit_security::jwt::encode(&header, claims, &self.current.signing)
-            .context("sign SQL token JWT")
+            .context("sign API token JWT")
     }
 
     pub fn sign_mcp_access_token(&self, claims: &McpAccessClaims) -> anyhow::Result<String> {

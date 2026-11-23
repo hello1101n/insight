@@ -82,10 +82,10 @@ impl Gear for AuthenticatorGear {
             cfg.audit.retention_ms,
         )?;
 
-        let sql_tokens_db = connect_sql_tokens_db(&cfg).await?;
-        tracing::info!(enabled = sql_tokens_db.is_some(), "personal SQL tokens");
+        let api_tokens_db = connect_api_tokens_db(&cfg).await?;
+        tracing::info!(enabled = api_tokens_db.is_some(), "personal API tokens");
 
-        let sql_token_lookup_slots = Semaphore::new(cfg.sql_token_lookup_slots);
+        let api_token_lookup_slots = Semaphore::new(cfg.api_token_lookup_slots);
 
         let state = Arc::new(AppState {
             cfg,
@@ -97,8 +97,8 @@ impl Gear for AuthenticatorGear {
             authn_client,
             audit,
             mcp_oauth,
-            sql_tokens_db,
-            sql_token_lookup_slots,
+            api_tokens_db,
+            api_token_lookup_slots,
         });
         self.state
             .set(state)
@@ -147,12 +147,12 @@ impl RunnableCapability for AuthenticatorGear {
     }
 }
 
-async fn connect_sql_tokens_db(
+async fn connect_api_tokens_db(
     cfg: &AuthenticatorConfig,
 ) -> anyhow::Result<Option<DatabaseConnection>> {
-    match cfg.sql_tokens_database_url()? {
+    match cfg.api_tokens_database_url()? {
         Some(url) => Ok(Some(
-            crate::sql_tokens::db::connect_lazy(url.expose_secret()).await?,
+            crate::api_tokens::db::connect_lazy(url.expose_secret()).await?,
         )),
         None => Ok(None),
     }
@@ -160,15 +160,15 @@ async fn connect_sql_tokens_db(
 
 pub(crate) async fn run_migrate(app: &toolkit::bootstrap::AppConfig) -> anyhow::Result<()> {
     let cfg = extract_gear_config(app)?;
-    let Some(url) = cfg.sql_tokens_database_url()? else {
-        tracing::info!("database_url is empty, personal SQL tokens are off, nothing to migrate");
+    let Some(url) = cfg.api_tokens_database_url()? else {
+        tracing::info!("database_url is empty, personal API tokens are off, nothing to migrate");
         return Ok(());
     };
 
     insight_migration::with_migration_session(
         url.expose_secret(),
-        crate::sql_tokens::db::MIGRATION_LOCK,
-        crate::sql_tokens::db::MIGRATION_LOCK_TIMEOUT,
+        crate::api_tokens::db::MIGRATION_LOCK,
+        crate::api_tokens::db::MIGRATION_LOCK_TIMEOUT,
         |db| async move {
             use sea_orm_migration::MigratorTrait as _;
             crate::migration::Migrator::up(&db, None).await?;
@@ -206,7 +206,7 @@ mod tests {
             database_url: SecretString::from("mysql://u:p@127.0.0.1:1/authenticator"),
             ..AuthenticatorConfig::default()
         };
-        let db = connect_sql_tokens_db(&cfg)
+        let db = connect_api_tokens_db(&cfg)
             .await?
             .ok_or_else(|| anyhow::anyhow!("pool missing"))?;
 

@@ -34,7 +34,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class CreatedSqlToken(BaseModel):
+class CreatedApiToken(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -62,7 +62,7 @@ class Problem(BaseModel):
     type: str
 
 
-class SqlTokenPerson(BaseModel):
+class ApiTokenPerson(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -72,7 +72,7 @@ class SqlTokenPerson(BaseModel):
     username: str
 
 
-class SqlTokenRequest(BaseModel):
+class ApiTokenRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -81,20 +81,20 @@ class SqlTokenRequest(BaseModel):
     person_id: UUID
 
 
-class SqlTokenEntry(BaseModel):
+class ApiTokenEntry(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     created_at: str
-    created_by: SqlTokenPerson
+    created_by: ApiTokenPerson
     expires_at: str
     label: str
-    person: SqlTokenPerson
+    person: ApiTokenPerson
     token_id: str
 
 
-class SqlTokenListResponse(BaseModel):
+class ApiTokenListResponse(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    items: list[SqlTokenEntry]
+    items: list[ApiTokenEntry]

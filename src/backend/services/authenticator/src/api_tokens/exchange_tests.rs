@@ -15,7 +15,7 @@ use serde_json::Value;
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
-use super::entity::sql_api_tokens;
+use super::entity::api_tokens;
 use super::exchange::{ExchangeEnv, respond};
 use super::mint;
 use crate::config::AuthenticatorConfig;
@@ -47,8 +47,8 @@ fn keystore() -> Result<KeyStore, Box<dyn std::error::Error>> {
     Ok(KeyStore::from_pem_for_test(&pem)?)
 }
 
-fn row(expires_at: DateTime<Utc>) -> sql_api_tokens::Model {
-    sql_api_tokens::Model {
+fn row(expires_at: DateTime<Utc>) -> api_tokens::Model {
+    api_tokens::Model {
         id: TOKEN_ID,
         insight_tenant_id: TENANT,
         token_hash: vec![0; 32],
@@ -136,7 +136,7 @@ async fn a_known_token_is_exchanged_for_a_sql_api_jwt_with_the_decided_claims() 
     assert_eq!(claims["sub"], PERSON.to_string());
     assert_eq!(claims["tenant_id"], TENANT.to_string());
     assert_eq!(claims["roles"], "sql_api");
-    assert_eq!(claims["sub_type"], "sql_token");
+    assert_eq!(claims["sub_type"], "api_token");
     assert_eq!(claims["sid"], TOKEN_ID.to_string());
     assert_eq!(claims["token_label"], "laptop");
     assert_eq!(claims["iss"], ISSUER);
@@ -196,7 +196,7 @@ async fn a_missing_malformed_unknown_or_expired_token_is_a_401_with_no_store() -
     let cfg = config();
     let slots = Semaphore::new(8);
     let unknown = MockDatabase::new(DatabaseBackend::MySql)
-        .append_query_results([Vec::<sql_api_tokens::Model>::new()])
+        .append_query_results([Vec::<api_tokens::Model>::new()])
         .into_connection();
     let expired = MockDatabase::new(DatabaseBackend::MySql)
         .append_query_results([[row(now())]])
@@ -308,7 +308,7 @@ pub(crate) async fn exchange_outcomes() -> Result<Vec<String>, Box<dyn std::erro
         .append_query_results([[labelled]])
         .into_connection();
     let unknown = MockDatabase::new(DatabaseBackend::MySql)
-        .append_query_results([Vec::<sql_api_tokens::Model>::new()])
+        .append_query_results([Vec::<api_tokens::Model>::new()])
         .into_connection();
     let failing = MockDatabase::new(DatabaseBackend::MySql)
         .append_query_errors([DbErr::Custom("connection reset".to_owned())])

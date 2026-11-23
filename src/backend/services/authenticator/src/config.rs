@@ -234,7 +234,7 @@ pub struct AuthenticatorConfig {
     pub gateway_issuer: String,
     pub jwt_audience: String,
     pub sql_api_audience: String,
-    pub sql_token_lookup_slots: usize,
+    pub api_token_lookup_slots: usize,
 
     pub redirect_uri: String,
     #[serde(deserialize_with = "de_scopes")]
@@ -315,7 +315,7 @@ impl Default for AuthenticatorConfig {
             gateway_issuer: String::new(),
             jwt_audience: "internal-services".to_owned(),
             sql_api_audience: "sql-api".to_owned(),
-            sql_token_lookup_slots: 8,
+            api_token_lookup_slots: 8,
             redirect_uri: String::new(),
             // offline_access omitted: survives-logout token, wrong for a BFF.
             oidc_scopes: vec![
@@ -360,7 +360,7 @@ impl AuthenticatorConfig {
         );
 
         validate_required_fields(self)?;
-        validate_sql_tokens(self)?;
+        validate_api_tokens(self)?;
 
         anyhow::ensure!(
             !(self.idp.resolve_by == ResolveBy::Email && self.idp.provision_on_login),
@@ -450,11 +450,11 @@ impl AuthenticatorConfig {
         }
 
         validate_mcp_oauth(&self.mcp_oauth)?;
-        self.sql_tokens_database_url()?;
+        self.api_tokens_database_url()?;
         Ok(())
     }
 
-    pub fn sql_tokens_database_url(&self) -> anyhow::Result<Option<&SecretString>> {
+    pub fn api_tokens_database_url(&self) -> anyhow::Result<Option<&SecretString>> {
         let raw = self.database_url.expose_secret();
         if raw.trim().is_empty() {
             return Ok(None);
@@ -484,14 +484,14 @@ fn validate_required_fields(config: &AuthenticatorConfig) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn validate_sql_tokens(config: &AuthenticatorConfig) -> anyhow::Result<()> {
+fn validate_api_tokens(config: &AuthenticatorConfig) -> anyhow::Result<()> {
     anyhow::ensure!(
         !config.sql_api_audience.trim().is_empty(),
         "sql_api_audience is required (empty)"
     );
     anyhow::ensure!(
-        config.sql_token_lookup_slots > 0,
-        "sql_token_lookup_slots must be > 0"
+        config.api_token_lookup_slots > 0,
+        "api_token_lookup_slots must be > 0"
     );
     Ok(())
 }
@@ -621,7 +621,7 @@ mod tests {
     fn the_sql_api_audience_and_lookup_slots_have_defaults_and_must_be_usable() {
         let defaults = AuthenticatorConfig::default();
         assert_eq!(defaults.sql_api_audience, "sql-api");
-        assert_eq!(defaults.sql_token_lookup_slots, 8);
+        assert_eq!(defaults.api_token_lookup_slots, 8);
 
         for audience in ["", "  "] {
             let cfg = AuthenticatorConfig {
@@ -634,7 +634,7 @@ mod tests {
             );
         }
         let cfg = AuthenticatorConfig {
-            sql_token_lookup_slots: 0,
+            api_token_lookup_slots: 0,
             ..valid_config()
         };
         assert!(cfg.validate().is_err(), "should reject zero slots");
@@ -665,8 +665,8 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_database_url_turns_sql_tokens_off() -> anyhow::Result<()> {
-        assert!(valid_config().sql_tokens_database_url()?.is_none());
+    fn an_empty_database_url_turns_api_tokens_off() -> anyhow::Result<()> {
+        assert!(valid_config().api_tokens_database_url()?.is_none());
         Ok(())
     }
 

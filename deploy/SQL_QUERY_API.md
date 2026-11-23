@@ -38,7 +38,7 @@ Leave `global.mcp.enabled` and `global.mcp.publicUrl` unchanged.
 
 Inherit gateway route defaults. A custom `gateway.gateway.routes` list replaces
 the complete default list and must explicitly include `/api/sql/query` with
-`auth: sql_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
+`auth: api_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
 `timeoutMs: 40000`, and `sqlApiOnly: true`. It must also keep `/api/authenticator`
 with `stripPrefix: true`.
 
@@ -53,12 +53,12 @@ During a rolling rotation, old and new pods may temporarily accept different tok
 The authenticator service stores and manages personal tokens. It needs its
 `database_url`; when it is empty, the token API answers 503.
 
-An admin creates a token in **Manage → People & access → SQL API tokens** for a
+An admin creates a token in **Manage → People & access → API tokens** for a
 person in the tenant roster, with a label and a lifetime of 30 days, 90 days,
 1 year (the default) or 2 years. The dialog shows the token once.
 
 The admin API is `GET`, `POST` and `DELETE` on
-`/api/authenticator/v1/sql-tokens` with a session. Only an admin can call it.
+`/api/authenticator/v1/api-tokens` with a session. Only an admin can call it.
 `docs/components/backend/authenticator/openapi.json` has its contract.
 
 The authenticator stores only the token's SHA-256 in MariaDB. A personal token

@@ -1,11 +1,11 @@
 use insight_log_context::test_support::capture_output;
 
-use crate::config::{HostIdpConfig, IdpConfig};
-use crate::session::{LoginState, SessionRecord};
-use crate::sql_tokens::http_tests::{
+use crate::api_tokens::http_tests::{
     ADMIN, KNOWN_PERSON, KNOWN_PERSON_EMAIL, KNOWN_PERSON_NAME, R, StubSpec, app, body_json,
     env_or_skip, request, spawn_identity,
 };
+use crate::config::{HostIdpConfig, IdpConfig};
+use crate::session::{LoginState, SessionRecord};
 
 const SEEDED_ID_TOKEN: &str = "seeded-id-token-3192";
 const SEEDED_REFRESH_TOKEN: &str = "seeded-refresh-token-3192";
@@ -103,8 +103,8 @@ fn a_logged_idp_config_renders_a_marker_never_the_client_secret() {
 
 #[test]
 #[ignore = "requires MariaDB and Redis; set INTEGRATION_TESTS_MARIADB_URL and INTEGRATION_TESTS_REDIS_URL"]
-fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
-    use crate::sql_tokens::exchange_tests::SEEDED_LABEL;
+fn the_api_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
+    use crate::api_tokens::exchange_tests::SEEDED_LABEL;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -135,7 +135,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
                     app.clone(),
                     request(
                         "POST",
-                        "/v1/sql-tokens",
+                        "/v1/api-tokens",
                         Some(&serde_json::json!({
                             "person_id": KNOWN_PERSON.to_string(),
                             "label": SEEDED_LABEL,
@@ -148,11 +148,11 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
             token = created["token"].as_str().unwrap_or_default().to_owned();
             token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
 
-            tower::ServiceExt::oneshot(app.clone(), request("GET", "/v1/sql-tokens", None)?)
+            tower::ServiceExt::oneshot(app.clone(), request("GET", "/v1/api-tokens", None)?)
                 .await?;
             tower::ServiceExt::oneshot(
                 app,
-                request("DELETE", &format!("/v1/sql-tokens/{token_id}"), None)?,
+                request("DELETE", &format!("/v1/api-tokens/{token_id}"), None)?,
             )
             .await?;
             Ok(())
@@ -163,7 +163,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
     if !ran {
         return Ok(());
     }
-    assert!(token.starts_with("isql_"), "no token was created");
+    assert!(token.starts_with("iapi_"), "no token was created");
     for seeded in [
         token.as_str(),
         SEEDED_LABEL,
@@ -174,7 +174,7 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
     }
     let removal = output
         .lines()
-        .find(|line| line.contains("sql_token_removed"))
+        .find(|line| line.contains("api_token_removed"))
         .ok_or("no removal audit line")?;
     for named in [
         KNOWN_PERSON.to_string(),
@@ -187,16 +187,16 @@ fn the_sql_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
         );
     }
     assert!(
-        output.contains("sql_token_created"),
+        output.contains("api_token_created"),
         "no creation audit line: {output}"
     );
     Ok(())
 }
 
 #[test]
-fn the_sql_token_exchange_logs_neither_the_token_nor_the_label_nor_a_name()
--> crate::sql_tokens::http_tests::R {
-    use crate::sql_tokens::exchange_tests::{SEEDED_LABEL, exchange_outcomes};
+fn the_api_token_exchange_logs_neither_the_token_nor_the_label_nor_a_name()
+-> crate::api_tokens::http_tests::R {
+    use crate::api_tokens::exchange_tests::{SEEDED_LABEL, exchange_outcomes};
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

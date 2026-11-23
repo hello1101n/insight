@@ -86,7 +86,7 @@ def analytics_path(suffix: str) -> str:
 
 
 def authenticator_path(suffix: str) -> str:
-    """`authenticator_path("/v1/sql-tokens") -> "/api/authenticator/v1/sql-tokens"`."""
+    """`authenticator_path("/v1/api-tokens") -> "/api/authenticator/v1/api-tokens"`."""
     return f"{AUTHENTICATOR_PREFIX}/{suffix.lstrip('/')}"
 
 

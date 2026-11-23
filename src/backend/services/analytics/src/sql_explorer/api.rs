@@ -14,7 +14,7 @@ use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure, Token
 use crate::config::SqlApiConfig;
 use crate::jwt_verifier::{JwksVerifier, VerifyFailure};
 
-const SQL_TOKEN_SUB_TYPE: &str = "sql_token";
+const API_TOKEN_SUB_TYPE: &str = "api_token";
 const MAX_CREDENTIAL_BYTES: usize = 4096;
 
 #[resource_error("gts.cf.insight.analytics_api.sql_query.v1~")]
@@ -36,7 +36,7 @@ struct AuthState {
 }
 
 #[derive(Debug, Deserialize)]
-struct SqlTokenClaims {
+struct ApiTokenClaims {
     sub: String,
     sub_type: String,
     sid: String,
@@ -99,8 +99,8 @@ async fn identify(
     if constant_time_eq(&Sha256::digest(token.as_bytes()), &state.token_hash) {
         return Ok(None);
     }
-    let claims = state.verifier.verify::<SqlTokenClaims>(token).await?;
-    if claims.sub_type != SQL_TOKEN_SUB_TYPE {
+    let claims = state.verifier.verify::<ApiTokenClaims>(token).await?;
+    if claims.sub_type != API_TOKEN_SUB_TYPE {
         return Err(VerifyFailure::Unauthorized);
     }
     Ok(Some(TokenHolder {

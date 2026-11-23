@@ -3,7 +3,7 @@ use serde::Deserialize;
 pub const SUPPORTED_VERSION: u32 = 1;
 
 pub const MCP_PREFIXES: [&str; 2] = ["/mcp", "/mcp/v3"];
-pub const SQL_TOKEN_PREFIX: &str = "/api/sql/query";
+pub const API_TOKEN_PREFIX: &str = "/api/sql/query";
 pub const DEFAULT_MCP_SCOPE: &str = "mcp:query";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -38,7 +38,7 @@ pub enum Authentication {
     Session,
     Bearer,
     InstanceToken,
-    SqlToken,
+    ApiToken,
 }
 
 impl Default for Defaults {

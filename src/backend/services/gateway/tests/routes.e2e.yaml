@@ -6,7 +6,7 @@ defaults:
 routes:
   - prefix: /api/sql/query
     upstream: http://echo:9090
-    auth: sql_token
+    auth: api_token
   - prefix: /api/analytics
     upstream: http://echo:9090
   - prefix: /api/identity

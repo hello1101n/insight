@@ -192,9 +192,9 @@ IDENTITY_OPERATIONS: Final[tuple[Operation, ...]] = (
 )
 
 AUTHENTICATOR_OPERATIONS: Final[tuple[Operation, ...]] = (
-    _t("GET", "/v1/sql-tokens"),
-    _t("POST", "/v1/sql-tokens"),
-    _t("DELETE", f"/v1/sql-tokens/{SOME_ID}"),
+    _t("GET", "/v1/api-tokens"),
+    _t("POST", "/v1/api-tokens"),
+    _t("DELETE", f"/v1/api-tokens/{SOME_ID}"),
 )
 
 CONNECTORS_OPERATIONS: Final[tuple[Operation, ...]] = tuple(

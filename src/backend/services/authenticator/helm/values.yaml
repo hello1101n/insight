@@ -86,7 +86,7 @@ resources:
 # `existingSecret` to its name.
 existingSecret: ""
 
-# MariaDB schema of personal SQL tokens; the umbrella puts it in database_url.
+# MariaDB schema of personal API tokens; the umbrella puts it in database_url.
 databaseName: authenticator
 
 # Hook-rendered Secret carrying only database_url, so the pre-install migrate

@@ -412,7 +412,7 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
         icon: Fingerprint,
         adminOnly: true,
       },
-      { id: "sql-tokens", label: { key: "nav.items.sql_tokens" }, icon: KeyRound, adminOnly: true },
+      { id: "api-tokens", label: { key: "nav.items.api_tokens" }, icon: KeyRound, adminOnly: true },
       { id: "access", label: { key: "nav.items.access" }, icon: Lock, unbuilt: true },
       { id: "group-mgmt", label: { key: "nav.items.group_mgmt" }, icon: Users, unbuilt: true },
     ],

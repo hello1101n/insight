@@ -2,6 +2,7 @@
 #![allow(clippy::doc_markdown)]
 
 mod api;
+mod api_tokens;
 mod audit;
 mod backchannel;
 mod config;
@@ -20,7 +21,6 @@ mod ratelimit;
 mod refresher;
 mod service_token;
 mod session;
-mod sql_tokens;
 
 // System gears — linked via inventory for the REST host + auth pipeline.
 use api_gateway as _;
@@ -68,7 +68,7 @@ enum Commands {
     Run,
     /// Validate configuration and exit.
     Check,
-    /// Apply the personal SQL token schema migrations and exit.
+    /// Apply the personal API token schema migrations and exit.
     Migrate,
     /// Print the OpenAPI document to stdout and exit. Built offline from the
     /// route table — no Redis, IdP, or config needed. Used to regenerate

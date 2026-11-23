@@ -4,8 +4,8 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-KNOWN_PREFIX = "isql_known"
-UNAVAILABLE_PREFIX = "isql_unavailable"
+KNOWN_PREFIX = "iapi_known"
+UNAVAILABLE_PREFIX = "iapi_unavailable"
 LOCK = threading.Lock()
 CALLS = {"total": 0, "by_token": {}}
 
@@ -26,7 +26,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 body = json.dumps(CALLS).encode()
             return self._send(200, {"Content-Type": "application/json"}, body)
-        if self.path != "/internal/sql-token/authz":
+        if self.path != "/internal/api-token/authz":
             return self._send(404, {})
         auth = self.headers.get("Authorization", "")
         token = auth[len("Bearer ") :] if auth.startswith("Bearer ") else ""

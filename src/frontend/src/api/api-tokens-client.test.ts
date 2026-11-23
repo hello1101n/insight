@@ -4,7 +4,7 @@ vi.mock("@/api/fetch-with-auth", () => ({ fetchWithAuth: vi.fn() }));
 
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 
-import { createSqlToken, listSqlTokens, removeSqlToken } from "./sql-tokens-client";
+import { createApiToken, listApiTokens, removeApiToken } from "./api-tokens-client";
 
 const mockFetch = fetchWithAuth as unknown as ReturnType<typeof vi.fn>;
 
@@ -34,7 +34,7 @@ beforeEach(() => {
   mockFetch.mockReset();
 });
 
-describe("listSqlTokens", () => {
+describe("listApiTokens", () => {
   it("reads the stand's tokens", async () => {
     const listed = {
       items: [
@@ -50,22 +50,22 @@ describe("listSqlTokens", () => {
     };
     mockFetch.mockResolvedValueOnce(response(listed));
 
-    await expect(listSqlTokens()).resolves.toEqual(listed);
-    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/sql-tokens");
+    await expect(listApiTokens()).resolves.toEqual(listed);
+    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/api-tokens");
   });
 
   it("raises a refusal with its status", async () => {
     mockFetch.mockResolvedValueOnce(response({ detail: "admin role required" }, { ok: false, status: 403 }));
 
-    await expect(listSqlTokens()).rejects.toMatchObject({ status: 403 });
+    await expect(listApiTokens()).rejects.toMatchObject({ status: 403 });
   });
 });
 
-describe("createSqlToken", () => {
+describe("createApiToken", () => {
   it("posts the person, label and lifetime and hands back the token once", async () => {
     const created = {
       token_id: "t-2",
-      token: "isql_synthetic-token-for-tests",
+      token: "iapi_synthetic-token-for-tests",
       person_id: PERSON.person_id,
       label: "ci",
       created_at: "2026-11-12T10:00:00Z",
@@ -74,9 +74,9 @@ describe("createSqlToken", () => {
     mockFetch.mockResolvedValueOnce(response(created, { status: 201 }));
 
     await expect(
-      createSqlToken({ person_id: PERSON.person_id, label: "ci", lifetime_days: 365 }),
+      createApiToken({ person_id: PERSON.person_id, label: "ci", lifetime_days: 365 }),
     ).resolves.toEqual(created);
-    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/sql-tokens", {
+    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/api-tokens", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ person_id: PERSON.person_id, label: "ci", lifetime_days: 365 }),
@@ -85,13 +85,13 @@ describe("createSqlToken", () => {
 
 });
 
-describe("removeSqlToken", () => {
+describe("removeApiToken", () => {
   it("deletes the token by id", async () => {
     mockFetch.mockResolvedValueOnce(response(null, { status: 204 }));
 
-    await removeSqlToken("t-1");
+    await removeApiToken("t-1");
 
-    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/sql-tokens/t-1", { method: "DELETE" });
+    expect(mockFetch).toHaveBeenCalledWith("/api/authenticator/v1/api-tokens/t-1", { method: "DELETE" });
   });
 
 });

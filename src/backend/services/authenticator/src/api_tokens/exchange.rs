@@ -12,11 +12,11 @@ use uuid::Uuid;
 use super::{TokenHash, looks_minted, store};
 use crate::api::handlers::{X_GATEWAY_JWT, build_response, cache_control_for};
 use crate::config::AuthenticatorConfig;
-use crate::jwt::{KeyStore, SqlTokenClaims};
+use crate::jwt::{ApiTokenClaims, KeyStore};
 
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 const SQL_API_ROLE: &str = "sql_api";
-const SUB_TYPE: &str = "sql_token";
+const SUB_TYPE: &str = "api_token";
 
 pub(crate) struct ExchangeEnv<'a> {
     pub(crate) db: Option<&'a DatabaseConnection>,
@@ -80,7 +80,7 @@ async fn exchange(
         .ok_or(Refusal::Unauthenticated)?;
 
     let Some(db) = env.db else {
-        tracing::warn!("SQL token exchange refused: personal SQL tokens are off");
+        tracing::warn!("API token exchange refused: personal API tokens are off");
         return Err(Refusal::Unavailable);
     };
 
@@ -88,7 +88,7 @@ async fn exchange(
     let Ok(Ok(_slot)) = tokio::time::timeout_at(deadline, env.slots.acquire()).await else {
         tracing::warn!(
             timeout_ms = LOOKUP_TIMEOUT.as_millis(),
-            "SQL token exchange refused: no lookup slot freed in time"
+            "API token exchange refused: no lookup slot freed in time"
         );
         return Err(Refusal::Unavailable);
     };
@@ -102,13 +102,13 @@ async fn exchange(
         Ok(Ok(Some(holder))) => holder,
         Ok(Ok(None)) => return Err(Refusal::Unauthenticated),
         Ok(Err(error)) => {
-            tracing::warn!(%error, "SQL token exchange refused: MariaDB lookup failed");
+            tracing::warn!(%error, "API token exchange refused: MariaDB lookup failed");
             return Err(Refusal::Unavailable);
         }
         Err(_) => {
             tracing::warn!(
                 timeout_ms = LOOKUP_TIMEOUT.as_millis(),
-                "SQL token exchange refused: MariaDB lookup passed its time bound"
+                "API token exchange refused: MariaDB lookup passed its time bound"
             );
             return Err(Refusal::Unavailable);
         }
@@ -116,7 +116,7 @@ async fn exchange(
 
     let iat = seconds(now);
     let exp = (iat + env.cfg.jwt_ttl_seconds).min(seconds(holder.expires_at));
-    let claims = SqlTokenClaims {
+    let claims = ApiTokenClaims {
         sub: holder.person_id.to_string(),
         tenant_id: holder.tenant_id.to_string(),
         roles: vec![SQL_API_ROLE.to_owned()],
@@ -129,15 +129,15 @@ async fn exchange(
         exp,
         jti: Uuid::now_v7().to_string(),
     };
-    let jwt = env.keystore.sign_sql_token(&claims).map_err(|error| {
-        tracing::warn!(error = ?error, "SQL token exchange refused: JWT signing failed");
+    let jwt = env.keystore.sign_api_token(&claims).map_err(|error| {
+        tracing::warn!(error = ?error, "API token exchange refused: JWT signing failed");
         Refusal::Unavailable
     })?;
 
     tracing::debug!(
         person_id = %holder.person_id,
         token_id = %holder.token_id,
-        "personal SQL token exchanged"
+        "personal API token exchanged"
     );
     Ok(Exchanged { jwt, exp })
 }

@@ -5,7 +5,7 @@ use secrecy::SecretString;
 use toolkit_security::crypto::{CryptoError, hash::Sha256, rng};
 use uuid::Uuid;
 
-use crate::migration::sql_token_schema;
+use crate::migration::api_token_schema;
 
 pub(crate) mod api;
 pub(crate) mod db;
@@ -22,7 +22,7 @@ mod live_tests;
 #[cfg(test)]
 mod tests;
 
-const TOKEN_PREFIX: &str = "isql_";
+const TOKEN_PREFIX: &str = "iapi_";
 const TOKEN_ENTROPY_BYTES: usize = 32;
 const TOKEN_BODY_CHARS: usize = 43;
 
@@ -75,7 +75,7 @@ pub(crate) struct TokenLabel(String);
 pub(crate) enum LabelRejected {
     #[error("label must not be empty")]
     Empty,
-    #[error("label must be at most {} characters", sql_token_schema::LABEL_CHARS)]
+    #[error("label must be at most {} characters", api_token_schema::LABEL_CHARS)]
     TooLong,
     #[error("label must not contain control characters")]
     ControlCharacter,
@@ -87,7 +87,7 @@ impl TokenLabel {
         if trimmed.is_empty() {
             return Err(LabelRejected::Empty);
         }
-        if trimmed.chars().count() > sql_token_schema::LABEL_CHARS {
+        if trimmed.chars().count() > api_token_schema::LABEL_CHARS {
             return Err(LabelRejected::TooLong);
         }
         if trimmed.chars().any(char::is_control) {

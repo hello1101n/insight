@@ -25,8 +25,8 @@ pub struct AppState {
     pub authn_client: Arc<dyn authenticator_sdk::AuthenticatorClientV1>,
     pub audit: crate::audit::AuditEmitter,
     pub mcp_oauth: McpOAuthStore,
-    pub sql_tokens_db: Option<sea_orm::DatabaseConnection>,
-    pub sql_token_lookup_slots: tokio::sync::Semaphore,
+    pub api_tokens_db: Option<sea_orm::DatabaseConnection>,
+    pub api_token_lookup_slots: tokio::sync::Semaphore,
 }
 
 #[cfg(test)]
@@ -36,7 +36,7 @@ impl AppState {
         identity_url: &str,
         cfg: AuthenticatorConfig,
         audit: crate::audit::AuditEmitter,
-        sql_tokens_db: Option<sea_orm::DatabaseConnection>,
+        api_tokens_db: Option<sea_orm::DatabaseConnection>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         use p256::elliptic_curve::Generate as _;
         use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
@@ -62,8 +62,8 @@ impl AppState {
             keystore,
             resolver,
             audit,
-            sql_tokens_db,
-            sql_token_lookup_slots: tokio::sync::Semaphore::new(8),
+            api_tokens_db,
+            api_token_lookup_slots: tokio::sync::Semaphore::new(8),
         }))
     }
 }
@@ -95,7 +95,7 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
     let router = register_auth_routes(router, openapi);
     let router = register_mcp_oauth_routes(router, openapi);
     let router = register_session_routes(router, openapi);
-    let router = register_sql_token_routes(router, openapi);
+    let router = register_api_token_routes(router, openapi);
     let router = register_internal_routes(router, openapi);
     register_well_known_routes(router, openapi)
 }
@@ -295,18 +295,18 @@ fn register_session_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Rou
     router
 }
 
-fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
-    use crate::sql_tokens::api;
+fn register_api_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
+    use crate::api_tokens::api;
 
     let mut router = router;
 
-    router = OperationBuilder::get("/v1/sql-tokens")
-        .operation_id("authenticator.sql_tokens.list")
-        .summary("Personal SQL API tokens of the caller's tenant")
-        .tag("sql-tokens")
+    router = OperationBuilder::get("/v1/api-tokens")
+        .operation_id("authenticator.api_tokens.list")
+        .summary("Personal API tokens of the caller's tenant")
+        .tag("api-tokens")
         .authenticated()
         .no_license_required()
-        .json_response_with_schema::<api::SqlTokenListResponse>(
+        .json_response_with_schema::<api::ApiTokenListResponse>(
             openapi,
             StatusCode::OK,
             "At most 1000 tokens, newest first; never the token itself",
@@ -315,17 +315,17 @@ fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> R
         .error_403(openapi)
         .error_500(openapi)
         .error_503(openapi)
-        .handler(api::list_sql_tokens)
+        .handler(api::list_api_tokens)
         .register(router, openapi);
 
-    router = OperationBuilder::post("/v1/sql-tokens")
-        .operation_id("authenticator.sql_tokens.create")
-        .summary("Create a personal SQL API token")
-        .tag("sql-tokens")
+    router = OperationBuilder::post("/v1/api-tokens")
+        .operation_id("authenticator.api_tokens.create")
+        .summary("Create a personal API token")
+        .tag("api-tokens")
         .authenticated()
         .no_license_required()
-        .json_request::<api::SqlTokenRequest>(openapi, "Who the token is for")
-        .json_response_with_schema::<api::CreatedSqlToken>(
+        .json_request::<api::ApiTokenRequest>(openapi, "Who the token is for")
+        .json_response_with_schema::<api::CreatedApiToken>(
             openapi,
             StatusCode::CREATED,
             "The token, shown this once",
@@ -336,13 +336,13 @@ fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> R
         .error_415(openapi)
         .error_500(openapi)
         .error_503(openapi)
-        .handler(api::create_sql_token)
+        .handler(api::create_api_token)
         .register(router, openapi);
 
-    OperationBuilder::delete("/v1/sql-tokens/{token_id}")
-        .operation_id("authenticator.sql_tokens.remove")
-        .summary("Remove a personal SQL API token")
-        .tag("sql-tokens")
+    OperationBuilder::delete("/v1/api-tokens/{token_id}")
+        .operation_id("authenticator.api_tokens.remove")
+        .summary("Remove a personal API token")
+        .tag("api-tokens")
         .authenticated()
         .no_license_required()
         .path_param("token_id", "Token id from the list")
@@ -352,21 +352,21 @@ fn register_sql_token_routes(router: Router, openapi: &dyn OpenApiRegistry) -> R
         .error_404(openapi)
         .error_500(openapi)
         .error_503(openapi)
-        .handler(api::remove_sql_token)
+        .handler(api::remove_api_token)
         .register(router, openapi)
 }
 
 fn register_internal_routes(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
-    let router = OperationBuilder::get("/internal/sql-token/authz")
-        .operation_id("authenticator.sql_token_authz")
-        .summary("Exchange a personal SQL token for a SQL API JWT")
+    let router = OperationBuilder::get("/internal/api-token/authz")
+        .operation_id("authenticator.api_token_authz")
+        .summary("Exchange a personal API token for a SQL API JWT")
         .tag("internal")
         .anonymous()
         .exposed()
         .no_content_response(StatusCode::OK, "JWT attached via X-Gateway-Jwt")
         .error_401(openapi)
         .error_503(openapi)
-        .handler(handlers::sql_token_authz)
+        .handler(handlers::api_token_authz)
         .register(router, openapi);
 
     OperationBuilder::get("/internal/authz")

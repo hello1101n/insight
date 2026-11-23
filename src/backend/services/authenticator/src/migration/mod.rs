@@ -1,5 +1,5 @@
-mod m20261122_000001_sql_api_tokens;
-pub(crate) mod sql_token_schema;
+pub(crate) mod api_token_schema;
+mod m20261122_000001_api_tokens;
 
 use sea_orm_migration::prelude::*;
 
@@ -8,7 +8,7 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m20261122_000001_sql_api_tokens::Migration)]
+        vec![Box::new(m20261122_000001_api_tokens::Migration)]
     }
 }
 
@@ -21,6 +21,6 @@ mod tests {
         let migrations = Migrator::migrations();
         let names: Vec<&str> = migrations.iter().map(|m| m.name()).collect();
 
-        assert_eq!(names, ["m20261122_000001_sql_api_tokens"]);
+        assert_eq!(names, ["m20261122_000001_api_tokens"]);
     }
 }

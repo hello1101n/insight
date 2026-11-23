@@ -9,5 +9,5 @@ pub struct ServiceTokenError;
 #[resource_error("gts.cf.insight.authenticator.session.v1~")]
 pub struct SessionError;
 
-#[resource_error("gts.cf.insight.authenticator.sql_token.v1~")]
-pub struct SqlTokenError;
+#[resource_error("gts.cf.insight.authenticator.api_token.v1~")]
+pub struct ApiTokenError;

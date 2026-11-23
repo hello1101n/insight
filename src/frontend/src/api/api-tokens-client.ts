@@ -4,7 +4,7 @@ import type { VisitorNaming } from "@/lib/portal/visitor-label";
 
 const BASE = "/api/authenticator/v1";
 
-export interface SqlTokenEntry {
+export interface ApiTokenEntry {
   token_id: string;
   label: string;
   created_at: string;
@@ -13,17 +13,17 @@ export interface SqlTokenEntry {
   created_by: VisitorNaming;
 }
 
-export interface SqlTokenList {
-  items: SqlTokenEntry[];
+export interface ApiTokenList {
+  items: ApiTokenEntry[];
 }
 
-export interface SqlTokenRequest {
+export interface ApiTokenRequest {
   person_id: string;
   label: string;
   lifetime_days: number;
 }
 
-export interface CreatedSqlToken {
+export interface CreatedApiToken {
   token_id: string;
   token: string;
   person_id: string;
@@ -32,21 +32,21 @@ export interface CreatedSqlToken {
   expires_at: string;
 }
 
-export async function listSqlTokens(): Promise<SqlTokenList> {
-  return readJson<SqlTokenList>(await fetchWithAuth(`${BASE}/sql-tokens`));
+export async function listApiTokens(): Promise<ApiTokenList> {
+  return readJson<ApiTokenList>(await fetchWithAuth(`${BASE}/api-tokens`));
 }
 
-export async function createSqlToken(body: SqlTokenRequest): Promise<CreatedSqlToken> {
-  const res = await fetchWithAuth(`${BASE}/sql-tokens`, {
+export async function createApiToken(body: ApiTokenRequest): Promise<CreatedApiToken> {
+  const res = await fetchWithAuth(`${BASE}/api-tokens`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return readJson<CreatedSqlToken>(res);
+  return readJson<CreatedApiToken>(res);
 }
 
-export async function removeSqlToken(tokenId: string): Promise<void> {
-  const res = await fetchWithAuth(`${BASE}/sql-tokens/${encodeURIComponent(tokenId)}`, {
+export async function removeApiToken(tokenId: string): Promise<void> {
+  const res = await fetchWithAuth(`${BASE}/api-tokens/${encodeURIComponent(tokenId)}`, {
     method: "DELETE",
   });
   await ensureOk(res);
