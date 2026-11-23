@@ -297,13 +297,19 @@ export const STARTER_DASHBOARDS: PaneItem = {
   unbuilt: true,
 };
 
-export const PEOPLE_ITEMS: readonly PaneItem[] = [
+type PeopleItems = readonly [
+  PaneItem & { id: "roster" },
+  PaneItem & { id: "employees" },
+  PaneItem & { id: "metrics" },
+];
+
+export const PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.my_team" }, icon: Users },
   { id: "employees", label: { key: "nav.items.roster_by_role" }, icon: List },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
 ];
 
-const FLAT_PEOPLE_ITEMS: readonly PaneItem[] = [
+const FLAT_PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.overview" }, icon: LayoutGrid },
   { id: "employees", label: { key: "nav.items.roster" }, icon: Users },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },

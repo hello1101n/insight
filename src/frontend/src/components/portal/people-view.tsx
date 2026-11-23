@@ -17,11 +17,7 @@ export function PeopleView({
   person: string;
   item: string | null;
 }) {
-  const { replaceScope } = usePortalNavActions();
-  useEffect(() => {
-    const id = person ? normalizePersonId(person) : "";
-    if (claimScopeSync(id)) replaceScope({ root: id });
-  }, [person, replaceScope]);
+  useSyncScopeFromRoute(person);
 
   if (item === "median-by-role") {
     return (
@@ -35,6 +31,14 @@ export function PeopleView({
     return <MetricsView />;
   }
   return <TeamStateView />;
+}
+
+function useSyncScopeFromRoute(person: string): void {
+  const { replaceScope } = usePortalNavActions();
+  useEffect(() => {
+    const id = person ? normalizePersonId(person) : "";
+    if (claimScopeSync(id)) replaceScope({ root: id });
+  }, [person, replaceScope]);
 }
 
 function Pending({ label }: { label: string }) {

@@ -16,7 +16,12 @@ let service: TelemetryService | null = null;
 const pending: Array<{ name: string; data: Record<string, unknown> }> = [];
 const MAX_PENDING = 50;
 
-function emit(name: string, data: Record<string, unknown>): void {
+type ScreenPath = string & { readonly __screenPath: true };
+
+function emit(
+  name: string,
+  data: { path: ScreenPath } & Record<string, unknown>,
+): void {
   if (service) {
     service.logEvent(name, data);
     return;
@@ -60,7 +65,7 @@ const CUSTOM_PAGES = new Set([
   "new",
 ]);
 
-export function screenPath(path: string): string {
+export function screenPath(path: string): ScreenPath {
   const segments = path.split("/");
   return segments
     .map((segment, i) =>
@@ -70,7 +75,7 @@ export function screenPath(path: string): string {
         ? ":id"
         : segment,
     )
-    .join("/");
+    .join("/") as ScreenPath;
 }
 
 function isDashboardId(segments: readonly string[], i: number): boolean {
@@ -93,7 +98,7 @@ function isIdentifier(segment: string): boolean {
   );
 }
 
-let lastPath = "";
+let lastPath = screenPath("");
 
 export function recordPageView(path: string): void {
   lastPath = screenPath(path);
@@ -114,6 +119,6 @@ export function recordUsageEvent(name: string, target: string): void {
   emit(name, { target, path: lastPath });
 }
 
-export function currentScreen(): string {
+export function currentScreen(): ScreenPath {
   return lastPath;
 }

@@ -26,7 +26,7 @@ describe("consumeOverrideParam", () => {
       "https://insight.test/team/board?__override=viewer%40example.com&tab=stats"
     );
 
-    expect(consumeOverrideParam()).toBe(true);
+    expect(consumeOverrideParam()).toBe("navigating");
     expect(assign).toHaveBeenCalledWith(
       `/auth/login?__override=${encodeURIComponent("viewer@example.com")}&return_to=${encodeURIComponent("/team/board?tab=stats")}`
     );
@@ -35,7 +35,7 @@ describe("consumeOverrideParam", () => {
   it("is a no-op without the parameter", () => {
     stubLocation("https://insight.test/?tab=stats");
 
-    expect(consumeOverrideParam()).toBe(false);
+    expect(consumeOverrideParam()).toBe("absent");
     expect(assign).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,8 @@ export const DOCUMENT_TITLE_APP = "Insight";
 
 const CRUMB = " › ";
 const DOT = " · ";
+const HOME_DEFAULT_VIEW_PATH = "/home";
+const HOME_SCREEN_PATH = "/";
 
 export function documentTitle(
   screenPath: string,
@@ -28,7 +30,7 @@ export function documentTitle(
 
 export function titleScreenPath(pathname: string): string {
   const path = strip(pathname);
-  return path === "/home" ? "/" : path;
+  return path === HOME_DEFAULT_VIEW_PATH ? HOME_SCREEN_PATH : path;
 }
 
 export function dashboardSubject(

@@ -1,5 +1,5 @@
 import { authStore } from "./auth-store";
-import { loadSession } from "./session";
+import { loadSession, unixSeconds } from "./session";
 import { signIn } from "./use-auth";
 
 const LEASE_KEY = "insight.auth.refresh.leader";
@@ -15,6 +15,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 type RefreshMessage =
   | { kind: "refreshed"; expiresAt: number; refreshAt: number }
   | { kind: "expired" };
+
+type RefreshedMessage = Extract<RefreshMessage, { kind: "refreshed" }>;
 
 type Lease = { id: string; ts: number };
 
@@ -92,7 +94,7 @@ class RefreshDriver {
       return;
     }
     const session = authStore.getSnapshot().session;
-    if (!session || session.refreshAt <= 0) return;
+    if (!session || session.refreshAt == null) return;
     if (this.timer !== null) return;
     const delayMs = Math.max(0, session.refreshAt * 1000 - Date.now());
     this.timer = setTimeout(() => {
@@ -146,7 +148,7 @@ class RefreshDriver {
       if (this.stopped) return;
 
       if (res.status === 401) {
-        this.broadcast({ kind: "expired" });
+        publishExpiry();
         this.expire();
         return;
       }
@@ -156,16 +158,16 @@ class RefreshDriver {
       }
       if (res.status === 403) {
         if ((await loadSession()) !== "authenticated") {
-          this.broadcast({ kind: "expired" });
+          publishExpiry();
           this.expire();
           return;
         }
-        const refreshAt = authStore.getSnapshot().session?.refreshAt ?? 0;
-        if (refreshAt <= 0) {
+        const refreshAt = authStore.getSnapshot().session?.refreshAt;
+        if (refreshAt == null) {
           this.refreshing = false;
           return;
         }
-        this.retryIn(Math.max(RETRY_MS, refreshAt * 1000 - Date.now()));
+        this.retryIn(retryDelayAfterReprime(refreshAt, Date.now()));
         return;
       }
       if (!res.ok) {
@@ -199,7 +201,13 @@ class RefreshDriver {
 
   private apply(expiresAt: number, refreshAt: number): void {
     const session = authStore.getSnapshot().session;
-    if (session) authStore.setAuthenticated({ ...session, expiresAt, refreshAt });
+    if (session) {
+      authStore.setAuthenticated({
+        ...session,
+        expiresAt: unixSeconds(expiresAt),
+        refreshAt: unixSeconds(refreshAt),
+      });
+    }
   }
 
   private expire(): void {
@@ -224,20 +232,12 @@ class RefreshDriver {
     if (msg.kind === "expired") this.expire();
   }
 
-  private broadcast(msg: RefreshMessage): void {
+  private broadcast(msg: RefreshedMessage): void {
     if (this.channel) {
       this.channel.postMessage(msg);
       return;
     }
-    try {
-      // WORKAROUND: storage events fire only in other tabs and only on a changed value.
-      localStorage.setItem(
-        FALLBACK_MSG_KEY,
-        JSON.stringify({ ...msg, nonce: crypto.randomUUID() }),
-      );
-    } catch {
-      // WORKAROUND: localStorage throws when storage is blocked; followers still hit 401.
-    }
+    writeStorageMessage(msg);
   }
 
   private listen(
@@ -250,6 +250,26 @@ class RefreshDriver {
       target.removeEventListener(type, handler);
     });
   }
+}
+
+function writeStorageMessage(msg: RefreshMessage): void {
+  try {
+    // WORKAROUND: storage events fire only in other tabs and only on a changed value.
+    localStorage.setItem(
+      FALLBACK_MSG_KEY,
+      JSON.stringify({ ...msg, nonce: crypto.randomUUID() }),
+    );
+  } catch {
+    // WORKAROUND: localStorage throws when storage is blocked; followers still hit 401.
+  }
+}
+
+function publishExpiry(): void {
+  writeStorageMessage({ kind: "expired" });
+}
+
+function retryDelayAfterReprime(refreshAt: number, now: number): number {
+  return Math.max(RETRY_MS, refreshAt * 1000 - now);
 }
 
 function retryAfterMs(res: Response): number | null {

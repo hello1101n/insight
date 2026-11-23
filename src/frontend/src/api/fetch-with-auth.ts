@@ -11,19 +11,26 @@ export function resetSessionProbe(): void {
   confirmedAt = 0;
 }
 
+function bounceToLogin(): void {
+  try {
+    signIn();
+  } catch {
+    // WORKAROUND: navigation throws in a sandboxed frame; the caller still gets its 401 response.
+  }
+}
+
 async function bounceIfSessionEnded(): Promise<void> {
   if (authStore.getSnapshot().status === "unauthenticated") {
-    signIn();
+    bounceToLogin();
     return;
   }
   if (Date.now() - confirmedAt < CONFIRMED_FOR_MS) return;
 
   const mine = (sessionProbe ??= loadSession()
     .then((status) => {
-      if (status === "unauthenticated") signIn();
+      if (status === "unauthenticated") bounceToLogin();
       else confirmedAt = Date.now();
     })
-    .catch(() => {})
     .finally(() => {
       if (sessionProbe === mine) sessionProbe = null;
     }));

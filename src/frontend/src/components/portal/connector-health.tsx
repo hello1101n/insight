@@ -34,6 +34,7 @@ import {
   formatRecords,
   formatStarted,
   instanceKey,
+  panelIdFor,
 } from "@/lib/portal/connector-health";
 import { useConnectorHealth } from "@/queries/connector-health";
 import {
@@ -43,11 +44,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const COLUMNS = 7;
-
-function panelIdFor(row: ConnectorHealth): string {
-  const id = instanceKey(row).replaceAll("_", "%5F").replaceAll("/", "_");
-  return `connector-syncs-${id}`;
-}
 
 export function ConnectorHealthPane() {
   const { t } = useTranslation();

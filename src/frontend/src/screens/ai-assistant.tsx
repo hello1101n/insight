@@ -186,10 +186,10 @@ function SystemPromptCard() {
   const settings = useAiSettings(true);
   const save = useSaveAiSystemPrompt();
   const reset = useResetAiSystemPrompt();
-  const [draft, setDraft] = useState<string | null>(null);
+  const [unsavedEdit, setUnsavedEdit] = useState<string | null>(null);
 
   const stored = settings.data?.system_prompt ?? "";
-  const text = draft ?? stored;
+  const text = unsavedEdit ?? stored;
 
   return (
     <Card>
@@ -218,14 +218,14 @@ function SystemPromptCard() {
         <Textarea
           value={text}
           rows={10}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => setUnsavedEdit(event.target.value)}
           aria-label="System prompt"
         />
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             onClick={() =>
-              save.mutate(text, { onSuccess: () => setDraft(null) })
+              save.mutate(text, { onSuccess: () => setUnsavedEdit(null) })
             }
             disabled={text.trim().length === 0 || save.isPending}
           >
@@ -234,7 +234,7 @@ function SystemPromptCard() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => reset.mutate(undefined, { onSuccess: () => setDraft(null) })}
+            onClick={() => reset.mutate(undefined, { onSuccess: () => setUnsavedEdit(null) })}
             disabled={reset.isPending || settings.data?.is_default !== false}
           >
             Reset to default
