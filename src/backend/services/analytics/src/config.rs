@@ -86,8 +86,6 @@ impl Default for McpConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct GearConfig {
-    pub bind_addr: String,
-
     pub database_url: String,
 
     pub clickhouse_url: String,
@@ -121,7 +119,6 @@ pub struct GearConfig {
 impl Default for GearConfig {
     fn default() -> Self {
         Self {
-            bind_addr: default_bind_addr(),
             database_url: String::new(),
             clickhouse_url: String::new(),
             clickhouse_database: default_clickhouse_database(),
@@ -273,10 +270,6 @@ fn default_ai_model() -> String {
 
 fn default_anthropic_api_base() -> String {
     "https://api.anthropic.com".to_owned()
-}
-
-fn default_bind_addr() -> String {
-    "0.0.0.0:8081".to_owned()
 }
 
 fn default_clickhouse_database() -> String {
