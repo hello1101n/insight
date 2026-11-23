@@ -16,22 +16,22 @@ fn named(name: &str, param: Param) -> (String, Param) {
 #[test]
 fn a_value_renders_as_a_placeholder_naming_its_clickhouse_type() -> R {
     let cases = [
-        (Param::string("a"), "String"),
-        (Param::uuid(TENANT), "UUID"),
-        (Param::date(day("2026-01-31")?), "Date"),
-        (Param::int64(-1), "Int64"),
-        (Param::uint64(1), "UInt64"),
-        (Param::float64(0.5), "Float64"),
-        (Param::bool(true), "Bool"),
-        (Param::strings(["a", "b"]), "Array(String)"),
-        (Param::uuids([TENANT]), "Array(UUID)"),
+        (Param::string("a"), "{v:String}"),
+        (Param::uuid(TENANT), "{v:UUID}"),
+        (Param::date(day("2026-01-31")?), "{v:Date}"),
+        (Param::int64(-1), "{v:Int64}"),
+        (Param::uint64(1), "{v:UInt64}"),
+        (Param::float64(0.5), "reinterpretAsFloat64({v:UInt64})"),
+        (Param::bool(true), "{v:Bool}"),
+        (Param::strings(["a", "b"]), "{v:Array(String)}"),
+        (Param::uuids([TENANT]), "{v:Array(UUID)}"),
     ];
 
-    for (param, clickhouse_type) in cases {
+    for (param, placeholder) in cases {
         let rendered = sql!("x = {v}", v = param.clone()).render();
 
-        assert_eq!(rendered.sql, format!("x = {{v:{clickhouse_type}}}"));
-        assert_eq!(rendered.params, [named("v", param)], "{clickhouse_type}");
+        assert_eq!(rendered.sql, format!("x = {placeholder}"));
+        assert_eq!(rendered.params, [named("v", param)], "{placeholder}");
     }
     Ok(())
 }
@@ -320,5 +320,34 @@ async fn an_identifier_param_names_a_table_on_a_live_server() -> R {
         refused.is_err(),
         "an identifier must not carry SQL: {refused:?}"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_float_reaches_the_server_bit_for_bit() -> R {
+    let Some(client) = live_client_or_skip() else {
+        return Ok(());
+    };
+
+    for value in [
+        1.14,
+        2.28,
+        0.365_631_618_5,
+        -0.0,
+        f64::MIN_POSITIVE,
+        5e-324,
+        f64::MAX,
+        f64::INFINITY,
+        f64::NAN,
+    ] {
+        let bits: u64 = client
+            .query_sql(&sql!(
+                "SELECT reinterpretAsUInt64({v})",
+                v = Param::float64(value)
+            ))
+            .fetch_one()
+            .await?;
+        assert_eq!(bits, value.to_bits(), "should arrive unchanged: {value:e}");
+    }
     Ok(())
 }

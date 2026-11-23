@@ -1,5 +1,4 @@
 use std::fmt;
-use std::fmt::Write as _;
 
 use chrono::NaiveDate;
 use clickhouse::query::Query;
@@ -139,7 +138,7 @@ impl Sql {
                 bound.push((hint, free_name(hint, &bound), param));
                 bound.len() - 1
             });
-            let _ = write!(sql, "{{{}:{}}}", bound[index].1, param.clickhouse_type());
+            sql.push_str(&param.placeholder(&bound[index].1));
         }
 
         Rendered {
@@ -222,19 +221,22 @@ impl Param {
         Self(Value::Uuids(values.into_iter().collect()))
     }
 
-    fn clickhouse_type(&self) -> &'static str {
-        match &self.0 {
+    fn placeholder(&self, name: &str) -> String {
+        let clickhouse_type = match &self.0 {
             Value::String(_) => "String",
             Value::Uuid(_) => "UUID",
             Value::Date(_) => "Date",
             Value::Int64(_) => "Int64",
             Value::UInt64(_) => "UInt64",
-            Value::Float64(_) => "Float64",
+            // WORKAROUND: ClickHouse parses a Float64 parameter inexactly (1.14 arrives as 1.1400000000000001); its bits arrive exact.
+            Value::Float64(_) => return format!("reinterpretAsFloat64({{{name}:UInt64}})"),
             Value::Bool(_) => "Bool",
             Value::Strings(_) => "Array(String)",
             Value::Uuids(_) => "Array(UUID)",
             Value::Identifier(_) => "Identifier",
-        }
+        };
+
+        format!("{{{name}:{clickhouse_type}}}")
     }
 
     pub(crate) fn bind(&self, query: Query, name: &str) -> Query {
@@ -244,7 +246,7 @@ impl Param {
             Value::Date(value) => query.param(name, value.to_string()),
             Value::Int64(value) => query.param(name, value),
             Value::UInt64(value) => query.param(name, value),
-            Value::Float64(value) => query.param(name, value),
+            Value::Float64(value) => query.param(name, value.to_bits()),
             Value::Bool(value) => query.param(name, value),
             Value::Strings(values) => query.param(name, values),
             Value::Uuids(values) => {
@@ -255,7 +257,6 @@ impl Param {
     }
 }
 
-/// The type of a named argument of [`sql!`](crate::sql!).
 #[doc(hidden)]
 pub trait Fragment {
     fn into_sql(self, name: &'static str) -> Sql;
