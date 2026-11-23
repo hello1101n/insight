@@ -46,9 +46,6 @@ const TABS: { value: PeriodValue }[] = [
   { value: "year" },
 ];
 
-const SEGMENT =
-  "bg-card text-muted-foreground aria-pressed:bg-selection-subtle aria-pressed:text-foreground";
-
 export interface PeriodSelectorBarProps {
   period: PeriodValue;
   customRange: CustomRange | null;
@@ -123,7 +120,7 @@ export function PeriodSelectorBar({
         size="default"
       >
         {TABS.map(({ value }) => (
-          <ToggleGroupItem key={value} value={value} className={SEGMENT}>
+          <ToggleGroupItem key={value} value={value} className="aria-pressed:bg-selection-subtle">
             <span className="hidden sm:inline">{t(`common.period.${value}`)}</span>
             <span className="sm:hidden">{t(`common.period.${value}_short`)}</span>
           </ToggleGroupItem>
@@ -133,7 +130,7 @@ export function PeriodSelectorBar({
             render={
               <ToggleGroupItem
                 value="custom"
-                className={`${SEGMENT} gap-1.5`}
+                className="aria-pressed:bg-selection-subtle"
                 // Below `sm` the label is hidden and only the icon remains, so
                 // without this the control has no accessible name at all.
                 aria-label={t("common.period.custom_range", { range: activeRangeLabel })}
@@ -156,7 +153,7 @@ export function PeriodSelectorBar({
                   />
                   <TooltipContent
                     side="bottom"
-                    className="max-w-xs text-xs leading-relaxed"
+                    className="max-w-xs"
                   >
                     {t("common.period.utc_tooltip")}
                   </TooltipContent>
@@ -166,7 +163,7 @@ export function PeriodSelectorBar({
           />
           <PopoverContent
             align="end"
-            className="w-auto gap-0 p-0"
+            className="w-auto"
             onKeyDown={keepNavigationKeysInside}
           >
             {tempRange?.from ? (
@@ -189,7 +186,6 @@ export function PeriodSelectorBar({
               captionLayout="dropdown"
               fixedWeeks
               endMonth={latestPickableDay()}
-              className="p-3"
               resetOnSelect
               showOutsideDays={false}
               selected={tempRange}

@@ -19,7 +19,7 @@ export function ConnectorScheduleHeader({
 }) {
   const { t } = useTranslation();
   const person = useConnectorScheduleAuthor(schedule?.requested?.updated_by);
-  const { label, Icon, tone, iconClass } = scheduleStatusView(
+  const { label, Icon, variant, iconClass } = scheduleStatusView(
     schedule?.status,
     schedule?.pending_reason
   );
@@ -39,9 +39,9 @@ export function ConnectorScheduleHeader({
         ) : (
           <ConnectorScheduleTooltip content={scheduleTooltip(schedule, person)}>
             <Badge
-              variant="secondary"
+              variant={variant}
               title={label}
-              className={`max-w-full min-w-0 gap-1 text-xs whitespace-nowrap ${tone}`}
+              className="max-w-full min-w-0"
             >
               <Icon aria-hidden="true" className={iconClass} />
               <span className="truncate">{label}</span>

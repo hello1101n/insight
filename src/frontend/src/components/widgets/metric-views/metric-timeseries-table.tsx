@@ -310,7 +310,7 @@ export function MetricTimeseriesTable({
             title={label}
             onClick={() => page(side)}
             className={cn(
-              "absolute z-40 rounded-full bg-card shadow-md",
+              "absolute z-40",
               place
             )}
             icon={<Icon className="size-4" />}
@@ -318,24 +318,20 @@ export function MetricTimeseriesTable({
         );
       })}
       <Table
-        className="min-w-max text-xs"
+        className="min-w-max"
         containerClassName="h-full overflow-auto"
         containerRef={boxRef}
       >
-      <TableHeader className="[&_tr]:border-b-0">
+      <TableHeader>
         {model.dimensions.length === 0 ? (
           <TableRow>
-            <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card py-0 shadow-[inset_0_-1px_0_0_var(--border)] after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+            <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card shadow-[inset_0_-1px_0_0_var(--border)]")}>
               {BUCKET_LABEL[model.bucket]}
             </TableHead>
-            {tableColumns.map((column, columnIndex) => (
+            {tableColumns.map((column) => (
               <TableHead
                 key={column.key}
-                className={cn(
-                  "sticky top-0 z-20 h-10 min-w-24 bg-card py-0 text-right shadow-[inset_0_-1px_0_0_var(--border)]",
-                  columnIndex > 0 &&
-                    "before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border"
-                )}
+                className="sticky top-0 z-20 h-10 min-w-24 bg-card text-right shadow-[inset_0_-1px_0_0_var(--border)]"
               >
                 {column.label}
               </TableHead>
@@ -343,17 +339,13 @@ export function MetricTimeseriesTable({
           </TableRow>
         ) : tableColumns.length === 1 ? (
           <TableRow>
-            <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card py-0 shadow-[inset_0_-1px_0_0_var(--border)] after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+            <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card shadow-[inset_0_-1px_0_0_var(--border)]")}>
               {BUCKET_LABEL[model.bucket]}
             </TableHead>
-            {model.columns.map((column, index) => (
+            {model.columns.map((column) => (
               <TableHead
                 key={column.key}
-                className={cn(
-                  "sticky top-0 z-20 h-10 min-w-24 bg-card py-0 text-center shadow-[inset_0_-1px_0_0_var(--border)]",
-                  index > 0 &&
-                    "before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border"
-                )}
+                className="sticky top-0 z-20 h-10 min-w-24 bg-card text-center shadow-[inset_0_-1px_0_0_var(--border)]"
               >
                 {column.label}
               </TableHead>
@@ -362,18 +354,14 @@ export function MetricTimeseriesTable({
         ) : (
           <>
             <TableRow>
-              <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card py-0 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+              <TableHead className={cn(BUCKET_COL, "sticky top-0 left-0 z-30 h-10 bg-card")}>
                 {BUCKET_LABEL[model.bucket]}
               </TableHead>
-              {model.columns.map((column, index) => (
+              {model.columns.map((column) => (
                 <TableHead
                   key={column.key}
                   colSpan={tableColumns.length}
-                  className={cn(
-                    "sticky top-0 z-20 h-10 bg-card py-0 text-center after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border",
-                    index > 0 &&
-                      "before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border"
-                  )}
+                  className="sticky top-0 z-20 h-10 bg-card text-center after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border"
                 >
                   {column.label}
                 </TableHead>
@@ -382,17 +370,13 @@ export function MetricTimeseriesTable({
             <TableRow>
               <TableHead
                 aria-hidden
-                className={cn(BUCKET_COL, "sticky top-10 left-0 z-30 h-9 bg-card py-0 shadow-[inset_0_-1px_0_0_var(--border)] after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}
+                className={cn(BUCKET_COL, "sticky top-10 left-0 z-30 h-9 bg-card shadow-[inset_0_-1px_0_0_var(--border)]")}
               />
-              {model.columns.flatMap((column, columnIndex) =>
-                tableColumns.map((tableColumn, tableColumnIndex) => (
+              {model.columns.flatMap((column) =>
+                tableColumns.map((tableColumn) => (
                   <TableHead
                     key={`${column.key}-${tableColumn.key}`}
-                    className={cn(
-                      "sticky top-10 z-20 h-9 min-w-24 bg-card py-0 text-right after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border",
-                      (columnIndex > 0 || tableColumnIndex > 0) &&
-                        "before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border"
-                    )}
+                    className="sticky top-10 z-20 h-9 min-w-24 bg-card text-right after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border"
                   >
                     {tableColumn.label}
                   </TableHead>
@@ -405,18 +389,15 @@ export function MetricTimeseriesTable({
       <TableBody>
         {model.buckets.map((bucketStart) => (
           <TableRow key={bucketStart}>
-            <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-card px-2 py-1 font-medium tabular-nums after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+            <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-card tabular-nums")}>
               {bucketStart}
             </TableCell>
-            {model.columns.flatMap((column, columnIndex) =>
-              tableColumns.map((tableColumn, tableColumnIndex) => {
+            {model.columns.flatMap((column) =>
+              tableColumns.map((tableColumn) => {
                 return (
                   <TableCell
                     key={`${column.key}-${tableColumn.key}`}
-                    className={cn(
-                      "px-2 py-1 text-right tabular-nums",
-                      (columnIndex > 0 || tableColumnIndex > 0) && "border-l"
-                    )}
+                    className="text-right tabular-nums"
                   >
                     <MetricTableValue
                       column={tableColumn}
@@ -446,18 +427,15 @@ export function MetricTimeseriesTable({
           need the row behind them gone, not softened. */}
       <TableFooter className="sticky bottom-0 z-20 bg-muted shadow-[inset_0_1px_0_0_var(--border)]">
         <TableRow>
-          <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-muted px-2 py-1 font-semibold after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+          <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-muted")}>
             Total
           </TableCell>
-          {model.columns.flatMap((column, columnIndex) =>
-            tableColumns.map((tableColumn, tableColumnIndex) => {
+          {model.columns.flatMap((column) =>
+            tableColumns.map((tableColumn) => {
               return (
                 <TableCell
                   key={`${column.key}-${tableColumn.key}`}
-                  className={cn(
-                    "px-2 py-1 text-right font-semibold tabular-nums",
-                    (columnIndex > 0 || tableColumnIndex > 0) && "border-l"
-                  )}
+                  className="text-right tabular-nums"
                 >
                   <MetricTableValue
                     column={tableColumn}
@@ -475,12 +453,12 @@ export function MetricTimeseriesTable({
         </TableRow>
         {model.dimensions.length > 0 && hasGrandTotal ? (
           <TableRow>
-            <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-muted px-2 pt-1 pb-5 font-semibold after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-border")}>
+            <TableCell className={cn(BUCKET_COL, "sticky left-0 z-10 bg-muted")}>
               Grand total
             </TableCell>
             <TableCell
               colSpan={model.columns.length * tableColumns.length}
-              className="bg-muted px-2 pt-1 pb-5 text-left font-semibold tabular-nums"
+              className="text-left tabular-nums"
             >
               {/* Stuck past the label column, since the cell spans every group
                   and its own start edge scrolls away. */}

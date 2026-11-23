@@ -162,7 +162,6 @@ function CatalogueMenu({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${title}`}
               icon={<Ellipsis />}
             />

@@ -109,15 +109,14 @@ function WorkChart() {
   const { isFlat } = useVisibilityPolicy();
 
   const find = (
-    <div className="relative px-2">
-      <Search className="pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2 text-muted-foreground" />
+    <div className="px-2">
       <Input
         type="search"
+        icon={<Search />}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={t("nav.find_someone")}
         aria-label={t("nav.find_someone_org")}
-        className="h-8 ps-7 text-sm"
       />
     </div>
   );
@@ -174,7 +173,7 @@ function PersonSectionsNav() {
                   data-planned={personSectionPlanned(g.id) || undefined}
                   isActive={active === g.id}
                   className={
-                    personSectionPlanned(g.id) ? "text-muted-foreground" : undefined
+                    personSectionPlanned(g.id) ? "" : undefined
                   }
                   onClick={() => {
                     setItem(g.id);

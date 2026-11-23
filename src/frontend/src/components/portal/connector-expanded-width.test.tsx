@@ -81,16 +81,15 @@ it("bounds expanded schedules, the editor and all history rows without widening 
   );
   expect(
     within(table).getByRole("columnheader", { name: "Next sync" })
-  ).toHaveClass("px-3", "sm:px-4", "whitespace-normal");
+  ).toHaveClass("whitespace-normal");
   const row = screen.getByRole("row", { expanded: false });
-  expect(within(row).getAllByRole("cell")[2]).toHaveClass("px-3", "sm:px-4");
   await userEvent.click(row);
 
   const cell = document.getElementById(row.getAttribute("aria-controls")!)!;
   const boundary = cell.firstElementChild!;
   const panel = boundary.firstElementChild!;
   function expectBounds() {
-    expect(cell).toHaveClass("px-4", "whitespace-normal");
+    expect(cell).toHaveClass("whitespace-normal");
     expect(boundary).toHaveClass("min-w-0", "[contain:inline-size]");
     expect(panel).toHaveClass(
       "sticky",

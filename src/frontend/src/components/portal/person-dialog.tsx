@@ -227,7 +227,6 @@ function AdminRoleControl({ personId }: { personId: string }) {
       <Button
         variant="ghost"
         size="sm"
-        className="text-muted-foreground"
         onClick={() => viewer.retry()}
       >
         {t("identities.person.admin_viewer_unknown")}
@@ -538,7 +537,7 @@ function AccountRow({
       </div>
       {/* Who decided this binding is the first thing to know before changing
           it: undoing automation is routine, overruling a colleague is not. */}
-      <Badge variant="outline" className="justify-self-start font-normal">
+      <Badge variant="outline" className="justify-self-start">
         {entry.bound_by_operator
           ? t("identities.person_accounts.by_operator")
           : t("identities.person_accounts.by_automation")}

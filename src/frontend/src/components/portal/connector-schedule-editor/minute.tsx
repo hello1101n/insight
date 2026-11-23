@@ -73,7 +73,7 @@ export function MinuteField({
         aria-invalid={!valid}
         aria-describedby={!valid ? id : undefined}
         maxLength={2}
-        className="h-8 w-[64px] max-w-full min-w-0 font-mono"
+        className="w-[64px] max-w-full min-w-0 font-mono"
         value={focused || !valid ? raw : String(minute).padStart(2, "0")}
         onFocus={(event) => {
           setFocused(true);

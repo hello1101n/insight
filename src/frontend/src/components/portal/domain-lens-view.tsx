@@ -1062,7 +1062,7 @@ function ParticipationSection({
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent>
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs font-medium text-muted-foreground">
                 {spec.noun}
@@ -1246,7 +1246,7 @@ function HeadlineCard({
   const c = card;
   const share = unattributedCaption(c.reading, c.unattributed, c.r);
   const body = (
-    <CardContent className="flex flex-col gap-1 p-4">
+    <CardContent className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         {/* The full label unless the section asks otherwise: a short label
             can drop the very word that says what was counted — "Issues" for
@@ -1276,10 +1276,10 @@ function HeadlineCard({
     </CardContent>
   );
 
-  if (!evidence) return <Card className="py-0">{body}</Card>;
+  if (!evidence) return <Card>{body}</Card>;
 
   return (
-    <Card className="py-0 transition-colors hover:bg-card-hover focus-within:ring-2 focus-within:ring-ring">
+    <Card className="focus-within:ring-2 focus-within:ring-ring">
       <button
         type="button"
         aria-haspopup="dialog"
@@ -1304,8 +1304,8 @@ function UnattributedOnlyCard({
   labelSource?: "short";
 }) {
   return (
-    <Card className="py-0">
-      <CardContent className="flex flex-col gap-1 p-4">
+    <Card>
+      <CardContent className="flex flex-col gap-1">
         <MetricName
           metric={c.r}
           text={labelSource === "short" ? (c.r.short_label ?? c.r.label) : undefined}
@@ -1358,7 +1358,7 @@ function StatTilesSection({
       <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         {tiles.map((t) => (
           <Card key={t.key}>
-            <CardContent className="p-4">
+            <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <MetricName
                   metric={t.r}
@@ -1631,7 +1631,7 @@ function DistributionSection({
         {spec.title} · {entries.length} people
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">{spec.caption}</p>
           <ChartContainer
             config={DIST_CONFIG}
@@ -1769,7 +1769,7 @@ function EventHistogramSection({
         {spec.title} · {total} events
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">
             Distribution of events (every PR), not people.
           </p>
@@ -1925,7 +1925,7 @@ function ConcentrationCard({
   const evidence = useMetricEvidenceOptional();
   const c = card;
   const body = (
-    <CardContent className="p-4">
+    <CardContent>
       <div className="text-xs font-medium text-muted-foreground">{c.label}</div>
       <div className={cn("mt-1", TEXT_FIGURE)}>
         {Math.round(c.share * 100)}%
@@ -1942,7 +1942,7 @@ function ConcentrationCard({
   if (!evidence || !c.people.rows.length) return <Card>{body}</Card>;
 
   return (
-    <Card className="transition-colors hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring">
+    <Card className="focus-within:ring-2 focus-within:ring-ring">
       <button
         type="button"
         aria-haspopup="dialog"
@@ -2202,7 +2202,7 @@ function HeatmapHoursSection({
         {spec.title} · {formatMetricValue(total, r.format, r.unit)}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4">
+        <CardContent className="flex flex-col gap-3">
           <div
             className="grid gap-px text-xs"
             style={{
@@ -2391,7 +2391,7 @@ function DimensionTableSection({
         ) : null}
       </div>
       <Card>
-        <CardContent className="p-0">
+        <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
@@ -2408,7 +2408,7 @@ function DimensionTableSection({
               {visible.map((row) => (
                 <TableRow key={row.value}>
                   <TableCell
-                    className="max-w-64 truncate text-sm font-medium"
+                    className="max-w-64 truncate"
                     title={row.label}
                   >
                     {onOpenValue ? (
@@ -2437,8 +2437,8 @@ function DimensionTableSection({
                 </TableRow>
               ))}
               {remainder ? (
-                <TableRow className="text-muted-foreground">
-                  <TableCell className="text-sm">
+                <TableRow>
+                  <TableCell>
                     {/* The remainder is the way into the rows it hides, not a
                       dead summary line: a reader who wants the long tail has
                       nowhere else to ask for it. */}
@@ -2564,7 +2564,7 @@ function OwnershipSection({
         {spec.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           <ul
           className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-1"
           aria-label="What each colour in a bar means"
@@ -3042,7 +3042,7 @@ export function BarList({
         {title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {legend.length ? (
             <ul
               className="flex flex-wrap items-center gap-x-4 gap-y-1 pb-1"

@@ -49,7 +49,7 @@ function CronRow({
         })}
         aria-invalid={rowErrors.length > 0}
         aria-describedby={id}
-        className="w-[24ch] max-w-full min-w-0 font-mono text-sm"
+        className="w-[24ch] max-w-full min-w-0 font-mono"
         value={cron}
         placeholder="0 */6 * * *"
         onChange={(event) => {
@@ -159,7 +159,6 @@ export function CronRows({
           type="button"
           size="sm"
           variant="link"
-          className="h-auto px-0"
           disabled={crons.length >= 10}
           onClick={() => {
             focusAfterChange.current = crons.length;

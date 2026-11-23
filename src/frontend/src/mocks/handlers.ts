@@ -8,6 +8,7 @@ import type { MetricResultsRequest } from "@/api/metric-results-client";
 import { isPersonId } from "@/lib/metrics/entity";
 
 import { ADMIN_ASSIGNMENTS } from "./admin-assignments";
+import { catalogueHandlers } from "./catalogue-handlers";
 import { seedConnectorScheduleScenarios } from "./connector-schedule-scenarios";
 import { connectorScheduleMocks } from "./connector-schedules";
 import { buildMetricDefinitions } from "./metric-definitions-factory";
@@ -156,6 +157,7 @@ const mockContext = new Map<
 
 export const handlers = [
   ...dashboardHandlers,
+  ...catalogueHandlers,
   http.get("/auth/me", () =>
     HttpResponse.json({ ...MOCK_SESSION, ...mockSessionTiming() })
   ),

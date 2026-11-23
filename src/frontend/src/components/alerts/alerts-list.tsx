@@ -102,7 +102,6 @@ function AlertMenu({ alert }: { alert: AlertSummary }) {
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${alert.name}`}
               icon={<Ellipsis />}
             />

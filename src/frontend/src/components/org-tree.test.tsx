@@ -140,7 +140,7 @@ describe("OrgTree", () => {
 
     const expand = screen.getByRole("button", { name: "Expand Lead Person" });
     expect(expand).toHaveAttribute("data-sidebar", "menu-button");
-    expect(expand).toHaveClass("w-8", "shrink-0", "justify-center", "p-0");
+    expect(expand).toHaveClass("w-8", "shrink-0", "justify-center");
     expect(screen.getByRole("link", { name: "Lead Person" })).toHaveAttribute(
       "data-sidebar",
       "menu-button"

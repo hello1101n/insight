@@ -144,7 +144,6 @@ export function RailItems() {
                   aria-label={label}
                   data-planned={item.planned || undefined}
                   isActive={activeItem === item.id}
-                  className={cn(item.planned && "text-muted-foreground")}
                   onClick={() => {
                     selectItem(item);
                     setOpen(true);
@@ -222,7 +221,7 @@ function SettingsItem() {
         <PopoverContent
           side={isMobile ? "top" : "right"}
           align={isMobile ? "start" : "end"}
-          className="w-64 gap-0 p-1"
+          className="w-64"
         >
           <AppSidebarFooter
             showFeedback={false}

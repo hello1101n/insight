@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { hiddenHolders } from "@/lib/custom/hidden-holders";
 import { dependentsQuery } from "@/queries/custom";
-import { TEXT_BODY, TEXT_HEADING } from "@/lib/type-scale";
+import { TEXT_BODY } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 /** Where a holder of each kind is looked at. */
@@ -67,7 +67,7 @@ export function Held({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {pending ? (

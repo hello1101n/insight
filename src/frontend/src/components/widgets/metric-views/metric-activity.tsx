@@ -171,7 +171,7 @@ function Body({
   if (source.isPending) {
     return (
       <div className="flex h-12 items-center">
-        <Spinner className="size-4 text-muted-foreground" />
+        <Spinner />
       </div>
     );
   }
@@ -284,7 +284,7 @@ function EventList({
         <Button
           type="button"
           variant="link"
-          className="h-auto justify-start p-0 text-xs"
+          className="justify-start"
           onClick={() =>
             evidence.openEvidenceTargets(
               withOwnTarget(scope, { selection, label: metric.label }),

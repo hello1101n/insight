@@ -102,7 +102,7 @@ function PersonNode({
                 type="button"
                 aria-expanded={open}
                 aria-label={`${open ? "Collapse" : "Expand"} ${label}`}
-                className="w-8 shrink-0 justify-center p-0 text-muted-foreground"
+                className="w-8 shrink-0 justify-center"
                 onClick={() => onExpandedChange(node.person_id, !open)}
               >
                 {open ? <ChevronDown /> : <ChevronRight />}
@@ -114,7 +114,7 @@ function PersonNode({
           <SidebarMenuButton
             isActive={isActive}
             render={link}
-            className="min-w-0 flex-1 ps-2"
+            className="min-w-0 flex-1"
           >
             {hasReports ? <Users /> : <User />}
             <span className="truncate">{label}</span>
@@ -177,7 +177,7 @@ function RosterList({
   return (
     // Padding INSIDE the scroll region the pane owns, so the first and last
     // names clear its edges instead of touching them.
-    <SidebarMenu className="pb-2">
+    <SidebarMenu>
       {listed.map(({ person, label }) => (
         <SidebarMenuItem key={person.person_id}>
           <SidebarMenuButton

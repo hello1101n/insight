@@ -34,7 +34,7 @@ export function ConnectorScheduleStatus({
         {scheduleUntilThen(schedule.live)}
       </p>
       {interval != null && scheduleIsOverdue(schedule, interval) && (
-        <Alert role="alert" className="border-warning/30 bg-warning/10">
+        <Alert role="alert">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-warning">
               {t("connectors.schedule.overdue", {

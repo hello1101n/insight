@@ -77,14 +77,14 @@ export function MomentInput({
         onSelect={(date) => {
           if (date) pickDay(pickedDay(date));
         }}
-        className="h-9 w-40"
+        className="w-40"
       />
       <Input
         id={`${id}-time`}
         aria-label={`${label} time`}
         type="time"
         value={time}
-        className="h-9 w-28 tabular-nums"
+        className="w-28 tabular-nums"
         {...described(describedBy)}
         onChange={(event) => typeTime(event.target.value)}
         onBlur={leaveTime}

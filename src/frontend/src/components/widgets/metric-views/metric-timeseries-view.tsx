@@ -210,7 +210,6 @@ function DimensionControls({
             type="button"
             variant="secondary"
             size="sm"
-            className="rounded-full"
             aria-label={t("common.chart.clear_filter", {
               dimension: dimensionName(filter.dimension),
             })}
@@ -505,7 +504,7 @@ export function MetricTimeseriesView({
   return (
     <Card
       className={cn(
-        "shrink-0 gap-0 overflow-hidden py-0",
+        "shrink-0 overflow-hidden",
         data.isFetching && "opacity-60"
       )}
     >
@@ -533,7 +532,7 @@ export function MetricTimeseriesView({
                   size="sm"
                   aria-label={t("common.chart.metric")}
                   title={selectedMetric.label}
-                  className="min-w-0 max-w-full border-transparent bg-transparent ps-2 pe-2 font-semibold shadow-none hover:bg-muted/50 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:bg-muted/50 dark:bg-transparent dark:hover:bg-muted/50 [&>span]:truncate"
+                  className="min-w-0 max-w-full [&>span]:truncate"
                 >
                   <SelectValue>{selectedMetric.label}</SelectValue>
                 </SelectTrigger>
@@ -630,7 +629,7 @@ export function MetricTimeseriesView({
       </div>
       <CardContent
         className={cn(
-          "relative flex min-h-0 flex-col px-0",
+          "relative flex min-h-0 flex-col",
           // A chart has no height of its own to fall back on; a table does.
           presentation === "chart" ? "h-96" : expanded ? undefined : "max-h-96"
         )}
