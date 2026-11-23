@@ -2,8 +2,8 @@
 
 For each FrontX problem that the prototype found, this list gives what Insight does now, what FrontX does, and why the FrontX way fails for Insight.
 
-- Problems 1 to 4 block a real build.
-- Problems 5 and 6 make the result worse than the current renderer.
+- Problems 1 to 3 block a real build.
+- Problems 4 and 5 make the result worse than the current renderer.
 
 The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-prototype.md). The measurements come from synthetic mock dashboards on a local build. The prototype uses template commit `6bcd77f`. On 23 Nov 2026, the `main` branch of the public `itechmeat/gears-frontx-templates` fork had no change to these problems.
 
@@ -23,18 +23,7 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
   - The series names, such as "ok" and "failed", come only with the data. The dashboard definition must name them before the data arrives.
 - **Bumps.** 2 and 3.
 
-## 3. The packages cannot be installed from npm
-
-- **Insight now.** Each dependency comes from npm. An update is a version change in `package.json`.
-- **FrontX.** The dashboard packages are private packages in the template repository. They ship TypeScript source. They pin exact versions: React 19.2.4 and ui-kit 0.5.0.
-- **Why it fails.**
-  - The prototype copies the package into `vendor/`.
-  - Insight uses React 19.3.1 and ui-kit 0.5.1. The pnpm overrides force the copied package onto these versions.
-  - The TypeScript source fails the `erasableSyntaxOnly` compiler option and the Insight lint rules.
-  - Each FrontX update needs a manual copy.
-- **Bumps.** 5 to 9 and 21.
-
-## 4. The larger view opens under the sidebar
+## 3. The larger view opens under the sidebar
 
 - **Insight now.** The dialog of an expanded widget opens above the full page.
 - **FrontX.** The root draws the larger view inside its own dashboard element. The larger view then keeps the dashboard theme.
@@ -42,19 +31,14 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
 - **Fix.** A new `overlayContainer` prop lets the host pass `document.body` as the container of the larger view. The pull request itechmeat/gears-frontx-templates#1 adds the prop. It has no review yet.
 - **Bumps.** 20.
 
-## 5. The page is slower and heavier
+## 4. The page is slower and heavier
 
 - **Insight now.** The widgets are part of the Insight bundle. They use the Insight copy of React and recharts.
-- **FrontX.** Each widget type is a separate bundle that the page loads at runtime. The widget bundles share their own copy of React and recharts, and do not use the Insight copy. The root loads the bundles of all 15 widget types, also for a dashboard that uses two types. The widget code runs as `blob:` scripts.
-- **Why it fails.**
-  - The page holds two copies of React and two copies of recharts. The FrontX `recharts.js` has 1.38 MB before compression.
-  - A dashboard with eight widgets draws in 1,670 ms. The current renderer needs 836 ms.
-  - The JavaScript heap grows from 16 MB to 46 MB.
-  - The page loads 31 more files, 716 KB after gzip.
-  - The Insight content security policy must allow `blob:` scripts.
+- **FrontX.** Each widget type is a separate bundle that the page loads at runtime. The widget bundles bring their own copy of React and recharts. The root loads the bundles of all widget types, even the types that a dashboard does not use.
+- **Why it fails.** The page holds two copies of React and recharts. A dashboard takes about twice as long to draw and uses about three times the memory. The widget code runs as `blob:` scripts, so the Insight content security policy must allow them.
 - **Bumps.** 16 and 17.
 
-## 6. A table has one number format
+## 5. A table has one number format
 
 - **Insight now.** Each column of a table has its own format. A percent column shows `24.3%` next to plain counts.
 - **FrontX.** The FrontX table widget, `grid`, has one `value_format` for all its columns.
