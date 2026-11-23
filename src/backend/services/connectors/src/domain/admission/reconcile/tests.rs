@@ -1,7 +1,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Query, State},
+    http::StatusCode,
+    routing::{get, post},
+};
 use chrono::Utc;
 use sea_orm::{DatabaseBackend, MockDatabase};
 use serde_json::{Value, json};
@@ -110,11 +115,198 @@ fn running_stage() -> StageRow {
         airbyte_job_id: None,
         connection_id: None,
         airbyte_claimed: false,
+        airbyte_claimed_at: None,
         airbyte_previous_job: None,
     }
 }
 
 mod placement;
+
+type BronzeLaunchCase = (
+    &'static str,
+    Option<u64>,
+    i64,
+    u32,
+    StatusCode,
+    Value,
+    Option<&'static str>,
+);
+
+fn bronze_launch_cases() -> [BronzeLaunchCase; 9] {
+    let previous =
+        json!({"jobId":19,"connectionId":"example","jobType":"sync","status":"succeeded"});
+    let new = json!({"jobId":22,"connectionId":"example","jobType":"sync","status":"running"});
+
+    [
+        (
+            "expired",
+            Some(19),
+            601,
+            600,
+            StatusCode::OK,
+            json!([previous]),
+            Some("not_started"),
+        ),
+        (
+            "legacy",
+            None,
+            601,
+            600,
+            StatusCode::OK,
+            json!([]),
+            Some("not_started"),
+        ),
+        (
+            "legacy new job",
+            None,
+            601,
+            600,
+            StatusCode::OK,
+            json!([new]),
+            Some("unknown"),
+        ),
+        (
+            "within window",
+            Some(19),
+            300,
+            600,
+            StatusCode::OK,
+            json!([previous]),
+            Some("checking_start"),
+        ),
+        (
+            "custom window",
+            Some(19),
+            31,
+            30,
+            StatusCode::OK,
+            json!([previous]),
+            Some("not_started"),
+        ),
+        (
+            "failed read",
+            Some(19),
+            601,
+            600,
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!([]),
+            None,
+        ),
+        (
+            "malformed list",
+            Some(19),
+            601,
+            600,
+            StatusCode::OK,
+            Value::Null,
+            None,
+        ),
+        (
+            "new job",
+            Some(19),
+            601,
+            600,
+            StatusCode::OK,
+            json!([new, previous]),
+            Some("unknown"),
+        ),
+        (
+            "ambiguous",
+            Some(17),
+            601,
+            600,
+            StatusCode::OK,
+            json!([new, previous]),
+            Some("checking_start"),
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn unconfirmed_bronze_launch_expires_only_after_a_successful_job_list() -> anyhow::Result<()>
+{
+    let mut servers = JoinSet::new();
+    let kube = Router::new()
+        .route(
+            "/api/v1/namespaces/fixture/secrets/reader",
+            get(|| async {
+                Json(
+                    json!({"apiVersion":"v1","kind":"Secret","metadata":{"name":"reader"},
+                    "data":{"client":"YQ==","secret":"Yg=="}}),
+                )
+            }),
+        )
+        .route(
+            "/api/v1/namespaces/fixture/pods",
+            get(|| async {
+                Json(json!({"apiVersion":"v1","kind":"PodList","metadata":{},"items":[]}))
+            }),
+        );
+    let mut state = test_state(kube, Router::new(), &mut servers).await?;
+    state.cluster.airbyte_namespace = "fixture".into();
+    state.cluster.airbyte_reader.secret = "reader".into();
+    state.cluster.airbyte_reader.client_id_key = "client".into();
+    state.cluster.airbyte_reader.client_secret_key = "secret".into();
+    let http = reqwest::Client::new();
+    let now = Utc::now();
+    let mut row = running_stage();
+    row.stage = "bronze".into();
+    row.status = "checking_start".into();
+    row.started_at = None;
+    row.airbyte_claimed = true;
+    row.connection_id = Some("example".into());
+
+    for (name, boundary, age, window, code, jobs, expected) in bronze_launch_cases() {
+        state.cluster.airbyte_launch_confirmation_secs = window;
+        row.airbyte_previous_job = boundary;
+        let claimed_at = now - chrono::Duration::seconds(age);
+        row.airbyte_claimed_at = boundary.map(|_| claimed_at);
+        row.granted_at = Some(if boundary.is_none() {
+            claimed_at
+        } else {
+            now - chrono::Duration::hours(1)
+        });
+        let since = boundary
+            .is_none()
+            .then(|| claimed_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+        let airbyte = Router::new()
+            .route("/api/v1/applications/token", post(|| async { Json(json!({"access_token":"token"})) }))
+            .route(
+                "/api/public/v1/jobs",
+                get(move |Query(query): Query<std::collections::HashMap<String, String>>| async move {
+                    assert_eq!(query.get("createdAtStart"), since.as_ref());
+                    (code, Json(json!({"data":jobs})))
+                }),
+            );
+        state.cluster.airbyte_reader.url =
+            format!("http://127.0.0.1:{}", serve(airbyte, &mut servers).await?);
+        let result = observe_work(&state, &http, &row, &Value::Null, true).await;
+        let Some(expected) = expected else {
+            assert!(result.is_err(), "{name}");
+            continue;
+        };
+        let observation = result?;
+        assert_eq!(observation.status.as_deref(), Some(expected), "{name}");
+        assert_eq!(
+            observation.finished_at.is_some(),
+            expected == "not_started",
+            "{name}"
+        );
+        if expected == "not_started" {
+            assert_eq!(
+                observation.reason.as_deref(),
+                Some("airbyte_launch_unconfirmed"),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            observation.airbyte_job_id.as_deref(),
+            name.ends_with("new job").then_some("22"),
+            "{name}"
+        );
+    }
+    Ok(())
+}
 
 #[tokio::test]
 async fn finishing_stage_waits_for_heavy_queries_still_buffered_in_query_log() -> anyhow::Result<()>

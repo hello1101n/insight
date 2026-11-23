@@ -303,6 +303,7 @@ mod tests {
             airbyte_job_id: None,
             connection_id: Some("conn".into()),
             airbyte_claimed: true,
+            airbyte_claimed_at: None,
             airbyte_previous_job: None,
         }
     }

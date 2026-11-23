@@ -34,6 +34,10 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/v1/ingestion/stage-requests/work-start", post(work_start))
         .route("/v1/ingestion/stage-requests/airbyte-claim", post(claim))
         .route("/v1/ingestion/stage-requests/airbyte-job", put(receipt))
+        .route(
+            "/v1/ingestion/stage-requests/airbyte-rejection",
+            put(rejection),
+        )
         .route("/v1/ingestion/stage-requests/airbyte-retry", post(retry))
         .route("/v1/ingestion/stage-requests/airbyte-poll", post(poll))
         .layer(Extension(Arc::new(tokio::sync::Semaphore::new(1))))
@@ -412,10 +416,10 @@ async fn register(
     let usable = if let Ok(_permit) = capacity_probe.try_acquire() {
         capacity::sample(&state).await.unwrap_or_else(|e| {
             tracing::warn!(error=%e,"ingestion capacity unavailable");
-            capacity::Snapshot::default()
+            0
         })
     } else {
-        capacity::Snapshot::default()
+        0
     };
     let (new, reply) = store::register(
         &state.db,
@@ -471,7 +475,7 @@ async fn claim(
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let history = super::reconcile::airbyte::recent_jobs(&state, &http, connection).await.map_err(|error| {
+    let history = super::reconcile::airbyte::recent_jobs(&state, &http, connection, None).await.map_err(|error| {
         tracing::warn!(%error, %connection, "could not read Airbyte sync history before launch");
         StatusCode::SERVICE_UNAVAILABLE
     })?;
@@ -539,6 +543,31 @@ async fn receipt(
 }
 
 #[derive(Deserialize)]
+struct Rejection {
+    #[serde(flatten)]
+    req: Request,
+    sender: uuid::Uuid,
+}
+
+async fn rejection(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<Rejection>,
+) -> Result<Json<Claim>, StatusCode> {
+    auth(&state, &headers, &body.req, Caller::Trigger).await?;
+    store::airbyte(
+        &state.db,
+        &state.cluster.namespace,
+        &state.cluster.tenant_id,
+        &body.req,
+        AirbyteWrite::Rejected(body.sender),
+    )
+    .await
+    .map(Json)
+    .map_err(outcome)
+}
+
+#[derive(Deserialize)]
 struct Retry {
     #[serde(flatten)]
     req: Request,
@@ -550,10 +579,7 @@ async fn retry(
     Json(body): Json<Retry>,
 ) -> Result<Json<Claim>, StatusCode> {
     auth(&state, &headers, &body.req, Caller::Retry).await?;
-    let capacity = capacity::sample(&state)
-        .await
-        .unwrap_or_default()
-        .uncredited();
+    let capacity = capacity::sample(&state).await.unwrap_or_default();
     store::retry_bronze(
         &state.db,
         &state.cluster.namespace,

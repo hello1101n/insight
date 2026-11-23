@@ -15,6 +15,31 @@ def workload(documents: list[dict], kind: str) -> dict:
     )
 
 
+@pytest.mark.parametrize("custom", [False, True], ids=["defaults", "overrides"])
+def test_admission_budget_settings_reach_the_connectors_config(custom: bool) -> None:
+    settings = [
+        ("airbyteLaunchConfirmationSecs", "airbyte_launch_confirmation_secs", 600, 901),
+        ("dashboardReservePercent", "admission_dashboard_reserve_percent", 10, 15),
+        ("budgetOverrideBytes", "admission_budget_override_bytes", None, 2_000_000_000),
+        ("idleSettleSecs", "admission_idle_settle_secs", 120, 121),
+        ("baselineWindowSecs", "admission_baseline_window_secs", 3600, 4321),
+        ("baselineMaxAgeSecs", "admission_baseline_max_age_secs", 86400, 2592000),
+    ]
+    args = ["--set", "stageAdmission.enabled=true"]
+    if custom:
+        for value, _, _, override in settings:
+            args.extend(["--set-json", f"stageAdmission.{value}={override}"])
+    documents = connectors_documents(CONNECTORS_CHART, *args)
+    config = next(doc for doc in documents if doc["kind"] == "ConfigMap" and "insight.yaml" in doc["data"])
+    admission = yaml.safe_load(config["data"]["insight.yaml"])["gears"]["connectors"]["config"]
+    for _, key, default, override in settings:
+        expected = override if custom else default
+        assert admission[key] == expected, key
+        assert type(admission[key]) is type(expected), key
+        if expected is not None:
+            assert re.search(rf"^ +{key}: {expected}$", config["data"]["insight.yaml"], re.MULTILINE), key
+
+
 def test_single_replica_recreates_with_its_service_account() -> None:
     documents = connectors_documents(CONNECTORS_CHART)
     deployment = workload(documents, "Deployment")

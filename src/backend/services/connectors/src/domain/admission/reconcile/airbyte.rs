@@ -136,15 +136,20 @@ impl RecentJobs {
             _ => None,
         }
     }
+
+    pub(super) fn has_newer_job(&self, previous: u64) -> bool {
+        self.data.first().is_some_and(|job| job.job_id > previous)
+    }
 }
 
 pub(in crate::domain::admission) async fn recent_jobs(
     state: &AppState,
     http: &reqwest::Client,
     connection: &str,
+    since: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<RecentJobs> {
     let (base, token) = credentials(state, http).await?;
-    let jobs = http
+    let mut request = http
         .get(base.join("/api/public/v1/jobs")?)
         .bearer_auth(token)
         .query(&[
@@ -152,12 +157,20 @@ pub(in crate::domain::admission) async fn recent_jobs(
             ("jobType", "sync"),
             ("limit", "2"),
             ("orderBy", "createdAt|DESC"),
-        ])
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<RecentJobs>()
-        .await?;
+        ]);
+    if let Some(since) = since {
+        request = request.query(&[(
+            "createdAtStart",
+            since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        )]);
+    }
+    let response = request.send().await?;
+    ensure!(
+        response.status().is_success(),
+        "Airbyte job list returned HTTP {}",
+        response.status()
+    );
+    let jobs = response.json::<RecentJobs>().await?;
     jobs.validate(connection)?;
     Ok(jobs)
 }

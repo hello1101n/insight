@@ -46,6 +46,12 @@ impl Gear for ConnectorsGear {
         cluster.admission_enabled = config.admission_enabled;
         cluster.airbyte_namespace = config.airbyte_namespace;
         cluster.airbyte_reader = config.airbyte_reader;
+        cluster.airbyte_launch_confirmation_secs = config.airbyte_launch_confirmation_secs;
+        cluster.admission_dashboard_reserve_percent = config.admission_dashboard_reserve_percent;
+        cluster.admission_budget_override_bytes = config.admission_budget_override_bytes;
+        cluster.admission_idle_settle_secs = config.admission_idle_settle_secs;
+        cluster.admission_baseline_window_secs = config.admission_baseline_window_secs;
+        cluster.admission_baseline_max_age_secs = config.admission_baseline_max_age_secs;
         cluster.argo_url = config.argo_url;
         cluster.workflow_sa = config.workflow_sa;
         cluster.clickhouse_cluster = config.clickhouse_cluster;
@@ -132,3 +138,6 @@ pub(crate) async fn run_migrate(app: &toolkit::bootstrap::AppConfig) -> anyhow::
 pub(crate) fn check_config(app: &toolkit::bootstrap::AppConfig) -> anyhow::Result<()> {
     extract_gear_config(app)?.validate()
 }
+
+#[cfg(test)]
+mod tests;

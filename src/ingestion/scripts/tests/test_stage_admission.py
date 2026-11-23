@@ -149,6 +149,60 @@ def test_refused_claim_fails_before_airbyte(run):
     assert len(calls) == 1
 
 
+def test_airbyte_rejection_is_reported_by_the_claim_sender(run, capsys):
+    replies, calls = run
+    replies.extend([(200, {"decision": "send"}), (400, {}), (200, {"decision": "not_started"})])
+    assert airbyte_sync_trigger.main() == 1
+    assert capsys.readouterr().out == ""
+    assert calls[2] == (
+        "PUT",
+        stage_admission.BASE_PATH + "/airbyte-rejection",
+        "Bearer pod-token",
+        {**stage_admission.stage_identity(), "sender": calls[0][3]["sender"]},
+    )
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("status", [408, 429])
+def test_ambiguous_airbyte_client_error_recovers_the_job_without_reporting_rejection(
+    run: tuple[list[tuple[int, dict[str, str]]], list[tuple[str, str, str, dict[str, object]]]],
+    capsys: pytest.CaptureFixture[str],
+    status: int,
+) -> None:
+    replies, calls = run
+    replies.extend([(200, {"decision": "send"}), (status, {}), (200, {"decision": "poll", "job_id": "73"})])
+
+    assert airbyte_sync_trigger.main() == 0
+    assert capsys.readouterr().out.strip() == "73"
+    assert [(method, path) for method, path, _, _ in calls] == [
+        ("POST", stage_admission.BASE_PATH + "/airbyte-claim"),
+        ("POST", "/api/v1/connections/sync"),
+        ("POST", stage_admission.BASE_PATH + "/airbyte-claim"),
+    ]
+    assert "sender" not in calls[2][3]
+
+
+def test_unconfirmed_launch_stops_recovery_and_a_restarted_step(run, capsys, monkeypatch):
+    replies, calls = run
+    replies.extend(
+        [
+            (200, {"decision": "send"}),
+            (504, {}),
+            (200, {"decision": "verify"}),
+            (200, {"decision": "not_started"}),
+            (200, {"decision": "not_started"}),
+        ]
+    )
+    delays = []
+    monkeypatch.setattr(stage_admission.time, "sleep", delays.append)
+    assert airbyte_sync_trigger.main() == 1
+    assert airbyte_sync_trigger.main() == 1
+    assert capsys.readouterr().out == ""
+    assert delays == [15]
+    assert sum(c[1] == "/api/v1/connections/sync" for c in calls) == 1
+    assert not replies
+
+
 def test_terminal_observation_only_contains_metrics_from_its_own_job(monkeypatch, tmp_path):
     path = tmp_path / "evidence"
     monkeypatch.setenv("AIRBYTE_EVIDENCE_PATH", str(path))

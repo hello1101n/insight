@@ -1,3 +1,4 @@
+mod budget;
 mod throughput;
 
 use super::*;
@@ -46,9 +47,9 @@ async fn promote(
     db: &DatabaseConnection,
     stand: &str,
     row: &StageRow,
-    capacity: u64,
+    budget: u64,
 ) -> anyhow::Result<bool> {
-    promote_ready(db, stand, &HashSet::from([row.id]), capacity).await?;
+    promote_ready(db, stand, &HashSet::from([row.id]), budget).await?;
     Ok(db.query_one_raw(sql("SELECT id FROM ingestion_stage_attempts WHERE stand=? AND id=? AND decision='queued' AND status='starting'", vec![stand.into(),row.id.into()])).await?.is_some())
 }
 
@@ -105,6 +106,31 @@ async fn record_bronze_input(
     )
     .await?;
     Ok(())
+}
+
+async fn record_bronze_peak(
+    db: &DatabaseConnection,
+    stand: &str,
+    connector: &str,
+    now: DateTime<Utc>,
+    peak: u64,
+) -> anyhow::Result<()> {
+    let baseline = request(connector, "bronze");
+    register(db, stand, "tenant", &baseline, now, 960 * MIB).await?;
+    let row = load(db, stand, &baseline).await?;
+    observe(
+        db,
+        stand,
+        &row,
+        Observation {
+            status: Some("succeeded".into()),
+            started_at: Some(now),
+            finished_at: Some(now),
+            peak_bytes: Some(peak),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 #[tokio::test]
@@ -446,6 +472,200 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
 
 #[tokio::test]
 #[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn a_closed_launch_releases_the_reservation_and_disallows_resending() -> anyhow::Result<()> {
+    let db = db().await?;
+    let now = Utc::now();
+    let tenant = "tenant";
+    let capacity = 960 * MIB;
+    for rejection in [false, true] {
+        let stand = uuid::Uuid::now_v7().to_string();
+        let req = request("jira", "bronze");
+        let sender = uuid::Uuid::now_v7();
+        register(&db, &stand, tenant, &req, now, capacity).await?;
+        let write = |operation| airbyte(&db, &stand, tenant, &req, operation);
+        let claim = |sender| write(AirbyteWrite::Claim(sender, Some(0)));
+        assert_eq!(claim(Some(sender)).await?.decision, "send");
+        let row = load(&db, &stand, &req).await?;
+        assert!(row.airbyte_claimed_at.is_some());
+        let stale_timeout = || Observation {
+            status: Some("not_started".into()),
+            reason: Some("airbyte_launch_unconfirmed".into()),
+            finished_at: Some(now),
+            ..Default::default()
+        };
+        let reason = if rejection {
+            assert!(matches!(
+                write(AirbyteWrite::Rejected(uuid::Uuid::now_v7())).await,
+                Err(WriteError::Conflict)
+            ));
+            for _ in 0..2 {
+                assert_eq!(
+                    write(AirbyteWrite::Rejected(sender)).await?.decision,
+                    "not_started"
+                );
+            }
+            "airbyte_launch_rejected"
+        } else {
+            observe(&db, &stand, &row, stale_timeout()).await?;
+            "airbyte_launch_unconfirmed"
+        };
+        let closed = load(&db, &stand, &req).await?;
+        assert_eq!(closed.status, "not_started");
+        assert_eq!(closed.reason.as_deref(), Some(reason));
+        assert!(closed.finished_at.is_some());
+        assert_eq!(claim(Some(sender)).await?.decision, "not_started");
+        assert_eq!(claim(None).await?.decision, "not_started");
+        assert!(matches!(
+            write(AirbyteWrite::Receipt("42")).await,
+            Err(WriteError::Conflict)
+        ));
+        assert_eq!(
+            retry_bronze(&db, &stand, tenant, &req, true, capacity)
+                .await?
+                .decision,
+            "stop"
+        );
+        assert!(active_stages(&db, &stand).await?.is_empty());
+
+        let mut next = request("jira", "bronze");
+        next.connection_id.clone_from(&req.connection_id);
+        assert_eq!(
+            register(&db, &stand, tenant, &next, now, capacity)
+                .await?
+                .1
+                .decision,
+            "granted"
+        );
+        let write_next = |operation| airbyte(&db, &stand, tenant, &next, operation);
+        assert_eq!(
+            write_next(AirbyteWrite::Claim(Some(sender), Some(0)))
+                .await?
+                .decision,
+            "send"
+        );
+        let before_receipt = load(&db, &stand, &next).await?;
+        assert_eq!(
+            write_next(AirbyteWrite::Receipt("42")).await?.decision,
+            "poll"
+        );
+        observe(&db, &stand, &before_receipt, stale_timeout()).await?;
+        assert_eq!(
+            write_next(AirbyteWrite::Rejected(sender))
+                .await?
+                .job_id
+                .as_deref(),
+            Some("42")
+        );
+        let recovered = load(&db, &stand, &next).await?;
+        assert!(recovered.finished_at.is_none());
+        assert_eq!(recovered.airbyte_job_id.as_deref(), Some("42"));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn oversized_warm_stage_reserves_idle_capacity_and_runs_alone() -> anyhow::Result<()> {
+    let db = db().await?;
+    let stand = uuid::Uuid::now_v7().to_string();
+    let now = Utc::now();
+    let tenant = "tenant";
+    let limit = 4096 * MIB;
+    let budget = limit - 512 * MIB - limit / 10;
+    for (connector, peak) in [("jira", 2560 * MIB), ("github", 128 * MIB)] {
+        record_bronze_peak(&db, &stand, connector, now, peak).await?;
+    }
+
+    let idle = request("jira", "bronze");
+    let (_, reply) = register(&db, &stand, tenant, &idle, now, budget).await?;
+    assert_eq!(
+        reply.decision, "granted",
+        "an idle stand must admit the oversized warm stage"
+    );
+    let active = load(&db, &stand, &idle).await?;
+    assert!(!active.cold);
+    assert_eq!(
+        active.estimated_bytes, budget,
+        "the grant reserves the sync budget"
+    );
+
+    let small = request("github", "bronze");
+    let larger_capacity = 4096 * MIB;
+    assert_eq!(
+        register(&db, &stand, tenant, &small, now, larger_capacity)
+            .await?
+            .1
+            .decision,
+        "queued"
+    );
+    let small_row = load(&db, &stand, &small).await?;
+    assert!(!promote(&db, &stand, &small_row, larger_capacity).await?);
+
+    let queued = request("jira", "bronze");
+    assert_eq!(
+        register(&db, &stand, tenant, &queued, now, budget)
+            .await?
+            .1
+            .decision,
+        "queued"
+    );
+    let waiting = load(&db, &stand, &queued).await?;
+    assert_eq!(waiting.estimated_bytes, 3200 * MIB);
+    assert!(!promote(&db, &stand, &waiting, budget).await?);
+
+    let completed = || Observation {
+        status: Some("succeeded".into()),
+        finished_at: Some(now),
+        ..Default::default()
+    };
+    observe(&db, &stand, &active, completed()).await?;
+    assert!(promote(&db, &stand, &small_row, budget).await?);
+    assert!(!promote(&db, &stand, &waiting, budget).await?);
+    let small_active = load(&db, &stand, &small).await?;
+    observe(&db, &stand, &small_active, completed()).await?;
+    assert!(promote(&db, &stand, &waiting, budget).await?);
+    assert_eq!(load(&db, &stand, &queued).await?.estimated_bytes, budget);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn an_oversized_stage_does_not_block_smaller_queued_stages() -> anyhow::Result<()> {
+    let db = db().await?;
+    let stand = uuid::Uuid::now_v7().to_string();
+    let now = Utc::now();
+    let limit = 4096 * MIB;
+    let budget = limit - 512 * MIB - limit / 10;
+    record_bronze_peak(&db, &stand, "jira", now, 2560 * MIB).await?;
+    record_bronze_peak(&db, &stand, "github", now, 32 * MIB).await?;
+
+    let (active, oversized, small) = (
+        request("github", "bronze"),
+        request("jira", "bronze"),
+        request("github", "bronze"),
+    );
+    for (req, decision) in [
+        (&active, "granted"),
+        (&oversized, "queued"),
+        (&small, "queued"),
+    ] {
+        let (_, reply) = register(&db, &stand, "tenant", req, now, budget).await?;
+        assert_eq!(reply.decision, decision);
+    }
+    let oversized_row = load(&db, &stand, &oversized).await?;
+    let small_row = load(&db, &stand, &small).await?;
+    let ready = HashSet::from([oversized_row.id, small_row.id]);
+    assert_eq!(
+        promote_ready(&db, &stand, &ready, budget).await?,
+        vec![small_row.id],
+        "only the smaller queued stage should be granted"
+    );
+    assert!(load(&db, &stand, &oversized).await?.granted_at.is_none());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
 async fn doubled_bronze_input_invalidates_transform_history() -> anyhow::Result<()> {
     let db = db().await?;
     let stand = uuid::Uuid::now_v7().to_string();
@@ -543,53 +763,6 @@ async fn only_the_original_airbyte_sender_can_recover_a_lost_claim_response() ->
     );
     airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Receipt("44")).await?;
     assert_eq!(claim(Some(sender)).await?.job_id.as_deref(), Some("44"));
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
-async fn departure_after_sample_removes_memory_credit_before_direct_and_queued_grants()
--> anyhow::Result<()> {
-    let db = db().await?;
-    let stand = uuid::Uuid::now_v7().to_string();
-    let now = Utc::now();
-    let holder = request("jira", "bronze");
-    register(&db, &stand, "tenant", &holder, now, 512 * MIB).await?;
-    let active = load(&db, &stand, &holder).await?;
-    assert!(active.granted_at.is_some());
-    let sampled = Snapshot {
-        uncredited: 128 * MIB,
-        with_managed: 512 * MIB,
-        contributors: HashSet::from([active.id]),
-    };
-    observe(
-        &db,
-        &stand,
-        &active,
-        Observation {
-            status: Some("succeeded".into()),
-            started_at: Some(now),
-            finished_at: Some(now),
-            run_status: Some("succeeded".into()),
-            run_finished_at: Some(now),
-            ..Default::default()
-        },
-    )
-    .await?;
-    let next = request("github", "bronze");
-    let (_, response) = register(&db, &stand, "tenant", &next, now, sampled.clone()).await?;
-    assert_eq!(response.decision, "queued");
-    let waiting = load(&db, &stand, &next).await?;
-    let ready = HashSet::from([waiting.id]);
-    assert!(
-        promote_ready(&db, &stand, &ready, sampled)
-            .await?
-            .is_empty()
-    );
-    assert_eq!(
-        promote_ready(&db, &stand, &ready, 512 * MIB).await?,
-        vec![waiting.id]
-    );
     Ok(())
 }
 

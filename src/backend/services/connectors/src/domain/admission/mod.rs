@@ -72,5 +72,6 @@ pub(crate) struct StageRow {
     pub airbyte_job_id: Option<String>,
     pub connection_id: Option<String>,
     pub airbyte_claimed: bool,
+    pub airbyte_claimed_at: Option<DateTime<Utc>>,
     pub airbyte_previous_job: Option<u64>,
 }

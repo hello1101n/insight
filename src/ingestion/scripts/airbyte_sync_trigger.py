@@ -68,33 +68,43 @@ def main() -> int:
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     data = json.dumps({"connectionId": os.environ["CONNECTION_ID"]}).encode()
     request = urllib.request.Request(f"{airbyte_url}/api/v1/connections/sync", data=data, headers=headers)
-    managed = os.environ.get("ADMISSION_MANAGED") == "true"
-    if managed:
-        decision, known_id = stage_admission.claim(str(uuid4()))
+    sender = str(uuid4()) if os.environ.get("ADMISSION_MANAGED") == "true" else None
+    if sender is not None:
+        decision, known_id = stage_admission.claim(sender)
         if decision != "send":
-            job_id = known_id if decision == "poll" else stage_admission.recover_job_id()
+            job_id = stage_admission.recover_job_id() if decision == "verify" else known_id
+            if job_id is None:
+                return 1
             print(job_id)  # noqa: T201 -- stdout supplies poll-job.
             return 0
+    rejected = False
     try:
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         resp = json.load(urllib.request.urlopen(request, timeout=120))
     except urllib.error.HTTPError as error:
         log.error("Airbyte sync trigger returned HTTP %s", error.code)
-        if not managed:
+        if sender is None:
             return 1
+        rejected = 400 <= error.code < 500 and error.code not in (408, 429)
         resp = None
     except Exception:
         # DNS/connection/timeout/bad-JSON failures stay in the log envelope
         # rather than escaping as a bare traceback.
         log.exception("cannot trigger the sync")
-        if not managed:
+        if sender is None:
             return 1
         resp = None
 
     job_id = triggered_job_id(resp)
-    if managed and not stage_admission.valid_job_id(job_id):
-        log.warning("verifying Airbyte launch with connectors")
-        print(stage_admission.recover_job_id())  # noqa: T201 -- stdout supplies poll-job.
+    if sender is not None and not stage_admission.valid_job_id(job_id):
+        if rejected:
+            job_id = stage_admission.reject_launch(sender)
+        else:
+            log.warning("verifying Airbyte launch with connectors")
+            job_id = stage_admission.recover_job_id()
+        if job_id is None:
+            return 1
+        print(job_id)  # noqa: T201 -- stdout supplies poll-job.
         return 0
     if job_id is None:
         log.error(f"Airbyte answered the trigger without a job id: {str(resp)[:200]!r}")
@@ -106,7 +116,7 @@ def main() -> int:
         "sync triggered",
         extra={"event": "sync.triggered", "connection_id": os.environ["CONNECTION_ID"], "job_id": job_id},
     )
-    if managed:
+    if sender is not None:
         stage_admission.request("PUT", "/airbyte-job", job_id=int(job_id))
     print(job_id)  # noqa: T201 -- stdout IS the step's Argo outputs.result
     return 0

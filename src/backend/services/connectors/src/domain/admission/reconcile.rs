@@ -76,6 +76,14 @@ pub(crate) async fn run(state: Arc<AppState>, cancel: CancellationToken) {
     else {
         return;
     };
+    tokio::select! {
+        () = cancel.cancelled() => return,
+        result = capacity::refresh_idle_budget(&state) => {
+            if let Err(error) = result {
+                tracing::warn!(%error, "Initial idle memory sample failed.");
+            }
+        }
+    }
     let notify = Arc::new(Notify::new());
     let watcher = tokio::spawn({
         let api = api.clone();
@@ -133,9 +141,15 @@ async fn cycle(state: &AppState, api: &Api<DynamicObject>, http: &reqwest::Clien
         }
     }
     if !ready.is_empty() {
-        let available = capacity::sample(state).await?;
-        store::promote_ready(&state.db, stand, &ready, available).await?;
+        let budget = capacity::sample(state).await?;
+        if !store::promote_ready(&state.db, stand, &ready, budget)
+            .await?
+            .is_empty()
+        {
+            return Ok(());
+        }
     }
+    capacity::refresh_idle_budget(state).await?;
     Ok(())
 }
 
@@ -338,9 +352,14 @@ async fn vanished(state: &AppState, http: &reqwest::Client, row: &StageRow) -> R
             o.run_finished_at = o.finished_at;
         }
     } else {
-        o.airbyte_job_id = recover_launch(state, http, row).await?;
-        o.status = Some("checking_start".into());
-        o.reason = Some("workflow_not_found".into());
+        recover_launch(state, http, row, &mut o).await?;
+        if o.finished_at.is_some() {
+            o.run_status = Some("cancelled".into());
+            o.run_finished_at = o.finished_at;
+        } else {
+            o.status = Some("checking_start".into());
+            o.reason = Some("workflow_not_found".into());
+        }
     }
     store::observe(&state.db, &state.cluster.namespace, row, o).await
 }
@@ -401,16 +420,31 @@ async fn recover_launch(
     state: &AppState,
     http: &reqwest::Client,
     row: &StageRow,
-) -> Result<Option<String>> {
-    let (Some(previous), Some(connection)) =
-        (row.airbyte_previous_job, row.connection_id.as_deref())
-    else {
-        return Ok(None);
-    };
-    let job = airbyte::recent_jobs(state, http, connection)
-        .await?
-        .new_job(previous);
-    Ok(job.map(|id| id.to_string()))
+    o: &mut Observation,
+) -> Result<()> {
+    let connection = row
+        .connection_id
+        .as_deref()
+        .context("missing Airbyte connection")?;
+    let claimed_at = row
+        .airbyte_claimed_at
+        .or(row.granted_at)
+        .unwrap_or(row.queued_at);
+    let window =
+        chrono::Duration::seconds(i64::from(state.cluster.airbyte_launch_confirmation_secs));
+    let expired = Utc::now() - claimed_at >= window;
+    let since = row.airbyte_previous_job.is_none().then_some(claimed_at);
+    let history = airbyte::recent_jobs(state, http, connection, since).await?;
+    let previous = row.airbyte_previous_job.unwrap_or(0);
+
+    if let Some(job) = history.new_job(previous) {
+        o.airbyte_job_id = Some(job.to_string());
+    } else if expired && !history.has_newer_job(previous) {
+        o.status = Some("not_started".into());
+        o.reason = Some("airbyte_launch_unconfirmed".into());
+        o.finished_at = Some(Utc::now());
+    }
+    Ok(())
 }
 
 async fn observed_node<'a>(
@@ -437,13 +471,8 @@ async fn observed_node<'a>(
     } else {
         (nodes::work(status, row), None)
     };
-    if bronze
-        && row.airbyte_claimed
-        && row.airbyte_job_id.is_none()
-        && o.airbyte_job_id.is_none()
-        && row.status == "checking_start"
-    {
-        o.airbyte_job_id = recover_launch(state, http, row).await?;
+    if bronze && row.airbyte_claimed && row.airbyte_job_id.is_none() && o.airbyte_job_id.is_none() {
+        recover_launch(state, http, row, o).await?;
     }
     if bronze
         && job.is_none()
@@ -481,6 +510,9 @@ async fn observe_work(
     let bronze = row.stage == "bronze";
     let mut o = Observation::default();
     let (node, receipt) = observed_node(state, http, row, status, terminal, &mut o).await?;
+    if o.finished_at.is_some() {
+        return Ok(o);
+    }
     let job = receipt.as_ref().map(|r| r.status.as_str());
     // A terminating pod can submit its last query until it stops.
     let pod = pods::observe(state, row).await?;

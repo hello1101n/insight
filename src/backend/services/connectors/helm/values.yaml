@@ -53,6 +53,12 @@ tenantId: "00000000-0000-0000-0000-000000000000"
 stageAdmission:
   airbyteNamespace: ""
   airbyteReader: {}
+  airbyteLaunchConfirmationSecs: 600
+  dashboardReservePercent: 10
+  budgetOverrideBytes: null
+  idleSettleSecs: 120
+  baselineWindowSecs: 3600
+  baselineMaxAgeSecs: 86400
   enabled: false
   argoUrl: 'http://argo-workflows-server.{{ .Release.Namespace }}.svc:2746'
   workflowServiceAccount: '{{ .Release.Name }}-reconcile'

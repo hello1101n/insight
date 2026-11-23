@@ -74,14 +74,25 @@ def request(method: str, path: str = "", *, max_wait_seconds: int | None = 180, 
             delay = min(delay * 2, 20)
 
 
-def claim(sender: str | None = None) -> tuple[str, int | None]:
-    reply = request("POST", "/airbyte-claim", max_wait_seconds=None, **({"sender": sender} if sender else {}))
+def _claim_result(reply: dict) -> tuple[str, int | None]:
     decision = reply.get("decision")
     if decision == "poll" and valid_job_id(reply.get("job_id")):
         return decision, int(reply["job_id"])
-    if decision in ("send", "verify"):
+    if decision in ("send", "verify", "not_started"):
         return decision, None
     raise AdmissionError("invalid Airbyte claim result")
+
+
+def claim(sender: str | None = None) -> tuple[str, int | None]:
+    reply = request("POST", "/airbyte-claim", max_wait_seconds=None, **({"sender": sender} if sender else {}))
+    return _claim_result(reply)
+
+
+def reject_launch(sender: str) -> int | None:
+    decision, job_id = _claim_result(request("PUT", "/airbyte-rejection", sender=sender))
+    if decision not in ("poll", "not_started"):
+        raise AdmissionError("invalid Airbyte rejection result")
+    return job_id
 
 
 def valid_job_id(value: object) -> bool:
@@ -95,10 +106,10 @@ def valid_job_id(value: object) -> bool:
     )
 
 
-def recover_job_id() -> int:
+def recover_job_id() -> int | None:
     while True:
         decision, job_id = claim()
-        if decision == "poll" and job_id is not None:
+        if decision in ("poll", "not_started"):
             return job_id
         if decision != "verify":
             raise AdmissionError("inconsistent claim for an already attempted Airbyte launch")
