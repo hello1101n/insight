@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 import {
   evidenceSelection,
@@ -31,17 +31,13 @@ import {
   forEntity,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
-import {
-  activityEventLabel,
-  TYPE_DIMENSION,
-  withTypeDimension,
-} from "@/lib/metrics/provider-links";
+import { activityEventLabel, TYPE_DIMENSION } from "@/lib/metrics/provider-links";
 import { RecordLink } from "@/components/record-link";
 import { useMetricDaySeries } from "@/queries/metric-day-series";
 import { useMetricDetail } from "@/queries/metric-detail";
 import {
   useCollectionBoundary,
-  useDeclaredMetricDimensions,
+  useTypedEvidenceSelection,
 } from "@/queries/metric-definitions";
 import { cn } from "@/lib/utils";
 
@@ -59,17 +55,15 @@ export function MetricActivity({
   periodNoun: string;
 }) {
   const grain = finestGrain(metric);
-  const declared = useDeclaredMetricDimensions();
   const base = metric.selection
     ? evidenceSelection(metric.selection, entityId)
     : null;
-  const declaredForMetric = base
-    ? declared.byMetricKey?.get(base.metric_key)
-    : null;
-  const selection = base ? withTypeDimension(base, declaredForMetric) : null;
-  const ready = grain != null && !declared.isPending;
-  const detail = useMetricDetail(selection, ready && grain === "event");
-  const series = useMetricDaySeries(selection, ready && grain !== "event");
+  const selection = useTypedEvidenceSelection(base);
+  const detail = useMetricDetail(selection, grain === "event");
+  const series = useMetricDaySeries(
+    selection,
+    grain != null && grain !== "event"
+  );
   const description = metric.description?.trim();
   const data = forEntity(metric, entityId);
   const total = formatMetricValue(data.value, metric.format, metric.unit);
@@ -327,6 +321,13 @@ function stripSummary(
   return `${parts.join("; ")}.`;
 }
 
+function readoutAnchor(hoveredIndex: number, dayCount: number): CSSProperties {
+  const barStartPct = (hoveredIndex / dayCount) * 100;
+  const barEndPct = ((hoveredIndex + 1) / dayCount) * 100;
+  if (hoveredIndex < dayCount / 2) return { left: `${barStartPct}%` };
+  return { left: `${barEndPct}%`, transform: "translateX(-100%)" };
+}
+
 function dayWord(n: number): string {
   return n === 1 ? "day" : "days";
 }
@@ -393,7 +394,6 @@ function DayStrip({
   if (days.length === 0) return null;
 
   const hoveredDay = hovered != null ? (days[hovered] ?? null) : null;
-  const leftAnchored = hovered != null && hovered < days.length / 2;
   const denominators = new Set(
     days.flatMap((d) => (d.denominator != null ? [d.denominator] : []))
   );
@@ -412,10 +412,7 @@ function DayStrip({
           <div
             aria-hidden
             className="pointer-events-none absolute bottom-full z-10 mb-1 rounded border bg-popover px-1.5 py-0.5 text-xs whitespace-nowrap text-popover-foreground tabular-nums shadow-sm"
-            style={{
-              left: `${((hovered + (leftAnchored ? 0 : 1)) / days.length) * 100}%`,
-              transform: leftAnchored ? undefined : "translateX(-100%)",
-            }}
+            style={readoutAnchor(hovered, days.length)}
           >
             {dayTitle(metric, hoveredDay)}
           </div>

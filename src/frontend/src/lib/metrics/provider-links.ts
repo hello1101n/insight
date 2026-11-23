@@ -20,19 +20,19 @@ export function evidenceRefText(metricKey: string, value: string): string {
 
 export const TYPE_DIMENSION = "type";
 
-export function withTypeDimension(
-  selection: MetricEvidenceSelection,
+export function withTypeDimension<S extends MetricEvidenceSelection>(
+  selection: S,
   declared: ReadonlySet<string> | null | undefined
-): MetricEvidenceSelection {
+): S {
   if (!isTaskMetric(selection.metric_key)) return selection;
   return withDimension(selection, TYPE_DIMENSION, declared);
 }
 
-function withDimension(
-  selection: MetricEvidenceSelection,
+function withDimension<S extends MetricEvidenceSelection>(
+  selection: S,
   dimension: string,
   declared: ReadonlySet<string> | null | undefined
-): MetricEvidenceSelection {
+): S {
   if (!declared?.has(dimension)) return selection;
   if (selection.display_dimensions.includes(dimension)) return selection;
   return {

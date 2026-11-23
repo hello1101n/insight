@@ -6,6 +6,8 @@ import {
   type MetricDefinition,
   type MetricDefinitionListResponse,
 } from "@/api/metric-definitions-client";
+import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
+import { withTypeDimension } from "@/lib/metrics/provider-links";
 
 export interface MetricDefinitionGroup {
   prefix: string;
@@ -100,6 +102,14 @@ export function useDeclaredMetricDimensions(): DeclaredMetricDimensions {
     [data]
   );
   return { byMetricKey, isPending };
+}
+
+export function useTypedEvidenceSelection<S extends MetricEvidenceSelection>(
+  base: S | null
+): S | null {
+  const { byMetricKey, isPending } = useDeclaredMetricDimensions();
+  if (!base || isPending) return null;
+  return withTypeDimension(base, byMetricKey?.get(base.metric_key));
 }
 
 export interface AvailableMetricKeys {

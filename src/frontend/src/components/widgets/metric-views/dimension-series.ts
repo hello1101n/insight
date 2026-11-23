@@ -7,12 +7,16 @@ export function dimensionLabel(dimensions: MetricDimension[]): string {
     .join(" · ");
 }
 
-export function dimensionColorSeed(dimensions: MetricDimension[]): string {
-  if (dimensions.length === 0) return "total";
-  if (dimensions.length === 1) return dimensions[0]?.value ?? "total";
+function dimensionTuple(dimensions: MetricDimension[]): string {
   return dimensions
     .map((dimension) => `${dimension.key}:${dimension.value}`)
     .join("|");
+}
+
+export function dimensionColorSeed(dimensions: MetricDimension[]): string {
+  if (dimensions.length === 0) return "total";
+  if (dimensions.length === 1) return dimensions[0]?.value ?? "total";
+  return dimensionTuple(dimensions);
 }
 
 export function safeSeriesKey(raw: string): string {
@@ -26,9 +30,5 @@ export function safeSeriesKey(raw: string): string {
 
 export function dimensionSeriesKey(dimensions: MetricDimension[]): string {
   if (dimensions.length === 0) return "total";
-  return safeSeriesKey(
-    dimensions
-      .map((dimension) => `${dimension.key}:${dimension.value}`)
-      .join("|"),
-  );
+  return safeSeriesKey(dimensionTuple(dimensions));
 }

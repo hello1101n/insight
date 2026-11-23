@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { AnalyticsApiError } from "@/api/analytics-client";
-import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
+import type { SingleEntityEvidenceSelection } from "@/api/metric-drilldown-client";
 import {
   queryMetricResults,
   type MetricResultsEntity,
@@ -10,6 +9,7 @@ import {
 import { sessionAuthorizationScope } from "@/auth/session-scope";
 import { useAuth } from "@/auth/use-auth";
 import type { DayReading } from "@/lib/insight/metric-grain";
+import { retryServerFailureOnce } from "@/queries/retry-server-failure-once";
 
 class MetricViewFailed extends Error {
   constructor(code: string) {
@@ -19,13 +19,11 @@ class MetricViewFailed extends Error {
 }
 
 function resultsEntity(
-  selection: MetricEvidenceSelection
-): MetricResultsEntity | null {
+  selection: SingleEntityEvidenceSelection
+): MetricResultsEntity {
   switch (selection.entity.type) {
     case "person":
       return { type: "person", ids: [selection.entity.id] };
-    case "persons":
-      return { type: "person", ids: selection.entity.ids };
     case "tenant":
       return { type: "tenant" };
   }
@@ -84,7 +82,7 @@ function daySeries(
 }
 
 export function useMetricDaySeries(
-  selection: MetricEvidenceSelection | null | undefined,
+  selection: SingleEntityEvidenceSelection | null | undefined,
   enabled = true
 ) {
   const { session } = useAuth();
@@ -116,8 +114,7 @@ export function useMetricDaySeries(
     enabled:
       enabled && sessionScope != null && selection != null && entity != null,
     retry: (failureCount, error) =>
-      failureCount < 1 &&
       !(error instanceof MetricViewFailed) &&
-      (!(error instanceof AnalyticsApiError) || error.status >= 500),
+      retryServerFailureOnce(failureCount, error),
   });
 }

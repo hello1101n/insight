@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
 import type { MetricResult } from "@/api/metric-results-client";
 import { normalizeMetricResults } from "@/lib/metrics/collection";
 
@@ -52,17 +53,19 @@ const declared = vi.hoisted(() => ({
 }));
 // WORKAROUND: a second `vi.mock` of the same specifier replaces the first,
 // so this one mock serves both hooks.
-vi.mock("@/queries/metric-definitions", () => ({
-  useCollectionBoundary: () => ({
-    collectedFrom: detail.collectedFrom,
-    collectedThrough: detail.collectedThrough,
-    settledThrough: detail.settledThrough,
-  }),
-  useDeclaredMetricDimensions: () => ({
-    byMetricKey: declared.byMetricKey,
-    isPending: false,
-  }),
-}));
+vi.mock("@/queries/metric-definitions", async () => {
+  const { withTypeDimension } = await import("@/lib/metrics/provider-links");
+  return {
+    useCollectionBoundary: () => ({
+      collectedFrom: detail.collectedFrom,
+      collectedThrough: detail.collectedThrough,
+      settledThrough: detail.settledThrough,
+    }),
+    useTypedEvidenceSelection: (base: MetricEvidenceSelection | null) =>
+      base &&
+      withTypeDimension(base, declared.byMetricKey.get(base.metric_key)),
+  };
+});
 
 import { MetricActivity } from "./metric-activity";
 
