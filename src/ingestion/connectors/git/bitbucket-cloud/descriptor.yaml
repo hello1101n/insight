@@ -67,13 +67,15 @@ name: bitbucket-cloud
 # 7.11.0: `pipelines` keeps the selector, the target type, a pull request's
 #   source branch, the paused stage and the rerun counter, and `deployments`
 #   keeps the environment's name and type and the state version, so both feed
-#   the CI classes. `deployments` moves its cursor from `created_on` to
-#   `last_update_time`: a deployment created before a newer one never passed
-#   the old bound again, so a manual deploy that ran late kept its placeholder
-#   state. MINOR per ADR-0015: the catalog gains columns and a cursor, so
-#   reconcile must republish the connection; saved state names the old cursor
-#   and is ignored, so a repository's deployments are read from the start date
-#   again at its next visit, and stored rows keep their meaning.
+#   the CI classes. Both streams move their cursor from `created_on`. A rerun,
+#   a finished run and a manual deploy that runs late keep their `created_on`.
+#   After a newer row was synced, the old bound dropped their new state.
+#   `deployments` reads `last_update_time`. `pipelines` reads `changed_on`,
+#   the latest of its `created_on`, `run_creation_date` and `completed_on`.
+#   MINOR per ADR-0015: the catalog gains columns and cursors, so reconcile
+#   must republish the connection; saved state names the old cursor and is
+#   ignored, so a repository's pipelines and deployments are read from the
+#   start date again at its next visit, and stored rows keep their meaning.
 version: "7.11.0"
 # Every four hours, off the hours other connectors use: replication pods sharing
 # a slot with other connector syncs can be starved of workers, which surfaces as

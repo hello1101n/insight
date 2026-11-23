@@ -37,7 +37,9 @@ Keep these fields:
 - `state_stage`, from `state.stage.name`. It is `RUNNING`, `PAUSED` or `HALTED`.
 - `run_number` and `run_creation_date`. A rerun keeps the pipeline's `uuid`, `build_number` and `created_on`. It raises `run_number` and moves `run_creation_date` to the latest run.
 
-Unfinished runs need no new mechanism. The stream stops paging at the first page that holds an already-synced pipeline, but it still emits that whole page. So each visit to a repository re-reads at least its 100 newest pipelines. A run that was in progress, or that was rerun, gets its new state on the next visit to its repository.
+Move the cursor from `created_on` to `changed_on`. The data feed drops every pipeline older than the saved cursor, and a rerun or a finished run keeps its `created_on`. Bitbucket gives a pipeline no update time. So `changed_on` is the latest of `created_on`, `run_creation_date` and `completed_on`, and a rerun or a finished run moves it.
+
+The stream still stops paging at the first page whose oldest pipeline is unchanged. So each visit reads at least the repository's 100 newest pipelines and emits the ones that changed. A run that was in progress, or that was rerun, gets its new state on the next visit to its repository. This costs no extra calls.
 
 ### Extend the deployments stream
 
@@ -87,7 +89,7 @@ How deployments map:
 ### New pipeline steps stream
 
 - The stream is a child of `pipelines`. It fetches steps once per finished run, only for pipelines whose `completed_on` is newer than its cursor.
-- A rerun sets a new `completed_on`, so the stream fetches that run's steps again. Pipelines re-emitted from the boundary page cost no step calls.
+- A rerun sets a new `completed_on`, so the stream fetches that run's steps again. A pipeline that the parent emits again with the same `completed_on` costs no step calls.
 - The endpoint returns only the latest run of each step.
 - Fields: `uuid`, `pipeline_uuid`, `name`, `state.name`, `state.result.name`, `trigger.type`, `started_on`, `completed_on`, `duration_in_seconds`, `build_seconds_used`, `run_number`, `maxTime` and `image.name`.
 - `state.result.name` is `SUCCESSFUL`, `FAILED`, `ERROR`, `STOPPED`, `EXPIRED` or `NOT_RUN`.
@@ -139,5 +141,6 @@ This spec leaves out step logs, per-test results, caches, variables, schedules, 
 ## Known limits
 
 - `pipelines` and `deployments` visit only repositories pushed to since the last sync. A run that finishes after the last visit to its repository gets its outcome at the next push. Until then it stays undecided and outside every metric.
-- The stream re-reads a run only while the run is among its repository's 100 newest pipelines. It misses a rerun of an older pipeline.
+- The stream sees a change to a run only while the run is on a page that the visit reads. That is at least the repository's 100 newest pipelines. It misses a rerun of an older pipeline.
+- A run that pauses on a manual step moves none of `created_on`, `run_creation_date` and `completed_on`, because Bitbucket sets `completed_on` only when a run completes. Bronze keeps the stage that the last visit saw until the run completes or reruns.
 - Steps and test reports add calls against the hourly budget, `bitbucket_api_calls_per_hour`, which defaults to 1000. Steps cost one call per finished run. Test reports cost one call per finished step.

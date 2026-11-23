@@ -102,7 +102,7 @@ kubectl apply -f src/ingestion/secrets/connectors/bitbucket-cloud.yaml
 | `pull_request_diffstat` | `/pullrequests/{id}/diffstat` | windowed PR parent, full refresh per PR | — |
 | `pull_request_activity` | `/pullrequests/{id}/activity` | windowed PR parent, full refresh per PR | — |
 | `workspace_members` | `/workspaces/{w}/members` | full refresh | — |
-| `pipelines` | `/repositories/{r}/pipelines` | newest-first data feed, per repository pushed to | `created_on` |
+| `pipelines` | `/repositories/{r}/pipelines` | newest-first data feed, per repository pushed to | `changed_on` |
 | `deployments` | `/repositories/{r}/deployments` | client-side bound on every listed deployment, per repository pushed to | `last_update_time` |
 | `commit_authors` | proxy `/v1/authors/changes`, then `/repositories/{r}/commit/{sha}` | incremental, one lookup per changed author | `changed_at` |
 
