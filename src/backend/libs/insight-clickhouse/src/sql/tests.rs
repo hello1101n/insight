@@ -273,6 +273,57 @@ async fn a_composed_query_binds_by_name_on_a_live_server() -> R {
 }
 
 #[tokio::test]
+async fn an_identifier_param_names_a_table_on_a_live_server() -> R {
+    let Some(client) = live_client_or_skip() else {
+        return Ok(());
+    };
+    let table = "sql_identifier_probe";
+    client
+        .query_sql(&sql!(
+            "CREATE OR REPLACE TABLE {table} (id UInt8) ENGINE = Memory",
+            table = Param::identifier(table),
+        ))
+        .execute()
+        .await?;
+    client
+        .query_sql(&sql!(
+            "INSERT INTO {table} VALUES (1), (2)",
+            table = Param::identifier(table),
+        ))
+        .execute()
+        .await?;
+
+    let count: u64 = client
+        .query_sql(&sql!(
+            "SELECT count() FROM {table}",
+            table = Param::identifier(table),
+        ))
+        .fetch_one()
+        .await?;
+    let refused = client
+        .query_sql(&sql!(
+            "SELECT count() FROM {table}",
+            table = Param::identifier(format!("{table} WHERE 0 = 1")),
+        ))
+        .fetch_one::<u64>()
+        .await;
+
+    client
+        .query_sql(&sql!(
+            "DROP TABLE {table}",
+            table = Param::identifier(table)
+        ))
+        .execute()
+        .await?;
+    assert_eq!(count, 2);
+    assert!(
+        refused.is_err(),
+        "an identifier must not carry SQL: {refused:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_float_reaches_the_server_bit_for_bit() -> R {
     let Some(client) = live_client_or_skip() else {
         return Ok(());

@@ -40,6 +40,7 @@ enum Value {
     Bool(bool),
     Strings(Vec<String>),
     Uuids(Vec<Uuid>),
+    Identifier(String),
 }
 
 /// The text of a fragment, with a name in each placeholder, and the value
@@ -211,6 +212,11 @@ impl Param {
     }
 
     #[must_use]
+    pub fn identifier(name: impl Into<String>) -> Self {
+        Self(Value::Identifier(name.into()))
+    }
+
+    #[must_use]
     pub fn uuids(values: impl IntoIterator<Item = Uuid>) -> Self {
         Self(Value::Uuids(values.into_iter().collect()))
     }
@@ -227,6 +233,7 @@ impl Param {
             Value::Bool(_) => "Bool",
             Value::Strings(_) => "Array(String)",
             Value::Uuids(_) => "Array(UUID)",
+            Value::Identifier(_) => "Identifier",
         };
 
         format!("{{{name}:{clickhouse_type}}}")
@@ -234,7 +241,7 @@ impl Param {
 
     pub(crate) fn bind(&self, query: Query, name: &str) -> Query {
         match &self.0 {
-            Value::String(value) => query.param(name, value),
+            Value::String(value) | Value::Identifier(value) => query.param(name, value),
             Value::Uuid(value) => query.param(name, value.to_string()),
             Value::Date(value) => query.param(name, value.to_string()),
             Value::Int64(value) => query.param(name, value),

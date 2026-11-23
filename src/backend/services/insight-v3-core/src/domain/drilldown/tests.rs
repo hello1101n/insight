@@ -1,3 +1,4 @@
+use insight_clickhouse::Param;
 use serde_json::json;
 
 use super::cursor::{CursorKey, KeyValue, decode, encode, fingerprint};
@@ -5,7 +6,7 @@ use super::order::{OrderKey, is_reserved, presented};
 use super::paged::wrap;
 use super::*;
 use crate::domain::query::metric_query::{
-    ColumnKind, FilterBind, MetricQuery, People, RECORD_COLUMN, TWIN_COLUMN, TableEngine,
+    ColumnKind, MetricQuery, People, RECORD_COLUMN, TWIN_COLUMN, TableEngine,
 };
 use crate::domain::query::time_window::Window;
 
@@ -31,6 +32,10 @@ fn sort(key: &str, descending: bool) -> Sort {
         key: key.to_owned(),
         descending,
     }
+}
+
+fn named(name: &str, param: Param) -> (String, Param) {
+    (name.to_owned(), param)
 }
 
 fn a_key() -> CursorKey {
@@ -114,30 +119,35 @@ fn a_hidden_column_the_query_carries_is_the_last_element_of_the_key() {
 }
 
 #[test]
-fn the_cursor_predicate_binds_the_flag_the_key_and_every_tie_in_tuple_order() {
+fn the_cursor_predicate_compares_the_flag_the_key_and_every_tie_in_tuple_order() {
     let order = OrderKey::build(&columns(), &sort("day", false), &[]);
-    let mut binds = Vec::new();
 
-    let predicate = order.cursor_predicate(&a_key(), &mut binds);
+    let predicate = order.cursor_predicate(&a_key()).render();
 
     assert!(
-        predicate.starts_with("tuple(toUInt8((isNull(__m.`day`)"),
-        "{predicate}"
+        predicate
+            .sql
+            .starts_with("tuple(toUInt8((isNull(__m.`day`)"),
+        "{}",
+        predicate.sql
     );
     assert!(
-        predicate.ends_with(") > tuple(?, ?, ?, ?, ?)"),
-        "{predicate}"
+        predicate.sql.ends_with(
+            ") > tuple({flag:Bool}, {key:String}, {tie:String}, {tie_1:String}, {tie_2:String})"
+        ),
+        "{}",
+        predicate.sql
     );
-    assert!(matches!(
-        binds.as_slice(),
+    assert_eq!(
+        predicate.params,
         [
-            FilterBind::Bool(false),
-            FilterBind::Str(_),
-            FilterBind::Str(_),
-            FilterBind::Str(_),
-            FilterBind::Str(_)
+            named("flag", Param::bool(false)),
+            named("key", Param::string("2026-09-01")),
+            named("tie", Param::string("2026-09-01")),
+            named("tie_1", Param::string("2")),
+            named("tie_2", Param::string("2026-09-01 00:00:00")),
         ]
-    ));
+    );
 }
 
 #[test]
@@ -148,13 +158,16 @@ fn a_downward_order_resumes_past_the_cursor_with_the_opposite_comparison() {
         value: KeyValue::Number(2.0),
         ties: vec![String::new(), String::new(), String::new()],
     };
-    let mut binds = Vec::new();
 
-    let predicate = order.cursor_predicate(&key, &mut binds);
+    let predicate = order.cursor_predicate(&key).render();
 
-    assert!(predicate.contains(") < tuple("), "{predicate}");
-    assert!(
-        matches!(binds.as_slice(), [FilterBind::Bool(false), FilterBind::Float(value), ..] if (*value - 2.0).abs() < f64::EPSILON)
+    assert!(predicate.sql.contains(") < tuple("), "{}", predicate.sql);
+    assert_eq!(
+        predicate.params[..2],
+        [
+            named("flag", Param::bool(false)),
+            named("key", Param::float64(2.0))
+        ]
     );
 }
 
@@ -434,7 +447,8 @@ fn the_wrapper_reads_the_metric_as_a_subquery_and_asks_one_row_past_the_page() {
     let inner = grouped_over_a_table();
     let order = OrderKey::build(&columns()[..2], &sort("day", false), inner.hidden());
 
-    let (sql, binds) = wrap(&inner, &order, None, 2, &columns()[..2]);
+    let rendered = wrap(&inner, &order, None, 2, &columns()[..2]).render();
+    let sql = rendered.sql;
 
     assert!(sql.starts_with("SELECT __m.*, "), "{sql}");
     assert!(sql.contains(" FROM (SELECT "), "{sql}");
@@ -446,11 +460,11 @@ fn the_wrapper_reads_the_metric_as_a_subquery_and_asks_one_row_past_the_page() {
         "{sql}"
     );
     assert!(!sql.contains(" WHERE tuple("), "{sql}");
-    assert!(matches!(binds.as_slice(), [FilterBind::Str(repo)] if repo == "app"));
+    assert_eq!(rendered.params, [named("filter", Param::string("app"))]);
 }
 
 #[test]
-fn a_resumed_page_binds_the_metrics_own_values_before_the_cursors() {
+fn a_resumed_page_carries_the_metrics_own_values_and_the_cursors() {
     let inner = grouped_over_a_table();
     let order = OrderKey::build(&columns()[..2], &sort("day", false), inner.hidden());
     let key = CursorKey {
@@ -459,14 +473,23 @@ fn a_resumed_page_binds_the_metrics_own_values_before_the_cursors() {
         ties: vec!["2026-09-01".to_owned(), "2".to_owned()],
     };
 
-    let (sql, binds) = wrap(&inner, &order, Some(&key), 2, &columns()[..2]);
+    let rendered = wrap(&inner, &order, Some(&key), 2, &columns()[..2]).render();
 
-    assert!(sql.contains(") AS __m WHERE tuple("), "{sql}");
-    assert!(matches!(
-        binds.as_slice(),
-        [FilterBind::Str(repo), FilterBind::Bool(false), FilterBind::Str(day), FilterBind::Str(tie), FilterBind::Str(total)]
-            if repo == "app" && day == "2026-09-01" && tie == "2026-09-01" && total == "2"
-    ));
+    assert!(
+        rendered.sql.contains(") AS __m WHERE tuple("),
+        "{}",
+        rendered.sql
+    );
+    assert_eq!(
+        rendered.params,
+        [
+            named("filter", Param::string("app")),
+            named("flag", Param::bool(false)),
+            named("key", Param::string("2026-09-01")),
+            named("tie", Param::string("2026-09-01")),
+            named("tie_1", Param::string("2")),
+        ]
+    );
 }
 
 #[test]
@@ -482,7 +505,9 @@ fn a_plain_read_over_a_table_numbers_its_twins_in_a_layer_of_its_own() {
     assert_eq!(inner.hidden(), [TWIN_COLUMN]);
     let order = OrderKey::build(&columns()[..2], &sort("day", false), inner.hidden());
 
-    let (sql, _) = wrap(&inner, &order, None, 100, &columns()[..2]);
+    let sql = wrap(&inner, &order, None, 100, &columns()[..2])
+        .render()
+        .sql;
 
     assert!(
         sql.contains(

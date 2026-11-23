@@ -1,3 +1,4 @@
+use insight_clickhouse::Param;
 use serde_json::json;
 
 use super::field::{MAX_IDENTIFIER_CHARS, coerce_value};
@@ -11,6 +12,22 @@ fn query(value: serde_json::Value) -> MetricQuery {
 
 fn people() -> People {
     People::new("identity")
+}
+
+fn named(name: &str, param: Param) -> (String, Param) {
+    (name.to_owned(), param)
+}
+
+impl CompiledQuery {
+    fn text(&self) -> String {
+        self.sql.render().sql
+    }
+}
+
+impl UndatedQuery {
+    fn text(&self) -> String {
+        self.sql.render().sql
+    }
 }
 
 #[test]
@@ -73,8 +90,8 @@ fn json_and_column_clocks_compile_as_datetime_sources() {
     let json_clock = timed_metric(&json!({ "json": "occurred_at" }));
     let column_clock = timed_metric(&json!({ "column": "occurred_at", "type": "datetime" }));
 
-    let json_sql = compiled(&json_clock, "P7D", true, TableEngine::MergeTree).sql;
-    let column_sql = compiled(&column_clock, "P7D", true, TableEngine::MergeTree).sql;
+    let json_sql = compiled(&json_clock, "P7D", true, TableEngine::MergeTree).text();
+    let column_sql = compiled(&column_clock, "P7D", true, TableEngine::MergeTree).text();
 
     assert!(
         json_sql
@@ -103,11 +120,11 @@ fn a_clock_reads_the_payload_column_it_names() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains(
+        compiled.text().contains(
             "parseDateTimeBestEffortOrNull(JSONExtractString(`event_json`, 'occurred_at'))"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -118,11 +135,11 @@ fn a_clock_reads_a_json_key_by_the_same_rule_a_field_does() {
     let compiled = compiled(&metric, "P7D", true, TableEngine::MergeTree);
 
     assert!(
-        compiled.sql.contains(
+        compiled.text().contains(
             "parseDateTimeBestEffortOrNull(JSONExtractString(raw_data, 'meta', 'Occurred At'))"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -154,18 +171,20 @@ fn a_bucket_is_injected_into_select_grouping_and_default_order() {
     let compiled = compiled(&metric, "PQC", true, TableEngine::MergeTree);
 
     assert!(
-        compiled.sql.starts_with(
+        compiled.text().starts_with(
             "SELECT toStartOfWeek(toDateTime(`occurred_at`, 'UTC'), 1, 'UTC') AS `bucket`, count() AS `total`"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
-        compiled.sql.contains("GROUP BY `bucket` ORDER BY `bucket`"),
+        compiled
+            .text()
+            .contains("GROUP BY `bucket` ORDER BY `bucket`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert_eq!(compiled.binds.len(), 2);
+    assert_eq!(compiled.sql.render().params.len(), 2);
 }
 
 #[test]
@@ -173,13 +192,17 @@ fn an_unbucketed_window_keeps_its_half_open_predicates() {
     let metric = timed_metric(&json!({ "column": "occurred_at" }));
     let compiled = compiled(&metric, "P30D", false, TableEngine::MergeTree);
 
-    assert!(!compiled.sql.contains(" AS `bucket`"), "{}", compiled.sql);
     assert!(
-        compiled.sql.contains(
-            "WHERE `occurred_at` >= fromUnixTimestamp64Milli(?, 'UTC') AND `occurred_at` < fromUnixTimestamp64Milli(?, 'UTC')"
+        !compiled.text().contains(" AS `bucket`"),
+        "{}",
+        compiled.text()
+    );
+    assert!(
+        compiled.text().contains(
+            "WHERE `occurred_at` >= fromUnixTimestamp64Milli({from:Int64}, 'UTC') AND `occurred_at` < fromUnixTimestamp64Milli({to:Int64}, 'UTC')"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -304,11 +327,15 @@ fn replacing_engines_alone_compile_with_final() {
     let plain = compiled(&metric, "P7D", false, TableEngine::MergeTree);
     let replacing = compiled(&metric, "P7D", false, TableEngine::ReplacingMergeTree);
 
-    assert!(plain.sql.contains("FROM `events` WHERE"), "{}", plain.sql);
     assert!(
-        replacing.sql.contains("FROM `events` FINAL WHERE"),
+        plain.text().contains("FROM `events` WHERE"),
         "{}",
-        replacing.sql
+        plain.text()
+    );
+    assert!(
+        replacing.text().contains("FROM `events` FINAL WHERE"),
+        "{}",
+        replacing.text()
     );
 }
 
@@ -344,10 +371,10 @@ fn final_follows_the_fact_alias_when_identity_joins_require_one() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("FROM `events` AS `__f` FINAL LEFT JOIN"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -361,7 +388,7 @@ fn an_undated_query_counts_the_rows_without_a_clock() {
         .unwrap_or_else(|| panic!("a clocked metric has an undated count"));
 
     assert_eq!(
-        undated.sql,
+        undated.text(),
         "SELECT countIf(isNull(`occurred_at`)) AS undated FROM `events`"
     );
 }
@@ -381,11 +408,16 @@ fn an_undated_query_reads_the_same_rows_the_metric_does() {
         .unwrap_or_else(|| panic!("a clocked metric has an undated count"));
 
     assert!(
-        undated.sql.contains("FROM `events` FINAL WHERE `repo` = ?"),
+        undated
+            .text()
+            .contains("FROM `events` FINAL WHERE `repo` = {filter:String}"),
         "{}",
-        undated.sql
+        undated.text()
     );
-    assert_eq!(undated.binds.len(), 1);
+    assert_eq!(
+        undated.sql.render().params,
+        [named("filter", Param::string("one"))]
+    );
 }
 
 #[test]
@@ -406,9 +438,9 @@ fn an_all_time_window_leaves_out_the_rows_with_no_clock() {
     let compiled = compiled(&metric, "inf", true, TableEngine::MergeTree);
 
     assert!(
-        compiled.sql.contains("WHERE `occurred_at` IS NOT NULL"),
+        compiled.text().contains("WHERE `occurred_at` IS NOT NULL"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -420,10 +452,10 @@ fn a_json_clock_reads_a_missing_key_as_no_clock_rather_than_a_failure() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("parseDateTimeBestEffortOrNull(JSONExtractString(raw_data, 'occurred_at'))"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -469,16 +501,21 @@ fn a_field_aggregates_only_what_its_own_condition_matches() {
         .compile(&people())
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
+    let rendered = compiled.sql.render();
     assert!(
-        compiled
-            .sql
-            .contains("sumIf(`value`, `measure_key` = ?) AS `passed`"),
+        rendered.sql.contains(
+            "sumIf(`value`, `measure_key` = {filter:String}) AS `passed`, \
+             sumIf(`value`, `measure_key` = {filter_1:String}) AS `runs`"
+        ),
         "{}",
-        compiled.sql
+        rendered.sql
     );
     assert_eq!(
-        compiled.binds,
-        vec!["gate_passed".to_owned(), "gate_runs".to_owned()]
+        rendered.params,
+        [
+            named("filter", Param::string("gate_passed")),
+            named("filter_1", Param::string("gate_runs"))
+        ]
     );
 }
 
@@ -500,11 +537,11 @@ fn a_condition_on_a_count_needs_no_column() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled
-            .sql
-            .contains("countIf(JSONExtractString(raw_data, 'state') = ?) AS `merged`"),
+        compiled.text().contains(
+            "countIf(JSONExtractString(raw_data, 'state') = {filter:String}) AS `merged`"
+        ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -528,10 +565,10 @@ fn a_ratio_divides_two_of_the_querys_own_fields() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("(`passed` / nullIf(`runs`, 0)) AS `pass_rate`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -555,10 +592,10 @@ fn a_ratio_can_read_as_a_percentage() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("(100 * (`part` / nullIf(`whole`, 0))) AS `share`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert_eq!(compiled.percents, ["share"]);
 }
@@ -641,58 +678,31 @@ fn a_ratio_needs_exactly_two_fields_to_divide() {
 }
 
 #[test]
-fn a_field_condition_binds_before_the_query_wide_filters() {
-    let metric = query(json!({
-        "database": "insight",
-        "table": "ci_metric_observations",
-        "fields": [
-            { "column": "value", "type": "int", "agg": "sum", "as_name": "passed",
-              "when": [{ "column": "measure_key", "type": "string", "op": "eq",
-                         "value": "gate_passed" }] }
-        ],
-        "group_by": [],
-        "filters": [
-            { "column": "metric_date", "type": "string", "op": "gte",
-              "value": "2026-08-09" }
-        ]
-    }));
-
-    let compiled = metric
-        .compile(&people())
-        .unwrap_or_else(|error| panic!("compiles: {error}"));
-
-    assert_eq!(
-        compiled.binds,
-        vec!["gate_passed".to_owned(), "2026-08-09".to_owned()]
-    );
-}
-
-#[test]
 fn a_person_column_selects_the_name_identity_knows() {
     let compiled = merged_by_author("email")
         .compile(&people())
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains(
+        compiled.text().contains(
             "coalesce(nullIf(`__p0`.`display_name`, ''), `__f`.`author_email`) AS `author`"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
-        compiled.sql.contains(
+        compiled.text().contains(
             "LEFT JOIN __people_by_email AS `__p0` ON `__p0`.`handle` = `__f`.`author_email`"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
         compiled
-            .sql
+            .text()
             .contains("FROM `silver`.`class_git_pull_requests` AS `__f`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -703,11 +713,11 @@ fn the_latest_name_wins_before_anything_joins_to_it() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.starts_with(
+        compiled.text().starts_with(
             "WITH __person_name AS (SELECT `person_id`, argMax(`value_effective`, `created_at`) AS `display_name` FROM `identity`.`identity_persons` WHERE `value_type` = 'display_name' GROUP BY `person_id`)"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -718,16 +728,21 @@ fn resolving_a_name_qualifies_every_other_read() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("count(`__f`.`pr_id`) AS `merged`"),
+        compiled.text().contains("count(`__f`.`pr_id`) AS `merged`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
-        compiled.sql.contains("WHERE `__f`.`state` = ?"),
+        compiled
+            .text()
+            .contains("WHERE `__f`.`state` = {filter:String}"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert_eq!(compiled.binds, vec!["MERGED".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("filter", Param::string("MERGED"))]
+    );
 }
 
 #[test]
@@ -741,9 +756,9 @@ fn a_query_that_names_no_person_joins_nothing() {
     .compile(&people())
     .unwrap_or_else(|error| panic!("compiles: {error}"));
 
-    assert!(!compiled.sql.contains("WITH "), "{}", compiled.sql);
-    assert!(!compiled.sql.contains("JOIN"), "{}", compiled.sql);
-    assert!(!compiled.sql.contains("__f"), "{}", compiled.sql);
+    assert!(!compiled.text().contains("WITH "), "{}", compiled.text());
+    assert!(!compiled.text().contains("JOIN"), "{}", compiled.text());
+    assert!(!compiled.text().contains("__f"), "{}", compiled.text());
 }
 
 #[test]
@@ -761,18 +776,18 @@ fn a_person_id_is_compared_as_text() {
     .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains(
+        compiled.text().contains(
             "LEFT JOIN __people_by_id AS `__p0` ON `__p0`.`handle` = toString(`__f`.`author_person_id`)"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
         compiled
-            .sql
+            .text()
             .contains("__people_by_id AS (SELECT toString(`person_id`) AS `handle`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -791,13 +806,13 @@ fn two_person_columns_resolve_one_each() {
     .compile(&people())
     .unwrap_or_else(|error| panic!("compiles: {error}"));
 
-    assert!(compiled.sql.contains("AS `__p0`"), "{}", compiled.sql);
-    assert!(compiled.sql.contains("AS `__p1`"), "{}", compiled.sql);
+    assert!(compiled.text().contains("AS `__p0`"), "{}", compiled.text());
+    assert!(compiled.text().contains("AS `__p1`"), "{}", compiled.text());
     assert_eq!(
-        compiled.sql.matches("LEFT JOIN").count(),
+        compiled.text().matches("LEFT JOIN").count(),
         2,
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -817,10 +832,10 @@ fn a_person_inside_the_payload_resolves_the_same_way() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("ON `__p0`.`handle` = JSONExtractString(`__f`.raw_data, 'author')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -831,9 +846,11 @@ fn the_identity_database_is_whatever_the_stand_configured() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("`identity_two`.`identity_persons`"),
+        compiled
+            .text()
+            .contains("`identity_two`.`identity_persons`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -863,12 +880,12 @@ fn a_grouped_count_compiles_to_json_extraction_over_the_payload() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert_eq!(
-        compiled.sql,
+        compiled.text(),
         "SELECT JSONExtractString(raw_data, 'day') AS `day`, \
          sum(JSONExtractInt(raw_data, 'lines')) AS `lines` \
          FROM `events` GROUP BY `day` ORDER BY `day` LIMIT 100"
     );
-    assert!(compiled.binds.is_empty());
+    assert!(compiled.sql.render().params.is_empty());
 }
 
 #[test]
@@ -888,10 +905,13 @@ fn filters_bind_their_values() {
 
     assert!(
         compiled
-            .sql
-            .contains("WHERE JSONExtractString(raw_data, 'event') = ?")
+            .text()
+            .contains("WHERE JSONExtractString(raw_data, 'event') = {filter:String}")
     );
-    assert_eq!(compiled.binds, vec!["commit".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("filter", Param::string("commit"))]
+    );
 }
 
 #[test]
@@ -928,17 +948,17 @@ fn ordering_by_a_selected_value_beats_the_grouping_order() {
         .unwrap_or_else(|error| panic!("the query compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("ORDER BY `total_lines` DESC"),
+        compiled.text().contains("ORDER BY `total_lines` DESC"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert_eq!(
-        compiled.sql.matches("ORDER BY").count(),
+        compiled.text().matches("ORDER BY").count(),
         1,
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert!(compiled.sql.ends_with(" LIMIT 1"), "{}", compiled.sql);
+    assert!(compiled.text().ends_with(" LIMIT 1"), "{}", compiled.text());
 }
 
 #[test]
@@ -956,9 +976,9 @@ fn ordering_defaults_to_ascending() {
         .unwrap_or_else(|error| panic!("the query compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("ORDER BY `day` ASC"),
+        compiled.text().contains("ORDER BY `day` ASC"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -992,9 +1012,9 @@ fn counting_rows_needs_no_column() {
         .unwrap_or_else(|error| panic!("the query compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("count() AS `rows`"),
+        compiled.text().contains("count() AS `rows`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1012,9 +1032,9 @@ fn counting_one_column_still_names_it() {
         .unwrap_or_else(|error| panic!("the query compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("count(`author`) AS `n`"),
+        compiled.text().contains("count(`author`) AS `n`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1047,9 +1067,9 @@ fn a_table_written_with_its_database_is_read_as_both() {
         .unwrap_or_else(|error| panic!("the query compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("FROM `bronze_github`.`commits`"),
+        compiled.text().contains("FROM `bronze_github`.`commits`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert_eq!(metric.database(), Some("bronze_github"));
 }
@@ -1069,7 +1089,7 @@ fn a_database_field_wins_over_a_qualified_table() {
         metric
             .compile(&people())
             .unwrap_or_else(|error| panic!("the query compiles: {error}"))
-            .sql
+            .text()
             .contains("FROM `silver`.`class_git_commits`")
     );
 }
@@ -1116,7 +1136,10 @@ fn numeric_filters_bind_the_numeric_value_not_its_json_encoding() {
         .compile(&people())
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
-    assert_eq!(compiled.binds, vec!["5".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("filter", Param::int64(5))]
+    );
 }
 
 #[test]
@@ -1271,9 +1294,9 @@ fn a_database_qualifies_the_table() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("FROM `silver`.`git_commits`"),
+        compiled.text().contains("FROM `silver`.`git_commits`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1290,7 +1313,11 @@ fn a_query_without_a_database_still_reads_the_bare_table() {
         .compile(&people())
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
-    assert!(compiled.sql.contains("FROM `events`"), "{}", compiled.sql);
+    assert!(
+        compiled.text().contains("FROM `events`"),
+        "{}",
+        compiled.text()
+    );
 }
 
 #[test]
@@ -1306,11 +1333,15 @@ fn a_field_naming_a_column_reads_it_without_json_extraction() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("`lines_changed` AS `lines`"),
+        compiled.text().contains("`lines_changed` AS `lines`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert!(!compiled.sql.contains("JSONExtract"), "{}", compiled.sql);
+    assert!(
+        !compiled.text().contains("JSONExtract"),
+        "{}",
+        compiled.text()
+    );
 }
 
 #[test]
@@ -1328,9 +1359,9 @@ fn an_aggregate_wraps_a_column_as_it_wraps_an_extraction() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("sum(`lines_changed`) AS `total`"),
+        compiled.text().contains("sum(`lines_changed`) AS `total`"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1350,11 +1381,14 @@ fn a_filter_on_a_column_compares_it_and_still_binds_the_value() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains("WHERE `event` = ?"),
+        compiled.text().contains("WHERE `event` = {filter:String}"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert_eq!(compiled.binds, vec!["commit".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("filter", Param::string("commit"))]
+    );
 }
 
 #[test]
@@ -1432,10 +1466,10 @@ fn a_json_field_reads_the_payload_column_it_names() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("JSONExtractString(`field_values_json`, 'status')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1456,10 +1490,10 @@ fn a_dotted_json_path_reads_a_nested_key() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("JSONExtractString(raw_data, 'field', 'name')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1483,14 +1517,17 @@ fn a_where_picks_the_one_array_element_the_field_means() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled.sql.contains(
-            "JSONExtractString(arrayFirst(x -> JSONExtractString(x, 'field', 'name') = ?, \
+        compiled.text().contains(
+            "JSONExtractString(arrayFirst(x -> JSONExtractString(x, 'field', 'name') = {selected:String}, \
              JSONExtractArrayRaw(ifNull(`field_values_json`, ''))), 'name')"
         ),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert_eq!(compiled.binds, vec!["Status".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("selected", Param::string("Status"))]
+    );
 }
 
 #[test]
@@ -1511,17 +1548,17 @@ fn a_json_key_may_hold_the_spaces_and_sigils_a_payload_names_it_with() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains("JSONExtractString(raw_data, 'environment', 'Region Name')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
         compiled
-            .sql
+            .text()
             .contains("JSONExtractString(raw_data, '$type')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1542,15 +1579,15 @@ fn a_json_key_cannot_break_out_of_the_literal_that_carries_it() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .contains(r"JSONExtractString(raw_data, 'field', 'name\'); DROP TABLE events; --')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
 #[test]
-fn a_json_key_holding_a_placeholder_does_not_consume_a_bind() {
+fn a_json_key_holding_a_question_mark_is_read_as_it_is_written() {
     let metric = query(json!({
         "table": "events",
         "fields": [{ "json": "who?", "type": "string", "as_name": "who" }],
@@ -1564,12 +1601,15 @@ fn a_json_key_holding_a_placeholder_does_not_consume_a_bind() {
 
     assert!(
         compiled
-            .sql
-            .contains("JSONExtractString(raw_data, 'who??')"),
+            .text()
+            .contains("JSONExtractString(raw_data, 'who?')"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
-    assert_eq!(compiled.binds, vec!["open".to_owned()]);
+    assert_eq!(
+        compiled.sql.render().params,
+        [named("filter", Param::string("open"))]
+    );
 }
 
 #[test]
@@ -1626,8 +1666,12 @@ fn a_paged_read_of_a_metric_with_no_limit_of_its_own_is_neither_ordered_nor_cut(
         "group_by": ["day"]
     }));
 
-    assert!(!compiled.sql.contains(" ORDER BY "), "{}", compiled.sql);
-    assert!(!compiled.sql.contains(" LIMIT "), "{}", compiled.sql);
+    assert!(
+        !compiled.text().contains(" ORDER BY "),
+        "{}",
+        compiled.text()
+    );
+    assert!(!compiled.text().contains(" LIMIT "), "{}", compiled.text());
 }
 
 #[test]
@@ -1646,10 +1690,10 @@ fn a_paged_read_keeps_an_authored_limit_behind_a_total_order() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .ends_with(" ORDER BY `total` DESC, `day`, `author` LIMIT 50"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 
     let grouped_only = paged(json!({
@@ -1664,10 +1708,10 @@ fn a_paged_read_keeps_an_authored_limit_behind_a_total_order() {
 
     assert!(
         grouped_only
-            .sql
+            .text()
             .ends_with(" GROUP BY `day` ORDER BY `day`, `total` LIMIT 50"),
         "{}",
-        grouped_only.sql
+        grouped_only.text()
     );
 }
 
@@ -1686,10 +1730,10 @@ fn a_whole_read_is_cut_and_ordered_as_it_always_was() {
 
     assert!(
         compiled
-            .sql
+            .text()
             .ends_with(" GROUP BY `day` ORDER BY `day` LIMIT 1000"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 
@@ -1780,16 +1824,20 @@ fn a_paged_plain_read_over_a_dataset_carries_the_records_id_beside_the_columns()
         .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
         .unwrap_or_else(|error| panic!("compiles: {error}"));
     assert!(
-        paged.sql.contains(", `id` AS `__drilldown_record` FROM"),
+        paged.text().contains(", `id` AS `__drilldown_record` FROM"),
         "{}",
-        paged.sql
+        paged.text()
     );
     assert_eq!(paged.hidden(), ["__drilldown_record"]);
 
     let whole = plain
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("compiles: {error}"));
-    assert!(!whole.sql.contains("__drilldown_record"), "{}", whole.sql);
+    assert!(
+        !whole.text().contains("__drilldown_record"),
+        "{}",
+        whole.text()
+    );
 
     let paged_grouped = grouped
         .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
@@ -1822,10 +1870,10 @@ fn an_authored_limit_over_a_dataset_cuts_behind_the_records_id() {
 
     assert!(
         paged
-            .sql
+            .text()
             .ends_with(" ORDER BY `author`, `__drilldown_record` LIMIT 50"),
         "{}",
-        paged.sql
+        paged.text()
     );
 }
 
@@ -1842,14 +1890,16 @@ fn an_authored_limit_over_a_table_orders_by_its_columns_and_never_by_the_twin_nu
 
     assert!(compiled.numbered());
     assert!(
-        compiled.sql.ends_with(" ORDER BY `day`, `total` LIMIT 50"),
+        compiled
+            .text()
+            .ends_with(" ORDER BY `day`, `total` LIMIT 50"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
     assert!(
-        !compiled.sql.contains("__drilldown_twin"),
+        !compiled.text().contains("__drilldown_twin"),
         "{}",
-        compiled.sql
+        compiled.text()
     );
 }
 

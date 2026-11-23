@@ -1,20 +1,16 @@
 use std::fmt;
 use std::time::Duration;
 
+use insight_clickhouse::{Param, Sql, sql};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::engine::TableEngine;
 use super::field::coerce_value;
-use super::filter::FilterBind;
 use super::people::People;
 use super::{CompiledQuery, UndatedQuery};
 use crate::domain::query::undated::UndatedCount;
 
-const READ_ENGINE: &str = "SELECT engine FROM system.tables
-WHERE database = if(empty(?), currentDatabase(), ?) AND name = ?";
-const READ_UUID: &str = "SELECT toString(uuid) AS uuid FROM system.tables
-WHERE database = if(empty(?), currentDatabase(), ?) AND name = ?";
 const FETCH_TIMEOUT_SECS: u64 = 30;
 const MAX_RESULT_BYTES: usize = 5 * 1024 * 1024;
 
@@ -74,15 +70,11 @@ impl MetricRunner {
         database: Option<&str>,
         table: &str,
     ) -> Result<TableEngine, MetricRunError> {
-        let database = database.unwrap_or_default();
-        let rows = self
-            .client
-            .inner()
-            .query(READ_ENGINE)
-            .bind(database)
-            .bind(database)
-            .bind(table)
-            .fetch_all::<EngineRow>();
+        let read = sql!(
+            "SELECT engine FROM system.tables WHERE {named}",
+            named = named_table(database, table),
+        );
+        let rows = self.client.query_sql(&read).fetch_all::<EngineRow>();
         let found = tokio::time::timeout(self.fetch_timeout, rows)
             .await
             .map_err(|_| MetricRunError::Timeout)??;
@@ -97,14 +89,11 @@ impl MetricRunner {
         database: Option<&str>,
         table: &str,
     ) -> Result<Option<String>, MetricRunError> {
-        let database = database.unwrap_or_default();
-        let rows = self
-            .client
-            .query(READ_UUID)
-            .bind(database)
-            .bind(database)
-            .bind(table)
-            .fetch_all::<UuidRow>();
+        let read = sql!(
+            "SELECT toString(uuid) AS uuid FROM system.tables WHERE {named}",
+            named = named_table(database, table),
+        );
+        let rows = self.client.query_sql(&read).fetch_all::<UuidRow>();
         let found = tokio::time::timeout(self.fetch_timeout, rows)
             .await
             .map_err(|_| MetricRunError::Timeout)??;
@@ -114,10 +103,9 @@ impl MetricRunner {
 
     pub(crate) async fn page(
         &self,
-        sql: &str,
-        binds: &[FilterBind],
+        sql: &Sql,
     ) -> Result<Vec<serde_json::Map<String, serde_json::Value>>, MetricRunError> {
-        let bytes = self.fetch(sql, binds).await?;
+        let bytes = self.fetch(sql).await?;
         let parsed: ClickHouseJsonResult = serde_json::from_slice(&bytes)?;
 
         Ok(parsed.data)
@@ -127,13 +115,13 @@ impl MetricRunner {
         &self,
         query: &UndatedQuery,
     ) -> Result<UndatedCount, MetricRunError> {
-        let bytes = self.fetch(&query.sql, &query.binds).await?;
+        let bytes = self.fetch(&query.sql).await?;
 
         Ok(UndatedCount::parse(&bytes)?)
     }
 
     pub(crate) async fn run(&self, compiled: &CompiledQuery) -> Result<RunResult, MetricRunError> {
-        let bytes = self.fetch(&compiled.sql, &compiled.binds).await?;
+        let bytes = self.fetch(&compiled.sql).await?;
 
         let parsed: ClickHouseJsonResult = serde_json::from_slice(&bytes)?;
         let columns: Vec<String> = parsed.meta.into_iter().map(|column| column.name).collect();
@@ -163,12 +151,8 @@ impl MetricRunner {
         })
     }
 
-    async fn fetch(&self, sql: &str, binds: &[FilterBind]) -> Result<Vec<u8>, MetricRunError> {
-        let mut query = self.client.query(sql);
-        for bind in binds {
-            query = bind.bind_onto(query);
-        }
-        let mut cursor = query.fetch_bytes("JSON")?;
+    async fn fetch(&self, sql: &Sql) -> Result<Vec<u8>, MetricRunError> {
+        let mut cursor = self.client.query_sql(sql).fetch_bytes("JSON")?;
 
         let fetch = async {
             let mut bytes = Vec::new();
@@ -186,6 +170,14 @@ impl MetricRunner {
             .await
             .map_err(|_| MetricRunError::Timeout)?
     }
+}
+
+fn named_table(database: Option<&str>, table: &str) -> Sql {
+    sql!(
+        "database = if(empty({database}), currentDatabase(), {database}) AND name = {table}",
+        database = Param::string(database.unwrap_or_default()),
+        table = Param::string(table),
+    )
 }
 
 impl fmt::Debug for MetricRunner {

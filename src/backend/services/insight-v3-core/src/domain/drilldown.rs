@@ -135,7 +135,7 @@ impl<'a> Drilldowns<'a> {
             .map(|envelope| resumed(envelope, &fingerprint, &snapshot, &order))
             .transpose()?;
 
-        let (sql, binds) = paged::wrap(
+        let sql = paged::wrap(
             &prepared.compiled,
             &order,
             resume.as_ref(),
@@ -144,7 +144,7 @@ impl<'a> Drilldowns<'a> {
         );
         let mut rows = self
             .runner
-            .page(&sql, &binds)
+            .page(&sql)
             .await
             .map_err(|error| DrilldownError::Custom(CustomError::Run(error)))?;
 
