@@ -54,11 +54,9 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
   - The Insight content security policy must allow `blob:` scripts.
 - **Bumps.** 16 and 17.
 
-## 6. Tables are limited
+## 6. A table has one number format
 
-- **Insight now.** A table accepts an answer of any size. It shows the first 200 rows and a note such as "First 200 of 1,234". Each column has its own format. A percent column shows `24.3%` next to plain counts.
-- **FrontX.** The FrontX table widget, `grid`, accepts 500 rows or fewer. It has one `value_format` for all its columns.
-- **Why it fails.**
-  - An answer with more than 500 rows fails validation. The widget then shows an error in place of the table.
-  - A grid cannot format a percent column apart from plain number columns. The prototype writes the percent as text, and the column sorts as text.
-- **Bumps.** 24 and 25.
+- **Insight now.** Each column of a table has its own format. A percent column shows `24.3%` next to plain counts.
+- **FrontX.** The FrontX table widget, `grid`, has one `value_format` for all its columns.
+- **Why it fails.** A grid cannot format a percent column apart from plain number columns. The prototype writes the percent as text, and the column then sorts as text.
+- **Bumps.** 25.
