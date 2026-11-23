@@ -300,7 +300,7 @@ metadata:
   annotations: { insight.cyberfabric.com/connector: slack, insight.cyberfabric.com/source-id: slack-main }
 type: Opaque
 stringData:
-  slack_bot_token:  "xoxb-CHANGE_ME"
+  slack_user_token: "xoxp-CHANGE_ME"   # user token, not a bot token (xoxb-)
   slack_start_date: "2026-01-01"
 ```
 

@@ -1,7 +1,9 @@
 {{ config(
     materialized='incremental',
     unique_key='unique_key',
+    incremental_strategy='delete+insert',
     on_schema_change='append_new_columns',
+    engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
     schema='staging',
@@ -32,7 +34,7 @@ WITH newest_extract AS (
         toInt64(replyMessages) AS channel_replies,
         toInt64(urgentMessages) AS urgent_messages,
         reportPeriod AS report_period,
-        now() AS collected_at,
+        toDateTime(_airbyte_extracted_at) AS collected_at,
         'insight_m365' AS data_source,
         'email' AS account_source_type,
         '' AS account_source_id,
@@ -44,17 +46,13 @@ WITH newest_extract AS (
       AND userPrincipalName != ''
       AND {{ m365_day_was_reported('teams_activity') }}
     {% if is_incremental() %}
-      -- Watermark on the source EXTRACT time, not the business date (see zoom model header
-      -- for the backfill-strand failure mode this fixes). Re-pulled rows carry a fresh
-      -- `_airbyte_extracted_at`, so reprocess every business date touched by a recent extract.
-      AND (
-        (SELECT count() FROM {{ this }}) = 0
-        OR toDate(reportRefreshDate) IN (
-          SELECT DISTINCT toDate(reportRefreshDate)
-          FROM {{ source('bronze_m365', 'teams_activity') }}
-          WHERE _airbyte_extracted_at
-                > (SELECT max(_airbyte_extracted_at) FROM {{ source('bronze_m365', 'teams_activity') }}) - INTERVAL 3 DAY
-        )
+      -- INVARIANT: the window starts at the newest extract this model has already built for
+      -- the source instance, so days extracted while runs failed are built on the next run.
+      AND toDate(reportRefreshDate) IN (
+        SELECT DISTINCT toDate(reportRefreshDate)
+        FROM {{ source('bronze_m365', 'teams_activity') }}
+        WHERE _airbyte_extracted_at
+              > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
       )
     {% endif %}
     -- INVARIANT: Microsoft may return one account's UPN in a different letter case

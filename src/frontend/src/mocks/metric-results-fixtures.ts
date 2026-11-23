@@ -280,6 +280,17 @@ export const COLLAB_METRIC_FIXTURES: MetricResult[] = [
     ],
   },
   {
+    metric_key: "collab.chat_active_days",
+    label: "Chat Active Days",
+    unit: "days",
+    format: "integer",
+    direction: "neutral",
+    computation: "distinct_count",
+    views: [
+      { view: "period", values: [{ entity_id: "alice@example.com", value: 12 }] },
+    ],
+  },
+  {
     metric_key: "collab.active_days",
     label: "Active Days",
     unit: "days",

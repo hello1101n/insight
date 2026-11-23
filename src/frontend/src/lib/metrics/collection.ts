@@ -531,12 +531,13 @@ export function mergeNormalizedResults(
 }
 
 /**
- * Whether the entity has any observations for this metric. Period views
- * zero-fill sums for requested entities, so a zero alone cannot distinguish
- * "measured zero" from "unmeasured" — the peer view's `target_value` can
- * (null exactly when unobserved). Without a peer row (no peer view, or no
- * cohort membership), a non-null non-zero period value still proves
- * observation; a zero-filled one does not.
+ * Whether the entity has any observations for this metric. The period view
+ * returns null for an entity the scan never saw, but some gold models
+ * zero-fill every member every day (Slack), so a zero alone cannot
+ * distinguish "measured zero" from "unmeasured" — the peer view's
+ * `target_value` can (null exactly when unobserved). Without a peer row (no
+ * peer view, or no cohort membership), a non-null non-zero period value still
+ * proves observation; a zero does not.
  */
 export function entityObserved(
   result: NormalizedMetricResult,

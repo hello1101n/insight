@@ -42,7 +42,7 @@ TODAY = date(2026, 10, 4)  # today - 2 days = 2026-10-02
 CONFIG = {
     "insight_tenant_id": "test-tenant",
     "insight_source_id": "slack-test",
-    "slack_bot_token": "xoxp-test-token",
+    "slack_user_token": "xoxp-test-token",
     "slack_start_date": "2026-10-01",
 }
 

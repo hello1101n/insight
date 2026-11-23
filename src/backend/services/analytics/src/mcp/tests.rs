@@ -119,6 +119,7 @@ fn mcp_config() -> McpConfig {
         enabled: true,
         bind_addr: "127.0.0.1:0".to_owned(),
         public_url: "http://localhost:3000".to_owned(),
+        jwks_url: String::new(),
         allow_insecure_private_network: false,
         max_concurrent_queries: 2,
         clickhouse_user: "test_mcp".to_owned(),
@@ -296,7 +297,7 @@ async fn verifier_accepts_admin_tokens_and_rejects_other_claims() -> anyhow::Res
         }),
     );
     let (issuer, server) = spawn_app(app).await?;
-    let verifier = TokenVerifier::new(&issuer, false)?;
+    let verifier = TokenVerifier::new(&issuer, "", false)?;
 
     let valid = sign(&material, &claims(&issuer)?)?;
     assert!(verifier.verify(&valid).await.is_ok());
@@ -344,6 +345,42 @@ async fn verifier_accepts_admin_tokens_and_rejects_other_claims() -> anyhow::Res
 }
 
 #[tokio::test]
+async fn keys_come_from_the_configured_jwks_url_while_tokens_still_name_the_public_origin()
+-> anyhow::Result<()> {
+    let material = signing_material()?;
+    let app = axum::Router::new().route(
+        "/.well-known/jwks.json",
+        get({
+            let jwks = material.jwks.clone();
+            move || {
+                let jwks = jwks.clone();
+                async move { Json(jwks) }
+            }
+        }),
+    );
+    let (internal, server) = spawn_app(app).await?;
+    let public = "https://insight.example.invalid";
+    let token = sign(&material, &claims(public)?)?;
+
+    let configured =
+        TokenVerifier::new(public, &format!("{internal}/.well-known/jwks.json"), false)?;
+    assert!(configured.verify(&token).await.is_ok());
+    let issued_for_internal = sign(&material, &claims(&internal)?)?;
+    assert!(matches!(
+        configured.verify(&issued_for_internal).await,
+        Err(super::AuthFailure::Unauthorized)
+    ));
+
+    let derived = TokenVerifier::new(public, "", false)?;
+    assert!(matches!(
+        derived.verify(&token).await,
+        Err(super::AuthFailure::Unavailable)
+    ));
+    server.abort();
+    Ok(())
+}
+
+#[tokio::test]
 async fn auth_middleware_returns_oauth_challenges() -> anyhow::Result<()> {
     let material = signing_material()?;
     let app = axum::Router::new().route(
@@ -357,7 +394,7 @@ async fn auth_middleware_returns_oauth_challenges() -> anyhow::Result<()> {
         }),
     );
     let (issuer, server) = spawn_app(app).await?;
-    let verifier = TokenVerifier::new(&issuer, false)?;
+    let verifier = TokenVerifier::new(&issuer, "", false)?;
     let protected = axum::Router::new()
         .route("/", get(|| async { StatusCode::NO_CONTENT }))
         .layer(axum::middleware::from_fn_with_state(
@@ -441,7 +478,7 @@ async fn concurrent_jwks_misses_share_one_refresh() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
-    let verifier = TokenVerifier::new(&format!("http://{address}"), false)?;
+    let verifier = TokenVerifier::new(&format!("http://{address}"), "", false)?;
 
     let (first, second) = tokio::join!(verifier.cached_jwks(), verifier.cached_jwks());
 
