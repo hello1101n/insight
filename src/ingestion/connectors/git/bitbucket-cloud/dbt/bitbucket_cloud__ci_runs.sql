@@ -50,8 +50,11 @@ WITH pipeline_attempts AS (
         duration_in_seconds,
         _airbyte_extracted_at
     FROM {{ source('bronze_bitbucket_cloud', 'pipelines') }} FINAL
+    -- INVARIANT: selector_type is NULL only in a row stored before 7.11.0. That
+    -- row has no pipeline or trigger, so it waits until a sync reads it again.
+    WHERE selector_type IS NOT NULL
     {% if is_incremental() %}
-    WHERE _airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at') }}
+        AND _airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at') }}
     {% endif %}
 )
 

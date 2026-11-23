@@ -75,7 +75,9 @@ name: bitbucket-cloud
 #   MINOR per ADR-0015: the catalog gains columns and cursors, so reconcile
 #   must republish the connection; saved state names the old cursor and is
 #   ignored, so a repository's pipelines and deployments are read from the
-#   start date again at its next visit, and stored rows keep their meaning.
+#   start date again at its next visit. A row stored before this version has
+#   no selector or environment, and the CI classes leave it out until that
+#   read replaces it.
 version: "7.11.0"
 # Every four hours, off the hours other connectors use: replication pods sharing
 # a slot with other connector syncs can be starved of workers, which surfaces as

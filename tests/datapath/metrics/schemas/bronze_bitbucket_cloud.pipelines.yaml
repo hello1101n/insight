@@ -34,3 +34,4 @@ schemas:
       created_on: { type: [string, "null"] }
       run_creation_date: { type: [string, "null"] }
       completed_on: { type: [string, "null"] }
+      changed_on: { type: [string, "null"] }

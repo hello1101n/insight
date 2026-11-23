@@ -18,7 +18,8 @@ description: >
   run; one pull-request run that passed; one tag push that passed → gate 8,
   passed 5 → 62.5%. A schedule run, a manual run, an on-demand run and a
   stopped push are decided outside the gate; a halted and a pending push are
-  undecided and appear nowhere.
+  undecided and appear nowhere. A passed push stored before connector 7.11.0
+  has no selector and appears nowhere until a sync reads it again.
   Cases: gate definition and per-pipeline split (62.5%; main 50%, the
   pull-request and tag pipelines 100%); runs by trigger and the rerun dated
   at its last start; the rerun is a retry and not a first-try pass.
@@ -123,3 +124,14 @@ bronze:
       run_creation_date: null
       completed_on: null
       duration_in_seconds: null
+    - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
+      unique_key: bb-pipe-15
+      uuid: "{pipe-15}"
+      build_number: 15
+      run_number: null
+      state_stage: null
+      target_type: null
+      selector_type: null
+      selector_pattern: null
+      source_branch: null
+      run_creation_date: null

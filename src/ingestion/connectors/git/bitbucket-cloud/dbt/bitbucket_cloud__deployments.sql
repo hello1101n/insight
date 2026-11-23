@@ -26,6 +26,9 @@ SELECT
     _airbyte_extracted_at
 FROM {{ source('bronze_bitbucket_cloud', 'deployments') }} FINAL
 WHERE COALESCE(state_name, '') != 'UNDEPLOYED'
+    -- INVARIANT: environment_type is NULL only in a row stored before 7.11.0. That
+    -- row has no environment, so it waits until a sync reads it again.
+    AND environment_type IS NOT NULL
 {% if is_incremental() %}
     AND _airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at') }}
 {% endif %}
