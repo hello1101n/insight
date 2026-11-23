@@ -23,12 +23,12 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
   - The series names, such as "ok" and "failed", come only with the data. The dashboard definition must name them before the data arrives.
 - **Bumps.** 2 and 3.
 
-## 3. The larger view opens under the sidebar
+## 3. Overlays open inside the dashboard, not over the page
 
-- **Insight now.** The dialog of an expanded widget opens above the full page.
-- **FrontX.** The root draws the larger view inside its own dashboard element. The larger view then keeps the dashboard theme.
-- **Why it fails.** The Insight shell puts the content area in its own stacking context. The stacking context keeps the sticky top bar under the sidebar. No element in the content area can show above the sidebar.
-- **Fix.** A new `overlayContainer` prop lets the host pass `document.body` as the container of the larger view. The pull request itechmeat/gears-frontx-templates#1 adds the prop. It has no review yet.
+- **Insight now.** A dialog, such as the larger view of a widget, opens on the page body. It shows above the sidebar and the rest of the page.
+- **FrontX.** FrontX draws its overlays inside its own elements. The root draws the larger view inside the dashboard element. Each widget draws its overlays inside its own container.
+- **Why it fails.** The Insight shell puts the content area in its own stacking context. No overlay inside the content area can show above the sidebar. The larger view opens under the sidebar.
+- **Fix.** The pull request itechmeat/gears-frontx-templates#1 adds an `overlayContainer` prop for the larger view. A new full-page overlay in FrontX needs the same fix.
 - **Bumps.** 20.
 
 ## 4. The page is slower and heavier
