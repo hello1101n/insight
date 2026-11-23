@@ -14,13 +14,12 @@ use crate::domain::admission::StageRow;
 use crate::infra::{cluster::Cluster, identity::IdentityClient};
 
 async fn pod_exits(State(query_running): State<Arc<AtomicBool>>) -> Json<Value> {
-    // The pod submits its last query immediately before disappearing from Kubernetes.
     query_running.store(true, Ordering::SeqCst);
     Json(json!({"apiVersion":"v1","kind":"PodList","metadata":{},"items":[]}))
 }
 
 async fn query_evidence(State(query_running): State<Arc<AtomicBool>>) -> Vec<u8> {
-    // RowBinary fields in QueryEvidence order. An earlier metadata query already completed.
+    // RowBinary fields in QueryEvidence order.
     [
         u64::from(query_running.load(Ordering::SeqCst)),
         1,

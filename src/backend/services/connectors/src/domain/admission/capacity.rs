@@ -264,7 +264,7 @@ pub(super) struct QueryEvidence {
 }
 
 fn evidence_query(processes: &str, query_log: &str) -> String {
-    // A logged peak is an upper bound over the query lifetime. Endpoints keep sequential peaks separate.
+    // A logged peak is an upper bound over the query lifetime.
     format!(
         "SELECT sum(running) AS running, max(peak) AS peak, sum(completed) AS completed,
                 sum(bytes) AS bytes, sum(records) AS records, sum(cpu_millis) AS cpu_millis,

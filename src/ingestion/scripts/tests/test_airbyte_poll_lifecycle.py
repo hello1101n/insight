@@ -175,7 +175,6 @@ def test_managed_poller_recovers_its_existing_job_after_a_long_outage(run_poll, 
         return original(url, token, action, job_id)
 
     monkeypatch.setattr(poll, "airbyte_job", get)
-    # A readable response for a different Job is still no observation of 123.
     mismatched = {"job": {"id": 124, "status": "failed"}}
     succeeded = {"job": {"id": 123, "status": "succeeded"}, "attempts": [{"attempt": {"streamStats": [{}]}}]}
     result, elapsed = run_poll([OSError("offline")] * 10 + [mismatched, succeeded])

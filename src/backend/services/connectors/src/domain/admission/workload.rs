@@ -409,7 +409,6 @@ async fn register(
     let facts = auth(&state, &headers, &req, Caller::Gate).await?;
     req.custom_selection = facts.custom_selection;
     req.bronze_volume = facts.bronze_volume;
-    // A burst of arrivals shares the worker's batched admission pass.
     let usable = if let Ok(_permit) = capacity_probe.try_acquire() {
         capacity::sample(&state).await.unwrap_or_else(|e| {
             tracing::warn!(error=%e,"ingestion capacity unavailable");
