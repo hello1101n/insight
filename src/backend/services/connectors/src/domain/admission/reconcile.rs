@@ -1,4 +1,4 @@
-mod airbyte;
+pub(super) mod airbyte;
 mod nodes;
 pub(super) use nodes::bronze_volume;
 pub(super) mod placement;
@@ -338,6 +338,7 @@ async fn vanished(state: &AppState, http: &reqwest::Client, row: &StageRow) -> R
             o.run_finished_at = o.finished_at;
         }
     } else {
+        o.airbyte_job_id = recover_launch(state, http, row).await?;
         o.status = Some("checking_start".into());
         o.reason = Some("workflow_not_found".into());
     }
@@ -396,6 +397,22 @@ fn waiting_for_node(sample: &pods::Sample) -> bool {
     sample.unscheduled && !sample.assigned && !sample.working && sample.started.is_none()
 }
 
+async fn recover_launch(
+    state: &AppState,
+    http: &reqwest::Client,
+    row: &StageRow,
+) -> Result<Option<String>> {
+    let (Some(previous), Some(connection)) =
+        (row.airbyte_previous_job, row.connection_id.as_deref())
+    else {
+        return Ok(None);
+    };
+    let job = airbyte::recent_jobs(state, http, connection)
+        .await?
+        .new_job(previous);
+    Ok(job.map(|id| id.to_string()))
+}
+
 async fn observed_node<'a>(
     state: &AppState,
     http: &reqwest::Client,
@@ -421,6 +438,14 @@ async fn observed_node<'a>(
         (nodes::work(status, row), None)
     };
     if bronze
+        && row.airbyte_claimed
+        && row.airbyte_job_id.is_none()
+        && o.airbyte_job_id.is_none()
+        && row.status == "checking_start"
+    {
+        o.airbyte_job_id = recover_launch(state, http, row).await?;
+    }
+    if bronze
         && job.is_none()
         && row.airbyte_job_id.is_some()
         && (terminal
@@ -433,6 +458,17 @@ async fn observed_node<'a>(
         o.volume_bytes = r.bytes;
     }
     Ok((node, job))
+}
+
+fn record_pod_usage(o: &mut Observation, pod: &pods::Sample) {
+    o.pod_cpu_millis = pod.cpu;
+    o.pod_peak_bytes = pod.memory;
+    o.source_peak_bytes = pod.source_memory;
+    o.source_cpu_millis = pod.source_cpu;
+    o.source_oom_limit_bytes = pod.source_oom_limit;
+    if pod.oom.is_some() {
+        o.reason.clone_from(&pod.oom);
+    }
 }
 
 async fn observe_work(
@@ -448,16 +484,12 @@ async fn observe_work(
     let job = receipt.as_ref().map(|r| r.status.as_str());
     // A terminating pod can submit its last query until it stops.
     let pod = pods::observe(state, row).await?;
+    let placement_blocked =
+        pod.placement_blocked || (!bronze && !pod.present && nodes::quota_wait(node));
+    o.placement_blocked = Some(placement_blocked && row.started_at.is_none());
     let evidence = capacity::evidence(state, row).await?;
     query_usage(&mut o, &evidence, bronze);
-    o.pod_cpu_millis = pod.cpu;
-    o.pod_peak_bytes = pod.memory;
-    o.source_peak_bytes = pod.source_memory;
-    o.source_cpu_millis = pod.source_cpu;
-    o.source_oom_limit_bytes = pod.source_oom_limit;
-    if pod.oom.is_some() {
-        o.reason.clone_from(&pod.oom);
-    }
+    record_pod_usage(&mut o, &pod);
     let node_phase = node.and_then(|n| n["phase"].as_str()).unwrap_or("");
     let completed = job.map_or_else(
         || !bronze && matches!(node_phase, "Succeeded" | "Failed" | "Error"),
@@ -529,8 +561,11 @@ async fn observe_work(
         )
     {
         o.status = Some("placement_overdue".into());
-    } else if pod.pending || (!bronze && !pod.present && nodes::quota_wait(node)) {
+    } else if placement_blocked {
         o.status = Some("waiting_pod".into());
+    } else if pod.pending || row.status == "waiting_pod" && !pod.working && node_phase != "Running"
+    {
+        o.status = Some("starting".into());
     } else if pod.working || !bronze && node_phase == "Running" {
         o.status = Some(if bronze { "loading" } else { "transforming" }.into());
     } else if bronze && row.airbyte_job_id.is_some() && row.started_at.is_none() && !terminal {

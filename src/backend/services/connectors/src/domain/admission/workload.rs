@@ -449,16 +449,37 @@ async fn claim(
     Json(body): Json<ClaimRequest>,
 ) -> Result<Json<Claim>, StatusCode> {
     auth(&state, &headers, &body.req, Caller::Trigger).await?;
-    store::airbyte(
-        &state.db,
-        &state.cluster.namespace,
-        &state.cluster.tenant_id,
-        &body.req,
-        AirbyteWrite::Claim(body.sender),
-    )
-    .await
-    .map(Json)
-    .map_err(outcome)
+    let claim = |boundary| {
+        store::airbyte(
+            &state.db,
+            &state.cluster.namespace,
+            &state.cluster.tenant_id,
+            &body.req,
+            AirbyteWrite::Claim(body.sender, boundary),
+        )
+    };
+    let existing = claim(None).await.map_err(outcome)?;
+    if existing.decision != "prepare" {
+        return Ok(Json(existing));
+    }
+    let connection = body
+        .req
+        .connection_id
+        .as_deref()
+        .ok_or(StatusCode::CONFLICT)?;
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let history = super::reconcile::airbyte::recent_jobs(&state, &http, connection).await.map_err(|error| {
+        tracing::warn!(%error, %connection, "could not read Airbyte sync history before launch");
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    let boundary = history
+        .before_send()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    claim(Some(boundary)).await.map(Json).map_err(outcome)
 }
 #[derive(Deserialize)]
 struct Receipt {

@@ -16,7 +16,7 @@ const GRANTS_PER_CYCLE: usize = 32;
 
 // Wait for the database write lock without using up the pool needed by readers.
 static WRITE_QUEUE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
-const FIELDS: &str = "s.id,s.sync_id,r.workflow_name,r.connector,r.source_id,s.reason,s.stage,s.attempt,s.status,s.decision,s.estimated_bytes,(s.cold OR (s.custom_selection IS NULL AND s.stage IN ('transform-jira-staging','transform-jira-silver'))) AS cold,s.queued_at,s.started_at,s.finished_at,s.granted_at,s.airbyte_job_id,s.connection_id,s.airbyte_claimed";
+const FIELDS: &str = "s.id,s.sync_id,r.workflow_name,r.connector,r.source_id,s.reason,s.stage,s.attempt,s.status,s.decision,s.estimated_bytes,(s.cold OR (s.custom_selection IS NULL AND s.stage IN ('transform-jira-staging','transform-jira-silver'))) AS cold,s.queued_at,s.started_at,s.finished_at,s.granted_at,s.airbyte_job_id,s.connection_id,s.airbyte_claimed,s.airbyte_previous_job";
 const JOIN: &str = " FROM ingestion_stage_attempts s JOIN ingestion_runs r ON r.sync_id=s.sync_id ";
 const TERMINAL: &str = "'succeeded','failed','cancelled','wait_timeout'";
 
@@ -76,6 +76,7 @@ struct Saved {
     pod_memory: u64,
     airbyte_claimed: bool,
     airbyte_sender: Option<String>,
+    airbyte_previous_job: Option<u64>,
     airbyte_job_id: Option<String>,
 }
 
@@ -111,7 +112,7 @@ async fn saved(
     stand: &str,
     tenant: &str,
 ) -> Result<Option<Saved>, WriteError> {
-    let row=Saved::find_by_statement(sql(format!("SELECT r.mode_signature,s.status AS state,s.decision,s.pod_cpu,s.pod_memory,r.status AS run_status,r.stand,r.tenant,r.source_id,r.connector,r.workflow_name,s.connection_id,s.airbyte_claimed,s.airbyte_job_id,s.airbyte_sender
+    let row=Saved::find_by_statement(sql(format!("SELECT r.mode_signature,s.status AS state,s.decision,s.pod_cpu,s.pod_memory,r.status AS run_status,r.stand,r.tenant,r.source_id,r.connector,r.workflow_name,s.connection_id,s.airbyte_claimed,s.airbyte_job_id,s.airbyte_sender,s.airbyte_previous_job
               {JOIN}
               WHERE s.sync_id=?
               AND s.stage=?
@@ -616,7 +617,11 @@ pub(crate) async fn observe(
     let tx = locked(db, stand).await?;
     tx.execute_raw(sql(format!("UPDATE ingestion_stage_attempts s
               INNER JOIN ingestion_runs r ON r.sync_id=s.sync_id
-              SET s.status=COALESCE(?,s.status),
+              SET s.placement_waits=CASE
+                    WHEN ? IS NOT NULL AND ? <> MOD(COALESCE(JSON_LENGTH(s.placement_waits),0),2)
+                    THEN JSON_ARRAY_APPEND(COALESCE(s.placement_waits,JSON_ARRAY()), '$', CAST(UNIX_TIMESTAMP(UTC_TIMESTAMP(3))*1000 AS SIGNED))
+                    ELSE s.placement_waits END,
+                  s.status=COALESCE(?,s.status),
                   s.started_at=COALESCE(s.started_at,?),
                   s.finished_at=COALESCE(s.finished_at,?),
                   s.reason=COALESCE(?,s.reason),
@@ -637,6 +642,8 @@ pub(crate) async fn observe(
               AND s.airbyte_claimed=?
               AND s.status NOT IN ({TERMINAL})
               AND (s.airbyte_job_id IS NULL OR ? IS NULL OR s.airbyte_job_id=?)"),vec![
+            o.placement_blocked.into(),
+            o.placement_blocked.into(),
             o.status.into(),
             o.started_at.into(),
             o.finished_at.into(),
@@ -708,7 +715,7 @@ pub(crate) struct Claim {
     pub job_id: Option<String>,
 }
 pub(crate) enum AirbyteWrite<'a> {
-    Claim(Option<uuid::Uuid>),
+    Claim(Option<uuid::Uuid>, Option<u64>),
     Receipt(&'a str),
 }
 pub(crate) async fn airbyte(
@@ -725,9 +732,9 @@ pub(crate) async fn airbyte(
     if req.stage != "bronze" || s.state == "queued" || s.connection_id.is_none() {
         return Err(WriteError::Conflict);
     }
-    let (sender, job_id) = match operation {
-        AirbyteWrite::Claim(sender) => (sender.map(|id| id.to_string()), None),
-        AirbyteWrite::Receipt(job) => (None, Some(job)),
+    let (sender, boundary, job_id) = match operation {
+        AirbyteWrite::Claim(sender, boundary) => (sender.map(|id| id.to_string()), boundary, None),
+        AirbyteWrite::Receipt(job) => (None, None, Some(job)),
     };
     let params = key(req);
     let (decision, job) = if let Some(job) = s.airbyte_job_id {
@@ -736,7 +743,10 @@ pub(crate) async fn airbyte(
         }
         ("poll", Some(job))
     } else if let Some(job) = job_id {
-        if !s.airbyte_claimed {
+        if !s.airbyte_claimed
+            || s.airbyte_previous_job
+                .is_some_and(|previous| job.parse::<u64>().map_or(true, |id| id <= previous))
+        {
             return Err(WriteError::Conflict);
         }
         let owner = tx
@@ -756,6 +766,8 @@ pub(crate) async fn airbyte(
         } else {
             ("verify", None)
         }
+    } else if boundary.is_none() {
+        ("prepare", None)
     } else {
         let other = tx
             .query_one_raw(sql(
@@ -776,11 +788,11 @@ pub(crate) async fn airbyte(
         }
         tx.execute_raw(sql(
             "UPDATE ingestion_stage_attempts
-              SET airbyte_claimed=1, airbyte_sender=?
+              SET airbyte_claimed=1, airbyte_sender=?, airbyte_previous_job=?
               WHERE sync_id=?
               AND stage=?
               AND attempt=?",
-            [vec![sender.into()], params].concat(),
+            [vec![sender.into(), boundary.into()], params].concat(),
         ))
         .await?;
         ("send", None)

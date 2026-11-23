@@ -214,12 +214,14 @@ pub(super) fn bronze<'a>(
     o: &mut Observation,
 ) -> (Option<&'a Value>, Option<super::airbyte::Completion>) {
     let trigger = trigger(status, row);
-    let id = trigger
-        .and_then(|n| n["outputs"]["result"].as_str())
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .map(|id| id.to_string());
-    if row.airbyte_job_id.is_none() && row.airbyte_claimed && id.is_some() {
-        o.airbyte_job_id = id;
+    if row.airbyte_job_id.is_none() && row.airbyte_claimed {
+        let previous = row.airbyte_previous_job.unwrap_or(0);
+        let newer = |id: &str| id.trim().parse::<u64>().ok().filter(|n| *n > previous);
+        o.airbyte_job_id = trigger
+            .and_then(|n| n["outputs"]["result"].as_str())
+            .and_then(newer)
+            .or_else(|| o.airbyte_job_id.as_deref().and_then(newer))
+            .map(|id| id.to_string());
     }
     let Some(id) = row.airbyte_job_id.as_ref().or(o.airbyte_job_id.as_ref()) else {
         return (None, None);
@@ -301,6 +303,7 @@ mod tests {
             airbyte_job_id: None,
             connection_id: Some("conn".into()),
             airbyte_claimed: true,
+            airbyte_previous_job: None,
         }
     }
 
@@ -381,6 +384,10 @@ mod tests {
         let mut observed = Observation::default();
         bronze(&status, &row(), &mut observed);
         assert_eq!(observed.airbyte_job_id.as_deref(), Some("901"));
+        let mut current = row();
+        current.airbyte_previous_job = Some(901);
+        bronze(&status, &current, &mut observed);
+        assert!(observed.airbyte_job_id.is_none());
     }
 
     #[test]

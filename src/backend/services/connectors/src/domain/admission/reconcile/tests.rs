@@ -111,6 +111,7 @@ fn running_stage() -> StageRow {
         airbyte_job_id: None,
         connection_id: None,
         airbyte_claimed: false,
+        airbyte_previous_job: None,
     }
 }
 

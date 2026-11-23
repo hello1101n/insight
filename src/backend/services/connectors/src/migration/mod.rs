@@ -7,6 +7,9 @@ mod m20261121_000001_admission_indexes;
 mod m20261121_000002_airbyte_sender;
 mod m20261121_000003_custom_selection;
 
+mod m20261123_000001_placement_waits;
+mod m20261123_000002_airbyte_previous_job;
+
 use sea_orm_migration::prelude::*;
 
 #[derive(Debug)]
@@ -23,6 +26,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261121_000001_admission_indexes::Migration),
             Box::new(m20261121_000002_airbyte_sender::Migration),
             Box::new(m20261121_000003_custom_selection::Migration),
+            Box::new(m20261123_000001_placement_waits::Migration),
+            Box::new(m20261123_000002_airbyte_previous_job::Migration),
         ]
     }
 }

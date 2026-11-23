@@ -15,6 +15,7 @@ use kube::{
 pub(super) struct Sample {
     pub present: bool,
     pub pending: bool,
+    pub placement_blocked: bool,
     indeterminate: bool,
     pub unscheduled: bool,
     pub assigned: bool,
@@ -222,6 +223,18 @@ pub(super) async fn observe(state: &AppState, row: &StageRow) -> Result<Sample> 
         s.assigned |= pod.spec.as_ref().is_some_and(|p| p.node_name.is_some());
         s.unscheduled |= status.phase.as_deref() == Some("Pending")
             && pod.spec.as_ref().is_some_and(|p| p.node_name.is_none());
+        s.placement_blocked |= status.phase.as_deref() == Some("Pending")
+            && pod.spec.as_ref().is_some_and(|p| p.node_name.is_none())
+            && status
+                .conditions
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .any(|c| {
+                    c.type_ == "PodScheduled"
+                        && c.status == "False"
+                        && c.reason.as_deref() == Some("Unschedulable")
+                });
         let running = status.phase.as_deref() == Some("Running");
         s.working |= running;
         s.pending |= status.phase.as_deref() == Some("Pending");

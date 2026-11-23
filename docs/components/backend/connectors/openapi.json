@@ -534,9 +534,16 @@
           },
           "status": {
             "type": "string"
+          },
+          "waits": {
+            "items": {
+              "$ref": "#/components/schemas/StageWait"
+            },
+            "type": "array"
           }
         },
         "required": [
+          "waits",
           "stage",
           "attempt",
           "status",
@@ -694,6 +701,29 @@
           "total"
         ],
         "type": "string"
+      },
+      "StageWait": {
+        "properties": {
+          "ended_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "started_at"
+        ],
+        "type": "object"
       },
       "SyncFact": {
         "properties": {

@@ -38,11 +38,31 @@ pub(super) async fn terminal_job(
     http: &reqwest::Client,
     row: &StageRow,
 ) -> Result<Option<Completion>> {
-    let config = &state.cluster.airbyte_reader;
     let Some(job) = row.airbyte_job_id.as_deref() else {
         return Ok(None);
     };
     let job: u64 = job.parse()?;
+    let (base, token) = credentials(state, http).await?;
+    let response = http
+        .post(base.join("/api/v1/jobs/get")?)
+        .bearer_auth(token)
+        .json(&json!({"id":job}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Value>()
+        .await?;
+    confirmed(
+        &response,
+        job,
+        row.connection_id
+            .as_deref()
+            .context("missing Airbyte connection")?,
+    )
+}
+
+async fn credentials(state: &AppState, http: &reqwest::Client) -> Result<(url::Url, String)> {
+    let config = &state.cluster.airbyte_reader;
     let base = url::Url::parse(&config.url)?;
     ensure!(
         matches!(base.scheme(), "https" | "http"),
@@ -69,22 +89,77 @@ pub(super) async fn terminal_job(
     let token = auth["access_token"]
         .as_str()
         .context("missing Airbyte access token")?;
-    let response = http
-        .post(base.join("/api/v1/jobs/get")?)
+    Ok((base, token.to_owned()))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobSummary {
+    job_id: u64,
+    connection_id: String,
+    job_type: String,
+    status: String,
+}
+
+#[derive(serde::Deserialize)]
+pub(in crate::domain::admission) struct RecentJobs {
+    data: Vec<JobSummary>,
+    next: Option<String>,
+}
+
+impl RecentJobs {
+    fn validate(&self, connection: &str) -> Result<()> {
+        ensure!(
+            self.data.len() <= 2
+                && (self.data.len() == 2 || self.next.is_none())
+                && self
+                    .data
+                    .iter()
+                    .all(|j| j.job_id > 0 && j.connection_id == connection && j.job_type == "sync")
+                && self.data.windows(2).all(|w| w[0].job_id > w[1].job_id),
+            "unexpected Airbyte sync history"
+        );
+        Ok(())
+    }
+
+    pub(in crate::domain::admission) fn before_send(&self) -> Option<u64> {
+        self.data
+            .iter()
+            .all(|j| matches!(j.status.as_str(), "succeeded" | "failed" | "cancelled"))
+            .then(|| self.data.first().map_or(0, |j| j.job_id))
+    }
+
+    pub(super) fn new_job(&self, previous: u64) -> Option<u64> {
+        match self.data.as_slice() {
+            [new] if previous == 0 && self.next.is_none() => Some(new.job_id),
+            [new, old] if old.job_id == previous => Some(new.job_id),
+            _ => None,
+        }
+    }
+}
+
+pub(in crate::domain::admission) async fn recent_jobs(
+    state: &AppState,
+    http: &reqwest::Client,
+    connection: &str,
+) -> Result<RecentJobs> {
+    let (base, token) = credentials(state, http).await?;
+    let jobs = http
+        .get(base.join("/api/public/v1/jobs")?)
         .bearer_auth(token)
-        .json(&json!({"id":job}))
+        .query(&[
+            ("connectionId", connection),
+            ("jobType", "sync"),
+            ("limit", "2"),
+            ("orderBy", "createdAt|DESC"),
+        ])
         .send()
         .await?
         .error_for_status()?
-        .json::<Value>()
+        .json::<RecentJobs>()
         .await?;
-    confirmed(
-        &response,
-        job,
-        row.connection_id
-            .as_deref()
-            .context("missing Airbyte connection")?,
-    )
+    jobs.validate(connection)?;
+    Ok(jobs)
 }
 
 fn confirmed(response: &Value, job: u64, connection: &str) -> Result<Option<Completion>> {
@@ -114,6 +189,44 @@ fn confirmed(response: &Value, job: u64, connection: &str) -> Result<Option<Comp
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn history(rows: &[(u64, &str)]) -> Result<RecentJobs> {
+        let data: Vec<_> = rows
+            .iter()
+            .map(|(id, status)| {
+                json!({
+                    "jobId":id, "connectionId":"jira", "jobType":"sync", "status":status
+                })
+            })
+            .collect();
+        Ok(serde_json::from_value(json!({"data":data,"next":null}))?)
+    }
+
+    #[test]
+    fn launch_requires_idle_history_and_recovery_requires_one_new_sync() -> Result<()> {
+        assert_eq!(history(&[])?.before_send(), Some(0));
+        assert_eq!(history(&[])?.new_job(0), None);
+        assert_eq!(history(&[(19, "failed")])?.before_send(), Some(19));
+        for status in ["running", "pending", "incomplete", "unknown"] {
+            assert_eq!(history(&[(19, status)])?.before_send(), None);
+        }
+        for status in ["running", "succeeded", "cancelled", "failed"] {
+            assert_eq!(history(&[(22, status)])?.new_job(0), Some(22));
+            let current = history(&[(22, status), (19, "failed")])?;
+            current.validate("jira")?;
+            assert!(current.validate("github").is_err());
+            assert_eq!(current.new_job(19), Some(22));
+            assert_eq!(current.new_job(22), None);
+            assert_eq!(current.new_job(17), None);
+            assert_eq!(current.new_job(0), None);
+        }
+        assert!(
+            history(&[(19, "running"), (22, "succeeded")])?
+                .validate("jira")
+                .is_err()
+        );
+        Ok(())
+    }
 
     #[test]
     fn recovery_accepts_only_the_exact_terminal_job_and_confirmed_writes() -> Result<()> {

@@ -31,6 +31,7 @@ pub(crate) struct Request {
 
 #[derive(Debug, Default)]
 pub(crate) struct Observation {
+    pub placement_blocked: Option<bool>,
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
@@ -71,4 +72,5 @@ pub(crate) struct StageRow {
     pub airbyte_job_id: Option<String>,
     pub connection_id: Option<String>,
     pub airbyte_claimed: bool,
+    pub airbyte_previous_job: Option<u64>,
 }

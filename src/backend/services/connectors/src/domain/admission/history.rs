@@ -9,7 +9,15 @@ use super::store::sql;
 use crate::domain::connector_health::{ConnectorHealth, ConnectorHealthResponse};
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct StageWait {
+    pub kind: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub(crate) struct RunStage {
+    pub waits: Vec<StageWait>,
     pub airbyte_job_id: Option<String>,
     pub stage: String,
     pub attempt: u32,
@@ -38,6 +46,8 @@ pub(crate) struct Run {
 
 #[derive(Clone, FromQueryResult)]
 struct Record {
+    decision: String,
+    placement_waits: Option<String>,
     airbyte_job_id: Option<String>,
     sync_id: String,
     tenant: String,
@@ -58,17 +68,17 @@ struct Record {
     records_reported: Option<u64>,
 }
 
-const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,s.airbyte_job_id,s.stage,s.attempt,s.status,s.queued_at,s.granted_at,s.started_at,s.finished_at,s.reason,s.records_reported";
+const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,s.decision,CAST(s.placement_waits AS CHAR) AS placement_waits,s.airbyte_job_id,s.stage,s.attempt,s.status,s.queued_at,s.granted_at,s.started_at,s.finished_at,s.reason,s.records_reported";
 fn ms(from: DateTime<Utc>, to: DateTime<Utc>) -> u64 {
     u64::try_from((to - from).num_milliseconds()).unwrap_or_default()
 }
 fn stage_status(r: &Record, now: DateTime<Utc>) -> String {
     match r.status.as_str() {
-        "queued" | "starting" | "waiting_pod" if now - r.queued_at > chrono::Duration::hours(3) => {
+        "queued" | "waiting_pod" if now - r.queued_at > chrono::Duration::hours(3) => {
             "wait_warning"
         }
-        "queued" => "waiting_clickhouse",
-        "starting" => "queued",
+        "queued" => "waiting_admission",
+        "starting" => "starting",
         other => other,
     }
     .into()
@@ -84,6 +94,43 @@ fn total(intervals: &mut [(DateTime<Utc>, DateTime<Utc>)]) -> u64 {
     }
     sum
 }
+fn blocked_intervals(r: &Record) -> Vec<StageWait> {
+    let mut waits = Vec::new();
+    if r.decision == "queued" {
+        waits.push(StageWait {
+            kind: "admission".into(),
+            started_at: r.queued_at,
+            ended_at: r.granted_at.or(r.finished_at).or(r.workflow_end),
+        });
+    }
+    let times: Vec<i64> = r
+        .placement_waits
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok())
+        .unwrap_or_default();
+    for pair in times.chunks(2) {
+        let Some(started_at) = DateTime::from_timestamp_millis(pair[0]) else {
+            continue;
+        };
+        let observed_end = pair
+            .get(1)
+            .and_then(|t| DateTime::from_timestamp_millis(*t));
+        let cutoff = r.started_at.or(r.finished_at).or(r.workflow_end);
+        let ended_at = match (observed_end, cutoff) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        if ended_at.is_none_or(|end| end > started_at) {
+            waits.push(StageWait {
+                kind: "placement".into(),
+                started_at,
+                ended_at,
+            });
+        }
+    }
+    waits
+}
+
 fn build(records: &[Record], now: DateTime<Utc>) -> Run {
     let first = &records[0];
     let end = first.run_end.unwrap_or(now);
@@ -97,7 +144,6 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
     let mut reported = None;
     for r in records {
         let until = r.finished_at.or(r.workflow_end).unwrap_or(now);
-        let before = r.started_at.unwrap_or(until);
         let unobserved_start = r.started_at.is_none()
             && (matches!(
                 r.status.as_str(),
@@ -113,13 +159,11 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
                 transform_known = false;
             }
         }
-        let wait_until = if matches!(r.status.as_str(), "unknown" | "checking_start") {
-            r.granted_at.unwrap_or(before)
-        } else {
-            before
-        };
+        let stage_waits = blocked_intervals(r);
         if r.stage != "connector-checks" {
-            waits.push((r.queued_at, wait_until));
+            for w in &stage_waits {
+                waits.push((w.started_at, w.ended_at.unwrap_or(until)));
+            }
         }
         if let Some(start) = r.started_at {
             if r.stage == "bronze" {
@@ -132,6 +176,7 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             reported = r.records_reported;
         }
         stages.push(RunStage {
+            waits: stage_waits,
             airbyte_job_id: r.airbyte_job_id.clone(),
             stage: r.stage.clone(),
             attempt: r.attempt,
@@ -152,7 +197,7 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             .iter()
             .rev()
             .find(|s| s.finished_at.is_none())
-            .map_or("queued", |s| s.status.as_str())
+            .map_or("starting", |s| s.status.as_str())
             .to_owned()
     });
     Run {
@@ -278,6 +323,47 @@ pub(crate) async fn runs(
     Ok(results)
 }
 
+pub(crate) async fn fill_failure_reasons(state: &crate::api::AppState, runs: &mut [Run]) {
+    let mut missing = HashMap::new();
+    let mut dates = Vec::new();
+    for run in runs {
+        for stage in &mut run.stages {
+            if stage.stage == "bronze"
+                || stage.status != "failed"
+                || !matches!(
+                    stage.reason.as_deref(),
+                    None | Some("stage_failed" | "failed")
+                )
+            {
+                continue;
+            }
+            let Some(end) = stage.finished_at else {
+                continue;
+            };
+            dates.push(stage.queued_at.date_naive());
+            dates.push(end.date_naive());
+            let tag = format!(
+                "insight:sync={}:stage={}:attempt={}",
+                run.sync_id, stage.stage, stage.attempt
+            );
+            missing.insert(tag, &mut stage.reason);
+        }
+    }
+    if let (Some(first), Some(last)) = (dates.iter().min(), dates.iter().max()) {
+        let tags: Vec<_> = missing.keys().cloned().collect();
+        match super::capacity::query_failures(state, &tags, *first, *last).await {
+            Ok(errors) => {
+                for (tag, reason) in errors {
+                    if let Some(field) = missing.remove(&tag) {
+                        *field = Some(reason);
+                    }
+                }
+            }
+            Err(error) => tracing::debug!(%error, "stage error details unavailable"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,6 +371,8 @@ mod tests {
     fn unobserved_worker_start_keeps_stage_and_wait_durations_unknown() {
         let now = Utc::now();
         let record = Record {
+            decision: "queued".into(),
+            placement_waits: None,
             airbyte_job_id: Some("12".into()),
             sync_id: "uid".into(),
             tenant: "tenant".into(),
@@ -320,9 +408,26 @@ mod tests {
         assert_eq!(run.wait_ms, None);
         assert_eq!(run.transform_ms, None);
         cancelled.granted_at = None;
-        let run = build(&[cancelled], now);
+        let run = build(std::slice::from_ref(&cancelled), now);
         assert_eq!(run.wait_ms, Some(18 * 60 * 1000));
         assert_eq!(run.transform_ms, Some(0));
+
+        cancelled.decision = "granted".into();
+        cancelled.granted_at = Some(cancelled.queued_at + chrono::Duration::milliseconds(1));
+        cancelled.started_at = Some(now);
+        let run = build(std::slice::from_ref(&cancelled), now);
+        assert_eq!(run.wait_ms, Some(0));
+        assert!(run.stages[0].waits.is_empty());
+        let from = now - chrono::Duration::seconds(20);
+        let to = now - chrono::Duration::seconds(8);
+        cancelled.placement_waits = Some(format!(
+            "[{},{}]",
+            from.timestamp_millis(),
+            to.timestamp_millis()
+        ));
+        let run = build(&[cancelled], now);
+        assert_eq!(run.wait_ms, Some(12_000));
+        assert_eq!(run.stages[0].waits[0].kind, "placement");
     }
 
     #[test]

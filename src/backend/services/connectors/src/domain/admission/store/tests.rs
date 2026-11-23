@@ -215,10 +215,16 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     let mut req = request("jira", "bronze");
     register(&db, &stand, tenant, &req, now, 960 * MIB).await?;
     let before_claim = load(&db, &stand, &req).await?;
-    let (a, b) = tokio::join!(
-        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None)),
-        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None))
-    );
+    let first_claim = || {
+        airbyte(
+            &db,
+            &stand,
+            tenant,
+            &req,
+            AirbyteWrite::Claim(None, Some(0)),
+        )
+    };
+    let (a, b) = tokio::join!(first_claim(), first_claim());
     assert!(matches!(
         (a?.decision, b?.decision),
         ("send", "verify") | ("verify", "send")
@@ -287,12 +293,9 @@ async fn lost_airbyte_claim_has_one_sender_and_retries_require_confirmed_safe_re
     assert_eq!(r.resources.scope, "airbyte_source");
     assert_eq!(r.resources.memory_bytes, 3072 * MIB);
     assert_eq!(r.resources.source_memory_bytes, Some(3072 * MIB));
-    assert_eq!(
-        airbyte(&db, &stand, tenant, &req, AirbyteWrite::Claim(None))
-            .await?
-            .decision,
-        "send"
-    );
+    let claim = AirbyteWrite::Claim(None, Some(0));
+    let retry = airbyte(&db, &stand, tenant, &req, claim).await?;
+    assert_eq!(retry.decision, "send");
     assert!(matches!(
         airbyte(&db, &stand, tenant, &req, AirbyteWrite::Receipt("8101")).await,
         Err(WriteError::Conflict)
@@ -386,9 +389,15 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
     let (_, grant) = register(&db, &stand, "tenant", &first, now, 960 * MIB).await?;
     assert_eq!(grant.decision, "granted");
     assert_eq!(
-        airbyte(&db, &stand, "tenant", &first, AirbyteWrite::Claim(None))
-            .await?
-            .decision,
+        airbyte(
+            &db,
+            &stand,
+            "tenant",
+            &first,
+            AirbyteWrite::Claim(None, Some(0))
+        )
+        .await?
+        .decision,
         "send"
     );
     let row = load(&db, &stand, &first).await?;
@@ -412,7 +421,14 @@ async fn warm_parallel_loads_cannot_reuse_an_unknown_connection_or_another_sync_
         "queued"
     );
     assert!(matches!(
-        airbyte(&db, &stand, "tenant", &other, AirbyteWrite::Claim(None)).await,
+        airbyte(
+            &db,
+            &stand,
+            "tenant",
+            &other,
+            AirbyteWrite::Claim(None, Some(0))
+        )
+        .await,
         Err(WriteError::Conflict)
     ));
     let mut changed = request("jira", "bronze");
@@ -488,8 +504,34 @@ async fn only_the_original_airbyte_sender_can_recover_a_lost_claim_response() ->
     let req = request("jira", "bronze");
     register(&db, &stand, "tenant", &req, Utc::now(), 8 * 1024 * MIB).await?;
     let sender = uuid::Uuid::now_v7();
-    let claim = |sender| airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Claim(sender));
+    let inspection = airbyte(
+        &db,
+        &stand,
+        "tenant",
+        &req,
+        AirbyteWrite::Claim(Some(sender), None),
+    )
+    .await?;
+    assert_eq!(inspection.decision, "prepare");
+    assert!(!load(&db, &stand, &req).await?.airbyte_claimed);
+    let claim = |sender| {
+        airbyte(
+            &db,
+            &stand,
+            "tenant",
+            &req,
+            AirbyteWrite::Claim(sender, Some(43)),
+        )
+    };
     assert_eq!(claim(Some(sender)).await?.decision, "send");
+    assert_eq!(
+        load(&db, &stand, &req).await?.airbyte_previous_job,
+        Some(43)
+    );
+    assert!(matches!(
+        airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Receipt("43")).await,
+        Err(WriteError::Conflict)
+    ));
     let (original, replacement, poll) = tokio::join!(
         claim(Some(sender)),
         claim(Some(uuid::Uuid::now_v7())),
@@ -559,7 +601,14 @@ async fn registered_transform_uses_only_its_completed_airbyte_jobs_volume() -> a
         let stand = uuid::Uuid::now_v7().to_string();
         let mut req = request("jira", "bronze");
         register(&db, &stand, "tenant", &req, Utc::now(), 1024 * MIB).await?;
-        airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Claim(None)).await?;
+        airbyte(
+            &db,
+            &stand,
+            "tenant",
+            &req,
+            AirbyteWrite::Claim(None, Some(0)),
+        )
+        .await?;
         airbyte(&db, &stand, "tenant", &req, AirbyteWrite::Receipt("320")).await?;
         req.stage = "transform-jira-staging".into();
         req.connection_id = None;
@@ -573,6 +622,46 @@ async fn registered_transform_uses_only_its_completed_airbyte_jobs_volume() -> a
             rows.try_get::<Option<u64>>("", "input_volume_bytes")?,
             expected
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn only_confirmed_placement_intervals_appear_after_immediate_admission() -> anyhow::Result<()>
+{
+    let db = db().await?;
+    let stand = uuid::Uuid::now_v7().to_string();
+    let req = request("test", "transform-staging");
+    let (_, result) = register(&db, &stand, "tenant", &req, Utc::now(), 960 * MIB).await?;
+    assert_eq!(result.decision, "granted");
+    for (blocked, expected) in [(false, 0), (true, 1), (true, 1), (false, 1), (false, 1)] {
+        let row = load(&db, &stand, &req).await?;
+        observe(
+            &db,
+            &stand,
+            &row,
+            Observation {
+                placement_blocked: Some(blocked),
+                status: Some(if blocked { "waiting_pod" } else { "starting" }.into()),
+                ..Default::default()
+            },
+        )
+        .await?;
+        let runs = crate::domain::admission::history::runs(
+            &db,
+            &stand,
+            &req.connector,
+            Some("tenant"),
+            Some(&req.source_id),
+        )
+        .await?;
+        let waits = &runs[0].stages[0].waits;
+        assert_eq!(waits.len(), expected);
+        if let Some(wait) = waits.first() {
+            assert_eq!(wait.kind, "placement");
+            assert_eq!(wait.ended_at.is_none(), blocked);
+        }
     }
     Ok(())
 }

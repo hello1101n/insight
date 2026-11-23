@@ -90,7 +90,7 @@ pub async fn get_connector_syncs(
         Some((tenant, source)) => (Some(tenant.into_string()), Some(source.into_string())),
         None => (None, None),
     };
-    let runs = if state.cluster.admission_enabled {
+    let mut runs = if state.cluster.admission_enabled {
         crate::domain::admission::history::runs(
             &state.db,
             &state.cluster.namespace,
@@ -103,6 +103,7 @@ pub async fn get_connector_syncs(
     } else {
         Vec::new()
     };
+    crate::domain::admission::history::fill_failure_reasons(&state, &mut runs).await;
     let syncs = match syncs {
         Ok(syncs) => syncs,
         Err(error) if !runs.is_empty() => {

@@ -321,6 +321,32 @@ pub(super) async fn evidence(state: &AppState, row: &StageRow) -> anyhow::Result
     .await??)
 }
 
+pub(crate) async fn query_failures(
+    state: &AppState,
+    tags: &[String],
+    first_day: chrono::NaiveDate,
+    last_day: chrono::NaiveDate,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let log = on_all_nodes(&state.cluster.clickhouse_cluster, "system.query_log")?;
+    let sql = format!("SELECT log_comment, concat('clickhouse_query_error:',toString(code),':',errorCodeToName(code))
+                       FROM (SELECT log_comment,argMax(exception_code,event_time_microseconds) AS code
+                         FROM {log} WHERE event_date BETWEEN toDate(?) AND toDate(?)
+                         AND log_comment IN ? AND type IN ('ExceptionWhileProcessing','ExceptionBeforeStart')
+                         AND exception_code>0 GROUP BY log_comment)
+                       SETTINGS max_execution_time=1,skip_unavailable_shards=0");
+    Ok(tokio::time::timeout(
+        Duration::from_secs(2),
+        state
+            .ch
+            .query(&sql)
+            .bind(first_day.to_string())
+            .bind(last_day.to_string())
+            .bind(tags)
+            .fetch_all::<(String, String)>(),
+    )
+    .await??)
+}
+
 pub(super) async fn idle_before(
     state: &AppState,
     end: chrono::DateTime<chrono::Utc>,
