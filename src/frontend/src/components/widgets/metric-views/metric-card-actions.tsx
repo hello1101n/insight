@@ -38,7 +38,6 @@ export function MetricCardActions({
             variant="ghost"
             size="sm"
             className={cn(
-              "text-muted-foreground",
               placement === "overlay" && "absolute top-4 right-4 z-10"
             )}
             aria-label={`More actions for ${label}`}

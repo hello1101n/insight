@@ -3,9 +3,9 @@ breakdown views.
 
 Bronze: M365 Teams per-user activity for five people on one day, private chat message
 counts 10..50 and no team chat, with one row synced twice. Gold serves the sent count,
-a 100% DM ratio and messages per active day per person; channel posts, with no team
-chat in the data, serve as null with an empty tool breakdown. The duplicate row
-changes nothing.
+a 100% DM ratio, messages per active day and one chat active day per person; channel
+posts, with no team chat in the data, serve as null with an empty tool breakdown. The
+duplicate row changes nothing.
 """
 
 from __future__ import annotations
@@ -40,8 +40,9 @@ def erin_value_for_tool(r: MetricResponse, key: str, tool: str) -> float:
 
 
 def test_unified_collaboration_messaging(spec: SpecRun) -> None:
-    """Erin's 50 private chat messages on Dec 25 are the sent count, a 100% DM ratio and
-    50 per active day in every view; with no team chat, channel posts serve as null."""
+    """Erin's 50 private chat messages on Dec 25 are the sent count, a 100% DM ratio,
+    50 per active day and one chat active day in every view; with no team chat, channel
+    posts serve as null."""
     r = spec.call(
         {
             "url": "/v1/metric-results",
@@ -54,6 +55,7 @@ def test_unified_collaboration_messaging(spec: SpecRun) -> None:
                     {"metric_key": "collab.channel_posts", "views": MESSAGING_VIEWS},
                     {"metric_key": "collab.dm_ratio", "views": MESSAGING_VIEWS},
                     {"metric_key": "collab.msgs_per_active_day", "views": MESSAGING_VIEWS},
+                    {"metric_key": "collab.chat_active_days", "views": MESSAGING_VIEWS},
                 ],
             },
         }
@@ -93,3 +95,10 @@ def test_unified_collaboration_messaging(spec: SpecRun) -> None:
     )
     assert erin_value_on(r, "collab.msgs_per_active_day", "2026-12-25") == 50.0
     assert erin_value_for_tool(r, "collab.msgs_per_active_day", "m365") == 50.0
+
+    r.row("collab.chat_active_days", "period", entity_id=ERIN).equals(value=1)
+    r.row("collab.chat_active_days", "peer", entity_id=ERIN).equals(
+        target_value=1, p25=1, median=1, p75=1, min=1, max=1, n=5
+    )
+    assert erin_value_on(r, "collab.chat_active_days", "2026-12-25") == 1.0
+    assert erin_value_for_tool(r, "collab.chat_active_days", "m365") == 1.0

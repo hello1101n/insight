@@ -68,7 +68,7 @@ export function GroupDrilldownSheet({
     >
       <DialogContent
         showCloseButton={false}
-        className="flex w-fit max-w-none! flex-col gap-0 overflow-hidden p-0"
+        className="flex w-fit max-w-none! flex-col gap-0 overflow-hidden"
       >
         <DrilldownPanel
           def={def}
@@ -111,7 +111,7 @@ function DrilldownPanel({
         expanded ? "h-[95vh] w-[95vw]" : "h-[70vh] w-[80vw]"
       )}
     >
-      <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2 border-b p-4">
+      <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2">
         <DialogTitle>{title}</DialogTitle>
         <div className="flex items-center gap-0.5">
           <Button

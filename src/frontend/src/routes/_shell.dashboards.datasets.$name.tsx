@@ -119,7 +119,7 @@ function Declaration({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Declaration</CardTitle>
+        <CardTitle>Declaration</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <ul className="flex flex-col gap-2">
@@ -207,7 +207,7 @@ function Records({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Records</CardTitle>
+        <CardTitle>Records</CardTitle>
       </CardHeader>
       <CardContent>
         {records.isPending ? (

@@ -37,14 +37,6 @@ export const OVERVIEW_ITEMS: Record<string, LensConfig> = {
           "ai.daily_approximate_extra_usage_cost",
         ],
       },
-      // The old header's "N using AI" stat, now an honest participation card
-      // (count + share + delta). No trend section here → card renders chartless.
-      {
-        kind: "participation",
-        metrics: ["ai.active_days"],
-        title: "AI adoption",
-        noun: "People using AI",
-      },
       { kind: "attention", metrics: ATTENTION_KEYS, max: 8 },
       { kind: "direction-cards", variant: "compact" },
     ],

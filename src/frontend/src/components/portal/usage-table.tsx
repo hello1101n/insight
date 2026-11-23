@@ -94,7 +94,7 @@ export function VirtualTable<T, K extends string = string>({
               <TableHead
                 key={column.header}
                 aria-sort={sortKey ? (direction ? ARIA_SORT[direction] : "none") : undefined}
-                className={cn(cellClass(column), "flex h-10 items-center")}
+                className={cn(cellClass(column), "flex items-center")}
                 style={cellStyle(column)}
               >
                 {sortKey && onSort ? (
@@ -173,7 +173,7 @@ export function TruncatedCell({
       <TooltipContent
         className={cn(
           "max-h-[var(--available-height)] items-start overflow-y-auto overscroll-contain",
-          detailClassName ?? "font-mono text-xs",
+          detailClassName ?? "font-mono",
         )}
       >
         {detail}

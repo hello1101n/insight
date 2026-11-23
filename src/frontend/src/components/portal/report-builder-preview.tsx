@@ -63,7 +63,7 @@ export function ReportPreviewDialog({
           </p>
         ) : response ? (
           <>
-            <Table className="text-xs" containerClassName="overflow-auto">
+            <Table containerClassName="overflow-auto">
               <TableHeader>
                 <TableRow>
                   {response.columns.map((column) => (

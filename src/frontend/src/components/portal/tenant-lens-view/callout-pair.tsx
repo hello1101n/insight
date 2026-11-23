@@ -38,7 +38,7 @@ export function CalloutPairSection({
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent>
             <p className="text-xs font-medium text-muted-foreground">
               Org-wide (every run counts)
             </p>
@@ -48,7 +48,7 @@ export function CalloutPairSection({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent>
             <p className="text-xs font-medium text-muted-foreground">
               Typical {section.dimension} (each counts once)
             </p>

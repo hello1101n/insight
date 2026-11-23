@@ -33,7 +33,6 @@ import {
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useDismissDrawer } from "@/lib/portal/use-dismiss-drawer";
-import { cn } from "@/lib/utils";
 
 interface FolderRow {
   key: string;
@@ -92,10 +91,7 @@ function Folder({
                 render={<button type="button" />}
                 data-planned={row.muted || undefined}
                 isActive={row.active}
-                className={cn(
-                  "w-full text-start",
-                  row.muted && "text-muted-foreground"
-                )}
+                className="w-full text-start"
                 onClick={() => {
                   row.onPick();
                   dismiss();

@@ -28,7 +28,7 @@ export function HeatmapHoursSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           <div
             className="grid gap-px text-xs"
             style={{ gridTemplateColumns: `3rem repeat(${HOUR_BLOCKS.length}, 1fr)` }}

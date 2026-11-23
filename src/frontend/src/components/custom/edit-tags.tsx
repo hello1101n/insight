@@ -126,7 +126,7 @@ export function EditTags({
         if (!next) close();
       }}
     >
-      <PopoverContent anchor={anchor} align="end" className="gap-3">
+      <PopoverContent anchor={anchor} align="end">
         <PopoverHeader>
           <PopoverTitle>Edit tags</PopoverTitle>
         </PopoverHeader>
@@ -135,7 +135,7 @@ export function EditTags({
             The dashboard's tags could not be read.
           </p>
         ) : !ready ? (
-          <Spinner className="mx-auto size-4" />
+          <Spinner className="mx-auto" />
         ) : (
           <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {choices.map((tag) => (

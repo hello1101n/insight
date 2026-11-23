@@ -446,7 +446,7 @@ function QueueGroup({
           }
         >
           <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180" />
-          <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             {t(`identities.kind.${kind}`, { defaultValue: kind })}
             <Badge variant="secondary">
               {cases.length === items.length
@@ -460,7 +460,7 @@ function QueueGroup({
           <SourceCounts items={items} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <CardContent className="flex flex-col gap-2 p-2 pt-0">
+          <CardContent className="flex flex-col gap-2">
             {/* One decision for the whole group, above the cases it covers: a
                 roster sync adds people in batches, and confirming them one
                 window at a time is the same answer given a hundred times. */}
@@ -491,7 +491,7 @@ function StatusBadge({ status }: { status?: string | null }) {
   const value = status?.trim();
   if (!value || value.toLowerCase() === "active") return null;
   return (
-    <Badge variant="secondary" className="shrink-0 font-normal">
+    <Badge variant="secondary" className="shrink-0">
       {value}
     </Badge>
   );
@@ -675,7 +675,7 @@ function CaseBlock({
                   {label}
                 </span>
                 {boundTo ? (
-                  <Badge variant="outline" className="shrink-0 font-normal">
+                  <Badge variant="outline" className="shrink-0">
                     {t("identities.queue.bound_to", {
                       name: personDisplayName(boundTo),
                     })}
