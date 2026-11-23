@@ -186,10 +186,11 @@ export function AccountSearchView() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <div className="flex shrink-0 items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
           <Input
             type="search"
+            icon={<Search />}
+            end={loading ? <Spinner /> : undefined}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("identities.accounts.placeholder")}
@@ -198,14 +199,8 @@ export function AccountSearchView() {
             // accepts a paste it cannot search — an id, a url, a log line — and
             // the operator gets a refusal instead of a result.
             maxLength={MAX_SEARCH_CHARS}
-            className={cn(
-              "ps-9",
-              loading && "pe-9 [&::-webkit-search-cancel-button]:hidden"
-            )}
+            className={cn(loading && "[&::-webkit-search-cancel-button]:hidden")}
           />
-          {loading ? (
-            <Spinner className="absolute end-3 top-1/2 size-4 -translate-y-1/2" />
-          ) : null}
         </div>
         <SourceFilter
           sources={sourceOptions}
@@ -254,8 +249,8 @@ export function AccountSearchView() {
                     </p>
                   ) : null}
                   {unmatched.length > 0 ? (
-                    <Card className="py-0">
-                      <CardContent className="flex flex-col gap-1 p-2">
+                    <Card>
+                      <CardContent className="flex flex-col gap-1">
                         {unmatched.map((item) => (
                           <UnmatchedRow
                             key={itemKey(item)}
@@ -332,8 +327,8 @@ export function AccountSearchView() {
                   marker asks for that page, and an observer only reports a
                   target inside its own root. */}
               {items.length > 0 || (lists && search.hasNextPage) ? (
-                <Card className="py-0">
-                  <CardContent className="flex flex-col gap-1 p-2">
+                <Card>
+                  <CardContent className="flex flex-col gap-1">
                     {items.map((item) => (
                       <AccountRow
                         key={accountKey(item)}
@@ -496,7 +491,7 @@ function AccountRow({
       {holder ? (
         <PersonCell person={holder} />
       ) : item.excluded ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.excluded")}
         </Badge>
       ) : (
@@ -507,11 +502,11 @@ function AccountRow({
       {/* Who decided the binding, as a line: the two answers are two states
           of one fact, and only one of them used to carry a shape. */}
       {matchedByEmail ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.matched_by_email")}
         </Badge>
       ) : item.person || (item.excluded && item.bound_by_operator) ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {item.bound_by_operator
             ? t("identities.person_accounts.by_operator")
             : t("identities.person_accounts.by_automation")}

@@ -81,7 +81,7 @@ export function DefinitionPicker({
         id={id}
         {...describe}
         placeholder={`Search ${noun.many}`}
-        className="h-9 w-full"
+        className="w-full"
       />
       <ComboboxContent>
         {/* WORKAROUND: the kit pads the empty part even while it hides its

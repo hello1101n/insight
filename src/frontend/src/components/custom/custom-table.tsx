@@ -116,9 +116,9 @@ export function CustomTable({ result }: CustomTableProps) {
           scrolls it, and the header sticks to that, so the columns can be
           re-ordered from anywhere in a long result. */}
       <Table containerClassName="overflow-visible">
-        <TableHeader className="sticky top-0 z-10 bg-card shadow-[inset_0_-1px_0_0_var(--border)] [&_tr]:border-b-0">
+        <TableHeader className="sticky top-0 z-10 bg-card shadow-[inset_0_-1px_0_0_var(--border)]">
           <TableRow>
-            <TableHead className="w-0 text-muted-foreground">#</TableHead>
+            <TableHead className="w-0">#</TableHead>
             {result.columns.map((column, index) => (
               <Sortable
                 key={column}
@@ -133,7 +133,7 @@ export function CustomTable({ result }: CustomTableProps) {
         <TableBody>
           {rows.map((row, rowIndex) => (
             <TableRow key={rowIndex}>
-              <TableCell className="w-0 pe-3 text-end tabular-nums text-muted-foreground">
+              <TableCell className="w-0 text-end tabular-nums">
                 {rowIndex + 1}
               </TableCell>
               {result.columns.map((column, columnIndex) => (

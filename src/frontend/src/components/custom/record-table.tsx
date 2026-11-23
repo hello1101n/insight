@@ -200,7 +200,7 @@ function Row({
         className="cursor-pointer"
         onClick={() => setOpen((was) => !was)}
       >
-        <TableCell className="w-0 pr-0">
+        <TableCell className="w-0">
           <button
             type="button"
             id={`${whole}-trigger`}

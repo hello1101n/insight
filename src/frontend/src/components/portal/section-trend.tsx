@@ -77,7 +77,7 @@ export function SectionTrend({
 }: SectionTrendProps) {
   const { t } = useTranslation();
   if (isPending) {
-    return <Skeleton className="h-48 w-full rounded-lg" />;
+    return <Skeleton className="h-48 w-full" />;
   }
   if (isError) {
     return (
@@ -92,7 +92,7 @@ export function SectionTrend({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+          <CardTitle>{title}</CardTitle>
           <CardDescription>{t("common.chart.no_trend")}</CardDescription>
         </CardHeader>
       </Card>
@@ -128,10 +128,10 @@ export function SectionTrend({
 
   return (
     <Card className="relative">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
         {description ? (
-          <CardDescription className="text-xs">{description}</CardDescription>
+          <CardDescription>{description}</CardDescription>
         ) : null}
       </CardHeader>
       <CardContent>

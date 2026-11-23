@@ -56,7 +56,7 @@ export function FieldSelect({
         id={id}
         aria-label={label}
         {...describe}
-        className={cn("h-9 w-full", className)}
+        className={cn("w-full", className)}
       >
         <SelectValue>
           {picked ? (

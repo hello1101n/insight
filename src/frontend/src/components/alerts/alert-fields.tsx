@@ -78,7 +78,7 @@ function ContextColumnChoice({
     <Field
       orientation="horizontal"
       data-disabled={disabled}
-      className="w-auto gap-2"
+      className="w-auto"
     >
       <Checkbox
         id={id}
@@ -86,7 +86,7 @@ function ContextColumnChoice({
         disabled={disabled}
         onCheckedChange={onToggle}
       />
-      <FieldLabel htmlFor={id} className="font-mono font-normal">
+      <FieldLabel htmlFor={id} className="font-mono">
         {column}
       </FieldLabel>
     </Field>
@@ -158,7 +158,7 @@ export function AlertFields({
           id="alert-name"
           {...describing("alert-name", { said: errors.name, required: true })}
           value={textOf(document, "name")}
-          className="h-9 w-full"
+          className="w-full"
           onChange={(event) => onChange({ name: event.target.value })}
         />
       </Row>
@@ -180,7 +180,6 @@ export function AlertFields({
               <Button
                 type="button"
                 variant="link"
-                className="h-auto px-0 py-1"
                 onClick={() => void read.refetch()}
               >
                 Retry
@@ -237,16 +236,12 @@ export function AlertFields({
       {chosen && (offered.length > 0 || errors.context_columns) ? (
         <FieldSet
           tabIndex={-1}
-          className="gap-2 outline-none"
           aria-invalid={errors.context_columns ? true : undefined}
           aria-describedby={
             errors.context_columns ? "alert-context-columns-said" : undefined
           }
         >
-          <FieldLegend
-            variant="label"
-            className={cn(TEXT_LABEL, "mb-1 font-medium")}
-          >
+          <FieldLegend variant="label" className="mb-1">
             Show in notification
           </FieldLegend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">

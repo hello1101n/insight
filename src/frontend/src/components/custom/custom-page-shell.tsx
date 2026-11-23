@@ -67,7 +67,6 @@ export function CustomPageShell({
             size="sm"
             aria-label="Open assistant"
             aria-expanded={false}
-            className="text-muted-foreground"
             onClick={toggle}
             icon={<Sparkles />}
           />
@@ -83,7 +82,7 @@ export function CustomPageShell({
           size="sm"
           aria-label="Collapse assistant"
           aria-expanded
-          className="absolute end-2 top-2 z-10 text-muted-foreground"
+          className="absolute end-2 top-2 z-10"
           onClick={toggle}
           icon={<PanelRightClose />}
         />

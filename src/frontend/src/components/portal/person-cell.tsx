@@ -60,7 +60,7 @@ export function PersonCell({
 
   return (
     <div className={cn("flex min-w-0 items-center gap-2", className)}>
-      <Avatar className="size-8">
+      <Avatar>
         <AvatarFallback>{named ? getInitials(resolved) : "?"}</AvatarFallback>
       </Avatar>
       <div className="min-w-0">
@@ -115,7 +115,7 @@ export function PersonMarks({ person }: { person: PersonSummary }) {
             render={
               <Badge
                 variant="outline"
-                className="cursor-help font-normal"
+                className="cursor-help"
                 tabIndex={0}
               />
             }
@@ -128,7 +128,7 @@ export function PersonMarks({ person }: { person: PersonSummary }) {
         </Tooltip>
       ) : null}
       {person.status?.trim().toLowerCase() === TERMINATED ? (
-        <Badge variant="secondary" className="bg-destructive/15 text-destructive">
+        <Badge variant="secondary">
           {t("identities.person.terminated")}
         </Badge>
       ) : null}

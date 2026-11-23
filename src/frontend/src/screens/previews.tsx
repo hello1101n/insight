@@ -248,16 +248,16 @@ function ExperimentList() {
           <TableBody>
             {rows.map((experiment) => (
               <TableRow key={experiment.name}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="font-mono">
                   {experiment.name}
                 </TableCell>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="font-mono">
                   {experiment.tag}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {experiment.status}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {experiment.expiresAt
                     ? new Date(experiment.expiresAt).toLocaleString()
                     : "—"}

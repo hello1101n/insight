@@ -76,7 +76,7 @@ function TimePart({
       <SelectTrigger
         size="sm"
         aria-label={label}
-        className="h-8 w-[64px] max-w-full min-w-0 tabular-nums"
+        className="w-[64px] max-w-full min-w-0 tabular-nums"
       >
         <SelectValue>{value || "—"}</SelectValue>
       </SelectTrigger>
