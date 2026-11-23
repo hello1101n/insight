@@ -218,6 +218,16 @@ describe("session refresh driver", () => {
     expect(lease.id).not.toBe("other-tab");
   });
 
+  it("treats an unreadable lease as no leader and refreshes on schedule", async () => {
+    localStorage.setItem(LEASE_KEY, "{not json");
+    authStore.setAuthenticated(session({ refreshAt: T0 + 2 }));
+    fetchMock().mockResolvedValueOnce(jsonResponse(REFRESH_OK_1));
+    stop = startSessionRefresh();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
+  });
+
   it("a follower applies a 'refreshed' fan-out message instead of refreshing itself", () => {
     localStorage.setItem(LEASE_KEY, JSON.stringify({ id: "other-tab", ts: T0 * 1000 }));
     authStore.setAuthenticated(session());
