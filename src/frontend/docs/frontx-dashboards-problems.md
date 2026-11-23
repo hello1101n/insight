@@ -3,7 +3,7 @@
 For each FrontX problem that the prototype found, this list gives what Insight does now, what FrontX does, and why the FrontX way fails for Insight.
 
 - Problems 1 to 4 block a real build.
-- Problems 5 to 7 make the result worse than the current renderer.
+- Problems 5 and 6 make the result worse than the current renderer.
 
 The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-prototype.md). The measurements come from synthetic mock dashboards on a local build. The prototype uses template commit `6bcd77f`. On 23 Nov 2026, the `main` branch of the public `itechmeat/gears-frontx-templates` fork had no change to these problems.
 
@@ -62,9 +62,3 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
   - An answer with more than 500 rows fails validation. The widget then shows an error in place of the table.
   - A grid cannot format a percent column apart from plain number columns. The prototype writes the percent as text, and the column sorts as text.
 - **Bumps.** 24 and 25.
-
-## 7. Two admin features are not available
-
-- **Insight now.** When a widget lacks a column, the widget shows the admin the name of the missing column. An admin can open "Show data" to see the detail metric behind a widget.
-- **FrontX.** A failed widget shows "This widget cannot be shown". The reason goes only to the browser console. The FrontX data view shows only the rows of the widget.
-- **Why it fails.** Admins lose the reason for a failure and the drilldown into the detail metric.
