@@ -2,7 +2,6 @@ import { CustomApiError } from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
 import type { FieldErrors } from "@/lib/alerts/draft";
 
-/** The draft's own fields; a condition's refusals name a path inside it. */
 const FIELDS: ReadonlySet<string> = new Set([
   "name",
   "metric",
@@ -23,11 +22,6 @@ interface Violation {
   description?: string;
 }
 
-/**
- * What the service refused a draft for: each named field's reason, keyed by
- * the path it names, to show where that is, and anything else to show above
- * the form.
- */
 export function savingRefusal(error: unknown): {
   fields: FieldErrors;
   general?: string;

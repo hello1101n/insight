@@ -51,11 +51,6 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * One cache across several renders, as one session of the portal has - with
- * the portal's own hour of freshness, so a reopened editor meets what a reader
- * meets rather than a cache that always refetches.
- */
 function sharing(client: QueryClient) {
   return ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
@@ -63,7 +58,6 @@ function sharing(client: QueryClient) {
 
 const NO_ITEMS = { items: [], total: 0 };
 
-/** The document the editor holds, once it has opened. */
 async function shownDocument(): Promise<unknown> {
   const text = await screen.findByLabelText(/as text/i);
   return JSON.parse((text as HTMLTextAreaElement).value);
@@ -140,8 +134,6 @@ describe("/dashboards/edit/$kind/$name", () => {
     );
   });
 
-  // A definition may be gone by the time its editor is opened, and an empty
-  // form would store a new one over the reader's back.
   it("says so rather than offering an empty form when it is not there", async () => {
     vi.mocked(customClient.fetchDefinition).mockRejectedValue(
       new CustomApiError(404, { detail: "no such metric" })
@@ -165,9 +157,6 @@ describe("/dashboards/edit/$kind/$name", () => {
     ).toBeInTheDocument();
   });
 
-  // The editor seeds itself once from what it is handed. A body kept from the
-  // last time this definition was opened would be edited and saved over
-  // whatever changed it since.
   it("opens what the definition is now, not what it was last time", async () => {
     const session = sharing(
       new QueryClient({
@@ -228,7 +217,6 @@ describe("/dashboards/edit/$kind/$name", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "still read by lines_per_day"
     );
-    // The choice stays open: the reader may fix what reads it and try again.
     expect(
       screen.getByRole("button", { name: /Remove it, with its records/ })
     ).toBeInTheDocument();

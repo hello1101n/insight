@@ -1,10 +1,3 @@
-/**
- * The account picker. What matters: it is a FINDING tool — the click hands the
- * account back and never writes; a blank field asks nothing, because the whole
- * fold would bury the accounts the caller is already showing; a term too short
- * to search says so instead of going quiet; and every row names whoever holds
- * the account, since binding one somebody else holds takes it off them.
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,8 +75,6 @@ describe("AccountPicker", () => {
     pick();
 
     expect(screen.queryByText("annlee")).not.toBeInTheDocument();
-    // And the same rows DO arrive once asked — without this the case passes for
-    // a picker that lists nothing ever.
     await userEvent.type(field(), "annlee");
 
     expect(screen.getByText("annlee")).toBeInTheDocument();
@@ -108,8 +99,6 @@ describe("AccountPicker", () => {
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ account_id: "zm-9" }));
   });
 
-  // Binding an account somebody else holds takes it off them; that has to be
-  // visible before the click, not in the confirmation after it.
   it("names the holder on the row, and states the two other answers", async () => {
     hooks.search.data = {
       pages: [
@@ -143,9 +132,6 @@ describe("AccountPicker", () => {
     expect(screen.getByText("other")).toBeInTheDocument();
   });
 
-  // The rows answer the term the query key carries, not the one in the field,
-  // until the fetch lands. Marked rather than hidden, so the list does not
-  // blank between keystrokes — and never read as the answer.
   it("marks the rows that still answer the previous term", async () => {
     hooks.search.data = { pages: [{ items: [match()] }] };
     hooks.search.isPlaceholderData = true;
@@ -157,8 +143,6 @@ describe("AccountPicker", () => {
     expect(screen.getByText("annlee")).toBeInTheDocument();
   });
 
-  // The marker asks for the next page, and it has to live INSIDE the scroller:
-  // an observer never reports a target that is not a descendant of its root.
   it("asks for the next page when the end of the list comes into view", async () => {
     hooks.search.data = { pages: [{ items: [match()] }] };
     hooks.search.hasNextPage = true;
@@ -170,8 +154,6 @@ describe("AccountPicker", () => {
     expect(hooks.search.fetchNextPage).toHaveBeenCalled();
   });
 
-  // A page whose every row was filtered out has no rows to scroll, so the
-  // marker is the only thing left that can ask for the page that does.
   it("keeps asking with every row filtered out", async () => {
     hooks.search.data = { pages: [{ items: [match()] }] };
     hooks.search.hasNextPage = true;
@@ -183,7 +165,6 @@ describe("AccountPicker", () => {
     expect(hooks.search.fetchNextPage).toHaveBeenCalled();
   });
 
-  // Labelling an idle list "loading" is a lie the reader cannot dismiss.
   it("says it is loading only while the next page is on its way", async () => {
     hooks.search.data = { pages: [{ items: [match()] }] };
     hooks.search.hasNextPage = true;
@@ -193,8 +174,6 @@ describe("AccountPicker", () => {
     expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
   });
 
-  // Not a <button>: the holder's card carries its own copy control, and a
-  // button may neither nest one nor let its text be selected.
   it("picks on Enter from the row, and not from a control inside it", async () => {
     hooks.search.data = {
       pages: [
@@ -222,8 +201,6 @@ describe("AccountPicker", () => {
     expect(onPick).toHaveBeenCalledTimes(1);
   });
 
-  // Binding an account somebody else holds takes it off them, so the name the
-  // row is reached by has to say so — not just the address.
   it("names the holder in the row's accessible name", async () => {
     hooks.search.data = {
       pages: [
@@ -266,8 +243,6 @@ describe("AccountPicker", () => {
     expect(screen.getByText(/no observed account carries that/i)).toBeInTheDocument();
   });
 
-  // A page whose every row was excluded is not "nothing matches" while more
-  // pages are unread — the next page is the answer, not the message.
   it("claims nothing while a further page is still unread", async () => {
     hooks.search.data = { pages: [{ items: [] }] };
     hooks.search.hasNextPage = true;

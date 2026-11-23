@@ -1,11 +1,7 @@
-/** How often an alert is checked. */
-
-/** The intervals an alert can be checked at, smallest first. */
 export const INTERVAL_PRESETS_SECS: readonly number[] = [
   60, 300, 900, 3_600, 21_600, 86_400, 604_800,
 ];
 
-/** Largest first, so a whole number of days reads as days. */
 const UNITS: readonly { secs: number; one: string; many: string }[] = [
   { secs: 86_400, one: "day", many: "days" },
   { secs: 3_600, one: "hour", many: "hours" },
@@ -19,7 +15,6 @@ function parts(secs: number): { amount: number; one: string; many: string } {
   return { amount: secs / unit.secs, one: unit.one, many: unit.many };
 }
 
-/** "5 minutes", "1 hour", "90 seconds": exact, in the largest unit that holds it. */
 export function intervalLabel(secs: number): string {
   const { amount, one, many } = parts(secs);
 

@@ -39,7 +39,6 @@ export function OrphanedChip() {
   );
 }
 
-/** Administrators only: the orphaned list is refused to anyone else. */
 export function OrphanedDashboards() {
   const pages = useInfiniteQuery(orphanedPagesQuery("dashboards"));
   const [moving, setMoving] = useState<Orphan | null>(null);

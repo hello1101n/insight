@@ -1,8 +1,3 @@
-/**
- * Which zones the rail offers. The gate is not "does this viewer manage
- * anyone" but "do the org zones have a cohort" — a member of an organisation
- * with no reporting lines has one, and used to be shown their own page alone.
- */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -75,7 +70,6 @@ describe("useZoneNav", () => {
   });
 
   it("offers the org zones once the viewer has a cohort", () => {
-    // The flat-organisation case: no reports, and still an organisation.
     mocks.canSeeOthers = true;
 
     const ids = zoneIds();

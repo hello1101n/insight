@@ -22,8 +22,6 @@ import type { IdentityPerson } from "@/types/insight";
 
 const UNNAMED_PERSON = "Unnamed person";
 
-// Person ids, not emails: the identity cutover made the id the key the route
-// segment, `?scope=` and the metric entity ids all carry.
 function personIdEq(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
@@ -45,7 +43,6 @@ function PersonNode({
   node: IdentityPerson;
   depth: number;
   activePersonId: string | null;
-  /** Lead (has reports) links to their team roster instead of their own page. */
   leadsToTeam: boolean;
   filter: OrgTreeFilter | null;
   expansionOverrides: ReadonlyMap<string, boolean>;
@@ -61,17 +58,12 @@ function PersonNode({
     hasReports && activePersonId
       ? node.subordinates.some((s) => containsPerson(s, activePersonId))
       : false;
-  // While filtering, the chain to a match is what the reader asked to see, so
-  // it opens regardless of where they happen to be standing.
   const defaultOpen = depth === 0 || isActive || hasActiveDescendant;
   const open = filter
     ? true
     : (expansionOverrides.get(node.person_id) ?? defaultOpen);
   const label = personName(node) ?? UNNAMED_PERSON;
-  // A lead's name lands on their team; an IC's on their own page. (The two
-  // literal `to`s keep the typed router happy vs. a computed path.) Drilling
-  // into a lead also *sets the org scope* (design §6) so the topbar badge and
-  // every org zone follow the node you just clicked.
+  // WORKAROUND: two literal `to`s, since the typed router rejects a computed path.
   const link =
     hasReports && leadsToTeam ? (
       <Link
@@ -139,11 +131,6 @@ function PersonNode({
   );
 }
 
-/**
- * The same navigation for an organisation with no reporting lines: one flat
- * list, in label order, scrolling in the pane exactly as the chart does. There
- * is no chart to draw and no depth to indent, so a row carries no chevron.
- */
 function RosterList({
   query,
   roster,
@@ -175,8 +162,6 @@ function RosterList({
   }
 
   return (
-    // Padding INSIDE the scroll region the pane owns, so the first and last
-    // names clear its edges instead of touching them.
     <SidebarMenu>
       {listed.map(({ person, label }) => (
         <SidebarMenuItem key={person.person_id}>
@@ -203,7 +188,6 @@ function RosterList({
   );
 }
 
-/** Recursive org-chart navigation, rooted at the viewer. */
 export function OrgTree({
   leadsToTeam = false,
   query = "",
@@ -254,7 +238,6 @@ export function OrgTree({
   );
 }
 
-/** The person the page on screen is about, or null off a person's pages. */
 function useRoutePerson(): string | null {
   const { person } = useParams({ strict: false }) as { person?: string };
   return person ?? null;

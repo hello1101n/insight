@@ -4,8 +4,6 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 
-/** The single tenant row of each view — entity_id is opaque here (the backend
- *  stamps the organization id), so "the only entity" IS the selection. */
 export function tenantData(r: NormalizedMetricResult): EntityMetricData {
   const id = firstEntityId(r);
   return forEntity(r, id ?? "");

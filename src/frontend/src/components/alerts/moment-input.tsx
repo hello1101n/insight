@@ -12,10 +12,6 @@ import { TEXT_LABEL } from "@/lib/type-scale";
 
 import { described } from "./condition-aria";
 
-/**
- * A UTC day and time of day. A stored timestamp is shown to the minute and
- * written back only once the day or time is changed, so its seconds survive.
- */
 export function MomentInput({
   id,
   label,
@@ -39,8 +35,6 @@ export function MomentInput({
     setTime(stored?.time ?? "");
   }
 
-  // INVARIANT: an unfinished time stays in the field and writes nothing, so
-  // the rule never takes a time nobody typed.
   function pickDay(nextDay: string) {
     const nextTime = isTime(time) ? time : "00:00";
     setDay(nextDay);

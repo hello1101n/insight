@@ -37,18 +37,14 @@ import { CurrentValue } from "./current-value";
 import type { AlertMetric } from "./use-alert-metric";
 import type { AlertPreviewState } from "./use-alert-preview";
 
-/** The window value meaning no window, since a kit select takes no empty value. */
+// WORKAROUND: a kit select takes no empty value.
 const ALL_TIME = "all-time";
 
-/** The service resolves every calendar window against a UTC clock. */
 const UTC_NOTE = "Days, months and quarters end at midnight UTC.";
 
-/** The windows bounded by calendar days rather than counted back from now. */
 const CALENDAR_WINDOWS = new Set(["PDC", "PMC", "PQC"]);
 
-/** The windows a rule may name: the presets, and the one it already has. */
 function windowOptions(current: string) {
-  // INVARIANT: "inf" reads every dated row, which "All time" already offers.
   const presets = RANGE_PRESETS.filter(({ token }) => token !== "inf").map(
     ({ token, label }) => ({ value: token, label })
   );
@@ -119,8 +115,6 @@ export function AlertFields({
   const destination = textOf(document, "destination");
   const tested = conditionColumns(document.condition);
 
-  // INVARIANT: a metric that lost its date refuses the window its alert still
-  // holds, and the hidden select cannot clear it.
   useEffect(() => {
     if (!windowed && range !== "") onChange({ range: null });
   }, [windowed, range, onChange]);
@@ -134,14 +128,11 @@ export function AlertFields({
   const columns = definition?.fields.map((field) => field.as_name) ?? [];
   const grouped = new Set(definition?.group_by ?? []);
   const context = contextColumnsOf(document) ?? [];
-  // INVARIANT: a column the metric no longer answers stays listed while the
-  // rule names it, so an edit does not drop it unseen.
   const offered = [
     ...columns.filter((column) => !grouped.has(column)),
     ...context.filter((column) => !columns.includes(column)),
   ];
   const chosen = metric !== "" && picked.settled;
-  // INVARIANT: a metric that cannot be read never hides the window a rule holds.
   const showWindow = stored
     ? Boolean(stored.clock)
     : read.isError && range !== "";

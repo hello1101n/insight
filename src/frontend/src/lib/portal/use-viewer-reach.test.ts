@@ -1,9 +1,3 @@
-/**
- * Who the portal's org zones are for. The distinction this hook exists to draw:
- * a leaf IC on a hierarchical install has nobody to roll up, while a member of
- * an organisation with no reporting lines can see everyone — and both are
- * served the same empty `subordinates`.
- */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -72,7 +66,6 @@ describe("useViewerReach", () => {
   });
 
   it("opens them under a flat policy even with nobody to manage", () => {
-    // The whole point: no reports, and still the organisation to look at.
     mocks.roster = [person("me")];
     mocks.isFlat = true;
 

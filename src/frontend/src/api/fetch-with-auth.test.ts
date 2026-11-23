@@ -16,17 +16,13 @@ describe("fetchWithAuth", () => {
 
   beforeEach(() => {
     resetSessionProbe();
-    // signIn() latches `redirecting` for the page's lifetime, and the module
-    // outlives a test. A bfcache restore is the seam it offers to clear it —
-    // without this, only the first test in the file can observe a bounce.
     const restored = new Event("pageshow");
     Object.defineProperty(restored, "persisted", { value: true });
     window.dispatchEvent(restored);
     authStore.reset();
     authStore.setAuthenticated(makeSession());
     vi.stubGlobal("fetch", vi.fn());
-    // jsdom's `window.location.assign` is a non-configurable no-op; replace
-    // the whole location object so the full-page login bounce is observable.
+    // WORKAROUND: jsdom's `window.location.assign` is a non-configurable no-op, so the whole location object is replaced.
     assign = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -60,7 +56,6 @@ describe("fetchWithAuth", () => {
   });
 
   it("bounces into the login flow when the authenticator confirms the session ended", async () => {
-    // The mock answers the /auth/me probe with 401 too — a session really gone.
     const r401 = new Response(null, { status: 401 });
     fetchMock().mockResolvedValue(r401);
     const res = await fetchWithAuth("/x");
@@ -70,7 +65,6 @@ describe("fetchWithAuth", () => {
     expect(assign.mock.calls[0][0]).toMatch(/^\/auth\/login\?return_to=/);
   });
 
-  /** `/auth/me` as the authenticator answers it for a session that stands. */
   function liveSession(): Response {
     return Response.json({
       user: "p-1",
@@ -136,7 +130,7 @@ describe("fetchWithAuth", () => {
     );
 
     await fetchWithAuth("/a");
-    await fetchWithAuth("/b"); // inside the window: rides the confirmation
+    await fetchWithAuth("/b");
     vi.setSystemTime(Date.now() + 6_000);
     await fetchWithAuth("/c");
 

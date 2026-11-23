@@ -6,64 +6,24 @@ import {
   type PeerStatusWithNeutral,
 } from "@/lib/peers";
 
-/**
- * The single judgment layer for a person's standing against their peer
- * cohort on the unified metric-results path. Every eligibility guard and
- * the quartile-rank judgment are derived HERE, once — display surfaces
- * (KPI tiles, summary cards, group cards, the peer story) only map the
- * result to their own vocabulary. Surfaces re-deriving standings from raw
- * stats is how contradictory verdicts ("Bottom 25%" on one widget, "GOOD"
- * on another, for the same number) crept in.
- */
-
-/** Why a standing is (in)eligible, most specific reason wins. */
 type StandingReason =
   | "time_off"
-  /** Rankable — `rank` is meaningful. */
   | "ok"
-  /** No period value for the entity. */
   | "no_value"
-  /** The metric declares no better/worse direction. */
   | "neutral_direction"
-  /** Zero-filled own total with a null peer target: no observations. */
   | "unmeasured"
-  /** No usable cohort stats (no peer view, or suppressed percentiles). */
   | "no_stats"
-  /** Cohort has zero spread (everyone identical) — ranks nobody. */
   | "flat_pool";
 
 export interface PeerStanding {
-  /** False when the peer view marks the person unmeasured. */
   observed: boolean;
   stats: PeerStats | null;
   eligible: boolean;
   reason: StandingReason;
-  /** Quartile rank; "neutral" when ineligible. */
   rank: PeerStatusWithNeutral;
-  /**
-   * Signed arithmetic distance from the median (positive = above). Display
-   * renders this next to "from median" so the sign must track position, not
-   * favorability — good/bad is `rank`'s (and the color's) job.
-   */
   gapDelta: number;
   gapPct: number | null;
-  /** Outlier ordering weight; 0 when ineligible. */
   severity: number;
-  /**
-   * Distance from the median measured in cohort spreads (IQR), rather than in
-   * percent of the median.
-   *
-   * A percentage of a small median says almost nothing: one commit against a
-   * median of two is "−50%" and one hundred against two hundred is also
-   * "−50%", so ordering by percentage puts the rounding error first. Dividing
-   * by the spread asks the question that survives small numbers — how far
-   * outside the range peers actually occupy — and a cohort where everyone
-   * differs by little makes the same absolute gap count for more, which is
-   * correct.
-   *
-   * 0 when ineligible. Never divides by zero: a flat pool is ineligible before
-   * this is read, and `peerSpread` floors anyway.
-   */
   spreadGap: number;
 }
 
@@ -87,7 +47,6 @@ export function toPeerStats(row: PeerEntityStats | null): PeerStats | null {
   };
 }
 
-/** IQR, falling back to range then 1, for severity normalization. */
 export function peerSpread(stats: PeerStats): number {
   const iqr = Math.abs(stats.p75 - stats.p25);
   if (iqr > 1e-9) return iqr;

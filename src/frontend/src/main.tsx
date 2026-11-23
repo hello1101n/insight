@@ -33,35 +33,21 @@ async function enableMocking(): Promise<void> {
 
 initSentry(router);
 
-// `?__override=<email>` (view-as, insight#1941) bounces straight into the
-// login flow — before mocks, session probe, or the router touch anything.
 if (!consumeOverrideParam()) bootstrap();
 
 function bootstrap(): void {
-  // A failed OIDC callback lands here as `?auth_error=<reason>` (#2032);
-  // consumed before the session probe so the router never sees it.
   const authError = consumeAuthErrorParam();
   void enableMocking()
-    // Probe the session once (mocks, if enabled, intercept /auth/me) before the
-    // router mounts, so the root beforeLoad reads a resolved auth store.
     .then(() => loadSession())
     .then((status) => {
       if (status === "authenticated") {
-        // Covers the replayed-callback bounce too: the first callback already
-        // set the cookie, so an `auth_error` here is stale.
         clearAuthErrorAttempts();
-        // The session is non-sliding — without the refresh driver it dies
-        // session_ttl (~10 min) after login regardless of activity (#1854).
         startSessionRefresh();
         startUsageCollection();
         renderApp();
         return;
       }
       if (authError?.autoRetry) {
-        // A fresh login fixes the retryable reasons (expired state after a
-        // slow IdP round-trip, IdP hiccup); the attempt counter halts a
-        // persistent failure on the error screen instead of looping. No-arg
-        // signIn: return to the current URL, already stripped of auth_error.
         signIn();
         return;
       }
@@ -69,8 +55,6 @@ function bootstrap(): void {
         renderLoginError(authError.code);
         return;
       }
-      // Unauthenticated without an auth_error: the root beforeLoad bounces
-      // into the login flow.
       renderApp();
     });
 }

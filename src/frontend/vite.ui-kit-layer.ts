@@ -2,15 +2,10 @@ import type { Plugin } from "vite";
 
 const KIT = "@gears-frontx/ui-kit";
 
-// Kit CSS chunks load before Tailwind's own sheet, which states no order: the
-// first sheet to name a layer sets it, so without this `components` registers
-// ahead of `base` and preflight's `*{padding:0}` wins over every kit component.
+// WORKAROUND: the first sheet to name a layer fixes its order, and kit chunks load before Tailwind's.
 const ORDER = "@layer properties, theme, base, components, utilities;";
 
-// TODO(#2705): drop this once the kit ships its CSS in a layer.
-// Unlayered kit CSS beats Tailwind's layered utilities at any specificity, so a
-// call site's className is silently dropped without this. Theme tokens are
-// @imported from index.css and must stay unlayered.
+// WORKAROUND: unlayered kit CSS beats layered Tailwind utilities; drop once the kit ships layered CSS (#2705).
 export function uiKitLayer(): Plugin {
   return {
     name: "ui-kit-layer",

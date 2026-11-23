@@ -2,25 +2,14 @@ import type { ToOptions } from "@tanstack/react-router";
 
 import { DIRECTIONS, lensBySlug, lensSlug } from "@/lib/portal/nav-model";
 
-/**
- * The portal's URL vocabulary: which path a zone, item, direction or person
- * section lives at, and back.
- *
- * Paths use short names; the zone and item ids stay the ones the install's
- * navigation policy (`frontend.nav` in the chart) is written against, so a
- * renamed URL never changes what an install hides.
- */
-
 type SlugTable = readonly (readonly [slug: string, item: string])[];
 
-/** Home's views; the bare `/home` is At a glance. */
 export const HOME_VIEWS: SlugTable = [
   ["directions", "by-direction"],
   ["attention", "attention"],
 ];
 const HOME_DEFAULT = "at-a-glance";
 
-/** AI & Cost views; the bare `/explore/ai` is its overview. */
 export const AI_VIEWS: SlugTable = [
   ["funnel", "adoption-funnel"],
   ["units", "by-unit-role"],
@@ -59,7 +48,6 @@ export const MANAGE_SURFACES: SlugTable = [
   ["scorecards", "scorecard-mgmt"],
 ];
 
-/** A person's team views; the bare `/people/$person/team` is the roster. */
 export const TEAM_VIEWS: SlugTable = [
   ["roster", "employees"],
   ["metrics", "metrics"],
@@ -80,7 +68,6 @@ export const reportItem = (slug: string) => itemOf(REPORT_VIEWS, slug);
 export const manageItem = (slug: string) => itemOf(MANAGE_SURFACES, slug);
 export const teamItem = (slug: string) => itemOf(TEAM_VIEWS, slug);
 
-/** Person sections are group ids (`git_output`); the URL spells them with dashes. */
 export const sectionSlug = (section: string) => section.replaceAll("_", "-");
 export const sectionOf = (slug: string) => slug.replaceAll("-", "_");
 
@@ -116,17 +103,11 @@ function withView(base: string, table: SlugTable, item?: string, bare?: string):
     : { to: base, params: {} };
 }
 
-/**
- * The router options for a navigation target, for `<Link>`, `navigate` and
- * `redirect` alike.
- */
 export function linkTo(target: NavTarget): ToOptions {
-  // The target is resolved at runtime, so the path is a string the router's
-  // literal route types cannot follow; every path built here is a registered route.
+  // WORKAROUND: the router's literal route types cannot follow a path built at runtime.
   return pathOf(target) as ToOptions;
 }
 
-/** The path a navigation target lives at. Unknown items fall back to the zone's default. */
 export function pathOf(target: NavTarget): NavLink {
   switch (target.zone) {
     case "overview":
@@ -160,7 +141,6 @@ export function pathOf(target: NavTarget): NavLink {
   }
 }
 
-/** Where the reader is, in the zone/item vocabulary the pane and the nav policy speak. */
 export interface NavLocation {
   zone: string;
   item: string | null;
@@ -169,10 +149,6 @@ export interface NavLocation {
   lens: string;
 }
 
-/**
- * Read a matched route back into a location. `zone` and a fixed `item` come
- * from the route's static data; everything else from its params.
- */
 export function locationOf(
   zone: string,
   fixedItem: string | undefined,

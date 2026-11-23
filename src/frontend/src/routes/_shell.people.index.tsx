@@ -2,7 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { getViewerPersonId } from "@/auth";
 
-/** People opens on the reader's own page. */
 export const Route = createFileRoute("/_shell/people/")({
   beforeLoad: () => {
     const person = getViewerPersonId();

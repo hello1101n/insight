@@ -9,7 +9,6 @@ const CHIP =
 
 const OFF_ROW = "invisible absolute top-0 left-0";
 
-/** A chip's width with its label untruncated, even while it is squeezed. */
 function naturalWidth(chip: HTMLElement): number {
   const label = chip.querySelector<HTMLElement>("[data-label]");
   if (!label) return chip.offsetWidth;

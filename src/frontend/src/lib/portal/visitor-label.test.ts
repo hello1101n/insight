@@ -1,6 +1,3 @@
-/**
- * Two colleagues can carry the same display name, so the handle disambiguates.
- */
 import { describe, expect, it } from "vitest";
 
 import { visitorLabel } from "./visitor-label";

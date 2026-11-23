@@ -1,10 +1,3 @@
-/**
- * The admin gate. What matters: it fails CLOSED — no session, a pending
- * fetch, an error, or an empty grant list must all render as "not an admin";
- * only the seeded role id opens it (the realm role name never appears here);
- * and a session change keys a fresh cache entry so a sign-out/sign-in never
- * inherits the previous caller's answer.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -96,8 +89,6 @@ describe("useIsAdmin", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.isAdmin).toBe(false);
 
-    // retry() re-asks and the gate opens once the answer lands — an errored
-    // check must never be terminal for the session.
     result.current.retry();
     await waitFor(() => expect(result.current.isAdmin).toBe(true));
     expect(result.current.isError).toBe(false);
@@ -137,8 +128,6 @@ describe("useVisibilityPolicy", () => {
     getMe.mockReturnValue(new Promise(() => {}) as Promise<identityClient.MeResponse>);
     const { result } = renderHook(() => useVisibilityPolicy(), harness());
 
-    // Unknown must never WIDEN the rail: an IC keeps their own page until a
-    // flat answer actually arrives.
     expect(result.current.policy).toBe("org_chart");
     expect(result.current.isFlat).toBe(false);
     expect(result.current.isPending).toBe(true);

@@ -14,7 +14,6 @@ import {
   retypeDraft,
 } from "./draft";
 
-/** The longest name the service accepts, as the form's message states it. */
 const NAME_MAX = 200;
 
 const NESTED = {

@@ -37,7 +37,6 @@
 }
 
 :root {
-  /* The kit stops at --chart-5. These match its lightness in each scope. */
   --chart-6: light-dark(#a16207, #b45309);
   --chart-7: light-dark(#a855f7, #d8b4fe);
   --chart-8: light-dark(#ea580c, #f97316);
@@ -116,8 +115,7 @@
   * {
     @apply border-border;
   }
-  /* Tailwind 4's preflight leaves a button at the browser's `default` arrow,
-     so a rail item that is a button read as inert beside one that is a link. */
+  /* WORKAROUND: Tailwind 4's preflight leaves buttons on the browser's default cursor. */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;

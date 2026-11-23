@@ -23,8 +23,6 @@ export interface BrowseRow extends BrowseEntry {
   count: number | undefined;
 }
 
-// INVARIANT: the pane and the chips above the list both read this, so they
-// always offer the same choices with the same counts.
 export function useDashboardBrowse(tags: string[] = []): BrowseRow[] {
   const { isAdmin } = useIsAdmin();
   const all = useInfiniteQuery(definitionPagesQuery("dashboards", "", { tags }));

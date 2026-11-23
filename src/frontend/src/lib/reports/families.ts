@@ -1,11 +1,3 @@
-/**
- * The family a metric key belongs to, and what to call it.
- *
- * The names are the ones the Directions zone already uses, so a metric sits
- * under the same word wherever the reader meets it. `git` and `tasks` are both
- * Development there; keeping them apart here is the finer split the picker
- * needs, since a report is chosen metric by metric rather than lens by lens.
- */
 const FAMILY_NAMES: Record<string, string> = {
   git: "Development · Git",
   tasks: "Development · Delivery",
@@ -29,10 +21,6 @@ export interface MetricFamily<T> {
   metrics: T[];
 }
 
-/**
- * Group metrics by family, families in the order above and anything unnamed
- * after them, so a newly-added family appears rather than disappearing.
- */
 export function byFamily<T extends { metric_key: string }>(
   metrics: readonly T[]
 ): MetricFamily<T>[] {

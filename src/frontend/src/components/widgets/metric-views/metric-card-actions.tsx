@@ -22,7 +22,6 @@ export function MetricCardActions({
 }: {
   evidence: MetricEvidenceSelection | null | undefined;
   label: string;
-  // `overlay` takes the button out of flow, so the call site owes it clear space.
   placement?: "overlay" | "inline";
 }) {
   const evidenceContext = useMetricEvidenceOptional();

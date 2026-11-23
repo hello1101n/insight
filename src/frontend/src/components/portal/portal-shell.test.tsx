@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Shell + router semantics: which view each zone/item/lens resolves to, the
- * manager-vs-IC landing decision, the route→scope one-shot sync and the
- * global slice control. Heavy leaf views are stubbed — their own behavior is
- * covered in their dedicated test files; here we assert the ROUTING.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -50,7 +44,6 @@ vi.mock("@/queries/ic-dashboard", () => ({
   useIcPerson: () => ({ data: undefined, isPending: false, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 
-// Leaf views become labelled placeholders so routing is observable.
 vi.mock("@/components/portal/domain-lens-view", () => ({
   DomainLensView: ({ config }: { config: { title: string | { key: string } } }) => (
     <div data-testid="domain-lens">
@@ -122,7 +115,7 @@ import { PersonView } from "./person-view";
 import { PortalLayout } from "./portal-layout";
 import { SliceSelect } from "./slice-select";
 
-// SidebarProvider (inside PortalLayout) reads a media query; jsdom has none.
+// WORKAROUND: the kit's SidebarProvider reads a media query, and jsdom has no `matchMedia`.
 beforeEach(() => {
   window.matchMedia ??= ((query: string) => ({
     matches: false,
@@ -171,8 +164,6 @@ describe("DirectionView", () => {
   });
 
   it("asks for a direction when the pane collapsed the selection", () => {
-    // Collapsing a direction clears `dir`; blaming the lens for missing from
-    // a direction the reader never picked reads like a bug.
     render(<DirectionView dir="" lens="Delivery" />);
     expect(screen.getByTestId("pending").textContent).toMatch(/Pick a direction/);
   });
@@ -216,10 +207,7 @@ describe("PeopleView", () => {
     const scope = renderHook(() => usePortalScope());
     const first = render(<PeopleView person={pid("p2")} item={null} />);
     expect(scope.result.current.root).toBe(pid("p2"));
-    // The user re-picks a scope from the topbar…
     act(() => portalRouter.set({ scope: pid("other") }));
-    // …and leaving the zone and coming back must NOT revert it. Unmounted for
-    // real, so this is the remount case and not two live instances.
     first.unmount();
     render(<PeopleView person={pid("p2")} item={null} />);
     expect(scope.result.current.root).toBe(pid("other"));
@@ -281,7 +269,6 @@ describe("SliceSelect", () => {
   it("shows the active dimension and writes the store on change", async () => {
     const slice = renderHook(() => usePortalSlice());
     render(<SliceSelect dims={[{ key: "division", label: "Division" }]} />);
-    // "Slice:" is a separate, md-only span now, so match the value itself.
     expect(screen.getByRole("combobox", { name: "Cohort" })).toHaveTextContent(
       "Team (all)",
     );

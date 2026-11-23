@@ -26,8 +26,6 @@ describe("peerStatusVsQuartiles", () => {
   });
 
   it("never brands a median tie as an outlier in a zero-inflated pool", () => {
-    // Many peers at 0, a few above: p25 == median == 0 but the pool has
-    // spread. A person at 0 is at the median — in the pack, not "Bottom 25%".
     const zeroInflated = { p25: 0, p50: 0, p75: 4 };
     expect(peerStatusVsQuartiles(0, zeroInflated, true)).toBe("in_pack");
     expect(peerStatusVsQuartiles(5, zeroInflated, true)).toBe("top");
@@ -36,7 +34,6 @@ describe("peerStatusVsQuartiles", () => {
   });
 
   it("requires the median side for the top rank symmetrically", () => {
-    // Right-heavy ties: p50 == p75. Sitting on them is the pack's middle.
     const tiedHigh = { p25: 1, p50: 6, p75: 6 };
     expect(peerStatusVsQuartiles(6, tiedHigh, true)).toBe("in_pack");
     expect(peerStatusVsQuartiles(7, tiedHigh, true)).toBe("top");

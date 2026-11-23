@@ -1,12 +1,4 @@
 // @vitest-environment jsdom
-/**
- * One activity class, composed.
- *
- * The choices this file makes are all about what NOT to draw: which metrics
- * earn a detail block, when a whole class collapses to a sentence, and what the
- * index is allowed to repeat. Each of those is invisible in the output when it
- * works, which is why they are pinned here.
- */
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,8 +42,6 @@ vi.mock("@/hooks/use-portal-period", () => ({
     comparisonNoun: "month",
   }),
 }));
-// The composition blocks are someone else's tests; stubbing them keeps this
-// file about which children get built, not how they paint.
 vi.mock("@/components/widgets/metric-views/collection-drilldown", () => ({
   CollectionDrilldown: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="composition">{children}</div>
@@ -80,7 +70,6 @@ function metric(key: string, label: string, value: number | null) {
   } as unknown as MetricResult;
 }
 
-/** Collaboration's headline keys, from the group registry. */
 const HEADLINE = [
   ["collab.messages_sent", "Chat Messages Sent"],
   ["collab.meeting_hours", "Meeting Hours"],
@@ -91,7 +80,6 @@ function draw() {
   return render(<SingleGroupView personId={ME} groupId="collaboration" />);
 }
 
-/** A listing entry for a metric this installation reads. */
 function wired(key: string) {
   return {
     metric_key: key,
@@ -107,8 +95,6 @@ beforeEach(() => {
   mocks.isPending = false;
   mocks.isError = false;
   mocks.cohort = [];
-  // The section's sources are connected unless a test says otherwise: an
-  // empty section is then about the person, which is the ordinary case.
   mocks.definitions = HEADLINE.map(([k]) => wired(k));
   mocks.definitionsPending = false;
   mocks.definitionsError = false;
@@ -116,9 +102,6 @@ beforeEach(() => {
 
 describe("SingleGroupView", () => {
   it("collapses a class with nothing recorded into one sentence", () => {
-    // Every composition block would otherwise render its own polite
-    // placeholder — a chart, a summary card, a distribution — and a reader
-    // would meet one fact restated four ways down a full page.
     mocks.byKey = normalizeMetricResults(
       HEADLINE.map(([k, l]) => metric(k, l, null))
     );
@@ -128,10 +111,6 @@ describe("SingleGroupView", () => {
   });
 
   it("says nothing feeds a section rather than blaming the person for it", () => {
-    // The two empties are opposite findings. A section this person did none
-    // of is worth asking them about; one nothing feeds is about the install
-    // and is nobody's performance. Told the second in the first's words, a
-    // reader goes looking for missing work that was never being measured.
     mocks.byKey = normalizeMetricResults(
       HEADLINE.map(([k, l]) => metric(k, l, null))
     );
@@ -142,9 +121,6 @@ describe("SingleGroupView", () => {
   });
 
   it("claims neither absence when the listing that decides could not be read", () => {
-    // With no listing every section looks unreachable, so falling through
-    // would announce that nothing is measured here for anyone on the strength
-    // of a request that never arrived.
     mocks.byKey = normalizeMetricResults(
       HEADLINE.map(([k, l]) => metric(k, l, null))
     );
@@ -176,8 +152,6 @@ describe("SingleGroupView", () => {
   });
 
   it("says so once when the class reads but nothing can be broken down", () => {
-    // Stated for the class rather than under every metric: three rows each
-    // saying "no detail" reads as three separate faults.
     const flat = HEADLINE.map(([k, l]) => {
       const m = metric(k, l, 5) as unknown as Record<string, unknown>;
       delete m.drilldown;
@@ -190,8 +164,6 @@ describe("SingleGroupView", () => {
   });
 
   it("shows a spinner while the collection loads, not an empty class", () => {
-    // A class still loading must not be drawn as one with nothing; the reader
-    // would take the sentence for an answer.
     mocks.isPending = true;
     const { container } = draw();
     expect(screen.queryByText(/Nothing recorded here/)).not.toBeInTheDocument();

@@ -1,4 +1,3 @@
-/** See docs/testing/storybook-component-tests.md. */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { delay, http, HttpResponse } from "msw";
 import { expect } from "storybook/test";
@@ -24,7 +23,6 @@ import {
   expectNothingOverlaps,
 } from "@/test/storybook/layout";
 
-/** A grouped rule: any team with many open pull requests, or stale ones. */
 const BY_TEAM: Condition = {
   rows: "any",
   where: {
@@ -115,7 +113,6 @@ const LIST: ListPage = {
   offset: 0,
 };
 
-/** Newest first; the older one was owed under the rule's previous revision. */
 const NOTIFICATIONS: AlertNotification[] = [
   {
     ...NOTIFICATION,
@@ -192,7 +189,6 @@ export default meta;
 
 type Story = StoryObj<typeof Screen>;
 
-/** The card a screen is given, which the phone stories measure against. */
 function at(width: number): Story["decorators"] {
   return [
     (Story) => (
@@ -212,10 +208,6 @@ function describeElement(element: Element): string {
   );
 }
 
-/**
- * A table wider than the card scrolls sideways inside it rather than running
- * off the card; its first column still reads without scrolling.
- */
 function expectTablesReadWithin(card: Element, tables: readonly Element[]) {
   const scrollers = tables.map((table) => table.parentElement!);
   expectHorizontallyContained(card, scrollers, () => "a table's scroller");
@@ -244,13 +236,11 @@ export const NewAlert: Story = {
   decorators: at(CARD_PX_WIDE),
 };
 
-/** A grouped rule with a nested condition, as the builder draws it. */
 export const EditAlert: Story = {
   args: { which: "edit" },
   decorators: at(CARD_PX_WIDE),
 };
 
-/** The check of the condition has not answered yet. */
 export const EditAlertChecking: Story = {
   args: { which: "edit" },
   decorators: at(CARD_PX_WIDE),

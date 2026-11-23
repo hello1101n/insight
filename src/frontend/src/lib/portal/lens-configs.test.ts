@@ -49,8 +49,6 @@ describe("DIRECTION_LENSES registry", () => {
       for (const [lens, entry] of Object.entries(lenses)) {
         if (!("entity" in entry)) continue;
         for (const key of tenantSectionMetricKeys(entry)) {
-          // A tenant-entity key inside a person-entity request fails the whole
-          // batch, and GROUPS drive person surfaces — both must stay clean.
           expect(gridKeys.has(key), `${dir}/${lens}: ${key} in grid`).toBe(false);
           expect(KNOWN_KEYS.has(key), `${dir}/${lens}: ${key} in GROUPS`).toBe(false);
           expect(key, `${dir}/${lens}: ${key} shape`).toMatch(/^[a-z_]+\.[a-z0-9_]+$/);
@@ -150,8 +148,6 @@ describe("DIRECTION_LENSES registry", () => {
         section.kind === "composition" && section.dimension === "category",
     );
 
-    // The lead states the precedence, which is the part a reader cannot guess
-    // from the labels, and every category the warehouse can emit is named.
     const notes = composition?.notes ?? [];
     expect(notes[0]).toMatch(/first rule that matches wins/i);
     for (const label of [

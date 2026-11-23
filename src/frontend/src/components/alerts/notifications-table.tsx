@@ -25,17 +25,12 @@ const CLOCK = "HH:mm zzz";
 
 type Rule = Pick<Alert, "metric">;
 
-/**
- * Each notification once. Pages are read by offset, so one owed between two
- * reads shifts the next page and repeats a row already shown.
- */
 function distinct(notifications: AlertNotification[]): AlertNotification[] {
   const seen = new Set<string>();
 
   return notifications.filter(({ id }) => !seen.has(id) && seen.add(id));
 }
 
-/** Every notification an alert's checks have owed, newest first. */
 export function NotificationsTable({ alert }: { alert: Alert }) {
   const history = useInfiniteQuery(alertNotificationsQuery(alert.id));
 
@@ -129,7 +124,6 @@ function NotificationRow({
   );
 }
 
-/** What a check found, against the condition it was held to then. */
 function Reading({
   notification,
   rule,
@@ -164,7 +158,6 @@ function Reading({
   );
 }
 
-/** What the provider said, or what it was last refused with. */
 function Delivery({ notification }: { notification: AlertNotification }) {
   const tries =
     notification.attempts === 1

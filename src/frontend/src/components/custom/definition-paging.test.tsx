@@ -16,7 +16,6 @@ describe("<DefinitionCount>", () => {
   });
 
   it("counts the matches while a search narrows it", () => {
-    // "15 metrics" would read as the whole catalogue having shrunk.
     render(<DefinitionCount total={15} noun="metrics" searching />);
 
     expect(screen.getByText("15 matching")).toBeInTheDocument();

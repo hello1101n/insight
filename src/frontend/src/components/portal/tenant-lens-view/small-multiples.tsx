@@ -17,7 +17,6 @@ import { chartColor } from "@/lib/chart-palette";
 
 const MULTIPLE_CONFIG: ChartConfig = { value: { label: "Value" } };
 
-/** A grid of small line charts, one per dimension value, one shared y-axis. */
 export function SmallMultiplesSection({
   section,
   resolve,
@@ -34,7 +33,6 @@ export function SmallMultiplesSection({
     section.dimension,
     section.top ?? 12
   );
-  // A single multiple is a trend wearing a costume.
   if (multiples.length < 2 || max <= 0) return null;
 
   return (
@@ -63,8 +61,6 @@ export function SmallMultiplesSection({
                   margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
                 >
                   <XAxis dataKey="date" hide />
-                  {/* The shared ceiling is the whole point: the same y-axis
-                      everywhere, or the grid invites false comparisons. */}
                   <YAxis hide domain={[0, max]} />
                   <ChartLine
                     dataKey="value"

@@ -54,7 +54,6 @@ describe("consumeAuthErrorParam", () => {
     stubLocation("https://insight.test/?auth_error=state_expired");
     expect(consumeAuthErrorParam()?.autoRetry).toBe(true);
 
-    // The retried login failed again: same bounce, same tab.
     stubLocation("https://insight.test/?auth_error=state_expired");
     expect(consumeAuthErrorParam()?.autoRetry).toBe(false);
   });
@@ -64,7 +63,6 @@ describe("consumeAuthErrorParam", () => {
 
     expect(consumeAuthErrorParam()).toBeNull();
     expect(replaceState).toHaveBeenCalledWith(null, "", "/?tab=stats");
-    // The budget is untouched: the next real failure still auto-retries.
     stubLocation("https://insight.test/?auth_error=state_expired");
     expect(consumeAuthErrorParam()?.autoRetry).toBe(true);
   });
@@ -99,8 +97,6 @@ describe("consumeAuthErrorParam", () => {
 
   it("does not auto-retry when the attempt cannot be persisted", () => {
     stubLocation("https://insight.test/?auth_error=state_expired");
-    // Reads work, writes fail (e.g. quota): the next bounce would read zero
-    // again, so an unpersisted attempt must not spend a retry.
     vi.stubGlobal("sessionStorage", {
       getItem: () => null,
       setItem: () => {
@@ -117,8 +113,6 @@ describe("consumeAuthErrorParam", () => {
 
   it("fails closed to the error screen when storage is unavailable", () => {
     stubLocation("https://insight.test/?auth_error=state_expired");
-    // Replace the global outright — spying on methods of the environment's
-    // Storage object does not reliably intercept the module's binding.
     const disabled = () => {
       throw new Error("storage disabled");
     };

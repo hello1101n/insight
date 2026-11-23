@@ -1,6 +1,5 @@
 import { usePersonName } from "@/queries/person-name";
 
-/** "Owner: name", or nothing when the caller may not learn who that is. */
 export function OwnerName({
   personId,
   className,

@@ -4,13 +4,6 @@ import type { MouseHandlerDataParam } from "recharts";
 import type { MetricResult } from "@/api/custom-client";
 import { chartColor } from "@/lib/chart-palette";
 
-/**
- * A metric result as a chart reads it: one object per row, keyed by column.
- *
- * A result is columns and positional rows, which no chart library takes. Only
- * the columns a widget draws are carried over, so a wide result does not turn
- * into wide objects.
- */
 export function points(
   result: MetricResult,
   keys: string[]
@@ -37,11 +30,7 @@ export function stackColor(index: number): string {
   return chartColor(index);
 }
 
-/**
- * Recharts reads a dotted `dataKey` as a path and a chart colour is a CSS
- * custom property, so a series value is never used as a key itself. The keys
- * added here hold a `-`, which no `as_name` can, so none overwrites a column.
- */
+// WORKAROUND: Recharts reads a dotted `dataKey` as a path, so a series value is never a key.
 export function stacks(
   result: MetricResult,
   x: string,
@@ -86,14 +75,12 @@ export function stacks(
   };
 }
 
-/** One series, painted from the kit's chart palette. */
 export function seriesConfig(key: string, index = 0): ChartConfig {
   return {
     [key]: { label: key, color: chartColor(index) },
   };
 }
 
-/** A series chart's click, when it lands on a point rather than between them. */
 export function pointClick(
   onPointClick: (() => void) | undefined
 ): ((state: MouseHandlerDataParam) => void) | undefined {

@@ -2,13 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { formatAxisTick } from "./format";
 
-/**
- * Tick labels have two jobs that pull against each other: fit the ~28px axis
- * gutter, and not lie about where the gridline sits.
- */
 describe("formatAxisTick", () => {
   it("keeps four digits literal — they fit, and they are exact", () => {
-    // A tick at 2250 labelled "2.3k" would misplace the gridline it sits on.
     expect(formatAxisTick(2250)).toBe("2250");
     expect(formatAxisTick(9000)).toBe("9000");
     expect(formatAxisTick(750)).toBe("750");

@@ -19,19 +19,13 @@ import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { chartColor } from "@/lib/chart-palette";
 
-/** One plotted series: its metric key, its label, and how to draw it. */
 export type SectionTrendSeries = {
   key: string;
   label: string;
-  /** "step" reads as "held at", not "drifted to" — for slow-moving medians. */
   type?: "line" | "step" | "area" | "stacked-area";
   yAxisId?: "left" | "right";
 };
 
-/**
- * One bucket. A series key is ABSENT when that series has no reading for the
- * bucket — never zero, so the line shows a gap instead of a measurement.
- */
 export type SectionTrendPoint = {
   date: string;
   [seriesKey: string]: number | string;
@@ -43,25 +37,14 @@ export interface SectionTrendProps {
   series: SectionTrendSeries[];
   data: SectionTrendPoint[];
   targetLine?: { value: number; label: string };
-  /**
-   * Force the right axis on. Normally unnecessary — it is rendered whenever a
-   * series asks for it — but a caller can pin it so the plot area does not
-   * shift when a right-axis series drops out of the data.
-   */
   rightAxis?: boolean;
   height?: number;
   isPending?: boolean;
   isError?: boolean;
   onRetry?: () => void;
-  /**
-   * The bucket a reader clicked, by its own label — what the axis shows and
-   * what the trend rows are keyed by. A card that also opens as a whole must
-   * stop this event, or one click answers two questions at once.
-   */
   onBucketClick?: (bucket: string) => void;
 }
 
-/** The shared trend card: one chart, the same states, wherever a trend appears. */
 export function SectionTrend({
   title,
   description,
@@ -99,10 +82,8 @@ export function SectionTrend({
     );
   }
 
-  // Series keys are metric keys like "collab.messages_sent". A dot is illegal
-  // in a CSS custom-property name (so `--color-<key>` never resolves → invisible
-  // strokes) and makes recharts treat the dataKey as a nested path. Remap every
-  // series to a safe, collision-free alias and rewrite the data rows to match.
+  // WORKAROUND: a dot in a key breaks the `--color-<key>` custom property and reads as a
+  // nested path to Recharts, so series and rows are rekeyed to safe aliases.
   const safeKeys = series.map((s, i) => `s${i}_${s.key.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
   const safeSeries = series.map((s, i) => ({ ...s, key: safeKeys[i] }));
   const safeData = data.map((row) => {
@@ -114,8 +95,7 @@ export function SectionTrend({
     return next;
   });
 
-  // Derived, not just taken from the prop: a series with `yAxisId: "right"`
-  // and no right YAxis rendered is dropped by recharts without a word.
+  // WORKAROUND: Recharts silently drops a `yAxisId: "right"` series when no right YAxis renders.
   const needsRightAxis =
     rightAxis || safeSeries.some((s) => s.yAxisId === "right");
 
@@ -149,8 +129,6 @@ export function SectionTrend({
                 ? (next, event) => {
                     const bucket = next?.activeLabel;
                     if (typeof bucket !== "string") return;
-                    // The card around this chart opens the whole period; a
-                    // point is a narrower question, so it must not also fire.
                     (
                       event as { stopPropagation?: () => void }
                     )?.stopPropagation?.();

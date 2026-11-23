@@ -19,17 +19,8 @@ export interface CustomTableProps {
   result: MetricResult;
 }
 
-/** Beyond this the card is a scroll bar, and the DOM pays for every row. */
 const SHOWN = 200;
 
-/**
- * One cell.
- *
- * A value that is a URL is the row's way out - to the pull request, the issue,
- * the page it counted - so it is a link rather than text to copy by hand.
- * Nothing is composed here: only a value that already is an absolute http(s)
- * URL becomes one.
- */
 function Cell({ value, unit }: { value: unknown; unit: string }) {
   if (value === null || value === undefined) return <>{"\u2014"}</>;
   if (unit || typeof value === "number") {
@@ -52,7 +43,6 @@ function Cell({ value, unit }: { value: unknown; unit: string }) {
   );
 }
 
-/** A column header that orders the table: up, down, and back as it came. */
 function Sortable({
   column,
   index,
@@ -87,8 +77,6 @@ function Sortable({
         }}
       >
         {column}
-        {/* The slot is there whether or not an arrow is in it: a column that
-            widened when it was ordered by would shift every column beside it. */}
         <span className="inline-flex size-3 shrink-0 items-center justify-center">
           {chosen === "ascending" ? <ArrowUp className="size-3" aria-hidden /> : null}
           {chosen === "descending" ? (
@@ -112,9 +100,6 @@ export function CustomTable({ result }: CustomTableProps) {
           rows
         </p>
       ) : null}
-      {/* The wrapper stays out of the scrolling: whatever holds the table
-          scrolls it, and the header sticks to that, so the columns can be
-          re-ordered from anywhere in a long result. */}
       <Table containerClassName="overflow-visible">
         <TableHeader className="sticky top-0 z-10 bg-card shadow-[inset_0_-1px_0_0_var(--border)]">
           <TableRow>

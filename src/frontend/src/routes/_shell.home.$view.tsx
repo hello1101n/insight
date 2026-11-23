@@ -6,7 +6,6 @@ import { resolveZoneItem } from "@/lib/portal/nav-model";
 import { homeItem } from "@/lib/portal/portal-routes";
 
 export const Route = createFileRoute("/_shell/home/$view")({
-  // Home embeds lens views, which can open one repository.
   validateSearch: validateExploreSearch,
   beforeLoad: ({ params }) => {
     if (!homeItem(params.view)) throw redirect({ to: "/home", replace: true });

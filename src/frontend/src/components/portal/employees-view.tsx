@@ -47,10 +47,6 @@ function rosterEmployees(
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-/**
- * Employees directory — every canonical person visible to the viewer,
- * searchable and linked to their Person view.
- */
 export function EmployeesView() {
   const { t } = useTranslation();
   const { isFlat } = useVisibilityPolicy();
@@ -119,8 +115,6 @@ export function EmployeesView() {
             <TableRow>
               <TableHead>{t("people.name")}</TableHead>
               <TableHead>{t("people.title")}</TableHead>
-              {/* A flat organisation fills none of these: no reporting line,
-                  and the roster carries no org attributes. */}
               {isFlat ? null : (
                 <>
                   <TableHead>{t("people.department")}</TableHead>

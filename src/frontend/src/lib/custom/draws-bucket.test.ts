@@ -40,8 +40,6 @@ describe("drawsBucket", () => {
   });
 
   it("is false for a categorical widget that never reads it", () => {
-    // A bucketed run would hand a pie one slice per time bucket, so the same
-    // category appears many times and the total is wrong.
     expect(
       drawsBucket({ type: "pie", metric: "m", label: "repo", value: "n" }),
     ).toBe(false);

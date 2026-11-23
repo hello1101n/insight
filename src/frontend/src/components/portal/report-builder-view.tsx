@@ -308,7 +308,6 @@ function reportPersonIds(
 ): string[] {
   if (roster == null) return [];
   if (roster.length > 0) return roster.map((person) => person.person_id);
-  // INVARIANT: a roster lists the people below the pivot, never the pivot.
   return pivotPersonId ? [pivotPersonId] : [];
 }
 

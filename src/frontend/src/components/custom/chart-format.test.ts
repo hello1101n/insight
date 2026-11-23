@@ -23,7 +23,6 @@ describe("chart-format", () => {
   it("signs a rate as one, and rounds off the float's tail", () => {
     expect(groupedNumber(83.91167192429022, "%")).toBe("83.9%");
     expect(compactNumber(83.91167192429022, "%")).toBe("83.9%");
-    // Nothing to sign is nothing added — an em dash stays an em dash.
     expect(groupedNumber(null, "%")).toBe("—");
   });
 
@@ -63,7 +62,6 @@ describe("chart-format", () => {
   });
 
   it("cuts a category that would crowd the axis", () => {
-    // A commit sha is 40 characters; a whole axis of them is a smear.
     expect(categoryTick("51e8cfdcfa77d673719845850706f2ab")).toBe("51e8cfdcfa77d…");
     expect(categoryTick("insight/insight")).toBe("insight/insig…");
     expect(categoryTick("chatgpt")).toBe("chatgpt");

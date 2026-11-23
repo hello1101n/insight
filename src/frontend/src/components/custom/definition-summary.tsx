@@ -8,18 +8,6 @@ import { TEXT_BODY, TEXT_LABEL } from "@/lib/type-scale";
 import { metricSource } from "@/lib/custom/metric-source";
 import { cn } from "@/lib/utils";
 
-/**
- * What a stored definition says, read back.
- *
- * The catalogue pages and a widget's drilldown show the same thing — the query
- * as it is stored — so they render it from here rather than each having its own
- * idea of what a metric looks like.
- */
-
-/**
- * Where a field or a condition reads from, as the body spells it: a declared
- * field over a dataset; a column, or a JSON key inside one, over a table.
- */
 function source(read: MetricRead): string {
   if (read.field !== undefined) return read.field;
   if (read.json !== undefined) {
@@ -29,20 +17,12 @@ function source(read: MetricRead): string {
   return read.column ?? "";
 }
 
-/**
- * One field, as the query reads it.
- *
- * A `count` naming no field counts the records rather than anything in them,
- * which is why the parentheses can be empty.
- */
 function reads(field: MetricDefinition["fields"][number]): string {
   const read = source(field);
   const applied = field.agg ? `${field.agg}(${read})` : read;
 
   return `${applied} as ${field.as_name}`;
 }
-
-/** What the metric reads, named as the body names it. */
 
 export function MetricSummary({
   definition,
@@ -94,7 +74,6 @@ export function MetricSummary({
   );
 }
 
-/** What the row beside the metric is called, per kind. */
 function drawnLabel(widget: Widget): string {
   switch (widget.type) {
     case "table":
@@ -108,7 +87,6 @@ function drawnLabel(widget: Widget): string {
   }
 }
 
-/** The columns this widget reads, as it reads them. */
 function drawn(widget: Widget): string {
   switch (widget.type) {
     case "table":
