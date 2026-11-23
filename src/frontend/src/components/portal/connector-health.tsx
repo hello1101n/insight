@@ -44,14 +44,6 @@ import { cn } from "@/lib/utils";
 
 const COLUMNS = 7;
 
-/**
- * A DOM id for one row's disclosure panel.
- *
- * The identity's own separator is not one an id may carry through a CSS
- * selector, so it is swapped for an underscore — and any underscore already in
- * the key is escaped first, or `a_b/c` and `a/b_c` would name one panel and
- * `aria-controls` would point two rows at the same disclosure.
- */
 function panelIdFor(row: ConnectorHealth): string {
   const id = instanceKey(row).replaceAll("_", "%5F").replaceAll("/", "_");
   return `connector-syncs-${id}`;
@@ -105,8 +97,6 @@ export function ConnectorHealthPane() {
           )}
         >
           <p>{recording.label}</p>
-          {/* Inside the region, not beside it: the warning's consequence is the
-              half a reader most needs announced. */}
           {recording.detail !== "" && <p>{recording.detail}</p>}
         </div>
       </div>
@@ -130,8 +120,6 @@ export function ConnectorHealthPane() {
                 <TableHead className="whitespace-normal">
                   {t("connectors.connector")}
                 </TableHead>
-                {/* One connector can be configured more than once; this is the
-                    only cell that tells those rows apart. */}
                 <TableHead className="whitespace-normal">
                   {t("connectors.instance")}
                 </TableHead>
@@ -155,26 +143,11 @@ export function ConnectorHealthPane() {
             <TableBody>
               {data.connectors.map((row) => {
                 const state = describeConnector(row);
-                // Keyed on the whole identity, not on the row's position and
-                // not on the name. The page polls, so a position can come to
-                // mean a different row between renders; and two installations
-                // of one connector share the name, so keying on it would open
-                // the wrong one's history.
                 const key = instanceKey(row);
                 const open = expanded === key;
                 const panelId = panelIdFor(row);
                 const toggle = () => setExpanded(open ? null : key);
                 return [
-                  // The whole row opens the connector, by the same rule every
-                  // console listing follows — `activatesRow` is shared with
-                  // them, so a press on a control and the end of a text
-                  // selection are told apart here exactly as they are there.
-                  //
-                  // The gesture goes on the row and the role does not: a `<tr>`
-                  // keeps `role="row"`, which supports `aria-expanded`, so the
-                  // disclosure is announced without taking the row out of its
-                  // table. An inner button would be a second focus stop for the
-                  // one thing the row already does.
                   <TableRow
                     key={key}
                     data-state-name={state.state}
@@ -330,11 +303,6 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
   );
 }
 
-/**
- * A sync still in flight is not dimmed like a settled one: its number is the
- * only thing on the row that keeps moving, and it is what an operator opened
- * the page to see.
- */
 function DurationCell({
   sync,
   asOf,

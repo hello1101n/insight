@@ -3,7 +3,6 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 
-/** Linear-interpolated quantile over a pre-sorted ascending array. */
 export function quantile(sorted: number[], q: number): number {
   if (sorted.length === 0) return NaN;
   if (sorted.length === 1) return sorted[0]!;
@@ -13,7 +12,6 @@ export function quantile(sorted: number[], q: number): number {
   return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
 }
 
-/** A cohort needs at least this many measured members for a meaningful median. */
 export const MIN_COHORT = 4;
 
 interface CohortStats {
@@ -39,24 +37,11 @@ function statsOf(values: number[]): CohortStats | null {
   };
 }
 
-/**
- * Peer stats aren't computed by the backend yet, so the shared members grid
- * paints every cell neutral ("no comparison"). Synthesize a peer view where each
- * member is ranked **within their own cohort** — the group of members sharing
- * `cohortOf(id)` (e.g. same division / title / manager). This drives the grid
- * heat, attention outliers, and the Person "vs your <slice> median" framing off
- * a single, honest, client-side computation.
- *
- * `cohortOf` returns the cohort key for a member (or null to exclude). Members
- * whose cohort has fewer than `MIN_COHORT` measured values get no peer stats
- * (neutral) — no fake comparison against a 1–2 person group.
- */
 export function withinCohortPeer(
   result: NormalizedMetricResult,
   memberIds: readonly string[],
   cohortOf: (id: string) => string | null,
 ): NormalizedMetricResult {
-  // Bucket member values by cohort key.
   const byCohort = new Map<string, number[]>();
   for (const id of memberIds) {
     const key = cohortOf(id);
@@ -93,10 +78,6 @@ export function withinCohortPeer(
   };
 }
 
-/**
- * The whole roster as a single cohort — the default when no slice is active.
- * Thin wrapper over `withinCohortPeer`.
- */
 export function withinTeamPeer(
   result: NormalizedMetricResult,
   memberIds: readonly string[],
@@ -104,11 +85,6 @@ export function withinTeamPeer(
   return withinCohortPeer(result, memberIds, () => "all");
 }
 
-/**
- * Overlay a person's own metric results with peer stats computed from their
- * slice cohort (a single "all" bucket over `cohortIds`), so the existing
- * "vs peer" widgets read "vs <slice> median". No-op when the cohort is empty.
- */
 export function injectCohortPeer(
   personByKey: Map<string, NormalizedMetricResult>,
   cohortByKey: Map<string, NormalizedMetricResult>,

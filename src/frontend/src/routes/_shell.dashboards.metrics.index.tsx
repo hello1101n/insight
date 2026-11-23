@@ -8,11 +8,6 @@ import { NewLink } from "@/components/custom/editor/edit-link";
 import { useDefinitionCatalogue } from "@/hooks/use-definition-catalogue";
 import { useAssistantAvailable } from "@/lib/portal/use-assistant-available";
 
-/**
- * A static segment, so it wins over `$name` in the route tree — a dashboard
- * literally called "metrics" would be unreachable, which is the trade for a
- * readable URL.
- */
 export const Route = createFileRoute("/_shell/dashboards/metrics/")({
   component: MetricsCatalogue,
 });

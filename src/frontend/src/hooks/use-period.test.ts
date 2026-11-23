@@ -1,13 +1,3 @@
-/**
- * Unit coverage for the period store (`src/hooks/use-period.ts`):
- * module-init validation of persisted localStorage values, the usePeriod
- * hook, persistence on set, and the best-effort catch when localStorage
- * writes throw.
- *
- * The store keeps module-level state, so each test re-imports a fresh
- * copy via `vi.resetModules()` + dynamic import.
- */
-
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +10,6 @@ async function freshModule() {
   return import("@/hooks/use-period");
 }
 
-/** Module-init state as the only consumer sees it — through the hook. */
 async function freshState() {
   const mod = await freshModule();
   const { result } = renderHook(() => mod.usePeriod());
@@ -113,7 +102,6 @@ describe("usePeriod", () => {
     expect(result.current.period).toBe("week");
     expect(result.current.customRange).toBeNull();
     expect(window.localStorage.getItem(PERIOD_KEY)).toBe("week");
-    // Clearing the range removes the persisted custom key.
     expect(window.localStorage.getItem(CUSTOM_KEY)).toBeNull();
   });
 

@@ -72,8 +72,6 @@ beforeEach(() => {
 });
 
 describe("/dashboards/widgets/$name", () => {
-  // A reader who opened this from the catalogue needs the way back, whether
-  // or not the page found what it was looking for.
   it("offers the way back to the catalogue", async () => {
 
     render(<Component />, { wrapper });
@@ -94,7 +92,6 @@ describe("/dashboards/widgets/$name", () => {
     );
   });
 
-  // A chart over time is drawn from buckets; a table is not.
   it("runs over the window picked, sliced as the chart draws it", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchWidget).mockResolvedValue({
@@ -138,7 +135,6 @@ describe("/dashboards/widgets/$name", () => {
     expect(customClient.runMetric).toHaveBeenCalledTimes(1);
   });
 
-  // What a removal would break, before a reader asks for one.
   it("names what draws it, and links each by its id", async () => {
     vi.mocked(customClient.fetchDependents).mockResolvedValue({
       holders: [{ kind: "dashboards", id: "d-9", name: "Engineering" }],

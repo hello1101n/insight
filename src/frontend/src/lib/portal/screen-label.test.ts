@@ -1,9 +1,3 @@
-/**
- * A recorded path names a screen; the report has to name it the way the
- * product does. Two screens that differ must get titles that differ — a table
- * where `/ic/:id/personal` and `/ic/:id/team` read alike is worse than raw
- * paths.
- */
 import { describe, expect, it } from "vitest";
 
 import { screenLabel } from "./screen-label";

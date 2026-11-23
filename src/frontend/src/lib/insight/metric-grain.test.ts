@@ -38,9 +38,6 @@ describe("finestGrain", () => {
   });
 
   it("says a metric offers none rather than guessing one", () => {
-    // A metric with no declared detail must render as having none. Falling
-    // back to a default would draw a daily picture for something the API
-    // cannot break down at all.
     expect(finestGrain(normalized())).toBeNull();
     expect(finestGrain(undefined)).toBeNull();
     expect(finestGrain(normalized([]))).toBeNull();
@@ -49,8 +46,6 @@ describe("finestGrain", () => {
 
 describe("activityEvents", () => {
   it("keeps the subject of a title and leaves the body behind", () => {
-    // A commit message carries its reasoning after the first line; in a list
-    // being scanned that reasoning is noise, and in the export it is intact.
     const events = activityEvents([
       {
         values: {
@@ -82,8 +77,6 @@ describe("activityEvents", () => {
   });
 
   it("survives a source that reports no title, ref, or place", () => {
-    // Not every event-grade source names its things; the row still happened
-    // and must not be dropped for missing a label.
     const events = activityEvents(rows([{ date: "2026-03-01", value: 3 }]));
     expect(events).toEqual([
       {

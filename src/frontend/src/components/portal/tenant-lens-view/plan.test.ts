@@ -1,8 +1,3 @@
-/**
- * The request planner: the backend takes one view of each kind per metric
- * per request, so conflicting section needs must spread over collections —
- * and every section must still find the view that was requested for it.
- */
 import { describe, expect, it } from "vitest";
 
 import type { TenantLensConfig } from "@/lib/portal/lens-configs";
@@ -84,12 +79,9 @@ describe("planTenantRequests", () => {
         groupLimit: { count: 12, include_remainder: false },
       },
     ]);
-    // The heatmap is day-bucketed whatever the lens bucket — the weekday
-    // axis needs dates.
     expect(viewsOf(plan, 3, "ci.runs")).toEqual([
       { view: "timeseries", bucket: "day", dimensions: ["hour_block"] },
     ]);
-    // Every section still finds its own view.
     for (const section of config.sections) {
       for (const need of sectionNeeds(section, "week")) {
         expect(plan.locate(need)).toBeDefined();
@@ -110,8 +102,6 @@ describe("planTenantRequests", () => {
     ]);
     const plan = planTenantRequests(config, "day");
     expect(plan.collections).toHaveLength(1);
-    // One request serves both: the decomposition re-aggregates over the
-    // extra repository dimension.
     expect(viewsOf(plan, 0, "ci.runs")).toEqual([
       { view: "breakdown", dimensions: ["repository", "outcome"] },
     ]);
@@ -153,8 +143,6 @@ describe("planTenantRequests", () => {
       },
     ]);
     const plan = planTenantRequests(config, "day");
-    // ci.run_hours by [pipeline] is needed twice (merge + exact) but with the
-    // same dims — one request serves both.
     const runHourViews = plan.collections.flatMap(
       (c) => c.metrics.find((m) => m.key === "ci.run_hours")?.views ?? []
     );
@@ -192,10 +180,8 @@ describe("planTenantRequests", () => {
 
   it("pins every period view to collection 0, where the delta twin lives", () => {
     const config = lens([
-      // The stacked trend claims a ci.runs timeseries slot first…
       { kind: "stacked-trend", metric: "ci.runs", splitBy: "outcome", title: "s" },
       { kind: "trend", title: "t", metrics: ["ci.runs"] },
-      // …and the headline arrives last but must still land in collection 0.
       { kind: "headline", metrics: ["ci.runs"] },
     ]);
     const plan = planTenantRequests(config, "day");

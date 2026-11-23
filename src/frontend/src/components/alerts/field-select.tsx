@@ -14,12 +14,6 @@ export interface Option {
   disabled?: boolean;
 }
 
-/**
- * One choice from a short fixed list, as the kit draws a select.
- *
- * The trigger carries the field's id, so the field's `<label htmlFor>` names
- * it and its hint and refusal describe it.
- */
 export function FieldSelect({
   id,
   label,
@@ -32,7 +26,6 @@ export function FieldSelect({
   className,
 }: {
   id: string;
-  /** Names the control when no visible label does. */
   label?: string;
   value: string;
   options: readonly Option[];

@@ -8,7 +8,6 @@ import { tenantData } from "./data";
 
 const DUMBBELL_LIMIT = 12;
 
-/** One metric split two ways per dimension value — e.g. fail vs pass medians. */
 export function DumbbellSection({
   section,
   resolve,

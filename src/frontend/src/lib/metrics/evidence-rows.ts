@@ -30,10 +30,6 @@ export function evidenceRowKeys(rows: readonly MetricEvidenceRow[]): string[] {
   });
 }
 
-/**
- * The order a header click asks for next: ascending, then descending, then
- * back to whatever the server orders by when asked for nothing.
- */
 export function nextSort(
   current: MetricEvidenceSort | null,
   key: string

@@ -5,11 +5,7 @@ import type { ColumnKind } from "./condition";
 type MetricField = MetricDefinition["fields"][number];
 
 export type MetricShape =
-  | { kind: "one" }
-  /** One row per group: `by` names what the rows differ by. */
-  | { kind: "grouped"; by: string[] }
-  /** Raw rows, because a column is neither aggregated nor computed. */
-  | { kind: "rows" };
+  { kind: "one" } | { kind: "grouped"; by: string[] } | { kind: "rows" };
 
 function aggregated(field: MetricField): boolean {
   return field.agg !== undefined || field.divide !== undefined;
@@ -39,8 +35,6 @@ function kindOfType(type: string): ColumnKind {
   }
 }
 
-// INVARIANT: the same rule the service's `column_kinds` applies when it
-// types a condition, so a test the form offers is one the service accepts.
 export function columnKinds(
   definition: MetricDefinition,
   declaration?: DatasetDeclaration
@@ -57,7 +51,6 @@ export function columnKinds(
   });
 }
 
-/** Whether the column is a ratio, which is empty when there is nothing to divide by. */
 export function isRatio(
   definition: MetricDefinition | undefined,
   column: string

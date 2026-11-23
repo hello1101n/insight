@@ -31,7 +31,6 @@ export function EditTags({
 }: {
   id: string;
   open: boolean;
-  /** What the panel opens beside: the menu it was asked from. */
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {

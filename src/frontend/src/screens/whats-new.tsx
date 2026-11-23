@@ -7,9 +7,6 @@ import {
   CollapsibleTrigger,
 } from "@gears-frontx/ui-kit";
 
-// The release reads as sections, the way the written release notes are grouped.
-// Each section is one row of the release card, styled like the archived
-// releases below: its name sits in the left column, its entries on the right.
 const RELEASE_SECTIONS = [
   { id: "people", itemKeys: ["metrics_view"] },
   { id: "development", itemKeys: ["merged_prs"] },
@@ -24,8 +21,6 @@ const OTHER_CHANGES = [
   "folded_pages",
 ] as const;
 
-// Past releases stay on the page so a reader can see the whole history, newest
-// first, and are grouped into sections the same way the current one is.
 const PAST_RELEASES = [
   {
     id: "release_2026_11_08",
@@ -99,13 +94,9 @@ type ReleaseSection = {
   itemKeys: readonly string[];
 };
 
-// Translations carry <strong>/<i> emphasis; restore foreground weight inside
-// muted copy so the emphasized fragments read as in the source notes.
 const EMPHASIS =
   "[&_strong]:font-semibold [&_strong]:text-foreground [&_i]:italic";
 
-// One improvement per key, shared by the current release and the archived ones
-// — only the translation prefix differs.
 function ImprovementList({
   itemsKey,
   itemKeys,
@@ -133,9 +124,6 @@ function ImprovementList({
   );
 }
 
-// A release body: one row per section, its name in the left column and its
-// entries on the right. Both the current release and the archived ones use it,
-// so a reader sees the same shape wherever they look.
 function ReleaseSections({
   baseKey,
   sections,

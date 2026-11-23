@@ -1,9 +1,3 @@
-/**
- * Chart series colours in the order series take them. The kit's five tokens
- * come first, ordered so the first series is blue rather than the kit's red
- * and no neighbours are red and green; `--chart-6` to `--chart-12` extend
- * them in index.css. Past twelve, colours repeat.
- */
 export const CHART_PALETTE = [
   "var(--chart-5)",
   "var(--chart-4)",

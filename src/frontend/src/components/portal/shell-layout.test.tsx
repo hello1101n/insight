@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Shell semantics per width tier. The rail and the pane are two columns of one
- * collapsible sidebar: on a phone both live in the drawer, on a tablet the
- * sidebar collapses to the rail. A zone pick keeps the pane in view while a
- * section pick gets it out of the way.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -65,8 +59,6 @@ vi.mock("@/queries/visible-roster", () => ({
     retry: () => {},
   }),
 }));
-// The topbar asks the catalog which attributes a comparison may use; this
-// test is about the shell's layout, not about that answer.
 vi.mock("@/queries/metric-definitions", () => ({
   useMetricDefinitionsResponse: () => ({ data: undefined }),
 }));
@@ -79,8 +71,6 @@ vi.mock("@/hooks/use-portal-period", () => ({
   }),
 }));
 vi.mock("@/auth", () => ({ useViewer: () => ({ email: "boss@x" }) }));
-// The settings menu pulls in viewer/theme/i18n plumbing; its presence is what
-// matters here — on a phone it is only reachable through this drawer.
 vi.mock("@/components/app-sidebar-footer", () => ({
   AppSidebarFooter: ({
     onNavigate,
@@ -103,7 +93,6 @@ import { act, renderHook } from "@testing-library/react";
 
 import { ShellSidebar } from "./portal-layout";
 
-/** The real shell wiring: trigger in the topbar, rail and pane in one sidebar. */
 function Shell() {
   return (
     <SidebarProvider>
@@ -122,7 +111,7 @@ beforeEach(() => {
   act(() => {
     portalRouter.reset("/home");
   });
-  // The kit's sidebar decides phone vs desktop from the viewport width.
+  // WORKAROUND: the kit's sidebar decides phone vs desktop from the viewport width.
   Object.defineProperty(window, "innerWidth", {
     configurable: true,
     get: () => VIEWPORT_WIDTH_PX[mocks.layout],
@@ -139,7 +128,6 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
 });
 
-/** The context pane's own column, around its header and sections. */
 const sectionsPane = () =>
   screen.getByRole("navigation", { name: "Section navigation", hidden: true })
     .parentElement as HTMLElement;
@@ -278,7 +266,6 @@ describe("shell layout: narrow (tablet)", () => {
     render(<Shell />);
     const itemState = renderHook(() => useNavLocation().item);
 
-    // The pane starts expanded in this bare harness (no PaneStateForLayout).
     await user.click(screen.getByText("By direction"));
 
     expect(itemState.result.current).toBe("by-direction");
@@ -328,9 +315,6 @@ describe("the global controls stay reachable while reading", () => {
       </SidebarProvider>,
     );
     const bar = container.querySelector("div.sticky");
-    // Sticky alone is not enough: content scrolling under a transparent bar
-    // makes both unreadable, and a bar below the cards' stacking order is
-    // covered by them.
     expect(bar?.className).toContain("top-0");
     expect(bar?.className).toContain("bg-background");
     expect(bar?.className).toMatch(/z-\d+/);
@@ -339,10 +323,6 @@ describe("the global controls stay reachable while reading", () => {
 
 describe("what the shell must never drop", () => {
   it("renders the impersonation banner — a view-as session needs its exit", async () => {
-    // It went missing when the portal became the shell: an operator viewing as
-    // someone else saw no indication whose data was on screen, and no way back.
-    // The banner's own behaviour is covered by its tests; this pins that the
-    // shell still composes it in.
     const { PortalLayout } = await import("./portal-layout");
     render(<PortalLayout />);
     expect(screen.getByTestId("view-as-banner")).toBeInTheDocument();

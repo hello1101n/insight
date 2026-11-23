@@ -48,7 +48,6 @@ import {
 
 const LIST_PATH = /^\/dashboards\/?$/;
 
-/** The row's `···` sits clear of its count, which stays flush right as in Browse. */
 const FOLDER_ACTION = "end-10";
 
 export function FoldersGroup() {
@@ -157,7 +156,6 @@ export function FoldersGroup() {
   );
 }
 
-/** Administrators only: the orphaned list is refused to anyone else. */
 function OrphanedFolderRows() {
   const pages = useInfiniteQuery(orphanedPagesQuery("folders"));
   const [moving, setMoving] = useState<Orphan | null>(null);

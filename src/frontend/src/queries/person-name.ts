@@ -5,17 +5,8 @@ import { personName } from "@/lib/identities/person-display";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { useIsAdmin } from "@/queries/identity-me";
 
-/**
- * Where a name is read: the administrator person search names anyone in the
- * tenant; anyone else reads the roster, which names only who they may see.
- */
 export type PersonNameSource = "tenant" | "roster";
 
-/**
- * What to show for one person. The tenant search falls back to the id; the
- * roster answers null for a person it names nothing, so a member never sees
- * a raw id.
- */
 export function personNameQuery(
   personId: string,
   source: PersonNameSource = "tenant"

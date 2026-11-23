@@ -152,8 +152,6 @@ describe("metric drilldown client", () => {
       filters: [],
     };
 
-    // One order for one set of people: this object is the query key, so `b, a`
-    // and `a, b` must not be two cache entries for one question.
     expect(personsEvidenceSelection(canonical, ["b", "a", "b"])).toEqual({
       metric_key: "git.commits",
       entity: { type: "persons", ids: ["a", "b"] },
@@ -163,7 +161,6 @@ describe("metric drilldown client", () => {
     });
 
     expect(personsEvidenceSelection(canonical, [])).toBeNull();
-    // Past the analytics cap the request is a 400, so there is nothing to open.
     expect(
       personsEvidenceSelection(
         canonical,

@@ -21,11 +21,6 @@ export const STATUS_SURFACE_CLASS: Record<Status, string> = {
   neutral: "bg-muted text-muted-foreground",
 }
 
-/**
- * Value-form status colors for contexts where a Tailwind class can't be used —
- * e.g. SVG `fill` on recharts cells. Mirrors the class maps above so the two
- * stay in lockstep.
- */
 export const STATUS_COLOR_VAR: Record<Status, string> = {
   good: "var(--success)",
   warn: "var(--warning)",
@@ -33,14 +28,11 @@ export const STATUS_COLOR_VAR: Record<Status, string> = {
   neutral: "var(--muted-foreground)",
 }
 
-/** Score a value against a reference median, given metric direction. */
 export function statusVsMedian(
   value: number,
   median: number,
   higherIsBetter: boolean
 ): Status {
-  // A median of 0 is a legitimate comparison point (e.g. a low-activity
-  // cohort); "no comparison" is expressed as a null median upstream, not 0.
   if (!Number.isFinite(value) || !Number.isFinite(median)) {
     return "neutral"
   }

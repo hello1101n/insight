@@ -4,8 +4,6 @@ import { csvCell, matrixToCsv } from "@/lib/export/matrix";
 
 describe("csvCell", () => {
   it("defuses a value a spreadsheet would run as a formula", () => {
-    // A name or a metric label starting with one of these is data, not a
-    // command, and the file is opened by a person who did not write it.
     expect(csvCell("=1+1")).toBe("'=1+1");
     expect(csvCell("+7")).toBe("'+7");
     expect(csvCell("-lead")).toBe("'-lead");

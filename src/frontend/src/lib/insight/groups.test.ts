@@ -75,8 +75,6 @@ describe("groups registry", () => {
       rankBy: "git.default_branch_prs_merged",
       includeRemainder: true,
     });
-    // The request is built from the block's `metrics`, not from its columns, so
-    // a column whose metric is missing here renders empty.
     expect(timeseries[0]?.metrics).toEqual([
       "git.default_branch_prs_merged",
       "git.default_branch_lines_added",
@@ -100,8 +98,6 @@ describe("groups registry", () => {
       "git.default_branch_commits",
       "git.default_branch_prs_merged",
     ]) {
-      // The number alone says nothing: "commits that landed" is only readable
-      // against the pool's middle, which is what the peer view carries.
       const views = byKey.get(key)?.views.map((view) => view.view);
       expect(views, key).toEqual(expect.arrayContaining(["period", "peer"]));
     }
@@ -110,10 +106,6 @@ describe("groups registry", () => {
 
 describe("every collection asks for a metric key at most once", () => {
   it("holds for every group", () => {
-    // `/v1/metric-results` refuses a request naming one key twice, and the
-    // refusal is all-or-nothing: a duplicate blanks the whole section rather
-    // than dropping one tile. A merge that appends a key another branch had
-    // already added is exactly how this slips in.
     for (const group of GROUPS) {
       const keys = group.collection.metrics.map((metric) => metric.key);
       expect(new Set(keys).size, `${group.id} names a key twice: ${keys.join(", ")}`).toBe(

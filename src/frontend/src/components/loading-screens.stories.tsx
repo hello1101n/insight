@@ -12,8 +12,6 @@ export default meta;
 
 type Story = StoryObj<typeof FullScreenLoading>;
 
-/** What the auth gate shows until a session is in hand. */
 export const SigningIn: Story = { args: { message: "Redirecting to sign in…" } };
 
-/** What a route shows while it loads. */
 export const Booting: Story = { render: () => <AppBootSpinner /> };

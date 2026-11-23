@@ -23,7 +23,6 @@ function abbreviatedTick(value: unknown): string {
   return typeof value === "number" ? formatAxisTick(value) : String(value);
 }
 
-/** Abbreviates numeric ticks (36000 → "36k") so a five-digit label is not clipped by the axis gutter. */
 export function YAxis({
   tickFormatter = abbreviatedTick,
   ...props
@@ -51,7 +50,6 @@ function plotted(value: unknown): unknown {
   return Array.isArray(value) ? value[1] : value;
 }
 
-/** A reading whose neighbours are both empty draws no segment, so without a dot the series looks empty. */
 function LoneDot({ cx, cy, index, points, stroke, value }: DotItemDotProps) {
   if (plotted(value) == null || cx == null || cy == null) return null;
 

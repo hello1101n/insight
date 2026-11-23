@@ -152,7 +152,6 @@ function Fact({
   children,
 }: {
   term: string;
-  /** Spans the whole card rather than one column of it. */
   wide?: boolean;
   children: ReactNode;
 }) {

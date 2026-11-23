@@ -6,12 +6,6 @@ import { marginalImpact } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/**
- * What fixing the worst pipelines would buy: the gate pass rate re-computed
- * with the top-N failing pipelines' failures counted as passes. Derived from
- * ci.runs breakdown rows with the gate constants in `derived.ts` — the same
- * definition silver uses.
- */
 export function MarginalImpactSection({
   section,
   resolve,

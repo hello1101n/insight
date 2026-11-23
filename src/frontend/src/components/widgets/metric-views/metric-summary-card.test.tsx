@@ -75,7 +75,6 @@ describe("MetricSummaryCard", () => {
       />,
     );
     expect(screen.getByText("Meeting hours")).toBeInTheDocument();
-    // Hours render as a duration that carries its own unit, so no side "h".
     expect(screen.getByText("20 h")).toBeInTheDocument();
     expect(screen.queryByText("h")).not.toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: /By tool/ });

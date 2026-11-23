@@ -32,24 +32,13 @@ const PAGE: Record<EditableKind, string> = {
   dashboards: "/dashboards/$name",
 };
 
-export function EditorPage({
-  kind,
-  id,
-}: {
-  kind: EditableKind;
-  /** Absent for a definition that is being created. */
-  id?: string;
-}) {
+export function EditorPage({ kind, id }: { kind: EditableKind; id?: string }) {
   const navigate = useNavigate();
   const noun = NOUNS[kind];
   const stored = useQuery({
     ...definitionBodyQuery(kind, id ?? ""),
     enabled: id !== undefined,
   });
-  // INVARIANT: the editor seeds its state once, from the document it is
-  // handed. It is handed what this page fetched now, never what the cache
-  // held from the last time this definition was opened, or a save would
-  // overwrite whatever changed it since.
   const fresh =
     stored.isFetchedAfterMount && stored.isSuccess ? stored.data : undefined;
 

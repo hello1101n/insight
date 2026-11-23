@@ -39,8 +39,6 @@ describe("<TextView>", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("line 2");
   });
 
-  // JSON is indented by hand here, and a Tab that left the field would make
-  // that a chore.
   it("indents on Tab instead of leaving the field", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

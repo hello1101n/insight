@@ -51,8 +51,6 @@ function keysFrom(group: MetricGroup): string[] {
   ];
 }
 
-// A single unavailable key fails the whole /metric-results call, so these come
-// from the screens' own config and cannot fall behind it.
 function catalogKeys(): string[] {
   return [
     ...new Set([
@@ -105,8 +103,6 @@ const MOCK_HISTORY_DAYS = 365;
 export function buildMetricDefinitions(): MetricDefinition[] {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  // A year of history behind every mock metric, so no screen built on these
-  // renders its period as time before anything was collected.
   const collectedFrom = new Date(now - MOCK_HISTORY_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);

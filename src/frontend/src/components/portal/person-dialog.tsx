@@ -1,22 +1,3 @@
-/**
- * One person and every account bound to them — the window the person mode
- * decides in.
- *
- * The mirror of the account window. There the subject is an account, the list
- * is who could hold it, and the field searches PEOPLE; here the subject is a
- * person, the list is what they hold, and the field searches ACCOUNTS. A click
- * on a row means the same thing in both: it picks the other side of a binding,
- * never a door to walk through. One gesture, learnt once.
- *
- * So the rows here open nothing. An account a person holds is acted on in
- * place, by the verbs on its own row — a second window over this one would
- * stack two decisions an operator has to keep apart.
- *
- * The layout mirrors that window too: the field sits high and stays put, and
- * the long section under it takes the slack and scrolls.
- *
- * Opened by `?person=` alone, so a link lands a colleague on the same person.
- */
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -75,12 +56,10 @@ function wireRef(account: {
   return {
     source: account.source,
     source_id: account.source_id,
-    // The wire calls the account id `id` (unlike the read shapes).
     id: account.account_id,
   };
 }
 
-/** The open subject, kept across the close animation. See below. */
 interface HeldPerson {
   id: string;
   card: PersonSummary | null;
@@ -92,24 +71,16 @@ export function PersonDialog({
   onClose,
 }: {
   personId: string | undefined;
-  /** The roster row the operator picked, when there is one. Arriving by link
-   *  there is none — search resolves values, not ids — and the id stands alone,
-   *  honestly. */
   card: PersonSummary | null;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const popupRef = useRef<HTMLDivElement>(null);
   const liveId = personId ?? null;
-  // Only a card for the person actually open: a stale one would caption this
-  // window with the person the reader looked at before.
   const liveCard = card?.person_id === liveId ? card : null;
 
-  // The popup plays a close transition after `?person=` is already gone, so the
-  // subject has to outlive the URL by that much — otherwise the heading renames
-  // itself to "Unnamed person" on the way out. Held via state adjusted during
-  // render (the sanctioned previous-render pattern), keyed by id rather than by
-  // object, or a freshly built card would loop.
+  // WORKAROUND: the popup animates closed after `?person=` clears, so the subject
+  // is held in state until the next one opens.
   const [held, setHeld] = useState<HeldPerson | null>(null);
   if (liveId && (held?.id !== liveId || held.card !== liveCard)) {
     setHeld({ id: liveId, card: liveCard });
@@ -127,48 +98,30 @@ export function PersonDialog({
         if (!open) onClose();
       }}
     >
-      {/* The same fixed height as the account window: an operator moves between
-          the two, and a window that sizes itself to each subject moves the verbs
-          under their cursor. */}
       <DialogContent
         ref={popupRef}
         closeLabel={t("common.actions.close")}
         className="flex h-[85vh] flex-col gap-4 sm:max-w-3xl"
-        // Focus the window itself, not its first tabbable — that is a verb that
-        // takes an account off somebody, and a decision should not be one
-        // keypress from arriving. `initialFocus={false}` is not the alternative:
-        // it does not move focus AT ALL, stranding it in the aria-hidden page
-        // behind the dialog.
+        // WORKAROUND: `initialFocus={false}` leaves focus in the aria-hidden page behind the dialog.
         tabIndex={-1}
         initialFocus={popupRef}
       >
         <DialogHeader>
-          {/* An `h2`, which is what the primitive renders by default: a reader
-              navigating an open window by heading should find the person it is
-              about. */}
           <DialogTitle
             render={<h2 className="flex min-w-0 items-center gap-2" />}
           >
             <span
               className={cn(
                 "truncate select-text",
-                // A ternary, not `named || ...`: `named` is the NAME, and an
-                // `||` fallback puts it in the class list — a display name
-                // carrying a utility word would then restyle or hide itself.
                 named ? undefined : "text-muted-foreground italic",
               )}
             >
               {named ?? t("identities.person.unnamed")}
             </span>
-            {/* A leaver and a stub minted by automation are the two people an
-                operator should not be moving accounts onto — marked here for the
-                same reason the roster marks them. */}
             {person ? <PersonMarks person={person} /> : null}
           </DialogTitle>
           <DialogDescription render={<div className="flex items-center gap-1" />}>
             {person ? <PersonId id={person.person_id} /> : null}
-            {/* Keyed: the window swaps subject without unmounting, so verb
-                state would follow onto the next person. */}
             {person ? (
               <AdminRoleControl
                 key={person.person_id}
@@ -177,21 +130,13 @@ export function PersonDialog({
             ) : null}
           </DialogDescription>
         </DialogHeader>
-        {/* Keyed by the person: the body holds per-person state (a pending verb,
-            the counters of the last one), and a cached read renders the next
-            person synchronously — unkeyed, that state would follow them. */}
         {person ? (
           <PersonBody
             key={person.person_id}
             person={person}
             onDecided={() => {
-              // The control just pressed is about to be unmounted by the
-              // refetch — the row goes, or the last detach takes every Detach
-              // with it — and focus would fall to `body`, restarting Tab from
-              // the top of the document.
-              //
-              // INVARIANT: after a frame, never in the handler itself. The list
-              // has not settled yet inside it.
+              // WORKAROUND: the refetch unmounts the pressed control and the browser drops focus to
+              // `body`; refocus a frame later, once the list has settled.
               requestAnimationFrame(() => popupRef.current?.focus());
             }}
           />
@@ -212,8 +157,6 @@ function isLastAdminRefusal(error: unknown): boolean {
   return (context as { reason?: unknown }).reason === LAST_ADMIN_REASON;
 }
 
-/** A refused read renders as "unknown", never as "not an admin": a grant
- *  offered against an unread state claims a role the subject may already hold. */
 function AdminRoleControl({ personId }: { personId: string }) {
   const { t } = useTranslation();
   const viewer = useIsAdmin();
@@ -221,7 +164,6 @@ function AdminRoleControl({ personId }: { personId: string }) {
   const grant = useGrantAdmin(personId);
   const revoke = useRevokeAdmin(personId);
 
-  // `isError` is not "not an admin": fail closed, but say so.
   if (viewer.isError) {
     return (
       <Button
@@ -294,8 +236,6 @@ function PersonBody({
   onDecided,
 }: {
   person: PersonSummary;
-  /** A verb settled everything it named, so the control that fired it is going
-   *  away with the row it sat on. */
   onDecided: () => void;
 }) {
   const { t } = useTranslation();
@@ -310,21 +250,14 @@ function PersonBody({
 
   const close = () => {
     setAction({ kind: "closed" });
-    // A dialog's error belongs to the attempt made in THAT dialog; without a
-    // reset the next one opens already wearing the previous failure.
     bind.reset();
     detach.reset();
     exclude.reset();
   };
   const done = (result: CorrectionResponse) => {
     close();
-    // A refusal means the account kept its binding, so the counters stay on
-    // screen: the operator has something left to decide. The window itself
-    // stays either way — the list under it re-reads, and that IS the answer.
     const settled = report(result);
     setOutcome(settled ? null : result);
-    // Only when the row really is going. A refused account keeps its row, and
-    // its verbs are where the operator's hand already is.
     if (settled) onDecided();
   };
 
@@ -341,9 +274,6 @@ function PersonBody({
   }
 
   const entries = accounts.data.accounts;
-  // A detach mints a person and moves the account to them. Taking somebody's
-  // ONLY account does that and nothing else: the account still has one holder,
-  // and the person it left keeps their name with nothing to attach it to.
   const detachable = entries.length > 1;
   const busy = bind.isPending || detach.isPending || exclude.isPending;
 
@@ -351,16 +281,10 @@ function PersonBody({
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       {outcome ? <OutcomeAlert outcome={outcome} /> : null}
 
-      {/* The field sits high and fixed, the list takes the slack and scrolls —
-          the account window's geometry, where the search is right under the
-          subject and the history behind it absorbs the height. A field pinned
-          to the bottom of a window this tall reads as a footer. */}
       <section className="flex min-h-0 flex-col">
         <SectionLabel>{t("identities.person_window.bind_section")}</SectionLabel>
         <AccountPicker
           placeholder={t("identities.person_window.find_account")}
-          // The accounts already listed below: binding one of them to the
-          // person who already holds it changes nothing.
           excludeKeys={entries.map(accountKey)}
           onPick={(account) => setAction({ kind: "bind", account })}
         />
@@ -474,13 +398,6 @@ function PersonBody({
   );
 }
 
-/**
- * The account a confirmation is about.
- *
- * The window's subject is the PERSON, so a confirmation that names only them
- * restates what the operator already knows while the modal covers the row they
- * pressed. Every verb here acts on one account; this is which one.
- */
 function AccountLine({
   account,
 }: {
@@ -497,13 +414,6 @@ function AccountLine({
   );
 }
 
-/**
- * One account this person holds, and the verbs that take it off them.
- *
- * Deliberately not clickable: nothing opens from here, so the row carries no
- * hover state either — a row that invites a press and answers nothing reads as
- * a fault.
- */
 function AccountRow({
   entry,
   detachable,
@@ -519,15 +429,8 @@ function AccountRow({
 }) {
   const { t } = useTranslation();
   const label = entry.email?.trim() || entry.username?.trim() || entry.account_id;
-  // Every row's verbs read alike, so their labels have to carry the account:
-  // six accounts otherwise produce six identical "Detach" buttons, and the
-  // row's own text is announced by nothing.
   const names = { account: label, source: entry.source };
   return (
-    // Fixed columns, and the same first two as the account listing: the two
-    // lists sit one tab apart, and reading either one down a column should feel
-    // the same. `md`, not `lg`: this row lives in a window capped at 48rem, so
-    // a viewport wider than that buys it nothing.
     <div className="grid grid-cols-1 items-center gap-2 rounded-md border border-transparent p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_auto]">
       <div className="min-w-0">
         <div className="truncate text-sm font-medium select-text">{label}</div>
@@ -535,8 +438,6 @@ function AccountRow({
           {entry.source} · {entry.account_id}
         </div>
       </div>
-      {/* Who decided this binding is the first thing to know before changing
-          it: undoing automation is routine, overruling a colleague is not. */}
       <Badge variant="outline" className="justify-self-start">
         {entry.bound_by_operator
           ? t("identities.person_accounts.by_operator")

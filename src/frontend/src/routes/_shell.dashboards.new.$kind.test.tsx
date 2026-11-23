@@ -57,8 +57,6 @@ beforeEach(() => {
 });
 
 describe("/dashboards/new/$kind", () => {
-  // Nothing is read: there is no definition yet, and a form that waited on one
-  // would never open.
   it("offers an empty form without asking for a stored definition", () => {
     render(<Component />, { wrapper });
 

@@ -10,7 +10,6 @@ import { bucketNote, stackedTrend } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** One metric per bucket, cut by a dimension; `share` draws composition. */
 export function StackedTrendSection({
   section,
   resolve,
@@ -25,8 +24,6 @@ export function StackedTrendSection({
   const { segments, rows } = stackedTrend(tenantData(r).series, section.splitBy, {
     share: section.share,
   });
-  // One segment stacks into a plain trend, one bucket into a bar — both are
-  // other sections' jobs; this one only earns its stack with real data.
   if (segments.length < 2 || rows.length < 2) return null;
 
   const series: SectionTrendSeries[] = segments.map((segment) => ({

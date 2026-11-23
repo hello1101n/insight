@@ -15,7 +15,6 @@ export function Row({
 }: {
   id: string;
   label: string;
-  /** The property's name in the document, as the text view spells it. */
   property?: string;
   hint?: string;
   required?: boolean;

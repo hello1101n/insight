@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The pane's job is to print what it was served, and to be honest about what
- * it was not served. So the tests here check that it does not re-order the
- * rows (the service ordered them by what needs acting on), that an unmeasured
- * number renders as absence rather than a zero, and that a stopped recorder
- * reaches a screen reader as an alert rather than as ordinary prose.
- */
 import {
   act,
   fireEvent,
@@ -24,10 +17,6 @@ import type {
   ConnectorSyncHistory,
 } from "@/api/connector-health-client";
 
-/**
- * A connector's row. The whole row is the disclosure control — the same rule
- * every console listing follows — so there is no button inside it to aim at.
- */
 function rowFor(connector: string): HTMLElement {
   const row = screen.getByRole("cell", { name: connector }).closest("tr");
   if (row === null) throw new Error(`no row for ${connector}`);
@@ -753,9 +742,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("keeps the served order rather than sorting again", () => {
-    // Deliberately an order no local rule reproduces: not alphabetical, not
-    // severity-first, not by job id. A two-row fixture whose served order also
-    // happens to be the severity order proves nothing.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -784,8 +770,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("keeps the same row expanded when the served order changes", async () => {
-    // The page polls, so a row's position is not its identity. Keying expansion
-    // on the position opens a different connector the moment the order moves.
     const alpha = {
       connector: "alpha",
       configured: true,
@@ -874,9 +858,6 @@ describe("the pane prints what it was served", () => {
   );
 
   it("gives two installations of one connector a row each", () => {
-    // They share a name, so the identity cell is the only thing that tells the
-    // rows apart — and a page that collapsed them would report one
-    // installation's failure as the other's health.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -946,10 +927,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("points two rows at two disclosures when an identity carries a separator", () => {
-    // The panel id is the row's identity with the separator swapped for one an
-    // id may carry. Values the ledger recorded are not parsed on the way in, so
-    // two identities can differ only in where that separator falls — and both
-    // rows would then name one panel through `aria-controls`.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -978,8 +955,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("prints an unmeasured number as absence, not as a zero", () => {
-    // Named and scheduled, so the three absences below are the three numbers this
-    // test is about rather than the identity or schedule cell joining them.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1011,10 +986,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("says how long a sync in flight has been going, not that it took no time", () => {
-    // The mover reports an unfinished job's duration as a running total, and
-    // ledger rows recorded before that stopped being stored still carry its
-    // zero. A row printing that zero hides the one state this page exists to
-    // surface: a sync that started and never came back.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1069,17 +1040,12 @@ describe("the pane prints what it was served", () => {
     expect(
       screen.getByText(/nothing has been read from the connectors yet/i)
     ).toBeInTheDocument();
-    // Deliberately blunt: the word must not appear at all, not even negated.
-    // "Nothing here says the connectors are healthy" reads, at a glance, as
-    // exactly the claim it was written to disclaim.
     expect(
       screen.queryByText(/healthy|up to date|fine/i)
     ).not.toBeInTheDocument();
   });
 
   it("does not say nothing has been read when something has", () => {
-    // An empty table and a never-read ledger are different states. Keying the
-    // copy on the row count makes the body contradict the header one line up.
     mocks.summary.data = summary({ connectors: [], history_available: true });
     render(<ConnectorHealthPane />);
 
@@ -1101,9 +1067,6 @@ describe("the pane dates itself", () => {
     mocks.summary.data = summary({ checked_at: "2026-01-15T04:00:00.000Z" });
     render(<ConnectorHealthPane />);
 
-    // One permanently mounted region, so the announcement does not depend on a
-    // role appearing on a node that already existed — and it holds the
-    // consequence as well as the headline, which is the half a reader needs.
     const region = screen.getByRole("status");
     expect(region).toHaveTextContent(/recording appears to have stopped/i);
     expect(region).toHaveTextContent(/may no longer be current/i);
@@ -1151,8 +1114,6 @@ describe("a read that failed says so", () => {
 
     await userEvent.click(rowFor("alpha"));
 
-    // The summary above it is still readable — one connector's unreadable
-    // history must not take the page down with it.
     expect(screen.getByRole("table")).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: /retry|try again/i })
@@ -1321,16 +1282,11 @@ describe("a row expands to its recent syncs", () => {
     });
     render(<ConnectorHealthPane />);
 
-    // One header row plus one body row: the gesture is on the `<tr>` and the
-    // role is not overridden, so the row stays in its table for a screen
-    // reader and still announces itself as a disclosure.
     expect(screen.getAllByRole("row")).toHaveLength(2);
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded");
   });
 
   it("opens the connector from anywhere in the row, not just its name", async () => {
-    // The complaint this answers: only the name was clickable, so the rest of
-    // a wide row looked interactive and did nothing.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1364,8 +1320,6 @@ describe("a row expands to its recent syncs", () => {
   });
 
   it("does not open the connector when a selection was dragged across it", async () => {
-    // Copying a connector name out of the table must not open it. The rule is
-    // shared with every other console listing, which is the point.
     mocks.summary.data = summary({
       connectors: [{ connector: "alpha", configured: true, last_sync: null }],
     });
@@ -1374,9 +1328,7 @@ describe("a row expands to its recent syncs", () => {
     const selection = window.getSelection();
     selection?.selectAllChildren(screen.getByRole("cell", { name: "alpha" }));
 
-    // Dispatched rather than driven through userEvent: a real pointer press
-    // collapses the selection before the handler sees it, so the one state
-    // this guard exists for cannot be reached that way.
+    // WORKAROUND: a userEvent pointer press collapses the selection before the click handler runs.
     fireEvent.click(rowFor("alpha"));
 
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded", "false");

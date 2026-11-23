@@ -23,7 +23,6 @@ import {
   widgetQuery,
 } from "@/queries/custom";
 
-/** Long enough that a word is typed before the service is asked. */
 const SEARCH_DEBOUNCE_MS = 300;
 
 const NOUN: Record<DefinitionKind, { one: string; many: string }> = {
@@ -50,8 +49,6 @@ export function DefinitionPicker({
   const searching = useDebouncedValue(typed, SEARCH_DEBOUNCE_MS).trim();
   const found = useInfiniteQuery(definitionPagesQuery(kind, searching));
   const chosenName = useStoredName(kind, value);
-  // INVARIANT: pages are read by offset, so a definition saved between two
-  // reads shifts the next page and repeats one; each id is one option.
   const labels = new Map(
     found.data?.pages.flatMap((page) =>
       page.items.map((item) => [item.id, item.name] as const)

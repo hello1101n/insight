@@ -1,17 +1,3 @@
-/**
- * Confirm a whole queue group at once.
- *
- * A roster sync can add a hundred people in one go, and every one of them lands
- * as its own case asking the same question: is the resolver's guess yours? One
- * at a time that is a hundred windows and a hundred presses for a single
- * decision, so the decision is offered once, over the group.
- *
- * Which groups qualify is `groupIsConfirmable`'s call, next to the rest of the
- * queue-case vocabulary.
- *
- * The comment is required, not optional: one press stands in for a hundred
- * decisions and the trail has to say on what grounds.
- */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast, Button, Textarea } from "@gears-frontx/ui-kit";
@@ -27,7 +13,6 @@ import { combineOutcomes, fullyDecided, refusedCount } from "@/lib/identities/ou
 import { apiErrorReason } from "@/lib/query-console/api-error";
 import { useBindAccounts } from "@/queries/identity-resolution";
 
-/** Split into calls the endpoint will accept. */
 function chunk(bindings: WireBinding[]): WireBinding[][] {
   const calls: WireBinding[][] = [];
   for (let at = 0; at < bindings.length; at += MAX_BINDINGS_PER_CALL) {
@@ -40,8 +25,6 @@ export function ConfirmGroupButton({
   items,
   className,
 }: {
-  /** Every row of the group. The caller has already checked
-   *  {@link groupIsConfirmable}. */
   items: AttentionItem[];
   className?: string;
 }) {
@@ -85,8 +68,6 @@ export function ConfirmGroupButton({
         landed.push(await bind.mutateAsync({ bindings: call, comment }));
       } catch (error) {
         setRunning(false);
-        // By toast as well: the group's rows are pruned as each call lands, so
-        // this dialog can be unmounted before a later failure is read.
         const reason = apiErrorReason(error, t("identities.dialogs.failed"));
         setFailure(reason);
         toast.add({ type: "error", title: reason });
@@ -135,7 +116,6 @@ export function ConfirmGroupButton({
           description={t("identities.dialogs.confirm_group_description")}
           confirmLabel={t("identities.actions.confirm")}
           isPending={running}
-          // One press for a hundred decisions has to say on what grounds.
           confirmDisabled={comment.trim().length === 0}
           error={failure}
           onConfirm={() => void run()}

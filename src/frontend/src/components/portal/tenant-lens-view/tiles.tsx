@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 import { tenantData } from "./data";
 
-/** Headline and stat tiles: one org-wide value with its previous-period delta. */
 export function TileRow({
   metrics,
   data,

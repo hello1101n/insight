@@ -10,8 +10,6 @@ function anchoredToSegment(value: string): string {
   return `_${value.toLowerCase().replaceAll("-", "_")}`;
 }
 
-/** INVARIANT: mirrors `FILTER_SQL` and the source-segment match in
- * identity-resolution's `infra/identity_evidence.rs`. */
 export function matchesAccountSearch(
   account: SearchableAccount,
   needle: string

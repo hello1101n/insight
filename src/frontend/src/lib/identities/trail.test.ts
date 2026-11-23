@@ -1,11 +1,3 @@
-/**
- * One row per event that changed something about the account. What matters: a
- * sync re-observing a binding that never moved is not an event; an operator row
- * always is, even when it moved nobody, because that row is the confirm act;
- * the call is never a row of its own; and its comment is carried across only
- * when the pairing is not a guess, since nothing in the journal links the two
- * records.
- */
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -19,7 +11,6 @@ const BOB = "01900000-0000-7000-8000-0000000000b0";
 const OPERATOR = "01900000-0000-7000-8000-0000000000f0";
 const AUTOMATION = "00000000-0000-0000-0000-000000000000";
 
-/** A binding row. The wire sends these newest first. */
 function seen(
   at: string,
   person: string,
@@ -64,7 +55,6 @@ function call(
   };
 }
 
-/** Newest first, so this reads the trail top-down. */
 const persons = (rows: ReturnType<typeof accountTrail>) =>
   rows.map((row) => row.entry.person_id);
 
@@ -73,9 +63,6 @@ describe("accountTrail", () => {
     expect(accountTrail([], [])).toEqual([]);
   });
 
-  // The seed reads the whole connector history every run, so an account that
-  // never moved collects one automatic row per sync. Twelve identical rows are
-  // one fact.
   it("collapses a binding re-observed by every sync into the one that made it", () => {
     const trail = accountTrail(
       [
@@ -104,8 +91,6 @@ describe("accountTrail", () => {
     expect(persons(trail)).toEqual([BOB, ANN]);
   });
 
-  // Re-observations of the SEEN person, not of the last kept one: otherwise the
-  // sync rows following an operator row come back.
   it("does not resurrect a duplicate after an operator row", () => {
     const trail = accountTrail(
       [
@@ -120,9 +105,6 @@ describe("accountTrail", () => {
     expect(trail[0].entry.by_operator).toBe(true);
   });
 
-  // Binding an account to the person automation already gave it changes no
-  // binding, and IS the decision: it records that a human vouched for the
-  // resolver's guess, and the trail is what says who is answerable.
   it("keeps an operator row that moved nobody", () => {
     const trail = accountTrail(
       [
@@ -148,8 +130,6 @@ describe("accountTrail", () => {
     expect(persons(trail)).toEqual([BOB, ANN]);
   });
 
-  // One call is journalled once and returned on every account it named, so it
-  // used to appear beside the row it produced, saying the same thing twice.
   it("never renders a call as a row of its own", () => {
     const trail = accountTrail(
       [decided("2026-08-01T00:00:00.000000", ANN, "operator-bind")],
@@ -165,8 +145,6 @@ describe("accountTrail", () => {
     expect(trail[0].comment).toBe("Same person.");
   });
 
-  // A call that changed nothing here — already decided, refused, or an account
-  // a merge merely swept along — has no row to carry it.
   it("drops a call that produced no movement here", () => {
     const trail = accountTrail(
       [],
@@ -197,10 +175,6 @@ describe("accountTrail", () => {
     expect(trail.map((row) => row.comment)).toEqual(["second", "first"]);
   });
 
-  // Nothing links a binding row to the call that wrote it, so an unequal count
-  // means at least one call wrote nothing here — and any pairing would be a
-  // guess. A missing comment is recoverable; a comment on the wrong decision is
-  // a false audit trail.
   it("attributes nothing when the counts disagree", () => {
     const trail = accountTrail(
       [
@@ -213,8 +187,6 @@ describe("accountTrail", () => {
     expect(trail.map((row) => row.comment)).toEqual([undefined, undefined]);
   });
 
-  // The verb and the author are all the two records share, so they are what the
-  // groups are cut on: a detach's comment must not caption a bind.
   it("keeps the verbs and the authors apart", () => {
     const trail = accountTrail(
       [
@@ -230,8 +202,6 @@ describe("accountTrail", () => {
     );
 
     expect(trail[0].comment).toBe("not theirs");
-    // The bind was authored by a different operator, so its group has one
-    // decision and no call.
     expect(trail[1].comment).toBeUndefined();
   });
 

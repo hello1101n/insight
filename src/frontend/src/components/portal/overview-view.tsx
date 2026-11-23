@@ -20,18 +20,11 @@ import {
   overviewMetricKeys,
 } from "@/lib/portal/overview-configs";
 
-/**
- * Home and the Overview items, each read for the viewer alone or for their
- * team (`useHomeSubject`). The team grid fetch is zone-scoped (union across
- * all items) so switching items never re-spins the loading gate.
- */
 export function OverviewView({ item }: { item: string | null }) {
   const { t } = useTranslation();
   const gridKeys = useMemo(() => overviewMetricKeys(), []);
   const { subject, isPending } = useHomeSubject();
   const asked = item ?? DEFAULT_OVERVIEW_ITEM;
-  // A manager's Home would otherwise open on their own view, then switch to
-  // the team's once their reach is known.
   if (isPending) {
     return (
       <CenteredSpinner

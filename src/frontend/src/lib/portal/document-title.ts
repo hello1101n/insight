@@ -26,10 +26,8 @@ export function documentTitle(
   return finish(parts);
 }
 
-/** The screen a path names, for the title. */
 export function titleScreenPath(pathname: string): string {
   const path = strip(pathname);
-  // INVARIANT: Home's default view titles as Home, which is `screenLabel("/")`.
   return path === "/home" ? "/" : path;
 }
 

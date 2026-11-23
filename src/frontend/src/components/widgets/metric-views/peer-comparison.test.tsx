@@ -34,7 +34,6 @@ describe("PeerComparison", () => {
           unit={null}
         />,
       );
-      // The marker and the three cohort zones render as positioned children.
       expect(container.querySelectorAll("div").length).toBeGreaterThan(3);
     }
   });

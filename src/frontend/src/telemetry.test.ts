@@ -129,8 +129,6 @@ describe("scopeLabel", () => {
 });
 
 describe("a session opened on somebody else's behalf", () => {
-  // #2573 scenario 11 — a fresh module, because a collector another test already
-  // started would short-circuit the guard under test and pass for that reason.
   it("starts no collector and sends nothing, for either person", async () => {
     vi.resetModules();
     mocks.createTelemetry.mockClear();

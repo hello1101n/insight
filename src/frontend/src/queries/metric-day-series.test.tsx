@@ -1,14 +1,3 @@
-/**
- * The metric's own reading for every day of a period.
- *
- * What matters here is the shape of what comes back, not that a request was
- * made. The strip drawn from these readings states how many days hold no
- * reading and what a share was measured against, so three distinctions have to
- * survive the wire: a day that measured zero is not a day with no reading, a
- * ratio's day value is its two sides rather than the already-scaled figure the
- * wire carries, and a day whose denominator is zero still says what it was
- * measured against.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -87,8 +76,6 @@ beforeEach(() => {
 
 describe("useMetricDaySeries", () => {
   it("keeps a day that measured zero and drops one with no reading at all", async () => {
-    // The two look the same on a bar chart and mean opposite things: one is a
-    // day this person did none of it, the other is silence from the source.
     answers([
       { bucket_start: "2026-03-01", value: 4 },
       { bucket_start: "2026-03-02", value: 0 },
@@ -101,10 +88,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("takes a ratio's value as the metric computed it, sides and all", async () => {
-    // The server applies the scale and the definition's value transform, so a
-    // reading rebuilt from the two sides would ignore both — 50 clamped from
-    // 87.5 would come back out as 87.5. The sides ride along for the readout
-    // that names what the share was measured against.
     answers([
       { bucket_start: "2026-03-01", value: 50, numerator: 7, denominator: 8 },
       { bucket_start: "2026-03-02", value: 25, numerator: 1, denominator: 4 },
@@ -116,9 +99,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("names both sides of a ratio even on a day with no numerator", async () => {
-    // The denominator is what the strip exists to expose — "of 8" is the
-    // argument a share is read with. A day that contributed nothing still had
-    // something to contribute against.
     answers([
       { bucket_start: "2026-03-01", value: null, numerator: null, denominator: 8 },
     ]);
@@ -128,9 +108,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("refuses a view whose computation failed rather than reading it as an empty period", async () => {
-    // The request answers 200 and the failure rides in the view's own slot.
-    // Read as no rows it would draw "Nothing recorded in this period" — a
-    // claim about the period from a read that never reached it.
     vi.mocked(client.queryMetricResults).mockResolvedValue({
       metrics: [
         {
@@ -149,9 +126,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("keeps a day whose denominator is zero, so the strip can still name it", async () => {
-    // A ratio reports no value when there is nothing to divide by, and the
-    // day was still measured against something. Dropping it on the missing
-    // value would take the denominator with it.
     answers([
       { bucket_start: "2026-03-01", value: null, numerator: null, denominator: 0 },
     ]);
@@ -191,8 +165,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("carries the selection's filters, so the days match the number above them", async () => {
-    // A filtered section reads a subset; a strip that ignored the filter would
-    // draw days the figure beside it does not count.
     const filters = [{ dimension: "repository", values: ["acme/api"] }];
     answers([]);
     await readings({ ...SELECTION, filters });
@@ -208,8 +180,6 @@ describe("useMetricDaySeries", () => {
   });
 
   it("answers a not-ready view as no data yet, not as a failure or an empty period", async () => {
-    // Nothing failed, so there is nothing to retry — but the period was never
-    // read either, so it cannot be reported as quiet.
     vi.mocked(client.queryMetricResults).mockResolvedValue({
       metrics: [
         {

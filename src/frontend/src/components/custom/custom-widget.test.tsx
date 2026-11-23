@@ -18,10 +18,8 @@ vi.mock("@/api/custom-client", async (importOriginal) => {
   };
 });
 
-// Deterministic, DOM-inspectable stand-ins for the recharts wrappers (which
-// render nothing under jsdom's zero-size ResponsiveContainer). Partial, not
-// whole: the kit's own chart container imports pieces of recharts these tests
-// never look at, and a bare object mock hid them.
+// WORKAROUND: recharts draws nothing in jsdom's zero-size ResponsiveContainer.
+// Partial, since the kit's chart container imports recharts pieces a bare mock hides.
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
 
@@ -262,8 +260,6 @@ describe("<CustomWidget>", () => {
     ]);
   });
 
-  // A card is where a reader meets a refusal, so it shows what the service
-  // said rather than the status it said it with.
   it("shows the service's refusal in place of the content", () => {
     render(
       <CustomWidget
@@ -351,8 +347,6 @@ describe("<CustomWidget>", () => {
     expect(screen.getByText(/unknown widget type/i)).toBeInTheDocument();
   });
 
-  // Switching boards leaves a card with no result for a moment. Saying "No
-  // data" there reads as an answer, and then the answer changes.
   it("waits rather than saying there is no data while the run is in flight", () => {
     const { rerender } = render(
       <CustomWidget
@@ -587,8 +581,6 @@ describe("<CustomWidget>", () => {
   });
 
   it("says which column is missing instead of drawing an empty chart", async () => {
-    // Seen live: y named the metric's raw json field instead of its as_name,
-    // so every point was undefined and the chart drew axes and no line.
     render(
       <CustomWidget
         widget={{ type: "line", metric: "lines_per_day", x: "day", y: "lines" }}

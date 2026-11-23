@@ -14,24 +14,11 @@ import {
 } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 
-/** Same geometry as the record table's: values, then the rail that opens them. */
 const VALUE_REM = 10;
 const OPENER_REM = 2.25;
 const HEADER_PX = 40;
 const ROW_PX = 44;
 
-/**
- * The people behind one figure: who they are and their own value, in the same
- * dialog — and the same table — their records live in.
- *
- * Values are the ones the surface already holds, so a row never disagrees with
- * the bar or card that opened it. A row whose metric carries no readable
- * evidence stays a plain row: nothing to open, so nothing to click.
- *
- * INVARIANT: the ARIA roles are spelled out because the layout is flex, not
- * table — without them a browser drops the row and cell mapping, and every
- * value reads as a bare number under no column.
- */
 export function MetricEvidencePeople({
   rows,
   valueLabel,
@@ -59,9 +46,7 @@ export function MetricEvidencePeople({
     <div className="relative min-h-0 flex-1">
       <Table
         role="table"
-        // The header is row 1 and the data starts at 2 (see `aria-rowindex`
-        // below), so the count has to include it — otherwise the last row
-        // announces itself as one past the end.
+        // INVARIANT: ARIA counts the header as row 1, so the data starts at 2.
         aria-rowcount={rows.length + 1}
         containerRef={setViewport}
         containerClassName="h-full overflow-auto"
@@ -115,9 +100,6 @@ export function MetricEvidencePeople({
                 role="row"
                 key={row.entityId}
                 aria-rowindex={virtualRow.index + 2}
-                // The whole row is the mouse target, as a record row is; the
-                // keyboard path is the button in the rail, which says what it
-                // opens.
                 onClick={target ? () => onDrill(row) : undefined}
                 className={cn(
                   "absolute top-0 left-0 flex w-full",

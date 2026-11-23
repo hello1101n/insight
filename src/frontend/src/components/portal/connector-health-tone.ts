@@ -2,7 +2,6 @@ import type { BadgeProps } from "@gears-frontx/ui-kit";
 
 import type { ConnectorTone } from "@/lib/portal/connector-health";
 
-/** Tone carries emphasis; the word beside it carries the meaning. */
 export const TONE_BADGE: Record<ConnectorTone, BadgeProps["variant"]> = {
   failing: "danger",
   unknown: "warning",

@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// Finds classes that restyle @gears-frontx/ui-kit components and strips them.
-//   node scripts/kit-restyles.mjs           report what would change
-//   node scripts/kit-restyles.mjs --write   apply the change
-//   node scripts/kit-restyles.mjs --check   exit 1 while any restyle remains
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -27,7 +23,7 @@ const CONTROLS = new Set([
   "Textarea",
   "ToggleGroupItem",
 ]);
-// The kit draws nothing on these parts, so every class on them is our own layout.
+// WORKAROUND: the kit draws nothing on these parts, so every class on them is our own layout.
 const UNSTYLED = new Set(["Collapsible", "CollapsibleContent"]);
 const UNPADDED = new Set(["TabsContent"]);
 const OWN_DISPLAY = /^(flex|inline-flex|grid|inline-grid)$/;
@@ -46,7 +42,6 @@ const SIZE_PROPS = {
   SelectTrigger: { "h-8": ["size", "sm"] },
 };
 
-/** Split `hover:md:bg-x` into variants and base, ignoring colons inside brackets. */
 export function parseToken(token) {
   const parts = [];
   let depth = 0;
@@ -64,21 +59,20 @@ export function parseToken(token) {
   return { variants: parts, base: current.replace(/^!/, "") };
 }
 
-/** The restyle category of one class token on a kit component, or null when the token only places it. */
 export function restyleCategory(token, tag, siblings) {
   const { variants, base } = parseToken(token);
   if (UNSTYLED.has(tag)) return null;
 
   const pseudo = variants.find((v) => v === "before" || v === "after");
   if (pseudo) {
-    // A one-pixel-wide pseudo element is a vertical grid line the kit does not draw.
+    // WORKAROUND: a one-pixel-wide pseudo element is a vertical grid line the kit does not draw.
     if (siblings.includes(`${pseudo}:w-px`)) return "grid line";
-    // A one-pixel-high one redraws the kit's row border, which a sticky cell loses.
+    // WORKAROUND: a one-pixel-high one redraws the kit's row border, which a sticky cell loses.
     return null;
   }
   if (base.includes("var(--border)")) return null;
 
-  // A sticky cell needs an opaque fill so rows scroll under it, and a fixed height so the next sticky row can offset by it.
+  // WORKAROUND: a sticky cell needs an opaque fill so rows scroll under it, and a fixed height so the next sticky row can offset by it.
   if (
     siblings.includes("sticky") &&
     (/^bg-/.test(base) || /^(h|min-h)-/.test(base))
@@ -87,7 +81,7 @@ export function restyleCategory(token, tag, siblings) {
 
   if (/^-?p[xytblrse]?-/.test(base)) {
     if (UNPADDED.has(tag)) return null;
-    // The kit places the dialog close button over the header's end, so header actions must stop short of it.
+    // WORKAROUND: the kit places the dialog close button over the header's end, so header actions must stop short of it.
     if (tag === "DialogHeader" && /^p[re]-/.test(base)) return null;
     return "padding";
   }
@@ -113,19 +107,18 @@ export function restyleCategory(token, tag, siblings) {
   )
     return null;
   if (/^bg-/.test(base)) return "background";
-  // The kit Sidebar draws no edge, so this line is what separates the rail from the page.
   if (tag === "Sidebar" && /^border-[eslr]$/.test(base)) return null;
   if (/^border/.test(base) && !/^border-(collapse|separate|spacing)/.test(base))
     return "border";
   if (/^rounded/.test(base)) return "radius";
   if (/^shadow/.test(base)) return "shadow";
   if (/^ring/.test(base)) {
-    // A focusable card shows focus only through this ring.
+    // WORKAROUND: a focusable card shows focus only through this ring.
     if (tag === "Card" && variants.includes("focus-within")) return null;
     return "ring";
   }
   if (/^outline/.test(base)) return "outline";
-  // Kit cells have a fixed height, and a cell holding several lines must grow.
+  // WORKAROUND: kit cells have a fixed height, and a cell holding several lines must grow.
   if ((tag === "TableCell" || tag === "TableHead") && base === "h-auto")
     return null;
   if (/^opacity-/.test(base) && variants.some((v) => /disabled/.test(v)))
@@ -159,7 +152,6 @@ function isLiteral(node) {
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node);
 }
 
-/** Class-position string literals inside a className expression, plus the parts that are not literals. Comparison operands are not class strings. */
 function classLiterals(node, out, opaque) {
   if (isLiteral(node)) out.push(node);
   else if (ts.isParenthesizedExpression(node))
@@ -194,7 +186,6 @@ function classLiterals(node, out, opaque) {
   return out;
 }
 
-/** True when an argument of cn() holds nothing once its literals are rewritten. */
 function emptiesOut(node, rewritten) {
   if (isLiteral(node)) return rewritten.get(node) === "";
   if (ts.isParenthesizedExpression(node))
@@ -361,7 +352,6 @@ function processFile(file, report) {
 
   visit(source);
   if (!edits.length) return null;
-  // At a shared start, apply the removal before the insertion, or the insertion lands inside the removed range.
   edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let out = text;
   for (const edit of edits)

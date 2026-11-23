@@ -35,7 +35,6 @@ describe("<RemoveDefinition>", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Remove lines_per_day" })
     );
-    // Nothing is gone until the second click.
     expect(customClient.deleteDefinition).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: "Remove it" }));
@@ -60,7 +59,6 @@ describe("<RemoveDefinition>", () => {
   });
 
   it("shows what still uses it, as the service said it", async () => {
-    // The shape a live refusal carries: context.violations[].description.
     vi.mocked(customClient.deleteDefinition).mockRejectedValue(
       new customClient.CustomApiError(400, {
         context: {

@@ -1,9 +1,3 @@
-/**
- * One precedence for every person label: display name → username → e-mail →
- * person id (#2711). A blank or whitespace-only value does not count as
- * present, so a person with an empty display name is still named by their
- * handle instead of rendering a blank row.
- */
 import { describe, expect, it } from "vitest";
 
 import {

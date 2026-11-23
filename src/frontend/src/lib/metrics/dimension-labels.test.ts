@@ -35,9 +35,6 @@ describe("dimension labels", () => {
     );
   });
 
-  // A key inherited from Object.prototype must take the fallback path, not
-  // resolve to whatever the prototype holds there — `in` would have returned a
-  // function for `constructor` and rendered it as a heading.
   it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
     "treats %s as an ordinary key rather than a curated entry",
     (inherited) => {

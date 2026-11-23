@@ -16,7 +16,6 @@ const OPEN = { column: "open", op: ">", value: 10 };
 const TEAM = { column: "team", op: "==", value: "core" };
 const STALE = { column: "stale", op: ">", value: 3 };
 
-/** open and (team or not stale) */
 const NESTED = { all: [OPEN, { any: [TEAM, { not: STALE }] }] };
 
 describe("leafPaths", () => {

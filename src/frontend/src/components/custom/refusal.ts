@@ -40,13 +40,6 @@ const DENIALS = new Map([
   ],
 ]);
 
-/**
- * What the service said, when it said anything readable.
- *
- * A 400 names places in the document under `field_violations`, a 409 names
- * things outside it under `violations`, a 403 names why under `reason`, and
- * all carry a plain `detail`.
- */
 export function refusal(error: unknown, fallback: string): string {
   if (!(error instanceof CustomApiError)) return fallback;
 

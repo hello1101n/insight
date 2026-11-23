@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * What is left in the store after navigation moved to the URL and the portal
- * stopped being optional: one PREFERENCE. It belongs here because it describes
- * the reader rather than the view — a shared link must not reveal the
- * scaffolding they never asked to see.
- */
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,8 +56,6 @@ describe("the retired opt-out", () => {
     vi.resetModules();
     const store = await import("./portal-store");
 
-    // Gone from storage, and gone from the module: the portal is the
-    // interface, so nothing can hold a reader off it.
     expect(window.localStorage.getItem("insight.portal")).toBeNull();
     for (const gone of ["readPortalEnabled", "usePortalEnabled", "setPortalEnabled"]) {
       expect(store, gone).not.toHaveProperty(gone);
@@ -79,9 +71,6 @@ describe("the retired opt-out", () => {
   });
 
   it("survives a throwing localStorage", async () => {
-    // A sandboxed iframe or blocked third-party storage raises on property
-    // access, not by returning null. This runs at module scope, so an
-    // unguarded throw would take the whole bundle down over a stale key.
     const getItem = vi
       .spyOn(window.localStorage, "getItem")
       .mockImplementation(() => {

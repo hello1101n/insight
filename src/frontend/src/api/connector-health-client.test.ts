@@ -89,9 +89,6 @@ describe("getConnectorSyncs", () => {
   });
 
   it("sends no scope at all when only one half is known", async () => {
-    // The service refuses half an identity. Sending it would turn a question
-    // about one installation into a 400 instead of the answer about the
-    // connector the caller can actually be given.
     mockFetch.mockResolvedValueOnce(
       response({ connector: "claude-team", syncs: [], window: 50 }),
     );

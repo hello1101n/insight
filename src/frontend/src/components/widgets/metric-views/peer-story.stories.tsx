@@ -66,10 +66,8 @@ export default meta;
 
 type Story = StoryObj<typeof PeerStory>;
 
-/** Outliers lead with the furthest one; the rest fold under them. */
 export const Standing: Story = { args: { entries: [...OUTLIERS, ...IN_PACK] } };
 
-/** Nobody sits outside the pack, so every metric gets the same card. */
 export const FlatGrid: Story = { args: { entries: IN_PACK } };
 
 export const Empty: Story = { args: { entries: [] } };

@@ -1,14 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Merging a case. What matters: both sides are named before anything happens;
- * the preview of what moves is the consent, so its COUNT is what the dialog
- * shows and confirm is locked until every read lands (and locked for good when
- * nothing would move); the absorbed set is chosen, so unticking a person keeps
- * their accounts where they are; a case of three or more issues one call per
- * ticked person, all aimed at the survivor, and STOPS at the first failure; and
- * every failure is reported by toast as well as in the dialog, because the first
- * successful merge can unmount the dialog before the second is answered.
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +15,6 @@ const hooks = vi.hoisted(() => ({
     accounts: [] as unknown[],
     refetch: vi.fn(),
   },
-  /** Person ids the dialog asked the preview for, per render. */
   asked: [] as string[][],
 }));
 vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
@@ -106,7 +95,6 @@ describe("MergeCaseDialog", () => {
     expect(
       within(dialog).getByText(/merge the rest into bob park/i),
     ).toBeInTheDocument();
-    // Order carries the meaning: the first person named is the one that remains.
     const labels = within(dialog)
       .getAllByText(/^(stays|merged into them)$/i)
       .map((el) => el.textContent?.toLowerCase());
@@ -129,8 +117,6 @@ describe("MergeCaseDialog", () => {
     expect(screen.getByText(/merged into them — 2 people/i)).toBeInTheDocument();
   });
 
-  // The preview IS the consent. Showing a count the reads do not support is the
-  // exact failure the confirm gate exists to prevent.
   it("shows how many accounts move, and names them", () => {
     hooks.moving.accounts = [account("a1"), account("a2", "gitlab")];
     render(
@@ -165,8 +151,6 @@ describe("MergeCaseDialog", () => {
     expect(screen.getByText(/counting the accounts/i)).toBeInTheDocument();
   });
 
-  // A merge that moves nothing is not a decision: the server answers "0 applied,
-  // 0 already decided" with no error, and the case comes straight back.
   it("locks confirm when nothing would move at all", () => {
     hooks.moving.accounts = [];
     render(
@@ -189,9 +173,6 @@ describe("MergeCaseDialog", () => {
     expect(hooks.moving.refetch).toHaveBeenCalledOnce();
   });
 
-  // Two of a case's three people can be one human while the third is a different
-  // one who happens to share an address. All-or-nothing would rebind their
-  // accounts irreversibly.
   it("leaves an unticked person's accounts where they are", async () => {
     const onClose = vi.fn();
     render(
@@ -203,7 +184,6 @@ describe("MergeCaseDialog", () => {
     );
 
     await userEvent.click(screen.getByRole("checkbox", { name: /dan ito/i }));
-    // The preview follows the choice, or it would consent to the wrong set.
     expect(lastAsked()).toEqual([CAROL.person_id]);
 
     await userEvent.click(confirm());
@@ -231,8 +211,6 @@ describe("MergeCaseDialog", () => {
     expect(screen.getByText(/tick at least one person/i)).toBeInTheDocument();
   });
 
-  // The endpoint joins exactly two persons, so the survivor absorbs the rest one
-  // call at a time — every one of them aimed at the same target.
   it("issues one call per ticked person, all into the survivor", async () => {
     const onClose = vi.fn();
     render(
@@ -254,13 +232,10 @@ describe("MergeCaseDialog", () => {
       source_person_id: DAN.person_id,
       target_person_id: BOB.person_id,
     });
-    // One decision, one answer: the counts are folded across the calls.
     expect(toastsOf(hooks.toast.add, "success")).toContainEqual(expect.objectContaining({ title: "Done — 2 accounts updated." }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  // The failure is on the MIDDLE call, so "stops" is a claim the test can fail:
-  // a loop that carried on would reach the third person.
   it("stops at the first failure instead of carrying on down the list", async () => {
     const { IdentityApiError } = await import("@/api/identity-client");
     hooks.merge.mutateAsync
@@ -299,9 +274,6 @@ describe("MergeCaseDialog", () => {
     expect(toastsOf(hooks.toast.add, "success")).toHaveLength(0);
   });
 
-  // The dialog's own error slot may be gone by the time it is written to: the
-  // first successful merge prunes the rows it decided, re-keying the case and
-  // remounting the block that owns this dialog. A toast outlives that.
   it("reports a mid-sequence failure by toast, naming what did move", async () => {
     const { IdentityApiError } = await import("@/api/identity-client");
     hooks.merge.mutateAsync
@@ -329,8 +301,6 @@ describe("MergeCaseDialog", () => {
     expect(toastsOf(hooks.toast.add, "error")).toContainEqual(expect.objectContaining({ title: "person not found", description: "2 accounts had already moved." }));
   });
 
-  // A refusal means the accounts kept their bindings: the case is not settled,
-  // so the dialog stays — and the toast says so even if the dialog is gone.
   it("reports a refusal by toast and keeps the dialog open", async () => {
     hooks.merge.mutateAsync.mockResolvedValue({
       applied: 0,
@@ -349,8 +319,6 @@ describe("MergeCaseDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  // The outcome field is an open vocabulary. A value this build has never heard
-  // of is not success, however few refusals came with it.
   it("does not close over an outcome it does not recognise", async () => {
     hooks.merge.mutateAsync.mockResolvedValue({
       applied: 1,
@@ -371,9 +339,4 @@ describe("MergeCaseDialog", () => {
     expect(toastsOf(hooks.toast.add, "success")).toHaveLength(0);
     expect(toastsOf(hooks.toast.add, "error")).toHaveLength(1);
   });
-
-  // The panel is a grid, and a grid item will not shrink below its own
-  // content. An address and a person id are exactly the values that do not
-  // wrap, so without this the body pushes itself out through the side —
-  // invisible in jsdom, in a review, and to every other test here.
 });

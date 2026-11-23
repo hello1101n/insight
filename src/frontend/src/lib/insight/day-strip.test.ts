@@ -25,8 +25,6 @@ function boundary(over: Partial<CollectionBoundary> = {}): CollectionBoundary {
 
 describe("stripDays", () => {
   it("walks the calendar, not the rows", () => {
-    // Built from rows alone, four busy days in a month would pack together
-    // and read as a month that was busy throughout.
     const days = stripDays(
       [reading("2026-03-01", 4), reading("2026-03-05", 2)],
       "2026-03-01",
@@ -37,8 +35,6 @@ describe("stripDays", () => {
   });
 
   it("keeps a measured zero apart from a day with no reading", () => {
-    // They draw the same and mean opposite things: silence from the source
-    // versus a day this person did none of it.
     const days = stripDays(
       [reading("2026-03-01", 0)],
       "2026-03-01",
@@ -69,8 +65,6 @@ describe("stripDays", () => {
   });
 
   it("scales to the tallest day on the strip, not the tallest reading given", () => {
-    // A reading outside the window sets the height of nothing it is drawn
-    // beside; letting it into the scale makes every visible bar read short.
     const days = stripDays(
       [
         reading("2026-02-14", 100),
@@ -105,9 +99,6 @@ describe("stripDays", () => {
   });
 
   it("tells a day older than the data from one ahead of it", () => {
-    // Neither is a day the metric measured as empty, and they are not the same
-    // finding — a reader can ask for backfill on the first and only wait for
-    // the second, so the strip must not fold them together.
     const days = stripDays(
       [reading("2026-03-03", 1)],
       "2026-03-01",
@@ -123,8 +114,6 @@ describe("stripDays", () => {
     ]);
     expect(beforeAvailableDataDays(days)).toBe(1);
     expect(notYetCollectedDays(days)).toBe(1);
-    // Only the days inside the pair can be silent: the two outside are not
-    // days the metric holds a reading for either way.
     expect(silentDays(days)).toBe(2);
   });
 
@@ -152,8 +141,6 @@ describe("stripDays", () => {
     );
     expect(days.map((d) => d.provisional)).toEqual([false, false, true, false]);
     expect(provisionalDays(days)).toBe(1);
-    // A day the source has not delivered is not open to revision — there is
-    // nothing there to revise.
     expect(days[3]?.coverage).toBe("not_yet_collected");
   });
 
@@ -168,10 +155,6 @@ describe("stripDays", () => {
   });
 
   it("keeps a historical period free of provisional days", () => {
-    // A window that ends before the settled boundary holds nothing revisable.
-    // Deriving the boundary from a day count instead marked the whole window,
-    // because the count was measured from the newest delivery, not from the
-    // window being drawn.
     const days = stripDays(
       [reading("2026-02-10", 1)],
       "2026-02-01",

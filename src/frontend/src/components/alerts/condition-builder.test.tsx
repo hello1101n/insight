@@ -68,7 +68,6 @@ function leaf(number: number) {
 
 type Scope = BoundFunctions<typeof queries>;
 
-/** Opens a kit select by its name and picks one of its options by label. */
 async function pick(scope: Scope, control: string, option: string) {
   await userEvent.click(scope.getByRole("combobox", { name: control }));
   await userEvent.click(await screen.findByRole("option", { name: option }));
@@ -81,7 +80,6 @@ function isDisabled(option: HTMLElement): boolean {
   );
 }
 
-/** The options a kit select offers, read by opening it and closed again. */
 async function optionsOf(trigger: HTMLElement): Promise<HTMLElement[]> {
   await userEvent.click(trigger);
   const options = await screen.findAllByRole("option");
@@ -396,9 +394,8 @@ describe("ConditionBuilder", () => {
     });
 
     it("starts a picked day at midnight when no time is set, and shows it", async () => {
-      // INVARIANT: an empty day opens the picker on today.
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(2026, 9, 15, 12)); // local 2026-10-15
+      vi.setSystemTime(new Date(2026, 9, 15, 12));
       try {
         const latest = at("");
 

@@ -35,11 +35,9 @@ import { type BucketBreakdownRow } from "@/lib/portal/trend-drilldown";
 import { useMetricDefinition } from "@/queries/metric-definitions";
 
 const PAGE_LIMIT = 100;
-/** Where scrolling stops growing the table, as in the metric evidence dialog. */
 const MAX_PAGES = 50;
 
 export interface TrendDrilldownState {
-  /** Catalog key, or null for a card derived from another metric's rows. */
   metricKey: string | null;
   label: string;
   bucketLabel: string;
@@ -75,8 +73,6 @@ export function TrendDrilldownDialog({
 }
 
 function Body({ state }: { state: TrendDrilldownState }) {
-  // A derived card has no catalog metric to evidence, so the periods it is
-  // built from are the whole story it can tell.
   if (!state.metricKey) {
     return (
       <div className="min-h-0 flex-1 overflow-auto p-5">
@@ -101,15 +97,6 @@ function Body({ state }: { state: TrendDrilldownState }) {
   );
 }
 
-/**
- * The team's records, in one read.
- *
- * The roster is the entity: the catalog defines these metrics for a person,
- * but the drilldown accepts a group of them, so the question "what is this
- * team total made of" is one request that the server orders, narrows and pages
- * — not a request per member joined afterwards, which could only ever order
- * what it had already fetched.
- */
 function Records({
   metricKey,
   state,
@@ -143,17 +130,11 @@ function Records({
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    // Re-ordering re-reads rows already on screen; without this the table
-    // blanks to a spinner on every header click. A different chart, member set
-    // or period is a different question, and its answer waits for the spinner
-    // rather than borrowing the last one's rows.
     placeholderData: (previous, previousQuery) =>
       sameEvidenceSubject(previousQuery?.queryKey, queryKey)
         ? previous
         : undefined,
     enabled: sessionScope != null && selection != null,
-    // A busy drilldown answers 429, and asking again immediately is what made
-    // it busy.
     retry: (failureCount, error) =>
       failureCount < 1 &&
       (!(error instanceof AnalyticsApiError) || error.status >= 500),
@@ -164,15 +145,10 @@ function Records({
     [query.data],
   );
   const columns = query.data?.pages[0]?.columns ?? [];
-  // The order of the rows on screen, not the one just asked for; see the
-  // records dialog.
   const shownSort = query.data?.pages[0]?.selection?.sort ?? null;
   const pageLimitReached =
     (query.data?.pages.length ?? 0) >= MAX_PAGES && query.hasNextPage;
 
-  // `personsEvidenceSelection` refuses two different scopes. A scope with
-  // nobody in it has no records, and telling its reader to narrow it is the
-  // opposite of the truth.
   if (!state.members.length) {
     return (
       <p className="text-muted-foreground p-5 text-sm">
@@ -198,8 +174,6 @@ function Records({
     );
   }
 
-  // "No records" is a claim about the data. Only make it when the data was
-  // actually read.
   if (query.isError && !query.data) {
     return (
       <p className="text-muted-foreground p-5 text-sm" role="alert">
@@ -209,9 +183,6 @@ function Records({
     );
   }
 
-  // Same rule one step further: the data was read, and the warehouse answered
-  // that it has not been built yet. "No records in this window" would be a
-  // claim about the window from a read that never reached it.
   if (query.data?.pages[0]?.not_ready) {
     return (
       <p className="text-muted-foreground p-5 text-sm">
@@ -263,10 +234,6 @@ function PeriodTable({ state }: { state: TrendDrilldownState }) {
     <Table>
       <TableHeader>
         <TableRow>
-          {/* INVARIANT: the fixed columns must not wrap. `table-layout` is auto
-            here, so the unbounded "Who" column can squeeze them below their
-            content width — and a date breaks at its own hyphens, landing
-            "2026-" above "08-26". */}
           <TableHead className="w-36 whitespace-nowrap">
             {state.bucketLabel}
           </TableHead>

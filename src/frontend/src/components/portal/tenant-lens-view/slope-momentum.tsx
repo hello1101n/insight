@@ -23,7 +23,6 @@ import { halvesComparison, type HalfComparison } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** The lines a slope chart stays readable at. */
 const SLOPE_LIMIT = 8;
 const MOMENTUM_LIMIT = 12;
 const STAGE_FIRST = "First half";
@@ -33,7 +32,6 @@ function resolveHalves(
   section: Extract<TenantSectionSpec, { kind: "slope" | "momentum" }>,
   resolve: ResolveView
 ): { r: NormalizedMetricResult; rows: HalfComparison[] } | null {
-  // Windowed needs carry no bucket; both halves must have answered.
   const needs = sectionNeeds(section, "day");
   const first = resolve(needs[0]);
   const second = resolve(needs[1]);
@@ -43,7 +41,6 @@ function resolveHalves(
     tenantData(second).breakdown,
     section.dimension
   );
-  // A single mover is an anecdote, not momentum.
   return rows.length < 2 ? null : { r: second, rows };
 }
 
@@ -56,7 +53,6 @@ function deltaText(r: NormalizedMetricResult, delta: number): string {
   return `${sign}${Math.abs(delta).toFixed(1)}${unit}`;
 }
 
-/** First half of the window against the second, one line per value. */
 export function SlopeSection({
   section,
   resolve,
@@ -68,8 +64,7 @@ export function SlopeSection({
   if (!halves) return null;
   const { r, rows } = halves;
   const top = rows.slice(0, SLOPE_LIMIT);
-  // Dimension values carry dots and slashes recharts would read as paths —
-  // remap each line to a safe alias (same trick as SectionTrend).
+  // WORKAROUND: Recharts reads dots and slashes in a dataKey as a path, so lines use aliases.
   const keys = top.map((_, index) => `s${index}`);
   const data = [
     {
@@ -131,7 +126,6 @@ export function SlopeSection({
               ))}
             </ComposedChart>
           </ChartContainer>
-          {/* Direction labelled, not colour-only. */}
           <ul className="mt-2 grid grid-cols-1 gap-x-4 text-xs text-muted-foreground md:grid-cols-2">
             {top.map((row) => (
               <li key={row.value} className="flex justify-between gap-2">
@@ -152,7 +146,6 @@ export function SlopeSection({
   );
 }
 
-/** Signed change between the window's two halves, one bar per value. */
 export function MomentumSection({
   section,
   resolve,
