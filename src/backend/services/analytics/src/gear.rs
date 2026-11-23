@@ -1,6 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
+use authn_resolver_sdk::AuthNResolverClient;
 use toolkit::api::OpenApiRegistry;
 use toolkit::{Gear, GearCtx, RestApiCapability};
 
@@ -10,7 +11,8 @@ use crate::{api, infra};
 
 #[toolkit::gear(
     name = "analytics",
-    capabilities = [rest]
+    capabilities = [rest],
+    deps = [authn_resolver]
 )]
 pub struct AnalyticsApiGear {
     state: OnceLock<Arc<api::AppState>>,
@@ -99,6 +101,7 @@ impl Gear for AnalyticsApiGear {
         crate::sql_explorer::start(
             &mcp,
             &sql_api,
+            ctx.client_hub().get::<dyn AuthNResolverClient>()?,
             &mcp_clickhouse_url,
             &mcp_clickhouse_database,
             ctx.cancellation_token().child_token(),

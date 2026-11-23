@@ -61,24 +61,11 @@ pub struct McpConfig {
     pub clickhouse_password: SecretString,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct SqlApiConfig {
     pub enabled: bool,
     pub token: SecretString,
-    pub jwt_issuer: String,
-    pub jwt_audience: String,
-}
-
-impl Default for SqlApiConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            token: SecretString::from(String::new()),
-            jwt_issuer: String::new(),
-            jwt_audience: "sql-api".to_owned(),
-        }
-    }
 }
 
 impl Default for McpConfig {

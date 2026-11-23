@@ -39,7 +39,6 @@ fn api_only_startup_requires_credentials_but_not_oauth_metadata() {
     let mut api = SqlApiConfig::default();
     assert!(validate_config(&mcp, &api).is_ok());
     api.enabled = true;
-    api.jwt_issuer = "https://gateway.example.test".to_owned();
     assert!(validate_config(&mcp, &api).is_err());
     mcp.clickhouse_password = SecretString::from("synthetic-db-password".to_owned());
     for token in ["", "short", "synthetic-token-with-a-space-in it"] {
@@ -111,48 +110,4 @@ async fn cloned_executors_share_capacity_and_release_it_after_completion()
     assert!(matches!(result, Err(QueryFailure::InvalidSql(_))));
     server.abort();
     Ok(())
-}
-
-#[test]
-fn an_enabled_api_requires_the_jwt_issuer_and_audience() {
-    let mcp = McpConfig {
-        clickhouse_password: SecretString::from("synthetic-db-password".to_owned()),
-        ..McpConfig::default()
-    };
-    let mut api = SqlApiConfig {
-        enabled: true,
-        token: SecretString::from("synthetic-test-token-not-a-real-secret".to_owned()),
-        ..SqlApiConfig::default()
-    };
-    assert_eq!(api.jwt_audience, "sql-api");
-    assert!(validate_config(&mcp, &api).is_err());
-    api.jwt_issuer = "https://gateway.example.test".to_owned();
-    assert!(validate_config(&mcp, &api).is_ok());
-    api.jwt_audience = "  ".to_owned();
-    assert!(validate_config(&mcp, &api).is_err());
-}
-
-#[test]
-fn the_sql_api_fetches_keys_from_its_issuer_when_no_jwks_url_is_set() {
-    let mut mcp = McpConfig::default();
-    let api = SqlApiConfig {
-        jwt_issuer: "https://gateway.example.test/".to_owned(),
-        ..SqlApiConfig::default()
-    };
-    assert_eq!(
-        sql_api_jwks_url(&mcp, &api),
-        "https://gateway.example.test/.well-known/jwks.json"
-    );
-
-    mcp.public_url = "https://insight.example.com".to_owned();
-    assert_eq!(
-        sql_api_jwks_url(&mcp, &api),
-        "https://gateway.example.test/.well-known/jwks.json"
-    );
-
-    mcp.jwks_url = "http://gateway:8080/.well-known/jwks.json".to_owned();
-    assert_eq!(
-        sql_api_jwks_url(&mcp, &api),
-        "http://gateway:8080/.well-known/jwks.json"
-    );
 }

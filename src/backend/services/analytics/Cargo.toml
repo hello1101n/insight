@@ -28,6 +28,7 @@ sea-orm-migration = { workspace = true }
 toolkit = { workspace = true, features = ["bootstrap"] }
 toolkit-security = { workspace = true }
 toolkit-canonical-errors = { workspace = true }
+authn-resolver-sdk = { workspace = true }
 
 api_gateway = { workspace = true }
 authn-resolver = { workspace = true }

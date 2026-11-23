@@ -1,11 +1,12 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use authn_resolver_sdk::AuthNResolverClient;
 use axum::Router;
 use secrecy::ExposeSecret as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{McpConfig, SqlApiConfig};
-use crate::jwt_verifier::{JwksVerifier, resolve_jwks_url};
 
 mod api;
 pub(crate) mod executor;
@@ -39,25 +40,14 @@ pub(crate) fn validate_config(mcp: &McpConfig, api: &SqlApiConfig) -> anyhow::Re
             token.len() >= 32 && token.len() <= 1024 && token.bytes().all(|b| b.is_ascii_graphic()),
             "SQL API token must contain 32 to 1024 printable ASCII characters without whitespace"
         );
-        anyhow::ensure!(
-            !api.jwt_issuer.trim().is_empty(),
-            "SQL API JWT issuer is empty"
-        );
-        anyhow::ensure!(
-            !api.jwt_audience.trim().is_empty(),
-            "SQL API JWT audience is empty"
-        );
     }
     Ok(())
-}
-
-fn sql_api_jwks_url(mcp: &McpConfig, api: &SqlApiConfig) -> String {
-    resolve_jwks_url(&mcp.jwks_url, &api.jwt_issuer)
 }
 
 pub(crate) async fn start(
     mcp: &McpConfig,
     api: &SqlApiConfig,
+    authn: Arc<dyn AuthNResolverClient>,
     clickhouse_url: &str,
     clickhouse_database: &str,
     cancellation: CancellationToken,
@@ -84,12 +74,7 @@ pub(crate) async fn start(
         )?);
     }
     if api.enabled {
-        let verifier = JwksVerifier::new(
-            &api.jwt_issuer,
-            &api.jwt_audience,
-            &sql_api_jwks_url(mcp, api),
-        )?;
-        router = router.merge(api::router(api, verifier, executor));
+        router = router.merge(api::router(api, authn, executor));
     }
     let listener = tokio::net::TcpListener::bind(&mcp.bind_addr).await?;
     tracing::info!(bind_addr = %mcp.bind_addr, "SQL explorer listening");

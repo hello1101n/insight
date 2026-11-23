@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use authn_resolver_sdk::{AuthNResolverClient, AuthNResolverError};
 use axum::extract::{DefaultBodyLimit, Request, State, rejection::JsonRejection};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -12,7 +15,6 @@ use toolkit_security::crypto::{constant_time_eq, hash::Sha256};
 
 use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure, TokenHolder};
 use crate::config::SqlApiConfig;
-use crate::jwt_verifier::{JwksVerifier, VerifyFailure};
 
 const API_TOKEN_SUB_TYPE: &str = "api_token";
 const MAX_CREDENTIAL_BYTES: usize = 4096;
@@ -32,25 +34,28 @@ struct QueryRequest {
 #[derive(Clone)]
 struct AuthState {
     token_hash: [u8; 32],
-    verifier: JwksVerifier,
+    authn: Arc<dyn AuthNResolverClient>,
+}
+
+enum AuthFailure {
+    Unauthorized,
+    Unavailable,
 }
 
 #[derive(Debug, Deserialize)]
 struct ApiTokenClaims {
-    sub: String,
-    sub_type: String,
     sid: String,
     token_label: String,
 }
 
 pub(super) fn router(
     config: &SqlApiConfig,
-    verifier: JwksVerifier,
+    authn: Arc<dyn AuthNResolverClient>,
     executor: QueryExecutor,
 ) -> Router {
     let state = AuthState {
         token_hash: Sha256::digest(config.token.expose_secret().as_bytes()),
-        verifier,
+        authn,
     };
     Router::new()
         .route("/api/sql/query", post(query))
@@ -70,7 +75,7 @@ async fn authenticate(
             request.extensions_mut().insert(holder);
             next.run(request).await
         }
-        Err(VerifyFailure::Unauthorized) => {
+        Err(AuthFailure::Unauthorized) => {
             let mut response = CanonicalError::unauthenticated()
                 .with_reason("INVALID_INSTANCE_TOKEN")
                 .create()
@@ -80,7 +85,7 @@ async fn authenticate(
                 .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
             response
         }
-        Err(VerifyFailure::Unavailable) => CanonicalError::service_unavailable()
+        Err(AuthFailure::Unavailable) => CanonicalError::service_unavailable()
             .with_detail("credential verification is unavailable; retry shortly")
             .create()
             .into_response(),
@@ -94,17 +99,28 @@ async fn authenticate(
 async fn identify(
     state: &AuthState,
     headers: &HeaderMap,
-) -> Result<Option<TokenHolder>, VerifyFailure> {
-    let token = bearer_credential(headers).ok_or(VerifyFailure::Unauthorized)?;
+) -> Result<Option<TokenHolder>, AuthFailure> {
+    let token = bearer_credential(headers).ok_or(AuthFailure::Unauthorized)?;
     if constant_time_eq(&Sha256::digest(token.as_bytes()), &state.token_hash) {
         return Ok(None);
     }
-    let claims = state.verifier.verify::<ApiTokenClaims>(token).await?;
-    if claims.sub_type != API_TOKEN_SUB_TYPE {
-        return Err(VerifyFailure::Unauthorized);
+    let subject = state
+        .authn
+        .authenticate(token)
+        .await
+        .map_err(|error| match error {
+            AuthNResolverError::Unauthorized(_) => AuthFailure::Unauthorized,
+            _ => AuthFailure::Unavailable,
+        })?
+        .security_context;
+    if subject.subject_type() != Some(API_TOKEN_SUB_TYPE) {
+        return Err(AuthFailure::Unauthorized);
     }
+    let claims = jsonwebtoken::dangerous::insecure_decode::<ApiTokenClaims>(token)
+        .map_err(|_| AuthFailure::Unauthorized)?
+        .claims;
     Ok(Some(TokenHolder {
-        person_id: claims.sub,
+        person_id: subject.subject_id().to_string(),
         token_id: claims.sid,
         label: claims.token_label,
     }))

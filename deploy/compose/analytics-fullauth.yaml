@@ -49,6 +49,7 @@ gears:
         require_audience: true
         expected_audience:
           - "internal-services"
+          - "sql-api"
         trusted_issuers:
           # = token `iss` (authenticator gateway_issuer). discovery_url omitted
           # → {issuer}/.well-known/openid-configuration, served by authn-tls.
@@ -95,8 +96,5 @@ gears:
       clickhouse_database: "insight"
       identity_url: ""
       redis_url: ""
-      sql_api:
-        jwt_issuer: "https://authn-tls:8443"
-        jwt_audience: "sql-api"
       metric_catalog:
         tenant_metrics_enabled: true
