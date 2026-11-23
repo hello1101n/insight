@@ -17,3 +17,9 @@ export const TONE_BAR_STYLE: Record<ConnectorTone, string> = {
   ok: "bg-success",
   idle: "bg-muted-foreground",
 };
+
+export function historySegmentStyle(status: string, tone: ConnectorTone) {
+  return status === "cancelled"
+    ? "bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--muted-foreground)_3px_5px)]"
+    : TONE_BAR_STYLE[tone];
+}

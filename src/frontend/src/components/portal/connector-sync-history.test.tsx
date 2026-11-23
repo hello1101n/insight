@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -86,7 +86,7 @@ it("labels every status cell and summarizes only finished outcomes", () => {
         `^Run ${statuses.length - index}: ${labels[statuses.length - index - 1]}, started `
       )
     );
-    expect(cell).toHaveAttribute("title", cell.getAttribute("aria-label"));
+    expect(cell).toHaveAttribute("tabindex", "-1");
     expect(cell).toBeEmptyDOMElement();
   }
   expect(cells[7]).toHaveClass("bg-success");
@@ -126,6 +126,8 @@ it("expands the whole window and collapses from the keyboard without moving focu
   expect(toggle).toHaveAttribute("aria-controls", table.id);
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   await userEvent.tab();
+  await userEvent.tab();
+  expect(screen.getByRole("region", { name: "Recent syncs" })).toHaveFocus();
   await userEvent.tab();
   expect(toggle).toHaveFocus();
   await userEvent.keyboard("{Enter}");
@@ -191,23 +193,25 @@ it("shows UTC starts and preserves unfinished durations, missing counts and zero
   );
 });
 
-it("keeps empty fixed-size bars, totals and the count on the wrapping heading line", () => {
+it("keeps the status strip on one line and lets the heading and totals wrap", () => {
   history(runs(11));
   const heading = screen.getByRole("heading", { name: "Recent syncs" });
   const header = heading.parentElement!;
   const strip = within(header).getByRole("list");
   expect(header).toHaveClass("flex", "flex-wrap", "min-w-0", "items-center");
-  expect(strip).toHaveClass(
-    "flex",
-    "flex-wrap",
-    "gap-[2px]",
-    "max-w-full",
-    "min-w-0"
-  );
-  expect(strip).not.toHaveClass("auto-cols-fr", "grid");
+  expect(strip).toHaveClass("grid", "w-full", "min-w-0");
+  expect(strip).toHaveStyle({
+    gridTemplateColumns: "repeat(50, minmax(0, 1fr))",
+  });
+  expect(within(strip).getAllByRole("listitem")).toHaveLength(11);
   for (const bar of within(strip).getAllByRole("listitem")) {
     expect(bar).toBeEmptyDOMElement();
-    expect(bar).toHaveClass("w-[9px]", "h-[18px]", "rounded-[2px]", "shrink-0");
+    expect(bar).toHaveClass(
+      "min-w-0",
+      "h-3",
+      "first:rounded-l-full",
+      "last:rounded-r-full"
+    );
   }
   expect(within(header).getByText("100% succeeded")).toBeInTheDocument();
   expect(within(header).getByText("Latest 10 of 11 recorded")).toHaveClass(
@@ -221,7 +225,7 @@ it("keeps empty fixed-size bars, totals and the count on the wrapping heading li
   ]);
 });
 
-it("places the newest run on the right with status and UTC start in each label and tooltip", () => {
+it("places the newest run on the right with status and UTC start in each label and tooltip", async () => {
   const syncs = runs(3);
   syncs[0].status = "failed";
   history(syncs);
@@ -233,7 +237,12 @@ it("places the newest run on the right with status and UTC start in each label a
   ];
   for (const [index, bar] of bars.entries()) {
     expect(bar).toHaveAccessibleName(labels[index]);
-    expect(bar).toHaveAttribute("title", labels[index]);
+    await userEvent.hover(bar);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(labels[index]);
+    await userEvent.unhover(bar);
+    await waitFor(() =>
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    );
   }
   const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
   expect(within(rows[0]).getByText("sync failed")).toBeInTheDocument();
@@ -283,7 +292,7 @@ it("keeps UTC dates and clocks in the history cells and bar tooltips across midn
   );
   const bars = within(screen.getByRole("list")).getAllByRole("listitem");
   expect(bars[0]).toHaveAttribute(
-    "title",
+    "aria-label",
     "Run 2: sync ok, started 2026-01-15 11:30:00Z"
   );
   expect(bars[1]).toHaveAccessibleName(
@@ -291,7 +300,7 @@ it("keeps UTC dates and clocks in the history cells and bar tooltips across midn
   );
   expect(container.textContent).not.toMatch(/your time|01:30|13:30/);
   for (const bar of bars)
-    expect(bar.title).not.toMatch(/your time|01:30|13:30/);
+    expect(bar.getAttribute("aria-label")).not.toMatch(/your time|01:30|13:30/);
 });
 
 it.each([

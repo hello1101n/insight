@@ -7,11 +7,23 @@ import type {
   ConnectorInstanceRef,
   SyncFact,
 } from "@/api/connector-health-client";
-import { Badge, Button } from "@gears-frontx/ui-kit";
+import {
+  Badge,
+  Button,
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableCell,
+  TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ConnectorRunHistory } from "./connector-run-history";
-import { TONE_BADGE, TONE_BAR_STYLE } from "./connector-health-tone";
+import { historySegmentStyle, TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
   UNMEASURED,
@@ -97,7 +109,7 @@ export function ConnectorSyncHistory({
 
   return (
     <section
-      aria-labelledby={`${id}-heading`}
+      aria-labelledby={syncs.length ? undefined : `${id}-heading`}
       className="max-w-full min-w-0 space-y-3 [overflow-wrap:anywhere] whitespace-normal"
     >
       <div className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
@@ -108,7 +120,10 @@ export function ConnectorSyncHistory({
           <>
             <ol
               aria-label={t("connectors.history.statuses_label")}
-              className="flex max-w-full min-w-0 flex-wrap gap-[2px]"
+              className="grid w-full min-w-0"
+              style={{
+                gridTemplateColumns: `repeat(${MAX_RUNS}, minmax(0, 1fr))`,
+              }}
             >
               {syncs
                 .slice()
@@ -121,15 +136,19 @@ export function ConnectorSyncHistory({
                     started: formatStarted(sync.started_at),
                   });
                   return (
-                    <li
-                      key={sync.job_id}
-                      aria-label={label}
-                      title={label}
-                      className={cn(
-                        "h-[18px] w-[9px] shrink-0 rounded-[2px]",
-                        TONE_BAR_STYLE[state.tone]
-                      )}
-                    />
+                    <Tooltip key={sync.job_id}>
+                      <TooltipTrigger
+                        render={<li />}
+                        role="listitem"
+                        tabIndex={-1}
+                        aria-label={label}
+                        className={cn(
+                          "h-3 min-w-0 border-background/50 not-last:border-r first:rounded-l-full last:rounded-r-full",
+                          historySegmentStyle(sync.status, state.tone)
+                        )}
+                      />
+                      <TooltipContent role="tooltip">{label}</TooltipContent>
+                    </Tooltip>
                   );
                 })}
             </ol>
@@ -150,8 +169,10 @@ export function ConnectorSyncHistory({
         </p>
       ) : (
         <>
-          <table
+          <Table
             id={`${id}-table`}
+            label={t("connectors.history.heading")}
+            containerClassName="min-w-0 max-w-full whitespace-normal [overflow-wrap:anywhere]"
             aria-label={t("connectors.history.heading")}
             className="w-full max-w-full table-fixed text-xs sm:text-sm"
           >
@@ -161,31 +182,37 @@ export function ConnectorSyncHistory({
               <col className="w-1/5" />
               <col className="w-1/5 sm:w-[15%]" />
             </colgroup>
-            <thead className="[overflow-wrap:anywhere] [word-break:normal] whitespace-normal">
-              <tr className="border-b text-left text-muted-foreground">
-                <th scope="col" className="px-1 py-2 font-medium">
+            <TableHeader className="[overflow-wrap:anywhere] [word-break:normal] whitespace-normal">
+              <TableRow className="border-b text-left text-muted-foreground">
+                <TableHead scope="col" className="px-1 py-2 font-medium">
                   {t("common.table.status")}
-                </th>
-                <th
+                </TableHead>
+                <TableHead
                   scope="col"
                   className="px-1 py-2 font-medium whitespace-normal"
                 >
                   {t("connectors.history.started_utc")}
-                </th>
-                <th scope="col" className="px-1 py-2 text-right font-medium">
+                </TableHead>
+                <TableHead
+                  scope="col"
+                  className="px-1 py-2 text-right font-medium"
+                >
                   {t("connectors.duration")}
-                </th>
-                <th scope="col" className="px-1 py-2 text-right font-medium">
+                </TableHead>
+                <TableHead
+                  scope="col"
+                  className="px-1 py-2 text-right font-medium"
+                >
                   {t("connectors.history.records")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visible.map((sync) => (
                 <SyncRow key={sync.job_id} sync={sync} asOf={asOf} />
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           {syncs.length > INITIAL_ROWS && (
             <Button
               type="button"
@@ -211,34 +238,34 @@ function SyncRow({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   const state = describeSync(sync);
   const duration = describeDuration(sync, asOf);
   return (
-    <tr className="border-b last:border-0">
-      <td className="px-1 py-2 align-top">
+    <TableRow className="border-b last:border-0">
+      <TableCell className="px-1 py-2 align-top">
         <Badge
           variant={TONE_BADGE[state.tone]}
           className="max-w-full whitespace-normal"
         >
           {state.label}
         </Badge>
-      </td>
-      <td className="px-1 py-2 align-top text-muted-foreground tabular-nums">
+      </TableCell>
+      <TableCell className="px-1 py-2 align-top text-muted-foreground tabular-nums">
         {formatStarted(sync.started_at)}
-      </td>
-      <td
+      </TableCell>
+      <TableCell
         className={cn(
           "px-1 py-2 text-right align-top tabular-nums",
           duration.inFlight ? "text-foreground" : "text-muted-foreground"
         )}
       >
         {duration.text}
-      </td>
-      <td className="px-1 py-2 text-right align-top text-muted-foreground tabular-nums">
+      </TableCell>
+      <TableCell className="px-1 py-2 text-right align-top text-muted-foreground tabular-nums">
         {formatRecords(sync.records_reported)}
         {sync.records_reported == null && (
           <span className="sr-only">
             {t("connectors.history.unmeasured", { value: UNMEASURED })}
           </span>
         )}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

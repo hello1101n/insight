@@ -1409,6 +1409,13 @@ describe("connector workflow runs", () => {
           status: "failed",
           reason: "clickhouse_memory_limit",
           queued_at: "2026-01-15T11:58:00Z",
+          waits: [
+            {
+              kind: "placement" as const,
+              started_at: "2026-01-15T11:58:10Z",
+              ended_at: "2026-01-15T11:58:14Z",
+            },
+          ],
           started_at: "2026-01-15T11:58:20Z",
           finished_at: NOW,
           duration_ms: 100_000,
@@ -1471,6 +1478,14 @@ describe("connector workflow runs", () => {
     expect(marks).toHaveLength(50);
     expect(marks.at(-1)).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Load source data")).toBeVisible();
+    expect(screen.getByText("Load source data").closest("li")).toHaveAttribute(
+      "aria-current",
+      "step"
+    );
+    expect(screen.getByText("Upcoming")).toBeVisible();
+    expect(
+      screen.getByRole("figure", { name: "Stages of the selected sync" })
+    ).toHaveTextContent("Stage timing unavailable");
     await userEvent.click(
       within(history).getByRole("button", {
         name: "2026-01-15 11:58:00Z · Failed",
@@ -1480,9 +1495,26 @@ describe("connector workflow runs", () => {
     expect(screen.getByText("ClickHouse memory limit exceeded")).toBeVisible();
     expect(screen.getByText("Attempt 2")).toBeVisible();
     expect(screen.getByText("Sync finished")).toBeVisible();
+    expect(screen.queryByText("Upcoming")).not.toBeInTheDocument();
     expect(screen.queryByText("Load source data")).not.toBeInTheDocument();
-    const timeline = card("Run timeline (UTC)");
-    expect(timeline.getByText("20.0 s")).toBeVisible();
+    const timeline = card("Run stages (UTC)");
+    const strip = within(
+      timeline.getByRole("figure", { name: "Stages of the selected sync" })
+    );
+    expect(
+      strip.getByLabelText(/Waiting for Kubernetes pod placement · 4.0 s/)
+    ).toHaveStyle({ left: "8.333333333333334%" });
+    expect(strip.getByLabelText(/Transform Jira models · 1m 40s/)).toHaveStyle({
+      width: "83.33333333333333%",
+    });
+    expect(strip.getByText(/Failed · Transform Jira models/)).toBeVisible();
+    expect(strip.getByText(/Stage timing unavailable · 16.0 s/)).toBeVisible();
+    expect(timeline.queryByText("20.0 s")).not.toBeInTheDocument();
+    expect(timeline.queryByText("Waiting")).not.toBeInTheDocument();
+    expect(
+      timeline.getByText("Waiting for Kubernetes pod placement")
+    ).toBeVisible();
+    expect(timeline.getByText("4.0 s")).toBeVisible();
     expect(timeline.getByText("1m 40s")).toBeVisible();
   });
 

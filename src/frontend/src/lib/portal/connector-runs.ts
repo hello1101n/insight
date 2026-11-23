@@ -1,4 +1,7 @@
-import type { ConnectorRun } from "@/api/connector-health-client";
+import type {
+  ConnectorRun,
+  ConnectorRunStage,
+} from "@/api/connector-health-client";
 import i18n from "@/i18n";
 import {
   elapsedMs,
@@ -10,6 +13,8 @@ import {
 const statuses = {
   running: "active",
   queued: "idle",
+  starting: "active",
+  waiting_admission: "idle",
   waiting_pod: "idle",
   placement_overdue: "failing",
   stopping_pod_wait: "failing",
@@ -37,6 +42,26 @@ export function describeRun(status: string) {
 }
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "wait_timeout"]);
+
+export function stageFailureReason(stage: ConnectorRunStage): string {
+  const reason = stage.reason;
+  const queryError = /^clickhouse_query_error:(\d+):([A-Z0-9_]+)$/.exec(
+    reason ?? ""
+  );
+  if (queryError) {
+    if (queryError[2] === "UNKNOWN_IDENTIFIER")
+      return i18n.t("connectors.runs.unknown_identifier");
+    return i18n.t("connectors.runs.query_error", {
+      code: queryError[1],
+      name: queryError[2],
+    });
+  }
+  if (stage.status === "wait_timeout")
+    return i18n.t("connectors.runs.reason.wait_timeout");
+  if (reason && reason !== stage.status && reason !== "stage_failed")
+    return i18n.t(`connectors.runs.reason.${reason}`, { defaultValue: reason });
+  return i18n.t("connectors.runs.no_failure_reason");
+}
 
 export function isActiveRun(run: ConnectorRun): boolean {
   return run.finished_at == null && !terminal.has(run.status);

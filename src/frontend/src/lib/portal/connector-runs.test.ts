@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorRun } from "@/api/connector-health-client";
-import { describeRun, isActiveRun, runDuration } from "./connector-runs";
+import {
+  describeRun,
+  isActiveRun,
+  runDuration,
+  stageFailureReason,
+} from "./connector-runs";
 
 const run: ConnectorRun = {
   sync_id: "jira",
@@ -12,8 +17,29 @@ const now = "2026-11-20T01:03:00Z";
 
 describe("connector run state", () => {
   it.each([
+    [
+      "failed",
+      "clickhouse_query_error:47:UNKNOWN_IDENTIFIER",
+      "ClickHouse could not resolve a name in the SQL query (UNKNOWN_IDENTIFIER, code 47).",
+    ],
+    ["failed", "pod_oom", "Pod memory limit exceeded"],
+    ["failed", "stage_failed", "No detailed failure reason was recorded."],
+    ["wait_timeout", null, "Wait exceeded six hours"],
+  ] as const)("explains %s with %s", (status, reason, expected) => {
+    expect(
+      stageFailureReason({
+        stage: "transform-legacy",
+        attempt: 1,
+        status,
+        reason,
+      })
+    ).toBe(expected);
+  });
+  it.each([
     ["queued", "Queued"],
-    ["waiting_pod", "Waiting for pod placement"],
+    ["starting", "Starting"],
+    ["waiting_admission", "Waiting for stage admission from connectors"],
+    ["waiting_pod", "Waiting for Kubernetes pod placement"],
     ["waiting_clickhouse", "Waiting for ClickHouse"],
     ["loading", "Loading"],
     ["transforming", "Transforming"],

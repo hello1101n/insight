@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +10,8 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   Badge,
+  Button,
+  Card,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -176,7 +179,16 @@ export function ConnectorHealthPane() {
                     className="cursor-pointer select-text"
                   >
                     <TableCell>
-                      {row.connector}
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            open && "rotate-90"
+                          )}
+                        />
+                        {row.connector}
+                      </span>
                     </TableCell>
                     <InstanceCell instance={row} />
                     <ScheduleCell row={row} />
@@ -209,7 +221,10 @@ export function ConnectorHealthPane() {
                         <div className="min-w-0 [contain:inline-size]">
                           <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
                             {row.configured && (
-                              <div className="@container min-w-0 rounded-md border bg-background p-4">
+                              <Card
+                                size="sm"
+                                className="@container min-w-0 p-4"
+                              >
                                 <ConnectorSchedulePane
                                   row={row}
                                   polling={polling}
@@ -219,14 +234,14 @@ export function ConnectorHealthPane() {
                                       : data.typical_read_interval_ms / 1000
                                   }
                                 />
-                              </div>
+                              </Card>
                             )}
-                            <div className="min-w-0 rounded-md border bg-background p-4">
+                            <Card size="sm" className="min-w-0 p-4">
                               <ConnectorSyncHistory
                                 instance={row}
                                 asOf={data.as_of}
                               />
-                            </div>
+                            </Card>
                           </div>
                         </div>
                       </TableCell>
@@ -291,7 +306,12 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
             <TooltipTrigger
               aria-describedby={tooltipId}
               render={
-                <button type="button" className="cursor-help text-left" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto cursor-help p-0 text-left font-normal"
+                />
               }
             >
               {nextRun?.text}

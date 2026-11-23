@@ -21,6 +21,11 @@ export interface SyncFact {
 }
 
 export interface ConnectorRunStage {
+  waits?: {
+    kind: "admission" | "placement";
+    started_at: string;
+    ended_at?: string | null;
+  }[];
   stage: string;
   attempt: number;
   airbyte_job_id?: string | null;
