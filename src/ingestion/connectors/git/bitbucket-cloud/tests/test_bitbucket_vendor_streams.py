@@ -1950,10 +1950,28 @@ def _cursor_update_skipped(output) -> list[str]:
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_pipeline_stamped_with_nine_fractional_digits_advances_the_cursor(http_mocker: HttpMocker) -> None:
-    """The vendor stamps pipelines to the nanosecond; a cursor that cannot read
-    the stamp never moves, and every later sync walks the whole history again.
-    The stamp is cut to the precision the cursor reads before it is observed."""
+@pytest.mark.parametrize(
+    ("stamps", "changed_on"),
+    [
+        pytest.param({}, _SIX_DIGIT_STAMP, id="created"),
+        pytest.param(
+            {"run_creation_date": "2026-06-26T09:00:00.123456789Z"}, "2026-06-26T09:00:00.123456Z", id="rerun-started"
+        ),
+        pytest.param(
+            {"run_creation_date": _NINE_DIGIT_STAMP, "completed_on": "2026-06-25T10:05:00.987654321Z"},
+            "2026-06-25T10:05:00.987654Z",
+            id="completed",
+        ),
+    ],
+)
+def test_the_latest_stamp_of_a_pipeline_becomes_its_change_stamp_and_the_cursor(
+    http_mocker: HttpMocker, stamps: dict[str, str], changed_on: str
+) -> None:
+    """A pipeline names no update time. A rerun moves its run creation date and a
+    finished run sets its completion date, so the latest of these and the creation
+    date is when it last changed. The vendor stamps to the nanosecond; a cursor
+    that cannot read the stamp never moves, and every later sync walks the whole
+    history again. The stamp is cut to the precision the cursor reads."""
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
@@ -1967,9 +1985,9 @@ def test_a_pipeline_stamped_with_nine_fractional_digits_advances_the_cursor(http
                             "build_number": 42,
                             "state": {"name": "COMPLETED", "result": {"name": "SUCCESSFUL"}},
                             "created_on": _NINE_DIGIT_STAMP,
-                            "completed_on": "2026-06-25T10:05:00.000000000Z",
                             "target": {"ref_name": "main"},
                             "trigger": {"name": "SCHEDULE"},
+                            **stamps,
                         }
                     ]
                 }
@@ -1981,10 +1999,12 @@ def test_a_pipeline_stamped_with_nine_fractional_digits_advances_the_cursor(http
     output = read_stream(_CONNECTOR, "pipelines", config, sync_mode=SyncMode.incremental)
 
     assert not output.errors
-    assert [r.record.data["created_on"] for r in output.records] == [_SIX_DIGIT_STAMP]
+    (row,) = (r.record.data for r in output.records)
+    assert row["created_on"] == _SIX_DIGIT_STAMP
+    assert row["changed_on"] == changed_on
     assert not _cursor_update_skipped(output), _cursor_update_skipped(output)
     saved = json.dumps(output.state_messages[-1].state.stream.stream_state.__dict__)
-    assert "2026-06-25T10:00:00" in saved, f"the pipeline's date must become the cursor: {saved}"
+    assert changed_on[:19] in saved, f"the change stamp must become the cursor: {saved}"
     assert_records_conform(output.records, _CONNECTOR, "pipelines", strict=True)
 
 
@@ -2336,6 +2356,224 @@ def test_pipelines_keep_the_selector_target_stage_and_attempt_of_each_run(
     assert row["run_creation_date"] == "2026-06-26T09:00:00.123456789Z"
     _no_literal_none(output.records)
     assert_records_conform(output.records, _CONNECTOR, "pipelines", strict=True)
+
+
+_RUNNING = {"name": "IN_PROGRESS", "stage": {"name": "RUNNING"}}
+_SUCCESSFUL = {"name": "COMPLETED", "result": {"name": "SUCCESSFUL"}}
+_FAILED = {"name": "COMPLETED", "result": {"name": "FAILED"}}
+
+
+def _pipeline(
+    uuid: str,
+    *,
+    created_on: str,
+    state: dict[str, Any],
+    run_number: int = 1,
+    run_creation_date: str | None = None,
+    completed_on: str | None = None,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "uuid": uuid,
+        "created_on": created_on,
+        "run_number": run_number,
+        "run_creation_date": run_creation_date or created_on,
+        "state": state,
+    }
+    if completed_on is not None:
+        row["completed_on"] = completed_on
+    return row
+
+
+def _next_page(*rows: dict[str, Any], page: int) -> HttpResponse:
+    return HttpResponse(
+        body=json.dumps({"values": list(rows), "next": f"{_PIPELINES_URL}?page={page}"}), status_code=200
+    )
+
+
+_CREATED = "2026-06-21T09:00:00.000000000Z"
+_NEWER = _pipeline(
+    "{p-newer}",
+    created_on="2026-06-21T10:00:00.000000000Z",
+    state=_SUCCESSFUL,
+    completed_on="2026-06-21T10:05:00.000000000Z",
+)
+_OLDER = _pipeline(
+    "{p-older}",
+    created_on="2026-06-15T10:00:00.000000000Z",
+    state=_SUCCESSFUL,
+    completed_on="2026-06-15T10:05:00.000000000Z",
+)
+
+
+@freezegun.freeze_time(_FROZEN)
+@pytest.mark.parametrize(
+    ("synced", "changed", "expected"),
+    [
+        pytest.param(
+            _pipeline("{p-1}", created_on=_CREATED, state=_FAILED, completed_on="2026-06-21T09:10:00.000000000Z"),
+            _pipeline(
+                "{p-1}",
+                created_on=_CREATED,
+                state=_SUCCESSFUL,
+                run_number=2,
+                run_creation_date="2026-06-22T08:00:00.000000000Z",
+                completed_on="2026-06-22T08:05:00.000000000Z",
+            ),
+            (2, "COMPLETED", "SUCCESSFUL"),
+            id="rerun",
+        ),
+        pytest.param(
+            _pipeline("{p-1}", created_on=_CREATED, state=_FAILED, completed_on="2026-06-21T09:10:00.000000000Z"),
+            _pipeline(
+                "{p-1}",
+                created_on=_CREATED,
+                state=_RUNNING,
+                run_number=2,
+                run_creation_date="2026-06-22T08:00:00.000000000Z",
+            ),
+            (2, "IN_PROGRESS", ""),
+            id="rerun-in-progress",
+        ),
+        pytest.param(
+            _pipeline("{p-1}", created_on=_CREATED, state=_RUNNING),
+            _pipeline("{p-1}", created_on=_CREATED, state=_FAILED, completed_on="2026-06-21T11:00:00.000000000Z"),
+            (1, "COMPLETED", "FAILED"),
+            id="late-completion",
+        ),
+    ],
+)
+def test_a_pipeline_that_changes_after_a_newer_one_was_synced_reaches_bronze_on_the_next_visit(
+    http_mocker: HttpMocker, synced: dict[str, Any], changed: dict[str, Any], expected: tuple[int, str, str]
+) -> None:
+    """A rerun and a finished run keep the pipeline's uuid and created_on, so a
+    cursor on created_on drops the new state once a newer pipeline is synced. The
+    next visit to the repository carries the change to bronze, and it still stops
+    at the first page whose oldest pipeline is unchanged."""
+    config = BitbucketCloudConfigBuilder().build()
+    http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+    http_mocker.get(HttpRequest(_PIPELINES_URL, query_params=ANY_QUERY_PARAMS), _values_page(_NEWER, synced, _OLDER))
+
+    first = read_stream(_CONNECTOR, "pipelines", config, sync_mode=SyncMode.incremental)
+
+    assert not first.errors
+    assert "{p-1}" in _emitted(first)
+
+    resume_mocker = HttpMocker()
+    with resume_mocker:
+        resume_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+        resume_mocker.get(
+            HttpRequest(_PIPELINES_URL, query_params=ANY_QUERY_PARAMS),
+            [
+                _next_page(_NEWER, changed, _OLDER, page=2),
+                _values_page(
+                    _pipeline(
+                        "{p-oldest}",
+                        created_on="2026-06-02T10:00:00.000000000Z",
+                        state=_SUCCESSFUL,
+                        completed_on="2026-06-02T10:05:00.000000000Z",
+                    )
+                ),
+            ],
+        )
+
+        second = read_stream(
+            _CONNECTOR,
+            "pipelines",
+            config,
+            state=[m.state for m in first.state_messages][-1:],
+            sync_mode=SyncMode.incremental,
+        )
+        pages = _listing_requests(resume_mocker, _PIPELINES_URL)
+
+    assert not second.errors
+    row = _emitted(second).get("{p-1}")
+    assert row is not None, "the changed pipeline must reach bronze again"
+    assert (row["run_number"], row["state_name"], row["result_name"]) == expected
+    assert len(pages) == 1, f"the visit must stop at the page whose oldest pipeline is unchanged: {pages}"
+
+
+@freezegun.freeze_time(_FROZEN)
+def test_state_saved_on_created_on_rereads_pipelines_from_the_start_date() -> None:
+    """State written while the cursor was created_on names no change stamp, so
+    the first sync after the cursor moved reads each repository back to the start
+    date and no further: a pipeline created before the saved cursor reaches bronze
+    again, one created before the start date does not, and the state the sync
+    leaves is keyed on the change stamp."""
+    config = BitbucketCloudConfigBuilder().build()
+    saved_cursor = {"created_on": "2026-06-20T10:00:00Z"}
+    saved = AirbyteStateMessage(
+        type=AirbyteStateType.STREAM,
+        stream=AirbyteStreamState(
+            stream_descriptor=StreamDescriptor(name="pipelines"),
+            stream_state=AirbyteStateBlob(
+                {
+                    "use_global_cursor": False,
+                    "states": [
+                        {
+                            "partition": {"parent_slice": {"workspace": "acme"}, "repo_full_name": "acme/app"},
+                            "cursor": saved_cursor,
+                        }
+                    ],
+                    "state": saved_cursor,
+                    "lookback_window": 0,
+                    "parent_state": {
+                        "repositories": {
+                            "use_global_cursor": False,
+                            "states": [
+                                {"partition": {"workspace": "acme"}, "cursor": {"updated_on": "2026-06-20T10:00:00Z"}}
+                            ],
+                            "state": {"updated_on": "2026-06-20T10:00:00Z"},
+                            "lookback_window": 0,
+                        }
+                    },
+                }
+            ),
+        ),
+    )
+    # WORKAROUND: the http_mocker fixture fails a test that leaves a mocked page unread, and this one must.
+    walk_mocker = HttpMocker()
+    with walk_mocker:
+        walk_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
+        walk_mocker.get(
+            HttpRequest(_PIPELINES_URL, query_params=ANY_QUERY_PARAMS),
+            [
+                _next_page(
+                    _pipeline(
+                        "{p-1}",
+                        created_on="2026-06-10T10:00:00.000000000Z",
+                        state=_FAILED,
+                        completed_on="2026-06-10T10:05:00.000000000Z",
+                    ),
+                    page=2,
+                ),
+                _next_page(
+                    _pipeline(
+                        "{p-before-start}",
+                        created_on="2026-05-20T10:00:00.000000000Z",
+                        state=_SUCCESSFUL,
+                        completed_on="2026-05-20T10:05:00.000000000Z",
+                    ),
+                    page=3,
+                ),
+                _values_page(
+                    _pipeline(
+                        "{p-long-before-start}",
+                        created_on="2026-04-20T10:00:00.000000000Z",
+                        state=_SUCCESSFUL,
+                        completed_on="2026-04-20T10:05:00.000000000Z",
+                    )
+                ),
+            ],
+        )
+
+        output = read_stream(_CONNECTOR, "pipelines", config, state=[saved], sync_mode=SyncMode.incremental)
+        pages = _listing_requests(walk_mocker, _PIPELINES_URL)
+
+    assert not output.errors, output.errors
+    assert list(_emitted(output)) == ["{p-1}"]
+    assert len(pages) == 2, f"the walk must stop at the start date: {pages}"
+    left = output.state_messages[-1].state.stream.stream_state.__dict__
+    assert "changed_on" in left["state"], f"the new state must be keyed on the change stamp: {left}"
 
 
 _PR_LISTING_URL = f"{BB_URL}/repositories/acme/app/pullrequests"
