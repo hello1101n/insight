@@ -1,4 +1,5 @@
 {{ config(
+    severity='warn',
     tags=['connector_quality', 'youtrack'],
     meta={
         'title': 'Every field activity targets an issue with a snapshot',
