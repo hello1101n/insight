@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type {
-  AccountMatch,
-  CorrectionResponse,
-  PersonAccountEntry,
-  PersonSummary,
-  WireAccountRef,
+import {
+  toWireAccountRef,
+  type AccountMatch,
+  type CorrectionResponse,
+  type PersonAccountEntry,
+  type PersonSummary,
 } from "@/api/identity-client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { AccountPicker } from "@/components/portal/account-picker";
@@ -26,6 +26,7 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { useCorrectionReport } from "@/hooks/use-correction-report";
 import { accountKey } from "@/lib/identities/account-key";
+import { detachOffered } from "@/lib/identities/cases";
 import { personName } from "@/lib/identities/person-display";
 import { apiErrorReason } from "@/lib/query-console/api-error";
 import {
@@ -47,18 +48,6 @@ type PendingAction =
   | { kind: "bind"; account: AccountMatch }
   | { kind: "detach"; account: PersonAccountEntry }
   | { kind: "exclude"; account: PersonAccountEntry };
-
-function wireRef(account: {
-  source: string;
-  source_id: string;
-  account_id: string;
-}): WireAccountRef {
-  return {
-    source: account.source,
-    source_id: account.source_id,
-    id: account.account_id,
-  };
-}
 
 interface HeldPerson {
   id: string;
@@ -113,7 +102,7 @@ export function PersonDialog({
             <span
               className={cn(
                 "truncate select-text",
-                named ? undefined : "text-muted-foreground italic",
+                !named && "text-muted-foreground italic",
               )}
             >
               {named ?? t("identities.person.unnamed")}
@@ -274,7 +263,7 @@ function PersonBody({
   }
 
   const entries = accounts.data.accounts;
-  const detachable = entries.length > 1;
+  const detachable = detachOffered(person.person_id, entries.length);
   const busy = bind.isPending || detach.isPending || exclude.isPending;
 
   return (
@@ -340,7 +329,7 @@ function PersonBody({
           onConfirm={() =>
             bind.mutate(
               {
-                account: wireRef(action.account),
+                account: toWireAccountRef(action.account),
                 person_id: person.person_id,
               },
               { onSuccess: done },
@@ -366,7 +355,7 @@ function PersonBody({
               : null
           }
           onConfirm={() =>
-            detach.mutate({ account: wireRef(action.account) }, { onSuccess: done })
+            detach.mutate({ account: toWireAccountRef(action.account) }, { onSuccess: done })
           }
         >
           <AccountLine account={action.account} />
@@ -388,7 +377,7 @@ function PersonBody({
               : null
           }
           onConfirm={() =>
-            exclude.mutate({ account: wireRef(action.account) }, { onSuccess: done })
+            exclude.mutate({ account: toWireAccountRef(action.account) }, { onSuccess: done })
           }
         >
           <AccountLine account={action.account} />
