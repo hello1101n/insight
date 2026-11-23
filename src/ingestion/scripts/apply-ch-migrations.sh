@@ -939,7 +939,7 @@ heal_collab_document_visited_page_count silver class_collab_document_activity
 # comments and no CSAT, so the class union declares those counters Nullable.
 # A relation that only the Zendesk arm built keeps the plain UInt64. Widening,
 # no value moves.
-# INVARIANT: repairs releases without the HubSpot support arm (main before its first umbrella release); delete once every CH_FLOOR_RELEASES release runs it.
+# INVARIANT: repairs releases without #112 (main before <first umbrella release carrying it>); delete once every CH_FLOOR_RELEASES release runs it.
 heal_support_activity_counters() {
   local db="$1" table="$2" column
   ch_table_exists "${db}" "${table}" || return 0
