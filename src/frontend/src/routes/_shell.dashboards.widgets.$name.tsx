@@ -87,7 +87,7 @@ function WidgetPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className={TEXT_HEADING}>Definition</CardTitle>
+          <CardTitle>Definition</CardTitle>
         </CardHeader>
         <CardContent>
           <WidgetSummary widget={widget.data.widget} />
@@ -118,7 +118,7 @@ function Drawn({ name, widget }: { name: string; widget: Widget }) {
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center gap-2">
-        <CardTitle className={TEXT_HEADING}>{widget.title ?? name}</CardTitle>
+        <CardTitle>{widget.title ?? name}</CardTitle>
         <span className="ms-auto flex flex-wrap items-center gap-1">
           <Window
             label="All time"

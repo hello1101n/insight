@@ -43,12 +43,12 @@ export function SmallMultiplesSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4 pb-1 text-xs text-muted-foreground">
+        <CardContent>
           {[bucketNote(r.timeseries?.bucket ?? bucket), "one shared y-axis"]
             .filter(Boolean)
             .join(" · ")}
         </CardContent>
-        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 md:grid-cols-3 lg:grid-cols-4">
+        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3 lg:grid-cols-4">
           {multiples.map((multiple) => (
             <div key={multiple.value} className="min-w-0">
               <p

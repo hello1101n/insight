@@ -73,28 +73,28 @@ export function MetricEvidencePeople({
       >
         <TableHeader
           role="rowgroup"
-          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)] [&_tr]:border-b-0"
+          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)]"
         >
           <TableRow
             role="row"
-            className="flex w-full border-b-0 hover:bg-transparent"
+            className="flex w-full"
           >
             <TableHead
               role="columnheader"
-              className="flex h-10 min-w-0 flex-1 items-center px-3 py-0"
+              className="flex min-w-0 flex-1 items-center"
             >
               Person
             </TableHead>
             <TableHead
               role="columnheader"
-              className="flex h-10 shrink-0 items-center justify-end px-3 py-0 text-right"
+              className="flex shrink-0 items-center justify-end text-right"
               style={{ flex: `0 0 ${VALUE_REM}rem` }}
             >
               {valueLabel}
             </TableHead>
             <TableHead
               role="columnheader"
-              className="flex h-10 shrink-0 items-center p-0"
+              className="flex shrink-0 items-center"
               style={{ flex: `0 0 ${OPENER_REM}rem` }}
             >
               <span className="sr-only">Open records</span>
@@ -122,28 +122,28 @@ export function MetricEvidencePeople({
                 className={cn(
                   "absolute top-0 left-0 flex w-full",
                   target
-                    ? "cursor-pointer hover:bg-muted/20"
-                    : "hover:bg-transparent"
+                    ? "cursor-pointer"
+                    : ""
                 )}
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
                 <TableCell
                   role="cell"
-                  className="h-11 min-w-0 flex-1 truncate px-3 py-3 font-medium"
+                  className="min-w-0 flex-1 truncate"
                   title={row.name}
                 >
                   {row.name}
                 </TableCell>
                 <TableCell
                   role="cell"
-                  className="h-11 shrink-0 px-3 py-3 text-right tabular-nums"
+                  className="shrink-0 text-right tabular-nums"
                   style={{ flex: `0 0 ${VALUE_REM}rem` }}
                 >
                   {row.valueText}
                 </TableCell>
                 <TableCell
                   role="cell"
-                  className="flex h-11 shrink-0 items-center justify-center p-0"
+                  className="flex shrink-0 items-center justify-center"
                   style={{ flex: `0 0 ${OPENER_REM}rem` }}
                 >
                   {target ? (
@@ -152,7 +152,6 @@ export function MetricEvidencePeople({
                       variant="ghost"
                       size="sm"
                       aria-label={`Open records for ${row.name}`}
-                      className="text-muted-foreground"
                       onClick={(event) => {
                         event.stopPropagation();
                         onDrill(row);

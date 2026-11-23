@@ -19,7 +19,7 @@ export function CenteredSpinner({
       data-testid={testId}
       className={cn("flex items-center justify-center", className)}
     >
-      <Spinner className="size-12 text-muted-foreground" />
+      <Spinner size="lg" />
     </div>
   );
 }

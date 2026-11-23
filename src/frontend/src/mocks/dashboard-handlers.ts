@@ -91,7 +91,7 @@ const widgets: Record<string, DashboardWidget> = {
   },
 };
 
-const ROWS = {
+export const DEPLOYS_ROWS = {
   columns: ["week", "deploys"],
   rows: [
     ["2026-08-24", 12],
@@ -418,7 +418,7 @@ export const dashboardHandlers = [
     const drawn = dashboards[id]?.body.widgets?.includes(widget);
     if (!accessOf(id) || !drawn || !widgets[widget]) return notFound();
 
-    return HttpResponse.json(ROWS);
+    return HttpResponse.json(DEPLOYS_ROWS);
   }),
   http.get("/api/v3/v1/:kind/:id/grants", ({ params }) => {
     const shared = sharedThing(String(params.kind), String(params.id));

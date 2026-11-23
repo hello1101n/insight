@@ -24,7 +24,6 @@ import { rangeLabel } from "@/lib/custom/time-range";
 import { formatUtcAge, formatUtcInstant } from "@/lib/format";
 import {
   TEXT_BODY,
-  TEXT_HEADING,
   TEXT_LABEL,
   TEXT_TITLE,
 } from "@/lib/type-scale";
@@ -77,7 +76,7 @@ export function AlertPage({ id }: { id: string }) {
       </div>
       <Card>
         <CardHeader>
-          <CardTitle className={TEXT_HEADING}>Notifications</CardTitle>
+          <CardTitle>Notifications</CardTitle>
         </CardHeader>
         <CardContent>
           <NotificationsTable alert={alert.data} />
@@ -171,7 +170,7 @@ function Rule({ alert }: { alert: Alert }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Rule</CardTitle>
+        <CardTitle>Rule</CardTitle>
       </CardHeader>
       <CardContent>
         <dl className="grid gap-3 sm:grid-cols-2">
@@ -215,7 +214,7 @@ function LatestCheck({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Latest check</CardTitle>
+        <CardTitle>Latest check</CardTitle>
       </CardHeader>
       <CardContent>
         {!state.last_evaluated_at ? (

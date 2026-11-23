@@ -7,7 +7,9 @@
 #[error("the warehouse has no such relation")]
 pub struct MissingRelation;
 
-const ABSENT_RELATION_CODES: [u32; 2] = [60, 81];
+const UNKNOWN_TABLE: u32 = 60;
+const UNKNOWN_DATABASE: u32 = 81;
+const ABSENT_RELATION_CODES: [u32; 2] = [UNKNOWN_TABLE, UNKNOWN_DATABASE];
 
 impl MissingRelation {
     #[must_use]

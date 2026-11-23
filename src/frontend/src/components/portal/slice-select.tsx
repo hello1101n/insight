@@ -68,7 +68,7 @@ export function SliceSelect({ dims }: { dims: SliceDim[] }) {
       </SelectTrigger>
       <SelectContent align="end">
         <SelectGroup>
-          <SelectLabel className="text-xs text-muted-foreground">
+          <SelectLabel>
             {t("common.cohort.compare_against")}
           </SelectLabel>
           {all.map((d) => (

@@ -45,7 +45,7 @@ export function HourColumnsSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}

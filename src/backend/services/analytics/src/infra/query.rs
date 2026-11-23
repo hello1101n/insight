@@ -157,6 +157,6 @@ fn scrub_query_echo<'a>(error: &'a str, sql: &str) -> std::borrow::Cow<'a, str> 
     if cut == error.len() {
         return std::borrow::Cow::Borrowed(error);
     }
-    let kept = error[..cut].trim_end();
+    let kept = error.get(..cut).unwrap_or_default().trim_end();
     std::borrow::Cow::Owned(format!("{kept} <query echo scrubbed>"))
 }

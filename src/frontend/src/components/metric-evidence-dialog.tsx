@@ -288,8 +288,8 @@ export function MetricEvidenceDialog({
       onOpenChange={(open) => !open && closeDialog()}
     >
       {state && (activeTarget || showPeople) ? (
-        <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[90rem]">
-          <DialogHeader className="shrink-0 border-b p-5 pr-14">
+        <DialogContent className="flex h-[calc(100dvh-2rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden sm:h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[90rem]">
+          <DialogHeader className="shrink-0 pr-14">
             {people && drilled ? (
               <div className="flex">
                 <button
@@ -323,7 +323,6 @@ export function MetricEvidenceDialog({
                     <SelectTrigger
                       size="sm"
                       aria-label="Metric"
-                      className="border-transparent bg-transparent px-0 text-sm font-semibold shadow-none hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent"
                     >
                       <SelectValue>{activeTarget.label}</SelectValue>
                     </SelectTrigger>
@@ -414,15 +413,14 @@ export function MetricEvidenceDialog({
             ) : null}
             {showPeople && people ? (
               <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-0 flex-1 sm:max-w-xs">
-                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="min-w-0 flex-1 sm:max-w-xs">
                   <Input
                     type="search"
+                    icon={<Search />}
                     value={peopleSearch}
                     onChange={(event) => setPeopleSearch(event.target.value)}
                     placeholder="Search people"
                     aria-label="Search people"
-                    className="h-8 ps-8"
                   />
                 </div>
                 <p
@@ -434,10 +432,10 @@ export function MetricEvidenceDialog({
               </div>
             ) : query.isPending || (query.isError && !query.data) ? null : (
               <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-0 flex-1 sm:max-w-xs">
-                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <div className="min-w-0 flex-1 sm:max-w-xs">
                   <Input
                     type="search"
+                    icon={<Search />}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search records"
@@ -448,7 +446,6 @@ export function MetricEvidenceDialog({
                         ? undefined
                         : "Searching records needs a newer server"
                     }
-                    className="h-8 ps-8"
                   />
                 </div>
                 <p
@@ -489,7 +486,7 @@ export function MetricEvidenceDialog({
             )
           ) : query.isPending ? (
             <div className="flex flex-1 items-center justify-center">
-              <Spinner className="size-10" />
+              <Spinner size="lg" />
             </div>
           ) : query.isError && !query.data ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3">

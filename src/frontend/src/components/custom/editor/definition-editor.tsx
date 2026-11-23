@@ -90,7 +90,7 @@ export function DefinitionEditor({
             maxLength={isDataset ? undefined : DEFINITION_NAME_MAX}
             aria-invalid={taken || undefined}
             aria-describedby={isDataset ? "definition-name-hint" : undefined}
-            className={cn("h-9 w-full max-w-72", isDataset && "font-mono")}
+            className={cn("w-full max-w-72", isDataset && "font-mono")}
             onChange={(event) => setCalled(event.target.value)}
           />
           {isDataset ? (

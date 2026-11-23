@@ -111,7 +111,7 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
   // Shared header so an empty tile reads as the same chart, laid out to match
   // its populated neighbours in the grid rather than collapsing to a corner.
   const header = (
-    <CardHeader className="pb-2">
+    <CardHeader>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold" title={metric.label}>

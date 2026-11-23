@@ -3,7 +3,9 @@ use std::path::Path;
 use anyhow::Context as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-use jsonwebtoken::{Algorithm, DecodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, Header};
+#[cfg(test)]
+use jsonwebtoken::{DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use toolkit_security::crypto::hash::Sha256;
 use toolkit_security::crypto::signature::EcdsaP256KeyPair;
@@ -61,7 +63,7 @@ pub struct McpAccessClaims {
 struct LoadedKey {
     kid: String,
     signing: EcdsaP256KeyPair,
-    #[allow(dead_code)]
+    #[cfg(test)]
     decoding: DecodingKey,
     jwk: serde_json::Value,
 }
@@ -92,13 +94,12 @@ impl LoadedKey {
             "kid": kid,
         });
 
-        let decoding = DecodingKey::from_ec_components(&x_b64, &y_b64)
-            .context("build ES256 decoding key from EC components")?;
-
         Ok(Self {
             kid,
             signing,
-            decoding,
+            #[cfg(test)]
+            decoding: DecodingKey::from_ec_components(&x_b64, &y_b64)
+                .context("build ES256 decoding key from EC components")?,
             jwk,
         })
     }
@@ -193,8 +194,8 @@ impl KeyStore {
         })
     }
 
-    #[allow(dead_code)] // exercised by unit tests; kept as the in-process verify path
-    pub fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
+    #[cfg(test)]
+    pub(crate) fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
         let mut validation = Validation::new(Algorithm::ES256);
         validation.set_audience(&[audience]);
         validation.validate_exp = true;

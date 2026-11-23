@@ -77,8 +77,10 @@ class PortalShell:
             failed: list[str] = []
 
             def record(request: Request) -> None:
-                if request.resource_type in ("script", "stylesheet") and (
-                    request.failure != "net::ERR_ABORTED"
+                if (
+                    request.resource_type in ("script", "stylesheet")
+                    and request.failure != "net::ERR_ABORTED"
+                    and urlsplit(request.url).netloc == urlsplit(self.page.url).netloc
                 ):
                     failed.append(f"{urlsplit(request.url).path} {request.failure}")
 

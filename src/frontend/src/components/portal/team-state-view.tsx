@@ -68,7 +68,7 @@ function TeamMembersSection({ members, ...gridProps }: MembersGridProps) {
       </div>
       {visibleMembers.length > 0 ? (
         <Card>
-          <CardContent className="p-0">
+          <CardContent>
             <MembersGrid members={visibleMembers} {...gridProps} />
           </CardContent>
         </Card>
@@ -304,7 +304,7 @@ export function TeamStateView() {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
           {summary.map((s) => (
             <Card key={s.key}>
-              <CardContent className="p-4">
+              <CardContent>
                 <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
                 <div className={cn("mt-1", TEXT_FIGURE)}>{s.text}</div>
                 <div className="text-xs text-muted-foreground">

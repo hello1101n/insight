@@ -49,7 +49,7 @@ export function ScrollToEnds({
       <Button
         type="button"
         variant="outline"
-        className="pointer-events-auto size-8 shadow-sm"
+        className="pointer-events-auto"
         aria-label={t("common.actions.scroll_to_top")}
         onClick={() => jump("top")}
         icon={<ArrowUp className="size-4" />}
@@ -57,7 +57,7 @@ export function ScrollToEnds({
       <Button
         type="button"
         variant="outline"
-        className="pointer-events-auto size-8 shadow-sm"
+        className="pointer-events-auto"
         aria-label={t("common.actions.scroll_to_bottom")}
         onClick={() => jump("bottom")}
         icon={<ArrowDown className="size-4" />}

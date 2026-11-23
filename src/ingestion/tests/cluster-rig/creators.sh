@@ -43,14 +43,20 @@ source "${SCRIPTS}/lib/ch-exec.sh"
 # shellcheck source=SCRIPTDIR/services.sh
 source "${RIG_DIR}/services.sh"
 
-# The clickhouse-migrate Job as the chart renders it for this warehouse: the
-# topology the way an operator sets it, plus whatever a leg overrides.
-render_migrate_job() {
+# A chart template as the chart renders it for this warehouse: the topology
+# the way an operator sets it, plus whatever a leg overrides.
+render_chart() {
+  local template="$1"
+  shift
   helm template rig "${CHART}" --values "${CHART}/tests/values.yaml" \
     --set clickhouse.host=127.0.0.1 --set "clickhouse.port=${RIG_PROXY##*:}" \
     --set "clickhouse.database=${CLICKHOUSE_DATABASE}" --set "clickhouse.username=${CLICKHOUSE_USER}" \
     --set "clickhouse.clusterMode=${CLICKHOUSE_CLUSTER_MODE}" --set "clickhouse.clusterName=${CLICKHOUSE_CLUSTER_NAME}" \
-    "$@" --show-only templates/clickhouse-migrate-job.yaml
+    "$@" --show-only "${template}"
+}
+
+render_migrate_job() {
+  render_chart templates/clickhouse-migrate-job.yaml "$@"
 }
 
 # What the rig holds under the Secret keys the Job reads; a key it lacks is
@@ -131,13 +137,20 @@ discover_streams() {
   done
 }
 
+destination_database() {
+  render_chart templates/ingestion/reconcile-cron.yaml \
+    | yq -r '.. | select(.name? == "RECONCILE_DEST_CLICKHOUSE_DATABASE") | .value'
+}
+
 # One destination write, as reconcile configures it: <dest>/input.jsonl into
-# the streams of <dest>/configured_catalog.json.
+# the streams of <dest>/configured_catalog.json, after Airbyte's connection check.
 destination_write() {
-  local dest="$1"
+  local dest="$1" database
+  database="$(destination_database)"
+  [[ -n "${database}" ]] || { echo "  the chart rendered no destination database" >&2; return 1; }
   RECONCILE_DEST_CLICKHOUSE_HOST="${DESTINATION_HOST}" \
   RECONCILE_DEST_CLICKHOUSE_PORT=8123 \
-  RECONCILE_DEST_CLICKHOUSE_DATABASE="${CLICKHOUSE_DATABASE}" \
+  RECONCILE_DEST_CLICKHOUSE_DATABASE="${database}" \
   RECONCILE_DEST_CLICKHOUSE_USERNAME="${CLICKHOUSE_USER}" \
   RECONCILE_DEST_CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD}" \
   RECONCILE_DEST_CLICKHOUSE_CLUSTER_MODE="${CLICKHOUSE_CLUSTER_MODE}" \
@@ -148,6 +161,15 @@ destination_write() {
   # are world-readable; they hold only the throwaway rig's password.
   chmod 0755 "${dest}"
   chmod 0644 "${dest}/config.json" "${dest}/configured_catalog.json"
+  docker run --rm --network "${PROJECT}_default" -v "${dest}:/work:ro" \
+    "${DESTINATION_CLICKHOUSE_IMAGE}" check --config /work/config.json > "${dest}/check.jsonl" || true
+  if ! jq -Rr 'fromjson? | select(.type == "CONNECTION_STATUS") | .connectionStatus.status' \
+      "${dest}/check.jsonl" | grep -qx SUCCEEDED; then
+    echo "  destination check against ${database} failed:" >&2
+    tail -n 5 "${dest}/check.jsonl" >&2
+    return 1
+  fi
+  echo "  destination check against ${database}: SUCCEEDED"
   echo "  $(jq '.streams | length' "${dest}/configured_catalog.json") stream(s), $(grep -c '"RECORD"' "${dest}/input.jsonl" || true) record(s) through ${DESTINATION_CLICKHOUSE_IMAGE}"
   docker run --rm -i --network "${PROJECT}_default" -v "${dest}:/work:ro" \
     "${DESTINATION_CLICKHOUSE_IMAGE}" \

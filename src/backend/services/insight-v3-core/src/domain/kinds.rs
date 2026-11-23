@@ -14,6 +14,8 @@ use crate::domain::query::metric_query::MetricQueryError;
 use crate::domain::query::time_window::WindowError;
 use crate::domain::violation::Violation;
 
+const PLACEHOLDER_SENTINEL: char = '\u{1}';
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Reference {
     pub(crate) kind: DefinitionKind,
@@ -84,7 +86,7 @@ pub(crate) fn rename_references(
     body: Value,
     pairs: &[(&str, &str)],
 ) -> Value {
-    let placeholder = |place: usize| format!("\u{1}{place}");
+    let placeholder = |place: usize| format!("{PLACEHOLDER_SENTINEL}{place}");
 
     let parked = pairs
         .iter()
