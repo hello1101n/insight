@@ -63,6 +63,12 @@ describe("OVERVIEW_ITEMS registry", () => {
     }
   });
 
+  it("leaves the AI adoption card off Home", () => {
+    const kinds = OVERVIEW_ITEMS[DEFAULT_OVERVIEW_ITEM]!.sections.map((s) => s.kind);
+
+    expect(kinds).not.toContain("participation");
+  });
+
   it("direction-cards keys are variant-independent", () => {
     const compact = sectionMetricKeys({
       title: "t",

@@ -12,19 +12,39 @@
 -- Every census issue the snapshot streams are meant to cover has a snapshot.
 -- They cover the collection window: an issue last updated before
 -- youtrack_start_date is in the census and deliberately never snapshotted, and
--- one updated after the search last read was created or changed mid-sync and is
--- the next sync's. The window is read from youtrack_issues, the `updated:`
--- search that defines it.
+-- one updated after the newest search started was created or changed mid-sync
+-- and is the next sync's. The window is read from youtrack_issues, the
+-- `updated:` search that defines it.
+-- INVARIANT: the window ends at the first read of the newest youtrack_issues
+-- pass. The search fixes its upper bound when the pass starts, so an issue
+-- changed during the read is outside it; the cursor lookback reads it next sync.
 -- INVARIANT: only the newest census pass is the population. Every pass appends
 -- its own rows (the key carries the read time), so an older pass still names
 -- issues deleted since, which no snapshot can ever cover.
-WITH collection_window AS (
+WITH snapshot_passes AS (
     SELECT source_id,
-        min(toInt64(assumeNotNull(updated))) AS window_start,
-        toUnixTimestamp64Milli(max(_airbyte_extracted_at)) AS last_read
+        toInt64(assumeNotNull(updated)) AS updated_ms,
+        _airbyte_extracted_at AS read_at,
+        JSONExtractInt(_airbyte_meta, 'sync_id') AS pass_id
     FROM {{ source('bronze_youtrack', 'youtrack_issues') }}
     WHERE updated IS NOT NULL
+),
+
+newest_search AS (
+    SELECT source_id,
+        min(updated_ms) AS window_start,
+        argMax(pass_id, read_at) AS pass_id
+    FROM snapshot_passes
     GROUP BY source_id
+),
+
+collection_window AS (
+    SELECT s.source_id AS source_id,
+        any(s.window_start) AS window_start,
+        toUnixTimestamp64Milli(min(p.read_at)) AS search_start
+    FROM newest_search AS s
+    INNER JOIN snapshot_passes AS p ON p.source_id = s.source_id AND p.pass_id = s.pass_id
+    GROUP BY s.source_id
 ),
 
 census_passes AS (
@@ -45,4 +65,4 @@ INNER JOIN collection_window AS w ON w.source_id = c.source_id
 LEFT ANTI JOIN {{ ref('youtrack__issues') }} AS i
     ON i.insight_source_id = c.source_id AND i.issue_id = c.id
 WHERE toInt64(assumeNotNull(c.updated)) >= w.window_start
-  AND toInt64(assumeNotNull(c.updated)) < w.last_read
+  AND toInt64(assumeNotNull(c.updated)) < w.search_start
