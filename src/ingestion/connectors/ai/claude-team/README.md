@@ -9,6 +9,8 @@ Proxy source code, Dockerfile, and deployment docs:
 
 ## Specification
 
+- [New streams](specs/NEW-STREAMS.md) lists the candidate streams, the two with a consumer, and the completeness rules a new stream follows.
+
 
 ## Prerequisites
 
