@@ -7,9 +7,8 @@
     tags=['bitbucket-cloud', 'silver:class_git_ci_runs']
 ) }}
 
--- INVARIANT: Bitbucket's run_number is the class's attempt, and its
--- build_number the class's run_number. Both are read in this CTE only: a
--- ClickHouse alias shadows a column of the same name in its own SELECT.
+-- INVARIANT: read run_number and build_number in this CTE only. A ClickHouse
+-- alias shadows a column of the same name in its own SELECT.
 WITH pipeline_attempts AS (
     SELECT
         tenant_id,

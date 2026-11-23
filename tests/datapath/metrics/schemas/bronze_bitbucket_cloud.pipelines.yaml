@@ -1,4 +1,3 @@
-# Derived from the bronze_bitbucket_cloud tables the Airbyte destination creates.
 schemas:
   bronze_bitbucket_cloud.pipelines:
     $schema: http://json-schema.org/draft-07/schema#

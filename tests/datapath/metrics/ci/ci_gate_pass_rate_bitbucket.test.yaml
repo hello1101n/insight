@@ -31,7 +31,6 @@ bronze:
       uuid: "{pipe-2}"
       build_number: 2
       result_name: FAILED
-    # A row synced before the run start was kept: the run dates by its creation.
     - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
       unique_key: bb-pipe-3
       uuid: "{pipe-3}"
@@ -47,7 +46,6 @@ bronze:
       source_branch: feature/login
       selector_type: pull-requests
       selector_pattern: "**"
-    # Paused on a manual step after every automatic step passed.
     - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
       unique_key: bb-pipe-5
       uuid: "{pipe-5}"
@@ -56,8 +54,6 @@ bronze:
       result_name: ""
       state_stage: PAUSED
       completed_on: null
-    # One pipeline, rerun on Mar 02: bronze replaces the failed first run with
-    # the passing second one.
     - $ref: ../templates/bitbucket_ci.yaml#/templates/pipeline
       unique_key: bb-pipe-6
       uuid: "{pipe-6}"

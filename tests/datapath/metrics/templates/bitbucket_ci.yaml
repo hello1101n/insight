@@ -1,9 +1,6 @@
-# Reusable Bitbucket Cloud pipeline and deployment bronze records for the CI
-# specs. Each base carries every schema column; variants override. Vendor
-# stamps keep the nine fractional digits Bitbucket sends where the connector
-# passes them through raw.
+# INVARIANT: run_creation_date and completed_on keep the nine fractional digits
+# Bitbucket sends, because the connector passes them through raw.
 templates:
-  # A push to main that passed on its first run, three minutes long.
   pipeline:
     _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
     _airbyte_extracted_at: "2026-03-10T00:00:00"
@@ -36,7 +33,6 @@ templates:
     run_creation_date: "2026-03-01T10:00:00.123456789Z"
     completed_on: "2026-03-01T10:03:00.123456789Z"
 
-  # A completed production deployment.
   deployment:
     _airbyte_raw_id: "00000000-0000-0000-0000-000000000000"
     _airbyte_extracted_at: "2026-03-10T00:00:00"

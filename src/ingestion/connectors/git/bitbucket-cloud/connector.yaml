@@ -2382,8 +2382,6 @@ streams:
           - [creator]
 
   # ── Deployments (Bitbucket API) ─────────────────────────────────────────
-  # Same pipelines-module shape; outcome (`state`) IS in the list, unlike
-  # GitHub.
   - type: DeclarativeStream
     name: deployments
     primary_key:
@@ -2436,12 +2434,7 @@ streams:
           # No sort and no q, and neither is an oversight. VERIFIED live:
           # `sort=created_on` is rejected 400 ("Invalid sort attribute"), and a
           # `q` on created_on is ACCEPTED AND SILENTLY IGNORED — a cutoff years
-          # in the future still returns every row. The bound cannot be pushed
-          # to this endpoint at all, so it is applied to the records instead
-          # (incremental_sync below): the requests still walk a repository's
-          # whole deploy history, but only deployments whose state changed
-          # since the last sync reach bronze. Every other stream filters
-          # server-side; this one cannot.
+          # in the future still returns every row.
           pagelen: "100"
         error_handler:
           type: DefaultErrorHandler
@@ -2474,8 +2467,8 @@ streams:
         extractor:
           type: DpathExtractor
           field_path: [values]
-        # The client-side bound reads last_update_time; it must see the
-        # truncated value the transformation writes, not the raw one.
+        # WORKAROUND: the client-side bound cannot parse the vendor's raw
+        # nine-digit stamp, only the truncated last_update_time.
         transform_before_filtering: true
       paginator:
         type: DefaultPaginator
@@ -2508,11 +2501,6 @@ streams:
       cursor_datetime_formats:
         - "%Y-%m-%dT%H:%M:%S.%f%z"
         - "%Y-%m-%dT%H:%M:%S%z"
-      # The endpoint cannot filter or order (see the requester above), so the
-      # bound is enforced on the records after the fetch. This drops
-      # deployments unchanged since the last sync, and pre-start-date ones,
-      # rather than letting a repository's whole history accumulate in bronze
-      # forever.
       is_client_side_incremental: true
       start_datetime:
         type: MinMaxDatetime
@@ -2567,16 +2555,15 @@ streams:
             value_type: string
           - type: AddedFieldDefinition
             path: [created_on]
-            # WORKAROUND: nine fractional digits from the vendor, six parsed
-            # by the CDK — truncate or the cursor never advances.
+            # WORKAROUND: the cursor parses six of the vendor's nine
+            # fractional digits, and last_update_time falls back to this value.
             value: >-
               {%- set created = record.get('created_on') or (record.get('deployable') or {}).get('created_on') or '' -%}
               {{ format_datetime(created, '%Y-%m-%dT%H:%M:%S.%fZ') if created else '' }}
             value_type: string
           - type: AddedFieldDefinition
             path: [last_update_time]
-            # WORKAROUND: the same nine-digit stamp as created_on, and this is
-            # the cursor. Reads the created_on written above when absent.
+            # WORKAROUND: the cursor parses six of the vendor's nine fractional digits.
             value: >-
               {%- set updated = record.get('last_update_time') or record.get('created_on') or '' -%}
               {{ format_datetime(updated, '%Y-%m-%dT%H:%M:%S.%fZ') if updated else '' }}
