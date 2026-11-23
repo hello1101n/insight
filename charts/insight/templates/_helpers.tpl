@@ -67,7 +67,7 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- if .Values.ingestion.reconcile.destinationDatabase -}}
 {{- .Values.ingestion.reconcile.destinationDatabase -}}
 {{- else if .Values.clickhouse.clusterMode -}}
-airbyte_destination
+default
 {{- else -}}
 {{- include "insight.clickhouse.database" . -}}
 {{- end -}}
@@ -134,8 +134,6 @@ airbyte_destination
   value: {{ include "insight.clickhouse.clusterMode" . | quote }}
 - name: CLICKHOUSE_CLUSTER_NAME
   value: {{ include "insight.clickhouse.clusterName" . | quote }}
-- name: CLICKHOUSE_DESTINATION_DATABASE
-  value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
 # Whether the script provisions the roles and grant-less users below at all;
 # false leaves them to the operator.
 - name: CLICKHOUSE_PROVISION_ACCESS

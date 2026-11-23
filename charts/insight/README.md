@@ -247,9 +247,9 @@ in it, and a heal or migration that creates, drops, renames or exchanges a
 table there carries the clause.
 
 The destination also creates its connection-check table with `ON CLUSTER`. In
-cluster mode, its `database` is the Atomic `airbyte_destination`, not the
-Replicated app database. Set `ingestion.reconcile.destinationDatabase` to use a
-different Atomic database.
+cluster mode, its `database` is the Atomic `default`, not the Replicated app
+database. Set `ingestion.reconcile.destinationDatabase` to use a different
+Atomic database.
 
 With a replica down, a deploy does not start: the bronze-engine sweep needs
 every replica to answer, since the absent one may hold the table it looks for.

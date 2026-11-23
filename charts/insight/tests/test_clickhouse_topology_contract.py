@@ -249,28 +249,22 @@ def test_leaving_access_to_the_operator_reaches_every_job_that_provisions_it(
     assert found == {"CLICKHOUSE_PROVISION_ACCESS": "false"}, f"{template} missed the access decision"
 
 
-DESTINATION_DATABASE_CONSUMERS = [
-    ("templates/ingestion/reconcile-cron.yaml", "RECONCILE_DEST_CLICKHOUSE_DATABASE"),
-    *((template, "CLICKHOUSE_DESTINATION_DATABASE") for template in DDL_JOBS),
-]
+RECONCILE = "templates/ingestion/reconcile-cron.yaml"
+DESTINATION_DATABASE = ("RECONCILE_DEST_CLICKHOUSE_DATABASE",)
 
 
-@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
-def test_a_standalone_destination_keeps_the_app_database(chart_dependencies: None, template: str, name: str) -> None:
-    assert _values(_render(template, BASE), (name,)) == {name: "insight"}
+def test_a_standalone_destination_keeps_the_app_database(chart_dependencies: None) -> None:
+    assert _values(_render(RECONCILE, BASE), DESTINATION_DATABASE) == {DESTINATION_DATABASE[0]: "insight"}
 
 
-@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
-def test_a_clustered_destination_leaves_the_replicated_app_database(
-    chart_dependencies: None, template: str, name: str
-) -> None:
-    assert _values(_render(template, CLUSTERED), (name,)) == {name: "airbyte_destination"}
+def test_a_clustered_destination_leaves_the_replicated_app_database(chart_dependencies: None) -> None:
+    assert _values(_render(RECONCILE, CLUSTERED), DESTINATION_DATABASE) == {DESTINATION_DATABASE[0]: "default"}
 
 
-@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
-def test_the_destination_database_can_be_named(chart_dependencies: None, template: str, name: str) -> None:
+def test_the_destination_database_can_be_named(chart_dependencies: None) -> None:
     found = _values(
-        _render(template, [*CLUSTERED, "--set", "ingestion.reconcile.destinationDatabase=default"]), (name,)
+        _render(RECONCILE, [*CLUSTERED, "--set", "ingestion.reconcile.destinationDatabase=bronze_default"]),
+        DESTINATION_DATABASE,
     )
 
-    assert found == {name: "default"}
+    assert found == {DESTINATION_DATABASE[0]: "bronze_default"}

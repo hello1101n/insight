@@ -43,14 +43,20 @@ source "${SCRIPTS}/lib/ch-exec.sh"
 # shellcheck source=SCRIPTDIR/services.sh
 source "${RIG_DIR}/services.sh"
 
-# The clickhouse-migrate Job as the chart renders it for this warehouse: the
-# topology the way an operator sets it, plus whatever a leg overrides.
-render_migrate_job() {
+# A chart template as the chart renders it for this warehouse: the topology
+# the way an operator sets it, plus whatever a leg overrides.
+render_chart() {
+  local template="$1"
+  shift
   helm template rig "${CHART}" --values "${CHART}/tests/values.yaml" \
     --set clickhouse.host=127.0.0.1 --set "clickhouse.port=${RIG_PROXY##*:}" \
     --set "clickhouse.database=${CLICKHOUSE_DATABASE}" --set "clickhouse.username=${CLICKHOUSE_USER}" \
     --set "clickhouse.clusterMode=${CLICKHOUSE_CLUSTER_MODE}" --set "clickhouse.clusterName=${CLICKHOUSE_CLUSTER_NAME}" \
-    "$@" --show-only templates/clickhouse-migrate-job.yaml
+    "$@" --show-only "${template}"
+}
+
+render_migrate_job() {
+  render_chart templates/clickhouse-migrate-job.yaml "$@"
 }
 
 # What the rig holds under the Secret keys the Job reads; a key it lacks is
@@ -132,8 +138,8 @@ discover_streams() {
 }
 
 destination_database() {
-  render_migrate_job | yq -r '.spec.template.spec.containers[0].env[]
-    | select(.name == "CLICKHOUSE_DESTINATION_DATABASE") | .value'
+  render_chart templates/ingestion/reconcile-cron.yaml \
+    | yq -r '.. | select(.name? == "RECONCILE_DEST_CLICKHOUSE_DATABASE") | .value'
 }
 
 # One destination write, as reconcile configures it: <dest>/input.jsonl into

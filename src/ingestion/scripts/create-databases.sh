@@ -36,7 +36,6 @@
 # Optional env:
 #   CLICKHOUSE_CLUSTER_MODE  true -> the DDL emitted here replicates
 #   CLICKHOUSE_CLUSTER_NAME  the cluster the ON CLUSTER clause names
-#   CLICKHOUSE_DESTINATION_DATABASE  the Bronze destination's database
 #   CLICKHOUSE_PROVISION_ACCESS  false -> no role or user is created or
 #                            revoked here; the operator provisions them
 #                            (clickhouse.provisionAccess)
@@ -76,44 +75,6 @@ DATABASES=(
 # loses data (see lib/ch-topology.sh).
 ch_assert_topology "${DATABASES[@]}"
 
-# INVARIANT: the defaults match insight.clickhouse.destinationDatabase.
-if [[ -n "${CLICKHOUSE_DESTINATION_DATABASE:-}" ]]; then
-  DESTINATION_DATABASE="${CLICKHOUSE_DESTINATION_DATABASE}"
-elif ch_cluster_mode; then
-  DESTINATION_DATABASE=airbyte_destination
-else
-  DESTINATION_DATABASE="${CLICKHOUSE_DATABASE}"
-fi
-
-destination_database_owned() {
-  local database
-  for database in "${DATABASES[@]}"; do
-    [[ "${database}" == "${DESTINATION_DATABASE}" ]] && return 0
-  done
-  return 1
-}
-
-assert_destination_database() {
-  local engine
-  if [[ ! "${DESTINATION_DATABASE}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    echo "ERROR: CLICKHOUSE_DESTINATION_DATABASE '${DESTINATION_DATABASE}' is not a bare ClickHouse identifier. Set ingestion.reconcile.destinationDatabase to letters, digits and '_'." >&2
-    return 1
-  fi
-  ch_cluster_mode || return 0
-
-  if destination_database_owned; then
-    echo "ERROR: this deploy creates the destination database '${DESTINATION_DATABASE}' as Replicated. Its ON CLUSTER DDL fails there (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database." >&2
-    return 1
-  fi
-
-  engine="$(_ch_database_engine_of "${DESTINATION_DATABASE}")" || return 1
-  [[ "${engine}" != "Replicated" ]] && return 0
-  echo "ERROR: the destination database '${DESTINATION_DATABASE}' already exists as Replicated. Its ON CLUSTER DDL fails there (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database." >&2
-  return 1
-}
-
-assert_destination_database
-
 ON_CLUSTER="$(ch_on_cluster)"
 
 echo "=== Creating databases${ON_CLUSTER:+ (${ON_CLUSTER})} ==="
@@ -122,12 +83,6 @@ for database in "${DATABASES[@]}"; do
   printf 'CREATE DATABASE IF NOT EXISTS `%s` %s %s' \
     "${database}" "${ON_CLUSTER}" "$(ch_database_engine "${database}")" | run_ch
 done
-
-if ! destination_database_owned; then
-  echo "  ${DESTINATION_DATABASE} (Bronze destination, Atomic)"
-  printf 'CREATE DATABASE IF NOT EXISTS `%s` %s ENGINE = Atomic' \
-    "${DESTINATION_DATABASE}" "${ON_CLUSTER}" | run_ch
-fi
 
 # INVARIANT: skipped as one block when access is the operator's — a deploy
 # that creates no role must revoke none either.

@@ -114,7 +114,7 @@ def test_the_databases_are_still_created_and_the_other_guards_still_run(tmp_path
     result, sent, _ = run(DEPLOY, provision_access="false", tmp_path=tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert sent.count("CREATE DATABASE IF NOT EXISTS") == 10, sent
+    assert sent.count("CREATE DATABASE IF NOT EXISTS") == 9, sent
     for probe in ("system.clusters", "system.zookeeper", "system.macros", "system.databases"):
         assert probe in sent, f"{probe} was never read with {THE_VALUE} off"
 
