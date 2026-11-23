@@ -38,7 +38,6 @@ export function CountBadge({
   return (
     <SidebarMenuBadge
       className={cn(
-        "rounded-full bg-muted px-1.5 font-normal text-muted-foreground",
         className
       )}
     >
@@ -73,12 +72,11 @@ export function UnbuiltRow({ item }: { item: PaneItem }) {
       <SidebarMenuButton
         data-planned
         aria-disabled
-        className="text-muted-foreground aria-disabled:opacity-100"
       >
         <Icon />
         <ItemLabel text={item.label} />
       </SidebarMenuButton>
-      <SidebarMenuBadge className="font-normal text-muted-foreground">
+      <SidebarMenuBadge>
         <ItemLabel text={PLANNED_GROUP_LABEL} />
       </SidebarMenuBadge>
     </SidebarMenuItem>
@@ -109,7 +107,7 @@ export function ItemButton({
           else setItem(item.id);
           dismiss();
         }}
-        className={item.readiness != null ? "text-muted-foreground" : undefined}
+        className={item.readiness != null ? "" : undefined}
       >
         <Icon />
         <ItemLabel text={item.label} />

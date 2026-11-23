@@ -29,7 +29,7 @@ export function DecompositionSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4">
+        <CardContent className="flex flex-col gap-3">
           <div className="flex h-5 w-full overflow-hidden rounded-[3px]">
             {segments.map((segment, index) => (
               <div

@@ -16,7 +16,7 @@ import {
 import type { KpiTileData } from "@/lib/insight/kpi-row";
 import type { GroupId } from "@/lib/insight/groups";
 import { STATUS_TEXT_CLASS } from "@/lib/status";
-import { TEXT_FIGURE, TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";
+import { TEXT_FIGURE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 export interface KpiTileProps {
@@ -52,7 +52,7 @@ export function KpiTile({
       className={cn(
         CARD_SURFACE,
         "relative",
-        interactive && "text-left transition-colors hover:bg-card-hover"
+        interactive && "text-left"
       )}
       render={
         primaryGroup ? (
@@ -77,7 +77,7 @@ export function KpiTile({
       ) : null}
       <CardHeader>
         <CardDescription
-          className={cn(TEXT_NAME, "min-w-0 truncate")}
+          className="min-w-0 truncate"
           title={tile.label}
         >
           {tile.label}
@@ -85,13 +85,8 @@ export function KpiTile({
         {/* Plain ink, and the badge is gone: its content moved into the
             line below, where it can say what it is comparing against
             instead of leaving "-13%" to be read as either comparison. */}
-        <CardTitle
-          className={cn(
-            "col-span-full flex w-full flex-wrap items-baseline justify-between gap-x-2 gap-y-1",
-            TEXT_FIGURE
-          )}
-        >
-          <span>{tile.value}</span>
+        <CardTitle className="col-span-full flex w-full flex-wrap items-baseline justify-between gap-x-2 gap-y-1 tabular-nums">
+          <span className={TEXT_FIGURE}>{tile.value}</span>
           {/* Beside the number it describes, not in a block of its own: the
               question "and before that?" is asked here, and an answer one
               scroll away is an answer nobody reads.
@@ -109,7 +104,7 @@ export function KpiTile({
           even when one of them wraps its badge onto a second line; the
           two-line reserve keeps a wrapped comparison from changing the
           card's height. */}
-      <CardFooter className={cn("mt-auto min-h-[2lh] flex-col items-start gap-0.5", TEXT_LABEL)}>
+      <CardFooter className="mt-auto min-h-[2lh] flex-col items-start">
         {/* The person's own change first, and the only line carrying a
             verdict. This is their page: their own last period is the one
             comparison they can act on. */}
@@ -151,9 +146,11 @@ export function KpiTilePlaceholder({ label }: { label?: string }) {
         <CardDescription className="min-w-0 truncate">
           {label ?? " "}
         </CardDescription>
-        <CardTitle className={TEXT_FIGURE}>—</CardTitle>
+        <CardTitle>
+          <span className={TEXT_FIGURE}>—</span>
+        </CardTitle>
       </CardHeader>
-      <CardFooter className={cn("gap-1.5", TEXT_LABEL)}>
+      <CardFooter>
         <Sparkles className="size-3.5 shrink-0" aria-hidden />
         Coming soon
       </CardFooter>

@@ -58,8 +58,8 @@ export function TrendDrilldownDialog({
   return (
     <Dialog open={state != null} onOpenChange={(open) => !open && onClose()}>
       {state ? (
-        <DialogContent className="flex h-[calc(100dvh-4rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-[76rem]">
-          <DialogHeader className="shrink-0 border-b p-5 pr-14">
+        <DialogContent className="flex h-[calc(100dvh-4rem)] max-h-[52rem] w-[calc(100vw-2rem)] max-w-none flex-col gap-0 overflow-hidden sm:max-w-[76rem]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{state.label}</DialogTitle>
             <p className="text-muted-foreground text-sm">
               {state.members.length}{" "}
@@ -267,7 +267,7 @@ function PeriodTable({ state }: { state: TrendDrilldownState }) {
             here, so the unbounded "Who" column can squeeze them below their
             content width — and a date breaks at its own hyphens, landing
             "2026-" above "08-26". */}
-          <TableHead className="w-36 whitespace-nowrap capitalize">
+          <TableHead className="w-36 whitespace-nowrap">
             {state.bucketLabel}
           </TableHead>
           <TableHead className="w-28 text-right whitespace-nowrap">
@@ -292,7 +292,7 @@ function PeriodTable({ state }: { state: TrendDrilldownState }) {
             <TableCell className="text-right whitespace-nowrap tabular-nums">
               {row.contributors.length}
             </TableCell>
-            <TableCell className="text-muted-foreground">
+            <TableCell>
               {row.contributors.length ? row.contributors.join(", ") : "—"}
             </TableCell>
           </TableRow>

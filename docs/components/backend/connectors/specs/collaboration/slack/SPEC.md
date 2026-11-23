@@ -118,7 +118,7 @@ The connection check shows the plan, the streams that the connector will read, a
 |---|---|---|
 | annotation `insight.cyberfabric.com/connector` | Yes | `slack` |
 | annotation `insight.cyberfabric.com/source-id` | Yes | Instance ID, for example `slack-main` |
-| `slack_bot_token` | Yes | The user token (section 2). The name of the key is historical. |
+| `slack_user_token` | Yes | The user token (section 2). The connector also reads the old key `slack_bot_token` when `slack_user_token` is absent. |
 | `slack_start_date` | Yes | The first day to read, `YYYY-MM-DD`, for all streams with dates. The operator sets it. There is no default. For Activity and Channels, it must be in the last 13 months. |
 | `slack_alert_channels` | No | The channels for the Alerts stream (#4351). |
 
@@ -395,9 +395,10 @@ Inactive members are counted with zeros. Their message metrics are `0`. They add
 - Identity resolution binds the account to the person of its email when it first sees the account. An operator can change the binding.
 - Identity resolution finds the person for a Slack row **by the account first** (`identity.account_assignment`). The email of the row (`identity.person_map`) applies only to an account without a binding.
 - Thus a member with a new email stays the same person, because the `user_id` does not change. A member without an email can also have a person.
-- Identity resolution gives each member one `person_id`. Identity resolution solves conflicts, for example one email on more than one person. The connector does not.
+- Identity resolution gives each member one `person_id`. The connector does not solve conflicts.
+- If one email is on accounts of more than one person, the email resolves to no person. The review queue of identity resolution shows the account as `contested`. An operator binds it to one person (#4343).
 - Person and team views do not show rows without a person.
-- The identity resolution service shows these members as unmapped Slack members. It shows the `user_id`, the email and the name (from Members). An operator can then bind each member to a person.
+- A member without an email has no automatic path to a person. The review queue shows it as `no_evidence`, with the `user_id` and the name (from Members). An operator binds it to a person.
 
 Decisions for user groups and SCIM (#4356):
 
@@ -414,7 +415,7 @@ In metrics, these rows have the dimension `tool = slack`.
 | `messages_posted_count` | `total_chat_messages` | `collab.messages_sent`, `collab.msgs_per_active_day` |
 | `channel_messages_posted_count` | `channel_posts` | `collab.channel_posts` |
 | Messages minus channel messages (0 minimum) | `direct_and_group_messages`, with `split_chat_messages` as denominator | `collab.dm_ratio` |
-| A day with messages > 0 | `chat_active_day`, `active_day` | `collab.msgs_per_active_day`, `collab.active_days`, and the work days for `collab.meeting_free_days` and `collab.focus_time_pct` |
+| A day with messages > 0 | `chat_active_day`, `active_day` | `collab.msgs_per_active_day`, `collab.chat_active_days`, `collab.active_days`, and the work days for `collab.meeting_free_days` and `collab.focus_time_pct` |
 | `slack_huddles_count` | `meetings_attended` (count only: no duration, no participants) | `collab.meetings_count`. A day with a huddle is **not** meeting-free. |
 
 A Slack day is the UTC day from Slack. There is no time-zone change.
@@ -456,14 +457,16 @@ After each sync, the Argo workflow `ingestion-pipeline` runs these steps:
 3. dbt `tag:slack+`: silver and gold
 4. Connector checks: `dbt test --select tag:connector_quality,tag:slack`
 
-The data-quality check `assert_slack_bronze_rows_reach_metrics` finds Activity rows that do not get to the metrics:
+Two data-quality checks find Activity rows that do not get to the metrics. The checks do not report guest rows or bot rows.
 
-| Problem | Meaning |
-|---|---|
-| `refused_day_row` | A row without `user_id` or `date`. The old connector wrote these rows. |
-| `missing_counter` | A non-guest row with a NULL message counter |
-| `unmapped_member` | A non-guest member without an identity binding |
-| `unresolved_null_guest` | A row with a NULL `is_guest` whose member resolves to no person (section 8). The metrics do not count it. |
+| Check | Tier | Problem | Meaning |
+|---|---|---|---|
+| `assert_slack_bronze_rows_reach_metrics` | `error` | `refused_day_row` | A row without `user_id` or `date`. The old connector wrote these rows. The check reports the row after each sync until an operator deletes it. |
+| `assert_slack_bronze_rows_reach_metrics` | `error` | `missing_counter` | A member row with a NULL message counter |
+| `assert_slack_members_resolve` | `warn` | `unmapped_member` | A member (`is_guest` false) without an identity binding. One finding for each tenant, source and member. |
+| `assert_slack_members_resolve` | `warn` | `unresolved_null_guest` | A row with a NULL `is_guest` whose member resolves to no person (section 8). The metrics do not count it. |
+
+A finding with the tier `error` makes an alert. A finding with the tier `warn` goes to the log only. An unmapped member is a task for identity resolution, not a sync problem.
 
 Monitoring alerts (Grafana):
 
@@ -486,18 +489,9 @@ The streams with an issue in section 1 do not exist in `main`.
 
 | This document | `main` now | Issue |
 |---|---|---|
-| The connector finds the plan and reads only the permitted streams (section 3) | No plan detection. The connector reads Activity on all plans. | #4348 |
-| An optional stream without its scope is not read. The sync continues (section 3). | `missing_scope` makes the sync fail. | #4348 |
 | Optional key `slack_alert_channels` (section 4) | The key does not exist. | #4351 |
 | Connector management configures the connector (section 4) | Kubernetes Secret. No connector management. | #670 |
-| The token key asks for a user token (section 4) | The key is `slack_bot_token`. | #4330 |
 | Bots bind to the excluded person (section 9) | Staging removes bots (section 8). Bots send no identity input, so no binding exists. | #4320 |
 | Guests are never counted (section 8) | Guest rows stay on stands that did not do the 2027.0.0 full refresh. | #4316 |
-| An email on more than one person resolves to one person (section 9) | The email resolves to no person (`identity/person_map.sql`). | #4343 |
-| Identity resolution shows unmapped members (section 9) | There is no such list. | #4319 |
 | Slack files feed `collab.files_shared`, Slack links feed `collab.links_shared` (section 10) | No metric reads Slack files. `collab.links_shared` does not exist. | #4360, #4362 |
 | Huddles are counted as meetings (section 10) | Huddles are not used. | #4321 |
-| Each new bronze day gets to staging (section 11) | Staging reads only the last 3 days of loads. After a long stop, some days do not get to staging. | #4317 |
-| Data-quality problems make an alert (section 11) | The check has the tier `warn`. It only writes to the log. | #4324 |
-| `unmapped_member`: a non-guest member without an identity binding (section 11) | No check. A member without an email gets to gold under its account, and nothing reports a member without a binding. | #4324 |
-| The move to a new connector type never loses the cursor (section 12) | The state backup is in the reconcile pod. | #4315 |

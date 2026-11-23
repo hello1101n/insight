@@ -15,11 +15,22 @@ _LOG = logging.getLogger("test")
 REPORT = "Plan Business+ (plus). Streams to read: users_details, users, usergroup_members. Missing scopes: none."
 
 
-def test_spec_requires_the_insight_identity_and_the_token() -> None:
+def test_spec_requires_the_insight_identity_and_the_token_by_either_name() -> None:
     spec = SourceSlack().spec(_LOG).connectionSpecification
 
-    assert set(spec["required"]) == {"insight_tenant_id", "insight_source_id", "slack_bot_token", "slack_start_date"}
+    assert set(spec["required"]) == {"insight_tenant_id", "insight_source_id", "slack_start_date"}
+    assert spec["anyOf"] == [{"required": ["slack_user_token"]}, {"required": ["slack_bot_token"]}]
+    assert spec["properties"]["slack_user_token"]["airbyte_secret"] is True
     assert spec["properties"]["slack_bot_token"]["airbyte_secret"] is True
+
+
+def test_check_reads_the_token_by_its_old_name() -> None:
+    config = {key: value for key, value in CONFIG.items() if key != "slack_user_token"}
+
+    with slack() as http:
+        http.get(day_url("2026-10-02"), **member_file("2026-10-02"))
+
+        assert SourceSlack().check_connection(_LOG, {**config, "slack_bot_token": "xoxp-test-token"}) == (True, REPORT)
 
 
 def test_check_passes_when_slack_serves_the_latest_day() -> None:
@@ -76,7 +87,7 @@ def test_check_raises_when_slack_fails_rather_than_the_config(answer: dict[str, 
     assert raised.value.failure_type == kind, f"should fail as {kind}: {answer}"
 
 
-@pytest.mark.parametrize("field", ["insight_tenant_id", "insight_source_id", "slack_bot_token", "slack_start_date"])
+@pytest.mark.parametrize("field", ["insight_tenant_id", "insight_source_id", "slack_user_token", "slack_start_date"])
 def test_check_rejects_an_empty_required_field(field: str) -> None:
     ok, message = SourceSlack().check_connection(_LOG, {**CONFIG, field: " "})
 
@@ -84,7 +95,7 @@ def test_check_rejects_an_empty_required_field(field: str) -> None:
     assert field in message
 
 
-@pytest.mark.parametrize(("field", "value"), [("slack_start_date", "01/10/2026"), ("slack_bot_token", 4242424242)])
+@pytest.mark.parametrize(("field", "value"), [("slack_start_date", "01/10/2026"), ("slack_user_token", 4242424242)])
 def test_check_names_a_malformed_field_without_quoting_its_value(field: str, value: object) -> None:
     ok, message = SourceSlack().check_connection(_LOG, {**CONFIG, field: value})
 
@@ -94,9 +105,9 @@ def test_check_names_a_malformed_field_without_quoting_its_value(field: str, val
 
 
 def test_check_names_a_missing_field() -> None:
-    config = {key: value for key, value in CONFIG.items() if key != "slack_bot_token"}
+    config = {key: value for key, value in CONFIG.items() if key != "slack_user_token"}
 
     ok, message = SourceSlack().check_connection(_LOG, config)
 
     assert not ok
-    assert "slack_bot_token: missing" in message
+    assert "slack_user_token: missing" in message

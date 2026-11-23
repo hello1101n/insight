@@ -104,7 +104,7 @@ const widgets: Record<string, DashboardWidget> = {
   ...Object.fromEntries(EXAMPLE_WIDGETS.map((widget) => [widget.id, widget])),
 };
 
-const ROWS = {
+export const DEPLOYS_ROWS = {
   columns: ["week", "deploys"],
   rows: [
     ["2026-08-24", 12],
@@ -442,7 +442,7 @@ export const dashboardHandlers = [
         range?: string;
       };
       const answer = exampleRun(widget, asked.range);
-      if (!answer) return HttpResponse.json(ROWS);
+      if (!answer) return HttpResponse.json(DEPLOYS_ROWS);
       if ("status" in answer) {
         return HttpResponse.json(answer.body, { status: answer.status });
       }

@@ -6,6 +6,7 @@ global:
   mcp:
     enabled: false
     publicUrl: ""
+    jwksUrl: ""
 
 podAnnotations: {}
 

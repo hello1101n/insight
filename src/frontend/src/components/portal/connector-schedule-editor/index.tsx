@@ -266,7 +266,7 @@ export function ConnectorScheduleEditor({
                   id={`${id}-runs`}
                   autoFocus
                   size="sm"
-                  className="h-8 w-full min-w-0"
+                  className="w-full min-w-0"
                 >
                   <SelectValue>{preset?.label}</SelectValue>
                 </SelectTrigger>
@@ -377,7 +377,7 @@ export function ConnectorScheduleEditor({
                 type="button"
                 variant="link"
                 size="sm"
-                className="h-auto max-w-full px-0 whitespace-normal"
+                className="max-w-full whitespace-normal"
                 disabled={busy}
                 onClick={() => void submit(true)}
               >

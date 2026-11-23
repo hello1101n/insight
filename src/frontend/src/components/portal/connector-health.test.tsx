@@ -1190,7 +1190,7 @@ describe("a row expands to its recent syncs", () => {
     const cell = document.getElementById(
       rowFor("example-tracker").getAttribute("aria-controls")!
     );
-    expect(cell).toHaveClass("px-4", "whitespace-normal");
+    expect(cell).toHaveClass("whitespace-normal");
     const boundary = cell!.firstElementChild!;
     expect(boundary).toHaveClass("min-w-0", "[contain:inline-size]");
     const pane = boundary.firstElementChild!;

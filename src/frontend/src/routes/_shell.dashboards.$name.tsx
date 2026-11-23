@@ -49,7 +49,7 @@ import {
 import { useIsAdmin } from "@/queries/identity-me";
 import { dashboardSubject } from "@/lib/portal/document-title";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
-import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
+import { TEXT_BODY, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 const FrontxBoard = lazy(() => import("@/components/custom/frontx-board"));
@@ -377,7 +377,7 @@ function DashboardWidgetSlot({
   return (
     <Card>
       <CardHeader className="flex flex-row items-start gap-2">
-        <CardTitle className={cn(TEXT_HEADING, "min-w-0 flex-1")}>
+        <CardTitle className="min-w-0 flex-1">
           {heading}
         </CardTitle>
         {drawnOverAllTime(widget, range) ? (
@@ -390,7 +390,7 @@ function DashboardWidgetSlot({
             variant="ghost"
             size="sm"
             aria-label={`Expand ${heading}`}
-            className="-my-1 text-muted-foreground"
+            className="-my-1"
             icon={<Maximize2 />}
             onClick={onExpand}
           />
@@ -403,7 +403,7 @@ function DashboardWidgetSlot({
                   variant="ghost"
                   size="sm"
                   aria-label={`More for ${heading}`}
-                  className="-my-1 text-muted-foreground"
+                  className="-my-1"
                   icon={<Ellipsis />}
                 />
               }

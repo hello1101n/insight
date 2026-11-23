@@ -105,6 +105,14 @@ def test_focus_shares_one_working_day_across_addresses(
     )
 
 
+def test_chat_active_days_count_only_chat(spec: SpecRun) -> None:
+    """Alice is active on five days but chats only on Wednesday."""
+    key = "collab.chat_active_days"
+    r = _call(spec, ALICE, DECEMBER, (key,), {"view": "period"})
+    assert r.status == 200
+    r.row(key, "period", entity_id=ALICE).equals(value=1)
+
+
 def test_empty_window_serves_null(spec: SpecRun) -> None:
     """A window with no activity serves a null for every derived metric."""
     r = _call(spec, ALICE, EMPTY_WINDOW, DERIVED_METRICS, {"view": "period"})

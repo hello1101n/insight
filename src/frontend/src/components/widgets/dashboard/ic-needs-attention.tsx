@@ -65,7 +65,7 @@ export function IcNeedsAttention({
         <h2 className={cn("mb-3", TEXT_EYEBROW)}>{t("worth_a_look.title")}</h2>
       ) : null}
       <Card size="sm">
-        <CardContent className="text-sm">
+        <CardContent>
           {/* One column, not two. Six columns of content inside half the
               content width truncated the two things a row exists to say — the
               metric's name and its unit — and a name cut to "Messages per

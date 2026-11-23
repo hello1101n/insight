@@ -90,7 +90,7 @@ export function CollectionDrilldown({
           className
         )}
       >
-        <Spinner className="size-12 text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }
