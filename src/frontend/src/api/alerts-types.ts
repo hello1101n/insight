@@ -60,7 +60,9 @@ export type UnknownReason =
 
 export type NotificationStatus = "pending" | "cancelled" | "sent" | "failed";
 
-export type AlertNumber = number | string;
+export type IntegerDigits = string & { readonly __integerDigits: true };
+
+export type AlertNumber = number | IntegerDigits;
 
 export interface AlertDraft {
   name: string;

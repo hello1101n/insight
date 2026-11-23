@@ -26,6 +26,16 @@ interface Option {
   disabled?: boolean;
 }
 
+function withCurrentOption(
+  options: readonly Option[],
+  value: string
+): readonly Option[] {
+  const offered =
+    value === "" || options.some((option) => option.value === value);
+
+  return offered ? options : [{ value, label: value }, ...options];
+}
+
 export function Choice({
   id,
   label,
@@ -45,15 +55,12 @@ export function Choice({
   className?: string;
   onChange: (value: string) => void;
 }) {
-  const offered =
-    value === "" || options.some((option) => option.value === value);
-
   return (
     <FieldSelect
       id={id}
       label={label}
       value={value}
-      options={offered ? options : [{ value, label: value }, ...options]}
+      options={withCurrentOption(options, value)}
       placeholder={placeholder}
       describe={described(describedBy)}
       className={className}
@@ -72,6 +79,10 @@ function shownNumber(value: unknown): string {
     : "";
 }
 
+function keepTypedText(typed: string, value: unknown): string {
+  return typedNumber(typed) === value ? typed : shownNumber(value);
+}
+
 export function NumberInput({
   id,
   label,
@@ -86,7 +97,7 @@ export function NumberInput({
   onChange: (value: unknown) => void;
 }) {
   const [typed, setTyped] = useState(() => shownNumber(value));
-  const shown = typedNumber(typed) === value ? typed : shownNumber(value);
+  const shown = keepTypedText(typed, value);
 
   return (
     <Input

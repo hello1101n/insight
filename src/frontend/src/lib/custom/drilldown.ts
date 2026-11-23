@@ -38,7 +38,7 @@ function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
   return column.percent ? `${String(shown)}%` : shown;
 }
 
-export function startsOver(error: unknown): boolean {
+export function refusedForRebuiltSource(error: unknown): boolean {
   return (
     error instanceof CustomApiError &&
     JSON.stringify(error.body ?? null).includes("SOURCE_REBUILT")

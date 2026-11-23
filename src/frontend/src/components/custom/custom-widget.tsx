@@ -87,13 +87,13 @@ export function CustomWidget({
   switch (widget.type) {
     case "table":
       return (
-        drawable(widget.metric, widget.columns, result) ?? (
+        missingColumnsNotice(widget.metric, widget.columns, result) ?? (
           <CustomTable result={result} />
         )
       );
     case "line":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
           <CustomLineChart
             result={result}
             x={widget.x}
@@ -105,7 +105,7 @@ export function CustomWidget({
       );
     case "bar":
       return (
-        drawable(
+        missingColumnsNotice(
           widget.metric,
           [widget.x, widget.y, ...(widget.series ? [widget.series] : [])],
           result
@@ -123,7 +123,7 @@ export function CustomWidget({
       );
     case "area":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
           <CustomAreaChart
             result={result}
             x={widget.x}
@@ -135,7 +135,7 @@ export function CustomWidget({
       );
     case "stat":
       return (
-        drawable(widget.metric, [widget.value], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.value], result) ?? (
           <CustomStat
             result={result}
             value={widget.value}
@@ -145,7 +145,11 @@ export function CustomWidget({
       );
     case "pie":
       return (
-        drawable(widget.metric, [widget.label, widget.value], result) ?? (
+        missingColumnsNotice(
+          widget.metric,
+          [widget.label, widget.value],
+          result
+        ) ?? (
           <CustomPieChart
             result={result}
             label={widget.label}
@@ -160,7 +164,7 @@ export function CustomWidget({
   }
 }
 
-function drawable(
+function missingColumnsNotice(
   metric: string,
   drawn: string[],
   result: MetricResult

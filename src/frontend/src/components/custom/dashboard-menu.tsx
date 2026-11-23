@@ -39,6 +39,10 @@ import { useAddToFolder } from "@/queries/custom";
 
 type Asked = "rename" | "duplicate" | "delete" | "folder" | "tags" | "share";
 
+function canCreateFolderIn(access: DashboardAccess): boolean {
+  return access !== "ownerless";
+}
+
 export function DashboardMenu({
   id,
   name,
@@ -142,7 +146,7 @@ export function DashboardMenu({
             id={id}
             access={access}
             onNewFolder={
-              access === "ownerless" ? undefined : () => setAsked("folder")
+              canCreateFolderIn(access) ? () => setAsked("folder") : undefined
             }
             onShareInto={(folder) => {
               setOpen(false);

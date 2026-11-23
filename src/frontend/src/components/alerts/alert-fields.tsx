@@ -44,16 +44,40 @@ const UTC_NOTE = "Days, months and quarters end at midnight UTC.";
 
 const CALENDAR_WINDOWS = new Set(["PDC", "PMC", "PQC"]);
 
+const PRESETS_BESIDE_ALL_TIME = RANGE_PRESETS.filter(
+  ({ token }) => token !== "inf"
+).map(({ token, label }) => ({ value: token, label }));
+
 function windowOptions(current: string) {
-  const presets = RANGE_PRESETS.filter(({ token }) => token !== "inf").map(
-    ({ token, label }) => ({ value: token, label })
-  );
-  const known = current === "" || presets.some((one) => one.value === current);
+  const known =
+    current === "" ||
+    PRESETS_BESIDE_ALL_TIME.some((one) => one.value === current);
 
   return [
     { value: ALL_TIME, label: "All time" },
-    ...presets,
+    ...PRESETS_BESIDE_ALL_TIME,
     ...(known ? [] : [{ value: current, label: rangeLabel(current) }]),
+  ];
+}
+
+function useDropWindowWhenUndated(
+  windowed: boolean,
+  range: string,
+  onChange: (patch: AlertDocument) => void
+) {
+  useEffect(() => {
+    if (!windowed && range !== "") onChange({ range: null });
+  }, [windowed, range, onChange]);
+}
+
+function offeredColumns(
+  columns: readonly string[],
+  grouped: ReadonlySet<string>,
+  context: readonly string[]
+): string[] {
+  return [
+    ...columns.filter((column) => !grouped.has(column)),
+    ...context.filter((column) => !columns.includes(column)),
   ];
 }
 
@@ -115,9 +139,7 @@ export function AlertFields({
   const destination = textOf(document, "destination");
   const tested = conditionColumns(document.condition);
 
-  useEffect(() => {
-    if (!windowed && range !== "") onChange({ range: null });
-  }, [windowed, range, onChange]);
+  useDropWindowWhenUndated(windowed, range, onChange);
 
   const windowHint = CALENDAR_WINDOWS.has(range) ? UTC_NOTE : undefined;
   const metricProblem =
@@ -128,10 +150,7 @@ export function AlertFields({
   const columns = definition?.fields.map((field) => field.as_name) ?? [];
   const grouped = new Set(definition?.group_by ?? []);
   const context = contextColumnsOf(document) ?? [];
-  const offered = [
-    ...columns.filter((column) => !grouped.has(column)),
-    ...context.filter((column) => !columns.includes(column)),
-  ];
+  const offered = offeredColumns(columns, grouped, context);
   const chosen = metric !== "" && picked.settled;
   const showWindow = stored
     ? Boolean(stored.clock)
