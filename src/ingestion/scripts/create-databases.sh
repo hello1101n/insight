@@ -36,6 +36,9 @@
 # Optional env:
 #   CLICKHOUSE_CLUSTER_MODE  true -> the DDL emitted here replicates
 #   CLICKHOUSE_CLUSTER_NAME  the cluster the ON CLUSTER clause names
+#   CLICKHOUSE_DESTINATION_DATABASE  the Bronze destination's database;
+#                            unset -> airbyte_destination on a cluster,
+#                            CLICKHOUSE_DATABASE standalone
 #   CLICKHOUSE_PROVISION_ACCESS  false -> no role or user is created or
 #                            revoked here; the operator provisions them
 #                            (clickhouse.provisionAccess)
@@ -75,6 +78,63 @@ DATABASES=(
 # loses data (see lib/ch-topology.sh).
 ch_assert_topology "${DATABASES[@]}"
 
+# The Bronze destination's `database`: its connection-check table, and any
+# stream without a namespace. Told the cluster, destination-clickhouse puts
+# `ON CLUSTER` on every DDL it emits, which a Replicated database refuses
+# (Code 80), so on a cluster it is an Atomic database of its own — the same
+# shape as the `bronze_*` ones it creates. Standalone it is the app database.
+# INVARIANT: the defaults are insight.clickhouse.destinationDatabase's, for a
+# caller that is not the chart.
+if [[ -n "${CLICKHOUSE_DESTINATION_DATABASE:-}" ]]; then
+  DESTINATION_DATABASE="${CLICKHOUSE_DESTINATION_DATABASE}"
+elif ch_cluster_mode; then
+  DESTINATION_DATABASE=airbyte_destination
+else
+  DESTINATION_DATABASE="${CLICKHOUSE_DATABASE}"
+fi
+
+destination_database_owned() {
+  local database
+  for database in "${DATABASES[@]}"; do
+    [[ "${database}" == "${DESTINATION_DATABASE}" ]] && return 0
+  done
+  return 1
+}
+
+assert_destination_database() {
+  local engine
+  if [[ ! "${DESTINATION_DATABASE}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    echo "ERROR: CLICKHOUSE_DESTINATION_DATABASE '${DESTINATION_DATABASE}' is not a bare ClickHouse identifier (ingestion.reconcile.destinationDatabase)." >&2
+    return 1
+  fi
+  ch_cluster_mode || return 0
+
+  if destination_database_owned; then
+    cat >&2 <<MSG
+ERROR: the Bronze destination's database is '${DESTINATION_DATABASE}', which
+       this deploy creates Replicated.
+
+       The destination emits ON CLUSTER for its connection-check table, and a
+       Replicated database refuses the clause (Code 80), so no connection can
+       sync. Leave ingestion.reconcile.destinationDatabase empty (an Atomic
+       'airbyte_destination' is created) or name an Atomic database.
+MSG
+    return 1
+  fi
+
+  engine="$(_ch_database_engine_of "${DESTINATION_DATABASE}")" || return 1
+  [[ "${engine}" != "Replicated" ]] && return 0
+  cat >&2 <<MSG
+ERROR: the Bronze destination's database '${DESTINATION_DATABASE}' already
+       exists as a Replicated database, which refuses the destination's
+       ON CLUSTER DDL (Code 80). Name an Atomic database in
+       ingestion.reconcile.destinationDatabase.
+MSG
+  return 1
+}
+
+assert_destination_database
+
 ON_CLUSTER="$(ch_on_cluster)"
 
 echo "=== Creating databases${ON_CLUSTER:+ (${ON_CLUSTER})} ==="
@@ -83,6 +143,14 @@ for database in "${DATABASES[@]}"; do
   printf 'CREATE DATABASE IF NOT EXISTS `%s` %s %s' \
     "${database}" "${ON_CLUSTER}" "$(ch_database_engine "${database}")" | run_ch
 done
+
+# INVARIANT: Atomic in both topologies, named explicitly so a server whose
+# default engine differs cannot make it Replicated.
+if ! destination_database_owned; then
+  echo "  ${DESTINATION_DATABASE} (Bronze destination, Atomic)"
+  printf 'CREATE DATABASE IF NOT EXISTS `%s` %s ENGINE = Atomic' \
+    "${DESTINATION_DATABASE}" "${ON_CLUSTER}" | run_ch
+fi
 
 # INVARIANT: skipped as one block when access is the operator's — a deploy
 # that creates no role must revoke none either.

@@ -247,3 +247,36 @@ def test_leaving_access_to_the_operator_reaches_every_job_that_provisions_it(
     found = _values(_render(template, [*CLUSTERED, "--set", "clickhouse.provisionAccess=false"]), PROVISION_ACCESS)
 
     assert found == {"CLICKHOUSE_PROVISION_ACCESS": "false"}, f"{template} missed the access decision"
+
+
+#: The destination's `database` reaches reconcile, which configures the
+#: destination with it, and the two DDL Jobs, whose create-databases.sh creates
+#: it; a value that reached only one would point the destination at a database
+#: nothing created.
+DESTINATION_DATABASE_CONSUMERS = [
+    ("templates/ingestion/reconcile-cron.yaml", "RECONCILE_DEST_CLICKHOUSE_DATABASE"),
+    *((template, "CLICKHOUSE_DESTINATION_DATABASE") for template in DDL_JOBS),
+]
+
+
+@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
+def test_a_standalone_destination_keeps_the_app_database(chart_dependencies: None, template: str, name: str) -> None:
+    assert _values(_render(template, BASE), (name,)) == {name: "insight"}
+
+
+@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
+def test_a_clustered_destination_leaves_the_replicated_app_database(
+    chart_dependencies: None, template: str, name: str
+) -> None:
+    """The destination emits ON CLUSTER for its connection-check table, and the
+    Replicated app database refuses the clause (Code 80): no connection syncs."""
+    assert _values(_render(template, CLUSTERED), (name,)) == {name: "airbyte_destination"}
+
+
+@pytest.mark.parametrize(("template", "name"), DESTINATION_DATABASE_CONSUMERS)
+def test_the_destination_database_can_be_named(chart_dependencies: None, template: str, name: str) -> None:
+    found = _values(
+        _render(template, [*CLUSTERED, "--set", "ingestion.reconcile.destinationDatabase=default"]), (name,)
+    )
+
+    assert found == {name: "default"}

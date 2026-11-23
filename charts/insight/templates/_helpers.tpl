@@ -63,6 +63,22 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- required "clickhouse.database is required" .Values.clickhouse.database -}}
 {{- end -}}
 
+{{/* The `database` of the Bronze destination: where destination-clickhouse
+     puts its connection-check table and any stream without a namespace. On a
+     cluster the destination emits `ON CLUSTER` for both, which a Replicated
+     database refuses (Code 80), so cluster mode moves it off the app database
+     to an Atomic one create-databases.sh creates. Standalone keeps the app
+     database. ingestion.reconcile.destinationDatabase overrides either. */}}
+{{- define "insight.clickhouse.destinationDatabase" -}}
+{{- if .Values.ingestion.reconcile.destinationDatabase -}}
+{{- .Values.ingestion.reconcile.destinationDatabase -}}
+{{- else if .Values.clickhouse.clusterMode -}}
+airbyte_destination
+{{- else -}}
+{{- include "insight.clickhouse.database" . -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Wire protocol (http|https) for the Bronze ClickHouse destination.
      Defaults to plain HTTP (matching the http:// in insight.clickhouse.url
      above); override clickhouse.protocol for a TLS CH. */}}
@@ -124,6 +140,10 @@ Contract per dep (all infra is external — out-of-chart L2):
   value: {{ include "insight.clickhouse.clusterMode" . | quote }}
 - name: CLICKHOUSE_CLUSTER_NAME
   value: {{ include "insight.clickhouse.clusterName" . | quote }}
+# The Bronze destination's database, created here as Atomic when it is not
+# the app database (insight.clickhouse.destinationDatabase).
+- name: CLICKHOUSE_DESTINATION_DATABASE
+  value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
 # Whether the script provisions the roles and grant-less users below at all;
 # false leaves them to the operator.
 - name: CLICKHOUSE_PROVISION_ACCESS

@@ -131,13 +131,24 @@ discover_streams() {
   done
 }
 
+# The destination's `database` as the chart renders it for this topology —
+# read off the deploy Job, which shares the helper with the reconcile CronJob.
+destination_database() {
+  render_migrate_job | yq -r '.spec.template.spec.containers[0].env[]
+    | select(.name == "CLICKHOUSE_DESTINATION_DATABASE") | .value'
+}
+
 # One destination write, as reconcile configures it: <dest>/input.jsonl into
-# the streams of <dest>/configured_catalog.json.
+# the streams of <dest>/configured_catalog.json. The connection check Airbyte
+# runs before every sync goes first; it is the one DDL the destination emits
+# into its own `database` rather than a stream's namespace.
 destination_write() {
-  local dest="$1"
+  local dest="$1" database
+  database="$(destination_database)"
+  [[ -n "${database}" ]] || { echo "  the chart rendered no destination database" >&2; return 1; }
   RECONCILE_DEST_CLICKHOUSE_HOST="${DESTINATION_HOST}" \
   RECONCILE_DEST_CLICKHOUSE_PORT=8123 \
-  RECONCILE_DEST_CLICKHOUSE_DATABASE="${CLICKHOUSE_DATABASE}" \
+  RECONCILE_DEST_CLICKHOUSE_DATABASE="${database}" \
   RECONCILE_DEST_CLICKHOUSE_USERNAME="${CLICKHOUSE_USER}" \
   RECONCILE_DEST_CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD}" \
   RECONCILE_DEST_CLICKHOUSE_CLUSTER_MODE="${CLICKHOUSE_CLUSTER_MODE}" \
@@ -148,6 +159,15 @@ destination_write() {
   # are world-readable; they hold only the throwaway rig's password.
   chmod 0755 "${dest}"
   chmod 0644 "${dest}/config.json" "${dest}/configured_catalog.json"
+  docker run --rm --network "${PROJECT}_default" -v "${dest}:/work:ro" \
+    "${DESTINATION_CLICKHOUSE_IMAGE}" check --config /work/config.json > "${dest}/check.jsonl" || true
+  if ! jq -Rr 'fromjson? | select(.type == "CONNECTION_STATUS") | .connectionStatus.status' \
+      "${dest}/check.jsonl" | grep -qx SUCCEEDED; then
+    echo "  destination check against ${database} failed:" >&2
+    tail -n 5 "${dest}/check.jsonl" >&2
+    return 1
+  fi
+  echo "  destination check against ${database}: SUCCEEDED"
   echo "  $(jq '.streams | length' "${dest}/configured_catalog.json") stream(s), $(grep -c '"RECORD"' "${dest}/input.jsonl" || true) record(s) through ${DESTINATION_CLICKHOUSE_IMAGE}"
   docker run --rm -i --network "${PROJECT}_default" -v "${dest}:/work:ro" \
     "${DESTINATION_CLICKHOUSE_IMAGE}" \
