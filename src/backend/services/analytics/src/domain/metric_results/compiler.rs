@@ -1329,9 +1329,8 @@ fn item_value_expr(def: &MetricDefinition, window: Option<DateWindow>) -> Sql {
             scope = input_scope(value),
             window = window_term(window),
         ),
-        // toFloat64 so the wide column is Float64, not a JSON-quoted
+        // WORKAROUND: toFloat64 so the wide column is Float64, not a JSON-quoted
         // UInt64 (uniqExact's native type) the f64 row decoder rejects.
-        // OrNull is preserved through the cast (NULL stays NULL).
         ComputationSpec::DistinctCount { value } => sql!(
             "toFloat64(uniqExactIfOrNull(subject_key, {scope} AND subject_key IS NOT NULL{window}))",
             scope = input_scope(value),
@@ -1877,8 +1876,8 @@ fn collapsed_observation_from(resolved: Sql, collapses: &[(&MetricInput, AliasCo
 const COLLAPSE_GROUP_BY: &str = "tenant_id, entity_type, source_key, measure_key, metric_date, entity_id, \
                     dimensions, subject_key";
 
-/// SAFETY: backslash first — it escapes in ClickHouse literals, so handling
-/// quotes alone would let `x\\` swallow the closing quote.
+// SAFETY: backslash first — it escapes in ClickHouse literals, so handling
+// quotes alone would let `x\\` swallow the closing quote.
 pub(crate) fn sql_string_literal(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }

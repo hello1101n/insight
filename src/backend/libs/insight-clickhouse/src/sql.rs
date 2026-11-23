@@ -248,7 +248,6 @@ impl Param {
     }
 }
 
-/// The type of a named argument of [`sql!`](crate::sql!).
 #[doc(hidden)]
 pub trait Fragment {
     fn into_sql(self, name: &'static str) -> Sql;
