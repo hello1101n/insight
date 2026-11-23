@@ -76,8 +76,7 @@ DATABASES=(
 # loses data (see lib/ch-topology.sh).
 ch_assert_topology "${DATABASES[@]}"
 
-# The destination emits ON CLUSTER, which a Replicated database refuses
-# (Code 80). Defaults match insight.clickhouse.destinationDatabase.
+# INVARIANT: the defaults match insight.clickhouse.destinationDatabase.
 if [[ -n "${CLICKHOUSE_DESTINATION_DATABASE:-}" ]]; then
   DESTINATION_DATABASE="${CLICKHOUSE_DESTINATION_DATABASE}"
 elif ch_cluster_mode; then
@@ -97,19 +96,19 @@ destination_database_owned() {
 assert_destination_database() {
   local engine
   if [[ ! "${DESTINATION_DATABASE}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-    echo "ERROR: CLICKHOUSE_DESTINATION_DATABASE '${DESTINATION_DATABASE}' is not a bare ClickHouse identifier (ingestion.reconcile.destinationDatabase)." >&2
+    echo "ERROR: CLICKHOUSE_DESTINATION_DATABASE '${DESTINATION_DATABASE}' is not a bare ClickHouse identifier. Set ingestion.reconcile.destinationDatabase to letters, digits and '_'." >&2
     return 1
   fi
   ch_cluster_mode || return 0
 
   if destination_database_owned; then
-    echo "ERROR: the Bronze destination's database '${DESTINATION_DATABASE}' is Replicated here and refuses its ON CLUSTER DDL (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database or leave it empty." >&2
+    echo "ERROR: this deploy creates the destination database '${DESTINATION_DATABASE}' as Replicated. Its ON CLUSTER DDL fails there (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database." >&2
     return 1
   fi
 
   engine="$(_ch_database_engine_of "${DESTINATION_DATABASE}")" || return 1
   [[ "${engine}" != "Replicated" ]] && return 0
-  echo "ERROR: the Bronze destination's database '${DESTINATION_DATABASE}' already exists as Replicated and refuses its ON CLUSTER DDL (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database." >&2
+  echo "ERROR: the destination database '${DESTINATION_DATABASE}' already exists as Replicated. Its ON CLUSTER DDL fails there (Code 80). Set ingestion.reconcile.destinationDatabase to an Atomic database." >&2
   return 1
 }
 

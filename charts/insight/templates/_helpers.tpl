@@ -63,7 +63,6 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- required "clickhouse.database is required" .Values.clickhouse.database -}}
 {{- end -}}
 
-{{/* Atomic on a cluster: the Replicated app database refuses the destination's ON CLUSTER DDL. */}}
 {{- define "insight.clickhouse.destinationDatabase" -}}
 {{- if .Values.ingestion.reconcile.destinationDatabase -}}
 {{- .Values.ingestion.reconcile.destinationDatabase -}}

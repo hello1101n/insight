@@ -1,5 +1,4 @@
-"""On a cluster the Bronze destination's database is Atomic: a Replicated one
-refuses the destination's ON CLUSTER DDL (Code 80)."""
+"""On a cluster, the database of the Bronze destination is Atomic."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 TOPOLOGY_LIB = SCRIPTS / "lib" / "ch-topology.sh"
 CREATE_DATABASES = SCRIPTS / "create-databases.sh"
 
-#: DESTINATION_ENGINE is the destination database's engine (empty: absent).
 SCRIPTED = """
 _ch_http_query() {
   local sql
