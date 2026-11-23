@@ -63,6 +63,16 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- required "clickhouse.database is required" .Values.clickhouse.database -}}
 {{- end -}}
 
+{{- define "insight.clickhouse.destinationDatabase" -}}
+{{- if .Values.ingestion.reconcile.destinationDatabase -}}
+{{- .Values.ingestion.reconcile.destinationDatabase -}}
+{{- else if .Values.clickhouse.clusterMode -}}
+default
+{{- else -}}
+{{- include "insight.clickhouse.database" . -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Wire protocol (http|https) for the Bronze ClickHouse destination.
      Defaults to plain HTTP (matching the http:// in insight.clickhouse.url
      above); override clickhouse.protocol for a TLS CH. */}}

@@ -61,6 +61,9 @@ class Handler(BaseHTTPRequestHandler):
                     socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
                 )
                 self.close_connection = True
+                # WORKAROUND: socketserver shuts the write side down before it closes,
+                # and that FIN reaches the client ahead of the RST as a truncated body.
+                self.connection.close()
                 return
         self.wfile.write(body)
 

@@ -122,7 +122,7 @@ spec:
             - name: RECONCILE_DEST_CLICKHOUSE_PROTOCOL
               value: {{ include "insight.clickhouse.protocol" . | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_DATABASE
-              value: {{ include "insight.clickhouse.database" . | quote }}
+              value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_USERNAME
               value: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_PASSWORD
