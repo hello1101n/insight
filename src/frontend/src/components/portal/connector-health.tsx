@@ -26,9 +26,11 @@ import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pa
 import {
   describeRun,
   isActiveRun,
+  projectRun,
   runDuration,
 } from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
+import { ConnectorRunState } from "./connector-run-state";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
@@ -146,15 +148,16 @@ export function ConnectorHealthPane() {
             </TableHeader>
             <TableBody>
               {data.connectors.map((row) => {
-                const run = row.latest_run;
-                const state =
+                const run = row.latest_run && projectRun(row.latest_run);
+                const showRun =
                   run &&
                   (row.configured ||
                     isActiveRun(run) ||
                     data.checked_at == null ||
-                    Date.parse(run.started_at) > Date.parse(data.checked_at))
-                    ? describeRun(run.status)
-                    : describeConnector(row);
+                    Date.parse(run.started_at) > Date.parse(data.checked_at));
+                const state = showRun
+                  ? describeRun(run.status)
+                  : describeConnector(row);
                 const latest = run ?? row.last_sync;
                 const key = instanceKey(row);
                 const open = expanded === key;
@@ -193,9 +196,13 @@ export function ConnectorHealthPane() {
                     <InstanceCell instance={row} />
                     <ScheduleCell row={row} />
                     <TableCell>
-                      <Badge variant={TONE_BADGE[state.tone]}>
-                        {state.label}
-                      </Badge>
+                      {showRun ? (
+                        <ConnectorRunState run={run} asOf={data.as_of} />
+                      ) : (
+                        <Badge variant={TONE_BADGE[state.tone]}>
+                          {state.label}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {formatStarted(latest?.started_at ?? null)}

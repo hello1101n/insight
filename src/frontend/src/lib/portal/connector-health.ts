@@ -253,7 +253,7 @@ export function elapsedMs(
 const RFC3339 =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
 
-function parseStamp(raw: string | null | undefined): number | null {
+export function parseStamp(raw: string | null | undefined): number | null {
   if (typeof raw !== "string" || !RFC3339.test(raw)) return null;
   const parsed = Date.parse(raw);
   return Number.isNaN(parsed) ? null : parsed;

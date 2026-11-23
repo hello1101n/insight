@@ -21,48 +21,65 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@gears-frontx/ui-kit";
-import { ConnectorRunBands } from "./connector-run-bands";
 
 import type { ConnectorRun, SyncFact } from "@/api/connector-health-client";
 import {
   describeDuration,
   describeSync,
-  elapsedMs,
   formatDuration,
   formatRecords,
   formatStarted,
+  type ConnectorTone,
 } from "@/lib/portal/connector-health";
+import { summarizeRun } from "@/lib/portal/connector-run-timing";
+import { describeRunState } from "@/lib/portal/connector-run-view";
 import {
   describeRun,
   isActiveRun,
-  stageFailureReason,
+  projectRun,
+  queueDetails,
+  queueSeverity,
   runDuration,
+  stageFailureDetails,
+  stepDetail,
+  stepLabel,
 } from "@/lib/portal/connector-runs";
 import { cn } from "@/lib/utils";
-import { historySegmentStyle, TONE_BADGE } from "./connector-health-tone";
-
-function RunBadge({ status }: { status: string }) {
-  const view = describeRun(status);
-  return (
-    <Badge
-      variant={TONE_BADGE[view.tone]}
-      className="whitespace-normal"
-    >
-      {view.label}
-    </Badge>
-  );
-}
+import { historySegmentStyle, TONE_BADGE, TONE_STYLE } from "./connector-health-tone";
+import { ConnectorRunBands } from "./connector-run-bands";
+import { ConnectorRunState, RunTooltip } from "./connector-run-state";
 
 function RunMetrics({
   run,
   title,
   empty,
+  asOf,
 }: {
   run?: ConnectorRun | null;
   title: string;
   empty: string;
+  asOf: string;
 }) {
   const { t } = useTranslation();
+  const timing = run && summarizeRun(run, asOf);
+  const state = run && describeRunState(run, asOf, timing ?? undefined);
+  const queuedLabel = t("connectors.runs.queued");
+  const metrics = timing
+    ? timing.steps.map((step) => ({
+        label: stepLabel(step.step),
+        details: [stepDetail(step.step)],
+        duration: step.duration,
+        tone: null as ConnectorTone | null,
+      }))
+    : [];
+  if (timing?.queued)
+    metrics.unshift({
+      label: queuedLabel,
+      details: queueDetails(timing.queued.reasons, timing.queued.tone),
+      duration: timing.queued.duration,
+      tone: timing.queued.tone === "idle" ? null : timing.queued.tone,
+    });
+
   return (
     <Card
       size="sm"
@@ -80,105 +97,148 @@ function RunMetrics({
             {formatStarted(run.started_at)}
             {run.finished_at && <> – {formatStarted(run.finished_at)}</>}
           </p>
-          <RunBadge status={run.status} />
-          <dl className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(6rem,100%),1fr))] gap-2 border-t pt-2">
-            {(
-              [
-                ["wait", run.wait_ms],
-                ["load", run.load_ms],
-                ["transform", run.transform_ms],
-              ] as const
-            )
-              .filter(
-                ([key, value]) => key !== "wait" || (value != null && value > 0)
-              )
-              .map(([key, value]) => (
-                <div key={key}>
+          {!metrics.some(({ label }) => label === state?.label) && (
+            <ConnectorRunState
+              run={run}
+              asOf={asOf}
+              timing={timing ?? undefined}
+              showRunning
+            />
+          )}
+          {metrics.length > 0 && (
+            <dl className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(5rem,100%),1fr))] gap-2 border-t pt-2">
+              {metrics.map(({ label, details, duration, tone }) => (
+                <div key={label}>
                   <dt className="text-xs text-muted-foreground">
-                    {t(`connectors.runs.${key}`)}
+                    {label === state?.label ? (
+                      <ConnectorRunState
+                        run={run}
+                        asOf={asOf}
+                        timing={timing ?? undefined}
+                        showRunning
+                      />
+                    ) : (
+                      <RunTooltip lines={details}>
+                        {tone ? (
+                          <Badge
+                            variant={TONE_BADGE[tone]}
+                          >
+                            {label}
+                          </Badge>
+                        ) : (
+                          label
+                        )}
+                      </RunTooltip>
+                    )}
                   </dt>
                   <dd className="text-sm font-medium tabular-nums">
-                    {formatDuration(value)}
+                    {formatDuration(duration)}
                   </dd>
                 </div>
               ))}
-          </dl>
+            </dl>
+          )}
         </>
       )}
     </Card>
   );
 }
 
-function StageEvent({
+function StepEvent({
   at,
   status,
+  tone,
   duration,
-  current = false,
-  upcoming = false,
+  current,
+  pending = false,
   children,
 }: {
-  at?: string | null;
+  at: number | null;
   status: string;
-  duration?: string;
-  current?: boolean;
-  upcoming?: boolean;
+  tone: ConnectorTone;
+  duration: number | null;
+  current: boolean;
+  pending?: boolean;
   children: ReactNode;
 }) {
-  const state = describeRun(status);
-  const complete = status === "succeeded";
-  const waiting =
-    status.startsWith("waiting") ||
-    status === "wait_warning" ||
-    status === "queued";
-  const Icon = complete
-    ? Check
-    : status === "cancelled"
-      ? Ban
-      : state.tone === "failing"
-        ? X
-        : waiting
-          ? Clock3
-          : state.tone === "active"
-            ? Activity
-            : Circle;
-  const stamp = formatStarted(at);
+  const { t } = useTranslation();
+  const kind = describeRun(status).kind;
+  const stateLabel = t(
+    kind === "succeeded"
+      ? "connectors.runs.step_complete"
+      : `connectors.runs.${kind}`
+  );
+  const Icon =
+    status === "succeeded"
+      ? Check
+      : status === "cancelled"
+        ? Ban
+        : tone === "failing"
+          ? X
+          : status === "queued"
+            ? Clock3
+            : tone === "active"
+              ? Activity
+              : Circle;
+  const stamp = at == null ? undefined : new Date(at).toISOString();
+  const label = formatStarted(stamp);
   return (
     <li
       aria-current={current ? "step" : undefined}
       className="group grid grid-cols-[8ch_1.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2 text-sm sm:gap-x-3"
     >
       <time
-        dateTime={at ?? undefined}
-        title={stamp}
-        aria-label={stamp}
+        dateTime={stamp}
+        title={label}
+        aria-label={label}
         className="pt-0.5 text-xs text-muted-foreground tabular-nums"
       >
-        {stamp.includes(" ") ? stamp.slice(11, 19) : stamp}
+        {stamp ? label.slice(11, 19) : label}
       </time>
       <span className="relative flex h-full min-h-5 justify-center after:absolute after:top-4 after:bottom-[-1.125rem] after:left-1/2 after:w-px after:bg-border group-last:after:hidden">
         <span
           role="img"
-          aria-label={upcoming ? undefined : state.label}
-          aria-hidden={upcoming || undefined}
-          title={upcoming ? undefined : state.label}
+          aria-label={pending ? undefined : stateLabel}
+          aria-hidden={pending || undefined}
+          title={pending ? undefined : stateLabel}
           className={cn(
             "relative z-1 grid size-5 place-items-center rounded-full",
-            upcoming
+            pending
               ? "border border-dashed border-muted-foreground/50 bg-card"
-              : TONE_BADGE[state.tone],
+              : TONE_STYLE[tone],
             current && "ring-2 ring-current/45 ring-offset-2 ring-offset-card"
           )}
         >
-          {!upcoming && (
+          {!pending && (
             <Icon className="size-3" aria-hidden="true" strokeWidth={2.5} />
           )}
         </span>
       </span>
       <div className="min-w-0">{children}</div>
       <span className="pt-0.5 text-right text-xs text-muted-foreground tabular-nums">
-        {duration}
+        {formatDuration(duration)}
       </span>
     </li>
+  );
+}
+
+type QueueTiming = NonNullable<ReturnType<typeof summarizeRun>["queued"]>;
+
+function QueuedEvent({
+  queue,
+  timedOut = false,
+}: {
+  queue: QueueTiming;
+  timedOut?: boolean;
+}) {
+  const { t } = useTranslation();
+  const tone = timedOut ? "idle" : queue.tone;
+  return (
+    <StepEvent {...queue} status="queued" tone={tone}>
+      <RunTooltip lines={queueDetails(queue.reasons, tone)}>
+        {t("connectors.runs.queued")}
+      </RunTooltip>
+    </StepEvent>
   );
 }
 
@@ -187,24 +247,11 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
   const startStamp = formatStarted(run.started_at).replace(/Z$/, "");
   const endStamp = formatStarted(run.finished_at).replace(/Z$/, "");
   const sameDay = startStamp.slice(0, 10) === endStamp.slice(0, 10);
-  const readyBeforeChecks =
-    run.status === "succeeded"
-      ? run.stages.findIndex((stage) => stage.stage === "connector-checks")
-      : -1;
-  const finished = run.finished_at && (
-    <StageEvent at={run.finished_at} status={run.status}>
-      <strong className="font-medium">
-        {run.status === "succeeded"
-          ? t("connectors.runs.updated")
-          : run.status === "cancelled"
-            ? t("connectors.runs.sync_cancelled")
-            : t("connectors.runs.completed")}
-      </strong>
-    </StageEvent>
-  );
+  const timing = summarizeRun(run, asOf);
+  const heading = t("connectors.runs.timeline");
   return (
     <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm tabular-nums">
+      <div className="flex flex-wrap items-start justify-between gap-2 text-sm tabular-nums">
         <strong className="font-semibold">
           <time dateTime={run.started_at}>{startStamp}</time>
           {run.finished_at && (
@@ -218,13 +265,13 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
           )}{" "}
           UTC
         </strong>
-        <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-start gap-2 text-xs text-muted-foreground">
           {runDuration(run, asOf)}
-          <RunBadge status={run.status} />
-        </span>
+          <ConnectorRunState run={run} asOf={asOf} timing={timing} />
+        </div>
       </div>
-      <ConnectorRunBands run={run} asOf={asOf} />
-      {run.stages.length ? (
+      <ConnectorRunBands timing={timing} />
+      {timing.steps.length > 0 || timing.trailingQueue ? (
         <Card size="sm" className="min-w-0 p-3 sm:p-4">
           <Collapsible defaultOpen>
             <CardTitle render={<h4 />} className="text-sm">
@@ -232,7 +279,7 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
                 type="button"
                 className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-start focus-visible:outline-2"
               >
-                {t("connectors.runs.timeline")}
+                {heading}
                 <ChevronRight
                   aria-hidden="true"
                   className="size-4 shrink-0 text-muted-foreground group-aria-expanded:rotate-90"
@@ -240,116 +287,38 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
               </CollapsibleTrigger>
             </CardTitle>
             <CollapsibleContent>
-              <ol className="pt-2">
-                {run.stages.map((stage, index) => {
-                  const activeWait = stage.waits?.find(
-                    (wait) => !wait.ended_at
-                  );
-                  const duration =
-                    stage.duration_ms ??
-                    (activeWait
-                      ? elapsedMs(
-                          run.finished_at ?? asOf,
-                          activeWait.started_at
-                        )
-                      : isActiveRun(run) && !stage.finished_at
-                        ? elapsedMs(asOf, stage.started_at)
-                        : null);
+              <ol aria-label={heading} className="pt-2">
+                {timing.steps.map(({ step, queued, failure, ...event }) => {
+                  const state = describeRun(event.status);
                   return (
-                    <Fragment
-                      key={JSON.stringify([stage.stage, stage.attempt])}
-                    >
-                      {index === readyBeforeChecks && finished}
-                      {stage.waits?.map(
-                        (wait) =>
-                          wait.ended_at && (
-                            <StageEvent
-                              key={wait.kind + wait.started_at}
-                              at={wait.started_at}
-                              status={
-                                wait.kind === "admission"
-                                  ? "waiting_admission"
-                                  : "waiting_pod"
-                              }
-                              duration={formatDuration(
-                                elapsedMs(wait.ended_at, wait.started_at)
-                              )}
-                            >
-                              <span>
-                                {t(
-                                  wait.kind === "admission"
-                                    ? "connectors.runs.waiting_admission"
-                                    : "connectors.runs.waiting_pod"
-                                )}
-                              </span>
-                            </StageEvent>
-                          )
+                    <Fragment key={step}>
+                      {queued && (
+                        <QueuedEvent
+                          queue={queued}
+                          timedOut={failure?.status === "wait_timeout"}
+                        />
                       )}
-
-                      <StageEvent
-                        at={
-                          activeWait?.started_at ??
-                          stage.started_at ??
-                          (stage.status === "cancelled"
-                            ? stage.finished_at
-                            : null) ??
-                          stage.granted_at ??
-                          stage.queued_at
-                        }
-                        status={stage.status}
-                        current={
-                          isActiveRun(run) &&
-                          !stage.finished_at &&
-                          stage.status !== "queued" &&
-                          (describeRun(stage.status).tone === "active" ||
-                            stage.status.startsWith("waiting_") ||
-                            stage.status === "wait_warning" ||
-                            !!activeWait)
-                        }
-                        duration={formatDuration(duration)}
+                      <StepEvent
+                        {...event}
+                        tone={state.tone}
+                        pending={state.kind === "queued"}
                       >
-                        <strong className="font-medium">
-                          {t(`connectors.runs.stage.${stage.stage}`, {
-                            defaultValue: stage.stage,
-                          })}
-                        </strong>
-                        {stage.attempt > 1 && (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            {t("connectors.runs.attempt", {
-                              number: stage.attempt,
-                            })}
-                          </span>
-                        )}
-                        {stage.status !== "succeeded" && (
-                          <span className="block text-xs text-muted-foreground">
-                            {describeRun(stage.status).label}
-                          </span>
-                        )}
-                        {stage.reason &&
-                          stage.reason !== "stage_failed" &&
-                          stage.reason !== stage.status && (
-                            <span className="block text-xs text-muted-foreground">
-                              {stage.status === "failed"
-                                ? stageFailureReason(stage)
-                                : t(`connectors.runs.reason.${stage.reason}`, {
-                                    defaultValue: stage.reason,
-                                  })}
-                            </span>
-                          )}
-                      </StageEvent>
+                        <RunTooltip
+                          lines={[
+                            stepDetail(step),
+                            ...(failure ? stageFailureDetails(failure) : []),
+                          ]}
+                        >
+                          <strong className="font-medium">
+                            {stepLabel(step)}
+                          </strong>
+                        </RunTooltip>
+                      </StepEvent>
                     </Fragment>
                   );
                 })}
-                {readyBeforeChecks < 0 && finished}
-                {isActiveRun(run) && (
-                  <StageEvent status="queued" upcoming>
-                    <span className="text-muted-foreground">
-                      {t("connectors.runs.updated")}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {t("connectors.runs.upcoming")}
-                    </span>
-                  </StageEvent>
+                {timing.trailingQueue && (
+                  <QueuedEvent queue={timing.trailingQueue} />
                 )}
               </ol>
             </CollapsibleContent>
@@ -357,7 +326,7 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
         </Card>
       ) : (
         <p className="text-xs text-muted-foreground">
-          {t("connectors.runs.no_stages")}
+          {t("connectors.runs.no_steps")}
         </p>
       )}
     </section>
@@ -399,7 +368,7 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   return (
     <section className="space-y-2">
       <h4 className="text-sm font-semibold">
-        {t("connectors.history.load_utc")}
+        {t("connectors.history.load_utc", { step: stepLabel("bronze") })}
       </h4>
       <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
         <time>{formatStarted(sync.started_at)}</time>
@@ -432,25 +401,37 @@ export function ConnectorRunHistory({
   const { t } = useTranslation();
   const heading = useId();
   const [selectedId, select] = useState<string | null>(null);
-  const managed =
-    latest && !runs.some((run) => run.sync_id === latest.sync_id)
-      ? [latest, ...runs]
-      : runs;
+  const recent = latest ? projectRun(latest) : undefined;
+  const managed = runs.map(projectRun);
+  if (recent && !managed.some((run) => run.sync_id === recent.sync_id))
+    managed.unshift(recent);
+
+  const current = recent ?? managed[0];
+  const recordedSuccess = lastSuccess && projectRun(lastSuccess);
+  const newestSuccess = managed.find((run) => run.status === "succeeded");
+  const successful =
+    newestSuccess &&
+    (!recordedSuccess ||
+      Date.parse(newestSuccess.started_at) >
+        Date.parse(recordedSuccess.started_at))
+      ? newestSuccess
+      : recordedSuccess;
   const history = recentHistory(managed, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
-  const recent = latest ?? runs[0];
   return (
     <div className="@container min-w-0 space-y-4 whitespace-normal">
       <div className="grid min-w-0 gap-2 @lg:grid-cols-2">
         <RunMetrics
           title={t("connectors.runs.latest_success")}
           empty={t("connectors.runs.no_success")}
-          run={lastSuccess ?? runs.find((run) => run.status === "succeeded")}
+          run={successful}
+          asOf={asOf}
         />
         <RunMetrics
           title={t("connectors.runs.current")}
           empty={t("connectors.runs.no_current")}
-          run={recent && isActiveRun(recent) ? recent : null}
+          run={current && isActiveRun(current) ? current : null}
+          asOf={asOf}
         />
       </div>
       <section aria-labelledby={heading} className="space-y-2">
@@ -466,9 +447,19 @@ export function ConnectorRunHistory({
           {history.toReversed().map(({ id, record }) => {
             const state =
               "sync_id" in record
-                ? describeRun(record.status)
+                ? describeRunState(record, asOf)
                 : describeSync(record);
-            const label = `${formatStarted(record.started_at)} · ${state.label}`;
+            const severity =
+              "kind" in state && state.kind === "queued"
+                ? queueSeverity(state.tone)
+                : null;
+            const label = [
+              formatStarted(record.started_at),
+              state.label,
+              severity,
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <li key={id} className="group min-w-0">
                 <Tooltip>

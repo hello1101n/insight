@@ -20,11 +20,11 @@ describe("connector run state", () => {
     [
       "failed",
       "clickhouse_query_error:47:UNKNOWN_IDENTIFIER",
-      "ClickHouse could not resolve a name in the SQL query (UNKNOWN_IDENTIFIER, code 47).",
+      "A calculation refers to an unknown field",
     ],
-    ["failed", "pod_oom", "Pod memory limit exceeded"],
-    ["failed", "stage_failed", "No detailed failure reason was recorded."],
-    ["wait_timeout", null, "Wait exceeded six hours"],
+    ["failed", "pod_oom", "The sync exceeded its memory limit"],
+    ["failed", "stage_failed", "The step failed"],
+    ["wait_timeout", null, "Waited over 6 hours"],
   ] as const)("explains %s with %s", (status, reason, expected) => {
     expect(
       stageFailureReason({
@@ -37,24 +37,29 @@ describe("connector run state", () => {
   });
   it.each([
     ["queued", "Queued"],
-    ["starting", "Starting"],
-    ["waiting_admission", "Waiting for stage admission from connectors"],
-    ["waiting_pod", "Waiting for Kubernetes pod placement"],
-    ["waiting_clickhouse", "Waiting for ClickHouse"],
-    ["loading", "Loading"],
-    ["transforming", "Transforming"],
-    ["checking_start", "Checking sync start"],
-    ["wait_warning", "Warning · waiting over 3 hours"],
-    ["wait_timeout", "Failed · waited over 6 hours"],
+    ["starting", "Queued"],
+    ["waiting_admission", "Queued"],
+    ["waiting_pod", "Queued"],
+    ["waiting_clickhouse", "Queued"],
+    ["loading", "Bronze"],
+    ["transforming", "Running"],
+    ["checking_start", "Queued"],
+    ["wait_warning", "Queued"],
+    ["wait_timeout", "Failed"],
     ["running", "Running"],
     ["succeeded", "Ready"],
     ["failed", "Failed"],
+    ["not_started", "Failed"],
     ["cancelled", "Cancelled"],
     ["unknown", "Unknown"],
     ["constructor", "Unknown"],
   ])("labels %s as %s", (status, label) =>
     expect(describeRun(status).label).toBe(label)
   );
+
+  it("treats not_started as terminal without a finish timestamp", () => {
+    expect(isActiveRun({ ...run, status: "not_started" })).toBe(false);
+  });
 
   it("uses the observation clock for an open run and the measured duration for a closed one", () => {
     expect(runDuration(run, now)).toBe("3m 0s so far");
