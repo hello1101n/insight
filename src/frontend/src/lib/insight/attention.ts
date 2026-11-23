@@ -1,4 +1,7 @@
-import type { MetricDirection } from "@/api/metric-results-client";
+import type {
+  MetricDirection,
+  MetricFormat,
+} from "@/api/metric-results-client";
 import { formatMetricValue, splitMetricValue } from "@/lib/format";
 import { formatGapMagnitude } from "@/lib/metrics/gap";
 import type { MetricGroup, GroupId } from "@/lib/insight/groups";
@@ -8,6 +11,7 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 import { derivePeerStanding, peerSpread } from "@/lib/metrics/peer-standing";
+import type { PeerStats } from "@/lib/peers";
 
 const ADVERSE_MOVE_MIN_SPREADS = 0.25;
 
@@ -36,12 +40,12 @@ export function metricAttentionItems(
   byKey: Map<string, NormalizedMetricResult>,
   previousByKey: Map<string, NormalizedMetricResult> | null,
   entityId: string,
-  headlineKeys: ReadonlySet<string>
+  renderedHeadlineKeys: ReadonlySet<string>
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
 
   for (const metricConfig of def.collection.metrics) {
-    if (headlineKeys.has(metricConfig.key)) continue;
+    if (renderedHeadlineKeys.has(metricConfig.key)) continue;
     const metric = byKey.get(metricConfig.key);
     if (!metric) continue;
     const data = forEntity(metric, entityId);
@@ -66,13 +70,8 @@ export function metricAttentionItems(
     const fell =
       !data.absence?.compare_to_overlap &&
       hasPrevious &&
-      (higherIsBetter ? value < previous : value > previous) &&
-      Math.abs(value - previous) / peerSpread(stats) >=
-        ADVERSE_MOVE_MIN_SPREADS;
-    const behind =
-      relGap >= BEHIND_MIN_REL_GAP &&
-      (metric.format !== "integer" ||
-        Math.abs(median) >= BEHIND_MIN_MEDIAN_EVENTS);
+      fellAgainstOwnPast(value, previous, stats, higherIsBetter);
+    const behind = farBehindCohort(relGap, median, metric.format);
     if (!fell && !behind) continue;
     const gapDelta = value - median;
     const split = splitMetricValue(value, metric.format, metric.unit);
@@ -102,20 +101,41 @@ export function metricAttentionItems(
   return items;
 }
 
+function fellAgainstOwnPast(
+  value: number,
+  previous: number,
+  stats: PeerStats,
+  higherIsBetter: boolean
+): boolean {
+  const worse = higherIsBetter ? value < previous : value > previous;
+  const movedSpreads = Math.abs(value - previous) / peerSpread(stats);
+  return worse && movedSpreads >= ADVERSE_MOVE_MIN_SPREADS;
+}
+
+function farBehindCohort(
+  relGap: number,
+  median: number,
+  format: MetricFormat
+): boolean {
+  const cohortDoesEnough =
+    format !== "integer" || Math.abs(median) >= BEHIND_MIN_MEDIAN_EVENTS;
+  return relGap >= BEHIND_MIN_REL_GAP && cohortDoesEnough;
+}
+
+export type AttentionOrder = "standing-first" | "changes-first";
+
 export function orderAttentionItems(
   items: readonly AttentionItem[],
-  headlineKeys: ReadonlySet<string>,
-  changesFirst = false
+  renderedHeadlineKeys: ReadonlySet<string>,
+  order: AttentionOrder = "standing-first"
 ): AttentionItem[] {
-  const leads = (item: AttentionItem) =>
-    changesFirst
-      ? Number(item.kind === "fell")
-      : Number(item.kind === "behind");
+  const leadingKind = order === "changes-first" ? "fell" : "behind";
+  const leads = (item: AttentionItem) => Number(item.kind === leadingKind);
   const ranked = [...items].sort(
     (a, b) =>
       leads(b) - leads(a) ||
       (a.kind === "behind" ? b.relGap - a.relGap : b.spreadGap - a.spreadGap) ||
       b.relGap - a.relGap
   );
-  return dropRedundantMetrics(ranked, headlineKeys);
+  return dropRedundantMetrics(ranked, renderedHeadlineKeys);
 }

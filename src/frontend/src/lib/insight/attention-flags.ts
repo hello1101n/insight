@@ -34,9 +34,15 @@ export interface FlagParams {
   cohortLabel: string;
 }
 
-function severityIn(scale: number | null, adverseDistance: number): number | null {
-  if (scale == null || !(scale > 1e-9)) return null;
-  const sev = adverseDistance / scale;
+function cohortScale(iqr: number, p50: number): number | null {
+  if (iqr > 1e-9) return iqr;
+  if (Math.abs(p50) > 1e-9) return Math.abs(p50);
+  return null;
+}
+
+function severityIn(severityUnit: number | null, adverseDistance: number): number | null {
+  if (severityUnit == null || !(severityUnit > 1e-9)) return null;
+  const sev = adverseDistance / severityUnit;
   return Number.isFinite(sev) && sev > 0 ? sev : null;
 }
 
@@ -77,7 +83,7 @@ export function computeAttentionFlags({
         hiFence: number;
         iqr: number;
         denom: number;
-        scale: number | null;
+        severityUnit: number | null;
         medianText: string;
       }
     >();
@@ -96,7 +102,7 @@ export function computeAttentionFlags({
         loFence: p25 - 1.5 * iqr,
         hiFence: p75 + 1.5 * iqr,
         denom: Math.abs(p50) > 1e-9 ? Math.abs(p50) : 1,
-        scale: iqr > 1e-9 ? iqr : Math.abs(p50) > 1e-9 ? Math.abs(p50) : null,
+        severityUnit: cohortScale(iqr, p50),
         medianText: formatMetricValue(p50, r.format, r.unit),
       });
     }
@@ -116,7 +122,7 @@ export function computeAttentionFlags({
         : 0;
 
       if (higherIsBetter && v === 0 && st && st.p50 > 0) {
-        const sev = severityIn(st.scale, st.p50 - v);
+        const sev = severityIn(st.severityUnit, st.p50 - v);
         if (sev != null) {
           out.push({
             personId, name, metricKey: key, metricLabel: label, kind: "collapse",
@@ -132,7 +138,7 @@ export function computeAttentionFlags({
         (higherIsBetter ? v < st.loFence : v > st.hiFence) &&
         relGap >= OUTLIER_MIN_REL_GAP
       ) {
-        const sev = severityIn(st.scale, higherIsBetter ? st.p50 - v : v - st.p50);
+        const sev = severityIn(st.severityUnit, higherIsBetter ? st.p50 - v : v - st.p50);
         if (sev != null) {
           out.push({
             personId, name, metricKey: key, metricLabel: label, kind: "outlier",
@@ -155,7 +161,7 @@ export function computeAttentionFlags({
             : true;
           if (adverse >= DELTA_MIN && outOfPack) {
             const moved = higherIsBetter ? pv - v : v - pv;
-            const sev = st ? severityIn(st.scale, moved) : null;
+            const sev = st ? severityIn(st.severityUnit, moved) : null;
             out.push({
               personId, name, metricKey: key, metricLabel: label, kind: "decline",
               moved: higherIsBetter ? "down" : "up", valueText,

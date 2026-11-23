@@ -8,7 +8,10 @@ import type {
   MetricResultsResponse,
 } from "@/api/metric-results-client";
 import { queryMetricResults } from "@/api/metric-results-client";
-import type { MetricCollectionConfig } from "@/lib/metrics/collection";
+import {
+  entityChunkSize,
+  type MetricCollectionConfig,
+} from "@/lib/metrics/collection";
 import {
   collectionSetPending,
   useMetricCollection,
@@ -311,7 +314,9 @@ describe("useMetricCollectionSet", () => {
     await waitFor(() =>
       expect(result.current.get("g")?.isPending).toBe(false),
     );
-    expect(mock).toHaveBeenCalledTimes(3);
+    const chunkSize = entityChunkSize(COLLECTION);
+    expect(chunkSize).not.toBeNull();
+    expect(mock).toHaveBeenCalledTimes(Math.ceil(ids.length / chunkSize!));
     expect(result.current.get("g")?.byKey.get("m")?.period?.values).toHaveLength(
       3000,
     );

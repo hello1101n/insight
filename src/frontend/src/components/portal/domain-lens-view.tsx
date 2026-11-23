@@ -53,10 +53,7 @@ import {
   type MetricCollectionConfig,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
-import type {
-  MetricBucket,
-  MetricDirection,
-} from "@/api/metric-results-client";
+import type { MetricDirection } from "@/api/metric-results-client";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import {
   useMetricEvidenceOptional,
@@ -64,7 +61,7 @@ import {
 } from "@/components/metric-evidence-context";
 import { peopleEvidenceView, type RosterLookups } from "@/lib/portal/evidence-people";
 import { formatMetricValue } from "@/lib/format";
-import { seriesColors } from "@/lib/series-colors";
+import { segmentLegend } from "@/lib/portal/bar-legend";
 import {
   labelForDimensionValue,
   toBarRows,
@@ -76,7 +73,7 @@ import {
 import { narrowedEvidenceSelection } from "@/lib/metrics/evidence-targets";
 import { evidenceMetricFor } from "@/lib/metrics/evidence-via";
 import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
-import { reachableMetricKeys } from "@/lib/insight/coverage";
+import { everObservedMetricKeys } from "@/lib/insight/coverage";
 import {
   dayHourMatrix,
   HOUR_BLOCKS,
@@ -90,6 +87,7 @@ import {
   entityValues,
   familyObserved,
   fmtCompact,
+  isAdditive,
   medianAcross,
   perCapita,
   perPersonReading,
@@ -97,6 +95,7 @@ import {
   type PerPersonReading,
 } from "@/lib/portal/metric-stats";
 import {
+  isTenantLens,
   lensEntry,
   overviewCardDirections,
   sectionMetricKeys,
@@ -109,10 +108,17 @@ import {
   buildActiveContributorData,
   buildMedianTrendData,
   buildTrendData,
+  firstUnfinishedBucket,
   pickTrendBucket,
+  wholeBuckets,
+  type TrendWindow,
 } from "@/lib/portal/trend-data";
 import { bucketBreakdown, bucketRange } from "@/lib/portal/trend-drilldown";
-import { runningBucketStart } from "@/lib/portal/person-trend";
+import {
+  breakdownRequest,
+  heatmapRequest,
+  HOUR_BLOCK_DIMENSION,
+} from "@/lib/portal/section-requests";
 import {
   TrendDrilldownDialog,
   type TrendDrilldownState,
@@ -133,12 +139,11 @@ import { chartColor } from "@/lib/chart-palette";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const NO_METRICS: readonly string[] = [];
-const DAY_MS = 86_400_000;
 const OWN_NAME = "You";
 
 export function DomainLensView({
   config: declared,
-  gridKeys: gridKeysProp,
+  fetchOnlyKeys,
   embedded = false,
   personId = null,
   "data-testid": testId,
@@ -147,7 +152,7 @@ export function DomainLensView({
   config: LensConfig;
   embedded?: boolean;
   personId?: string | null;
-  gridKeys?: readonly string[];
+  fetchOnlyKeys?: readonly string[];
 }) {
   const { t } = useTranslation();
   const { dateRange, compareTo } = usePortalPeriod();
@@ -237,15 +242,15 @@ export function DomainLensView({
   const personalReach = useMemo(
     () =>
       personId && definitions.data
-        ? reachableMetricKeys(definitions.data.metrics)
+        ? everObservedMetricKeys(definitions.data.metrics)
         : null,
     [personId, definitions.data]
   );
 
   const lensKeys = useMemo(() => sectionMetricKeys(config), [config]);
   const fetchKeys = useMemo(
-    () => (gridKeysProp ? [...gridKeysProp] : lensKeys),
-    [gridKeysProp, lensKeys]
+    () => (fetchOnlyKeys ? [...fetchOnlyKeys] : lensKeys),
+    [fetchOnlyKeys, lensKeys]
   );
   const gridCollection = useMemo<MetricCollectionConfig>(
     () => ({
@@ -321,22 +326,10 @@ export function DomainLensView({
       ),
     [config]
   );
-  const compCollection = useMemo<MetricCollectionConfig>(() => {
-    const dims = new Map<string, Set<string>>();
-    for (const s of breakdownSections) {
-      const set = dims.get(s.metric) ?? new Set<string>();
-      set.add(s.dimension);
-      if (s.kind === "composition" && s.splitBy) set.add(s.splitBy);
-      dims.set(s.metric, set);
-    }
-    return {
-      metrics: [...dims].map(([key, set]) => ({
-        key,
-        ...(scopeFilters ? { filters: scopeFilters } : {}),
-        views: [{ view: "breakdown" as const, dimensions: [...set] }],
-      })),
-    };
-  }, [breakdownSections, scopeFilters]);
+  const compCollection = useMemo(
+    () => breakdownRequest(breakdownSections, scopeFilters),
+    [breakdownSections, scopeFilters]
+  );
   const compData = useMetricCollection(
     breakdownSections.length && memberIds.length
       ? compCollection
@@ -416,20 +409,8 @@ export function DomainLensView({
       ),
     [config]
   );
-  const hourCollection = useMemo<MetricCollectionConfig>(
-    () => ({
-      metrics: hourSections.map((s) => ({
-        key: s.metric,
-        ...(scopeFilters ? { filters: scopeFilters } : {}),
-        views: [
-          {
-            view: "timeseries" as const,
-            bucket: "day" as const,
-            dimensions: [HOUR_BLOCK_DIMENSION],
-          },
-        ],
-      })),
-    }),
+  const hourCollection = useMemo(
+    () => heatmapRequest(hourSections, scopeFilters),
     [hourSections, scopeFilters]
   );
   const hourData = useMetricCollection(
@@ -479,7 +460,7 @@ export function DomainLensView({
     memberIds,
     personId ? personalReach : undefined
   );
-  const sharesDecide = !membersObserved;
+  const waitOnShare = !membersObserved;
   const gate = orgScopeGate({
     "data-testid": testId,
     viewerLoading: !personId && orgScope.isLoading,
@@ -487,8 +468,8 @@ export function DomainLensView({
     membersLoading: false,
     membersError: false,
     memberCount: members.length,
-    gridPending: grid.isPending || (sharesDecide && unattributedShares.isPending),
-    gridError: grid.isError || (sharesDecide && unattributedShares.isError),
+    gridPending: grid.isPending || (waitOnShare && unattributedShares.isPending),
+    gridError: grid.isError || (waitOnShare && unattributedShares.isError),
     emptyLabel:
       "No people in the current scope. Pick a different scope at the top of the page.",
     onRetry: () => {
@@ -956,7 +937,6 @@ function ParticipationSection({
   const prevActive = memberIds.filter((id) =>
     isActive(grid.previousByKey, id)
   ).length;
-  if (memberIds.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-3">
@@ -1052,7 +1032,7 @@ function positiveShare(
   key: string,
   unattributedByKey: Map<string, number | null>
 ): number | null {
-  if (r.computation !== "sum") return null;
+  if (!isAdditive(r)) return null;
   const share = unattributedByKey.get(key) ?? null;
   return share != null && share > 0 ? share : null;
 }
@@ -1277,33 +1257,6 @@ export interface TrendChart {
   data: SectionTrendPoint[];
 }
 
-interface TrendWindow {
-  bucket: MetricBucket;
-  startsFrom: string;
-  finishedBefore: string;
-}
-
-function firstUnfinishedBucket(rangeTo: string, bucket: MetricBucket): string {
-  return runningBucketStart(dayAfter(rangeTo), bucket);
-}
-
-function dayAfter(isoDate: string): string {
-  return new Date(Date.parse(`${isoDate}T00:00:00Z`) + DAY_MS)
-    .toISOString()
-    .slice(0, 10);
-}
-
-function wholeBuckets<T extends { date: string }>(
-  rows: readonly T[],
-  trendWindow: TrendWindow
-): T[] {
-  return rows.filter(
-    (row) =>
-      row.date >= trendWindow.startsFrom &&
-      row.date < trendWindow.finishedBefore
-  );
-}
-
 function trendCharts(
   spec: Extract<SectionSpec, { kind: "trend" }>,
   grid: GridData,
@@ -1317,7 +1270,7 @@ function trendCharts(
       const r = grid.byKey.get(key);
       if (!r) return null;
       const label = r.short_label ?? r.label;
-      if (r.computation !== "sum") {
+      if (!isAdditive(r)) {
         return {
           id: key,
           title: label,
@@ -2059,8 +2012,6 @@ function HeatmapHoursSection({
 
 const DIMENSION_TABLE_ROWS = 12;
 
-const HOUR_BLOCK_DIMENSION = "hour_block";
-
 function tableCellText(
   value: number | null | undefined,
   result: NormalizedMetricResult
@@ -2145,7 +2096,7 @@ function DimensionTableSection({
         cells: new Map<string, number | null>(
           results.map((r) => [
             r.metric_key,
-            r.computation === "sum"
+            isAdditive(r)
               ? rest.reduce(
                   (sum, row) => sum + (row.cells.get(r.metric_key) ?? 0),
                   0
@@ -2526,7 +2477,7 @@ function DirectionCardsSection({
   const cards = overviewCardDirections(showPlanned)
     .map((d) => {
       const entry = lensEntry(d.id, "Overview");
-      if (!entry || "comingSoon" in entry || "entity" in entry) return null;
+      if (!entry || "comingSoon" in entry || isTenantLens(entry)) return null;
       const gated = visibleSections(entry, showPlanned);
       const headline = gated.sections.find(
         (s): s is Extract<SectionSpec, { kind: "headline" }> =>
@@ -2657,7 +2608,7 @@ function ByUnitSection({
       s.kind === "headline"
   );
   if (!headline) return null;
-  const key = headline.metrics.find((k) => grid.get(k)?.computation === "sum");
+  const key = headline.metrics.find((k) => isAdditive(grid.get(k)));
   const r = key ? grid.get(key) : undefined;
   if (!r) return <SliceNote text={NO_COMPARABLE_UNITS_NOTE} />;
 
@@ -2744,20 +2695,7 @@ export function BarList({
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, BAR_LIST_COLLAPSED);
   const max = rows[0]?.value || 1;
-  const totals = new Map<string, { label: string; value: number }>();
-  for (const row of rows) {
-    for (const segment of row.segments ?? []) {
-      const seen = totals.get(segment.seed);
-      totals.set(segment.seed, {
-        label: seen?.label ?? segment.label,
-        value: (seen?.value ?? 0) + segment.value,
-      });
-    }
-  }
-  const colors = seriesColors([...totals.keys()]);
-  const legend = [...totals.entries()]
-    .sort((a, b) => b[1].value - a[1].value)
-    .map(([seed, { label }]) => ({ seed, label, color: colors[seed] }));
+  const { colors, legend } = segmentLegend(rows);
 
   return (
     <section className="flex flex-col gap-3">

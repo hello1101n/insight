@@ -8,7 +8,7 @@ import {
   type KeyedCollection,
 } from "@/queries/metric-results";
 
-const MAX_METRICS_PER_REQUEST = 50;
+export const MAX_METRICS_PER_REQUEST = 50;
 
 export interface MetricsViewData {
   byKey: Map<string, NormalizedMetricResult>;
