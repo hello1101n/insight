@@ -23,6 +23,10 @@ disables existing ones on 30 April 2027.
    created by an agent fails `check` with 403.
 3. Survey CSAT and Help Center are optional products. An account without them
    gets empty streams, not an error.
+4. Ticket links to Jira issues come from the Zendesk Jira integration. An
+   account without the integration gets empty link streams. For the Jira
+   integration V2, copy its external ID from Admin Center → Apps and
+   integrations → Integrations → Jira → Edit into `zendesk_jira_external_id`.
 
 ## K8s Secret
 
@@ -43,6 +47,7 @@ stringData:
   zendesk_client_id: "<oauth-client-id>"
   zendesk_secret: "<oauth-client-secret>"
   zendesk_start_date: ""
+  zendesk_jira_external_id: ""
 ```
 
 | Field | Required | Description |
@@ -51,6 +56,7 @@ stringData:
 | `zendesk_client_id` | yes | The OAuth client's identifier |
 | `zendesk_secret` | yes | The OAuth client's secret |
 | `zendesk_start_date` | no | Earliest day to read, `YYYY-MM-DD`. Empty reads the whole account, so every ticket keeps its `Create` event |
+| `zendesk_jira_external_id` | no | External ID of the Jira integration V2. Empty skips the V2 links |
 
 `tenant_id`, `source_id` and `unique_key` are added to every record
 (`{tenant_id}-{source_id}-{id}`); do not put them in the Secret.
@@ -71,6 +77,8 @@ to `zendesk.yaml` (gitignored), fill it in, run `./secrets/apply.sh`.
 | `zendesk_survey_responses` | `guide/survey_responses` (survey CSAT) | incremental on the latest answer |
 | `zendesk_kb_articles` | `help_center/incremental/articles.json` | incremental on `updated_at` |
 | `zendesk_merge_audits` | `tickets/{id}/audits.json` of tickets tagged `closed_by_merge`, merge audit only | incremental |
+| `zendesk_jira_links` | `jira/links`, links of the original Jira integration | full refresh |
+| `zendesk_jira_links_v2` | `integrations/jira/{external_id}/links`, links of the Jira integration V2 | full refresh |
 | `zendesk_groups`, `zendesk_group_memberships`, `zendesk_ticket_fields`, `zendesk_ticket_forms`, `zendesk_custom_statuses`, `zendesk_brands`, `zendesk_sla_policies`, `zendesk_schedules`, `zendesk_deleted_tickets` | list endpoints | full refresh |
 
 The incremental exports share one budget of 10 requests a minute per account;
@@ -92,6 +100,7 @@ Staging parses `payload_json` into one model per class; each is tagged
 | `class_support_agents`, `class_support_customers` | users by role, organizations |
 | `class_support_groups`, `class_support_group_memberships` | groups, memberships |
 | `class_support_field_definitions`, `class_support_schedules`, `class_support_kb_articles` | ticket fields, schedules, Help Center articles |
+| `class_support_ticket_issue_links` | links of both Jira integration versions |
 
 `zendesk__ticket_event_items` is the shared parse of the event export: one row
 per field an update set, or per comment it added.

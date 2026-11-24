@@ -39,6 +39,25 @@ definitions:
         http_codes: [401, 403]
         error_message: "Zendesk rejected the request: check zendesk_client_id and zendesk_secret, that the OAuth client allows the read scope, and that it was created by an administrator."
 
+  # SAFETY: the Jira link endpoints answer 403 or 404 when the account runs no
+  # Jira integration of that version; the stream is empty, the sync continues.
+  optional_integration_error_handler: &optional_integration_error_handler
+    type: DefaultErrorHandler
+    backoff_strategies:
+      - type: WaitTimeFromHeader
+        header: Retry-After
+    response_filters:
+      - type: HttpResponseFilter
+        action: IGNORE
+        http_codes: [403, 404]
+      - type: HttpResponseFilter
+        action: RATE_LIMITED
+        http_codes: [429, 503]
+      - type: HttpResponseFilter
+        action: FAIL
+        http_codes: [401]
+        error_message: "Zendesk rejected the request: check zendesk_client_id and zendesk_secret, that the OAuth client allows the read scope, and that it was created by an administrator."
+
   # The token lives 30 minutes and has no refresh token; a new one is
   # requested before it expires.
   authenticator: &authenticator
@@ -93,6 +112,18 @@ definitions:
       type: CursorPagination
       cursor_value: "{{ response.get('meta', {}).get('after_cursor', '') }}"
       stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after_cursor') }}"
+    page_token_option:
+      type: RequestOption
+      field_name: "page[after]"
+      inject_into: request_parameter
+
+  # Jira integration V2 names its cursor `meta.after`, not `meta.after_cursor`.
+  v2_cursor_paginator: &v2_cursor_paginator
+    type: DefaultPaginator
+    pagination_strategy:
+      type: CursorPagination
+      cursor_value: "{{ response.get('meta', {}).get('after', '') }}"
+      stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after') }}"
     page_token_option:
       type: RequestOption
       field_name: "page[after]"
@@ -722,6 +753,70 @@ streams:
       - type: AddFields
         fields: *stamp
 
+
+  - type: DeclarativeStream
+    name: zendesk_jira_links
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: jira/links
+        request_parameters:
+          page[size]: "1000"
+        error_handler: *optional_integration_error_handler
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [links] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  # V2 links carry no id of their own: a link is the ticket and issue pair.
+  # An unset external id reads a path Zendesk answers with 404: no records.
+  - type: DeclarativeStream
+    name: zendesk_jira_links_v2
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          ticket_id: { type: [string, "null"] }
+          issue_id: { type: [string, "null"] }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "integrations/jira/{{ config.get('zendesk_jira_external_id') or 'not-configured' }}/links"
+        request_parameters:
+          page[size]: "100"
+        error_handler: *optional_integration_error_handler
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [links] }
+      paginator: *v2_cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields:
+          - type: AddedFieldDefinition
+            path: [tenant_id]
+            value: "{{ config['insight_tenant_id'] }}"
+          - type: AddedFieldDefinition
+            path: [source_id]
+            value: "{{ config['insight_source_id'] }}"
+          - type: AddedFieldDefinition
+            path: [unique_key]
+            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['ticket_id'] }}-{{ record['issue_id'] }}"
+
 concurrency_level:
   type: ConcurrencyLevel
   default_concurrency: 4
@@ -767,6 +862,11 @@ spec:
         description: Earliest day to read (YYYY-MM-DD). Empty reads the whole account.
         pattern: "^(\\d{4}-\\d{2}-\\d{2})?$"
         order: 5
+      zendesk_jira_external_id:
+        type: string
+        title: Jira integration V2 external ID
+        description: Only for an account on the Jira integration V2. Copy it from Admin Center, Apps and integrations, Integrations, Jira, Edit. Empty skips the V2 links.
+        order: 6
     additionalProperties: true
 
 metadata:
@@ -788,4 +888,6 @@ metadata:
     zendesk_schedules: true
     zendesk_deleted_tickets: true
     zendesk_kb_articles: true
+    zendesk_jira_links: true
+    zendesk_jira_links_v2: true
     zendesk_merge_audits: true

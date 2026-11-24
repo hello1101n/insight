@@ -1,6 +1,6 @@
 # Technical Design — Support Domain
 
-Version 0.6 — November 2026
+Version 0.7 — November 2026
 Based on: #886, #2297
 
 Target bronze → silver design for customer support data, with Zendesk as the
@@ -74,7 +74,8 @@ posts `grant_type=client_credentials` with its id and secret to
 token, so it requests a new one before expiry. The token acts as the admin who
 created the client, which the incremental exports, SLA policies and
 satisfaction data require. The secret carries `zendesk_subdomain`,
-`zendesk_client_id` and `zendesk_secret`.
+`zendesk_client_id` and `zendesk_secret`. An account on the Jira integration
+V2 also sets `zendesk_jira_external_id`.
 
 **Why many tables:** a ticket has many updates, each update many events; SLA,
 ratings and metric events are separate objects with their own lifecycles, and
@@ -95,6 +96,8 @@ custom fields, statuses and schedules are needed to decode them.
 | `zendesk_deleted_tickets` | `deleted_tickets` | full refresh | Deletion census |
 | `zendesk_merge_audits` | `tickets/{id}/audits` for tickets tagged `closed_by_merge` | per ticket, once | Link from a merged ticket to its target |
 | `zendesk_kb_articles` | `help_center/incremental/articles` | incremental, time | Knowledge base (Guide) |
+| `zendesk_jira_links` | `jira/links` | full refresh, cursor | Ticket links to Jira issues, original Jira integration |
+| `zendesk_jira_links_v2` | `integrations/jira/{external_id}/links` | full refresh, cursor | Ticket links to Jira issues, Jira integration V2 |
 
 **Throughput.** Per the vendor documentation:
 
@@ -208,6 +211,7 @@ Facts and dimensions only; per-day aggregates and thresholds belong to gold.
 | `class_support_field_definitions` | field × version | ticket field snapshots |
 | `class_support_schedules` | schedule × interval | business-hours schedules |
 | `class_support_kb_articles` | article × event | Guide articles |
+| `class_support_ticket_issue_links` | ticket × tracker issue × way found | Jira integration links |
 
 Every class also carries `unique_key`, `tenant_id`, `insight_source_id`,
 `data_source`, `collected_at`, `_version`; they are omitted below.
@@ -330,6 +334,62 @@ How the two generations merge:
 - `class_support_kb_articles`: `article_id`, `event_type` (`created`,
   `published`, `updated`, `archived`), `author_id`, `occurred_at`.
 
+### Links to tracker issues
+
+`class_support_ticket_issue_links` connects a ticket to the tracker issue that
+fixes it. It is the input of the escalation chain ticket → issue → fix in
+[section 9](#9-metrics-and-audiences).
+
+| Column | Meaning |
+|---|---|
+| `ticket_id` | Native ticket id |
+| `tracker` | `jira` |
+| `issue_id` | Immutable issue id in the tracker; the join key to task tracking |
+| `issue_key` | Issue key as last reported; display only |
+| `found_by` | `integration` or `integration_v2` |
+| `linked_at` | Link creation; NULL for V2, which reports no time |
+| `last_seen_at` | Last sync that listed the link |
+
+**Source: the Zendesk Jira integration.** An agent links a ticket to an issue
+in the integration's sidebar app. Zendesk keeps the link and lists it through
+an admin-only endpoint. The two integration versions have two endpoints:
+
+- The original version lists `jira/links` with cursor pages of up to 1000.
+  A link has `id`, `ticket_id`, `issue_id`, `issue_key`, `created_at`.
+- Version 2 lists `integrations/jira/{external_id}/links` with pages of up
+  to 100. A link has only `ticket_id`, `issue_id`, `issue_key`. Zendesk
+  documents no endpoint that lists the external id. The operator copies it
+  from Admin Center into the secret.
+
+Zendesk plans to retire V2 and return to the original version. Accounts on V2
+stay on it, so the connector reads both. An account without an integration
+gets 403 or 404; the stream is empty.
+
+**`issue_id` is the join key, not `issue_key`.** A key changes when the issue
+moves to another project; the id does not. Task tracking keys its issues by
+the same immutable id, as `class_task_references` does.
+
+**A removed link is not deleted.** Neither endpoint has a change filter, so
+each sync reads the whole listing. Bronze keeps a link that the listing no
+longer holds. A link whose `last_seen_at` is older than the latest sync of its
+source is removed. Gold applies this rule; silver keeps the evidence.
+
+**Joining to task tracking is gold's work.** A Jira issue id is unique within
+one Jira site. Gold joins the link to the Jira source that the operator binds
+to the Zendesk source, through the operator settings below.
+
+**Not built yet.** Two more ways to find a link exist:
+
+- The integration can write the Jira fields "Zendesk Ticket IDs" and "Zendesk
+  Ticket Count". Task tracking already stores every Jira custom field, so the
+  ticket ids are in `class_task_field_history`. They name no Zendesk account.
+- A team without the integration can keep the issue key in a ticket custom
+  field. It is already in `custom_attrs` and the field history. An operator
+  setting would name the field.
+
+Both become more `found_by` values of the same class. See
+[OQ-4](#oq-4-other-trackers).
+
 ### Operator settings
 
 Settings Zendesk does not hold — the minimum number of ratings before CSAT is
@@ -406,8 +466,8 @@ before gold is built.
 
 The cross-domain family is what a helpdesk's own reporting cannot answer and
 the reason the domain is in Insight. Two of its inputs are not in this design
-yet: release markers come from a CI connector, and the ticket → tracker link
-needs the vendor's per-ticket related-information endpoint (`jira_issue_ids`).
+yet: release markers come from a CI connector. The ticket → tracker link comes
+from the Jira integration, see [Links to tracker issues](#links-to-tracker-issues).
 
 ### Access
 
@@ -486,6 +546,7 @@ Intercom, and ServiceNow or Salesforce.
 | Users | agents only, full refresh | all users, incremental export |
 | Groups, organizations, fields, statuses, schedules | none | dictionary streams with history kept in silver |
 | Knowledge base | none | Guide articles |
+| Tracker links | none | links of both Jira integration versions |
 | Silver | `class_support_activity` (person × day) + two dims | fact and dimension classes above; aggregates move to gold |
 | Gold | none | out of scope here |
 
@@ -550,6 +611,12 @@ A multi-select carries its whole set; whether `lookup` and `multi_lookup`
 fields do the same is unverified. A delta would show up as a `snapshot_diff`
 against the ticket snapshot.
 
+### OQ-4: Other trackers
+
+Zendesk has a link API for Jira only. GitHub, Linear and YouTrack links come
+from marketplace apps or the tracker's own integration. Whether one of them is
+needed, and through which API, is open.
+
 ## Sources
 
 Zendesk developer and help documentation:
@@ -572,4 +639,7 @@ Zendesk developer and help documentation:
 - [Private ticket groups](https://support.zendesk.com/hc/en-us/articles/4988173561370-Creating-private-ticket-groups-and-granting-agents-access)
 - [Removal of API tokens](https://support.zendesk.com/hc/en-us/articles/10851263566234-Announcing-the-removal-of-API-tokens-as-an-authentication-method-for-API-requests)
 - [Migrating from API tokens to OAuth](https://developer.zendesk.com/documentation/authentication/oauth-migration/)
+- [Jira links](https://developer.zendesk.com/api-reference/ticketing/jira/jira_links/)
+- [Jira integration links V2](https://developer.zendesk.com/api-reference/ticketing/jira_v2/jira_integration_links_v2/)
+- [Reporting on Jira-linked tickets](https://support.zendesk.com/hc/en-us/articles/4408843823642-Jira-Linked-tickets-reporting)
 - [Reporting on merged tickets](https://support.zendesk.com/hc/en-us/articles/4419174418202-What-Analytics-reporting-options-are-available-for-merged-tickets)

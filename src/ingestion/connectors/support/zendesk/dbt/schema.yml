@@ -19,8 +19,12 @@ sources:
       - name: zendesk_deleted_tickets
       - name: zendesk_kb_articles
       - name: zendesk_merge_audits
+      - name: zendesk_jira_links
+      - name: zendesk_jira_links_v2
 
 models:
+  - name: zendesk__support_ticket_issue_links
+    description: "Ticket links to Jira issues from both Zendesk Jira integration versions; one row per ticket, issue and integration version."
   - name: zendesk__ticket_event_items
     description: "One row per field a ticket update set, or per comment it added; parsed from the bulk ticket-event export."
   - name: zendesk__user_kinds

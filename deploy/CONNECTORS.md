@@ -410,6 +410,7 @@ stringData:
   zendesk_client_id: "CHANGE_ME"             # confidential OAuth client, read scope
   zendesk_secret:    "CHANGE_ME"
   # zendesk_start_date: "2026-01-01"         # optional; empty reads the whole account
+  # zendesk_jira_external_id: "CHANGE_ME"    # optional; only for the Jira integration V2
 ```
 
 ### Quality & testing
