@@ -52,6 +52,35 @@ const percentText = (cell: string) =>
 
 const PERCENT = { value_type: "percent" } as const;
 
+// The warehouse writes a bucket as a UTC `2026-11-03 00:00:00`. The FrontX time
+// axis reads only ISO 8601 with a zone. CEL here has no replace.
+const instant = (value: string) =>
+  `(type(${value}) == string && size(${value}) > 10 && ${value}.substring(10, 11) == ' ' ? dyn(${value}.substring(0, 10) + 'T' + ${value}.substring(11) + 'Z') : ${value})`;
+
+const DATE = cel(String.raw`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])`);
+
+const MONTHS = cel(
+  "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")
+);
+
+const isDate = (value: string) =>
+  `(type(${value}) == string && ${value}.matches(${DATE}))`;
+
+// A FrontX category axis writes a date as it arrives. The current chart writes
+// `Nov 3`, and adds the year when the dates span more than one.
+const spansYears = `cel.bind(ys, response.rows.filter(r, ${isDate("r[x]")}).map(r, r[x].substring(0, 4)), ys.exists(yr, yr != ys[0]))`;
+
+const shortDate = (value: string) =>
+  `(${isDate(value)} ? dyn(${MONTHS}[int(${value}.substring(5, 7)) - 1] + ' ' + string(int(${value}.substring(8, 10))) + (w ? ', ' + ${value}.substring(0, 4) : '')) : ${value})`;
+
+// INVARIANT: `point` reads a row `r`, and the transform binds `w` to `withYear`.
+function xAxis(x: string) {
+  if (x === "bucket") {
+    return { type: "time", withYear: "false", point: instant("r[x]") };
+  }
+  return { type: "category", withYear: spansYears, point: shortDate("r[x]") };
+}
+
 function dataWidgetId(type: string, key: string): string {
   return `${DATA_WIDGET_TYPE_ID}frontx.dashboard.widget.${type}.v1~${uuidv5(key, NAMESPACE)}`;
 }
@@ -88,20 +117,19 @@ function series(
   kind: string,
   percent: boolean
 ): Drawn {
+  const axis = xAxis(widget.x);
+
   return {
     ...(percent ? { value_format: PERCENT } : {}),
     type: "cartesian_chart",
     render: {
       series: [{ name: widget.y, type: kind }],
-      x_axis: {
-        type: widget.x === "bucket" ? "time" : "category",
-        label: widget.x,
-      },
-      y_axis: { type: "value", label: widget.y },
+      x_axis: { type: axis.type },
+      y_axis: { type: "value" },
       legend_position: "none",
       drill_down: true,
     },
-    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, {'series': [{'name': ${cel(widget.y)}, 'points': response.rows.map(r, {'x': r[x], 'y': ${number("r", "y", percent)}})}]}))`,
+    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(w, ${axis.withYear}, cel.bind(y, ${column(widget.y)}, {'series': [{'name': ${cel(widget.y)}, 'points': response.rows.map(r, {'x': ${axis.point}, 'y': ${number("r", "y", percent)}})}]})))`,
   };
 }
 
@@ -123,7 +151,7 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
     case "line":
     case "area":
       return series(widget, widget.type, percent(widget.y));
-    case "bar":
+    case "bar": {
       if (!widget.series) {
         const bars = series(widget, "bar", percent(widget.y));
         return {
@@ -135,20 +163,19 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
         };
       }
       // CEL cannot group rows by a column, so each row is its own series.
+      const axis = xAxis(widget.x);
       return {
         type: "cartesian_chart",
         ...(percent(widget.y) ? { value_format: PERCENT } : {}),
         render: {
-          x_axis: {
-            type: widget.x === "bucket" ? "time" : "category",
-            label: widget.x,
-          },
-          y_axis: { type: "value", label: widget.y },
+          x_axis: { type: axis.type },
+          y_axis: { type: "value" },
           legend_position: "bottom",
           drill_down: true,
         },
-        transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, cel.bind(s, ${column(widget.series)}, {'series': response.rows.map(r, {'name': string(r[s]), 'points': [{'x': r[x], 'y': ${number("r", "y", percent(widget.y))}}]})})))`,
+        transform: `cel.bind(x, ${column(widget.x)}, cel.bind(w, ${axis.withYear}, cel.bind(y, ${column(widget.y)}, cel.bind(s, ${column(widget.series)}, {'series': response.rows.map(r, {'name': string(r[s]), 'points': [{'x': ${axis.point}, 'y': ${number("r", "y", percent(widget.y))}}]})}))))`,
       };
+    }
     case "stat":
       return {
         type: "metric_card",

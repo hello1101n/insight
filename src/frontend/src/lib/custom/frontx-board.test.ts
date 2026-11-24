@@ -175,15 +175,26 @@ describe("frontxBoard", () => {
     expect(bound(stacked).data.transform).toContain("string(r[s])");
   });
 
-  it("reads a date bucket on the x axis as time and any other column as a category", () => {
-    const [line, bar] = cells([{ widget: "line" }, { widget: "bar" }]);
+  it("reads a date bucket on the x axis as time, any other column as a category, and titles no axis", () => {
+    const [line, bar, stacked] = cells([
+      { widget: "line" },
+      { widget: "bar" },
+      { widget: "stacked" },
+    ]);
 
     expect(line.widget.render).toMatchObject({
-      x_axis: { type: "time", label: "bucket" },
+      x_axis: { type: "time" },
+      y_axis: { type: "value" },
     });
     expect(bar.widget.render).toMatchObject({
-      x_axis: { type: "category", label: "team" },
+      x_axis: { type: "category" },
+      y_axis: { type: "value" },
     });
+    for (const cell of [line, bar, stacked]) {
+      const render = cell.widget.render as Record<string, object>;
+      expect(render.x_axis, cell.widget.title).not.toHaveProperty("label");
+      expect(render.y_axis, cell.widget.title).not.toHaveProperty("label");
+    }
   });
 
   it("titles the board and each widget, and falls back to their names", () => {
@@ -207,21 +218,87 @@ describe("frontxBoard", () => {
   });
 });
 
-describe("frontxBoard percent columns", () => {
-  // An Insight percent column holds 0 to 100, as the run endpoint answers it.
-  function drawnData(body: Widget, percents: string[], answer: MetricResult) {
-    const board = frontxBoard("board", read([{ widget: "w" }]), [
-      { ...widget("w", body), percents },
-    ]);
-    const [cell] = dashboardOf(board).layout.cells;
-    const at = Object.fromEntries(answer.columns.map((name, i) => [name, i]));
-    const data = compileTransform(bound(cell).data.transform).evaluate({
-      response: { ...answer, at },
-    });
+function drawnData(body: Widget, percents: string[], answer: MetricResult) {
+  const board = frontxBoard("board", read([{ widget: "w" }]), [
+    { ...widget("w", body), percents },
+  ]);
+  const [cell] = dashboardOf(board).layout.cells;
+  const at = Object.fromEntries(answer.columns.map((name, i) => [name, i]));
+  const data = compileTransform(bound(cell).data.transform).evaluate({
+    response: { ...answer, at },
+  });
 
-    return { format: cell.widget.value_format, data };
+  return { format: cell.widget.value_format, data };
+}
+
+describe("frontxBoard x values", () => {
+  const LINE: Widget = { type: "line", metric: "m", x: "bucket", y: "runs" };
+  const BAR: Widget = { type: "bar", metric: "m", x: "day", y: "runs" };
+  const STACKED: Widget = { ...BAR, series: "outcome" };
+
+  function xs(body: Widget, values: unknown[]): unknown[] {
+    const columns = [
+      body.type === "line" ? "bucket" : "day",
+      "runs",
+      "outcome",
+    ];
+    const rows = values.map((value) => [value, 1, "ok"]);
+    const { data } = drawnData(body, [], { columns, rows });
+
+    return (data as { series: { points: { x: unknown }[] }[] }).series.flatMap(
+      (series) => series.points.map((point) => point.x)
+    );
   }
 
+  it.each<[string, unknown, unknown]>([
+    ["a date-time", "2026-11-03 00:00:00", "2026-11-03T00:00:00Z"],
+    ["an hour bucket", "2026-11-03 14:00:00", "2026-11-03T14:00:00Z"],
+    [
+      "fractional seconds",
+      "2026-11-03 00:00:00.000",
+      "2026-11-03T00:00:00.000Z",
+    ],
+    ["a date", "2026-11-03", "2026-11-03"],
+    ["epoch milliseconds", 1_793_664_000_000, 1_793_664_000_000],
+    ["null", null, null],
+  ])(
+    "hands a bucket that is %s to the time axis as ISO 8601",
+    (kind, value, x) => {
+      expect(xs(LINE, [value]), kind).toEqual([x]);
+    }
+  );
+
+  it.each<[string, Widget]>([
+    ["bar", BAR],
+    ["bar with a series column", STACKED],
+  ])(
+    "writes a date category of a %s as the current chart does",
+    (kind, body) => {
+      expect(
+        xs(body, ["2026-11-03", "2026-11-04 00:00:00", "team", 7, null]),
+        kind
+      ).toEqual(["Nov 3", "Nov 4", "team", 7, null]);
+      expect(xs(body, ["2026-12-31", "2027-01-01"]), kind).toEqual([
+        "Dec 31, 2026",
+        "Jan 1, 2027",
+      ]);
+    }
+  );
+
+  it("leaves a string that only starts like a date with no real month as it is", () => {
+    expect(xs(BAR, ["2026-13-01", "2026-00-10"])).toEqual([
+      "2026-13-01",
+      "2026-00-10",
+    ]);
+  });
+
+  it("draws no points for no rows", () => {
+    expect(xs(BAR, [])).toEqual([]);
+  });
+});
+
+describe("frontxBoard percent columns", () => {
+  // An Insight percent column holds 0 to 100, as the run endpoint answers it.
   const STAT: Widget = { type: "stat", metric: "m", value: "rate" };
   const RATE = { columns: ["rate"], rows: [[12.8]] };
 

@@ -72,7 +72,8 @@ Do not merge these changes. They exist only to compare the two renderers.
 - The theme comes from the `data-theme` attribute of the Insight page. A theme switch restyles every widget and sends no request.
 - The larger view opens and sends one run request. The data view of a chart sends no request.
 - A widget with no clock shows "All time" under its title.
-- A date bucket on the x axis shows formatted dates.
+- A date or date-time bucket on the x axis shows formatted dates. A date in any other x column shows as `Oct 3`, as in the current renderer.
+- No axis has a title, as in the current renderer.
 - The widgets keep the two columns of the current renderer. The adapter turns off the flexible FrontX layout.
 - A percent column shows as a percent when the widgets answer names it. A stat, a chart or a pie gets the FrontX percent format, and the transform divides the value by 100. A table writes the column as text, such as `24.3%`. Both renderers show the mock change failure rate as `12.8%`.
 
@@ -125,9 +126,9 @@ The entries are in the order the prototype hit them.
     - Workaround: both branches go through `dyn()`.
     - Real build: nothing. A FrontX note on this pattern would help authors.
 12. **The x axis showed raw dates.**
-    - What happened: a category axis shows `2026-10-03` where the current renderer shows `Oct 3`.
-    - Workaround: the adapter sets `x_axis.type` to `time` when the x column is `bucket`.
-    - Real build: nothing. Other date columns need the same rule.
+    - What happened: a category axis shows `2026-10-03` where the current renderer shows `Oct 3`. The FrontX time axis reads a date, epoch milliseconds, or an ISO 8601 date-time with a zone. A date-time bucket, such as `2026-10-03 00:00:00`, has no zone, so the time axis cannot read it.
+    - Workaround: the adapter sets `x_axis.type` to `time` when the x column is `bucket`. The service makes each bucket in UTC, so the transform writes a date-time bucket as `2026-10-03T00:00:00Z`. For any other x column, the transform writes a date as `Oct 3`. It adds the year when the dates span more than one year.
+    - Real build: nothing.
 13. **The percent columns arrive only with the run answer.**
     - What happened: an Insight percent column holds 0 to 100. The current renderer adds `%` to each column in the `percents` list of the run answer. A FrontX percent format reads a fraction (0.25 shows as 25%), and the dashboard file sets it before any answer arrives. The metric definition marks each percent field, but only an administrator can read a metric definition. The dashboard read and the widgets answer do not carry the flag. So nothing that a dashboard viewer reads before the run names the percent columns.
     - Workaround: the dev mocks add `percents` to each item of the widgets answer. With it, the adapter sets the percent format and divides by 100 in the transform.
@@ -188,6 +189,10 @@ The entries are in the order the prototype hit them.
     - What happened: the FrontX chart palette has 5 colours. A pie with 7 slices gives slices 6 and 7 the colours of slices 1 and 2. The current renderer has 12 colours.
     - Workaround: none.
     - Real build: a FrontX change.
+28. **Axis titles showed column names.**
+    - What happened: FrontX writes the `label` of each axis as its title. The adapter set the labels to column names, such as `bucket`. The current renderer shows no axis titles.
+    - Workaround: the adapter sets no axis label. The FrontX data view of a chart then calls the x column `x`.
+    - Real build: nothing. A FrontX field that names the data view column without an axis title would help.
 
 ## Blockers for the custom v3 dashboards
 
@@ -219,7 +224,7 @@ The list starts with the most important blocker.
 - FrontX shows up to two decimals, such as `47.25`. The current renderer shows one decimal for a value of 10 or more, such as `47.3`.
 - Date ticks include the year, such as `Oct 1, 2026`. A wide table scrolls sideways inside its cell.
 - Cells have fixed heights. A table shows five rows and then pages. The grid data holds 500 rows at most.
-- The "All time" badge becomes a line under the title. Headings lose the small uppercase style. Table headers are uppercase and the row-number column is gone. Axis titles show the column names.
+- The "All time" badge becomes a line under the title. Headings lose the small uppercase style. Table headers are uppercase and the row-number column is gone. The data view of a chart calls the x column `x`.
 - The `?widget=` link to an expanded widget has no FrontX equivalent.
 - A long category name loses its tick label. The current renderer shortens it.
 - A chart with more than five series or slices repeats colours. The current renderer has 12 colours.
@@ -236,7 +241,7 @@ The dev mocks hold these dashboards. Every number is synthetic. The paired scree
 - `pipeline-runs`: a long dashboard title and no time range. It holds a table with 12 columns and 650 rows, a table with 9 rows and a percent column, and a line with no clock.
 - `edge-cases`: a long heading, a long text, a long widget title and a long stat label. It also has a line and a table with no rows, a run that fails, a busy run, and a pie that names a column the metric does not return.
 - `reading-notes`: headings and texts only.
-- `chart-shapes`: chart shapes with long category names and many parts. It holds a stacked bar over days, a stacked bar over repositories, a bar over 12 long test names, bars over days, a bar over a date column that is not `bucket`, a top-10 bar, a percent line and a pie with 7 slices.
+- `chart-shapes`: chart shapes with long category names and many parts. It holds a stacked bar over days, a stacked bar over repositories, a bar over 12 long test names, bars over date-time buckets, a bar over a date column that is not `bucket`, a top-10 bar, a percent line and a pie with 7 slices.
 
 The notable differences per dashboard:
 
@@ -246,7 +251,7 @@ The notable differences per dashboard:
 - `pipeline-runs`: the 650-row table fails in FrontX (bump 24). The 9-row table shows three rows and pages, and its percent column is off to the right.
 - `edge-cases`: every failure stays in its cell in both renderers. FrontX says "This widget cannot be shown" for the failed run, the busy run and the wrong column alike.
 - `reading-notes`: both renderers show the text. FrontX headings are larger and not uppercase.
-- `chart-shapes`: both stacked bars break in FrontX (bump 3). FrontX labels 1 of the 12 long test names (bump 26), and the pie repeats two colours (bump 27). The date column that is not `bucket` shows raw dates (bump 12).
+- `chart-shapes`: both stacked bars break in FrontX (bump 3). FrontX labels 1 of the 12 long test names (bump 26), and the pie repeats two colours (bump 27). The date-time buckets and the date column that is not `bucket` show as dates in both renderers (bump 12).
 
 ## Measurements
 

@@ -867,7 +867,11 @@ export function exampleRun(
     case "cs-cost-per-day":
       return result(
         ["bucket", "cost_usd"],
-        span.map((day, i) => [day, Math.round((8 + wave(i) * 1.7) * 100) / 100])
+        // The warehouse writes a DateTime bucket with its time.
+        span.map((day, i) => [
+          `${day} 00:00:00`,
+          Math.round((8 + wave(i) * 1.7) * 100) / 100,
+        ])
       );
     case "cs-signups-per-day":
       return result(
