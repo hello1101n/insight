@@ -101,13 +101,13 @@ SELECT
     person_key                      AS email,
     date,
     sum(updates)                    AS updates,
-    sum(public_comments)            AS public_comments,
-    sum(private_comments)           AS private_comments,
+    toNullable(sum(public_comments)) AS public_comments,
+    toNullable(sum(private_comments)) AS private_comments,
     sum(solved)                     AS solved,
     -- KB authoring (pending Guide/Help-Center stream)
     CAST(NULL AS Nullable(UInt32))  AS kb_articles_created,
-    sum(csat_good)                  AS csat_good,
-    sum(csat_total)                 AS csat_total,
+    toNullable(sum(csat_good)) AS csat_good,
+    toNullable(sum(csat_total)) AS csat_total,
     now()                           AS collected_at,
     toUnixTimestamp64Milli(now64()) AS _version
 FROM merged

@@ -122,4 +122,4 @@ cd src/ingestion/tests/connectors
 
 ## Related
 
-- The `support_*` bronze tables and the `silver.class_support_activity` contract are cross-vendor by design; a second support connector would land beside this one rather than replace it. None exists today.
+- The `support_*` bronze tables and the `silver.class_support_activity` contract are cross-vendor by design; a second support connector lands beside this one rather than replace it. The HubSpot connector feeds the same classes from HubSpot tickets (see its README).
