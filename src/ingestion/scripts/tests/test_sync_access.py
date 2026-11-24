@@ -123,8 +123,7 @@ def test_sync_access_is_idempotent_and_only_syncs_are_memory_limited() -> None:
         execute(f"DROP DATABASE IF EXISTS {database}")
 
 
-@pytest.mark.parametrize("deferred", [True, False])
-def test_a_missing_sync_password_fails_unless_the_post_deploy_job_provisions_it(deferred: bool) -> None:
+def test_a_missing_sync_password_stops_provisioning() -> None:
     env = {
         "PATH": os.environ["PATH"],
         "CLICKHOUSE_URL": "http://127.0.0.1:9",
@@ -132,7 +131,7 @@ def test_a_missing_sync_password_fails_unless_the_post_deploy_job_provisions_it(
         "CLICKHOUSE_PASSWORD": "admin-fixture",
         "CLICKHOUSE_SYNC_USER": "sync_fixture",
         "CLICKHOUSE_SYNC_PASSWORD": "",
-    } | ({"CLICKHOUSE_SYNC_PASSWORD_DEFERRED": "true"} if deferred else {})
+    }
     result = subprocess.run(
         ["bash", str(SCRIPTS / "bootstrap-db/provision-sync-access.sh")],
         env=env,
@@ -140,8 +139,39 @@ def test_a_missing_sync_password_fails_unless_the_post_deploy_job_provisions_it(
         text=True,
         timeout=30,
     )
-    assert result.returncode == (0 if deferred else 1), result.stderr
-    if deferred:
-        assert "The post-deploy job provisions the sync user." in result.stdout
-    else:
-        assert "The ClickHouse sync password is missing from its Secret." in result.stderr
+    assert result.returncode == 1
+    assert "The ClickHouse sync password is missing from its Secret." in result.stderr
+
+
+def test_cluster_mode_takes_the_smallest_limit_of_the_replicas_that_answer(tmp_path: Path) -> None:
+    bodies = tmp_path / "bodies"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    curl = bin_dir / "curl"
+    curl.write_text(f"#!/bin/bash\ncat >> '{bodies}'\nprintf '\\n;\\n' >> '{bodies}'\nprintf '10000000001'\n")
+    curl.chmod(0o755)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "CLICKHOUSE_URL": "http://clickhouse.invalid:8123",
+        "CLICKHOUSE_USER": "admin",
+        "CLICKHOUSE_PASSWORD": "admin-fixture",
+        "CLICKHOUSE_DATABASE": "insight",
+        "CLICKHOUSE_CLUSTER_MODE": "true",
+        "CLICKHOUSE_CLUSTER_NAME": "insight_cluster",
+        "CLICKHOUSE_SYNC_USER": "sync_fixture",
+        "CLICKHOUSE_SYNC_PASSWORD": "sync-fixture",
+    }
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "bootstrap-db/provision-sync-access.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    statements = bodies.read_text().split("\n;\n")
+    assert statements[0] == (
+        "SELECT min(toUInt64(value)) FROM clusterAllReplicas('insight_cluster', system.server_settings) "
+        "WHERE name = 'max_server_memory_usage' SETTINGS skip_unavailable_shards = 1"
+    )
+    assert "max_memory_usage_for_user = 6000000000 CONST" in statements[1]

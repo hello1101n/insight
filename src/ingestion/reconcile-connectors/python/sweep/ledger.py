@@ -105,8 +105,8 @@ class Ledger:
             for name in (
                 "RECONCILE_DEST_CLICKHOUSE_HOST",
                 "RECONCILE_DEST_CLICKHOUSE_PORT",
-                "RECONCILE_DEST_CLICKHOUSE_USERNAME",
-                "RECONCILE_DEST_CLICKHOUSE_PASSWORD",
+                "RECONCILE_SWEEP_CLICKHOUSE_USERNAME",
+                "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD",
             )
             if not source.get(name)
         ]
@@ -124,8 +124,8 @@ class Ledger:
         port = source["RECONCILE_DEST_CLICKHOUSE_PORT"]
         return cls(
             f"{protocol}://{host}:{port}",
-            source["RECONCILE_DEST_CLICKHOUSE_USERNAME"],
-            source["RECONCILE_DEST_CLICKHOUSE_PASSWORD"],
+            source["RECONCILE_SWEEP_CLICKHOUSE_USERNAME"],
+            source["RECONCILE_SWEEP_CLICKHOUSE_PASSWORD"],
             cluster=_cluster_from_env(source),
         )
 

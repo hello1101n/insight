@@ -184,11 +184,13 @@ The sync user's total memory limit still applies. With no instance or chart quer
 Every installation runs Bronze loads, dbt, the identity seed, and connector checks as the sync user.
 Use a distinct username for each stand that shares a ClickHouse server.
 With `credentials.autoGenerate: true`, Helm generates the password in the `clickhouse-sync-password` key of `insight-db-creds`.
+Helm also copies it into a pre-deploy hook Secret, so the database jobs can create the account before the pods roll.
 With `credentials.autoGenerate: false`, add that key to the pre-created `insight-db-creds` before the upgrade.
-A missing key stops the post-deploy database job, and dbt pods do not start.
+A missing key stops the database job and the upgrade.
 With the default `clickhouse.provisionAccess: true`, the database job creates the account and applies its settings and grants.
-On the first upgrade that adds the generated key, the pre-deploy job skips the account and the post-deploy job creates it.
-Analytics, application services, and the independent scheduled data-quality catalog use their existing accounts.
+With `clickhouse.provisionAccess: false`, create the account and put its password in the key before the upgrade.
+Helm refuses to generate a password for an account it does not create.
+Analytics, application services, the reconcile sweep, and the independent scheduled data-quality catalog use their existing accounts.
 
 The next connector reconcile pass updates the ClickHouse destination on each existing managed Airbyte connection.
 The update preserves the destination ID, connection state, and other destination settings.
@@ -205,7 +207,7 @@ Bronze loads can fail authentication for up to one reconcile interval, until the
 
 Without `clickhouse.syncUser.totalMemoryBytes`, the database job reads `max_server_memory_usage` from ClickHouse.
 It sets the sync total to 60% of that value, rounded down to whole bytes.
-In cluster mode, it uses the smallest value across the replicas.
+In cluster mode, it uses the smallest value across the replicas that answer, and it stops if none answers.
 
 Measure query peaks during a representative Jira sync while Analytics runs.
 Use the largest applicable dbt model cap for each writer group.

@@ -8,10 +8,6 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/../lib/ch-exec.sh"
 
 if [[ -z "${CLICKHOUSE_SYNC_PASSWORD:-}" ]]; then
-  if [[ "${CLICKHOUSE_SYNC_PASSWORD_DEFERRED:-false}" == "true" ]]; then
-    echo "The ClickHouse sync password is not in its Secret yet. The post-deploy job provisions the sync user."
-    exit 0
-  fi
   echo "The ClickHouse sync password is missing from its Secret." >&2
   exit 1
 fi
@@ -28,7 +24,7 @@ if [[ -z "$total" ]]; then
   if ch_cluster_mode; then
     server_settings="clusterAllReplicas('${CLICKHOUSE_CLUSTER_NAME:?Set CLICKHOUSE_CLUSTER_NAME}', system.server_settings)"
   fi
-  if ! server="$(ch_scalar "SELECT min(toUInt64(value)) FROM $server_settings WHERE name = 'max_server_memory_usage'")" ||
+  if ! server="$(ch_scalar "SELECT min(toUInt64(value)) FROM $server_settings WHERE name = 'max_server_memory_usage' SETTINGS skip_unavailable_shards = 1")" ||
     (( server < 4 )); then
     echo "The ClickHouse server memory limit read failed." >&2
     exit 1

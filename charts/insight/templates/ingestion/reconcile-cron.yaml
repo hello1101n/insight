@@ -136,6 +136,13 @@ spec:
               value: {{ $passwordRef.key | quote }}
             - name: RECONCILE_DESTINATION_STATE
               value: {{ include "insight.fullname" . }}-reconcile-destinations
+            - name: RECONCILE_SWEEP_CLICKHOUSE_USERNAME
+              value: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            - name: RECONCILE_SWEEP_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
+                  key: {{ required "clickhouse.passwordSecret.key is required" .Values.clickhouse.passwordSecret.key | quote }}
             # Topology of the target ClickHouse (epic #2010). The Bronze
             # destination is the only creator of bronze tables, so it has to
             # know whether to emit `Replicated*` engines and `ON CLUSTER`.

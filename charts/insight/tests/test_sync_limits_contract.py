@@ -213,6 +213,11 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     assert {"name": "RECONCILE_SYNC_PASSWORD_SECRET", "value": "insight-db-creds"} in env
     assert {"name": "RECONCILE_SYNC_PASSWORD_KEY", "value": "clickhouse-sync-password"} in env
     assert not {entry["name"] for entry in env} & {"RECONCILE_DEST_CLICKHOUSE_PASSWORD", "RECONCILE_SYNC_USER_ENABLED"}
+    assert {"name": "RECONCILE_SWEEP_CLICKHOUSE_USERNAME", "value": "test"} in env
+    assert {
+        "name": "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD",
+        "valueFrom": {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-password"}},
+    } in env
     assert ("ConfigMap", "contract-reconcile-destinations") in default
     password = default["Secret", "insight-db-creds"]["stringData"]["clickhouse-sync-password"]
     assert len(password) == 24
@@ -222,12 +227,16 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
         for (kind, name), job in default.items()
         if kind == "Job" and name.endswith(("clickhouse-databases", "clickhouse-migrate"))
     }
-    reference = {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-sync-password", "optional": True}}
-    for name, job in jobs.items():
+    bootstrap = default["Secret", "contract-clickhouse-sync-bootstrap"]
+    assert bootstrap["stringData"] == {"password": password}
+    assert bootstrap["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade"
+    assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < 5
+    reference = {"secretKeyRef": {"name": "contract-clickhouse-sync-bootstrap", "key": "password", "optional": True}}
+    assert len(jobs) == 2
+    for job in jobs.values():
         assert job["CLICKHOUSE_SYNC_USER"]["value"] == "insight_sync"
         assert job["CLICKHOUSE_SYNC_PASSWORD"]["valueFrom"] == reference
         assert "CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES" not in job
-        assert ("CLICKHOUSE_SYNC_PASSWORD_DEFERRED" in job) == name.endswith("clickhouse-databases")
 
     for provision in (True, False):
         args = [
@@ -238,6 +247,7 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
         ]
         chart = render(*args)
         assert "clickhouse-sync-password" not in chart["Secret", "insight-db-creds"]["stringData"]
+        assert ("Secret", "contract-clickhouse-sync-bootstrap") not in chart
         credentials = {"valueFrom": {"secretKeyRef": {"name": "etl-credentials", "key": "etl-password"}}}
         for name in ("dbt-run", "connector-checks"):
             env = templates(chart, name)["run"]["script"]["env"]
@@ -276,11 +286,27 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
 def test_operator_credentials_carry_the_sync_password() -> None:
     chart = render("--set", "credentials.autoGenerate=false")
     assert ("Secret", "insight-db-creds") not in chart
+    assert ("Secret", "contract-clickhouse-sync-bootstrap") not in chart
     env = templates(chart, "dbt-run")["run"]["script"]["env"]
     assert {
         "name": "CLICKHOUSE_PASSWORD",
         "valueFrom": {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-sync-password"}},
     } in env
+    ddl = chart["Job", "contract-clickhouse-databases"]["spec"]["template"]["spec"]["containers"][0]["env"]
+    assert {
+        "name": "CLICKHOUSE_SYNC_PASSWORD",
+        "valueFrom": {
+            "secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-sync-password", "optional": True}
+        },
+    } in ddl
+
+
+def test_a_release_that_creates_no_users_never_generates_the_sync_password() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render("--set", "clickhouse.provisionAccess=false")
+    assert "clickhouse.provisionAccess is false, so this release does not create the ClickHouse sync user" in (
+        error.value.stderr
+    )
 
 
 @pytest.mark.parametrize("exit_code", [42, 43, 44, 45])

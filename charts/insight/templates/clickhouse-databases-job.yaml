@@ -105,6 +105,4 @@ spec:
               bash /ingestion/scripts/create-databases.sh
           env:
             {{- include "insight.clickhouse.ddlEnv" . | nindent 12 }}
-            - name: CLICKHOUSE_SYNC_PASSWORD_DEFERRED
-              value: "true"
 {{- end }}

@@ -25,7 +25,9 @@
 #   6. Delete the old orphan source_definition.
 #
 # Required env: KUBECONFIG, INSIGHT_NAMESPACE, AIRBYTE_URL,
-#               INSIGHT_TENANT_ID, CONNECTORS_DIR; GIT_PROXY_URL and
+#               INSIGHT_TENANT_ID, CONNECTORS_DIR,
+#               RECONCILE_SYNC_PASSWORD_SECRET, RECONCILE_SYNC_PASSWORD_KEY,
+#               RECONCILE_DESTINATION_STATE; GIT_PROXY_URL and
 #               GIT_PROXY_TOKEN when the descriptor sets
 #               platform_config.git_proxy.
 # Workspace UUID is auto-discovered via ab_workspace_id (ADR-0009).
@@ -63,6 +65,10 @@ source "${LIB_DIR}/discover.sh"
 # shellcheck source=../lib/reconcile.sh
 source "${LIB_DIR}/reconcile.sh"
 
+if ! ab_destination_credentials_init; then
+  printf 'The ClickHouse sync credentials or destination state read failed.\n' >&2
+  exit 1
+fi
 WORKSPACE_ID="$(ab_workspace_id)"
 RECONCILE_DESTINATION_ID="$(reconcile_resolve_destination_id "${CONNECTOR_NAME}")"
 

@@ -157,7 +157,16 @@ default
 - name: CLICKHOUSE_SYNC_USER
   value: {{ include "insight.clickhouse.syncUser" . | quote }}
 - name: CLICKHOUSE_SYNC_PASSWORD
-  {{- include "insight.clickhouse.syncPasswordRef" . | nindent 2 }}
+  valueFrom:
+    secretKeyRef:
+      {{- $ref := .Values.clickhouse.syncUser.passwordSecret }}
+      {{- if and .Values.credentials.autoGenerate (eq $ref.name "insight-db-creds") (eq $ref.key "clickhouse-sync-password") }}
+      name: {{ include "insight.fullname" . }}-clickhouse-sync-bootstrap
+      key: password
+      {{- else }}
+      name: {{ $ref.name | quote }}
+      key: {{ $ref.key | quote }}
+      {{- end }}
       optional: true
 {{- with .Values.clickhouse.syncUser.totalMemoryBytes }}
 - name: CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES
