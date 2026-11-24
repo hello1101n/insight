@@ -176,7 +176,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 | `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `amount`, `amount_home`, `currency`, `close_date`, `is_closed`, `is_won`, `owner_id` |
 | `class_crm_activities` | engagement | `engagements_{calls,emails,meetings,tasks,notes,communications}` (+archived) | `activity_type`, `timestamp`, `owner_id`, `created_by_user_id`, `subject`, `body`, `direction`, `status`, `channel`, `duration_seconds`, `ended_at` |
 | `class_crm_leads` | lead | `leads` (+archived) | `lead_id`, `pipeline_id`, `stage_id`, `owner_id`, `contact_id`, `account_id` |
-| `class_crm_tickets` | ticket | `tickets` (+archived) | layout of `silver.dim_support_ticket`, then `pipeline_id`, `stage_id`, `content`, `deal_id` |
+| `class_crm_tickets` | ticket | `tickets` (+archived) | ticket attributes, then `pipeline_id`, `stage_id`, `content`, `deal_id` |
 | `class_crm_users` | owner | `owners` (+archived) | `user_id`, `hs_user_id`, `email`, `is_active`, `primary_team_id`, `team_ids` |
 | `class_crm_teams` | team | `owners.teams` | `team_id`, `name` |
 | `class_crm_associations` | record × associated object type | every object stream | `from_object_type`, `from_object_id`, `to_object_type`, `to_object_ids` |
@@ -188,7 +188,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 ### Notes per class
 
 - **Activities.** `body` is the engagement's free text: call notes, email plain text, meeting body, task body, note body, message text. Meeting `timestamp` is the meeting start; `ended_at` is set for meetings only. `channel` is set for communications only (`SMS`, `WHATS_APP`, `LINKEDIN_MESSAGE`, …). `contact_id` / `deal_id` / `account_id` hold the first association; the full lists are in `class_crm_associations`.
-- **Tickets.** Columns up to `_version` repeat `silver.dim_support_ticket` in name, order and type (including `insight_source_id`), so CRM and support tickets can be unioned positionally. `status_canonical` is `open` / `closed` from `hs_is_closed`; `priority_canonical` lowercases `hs_ticket_priority` with `MEDIUM` → `normal`; `type_canonical` is the lowercased category; `group_source_id` is the HubSpot team; requester and organisation are the first associated contact and company.
+- **Tickets.** `status_canonical` is `open` / `closed` from `hs_is_closed`; `priority_canonical` lowercases `hs_ticket_priority` with `MEDIUM` → `normal`; `type_canonical` is the lowercased category; `group_source_id` is the HubSpot team; requester and organisation are the first associated contact and company.
 - **Associations.** One row per record and associated object type with the complete id list, replaced whenever the record changes — a removed association disappears with the record's next version. Use `ARRAY JOIN to_object_ids` for pairs.
 - **Pipeline stages.** `is_won` is set for deal stages that close at probability 1 (HubSpot carries no explicit won flag); ticket stages carry `ticket_state` instead. Outcomes such as *refunded* are stage labels, read from `label`. A stage or pipeline the latest poll no longer returns stays with `is_deleted = 1` and its last label, so history still joins to it.
 - **Field history.** One row per value change of the tracked properties, with `change_source_type` (`CRM_UI`, `IMPORT`, `API`, `CALCULATED`, …). Deal stage transitions are `field = 'dealstage'`; time in stage is the gap to the next change of the same object and field.
@@ -196,18 +196,24 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 
 ### Support classes
 
-HubSpot tickets also feed the cross-vendor support classes that the Zendesk connector feeds.
+HubSpot tickets also feed the `class_support_*` contract that the Zendesk connector feeds. The models read the `hubspot__crm_*` staging models; the connector itself does not change.
 
-| Model | Feeds | Content |
+| Model | Feeds | Built from |
 |---|---|---|
-| `hubspot__support_ticket` | `silver.dim_support_ticket` | The ticket columns of `class_crm_tickets`, with `assignee_person_key` from the ticket owner's email |
-| `hubspot__support_activity` | `silver.class_support_activity` | Ticket edits and closes per person and day, from `tickets_property_history` |
+| `hubspot__support_tickets` | `class_support_tickets` | tickets, ticket stages, custom ticket properties |
+| `hubspot__support_ticket_field_history` | `class_support_ticket_field_history` | `tickets_property_history`, archived and merged tickets |
+| `hubspot__support_field_definitions` | `class_support_field_definitions` | ticket property definitions |
+| `hubspot__support_agents` | `class_support_agents` | owners |
+| `hubspot__support_customers` | `class_support_customers` | the contacts and companies that tickets name |
+| `hubspot__support_groups` | `class_support_groups` | teams |
+| `hubspot__support_group_memberships` | `class_support_group_memberships` | the current teams of each owner |
 
-- **Actor.** Each change goes to the user in `updatedByUserId`, through the owner that carries that `userId`. A change without a user, or with `change_source_type = 'IMPORT'`, counts for nobody.
-- **Updates.** One update is all the tracked properties one user changes on one ticket at one instant. The first value of each property is the creation value and is not an update. Only the properties in `tickets_property_history` count: stage, pipeline, owner and priority.
-- **Solved.** A change of `hs_pipeline_stage` to a closed stage (`isClosed` or `ticketState = CLOSED`). Each ticket counts once per person and day. HubSpot has no difference between solved and closed.
-- **Not measured.** `public_comments`, `private_comments`, `csat_good` and `csat_total` are NULL. The engagement streams have no association to tickets, and no stream reads feedback submissions.
-- **Status.** `status_canonical` is `open` or `closed`. HubSpot has no `pending` or `on_hold` state outside the custom stage labels.
+- **Status.** `status` is `open` or `closed`: a stage is closed when its `ticketState` is `CLOSED` or it is marked closed. `status_raw` is the stage id. `solved_at` and `closed_at` are both `closed_date`, because HubSpot does not tell solved from closed.
+- **History.** Only the tracked properties have history: stage, pipeline, owner and priority. The owner becomes `assignee_id` and the priority becomes `priority`. A stage change that opens or closes the ticket also writes a `status` row.
+- **Updates and actors.** One update (`event_id`) is all changes of one user on one ticket at one instant. The actor is the owner whose `userId` is `updatedByUserId`. A change without a user is `system`. `channel` is the `change_source_type`, so gold can exclude `IMPORT` or `AUTOMATION`.
+- **Availability.** An archived ticket is `deleted`, or `merged` when another ticket lists it in `hs_merged_object_ids`.
+- **Memberships.** HubSpot gives only the current teams of an owner, so `valid_from` is NULL.
+- **Not filled.** `class_support_interactions` needs the engagement streams to carry their association to tickets. `class_support_satisfaction` needs a feedback-submission stream. HubSpot has no source for the SLA, schedule, knowledge-base and issue-link classes.
 
 ### Identity
 
