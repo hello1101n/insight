@@ -11,8 +11,6 @@ Both land in `class_ai_assistant_usage`, as `claude_enterprise__ai_assistant_usa
 | `chat` | `ai.chat_assistant_conversations`, `ai.assistant_messages`, `ai.active_days` |
 | `cowork` | `ai.assistant_messages`, `ai.assistant_actions`, `ai.active_days` |
 
-Release notes must say Team `ai.active_days` now counts chat-only and Cowork-only days.
-
 ## Discovery questions
 
 Ask each for the chat tab and the Cowork tab.
