@@ -183,7 +183,18 @@ export function MetricsView() {
             align="end"
             className="max-h-[70svh] w-[min(56rem,90vw)] overflow-y-auto"
           >
-            <div className="flex items-center justify-end gap-2 border-b px-4 py-2">
+            <div className="flex items-center gap-2 border-b px-4 py-2">
+              <span className="me-auto text-sm text-muted-foreground tabular-nums">
+                {t("metrics_view.selected_count", { count: metricKeys.length })}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPicked(null)}
+              >
+                {t("metrics_view.reset_to_defaults")}
+              </Button>
               <Button
                 type="button"
                 variant="ghost"

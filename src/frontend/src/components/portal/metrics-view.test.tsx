@@ -418,6 +418,43 @@ describe("MetricsView", () => {
     expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed", "collab.messages_sent"]);
   });
 
+  it("counts the picked metrics in the picker's top bar", async () => {
+    mocks.definitions.push(
+      definition("git.default_branch_prs_merged", "PRs merged"),
+      definition("tasks.bugs_fixed", "Bugs fixed"),
+      definition("tasks.reopen_rate", "Reopen rate"),
+    );
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 6 of 6" }));
+
+    expect(screen.getByText("6 selected")).toBeInTheDocument();
+  });
+
+  it("restores the default set when Reset to defaults is pressed", async () => {
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
+
+    expect(portalRouter.search.metrics).toBeUndefined();
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("clears the selection with Clear all and shows a zero count", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Clear all metrics" }));
+
+    expect(portalRouter.search.metrics).toBe("none");
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+  });
+
   it("scopes the table to the person whose name is clicked", async () => {
     render(<MetricsView />);
 
