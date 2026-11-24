@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dashboard,
@@ -23,38 +23,34 @@ import { refusal } from "@/components/custom/refusal";
 
 const WIDGET_LIST = "/widgets/widgets.json";
 
-function hostFor(file: ServedFile): DashboardHost {
-  return {
-    loadFile: async (signal) => [
+let shown: { key: string; file: ServedFile } = {
+  key: "",
+  file: { types: [], instances: [] },
+};
+
+const host: DashboardHost = {
+  loadFile: async (signal) => {
+    const { file } = shown;
+    return [
       file,
       ...(await loadWidgetParts(WIDGET_LIST, signal, location.href)),
-    ],
-    request: async ({ method, path, body }, signal) => {
-      const res = await fetchWithAuth(path, {
-        method,
-        signal,
-        ...(body === undefined
-          ? {}
-          : { headers: JSON_HEADERS, body: JSON.stringify(body) }),
-      });
-      return frontxAnswer(await readJson<MetricResult>(res));
-    },
-  };
-}
+    ];
+  },
+  request: async ({ method, path, body }, signal) => {
+    const res = await fetchWithAuth(path, {
+      method,
+      signal,
+      ...(body === undefined
+        ? {}
+        : { headers: JSON_HEADERS, body: JSON.stringify(body) }),
+    });
+    return frontxAnswer(await readJson<MetricResult>(res));
+  },
+};
 
-const roots = new Map<string, DashboardRoot>();
+let root: DashboardRoot | undefined;
 
-// WORKAROUND: a DashboardRoot reads its served file once, so each version of a board file gets
-// its own root, and the roots stay for the life of the page.
-function rootFor(file: ServedFile): DashboardRoot {
-  const key = JSON.stringify(file.instances);
-  let root = roots.get(key);
-  if (!root) {
-    root = new DashboardRoot({ host: hostFor(file) });
-    roots.set(key, root);
-  }
-  return root;
-}
+const appRoot = () => (root ??= new DashboardRoot({ host }));
 
 function subscribeTheme(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
@@ -81,14 +77,18 @@ interface FrontxBoardProps {
 export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   const widgets = useQuery(dashboardWidgetsQuery(id));
   const theme = useAppliedTheme();
-  const board = useMemo(
-    () => (widgets.data ? frontxBoard(id, read, widgets.data) : undefined),
-    [id, read, widgets.data]
-  );
-  const root = useMemo(
-    () => (board ? rootFor(board.file) : undefined),
-    [board]
-  );
+  const board = useMemo(() => {
+    if (!widgets.data) return undefined;
+    const drawn = frontxBoard(id, read, widgets.data);
+    return { ...drawn, key: JSON.stringify(drawn.file.instances) };
+  }, [id, read, widgets.data]);
+
+  // INVARIANT: a layout effect, so the shown file changes before the dashboard's own effect reads it.
+  useLayoutEffect(() => {
+    if (!board || board.key === shown.key) return;
+    shown = board;
+    appRoot().reload();
+  }, [board]);
 
   if (widgets.isError) {
     return (
@@ -100,11 +100,11 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
       />
     );
   }
-  if (!board || !root) return <CenteredSpinner className="min-h-40" />;
+  if (!board) return <CenteredSpinner className="min-h-40" />;
 
   return (
     <Dashboard
-      root={root}
+      root={appRoot()}
       dashboardId={board.dashboardId}
       theme={theme}
       language="en"

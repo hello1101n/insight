@@ -19,6 +19,7 @@ vi.mock("@gears-frontx/frontx-dashboard-root", async (importOriginal) => ({
     constructor({ host }: { host: DashboardHost }) {
       fx.hosts.push(host);
     }
+    reload() {}
   },
   Dashboard: (props: {
     dashboardId: string;
@@ -96,31 +97,6 @@ describe("FrontxBoard", () => {
     await waitFor(() =>
       expect(dashboard).toHaveAttribute("data-theme", "dark")
     );
-  });
-
-  it("keeps one root for a board file it already drew and makes a new one for a changed file", async () => {
-    const before = fx.hosts.length;
-    const first = render(
-      <FrontxBoard id="board-c" read={READ} range={undefined} />,
-      { wrapper }
-    );
-    await screen.findByTestId("frontx-dashboard");
-    first.unmount();
-
-    const again = render(
-      <FrontxBoard id="board-c" read={READ} range={undefined} />,
-      { wrapper }
-    );
-    await screen.findByTestId("frontx-dashboard");
-    again.unmount();
-    expect(fx.hosts.length - before).toBe(1);
-
-    const edited = { ...READ, body: { ...READ.body, title: "Edited" } };
-    render(<FrontxBoard id="board-c" read={edited} range={undefined} />, {
-      wrapper,
-    });
-    await screen.findByTestId("frontx-dashboard");
-    expect(fx.hosts.length - before).toBe(2);
   });
 
   it("answers a data request through fetchWithAuth with each column's position and distinct values", async () => {
