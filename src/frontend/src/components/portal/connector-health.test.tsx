@@ -1498,8 +1498,7 @@ describe("connector workflow runs", () => {
       const row = within(rowFor("example"));
       for (const scope of [row, currentRun()]) {
         const queued = scope.getByText("Queued");
-        expect(queued).toHaveClass("text-muted-foreground");
-        expect(queued).not.toHaveClass("text-warning", "text-destructive");
+        expect(queued).toHaveAttribute("data-tone", "idle");
         await userEvent.hover(queued);
         expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       }
@@ -1538,7 +1537,7 @@ describe("connector workflow runs", () => {
       });
       for (const scope of [within(rowFor("example")), currentRun()]) {
         const state = scope.getByText("Queued");
-        expect(state).toHaveClass("text-muted-foreground");
+        expect(state).toHaveAttribute("data-tone", "idle");
         await userEvent.hover(state);
         expect(await screen.findByRole("tooltip")).toHaveTextContent(
           /^Waiting for a lock$/
@@ -1630,7 +1629,7 @@ describe("connector workflow runs", () => {
       const user = userEvent.setup();
       for (const scope of [within(rowFor("example")), currentRun()]) {
         const queued = scope.getByText("Queued");
-        expect(queued).toHaveClass("text-warning");
+        expect(queued).toHaveAttribute("data-tone", "unknown");
         const trigger = queued.closest<HTMLElement>("[aria-describedby]")!;
         expect(trigger).toHaveTextContent(/^Queued$/);
         await user.hover(queued);
@@ -1808,7 +1807,10 @@ describe("connector workflow runs", () => {
       ],
     });
     const row = within(rowFor("example"));
-    expect(row.getByText("Failed · Silver")).toHaveClass("text-destructive");
+    expect(row.getByText("Failed · Silver")).toHaveAttribute(
+      "data-tone",
+      "failing"
+    );
     expect(row.getByText("Waited over 6 hours")).toBeVisible();
     expect(row.queryByText("Queued")).not.toBeInTheDocument();
     expect(
@@ -1847,7 +1849,7 @@ describe("connector workflow runs", () => {
       ],
     });
     const row = within(rowFor("example"));
-    expect(row.getByText("Queued")).toHaveClass("text-muted-foreground");
+    expect(row.getByText("Queued")).toHaveAttribute("data-tone", "idle");
     expect(row.queryByText("Unknown")).not.toBeInTheDocument();
     const rows = runSteps().getAllByRole("listitem");
     expect(rows).toHaveLength(2);
@@ -2296,7 +2298,7 @@ describe("connector workflow runs", () => {
     expect(screen.getByText("No successful sync yet")).toBeVisible();
     expect(screen.getByText("No recorded steps")).toBeVisible();
     const row = within(rowFor("github"));
-    expect(row.getByText("Failed")).toHaveClass("text-destructive");
+    expect(row.getByText("Failed")).toHaveAttribute("data-tone", "failing");
     expect(row.getByText("Waited over 6 hours")).toBeVisible();
   });
 });

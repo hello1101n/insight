@@ -15,7 +15,6 @@ import {
   stageFailureDetails,
   stageFailureReason,
 } from "@/lib/portal/connector-runs";
-import { cn } from "@/lib/utils";
 import { TONE_BADGE } from "./connector-health-tone";
 
 export function RunTooltip({
@@ -85,6 +84,7 @@ export function ConnectorRunState({
       <RunTooltip lines={detail}>
         <Badge
           variant={TONE_BADGE[view.tone]}
+          data-tone={view.tone}
           className="whitespace-normal"
         >
           {label}

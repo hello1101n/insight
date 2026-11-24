@@ -204,7 +204,10 @@ export function ConnectorHealthPane() {
                       {showRun ? (
                         <ConnectorRunState run={run} asOf={data.as_of} />
                       ) : (
-                        <Badge variant={TONE_BADGE[state.tone]}>
+                        <Badge
+                          variant={TONE_BADGE[state.tone]}
+                          data-tone={state.tone}
+                        >
                           {state.label}
                         </Badge>
                       )}
@@ -360,10 +363,6 @@ function DurationCell({
 }) {
   const duration = describeDuration(sync, asOf);
   return (
-    <TableCell
-      className="text-right tabular-nums"
-    >
-      {duration.text}
-    </TableCell>
+    <TableCell className="text-right tabular-nums">{duration.text}</TableCell>
   );
 }

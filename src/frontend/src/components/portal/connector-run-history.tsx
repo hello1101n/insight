@@ -45,7 +45,11 @@ import {
   stepLabel,
 } from "@/lib/portal/connector-runs";
 import { cn } from "@/lib/utils";
-import { historySegmentStyle, TONE_BADGE, TONE_STYLE } from "./connector-health-tone";
+import {
+  historySegmentStyle,
+  TONE_BADGE,
+  TONE_STYLE,
+} from "./connector-health-tone";
 import { ConnectorRunBands } from "./connector-run-bands";
 import { ConnectorRunState, RunTooltip } from "./connector-run-state";
 
@@ -120,9 +124,7 @@ function RunMetrics({
                     ) : (
                       <RunTooltip lines={details}>
                         {tone ? (
-                          <Badge
-                            variant={TONE_BADGE[tone]}
-                          >
+                          <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
                             {label}
                           </Badge>
                         ) : (
@@ -372,7 +374,9 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
       </h4>
       <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
         <time>{formatStarted(sync.started_at)}</time>
-        <Badge variant={TONE_BADGE[status.tone]}>{status.label}</Badge>
+        <Badge variant={TONE_BADGE[status.tone]} data-tone={status.tone}>
+          {status.label}
+        </Badge>
       </div>
       <dl className="flex flex-wrap gap-4 text-xs">
         <div>
