@@ -11,9 +11,11 @@ import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   combinedColumn,
   combinedParts,
+  type CombinedColumn,
+} from "@/lib/portal/metrics-view-combined";
+import {
   finiteValue,
   headerUnit,
-  type CombinedColumn,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,

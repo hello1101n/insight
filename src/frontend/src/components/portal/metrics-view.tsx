@@ -36,18 +36,19 @@ import {
   defaultMetricKeys,
   defaultMetricOrder,
   orderMetricKeys,
-  readStoredMetricsPick,
-  requestedMetricKeys,
   rolesById,
-  storeMetricsPick,
-  withCombinedColumns,
-  withCombinedResults,
   keysWithData,
   metricGroups,
   metricsRows,
   metricsViewCatalog,
   sortRows,
 } from "@/lib/portal/metrics-view";
+import {
+  requestedMetricKeys,
+  withCombinedColumns,
+  withCombinedResults,
+} from "@/lib/portal/metrics-view-combined";
+import { readStoredMetricsPick, storeMetricsPick } from "@/lib/portal/metrics-view-pick";
 import {
   setMetricsViewPaneShown,
   useMetricsViewPaneShown,

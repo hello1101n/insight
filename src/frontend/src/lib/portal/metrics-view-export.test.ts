@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import i18n from "@/i18n";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
-import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view";
+import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view-combined";
 
 import { metricsViewFilename, metricsViewMatrix } from "./metrics-view-export";
 

@@ -3,7 +3,8 @@ import i18n from "@/i18n";
 import type { Matrix, MatrixCell } from "@/lib/export/matrix";
 import { isDurationUnit, roundMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { combinedColumn, combinedFigure, finiteValue } from "@/lib/portal/metrics-view";
+import { finiteValue } from "@/lib/portal/metrics-view";
+import { combinedColumn, combinedFigure } from "@/lib/portal/metrics-view-combined";
 
 export interface MetricsViewExport {
   people: ReadonlyArray<{ entityId: string; displayName: string }>;
