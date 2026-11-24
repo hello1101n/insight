@@ -466,12 +466,15 @@ It reads the chart defaults from the CronWorkflow's `insight.cyberfabric.com/dep
 A refused patch restores the previous database row. Uncertain writes use the schedule's readback and fence rules.
 
 Reconcile reads the latest overrides under the instance lock and applies them to the CronWorkflow or one-shot Workflow.
-Argo passes the submitted values to Bronze, the dbt steps, and the identity seed.
+The connectors service and reconcile build `dbt_pod_patch` and `identity_pod_patch` from the effective settings.
+The pipeline passes each JSON patch to its WorkflowTemplate, which substitutes it as the `podSpecPatch`.
+Both parameters default to `{}` when the workflow omits them.
+Argo passes `sync_resources` to Bronze for Airbyte sizing.
 The trigger or poll step updates the dedicated source allocation before launch when a saved size differs.
 Reconcile removes the managed sync allocation on the next pass after both effective sizes are cleared.
 The [chart README](../../../../../charts/insight/README.md#configure-connector-instance-resources) lists the fields and their units.
 
-The history observer reads the parameter on the submitted Workflow and stores the relevant fields for each attempt.
+The history observer reads `sync_resources` on the submitted Workflow and stores the relevant fields for each attempt.
 The trigger or poll step records a capacity wait when no eligible node can fit the estimated Airbyte pod request.
 The launch claim closes the wait before job submission.
 The observer closes an open wait when the Workflow ends and keeps the stage outcome.

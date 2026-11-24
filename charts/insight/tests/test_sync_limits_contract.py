@@ -374,27 +374,35 @@ def render(*args: str) -> dict[tuple[str, str], dict]:
     return {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(result.stdout) if doc}
 
 
-@pytest.mark.parametrize(
-    ("workflow", "prefix", "cap"),
-    [
-        ("dbt-run", "dbt", "r.dbt_query_memory_bytes"),
-        ("connector-checks", "dbt", "r.dbt_query_memory_bytes"),
-        ("identity-seed-run", "identity", "nil"),
-    ],
-)
-def test_sync_pod_patch_uses_resource_units_and_caps_only_dbt(
-    charts: dict[str, dict], workflow: str, prefix: str, cap: str
-) -> None:
-    patch = " ".join(templates(charts["overrides"], workflow)["run"]["podSpecPatch"].split())
+def test_pipeline_passes_pod_patches_by_plain_substitution(charts: dict[str, dict]) -> None:
+    for path in (CHART / "templates/ingestion").rglob("*"):
+        if path.is_file():
+            assert "{{=" not in path.read_text(), path.name
 
-    assert f"let cpu = r.{prefix}_cpu_millis;" in patch
-    assert f"let memory = r.{prefix}_memory_bytes;" in patch
-    assert "cpu == nil ? {} : {'cpu': string(int(cpu)) + 'm'}" in patch
-    assert "memory == nil ? {} : {'memory': string(int(memory))}" in patch
-    assert "{'name': 'main'}, len(sizes) == 0 ? {} : {'resources': {'requests': sizes, 'limits': sizes} }" in patch
-    assert f"let cap = {cap};" in patch
-    assert "cap == nil ? {} : {'env': [{'name': 'DBT_QUERY_MEMORY_BYTES', 'value': string(int(cap))}]}" in patch
-    assert "{'containers': [main]}" in patch
+    consumers = {
+        "dbt-run": {"dbt_pod_patch"},
+        "connector-checks": {"dbt_pod_patch"},
+        "identity-seed-run": {"identity_pod_patch"},
+    }
+    patches = set().union(*consumers.values())
+    task_patches = consumers | {"transform": patches, "airbyte-sync": set()}
+    for chart in charts.values():
+        for workflow, names in consumers.items():
+            (name,) = names
+            run = templates(chart, workflow)["run"]
+            assert run["podSpecPatch"] == "{{inputs.parameters." + name + "}}", workflow
+            inputs = {p["name"]: p.get("default") for p in run["inputs"]["parameters"]}
+            assert inputs[name] == "{}", workflow
+
+        pipeline = templates(chart, "ingestion-pipeline")
+        for entrypoint, spec in pipeline.items():
+            inputs = {p["name"]: p.get("default") for p in spec["inputs"]["parameters"]}
+            assert {name: inputs.get(name) for name in patches} == dict.fromkeys(patches, "{}"), entrypoint
+            for task in spec["dag"]["tasks"]:
+                consumer = task["templateRef"]["name"] if "templateRef" in task else task["template"]
+                arguments = {p["name"]: p["value"] for p in task["arguments"]["parameters"] if p["name"] in patches}
+                expected = {name: "{{inputs.parameters." + name + "}}" for name in task_patches[consumer]}
+                assert arguments == expected, task["name"]
 
 
 def test_connector_resources_reach_airbyte_and_the_reconcile_submission(charts: dict[str, dict]) -> None:
@@ -425,51 +433,3 @@ def test_connector_resources_reach_airbyte_and_the_reconcile_submission(charts: 
         "identity_memory_bytes": 536870912,
         "dbt_query_memory_bytes": 5368709120,
     }
-
-
-def argo_tags(text: str) -> tuple[list[str], str]:
-    tags, outside, start = [], [], 0
-    while (opening := text.find("{{", start)) != -1 and (closing := text.find("}}", opening + 2)) != -1:
-        outside.append(text[start:opening])
-        tags.append(text[opening + 2 : closing])
-        start = closing + 2
-    outside.append(text[start:])
-    return tags, "".join(outside)
-
-
-def balanced(expression: str) -> bool:
-    pairs = {")": "(", "]": "[", "}": "{"}
-    stack: list[str] = []
-    quote = None
-    escaped = False
-    for char in expression:
-        if quote:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-        elif char in "'\"":
-            quote = char
-        elif char in "([{":
-            stack.append(char)
-        elif char in pairs and (not stack or stack.pop() != pairs[char]):
-            return False
-    return not stack and quote is None
-
-
-def test_argo_reads_each_pod_patch_as_one_whole_expression(charts: dict[str, dict]) -> None:
-    patches = [
-        spec["podSpecPatch"]
-        for (kind, _), document in charts["defaults"].items()
-        if kind == "WorkflowTemplate"
-        for spec in document["spec"]["templates"]
-        if "podSpecPatch" in spec
-    ]
-    assert len(patches) == 3
-    for patch in patches:
-        tags, outside = argo_tags(patch)
-        assert len(tags) == 1 and tags[0].startswith("="), patch
-        assert outside.strip() == "", outside
-        assert balanced(tags[0][1:]), tags[0]

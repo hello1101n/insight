@@ -20,6 +20,8 @@ spec:
       inputs:
         parameters:
           {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: dbt_pod_patch
+            default: "{}"
           - name: stage_name
             default: ""
           - name: lock_group
@@ -63,7 +65,7 @@ spec:
             valueFrom:
               path: /tmp/dbt-pod-uid
               default: ""
-      podSpecPatch: {{ include "insight.syncResources.podPatch" "dbt" | quote }}
+      podSpecPatch: {{ `'{{inputs.parameters.dbt_pod_patch}}'` }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         # IfNotPresent so dev clusters use the locally-built `insight-toolbox:local`

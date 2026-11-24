@@ -175,6 +175,8 @@ Reconcile applies the chart defaults to connector Workflows. Admin-saved overrid
 Use a positive integer for each pod value and at least two bytes for the query limit.
 Each pod value sets both the request and the limit for that dimension.
 An unset dimension uses the standard resources of its step.
+The connectors service and reconcile build the pod patches from the effective settings.
+The WorkflowTemplates use `dbt_pod_patch` for transforms and connector checks, and `identity_pod_patch` for the identity seed.
 
 The Airbyte source must serve one connection. A connection-level resource override takes precedence in Airbyte.
 The trigger reports any connection overrides and changes the source sync allocation before launch when a size differs.

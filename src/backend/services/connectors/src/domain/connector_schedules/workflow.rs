@@ -4,6 +4,9 @@ use serde_json::{Value, json};
 use super::dto::{InheritedSchedule, LiveSchedule, ScheduleOrigin};
 use super::{Error, Instance, Resources, resources, validation::Crons};
 
+#[cfg(test)]
+mod tests;
+
 pub(super) const DEPLOYMENT: &str = "insight.cyberfabric.com/deployment-schedule";
 pub(super) const ORIGIN: &str = "insight.cyberfabric.com/schedule-origin";
 
@@ -145,6 +148,17 @@ pub(super) fn resource_defaults(object: &DynamicObject) -> Result<Resources, Err
         .map_or_else(|| Ok(Resources::default()), |raw| Resources::parse(raw))
 }
 
+pub(super) fn live_pod_patches(object: &DynamicObject) -> [Option<String>; 2] {
+    let Ok(parameters) = parameters(object) else {
+        return Default::default();
+    };
+    resources::POD_PATCH_PARAMETERS.map(|name| {
+        let mut entries = parameters.iter().filter(|p| p["name"] == name);
+        let value = entries.next()?["value"].as_str()?;
+        entries.next().is_none().then(|| value.to_owned())
+    })
+}
+
 fn parameters(object: &DynamicObject) -> Result<&Vec<Value>, Error> {
     object
         .data
@@ -167,10 +181,21 @@ pub(super) fn patch_resources(object: &DynamicObject, target: &Resources) -> Res
         .filter(|s| !s.is_empty())
         .ok_or(Error::ClusterIdentity)?;
     let mut parameters = parameters(object)?.clone();
-    parameters.retain(|p| p["name"] != resources::PARAMETER);
+    parameters.retain(|p| {
+        p["name"] != resources::PARAMETER
+            && !p["name"]
+                .as_str()
+                .is_some_and(|name| resources::POD_PATCH_PARAMETERS.contains(&name))
+    });
     if !target.is_empty() {
         let value = serde_json::to_string(target).map_err(Error::StoredResources)?;
         parameters.push(json!({"name": resources::PARAMETER, "value": value}));
+    }
+    for (name, value) in resources::POD_PATCH_PARAMETERS
+        .into_iter()
+        .zip(target.pod_patches())
+    {
+        parameters.push(json!({"name": name, "value": value}));
     }
     let mut metadata = json!({"uid": uid, "resourceVersion": version});
     let has_airbyte = |resources: &Resources| {

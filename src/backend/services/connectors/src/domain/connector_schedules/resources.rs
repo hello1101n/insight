@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 use super::{Error, dto::ScheduleStatus, validation::Violation};
 
 pub(crate) const PARAMETER: &str = "sync_resources";
+pub(super) const POD_PATCH_PARAMETERS: [&str; 2] = ["dbt_pod_patch", "identity_pod_patch"];
 pub(super) const DEPLOYMENT: &str = "insight.cyberfabric.com/deployment-resources";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -116,6 +117,17 @@ impl Resources {
         self == &Self::default()
     }
 
+    pub(super) fn pod_patches(&self) -> [String; 2] {
+        [
+            pod_patch(
+                self.dbt_cpu_millis,
+                self.dbt_memory_bytes,
+                self.dbt_query_memory_bytes,
+            ),
+            pod_patch(self.identity_cpu_millis, self.identity_memory_bytes, None),
+        ]
+    }
+
     pub(crate) fn for_stage(&self, stage: &str) -> Self {
         match stage {
             "bronze" => Self {
@@ -136,6 +148,41 @@ impl Resources {
             },
         }
     }
+}
+
+fn pod_patch(
+    cpu_millis: Option<u32>,
+    memory_bytes: Option<u64>,
+    query_bytes: Option<u64>,
+) -> String {
+    if cpu_millis.is_none() && memory_bytes.is_none() && query_bytes.is_none() {
+        return "{}".to_owned();
+    }
+
+    let mut sizes = Map::new();
+    if let Some(cpu) = cpu_millis {
+        sizes.insert("cpu".to_owned(), json!(format!("{cpu}m")));
+    }
+    if let Some(memory) = memory_bytes {
+        sizes.insert("memory".to_owned(), json!(memory.to_string()));
+    }
+
+    let mut main = Map::new();
+    if let Some(cap) = query_bytes {
+        main.insert(
+            "env".to_owned(),
+            json!([{"name": "DBT_QUERY_MEMORY_BYTES", "value": cap.to_string()}]),
+        );
+    }
+    main.insert("name".to_owned(), json!("main"));
+    if !sizes.is_empty() {
+        main.insert(
+            "resources".to_owned(),
+            json!({"limits": sizes, "requests": sizes}),
+        );
+    }
+
+    json!({"containers": [main]}).to_string()
 }
 
 #[derive(Debug, Default, Deserialize)]

@@ -14,6 +14,7 @@ pub(crate) struct Observation {
     pub(crate) inherited: Option<InheritedSchedule>,
     pub(crate) read_error: Option<String>,
     pub(crate) resources: Option<Resources>,
+    pub(super) pod_patches: [Option<String>; 2],
     pub(crate) resource_defaults: Option<Resources>,
     pub(crate) resource_read_error: Option<String>,
 }
@@ -31,6 +32,7 @@ pub(crate) fn observation(object: Option<&DynamicObject>) -> Result<Observation,
         inherited: object.and_then(workflow::inherited),
         read_error: None,
         resources: resources.ok().flatten(),
+        pod_patches: object.map_or_else(Default::default, workflow::live_pod_patches),
         resource_defaults: resource_defaults.ok().flatten(),
         resource_read_error,
     })
@@ -144,7 +146,9 @@ impl Intent<'_> {
                             && live.origin == previous.origin
                     })
             }
-            Self::Resources(_) => live.resources == previous.resources,
+            Self::Resources(_) => {
+                live.resources == previous.resources && live.pod_patches == previous.pod_patches
+            }
         }
     }
 }
@@ -162,7 +166,10 @@ impl Target {
                 .live
                 .as_ref()
                 .is_some_and(|live| workflow::matches(live, target)),
-            Self::Resources(target) => observed.resources.as_ref() == Some(target),
+            Self::Resources(target) => {
+                observed.resources.as_ref() == Some(target)
+                    && observed.pod_patches == target.pod_patches().map(Some)
+            }
         }
     }
 

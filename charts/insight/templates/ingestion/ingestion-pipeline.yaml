@@ -24,6 +24,10 @@ spec:
       inputs:
         parameters:
           {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: dbt_pod_patch
+            default: "{}"
+          - name: identity_pod_patch
+            default: "{}"
           - name: connection_name
           - name: insight_source_id
           - name: data_source                # "jira" → enriched path; anything else → legacy single-dbt
@@ -62,6 +66,10 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
+                - name: identity_pod_patch
+                  value: {{ `"{{inputs.parameters.identity_pod_patch}}"` }}
                 - name: insight_source_id
                   value: {{ `"{{inputs.parameters.insight_source_id}}"` }}
                 - name: data_source
@@ -89,6 +97,10 @@ spec:
       inputs:
         parameters:
           {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: dbt_pod_patch
+            default: "{}"
+          - name: identity_pod_patch
+            default: "{}"
           - name: data_source
           - name: insight_source_id
             default: ""  # RULE-DEFAULTS-OK: accepted from the submitter; no step consumes it
@@ -117,6 +129,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
                 - name: stage_name
                   value: transform-jira-staging
                 - name: lock_group
@@ -145,6 +159,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
                 - name: stage_name
                   value: transform-staging
                 - name: lock_group
@@ -176,6 +192,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: identity_pod_patch
+                  value: {{ `"{{inputs.parameters.identity_pod_patch}}"` }}
 
           - name: transform-jira-silver
             depends: transform-jira-staging.Succeeded && identity-seed
@@ -186,6 +204,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
                 - name: stage_name
                   value: transform-jira-silver
                 - name: lock_group
@@ -230,6 +250,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
                 - name: dbt_select
                   value: {{ `"tag:connector_quality,tag:{{inputs.parameters.data_source}}"` }}
                 - name: connector
@@ -260,6 +282,8 @@ spec:
             arguments:
               parameters:
                 {{- include "insight.syncResources.argument" . | nindent 16 }}
+                - name: dbt_pod_patch
+                  value: {{ `"{{inputs.parameters.dbt_pod_patch}}"` }}
                 - name: stage_name
                   value: transform-legacy
                 - name: lock_group

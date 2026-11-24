@@ -40,6 +40,8 @@ spec:
       inputs:
         parameters:
           {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: dbt_pod_patch
+            default: "{}"
           - name: dbt_select
           - name: connector
             default: ""
@@ -62,7 +64,7 @@ spec:
             valueFrom:
               path: /tmp/dbt-exit-code
               default: ""
-      podSpecPatch: {{ include "insight.syncResources.podPatch" "dbt" | quote }}
+      podSpecPatch: {{ `'{{inputs.parameters.dbt_pod_patch}}'` }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         imagePullPolicy: IfNotPresent
