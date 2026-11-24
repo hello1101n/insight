@@ -9,7 +9,8 @@ Proxy source code, Dockerfile, and deployment docs:
 
 ## Specification
 
-- [New streams](specs/NEW-STREAMS.md) lists the candidate streams, the two with a consumer, and the completeness rules a new stream follows.
+- [Chat and Cowork PRD](specs/CHAT-AND-COWORK-PRD.md) sets what Team tenants get from chat and Cowork usage.
+- [Chat and Cowork design](specs/CHAT-AND-COWORK-DESIGN.md) sets how the streams read, gate and map that data.
 
 
 ## Prerequisites
