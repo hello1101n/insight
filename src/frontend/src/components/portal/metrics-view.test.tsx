@@ -441,7 +441,30 @@ describe("MetricsView", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
 
-    expect(rowHeaders()).toEqual(["boss", "c", "b", "a"]);
+    expect(rowHeaders()).toEqual(["boss", "b", "a"]);
+  });
+
+  it("keeps the manager above their reports, at the same indent, when a column is sorted", async () => {
+    render(<MetricsView />);
+    const indent = (name: string) =>
+      screen
+        .getAllByRole("rowheader")
+        .find((header) => header.textContent?.startsWith(name))!
+        .querySelector<HTMLElement>("span[aria-hidden]")!.style.inlineSize;
+    const before = [indent("boss"), indent("a"), indent("b")];
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
+
+    expect(rowHeaders()[0]).toBe("boss");
+    expect([indent("boss"), indent("a"), indent("b")]).toEqual(before);
+  });
+
+  it("keeps Collapse all and Expand all while a column is sorted", async () => {
+    render(<MetricsView />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
+
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
   });
 
   it("opens the records behind a value when it is clicked", async () => {
@@ -660,7 +683,7 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
     const { lines } = await downloadCsv(user);
 
-    expect(lines.slice(1).map((line) => line[0])).toEqual(["boss", "c", "b", "a"]);
+    expect(lines.slice(1).map((line) => line[0])).toEqual(["boss", "b", "a"]);
   });
 
   it("downloads only the people compared", async () => {
