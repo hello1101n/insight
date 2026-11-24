@@ -248,6 +248,61 @@ fn a_mark_refuses_a_metric_with_a_name_the_service_keeps_for_itself() {
 }
 
 #[test]
+fn a_marked_metric_needs_a_time_source() {
+    let clocked: Declaration = serde_json::from_value(json!({
+        "title": "Reviews",
+        "fields": [
+            { "name": "reviewer", "path": "reviewer", "type": "string", "person": "email" },
+            { "name": "repository", "path": "repository", "type": "string" },
+            { "name": "comments", "path": "comments", "type": "int" },
+            { "name": "reviewed_at", "path": "reviewed_at", "type": "datetime",
+              "default_clock": true }
+        ]
+    }))
+    .unwrap_or_else(|error| panic!("valid declaration: {error}"));
+    let clockless = per_reviewer(&summed());
+    let own_clock = query(json!({
+        "dataset": "reviews",
+        "time": { "field": "reviewed_at" },
+        "fields": [
+            { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+            summed()
+        ],
+        "group_by": ["reviewer"]
+    }));
+    let table = query(json!({
+        "table": "reviews",
+        "fields": [
+            { "column": "reviewer_email", "type": "string", "person": "email", "as_name": "reviewer" },
+            { "type": "int", "agg": "count", "as_name": "reviews" }
+        ],
+        "group_by": ["reviewer"]
+    }));
+
+    assert_eq!(
+        mark("reviewer", "comments").check_timed(&clockless, Some(&reviews())),
+        Err(MarkError::Clockless)
+    );
+    assert_eq!(
+        mark("reviewer", "comments").check_timed(&clockless, Some(&clocked)),
+        Ok(Calculation::Sum)
+    );
+    assert_eq!(
+        mark("reviewer", "comments").check_timed(&own_clock, Some(&reviews())),
+        Ok(Calculation::Sum)
+    );
+    assert_eq!(
+        mark("reviewer", "reviews").check_timed(&table, None),
+        Err(MarkError::Clockless)
+    );
+    assert_eq!(
+        mark("author", "comments").check_timed(&clockless, Some(&reviews())),
+        Err(MarkError::NoPersonField("author".to_owned())),
+        "a mark that does not fit says so before the clock"
+    );
+}
+
+#[test]
 fn a_mark_reads_its_format_and_direction_in_snake_case() {
     let read: PersonalMark = serde_json::from_value(json!({
         "person_field": "reviewer",

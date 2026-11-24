@@ -477,6 +477,23 @@ async fn a_metric_whose_dataset_is_not_ready_is_left_out_of_the_listing() {
 }
 
 #[tokio::test]
+async fn a_metric_without_a_time_source_is_left_out_of_the_listing() {
+    let harness = Harness::new().await;
+    let mut clockless = lines_metric();
+    if let Some(body) = clockless.as_object_mut() {
+        body.remove("time");
+    }
+    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .marked_as("lines_clockless", "Lines clockless", &clockless)
+        .await;
+
+    let listed = harness.listed(ADMIN).await;
+
+    assert_eq!(ids_of(&listed), ["lines_merged"]);
+}
+
+#[tokio::test]
 async fn values_refuse_a_person_the_caller_cannot_see() {
     let harness = Harness::new().await;
     harness.marked("lines_merged", "Lines merged").await;

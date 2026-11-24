@@ -1347,7 +1347,8 @@ mod a_personal_mark {
             "fields": [
                 { "name": "reviewer", "path": "reviewer", "type": "string", "person": "email" },
                 { "name": "repository", "path": "repository", "type": "string" },
-                { "name": "comments", "path": "comments", "type": "int" }
+                { "name": "comments", "path": "comments", "type": "int" },
+                { "name": "reviewed_at", "path": "reviewed_at", "type": "datetime" }
             ]
         })
     }
@@ -1355,6 +1356,7 @@ mod a_personal_mark {
     fn per_reviewer() -> serde_json::Value {
         json!({
             "dataset": "reviews",
+            "time": { "field": "reviewed_at" },
             "fields": [
                 { "field": "reviewer", "type": "string", "as_name": "reviewer" },
                 { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
@@ -1454,11 +1456,35 @@ mod a_personal_mark {
     }
 
     #[tokio::test]
+    async fn a_replace_that_removes_the_time_source_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = marked(&fixture).await?;
+        let mut clockless = per_reviewer();
+        if let Some(body) = clockless.as_object_mut() {
+            body.remove("time");
+        }
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &clockless)
+            .await;
+
+        let Err(error) = refused else {
+            panic!("a replace that leaves a marked metric without a time source must be refused");
+        };
+        assert!(matches!(&error, CustomError::Mark(_)), "{error:?}");
+        assert!(error.to_string().contains("no time source"), "{error}");
+        assert!(error.is_about_the_caller());
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
     async fn a_replace_keeps_the_mark() -> R {
         let fixture = Fixture::new().await;
         let id = marked(&fixture).await?;
         let wider = json!({
             "dataset": "reviews",
+            "time": { "field": "reviewed_at" },
             "fields": [
                 { "field": "reviewer", "type": "string", "as_name": "reviewer" },
                 { "field": "comments", "type": "int", "agg": "avg", "as_name": "comments" },

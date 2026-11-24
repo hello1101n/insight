@@ -348,7 +348,7 @@ impl<'a> Surfaces<'a> {
                 .map(|ready| ready.declaration),
             None => None,
         };
-        mark.check(&metric, declaration.as_ref())
+        mark.check_timed(&metric, declaration.as_ref())
             .map_err(CustomError::Mark)?;
 
         Ok(())

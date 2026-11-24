@@ -21,7 +21,6 @@ use crate::domain::dataset_lifecycle::DatasetChangeError;
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Page};
 use crate::domain::folders::{self, FolderError, FolderId, FolderName, SeenFolder};
 use crate::domain::kinds::dashboard::Item;
-use crate::domain::kinds::metric::answerable;
 use crate::domain::metric_run::MetricRuns;
 use crate::domain::personal::PersonalMark;
 use crate::domain::query::metric_query::{MetricQuery, MetricRunner, RunResult};
@@ -996,20 +995,7 @@ impl CustomSurfaces {
             .await
             .map_err(|error| tool_error(&error))?;
 
-        let timed = match &declaration {
-            Some(declaration) => answerable::effective_clock(&query, declaration).is_some(),
-            None => query
-                .has_clock()
-                .map_err(|error| refuse(&error.to_string()))?,
-        };
-        if !timed {
-            return Err(refuse(
-                "the metric has no time source, so a period cannot be read from it: \
-                 give the metric a `time`, or read a dataset with a default clock",
-            ));
-        }
-
-        mark.check(&query, declaration.as_ref())
+        mark.check_timed(&query, declaration.as_ref())
             .map_err(|error| refuse(&error.to_string()))
     }
 }

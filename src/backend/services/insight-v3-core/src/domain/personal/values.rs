@@ -197,7 +197,7 @@ impl<'a> PersonalMetrics<'a> {
 
         marked
             .mark
-            .check(&query, declaration.as_ref())
+            .check_timed(&query, declaration.as_ref())
             .map_err(CustomError::Mark)
     }
 }

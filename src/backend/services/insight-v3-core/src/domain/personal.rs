@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::domain::definition::{DefinitionId, DefinitionStoreError};
 use crate::domain::kinds::dataset::declaration::Declaration;
+use crate::domain::kinds::metric::answerable;
 use crate::domain::query::metric_query::{Agg, ColumnKind, MetricQuery, Output};
 
 pub(crate) mod values;
@@ -96,9 +97,36 @@ pub(crate) enum MarkError {
          give that field another `as_name`"
     )]
     ReservedName(String),
+    #[error(
+        "the metric has no time source, so a period cannot be read from it: \
+         give the metric a `time`, or read a dataset with a default clock"
+    )]
+    Clockless,
+    #[error("{0}")]
+    TimeSource(String),
 }
 
 impl PersonalMark {
+    pub(crate) fn check_timed(
+        &self,
+        query: &MetricQuery,
+        declaration: Option<&Declaration>,
+    ) -> Result<Calculation, MarkError> {
+        let calculation = self.check(query, declaration)?;
+
+        let timed = match declaration {
+            Some(declaration) => answerable::effective_clock(query, declaration).is_some(),
+            None => query
+                .has_clock()
+                .map_err(|error| MarkError::TimeSource(error.to_string()))?,
+        };
+        if !timed {
+            return Err(MarkError::Clockless);
+        }
+
+        Ok(calculation)
+    }
+
     pub(crate) fn check(
         &self,
         query: &MetricQuery,
