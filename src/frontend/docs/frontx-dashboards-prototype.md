@@ -54,7 +54,7 @@ Do not merge these changes. They exist only to compare the two renderers.
 - `tsconfig.app.json` sets `erasableSyntaxOnly` to `false`.
 - `eslint.config.js` ignores `vendor`.
 - `vite.frontx-widgets.ts` serves the widget bundles under `/widgets/`. `vite.config.ts` adds it and dedupes React.
-- The dev mocks hold seven example dashboards in `src/mocks/example-dashboards.ts`. "Example dashboards" lists them.
+- The dev mocks hold eight example dashboards in `src/mocks/example-dashboards.ts`. "Example dashboards" lists them.
 - `DashboardWidget` in `src/api/custom-types.ts` has an optional `percents` field. Only the dev mocks send it. See bump 13.
 
 ## What works
@@ -180,6 +180,14 @@ The entries are in the order the prototype hit them.
     - What happened: FrontX formats every number of a grid with one `value_format`, so a table cannot hold one percent column among plain numbers.
     - Workaround: the transform writes a percent column as text with one decimal, such as `24.3%`. The column then sorts as text.
     - Real build: a FrontX change (a format for each column).
+26. **Long category names lose their labels.**
+    - What happened: a bar chart over 12 long test names labels 1 bar. FrontX hides each tick label that overlaps the next one, and it never shortens a label. The current renderer cuts a name to 14 characters with "…" and labels 4 of the 12 bars.
+    - Workaround: none. A tilted label (`tick_angle`) or a horizontal bar shows more labels, but each label stays full length.
+    - Real build: a FrontX change.
+27. **Charts have five colours.**
+    - What happened: the FrontX chart palette has 5 colours. A pie with 7 slices gives slices 6 and 7 the colours of slices 1 and 2. The current renderer has 12 colours.
+    - Workaround: none.
+    - Real build: a FrontX change.
 
 ## Blockers for the custom v3 dashboards
 
@@ -213,6 +221,8 @@ The list starts with the most important blocker.
 - Cells have fixed heights. A table shows five rows and then pages. The grid data holds 500 rows at most.
 - The "All time" badge becomes a line under the title. Headings lose the small uppercase style. Table headers are uppercase and the row-number column is gone. Axis titles show the column names.
 - The `?widget=` link to an expanded widget has no FrontX equivalent.
+- A long category name loses its tick label. The current renderer shortens it.
+- A chart with more than five series or slices repeats colours. The current renderer has 12 colours.
 
 ## Example dashboards
 
@@ -226,6 +236,7 @@ The dev mocks hold these dashboards. Every number is synthetic. The paired scree
 - `pipeline-runs`: a long dashboard title and no time range. It holds a table with 12 columns and 650 rows, a table with 9 rows and a percent column, and a line with no clock.
 - `edge-cases`: a long heading, a long text, a long widget title and a long stat label. It also has a line and a table with no rows, a run that fails, a busy run, and a pie that names a column the metric does not return.
 - `reading-notes`: headings and texts only.
+- `chart-shapes`: chart shapes with long category names and many parts. It holds a stacked bar over days, a stacked bar over repositories, a bar over 12 long test names, bars over days, a bar over a date column that is not `bucket`, a top-10 bar, a percent line and a pie with 7 slices.
 
 The notable differences per dashboard:
 
@@ -235,6 +246,7 @@ The notable differences per dashboard:
 - `pipeline-runs`: the 650-row table fails in FrontX (bump 24). The 9-row table shows three rows and pages, and its percent column is off to the right.
 - `edge-cases`: every failure stays in its cell in both renderers. FrontX says "This widget cannot be shown" for the failed run, the busy run and the wrong column alike.
 - `reading-notes`: both renderers show the text. FrontX headings are larger and not uppercase.
+- `chart-shapes`: both stacked bars break in FrontX (bump 3). FrontX labels 1 of the 12 long test names (bump 26), and the pie repeats two colours (bump 27). The date column that is not `bucket` shows raw dates (bump 12).
 
 ## Measurements
 

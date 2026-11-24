@@ -3,15 +3,15 @@
 For each FrontX problem that the prototype found, this list gives what Insight does now, what FrontX does, and why the FrontX way fails for Insight.
 
 - Problems 1 to 3 block a real build.
-- Problems 4 and 5 make the result worse than the current renderer.
+- Problems 4 to 7 make the result worse than the current renderer.
 
 The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-prototype.md). The measurements come from synthetic mock dashboards on a local build. The prototype uses template commit `6bcd77f`. On 23 Nov 2026, the `main` branch of the public `itechmeat/gears-frontx-templates` fork had no change to these problems.
 
-## 1. A dashboard cannot change after it loads
+## 1. An edit shows only after a page reload
 
-- **Insight now.** A dashboard is data from the Insight API. After an edit, React Query reads the dashboard again. React then draws the new version.
-- **FrontX.** A `DashboardRoot` requests one served file from the host, one time. The file holds every dashboard and every widget type. The root caches the file and registers each dashboard in its type store. The type store keeps the first version of each ID and rejects a changed version with the same ID.
-- **Why it fails.** Insight users make and edit dashboards at runtime. The root cannot accept a new version of a dashboard. The root also has no dispose function. The prototype makes a new root for each version, and each new root loads all widget code again, about 274 KB. The prototype cannot release the old roots.
+- **Insight now.** A dashboard is data from the Insight API. After an edit, React Query reads the dashboard again, and React draws the new version. The page does not reload.
+- **FrontX.** A `DashboardRoot` asks the host for one served file, one time. The file holds the dashboard definitions: the widgets, their order, their titles and their chart settings. The root keeps the file for its full life. It has no public function to read the file again, and no dispose function.
+- **Why it fails.** Insight users make and edit dashboards while the page is open. The root keeps the old definition until the page reloads, and only the widget data refreshes. To show an edit or a new dashboard without a reload, Insight must make a new root. Each new root loads all widget code again, about 274 KB. Insight cannot release the old roots.
 - **Bumps.** 4 and 15.
 
 ## 2. Bars cannot stack by a column
@@ -44,3 +44,17 @@ The bump numbers refer to [frontx-dashboards-prototype.md](frontx-dashboards-pro
 - **FrontX.** The FrontX table widget, `grid`, has one `value_format` for all its columns.
 - **Why it fails.** A grid cannot format a percent column apart from plain number columns. The prototype writes the percent as text, and the column then sorts as text.
 - **Bumps.** 25.
+
+## 6. Long category names lose their labels
+
+- **Insight now.** A chart shortens a long category name to 14 characters and adds "…". On a synthetic board with 12 long test names, 4 bars keep a short label.
+- **FrontX.** The chart never shortens a label. It hides each label that overlaps the next one. Tilted labels and horizontal bars are available, but neither shortens a name.
+- **Why it fails.** Category names, such as test names or repository names, can be long. On the same board, FrontX labels 1 bar of 12, with the full name.
+- **Bumps.** 26.
+
+## 7. Charts have five colours
+
+- **Insight now.** Charts use a palette of 12 colours.
+- **FrontX.** The chart palette has 5 colours. The sixth series or slice takes the first colour again.
+- **Why it fails.** A stacked bar or a pie with more than five parts shows two parts in the same colour. On a synthetic pie with 7 slices, two pairs of slices share a colour.
+- **Bumps.** 27.
