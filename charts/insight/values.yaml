@@ -978,9 +978,7 @@ frontend:
     # lists is hidden.
     planned: []
   metricsView:
-    # Metric keys the Metrics view opens on when the link names none, e.g.
-    # ["git.default_branch_prs_merged", "tasks.closed"]. Empty uses the list
-    # built into the SPA.
+    # INVARIANT: An empty list uses built-in defaults. URL and saved picks take precedence.
     defaultMetrics: []
 connectors:
   infraFromUmbrella: true
