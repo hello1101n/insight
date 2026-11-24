@@ -6,5 +6,7 @@ metadata:
   labels:
     {{- include "insight.labels" . | nindent 4 }}
 data:
-  syncs: {{ required "ingestion.maxConcurrentSyncs is required" .Values.ingestion.maxConcurrentSyncs | quote }}
+  syncs: {{ int64 .Values.ingestion.maxConcurrentSyncs | quote }}
+  bronze: {{ .Values.ingestion.maxConcurrentBronzeLoads | quote }}
+  checks: {{ .Values.ingestion.maxConcurrentConnectorChecks | quote }}
 {{- end }}

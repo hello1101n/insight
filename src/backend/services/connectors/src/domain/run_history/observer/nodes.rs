@@ -61,10 +61,16 @@ pub(super) fn waiting_lock(node: &Value) -> Option<&str> {
         .filter(|lock| !lock.is_empty())
 }
 
-pub(super) fn slot_wait(status: &Value) -> Option<&Value> {
-    nodes(status).find(|node| {
-        template(node) == Some("pipeline")
-            && waiting_lock(node).is_some_and(|lock| lock.ends_with("/insight-sync-limits/syncs"))
+pub(super) fn bronze_slot_wait(status: &Value) -> Option<DateTime<Utc>> {
+    nodes(status).find_map(|node| {
+        let lock = waiting_lock(node)?;
+        if lock.ends_with("/insight-sync-limits/bronze") {
+            return time(node, "startedAt");
+        }
+        if template(node) == Some("pipeline") && lock.ends_with("/insight-sync-limits/syncs") {
+            return time(status, "startedAt").or_else(|| time(node, "startedAt"));
+        }
+        None
     })
 }
 
@@ -124,7 +130,12 @@ fn attempt(
         parameter(node, "outputs", name)?.parse().ok()
     });
     result.finished_at = time(node, "finishedAt").or(workflow_end);
+    let check_failed = stage == "connector-checks"
+        && parameter(node, "outputs", "dbt-exit-code")
+            .and_then(|code| code.parse::<u8>().ok())
+            .is_some_and(|code| code != 0);
     result.status = match phase(node) {
+        Some("Succeeded") if check_failed => "failed",
         Some("Succeeded") => "succeeded",
         Some("Failed" | "Error") => "failed",
         _ if workflow_end.is_some() => "cancelled",
@@ -134,6 +145,8 @@ fn attempt(
     if result.status == "failed" {
         result.reason = if pod.is_some_and(|pod| pod.oom) {
             Some("pod_oom".to_owned())
+        } else if check_failed {
+            Some("connector_checks_failed".to_owned())
         } else {
             node["message"]
                 .as_str()
@@ -143,11 +156,15 @@ fn attempt(
     }
     if result.finished_at.is_none() {
         result.wait = if let Some(lock) = waiting_lock(node) {
-            Some(wait(
-                WaitKind::Lock,
-                result.queued_at,
-                mutex_holder(status, lock),
-            ))
+            if stage == "connector-checks" && lock.ends_with("/insight-sync-limits/checks") {
+                Some(wait(WaitKind::CheckSlot, result.queued_at, None))
+            } else {
+                Some(wait(
+                    WaitKind::Lock,
+                    result.queued_at,
+                    mutex_holder(status, lock),
+                ))
+            }
         } else {
             placement(node, pod).map(|at| wait(WaitKind::Placement, at, None))
         };

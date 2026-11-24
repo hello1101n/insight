@@ -834,6 +834,7 @@
         "enum": [
           "lock",
           "sync_slot",
+          "check_slot",
           "placement"
         ],
         "type": "string"

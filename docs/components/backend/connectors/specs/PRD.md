@@ -120,10 +120,15 @@ request gets 401.
    load shows the measurements that Airbyte recorded.
 5. For instances with only legacy loads, the heading states how many loads the table shows,
    for example "Latest 10 of 50 recorded".
-6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes waits for a writer lock,
-   a sync slot, and pod placement. A wait shows a warning after three hours.
-7. The service stops a workflow after it waits more than six hours for a writer lock or sync slot.
+6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes three wait reasons.
+   These are a writer lock, a Bronze slot, and pod placement.
+   A wait shows a warning after three hours.
+7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock or Bronze slot.
+   Pod placement and post-sync checks can continue beyond six hours.
+   The run's wait time ends when Gold succeeds.
 8. The service retains the recorded run history after Argo deletes the workflow.
+9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.
+   It names the shared sync memory limit when ClickHouse reports that limit.
 
 ## 5. Constraints
 

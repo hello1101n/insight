@@ -94,6 +94,35 @@ async fn query_log_distinguishes_memory_and_query_errors_by_pod_tag() -> Result<
 
 #[tokio::test]
 #[ignore = "requires INTEGRATION_TESTS_CLICKHOUSE_URL and INTEGRATION_TESTS_MARIADB_URL"]
+async fn query_lookup_tolerates_clock_skew_at_both_stage_boundaries() -> Result<()> {
+    let app = fixture_state().await?;
+    let tag = uuid::Uuid::new_v4().to_string();
+    let before = Utc::now();
+    let sent = app
+        .ch
+        .query("SELECT throwIf(1,'User memory limit exceeded',toInt32(241))")
+        .with_setting("allow_custom_error_code_in_throwif", "1")
+        .with_setting("log_comment", &tag)
+        .execute()
+        .await;
+    assert!(sent.is_err(), "the fixture query should fail");
+    let after = Utc::now();
+    app.ch.query("SYSTEM FLUSH LOGS").execute().await?;
+    for (offset, expected) in [(-90, false), (-30, true), (30, true), (90, false)] {
+        let skew = chrono::Duration::seconds(offset);
+        let failure = query(&app.ch, "", &tag, before + skew, after + skew).await?;
+        assert_eq!(failure.is_some(), expected, "clock offset: {offset}");
+    }
+    let failure = query(&app.ch, "", &tag, before, after).await?;
+    assert_eq!(
+        failure.map(|failure| failure.reason()).as_deref(),
+        Some("clickhouse_user_memory_limit")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_CLICKHOUSE_URL and INTEGRATION_TESTS_MARIADB_URL"]
 async fn identity_failure_is_recovered_from_a_late_query_log_after_restart() -> Result<()> {
     let app = fixture_state().await?;
     let end = Utc::now() + chrono::Duration::seconds(60);
@@ -127,8 +156,8 @@ async fn identity_failure_is_recovered_from_a_late_query_log_after_restart() -> 
             &restarted.ch,
             "",
             &tag,
-            end,
-            end + chrono::Duration::seconds(5)
+            end + chrono::Duration::seconds(60),
+            end + chrono::Duration::seconds(65)
         )
         .await?
         .is_none()
@@ -159,6 +188,7 @@ async fn timed_out_query_lookup_does_not_block_other_stages_in_the_pass() -> Res
             code: 241,
             name: "fixture".into(),
             server_memory: false,
+            user_memory: false,
         }))
     };
     reconcile_with(&app, end + chrono::Duration::minutes(11), timeout).await?;

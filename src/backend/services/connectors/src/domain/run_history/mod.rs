@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 pub(crate) enum WaitKind {
     Lock,
     SyncSlot,
+    CheckSlot,
     Placement,
 }
 
@@ -34,6 +35,25 @@ struct RunSnapshot {
     finished_at: Option<DateTime<Utc>>,
     status: Option<&'static str>,
     stages: Vec<StageSnapshot>,
+}
+
+impl RunSnapshot {
+    fn successful_gold_attempts(&self) -> impl Iterator<Item = &StageSnapshot> {
+        let ready_stage = if self.connector == "jira" {
+            "transform-jira-silver"
+        } else {
+            "transform-legacy"
+        };
+        self.stages
+            .iter()
+            .filter(move |stage| stage.stage == ready_stage && stage.status == "succeeded")
+    }
+
+    fn ready_at(&self) -> Option<DateTime<Utc>> {
+        self.successful_gold_attempts()
+            .filter_map(|stage| stage.finished_at)
+            .min()
+    }
 }
 
 #[derive(Debug)]

@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{api::AppState, domain::run_history::store::sql};
 
+const CLOCK_SKEW: chrono::Duration = chrono::Duration::seconds(60);
 const LOG_SETTLE_TIME: chrono::Duration = chrono::Duration::seconds(10);
 const LOOKUP_WINDOW: chrono::Duration = chrono::Duration::minutes(10);
 const LOOKUP_PERIOD: Duration = Duration::from_secs(10);
@@ -19,15 +20,26 @@ struct QueryFailure {
     code: i32,
     name: String,
     server_memory: bool,
+    user_memory: bool,
 }
 
 impl QueryFailure {
     fn reason(&self) -> String {
-        match (self.code, self.server_memory) {
-            (241, true) => "clickhouse_server_memory_pressure".to_owned(),
-            (241, false) => "clickhouse_memory_limit".to_owned(),
-            (code, _) => format!("clickhouse_query_error:{code}:{}", self.name),
+        if self.code == 241 {
+            memory_limit_reason(self.server_memory, self.user_memory).to_owned()
+        } else {
+            format!("clickhouse_query_error:{}:{}", self.code, self.name)
         }
+    }
+}
+
+pub(super) fn memory_limit_reason(server: bool, user: bool) -> &'static str {
+    if user {
+        "clickhouse_user_memory_limit"
+    } else if server {
+        "clickhouse_server_memory_pressure"
+    } else {
+        "clickhouse_memory_limit"
     }
 }
 
@@ -148,6 +160,8 @@ async fn query(
     start: DateTime<Utc>,
     end: DateTime<Utc>,
 ) -> Result<Option<QueryFailure>> {
+    let start = start - CLOCK_SKEW;
+    let end = end + CLOCK_SKEW;
     let source = if cluster.is_empty() {
         "system.query_log"
     } else {
@@ -156,14 +170,17 @@ async fn query(
     let sql = format!(
         "SELECT exception_code AS code, errorCodeToName(code) AS name,
           CAST(positionCaseInsensitive(exception,'(total) memory limit')>0 OR
-           positionCaseInsensitive(exception,'memory limit (total)')>0 AS Bool) AS server_memory
+           positionCaseInsensitive(exception,'memory limit (total)')>0 OR
+           positionCaseInsensitive(exception,'total memory limit')>0 AS Bool) AS server_memory,
+          CAST(multiSearchAnyCaseInsensitive(exception, ['(for user) memory limit',
+           'memory limit (for user)', 'user memory limit']) AS Bool) AS user_memory
          FROM {source}
          WHERE event_date BETWEEN toDate(toDateTime(?)) AND toDate(toDateTime(?))
            AND event_time BETWEEN toDateTime(?, 'UTC') AND toDateTime(?, 'UTC')
            AND log_comment = ?
            AND type IN ('ExceptionWhileProcessing','ExceptionBeforeStart') AND exception_code>0
            AND query_start_time_microseconds >= fromUnixTimestamp64Milli(?, 'UTC')
-           AND event_time_microseconds < fromUnixTimestamp64Milli(?, 'UTC')
+           AND event_time_microseconds <= fromUnixTimestamp64Milli(?, 'UTC')
          ORDER BY event_time_microseconds DESC
          LIMIT 1 SETTINGS max_execution_time=1,skip_unavailable_shards=0"
     );
@@ -178,7 +195,7 @@ async fn query(
         .bind(end.timestamp())
         .bind(tag)
         .bind(start.timestamp_millis())
-        .bind(end.timestamp().saturating_add(1).saturating_mul(1000));
+        .bind(end.timestamp_millis());
     Ok(tokio::time::timeout(Duration::from_secs(2), query.fetch_optional()).await??)
 }
 

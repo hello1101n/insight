@@ -48,11 +48,12 @@ pub(super) fn apply(workflow: &DynamicObject, run: &mut RunSnapshot) {
 }
 
 pub(super) fn expired(run: &RunSnapshot, now: DateTime<Utc>) -> Option<&StageSnapshot> {
-    if run.finished_at.is_some() {
+    if run.finished_at.is_some() || run.successful_gold_attempts().next().is_some() {
         return None;
     }
     run.stages.iter().find(|stage| {
-        stage.status == "queued"
+        stage.stage != "connector-checks"
+            && stage.status == "queued"
             && stage.started_at.is_none()
             && stage.wait.as_ref().is_some_and(|wait| {
                 matches!(wait.kind, WaitKind::Lock | WaitKind::SyncSlot)

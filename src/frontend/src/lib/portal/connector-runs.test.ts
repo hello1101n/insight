@@ -61,7 +61,7 @@ describe("connector run state", () => {
     const reasons = [
       ["lock", "another-sync", "Waiting for a lock held by another-sync"],
       ["lock", null, "Waiting for a lock"],
-      ["sync_slot", null, "Waiting for a free sync slot"],
+      ["sync_slot", null, "Waiting for a free load slot"],
       ["placement", null, "Waiting for cluster capacity"],
     ] as const;
     for (const [kind, holder, reason] of reasons) {

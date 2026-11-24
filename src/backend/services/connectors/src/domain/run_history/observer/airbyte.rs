@@ -59,7 +59,7 @@ pub(super) async fn job(
     parse_job(&response, id, connection)
 }
 
-fn parse_job(response: &Value, id: u64, connection: uuid::Uuid) -> Result<PollEvidence> {
+pub(super) fn parse_job(response: &Value, id: u64, connection: uuid::Uuid) -> Result<PollEvidence> {
     let remote = &response["job"];
     ensure!(
         remote["id"].as_u64() == Some(id)
@@ -78,7 +78,8 @@ fn parse_job(response: &Value, id: u64, connection: uuid::Uuid) -> Result<PollEv
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|v| v.get("attempt"));
+        .filter_map(|v| v.get("attempt"))
+        .filter(|attempt| attempt.is_object());
     let started_at = attempts
         .clone()
         .filter_map(|v| v["startedAt"].as_i64())
@@ -106,8 +107,41 @@ fn parse_job(response: &Value, id: u64, connection: uuid::Uuid) -> Result<PollEv
         ended_at,
         records_reported,
         status: if invalid_success { "failed" } else { status }.to_owned(),
-        reason: invalid_success.then(|| "airbyte_job_failed".to_owned()),
+        reason: if status == "failed" || invalid_success {
+            last.and_then(destination_memory_reason)
+                .or_else(|| invalid_success.then_some("airbyte_job_failed"))
+                .map(str::to_owned)
+        } else {
+            None
+        },
     })
+}
+
+fn destination_memory_reason(attempt: &Value) -> Option<&'static str> {
+    attempt["failureSummary"]["failures"]
+        .as_array()?
+        .iter()
+        .filter(|failure| failure["failureOrigin"] == "destination")
+        .flat_map(|failure| ["internalMessage", "externalMessage"].map(|key| failure[key].as_str()))
+        .flatten()
+        .find_map(|message| {
+            let message = message.to_ascii_lowercase();
+            if !message.contains("memory_limit_exceeded") && !message.contains("code: 241.") {
+                return None;
+            }
+            let contains = |markers: &[&str]| markers.iter().any(|marker| message.contains(marker));
+            let user = contains(&[
+                "user memory limit",
+                "(for user) memory limit",
+                "memory limit (for user)",
+            ]);
+            let server = contains(&[
+                "total memory limit",
+                "(total) memory limit",
+                "memory limit (total)",
+            ]);
+            Some(super::query_failures::memory_limit_reason(server, user))
+        })
 }
 
 async fn credentials(state: &AppState, http: &reqwest::Client) -> Result<(url::Url, String)> {

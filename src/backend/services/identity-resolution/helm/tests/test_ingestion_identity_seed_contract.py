@@ -117,6 +117,7 @@ def _run_script(
     scripts_dir = Path(__file__).resolve().parents[6] / "src" / "ingestion" / "scripts"
     runnable = (
         script.replace("cd /ingestion/dbt", f"cd {tmp_path}")
+        .replace("/tmp/dbt-pod-uid", str(tmp_path / "dbt-pod-uid"))
         .replace("python3 /ingestion/scripts/dbt_profiles.py --correlated-subqueries", "true")
         .replace("/ingestion/scripts", str(scripts_dir))
     )
@@ -132,6 +133,7 @@ def _run_script(
         "DBT_SELECT": select,
         "DBT_EXCLUDE": exclude,
         "DBT_FULL_REFRESH": "false",
+        "DBT_POD_UID": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "CLICKHOUSE_HOST": "h",
         "CLICKHOUSE_PORT": "8123",
         "CLICKHOUSE_USER": "u",

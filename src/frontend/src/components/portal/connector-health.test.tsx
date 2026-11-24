@@ -1858,6 +1858,46 @@ describe("connector workflow runs", () => {
     expect(rows[1]).toHaveTextContent("Bronze");
   });
 
+  it("keeps check memory failures off the page", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [
+        step("transform-legacy", -60, -10),
+        {
+          ...step("connector-checks", -8, -2),
+          status: "failed",
+          reason: "clickhouse_user_memory_limit",
+        },
+      ],
+    });
+    expect(within(rowFor("example")).getByText("Ready")).toBeVisible();
+    expect(screen.queryByText(/Quality checks failed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the run ready during a check slot wait after Gold", async () => {
+    await openRun({
+      ...run(1),
+      status: "queued",
+      finished_at: null,
+      stages: [
+        step("transform-legacy", -60, -10),
+        {
+          stage: "connector-checks",
+          attempt: 1,
+          status: "queued",
+          queued_at: stamp(-8),
+          waits: [{ kind: "check_slot", started_at: stamp(-8) }],
+        },
+      ],
+    });
+    const timeline = within(
+      screen.getByRole("list", { name: "Run steps (UTC)" })
+    );
+    expect(within(rowFor("example")).getByText("Ready")).toBeVisible();
+    expect(timeline.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
   it.each([
     ["transforming", "succeeded", null],
     ["succeeded", "succeeded", NOW],
@@ -1933,7 +1973,7 @@ describe("connector workflow runs", () => {
     ],
     [
       "airbyte_launch_unreadable",
-      "Could not confirm the sync launch because the Airbyte job list was unavailable",
+      "The Airbyte job list was unavailable. The sync launch is not confirmed.",
       "starting",
     ],
   ] as const)(

@@ -45,18 +45,23 @@ def _latest_attempt(resp: object) -> dict | None:
     if not isinstance(attempts, list) or not attempts:
         return None
 
-    attempt = attempts[-1].get("attempt") if isinstance(attempts[-1], dict) else None
-    return attempt if isinstance(attempt, dict) else None
+    def attempt_id(attempt: dict) -> int:
+        ident = attempt.get("id")
+        return ident if type(ident) is int and 0 <= ident < 2**64 else -1
+
+    candidates = (entry.get("attempt") for entry in reversed(attempts) if isinstance(entry, dict))
+    return max((attempt for attempt in candidates if isinstance(attempt, dict)), key=attempt_id, default=None)
 
 
-def attempt_failures(resp: object) -> list[SyncFailure]:
+def _failure_entries(resp: object) -> list[dict[str, object]]:
     attempt = _latest_attempt(resp)
     summary = attempt.get("failureSummary") if attempt is not None else None
     entries = summary.get("failures") if isinstance(summary, dict) else None
-    if not isinstance(entries, list):
-        return []
+    return [entry for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else []
 
-    return [_read_failure(entry) for entry in entries if isinstance(entry, dict)]
+
+def attempt_failures(resp: object) -> list[SyncFailure]:
+    return [_read_failure(entry) for entry in _failure_entries(resp)]
 
 
 def attempt_stream_count(resp: object) -> int:
@@ -70,7 +75,7 @@ def succeeded_without_syncing(resp: object) -> bool:
     return bool(attempt_failures(resp)) or attempt_stream_count(resp) == 0
 
 
-def _read_failure(entry: dict) -> SyncFailure:
+def _read_failure(entry: dict[str, object]) -> SyncFailure:
     return SyncFailure(
         failure_type=_read_text(entry.get("failureType")) or "unknown",
         origin=_read_text(entry.get("failureOrigin")) or "unknown",
@@ -86,11 +91,9 @@ def _read_text(value: object) -> str:
 
 
 def attempt_progress(resp: dict) -> Progress | None:
-    attempts = resp.get("attempts") or []
-    if not attempts:
+    attempt = _latest_attempt(resp)
+    if attempt is None:
         return None
-
-    attempt = attempts[-1].get("attempt", {})
     stats = attempt.get("totalStats") or {}
     return (
         attempt.get("status"),
@@ -122,6 +125,8 @@ def save_terminal_evidence(job_id: int, resp: dict, status: str) -> None:
     attempt = _latest_attempt(resp) or {}
     stats = attempt.get("totalStats") or {}
     evidence = {"job_id": job_id, "status": status}
+    if status == "failed" and (reason := destination_memory_reason(resp)):
+        evidence["reason"] = reason
     records = stats.get("recordsEmitted", attempt.get("recordsSynced")) if isinstance(stats, dict) else None
     for key, value in [
         ("records_reported", records),
@@ -131,6 +136,28 @@ def save_terminal_evidence(job_id: int, resp: dict, status: str) -> None:
         if type(value) is int and value >= 0:
             evidence[key] = value
     Path(path).write_text(json.dumps(evidence))
+
+
+def destination_memory_reason(resp: object) -> str | None:
+    for failure in _failure_entries(resp):
+        if failure.get("failureOrigin") != "destination":
+            continue
+        for key in ("internalMessage", "externalMessage"):
+            detail = failure.get(key)
+            message = detail.lower() if isinstance(detail, str) else ""
+            if "memory_limit_exceeded" not in message and "code: 241." not in message:
+                continue
+            if any(
+                marker in message
+                for marker in ("user memory limit", "(for user) memory limit", "memory limit (for user)")
+            ):
+                return "clickhouse_user_memory_limit"
+            if any(
+                marker in message for marker in ("total memory limit", "(total) memory limit", "memory limit (total)")
+            ):
+                return "clickhouse_server_memory_pressure"
+            return "clickhouse_memory_limit"
+    return None
 
 
 def airbyte_job(airbyte_url: str, token: str, action: str, job_id: int) -> dict:

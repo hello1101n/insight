@@ -126,9 +126,10 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             }
         }
         if r.stage != "connector-checks" {
-            for w in &stage_waits {
-                wait_intervals.push((w.started_at, w.ended_at.unwrap_or(until)));
-            }
+            wait_intervals.extend(stage_waits.iter().filter_map(|wait| {
+                let stop = wait.ended_at.unwrap_or(until).min(end);
+                (wait.started_at < stop).then_some((wait.started_at, stop))
+            }));
         }
         if let Some(start) = r.started_at {
             if r.stage == "bronze" {
@@ -363,6 +364,45 @@ mod tests {
             run.stages[0].waits[0].kind,
             super::super::WaitKind::Placement
         );
+    }
+
+    #[test]
+    fn wait_time_ends_when_gold_is_ready() {
+        let at = |second| DateTime::<Utc>::UNIX_EPOCH + chrono::Duration::seconds(second);
+        let record = |name: &str, kind, from, until| Record {
+            waits: Some(
+                serde_json::json!([{"kind": kind, "started_at": at(from), "ended_at": at(until)}])
+                    .to_string(),
+            ),
+            airbyte_job_id: None,
+            sync_id: "uid".into(),
+            tenant: "tenant".into(),
+            connector: "jira".into(),
+            source_id: "source".into(),
+            run_status: Some("succeeded".into()),
+            run_start: at(0),
+            execution_started_at: at(0),
+            run_end: Some(at(10)),
+            workflow_end: Some(at(100)),
+            stage: name.into(),
+            attempt: 1,
+            status: "queued".into(),
+            queued_at: at(from),
+            started_at: None,
+            finished_at: Some(at(until)),
+            reason: None,
+            records_reported: None,
+        };
+        let run = build(
+            &[
+                record("transform-jira-staging", "lock", 2, 4),
+                record("identity-seed", "placement", 8, 12),
+                record("connector-checks", "check_slot", 20, 50),
+            ],
+            at(100),
+        );
+        assert_eq!(run.wait_ms, Some(4000));
+        assert_eq!(run.stages.len(), 3);
     }
 
     #[test]

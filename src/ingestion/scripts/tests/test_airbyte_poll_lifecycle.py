@@ -294,3 +294,66 @@ def test_poll_start_retries_only_transient_workflow_reads_within_the_outage_boun
         assert result == 0, "a transient Workflow read error must preserve a healthy sync"
         assert elapsed == 1
         assert reads == [5, 4]
+
+
+@pytest.mark.parametrize(
+    ("origin", "message", "reason"),
+    [
+        ("destination", "Code: 241. DB::Exception: User memory limit exceeded", "clickhouse_user_memory_limit"),
+        ("destination", "Code: 241. DB::Exception: Query memory limit exceeded", "clickhouse_memory_limit"),
+        ("destination", "Code: 241. DB::Exception: Total memory limit exceeded", "clickhouse_server_memory_pressure"),
+        ("destination", "Destination reports OOMKilled", None),
+        ("source", "Code: 241. DB::Exception: User memory limit exceeded", None),
+    ],
+)
+def test_failed_load_evidence_distinguishes_clickhouse_memory_from_other_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, origin: str, message: str, reason: str | None
+) -> None:
+    evidence = tmp_path / "evidence.json"
+    monkeypatch.setenv("AIRBYTE_EVIDENCE_PATH", str(evidence))
+    response = {
+        "job": {"id": 123},
+        "attempts": [
+            {"attempt": {"failureSummary": {"failures": [{"failureOrigin": origin, "internalMessage": message}]}}}
+        ],
+    }
+    poll.save_terminal_evidence(123, response, "failed")
+    assert json.loads(evidence.read_text()).get("reason") == reason
+
+
+def test_poll_uses_the_highest_attempt_and_the_user_limit_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence = tmp_path / "evidence.json"
+    monkeypatch.setenv("AIRBYTE_EVIDENCE_PATH", str(evidence))
+    latest_message = "Example wrapper. " * 40 + "Code: 241. User memory limit exceeded. Total memory limit exceeded"
+    response = {
+        "job": {"id": 123},
+        "attempts": [
+            {
+                "attempt": {
+                    "id": 3,
+                    "totalStats": {"recordsEmitted": 5},
+                    "failureSummary": {
+                        "failures": [{"failureOrigin": "destination", "internalMessage": latest_message}]
+                    },
+                }
+            },
+            {
+                "attempt": {
+                    "id": 2,
+                    "totalStats": {"recordsEmitted": 1},
+                    "failureSummary": {
+                        "failures": [
+                            {
+                                "failureOrigin": "destination",
+                                "internalMessage": "Code: 241. Query memory limit exceeded",
+                            }
+                        ]
+                    },
+                }
+            },
+        ],
+    }
+    poll.save_terminal_evidence(123, response, "failed")
+    report = json.loads(evidence.read_text())
+    assert report["reason"] == "clickhouse_user_memory_limit"
+    assert report["records_reported"] == 5

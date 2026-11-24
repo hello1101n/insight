@@ -25,17 +25,7 @@ pub(super) async fn save(
     now: DateTime<Utc>,
 ) -> Result<(), DbErr> {
     let tx = db.begin().await?;
-    let ready_stage = if run.connector == "jira" {
-        "transform-jira-silver"
-    } else {
-        "transform-legacy"
-    };
-    let ready = run
-        .stages
-        .iter()
-        .filter(|s| s.stage == ready_stage && s.status == "succeeded")
-        .filter_map(|s| s.finished_at)
-        .min();
+    let ready = run.ready_at();
 
     tx.execute_raw(sql(
         "INSERT INTO ingestion_runs(sync_id,stand,tenant,connector,source_id,workflow_name,started_at,execution,finished_at,status,ready_at)

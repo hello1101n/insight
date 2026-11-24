@@ -38,6 +38,11 @@ spec:
   entrypoint: main
   templates:
     - name: main
+      synchronization:
+        semaphores:
+          - configMapKeyRef:
+              name: insight-sync-limits
+              key: bronze
       inputs:
         parameters:
           - name: connection_name

@@ -21,6 +21,9 @@
             "enabled": { "type": "boolean" }
           }
         },
+        "maxConcurrentSyncs": { "type": "integer", "minimum": 1 },
+        "maxConcurrentBronzeLoads": { "type": "integer", "minimum": 1 },
+        "maxConcurrentConnectorChecks": { "type": "integer", "minimum": 1 },
         "toolboxImage":    { "type": "string" },
         "reconcile": {
           "type": "object",
@@ -119,7 +122,24 @@
             "clusterMode": { "type": "boolean" },
             "clusterName": { "type": "string" },
             "createDatabases": { "type": "boolean" },
-            "provisionAccess": { "type": "boolean" }
+            "provisionAccess": { "type": "boolean" },
+            "serverMemoryLimitBytes": { "type": "integer", "minimum": 0 },
+            "syncUser": {
+              "type": "object",
+              "properties": {
+                "username": { "type": "string", "pattern": "^([A-Za-z_][A-Za-z0-9_]*)?$" },
+                "password": { "type": "string" },
+                "passwordSecret": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "key": { "type": "string", "minLength": 1 }
+                  }
+                },
+                "totalMemoryBytes": { "type": "integer", "minimum": 2 },
+                "queryMemoryBytes": { "type": "integer", "minimum": 2 }
+              }
+            }
           }
         }
       ]

@@ -29,6 +29,11 @@ spec:
   entrypoint: run
   templates:
     - name: run
+      synchronization:
+        semaphores:
+          - configMapKeyRef:
+              name: insight-sync-limits
+              key: checks
       # SECURITY: same convention as dbt-run.yaml and data-quality-test.yaml —
       # every parameter reaches the shell through an env var and is referenced
       # as "$ENV_VAR", never spliced into shell, Python or YAML source.
@@ -44,7 +49,7 @@ spec:
           - name: clickhouse_port
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
-            default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            default: {{ include "insight.clickhouse.syncUser" . | quote }}
       activeDeadlineSeconds: 1800
       outputs:
         parameters:
@@ -52,16 +57,17 @@ spec:
             valueFrom:
               path: /tmp/dbt-pod-uid
               default: ""
+          - name: dbt-exit-code
+            valueFrom:
+              path: /tmp/dbt-exit-code
+              default: ""
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         imagePullPolicy: IfNotPresent
         command: [bash]
         env:
           - name: CLICKHOUSE_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
-                key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+            {{- include "insight.clickhouse.syncPasswordRef" . | nindent 12 }}
           - name: DBT_POD_UID
             valueFrom:
               fieldRef:
@@ -79,7 +85,11 @@ spec:
           - name: CLICKHOUSE_PORT
             value: {{ `"{{inputs.parameters.clickhouse_port}}"` }}
           - name: CLICKHOUSE_USER
+            {{- if .Values.clickhouse.syncUser.username }}
+            value: {{ include "insight.clickhouse.syncUser" . | quote }}
+            {{- else }}
             value: {{ `"{{inputs.parameters.clickhouse_user}}"` }}
+            {{- end }}
           # Warehouse topology from the platform ConfigMap (epic #2010):
           # the profile's `cluster` key and the dbt project's cluster vars.
           - name: CLICKHOUSE_CLUSTER_MODE
@@ -112,6 +122,7 @@ spec:
           RC=0
           # shellcheck disable=SC2086 -- a dbt selector may be several words; splitting is intended
           dbt test --profiles-dir . --select $DBT_SELECT --log-format json --log-level "${INSIGHT_LOG_LEVEL:-info}" || RC=$?
+          printf '%s' "$RC" > /tmp/dbt-exit-code
           python3 /ingestion/scripts/data_quality_findings.py --scope post_sync --connector "$DQ_CONNECTOR" --dbt-exit-code "$RC"
           if [ "$RC" -ne 0 ]; then
             echo "connector checks reported findings or errored (dbt exit ${RC}); see the finding lines above — this step does not fail the sync" >&2

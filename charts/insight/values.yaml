@@ -232,6 +232,8 @@ ingestion:
   # image, either here or with the script's `--image` flag.
   seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.25.14.58-1d46f9f" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
   maxConcurrentSyncs: 4
+  maxConcurrentBronzeLoads: 2
+  maxConcurrentConnectorChecks: 2
   airbyteSync:
     launchConfirmationSeconds: 600
     launchUnreadableSeconds: 1800
@@ -356,6 +358,13 @@ clickhouse:
   # and this release creates, grants and revokes nothing. The topology guard
   # then only notes the missing replicated directory instead of refusing.
   provisionAccess: true
+  serverMemoryLimitBytes: 0
+  syncUser:
+    username: ""
+    password: ""
+    passwordSecret:
+      name: ""
+      key: password
   # When true (default), a post-install/post-upgrade Hook Job
   # (clickhouse-migrate-job) applies the schema migrations
   # (src/ingestion/scripts/migrations/*.sql) and the guarded heals against

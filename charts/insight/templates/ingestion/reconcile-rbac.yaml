@@ -24,6 +24,12 @@ rules:
     resources: [secrets]
     resourceNames: [{{ include "insight.fullname" . }}-reconcile-state]
     verbs: [patch]
+  {{- if .Values.clickhouse.syncUser.username }}
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ include "insight.fullname" . }}-reconcile-destinations]
+    verbs: [patch]
+  {{- end }}
   - apiGroups: ["onepassword.com"]
     resources: [onepassworditems]
     verbs: [get, list, watch]
@@ -58,4 +64,15 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "insight.fullname" . }}-reconcile
+{{- if .Values.clickhouse.syncUser.username }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "insight.fullname" . }}-reconcile-destinations
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: reconcile-loop
+    {{- include "insight.labels" . | nindent 4 }}
+{{- end }}
 {{- end }}

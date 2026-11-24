@@ -282,6 +282,52 @@ def test_cluster_integration_requires_a_tenant_only_when_enabled(enabled: bool, 
         assert len(roles) == int(enabled)
 
 
+def has_sleep_loop(source: str) -> bool:
+    non_code = re.compile(
+        r"""//[^\n]*|/\*.*?\*/|r(?P<hashes>#*)".*?"(?P=hashes)|"(?:\\.|[^"\\])*"|'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\n])'""",
+        re.S,
+    )
+    code = non_code.sub(" ", source)
+    sleep_names = ["sleep", "sleep_until", *re.findall(r"\bsleep(?:_until)?\s+as\s+(\w+)", code)]
+    sleep_call = re.compile(rf"\b(?:{'|'.join(sleep_names)})\s*\(")
+    repetition = re.compile(
+        r"\b(?:loop\s*|while\b[^;{}]*|for\b[^;{}]*\bin\b[^;{}]*)\{"
+        r"|\.(?:try_)?for_each(?:_concurrent)?\s*\([^;{}]*\{"
+        r"|\bfn\s+(?P<function>\w+)\b[^;{}]*\{"
+    )
+    braces = re.compile(r"[{}]")
+    for block in re.finditer(rf"(?=({repetition.pattern}))", code):
+        depth = 1
+        for brace in braces.finditer(code, block.end(1)):
+            depth += 1 if brace[0] == "{" else -1
+            if depth == 0:
+                body = code[block.end(1) : brace.start()]
+                name = block["function"]
+                if sleep_call.search(body) and (name is None or re.search(rf"\b{name}\s*\(", body)):
+                    return True
+                break
+    return False
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("// Wait for the lock.\nsleep(delay).await;", False),
+        ('let label = "for a lock"; sleep(delay).await;', False),
+        ("for item in items { store(item); } sleep(delay).await;", False),
+        ('let quote = \'"\'; loop { sleep(delay).await; let message = "retry"; }', True),
+        ("stream.for_each(|_| async { sleep(delay).await; }).await;", True),
+        ("async fn tick() { sleep(delay).await; Box::pin(tick()).await; }", True),
+        ("async fn read() { sleep(delay).await; } async fn tick() { tick().await; }", False),
+        ("loop { tokio::time::sleep(delay).await; }", True),
+        ("while ready() { if retry { sleep_until(deadline).await; } }", True),
+        ("for item in items { /* pause */ sleep(delay).await; }", True),
+    ],
+)
+def test_schedule_contract_rejects_only_a_sleep_inside_a_loop(source: str, expected: bool) -> None:
+    assert has_sleep_loop(source) == expected
+
+
 def test_schedule_service_has_no_background_worker_or_retry_interval() -> None:
     service = Path(__file__).resolve().parents[2]
     source = service / "src"
@@ -307,8 +353,7 @@ def test_schedule_service_has_no_background_worker_or_retry_interval() -> None:
         assert not task.search(body), relative
         assert not re.search(r"\binterval(?:_at)?(?:\s*\(|\s+as\s+)", body), relative
         assert "retry_interval" not in body, relative
-        if re.search(r"\b(?:loop|while|for)\b", body):
-            assert not re.search(r"\bsleep(?:_until)?\b", body), relative
+        assert not has_sleep_loop(body), relative
 
     for path in source.rglob("*.rs"):
         relative = path.relative_to(source)

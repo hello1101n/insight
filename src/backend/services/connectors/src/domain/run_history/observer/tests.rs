@@ -84,6 +84,61 @@ fn argo_lock_holder_and_sync_slot_are_distinct_from_placement() -> Result<()> {
 }
 
 #[test]
+fn bronze_and_checks_report_their_own_slot_waits() -> Result<()> {
+    let mut workflow = workflow(&json!({
+        "phase":"Running",
+        "nodes":{
+            "load":{"id":"load","templateRef":{"name":"airbyte-sync","template":"main"},
+                "type":"Steps","phase":"Pending","startedAt":at(2),
+                "synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/bronze"}},
+            "checks":{"id":"checks","displayName":"connector-checks","type":"Pod","phase":"Pending",
+                "startedAt":at(3),"synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/checks"}}
+        }
+    }))?;
+    let pods = HashMap::new();
+    let load = bronze::snapshot(&workflow, at(1), &pods, None);
+    let checks = &nodes::transforms(&workflow.data["status"], &pods, None)[0];
+    assert_eq!(
+        load.wait.as_ref().map(|wait| wait.kind),
+        Some(WaitKind::SyncSlot)
+    );
+    assert_eq!(load.wait.as_ref().map(|wait| wait.started_at), Some(at(2)));
+    assert_eq!(
+        serde_json::to_value(checks.wait.as_ref().map(|wait| wait.kind))?,
+        "check_slot"
+    );
+
+    let (mut run, _) = identity(&workflow, at(9), false).context("expected ingestion pipeline")?;
+    run.stages = vec![nodes::transforms(&workflow.data["status"], &pods, None).remove(0)];
+    assert!(timeout::expired(&run, at(9)).is_none());
+    assert!(timeout::expired(&run, at(10)).is_none());
+
+    workflow.data["status"]["nodes"]["load"]["phase"] = json!("Error");
+    let ended = bronze::snapshot(&workflow, at(1), &pods, Some(at(8)));
+    assert!(ended.wait.is_none());
+    Ok(())
+}
+
+#[test]
+fn stops_no_workflow_after_gold_is_ready() -> Result<()> {
+    let workflow = workflow(&json!({"phase":"Running"}))?;
+    let (mut run, _) = identity(&workflow, at(9), false).context("expected ingestion pipeline")?;
+    let mut gold = StageSnapshot::new("transform-jira-silver", 1, at(1));
+    gold.status = "succeeded";
+    gold.finished_at = Some(at(2));
+    let mut waiting = StageSnapshot::new("connector-checks", 1, at(2));
+    waiting.status = "queued";
+    waiting.wait = Some(nodes::wait(WaitKind::CheckSlot, at(2), None));
+    run.stages = vec![gold, waiting];
+    assert!(timeout::expired(&run, at(9)).is_none());
+    run.stages[0].finished_at = None;
+    run.stages[1].stage = "transform-jira-staging";
+    run.stages[1].wait = Some(nodes::wait(WaitKind::Lock, at(2), None));
+    assert!(timeout::expired(&run, at(9)).is_none());
+    Ok(())
+}
+
+#[test]
 fn stops_strictly_after_six_hours_and_only_for_argo_synchronization() -> Result<()> {
     let workflow = workflow(&json!({"phase":"Running"}))?;
     let (mut run, _) = identity(&workflow, at(8), false).context("expected ingestion pipeline")?;
@@ -338,5 +393,48 @@ async fn record_missing_closes_absent_workflows_and_leaves_present_ones_open() -
         closed.stages[0].reason.as_deref(),
         Some("workflow_not_found")
     );
+    Ok(())
+}
+
+#[test]
+fn airbyte_lookup_recovers_the_destination_memory_reason_without_poll_evidence() -> Result<()> {
+    let connection = uuid::Uuid::new_v4();
+    let response = json!({
+        "job": {"id": 21, "configId": connection, "configType": "sync", "status": "failed"},
+        "attempts": [
+            {"attempt": {"id": 2, "failureSummary": {"failures": [
+                {"failureOrigin": "source", "internalMessage": "Code: 241. Query memory limit exceeded"},
+                {"failureOrigin": "destination", "internalMessage": "Code: 241. User memory limit exceeded. Total memory limit exceeded"}
+            ]}}},
+            {"attempt": {"id": 1, "failureSummary": {"failures": [
+                {"failureOrigin": "destination", "internalMessage": "Code: 241. Query memory limit exceeded"}
+            ]}}}
+        ]
+    });
+    let mut load = StageSnapshot::new("bronze", 1, at(1));
+    airbyte::parse_job(&response, 21, connection)?.apply(&mut load, Some(at(2)));
+    assert_eq!(load.reason.as_deref(), Some("clickhouse_user_memory_limit"));
+    Ok(())
+}
+
+#[test]
+fn checks_report_dbt_errors_without_failing_the_workflow() -> Result<()> {
+    for (code, expected) in [("0", "succeeded"), ("1", "failed")] {
+        let workflow = workflow(&json!({
+            "phase": "Succeeded",
+            "startedAt": at(1),
+            "finishedAt": at(3),
+            "nodes": {"checks": {
+                "id": "checks", "displayName": "connector-checks", "type": "Pod",
+                "phase": "Succeeded", "startedAt": at(2), "finishedAt": at(3),
+                "outputs": {"parameters": [{"name": "dbt-exit-code", "value": code}]}
+            }}
+        }))?;
+        let (run, _) = identity(&workflow, at(3), false).context("expected ingestion pipeline")?;
+        let attempts =
+            nodes::transforms(&workflow.data["status"], &HashMap::new(), run.finished_at);
+        assert_eq!(run.status, Some("succeeded"));
+        assert_eq!(attempts[0].status, expected, "dbt exit {code}");
+    }
     Ok(())
 }

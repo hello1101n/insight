@@ -11,11 +11,6 @@ spec:
   entrypoint: pipeline
   templates:
     - name: pipeline
-      synchronization:
-        semaphores:
-          - configMapKeyRef:
-              name: insight-sync-limits
-              key: syncs
       # Connection-specific inputs (connection_name, insight_source_id,
       # data_source, dbt_select, dbt_select_staging) are supplied by the
       # invoker. Image tags and infrastructure coordinates default from
@@ -45,7 +40,7 @@ spec:
           - name: clickhouse_port
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
-            default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            default: {{ include "insight.clickhouse.syncUser" . | quote }}
       dag:
         tasks:
           - name: sync
@@ -106,7 +101,7 @@ spec:
           - name: clickhouse_port
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
-            default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            default: {{ include "insight.clickhouse.syncUser" . | quote }}
       dag:
         tasks:
           # ------ Jira: dbt(tag:staging,tag:jira) → dbt(tag:silver,tag:jira+) ------

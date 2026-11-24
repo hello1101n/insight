@@ -127,12 +127,11 @@ pub(super) fn snapshot(
         stage.status = "loading";
     }
 
-    if let Some(node) = nodes::slot_wait(status) {
-        stage.wait = Some(nodes::wait(WaitKind::SyncSlot, queued_at, None));
+    if workflow_end.is_none()
+        && let Some(at) = nodes::bronze_slot_wait(status)
+    {
+        stage.wait = Some(nodes::wait(WaitKind::SyncSlot, at, None));
         stage.status = "queued";
-        stage.queued_at = stage
-            .queued_at
-            .min(nodes::time(node, "startedAt").unwrap_or(queued_at));
     } else if stage.job.is_none()
         && workflow_end.is_none()
         && let Some(node) = trigger.or(resolve)

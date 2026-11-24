@@ -69,19 +69,41 @@ toolbox image because the poller's environment variable also changed.
 
 ## Connector sync limits and history
 
-Argo limits concurrent pipelines with the `insight-sync-limits` ConfigMap.
-Set `ingestion.maxConcurrentSyncs` to change the limit. The default is four.
+Argo limits Bronze loads and connector checks separately.
+A Bronze slot covers connection lookup, Airbyte launch, and polling.
+The slot is released when the Bronze step ends.
+A check slot covers the post-sync `connector-checks` step.
+Keep the `syncs` key for this release. Queued workflows from the prior release still read it.
+Remove the key in the next release after those workflows finish.
 Argo uses one mutex for staging, one for Identity, and one for downstream transformations.
 The same mutex protects a writer group on both the Jira and non-Jira paths.
 
+| Setting | Default | Applies to |
+| --- | --- | --- |
+| `ingestion.maxConcurrentSyncs` | 4 | Legacy pipelines that still reference `syncs` |
+| `ingestion.maxConcurrentBronzeLoads` | 2 | Bronze slots in this namespace |
+| `ingestion.maxConcurrentConnectorChecks` | 2 | Check slots in this namespace |
+| `clickhouse.syncUser.username` | Empty | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
+| `clickhouse.syncUser.passwordSecret.name` | Empty | Existing Secret in the release namespace |
+| `clickhouse.syncUser.passwordSecret.key` | `password` | Password key in the existing Secret |
+| `clickhouse.syncUser.password` | Empty | Password for the Secret that Helm creates |
+| `clickhouse.syncUser.totalMemoryBytes` | 60% of the configured server limit | `max_memory_usage_for_user` on each ClickHouse server |
+| `clickhouse.syncUser.queryMemoryBytes` | Unset | Optional `max_memory_usage` for each query |
+| `clickhouse.serverMemoryLimitBytes` | 0 (unknown) | Effective ClickHouse memory limit per server, for chart validation |
+
 Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
-Connectors checks the ClickHouse query log for failed dbt and identity stages for up to 10 minutes.
+It checks the ClickHouse query log for failed dbt and identity stages for up to ten minutes.
+The lookup allows 60 seconds of clock difference at each end of the stage.
+It distinguishes the sync user's total, the query limit, server memory pressure, and a pod killed for memory.
+For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
+
 The Connectors page shows Bronze, Silver, Identity, and Gold.
-The queue distinguishes a writer lock, a sync slot, and Kubernetes pod placement.
+The queue distinguishes a writer lock, a Bronze slot, and Kubernetes pod placement.
 The lock reason includes the holder when Argo reports it.
 A wait shows a warning after three hours.
-Connectors stops a Workflow after six hours of waiting for a writer lock or sync slot.
-If pod placement takes longer, the Workflow continues to wait.
+Connectors stops a Workflow after more than six hours of waiting for a writer lock or Bronze slot.
+The stop applies before Gold succeeds. The page and elapsed wait time end at Gold.
+Connectors records check attempts separately. Kubernetes pod placement can continue beyond six hours.
 
 The trigger records its launch claim on the Workflow before it calls Airbyte.
 A replacement trigger reads the claim and checks for the same launch.
@@ -95,6 +117,98 @@ The default is 1800 seconds. An unreadable list leaves the launch outcome unknow
 Set `ingestion.airbyteSync.statusUnreadableThresholdSeconds` to limit how long the poll step tolerates an outage.
 The poll step applies this limit when it reads the Workflow at startup and when it reads Airbyte job status.
 The default is 1800 seconds. A permanent credential error stops the poll step immediately.
+
+### Configure the ClickHouse sync user
+
+Set `clickhouse.syncUser.username` to a dedicated account.
+Use a distinct username for each stand that shares a ClickHouse server.
+Set its password through `clickhouse.syncUser.passwordSecret.name` or `clickhouse.syncUser.password`.
+With the default `clickhouse.provisionAccess: true`, the database job creates the account and applies its settings and grants.
+An empty username uses the existing credentials and skips sync user provisioning.
+Analytics, application services, and the independent scheduled data-quality catalog use their existing accounts.
+
+The next connector reconcile pass updates the ClickHouse destination on each existing managed Airbyte connection.
+The update preserves the destination ID, connection state, and other destination settings.
+Airbyte can share a destination across connections. All connections that use that destination receive the credential change.
+Reconcile reads the password and its Secret revision together.
+Reconcile records each successful credential write in the release's `reconcile-destinations` ConfigMap.
+The record contains only the username, Secret UID, key, and resource version.
+Reconcile sends the credentials once per destination when the current revision differs from this record or the record is absent.
+A new Secret revision can cause one write even if the password stays the same.
+
+Apply the new password in ClickHouse before the next reconcile pass.
+The chart provisioning job does this on upgrade.
+Bronze loads can fail authentication for up to one reconcile interval, until the next successful pass updates Airbyte.
+To return an enabled installation to the shared account, restore its credentials on the Airbyte destinations and clear `clickhouse.syncUser.username`.
+
+Set `clickhouse.syncUser.totalMemoryBytes` or `clickhouse.serverMemoryLimitBytes` to enable the account.
+With only the server limit, Helm uses 60% of that limit, rounded down to whole bytes.
+If both values are set, the sync total must be below the server limit.
+
+Measure query peaks during a representative Jira sync while Analytics runs.
+Use the largest applicable dbt model cap for each writer group.
+Estimate the sync total with this formula.
+
+```text
+Bronze slots × Bronze query budget
++ staging transform cap + downstream transform cap
++ identity seed cap
++ check slots × check query budget
+```
+
+Keep the total below the server limit minus idle memory and a reserve for Analytics.
+The per-user limit applies to the sum of tracked query memory on each server.
+Set `clickhouse.syncUser.queryMemoryBytes` to cap ordinary queries at their measured budget.
+Model-level caps override that default.
+An explicit default sets both spill thresholds to half its value and both ratio settings to zero.
+Leave the default unset to retain the server's per-query and spill settings.
+
+### Provision the sync user on an operator-managed ClickHouse server
+
+Set `clickhouse.provisionAccess: false` when the operator manages ClickHouse users.
+Use the same username and password in the chart and in ClickHouse.
+Replace `insight_sync`, the example password, and `insight` with your account, password, and `clickhouse.database` value.
+Replace the example limits with the effective values from the chart.
+Remove the per-query limit and the four spill settings if `clickhouse.syncUser.queryMemoryBytes` is unset.
+Set each spill threshold to half the per-query limit in bytes, rounded down.
+
+```sql
+CREATE USER IF NOT EXISTS insight_sync IDENTIFIED WITH sha256_password BY 'example-password';
+ALTER USER insight_sync IDENTIFIED WITH sha256_password BY 'example-password'
+SETTINGS
+    max_memory_usage_for_user = 6000000000 CONST,
+    max_memory_usage = 1073741824,
+    max_bytes_before_external_group_by = 536870912,
+    max_bytes_before_external_sort = 536870912,
+    max_bytes_ratio_before_external_group_by = 0,
+    max_bytes_ratio_before_external_sort = 0,
+    memory_usage_overcommit_max_wait_microseconds = 0;
+
+GRANT CREATE DATABASE, SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, TRUNCATE ON bronze_*.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON staging.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON silver.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON identity.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON insight.* TO insight_sync;
+GRANT CREATE DATABASE, SELECT, INSERT, CREATE TABLE, DROP TABLE ON dbt_test__audit.* TO insight_sync;
+GRANT SELECT ON config.* TO insight_sync;
+GRANT CREATE TABLE ON config.task_field_roles TO insight_sync;
+GRANT CREATE TABLE ON config.task_value_map TO insight_sync;
+GRANT CREATE TABLE ON config.field_value_map TO insight_sync;
+GRANT CREATE TABLE ON config.field_value_defaults TO insight_sync;
+GRANT CREATE TABLE ON config.ai_seat_tier_map TO insight_sync;
+GRANT CREATE TABLE ON config.ai_credit_pricing TO insight_sync;
+GRANT SELECT ON system.databases TO insight_sync;
+GRANT SELECT ON system.tables TO insight_sync;
+GRANT SELECT ON system.columns TO insight_sync;
+```
+
+On a cluster, apply the same account and grants on every replica.
+Use a replicated user directory to apply them once.
+Airbyte uses `ON CLUSTER` DDL. dbt reads table metadata through `clusterAllReplicas`.
+
+```sql
+GRANT CLUSTER, REMOTE ON *.* TO insight_sync;
+```
 
 ## Release name convention
 
@@ -346,6 +460,7 @@ Key groups:
 - `clickhouse.clusterMode` / `clickhouse.clusterName` — warehouse topology, see [ClickHouse topology](#clickhouse-topology)
 - `clickhouse.createDatabases` — whether the pre-install Hook creates the release's ClickHouse databases. `false` is for a warehouse provisioned out of band: the post-install Hook converges them only with `clickhouse.runMigrations: true` and `ingestion.toolboxImage` set, and on a fresh install with v3-core deployed its pre-install migrate Job (weight 10) asserts `insight_datasets` before that Hook runs, so the install fails unless the database already stands (see [ClickHouse topology](#clickhouse-topology))
 - `clickhouse.provisionAccess` — whether the release provisions the ClickHouse roles and grant-less users beside them; `false` leaves access to the operator (a cluster without a replicated user directory)
+- `clickhouse.syncUser.*` — [credentials and memory limits for connector syncs](#configure-the-clickhouse-sync-user)
 - `clickhouse.fieldValueMap.*` — insert-only seed of operator-authored `config.field_value_map` / `config.field_value_defaults` rows from a TSV ConfigMap (post-upgrade hook, weight 300)
 - `gitCliProxy.*`, `frontend.*` — optional services, on by default
 - `ingestion.templates.enabled` — whether to ship Argo WorkflowTemplates; requires Argo CRDs to be present in the cluster

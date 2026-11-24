@@ -79,8 +79,7 @@ reconcile__log() {
 # Resolves (or creates) the Airbyte destination Bronze sink owned by
 # reconcile. Strategy:
 #   1. If RECONCILE_DESTINATION_ID env is set (legacy / explicit override),
-#      use it verbatim: that destination's configuration belongs to whoever
-#      set the id, not to reconcile.
+#      use that destination ID. An enabled sync user supplies its credentials.
 #   2. Otherwise, converge the destination named RECONCILE_DESTINATION_NAME
 #      (default `clickhouse-bronze`) on the configuration composed from
 #      RECONCILE_DEST_CLICKHOUSE_* env — created when absent, updated when
@@ -146,6 +145,11 @@ reconcile_resolve_destination_id() {
     fi
     if [[ -z "${dest_id}" ]]; then
       reconcile__log ERROR "${subject}" "ab_ensure_destination returned empty id for ${dest_name}"
+      return 1
+    fi
+  elif [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+    if ! ab_converge_destination_credentials "${dest_id}"; then
+      reconcile__log ERROR "${subject}" "Airbyte destination credential update failed."
       return 1
     fi
   fi
@@ -1092,6 +1096,14 @@ print("\n".join(sorted(i for i in ids if i)))')"
     local connection_id existing_tags_json desired_action
     connection_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["connectionId"])')"
     existing_tags_json="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.dumps(json.load(sys.stdin).get("tags",[])))')"
+    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" && "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+      local destination_id
+      destination_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["destinationId"] or "")')"
+      if [[ -z "${destination_id}" ]] || ! ab_converge_destination_credentials "${destination_id}"; then
+        reconcile__log ERROR "${connector_name}" "Airbyte destination credential update failed."
+        return 1
+      fi
+    fi
     if [[ -n "${source_name}" ]]; then
       reconcile_converge_connection_name "${connector_name}" "${connection_id}" \
         "$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("name") or "")')" \
@@ -1822,6 +1834,14 @@ reconcile_run() {
   _RECONCILE_SKIPPED=0
 
   log_init
+  if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" && "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+    if ! ab_destination_credentials_init; then
+      log_line ERROR "The ClickHouse sync credentials or destination state read failed."
+      log_run_summary "${_RECONCILE_CHANGED}" 1
+      log_close
+      return 2
+    fi
+  fi
   connector_schedules_read
   connector_schedules_writable || _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1))
 
@@ -1835,6 +1855,7 @@ reconcile_run() {
     log_line ERROR "cannot read the connector Secrets; reconciling nothing this tick"
     log_run_summary "${_RECONCILE_CHANGED}" 1
     log_close
+    ab_destination_credentials_close
     return 2
   fi
 
@@ -1883,5 +1904,6 @@ reconcile_run() {
 
   log_run_summary "${_RECONCILE_CHANGED}" "${_RECONCILE_FAILED}"
   log_close
+  ab_destination_credentials_close
   return $(( _RECONCILE_FAILED > 0 ? 2 : 0 ))
 }

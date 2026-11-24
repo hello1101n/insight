@@ -48,6 +48,7 @@
 
 _AIRBYTE_LIB_DIR="$( cd "$(dirname "${BASH_SOURCE[0]}")" && pwd )"
 _AIRBYTE_PY_DIR="$( cd "${_AIRBYTE_LIB_DIR}/../python" && pwd )"
+source "${_AIRBYTE_LIB_DIR}/destination-credentials.sh"
 
 # ---------------------------------------------------------------------------
 # ab_get_token — print bearer token to stdout.
@@ -765,10 +766,8 @@ ab_destination_version() {
 # Converges the destination named <name> on <config_json> and echoes its
 # destinationId: created when absent, updated through destinations/update
 # when its stored connectionConfiguration differs. Airbyte lists a secret as
-# "**********", so the comparison skips every key it returns masked: a
-# rotated password alone is not seen, every other key is — which is what lets
-# a topology flag flipped on an installed system reach Airbyte. One decision
-# line on stderr per call.
+# "**********". A dedicated sync account uses the Secret revision to detect drift.
+# Other masked values are skipped. One decision line goes to stderr per call.
 # ---------------------------------------------------------------------------
 ab_ensure_destination() {
   local name="$1"
@@ -790,9 +789,9 @@ for d in json.load(sys.stdin).get("destinations", []):
         continue
     current = d.get("connectionConfiguration") or {}
     masked = {k for k, v in current.items() if v == MASK}
-    drift = sorted(k for k in set(current) | set(desired)
-                   if k not in masked and current.get(k, MASK) != desired.get(k, MASK))
-    print(d["destinationId"] + "\t" + " ".join(drift))
+    drift = {k for k in set(current) | set(desired)
+             if k not in masked and current.get(k, MASK) != desired.get(k, MASK)}
+    print(d["destinationId"] + "\t" + " ".join(sorted(drift)))
     break
 ' "${name}" "${config_json}")"
 
@@ -800,6 +799,25 @@ for d in json.load(sys.stdin).get("destinations", []):
   if [[ -n "${found}" ]]; then
     local existing_id drift
     IFS=$'\t' read -r existing_id drift <<<"${found}"
+    local credentials_changed=false
+    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+      if ab_destination_write_attempted "${existing_id}"; then
+        ab_destination_write_succeeded "${existing_id}" || return 1
+        if [[ -n "${drift}" ]]; then
+          printf 'Airbyte destination configuration for %s needs another reconcile pass.\n' "${existing_id}" >&2
+          return 1
+        fi
+        printf '%s' "${existing_id}"
+        return 0
+      fi
+      if [[ " ${drift} " == *" username "* || " ${drift} " == *" password "* ]] \
+        || ! ab_destination_credentials_current "${existing_id}"; then
+        credentials_changed=true
+        drift="${drift:+${drift} }password"
+      elif [[ -n "${drift}" ]]; then
+        config_json="$(jq -c '.password = "**********"' <<<"${config_json}")" || return 1
+      fi
+    fi
     if [[ -z "${drift}" ]]; then
       printf 'ab_ensure_destination: destination "%s" (%s) already carries the composed configuration\n' \
         "${name}" "${existing_id}" >&2
@@ -814,7 +832,12 @@ print(json.dumps({
   "connectionConfiguration": json.loads(sys.argv[3]),
 }))
 ' "${existing_id}" "${name}" "${config_json}")
-    if ! resp="$(ab__curl POST /api/v1/destinations/update "${body}")"; then
+    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+      if ! ab_destination_update_once "${existing_id}" "${body}" "${credentials_changed}"; then
+        printf 'Airbyte destination update or state write failed for %s.\n' "${existing_id}" >&2
+        return 1
+      fi
+    elif ! resp="$(ab__curl POST /api/v1/destinations/update "${body}")"; then
       printf 'ab_ensure_destination: destinations/update failed for "%s" (%s; drifted: %s).\nAirbyte response: %s\n' \
         "${name}" "${existing_id}" "${drift}" "${resp}" >&2
       return 1
@@ -838,6 +861,10 @@ print(json.dumps({
   # the Airbyte error body — which names the offending config field — instead
   # of a bare `KeyError: 'destinationId'` from piping straight into the parser.
   if ! resp="$(ab__curl POST /api/v1/destinations/create "${body}")"; then
+    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+      printf 'Airbyte destination creation failed for "%s".\n' "${name}" >&2
+      return 1
+    fi
     printf 'ab_ensure_destination: destinations/create failed for "%s" (definitionId %s).\nAirbyte response: %s\n' \
       "${name}" "${definition_id}" "${resp}" >&2
     return 1
@@ -849,12 +876,35 @@ except Exception:
     sys.exit(1)
 ')"
   if [[ -z "${dest_id}" ]]; then
+    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+      printf 'Airbyte destination creation returned no ID for "%s".\n' "${name}" >&2
+      return 1
+    fi
     printf 'ab_ensure_destination: destinations/create returned no destinationId for "%s".\nAirbyte response: %s\n' \
       "${name}" "${resp}" >&2
     return 1
   fi
+  if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+    ab_destination_mark_attempt "${dest_id}" || return 1
+    ab_destination_record_write "${dest_id}" true || return 1
+  fi
   printf 'ab_ensure_destination: destination "%s" (%s) created\n' "${name}" "${dest_id}" >&2
   printf '%s' "${dest_id}"
+}
+
+ab_converge_destination_credentials() {
+  local id="$1" request response update
+  if ab_destination_write_attempted "${id}"; then
+    ab_destination_write_succeeded "${id}"
+    return
+  fi
+  if ab_destination_credentials_current "${id}"; then
+    return 0
+  fi
+  request="$(printf '{"destinationId":"%s"}' "${id}")"
+  response="$(ab__curl POST /api/v1/destinations/get "${request}")" || return 1
+  update="$(printf '%s' "${response}" | python3 "${_AIRBYTE_PY_DIR}/destination_credentials.py" "${id}")" || return 1
+  ab_destination_update_once "${id}" "${update}" true
 }
 
 # ---------------------------------------------------------------------------

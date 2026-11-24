@@ -926,18 +926,19 @@
       "queue_reason": {
         "lock": "Waiting for a lock",
         "lock_holder": "Waiting for a lock held by {{holder}}",
-        "sync_slot": "Waiting for a free sync slot",
+        "sync_slot": "Waiting for a free load slot",
         "placement": "Waiting for cluster capacity"
       },
       "reason": {
         "airbyte_launch_rejected": "Airbyte refused the sync request",
         "airbyte_launch_unconfirmed": "Airbyte did not confirm the sync launch",
-        "airbyte_launch_unreadable": "Could not confirm the sync launch because the Airbyte job list was unavailable",
+        "airbyte_launch_unreadable": "The Airbyte job list was unavailable. The sync launch is not confirmed.",
         "airbyte_job_failed": "The Airbyte job failed",
         "airbyte_job_cancelled": "Airbyte cancelled the job",
         "clickhouse_memory_limit": "ClickHouse memory limit exceeded",
         "pod_oom": "The sync exceeded its memory limit",
         "source_pod_oom": "The source exceeded its memory limit",
+        "clickhouse_user_memory_limit": "Syncs reached their shared ClickHouse memory limit",
         "clickhouse_server_memory_pressure": "ClickHouse ran out of available server memory",
         "workflow_not_found": "The sync record could not be found",
         "wait_timeout": "Waited over 6 hours",
