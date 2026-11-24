@@ -1,7 +1,10 @@
 import { setupServer } from "msw/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { DashboardWidget, Widget } from "@/api/custom-client";
+
 import { dashboardHandlers } from "./dashboard-handlers";
+import { EXAMPLE_DASHBOARDS } from "./example-dashboards";
 
 const server = setupServer(...dashboardHandlers);
 
@@ -85,4 +88,58 @@ describe("dashboard mocks", () => {
     );
     expect(stranger.status).toBe(404);
   });
+});
+
+function drawnColumns(widget: Widget): string[] {
+  switch (widget.type) {
+    case "table":
+      return widget.columns;
+    case "line":
+    case "area":
+      return [widget.x, widget.y];
+    case "bar":
+      return [widget.x, widget.y, ...(widget.series ? [widget.series] : [])];
+    case "stat":
+      return [widget.value];
+    case "pie":
+      return [widget.label, widget.value];
+  }
+}
+
+const REFUSED: Record<string, number> = {
+  "edge-failed": 500,
+  "edge-busy": 429,
+};
+const MISNAMED = new Set(["edge-missing-column"]);
+
+describe("example dashboard mocks", () => {
+  it.each(Object.keys(EXAMPLE_DASHBOARDS))(
+    "%s runs every widget it draws with the columns and percents the widget names",
+    async (board) => {
+      const listed = (await (
+        await call(`/dashboards/${board}/widgets`)
+      ).json()) as { items: DashboardWidget[] };
+
+      for (const widget of listed.items) {
+        const ran = await call(
+          `/dashboards/${board}/widgets/${widget.id}/run`,
+          "POST"
+        );
+        if (REFUSED[widget.id]) {
+          expect(ran.status, widget.id).toBe(REFUSED[widget.id]);
+          continue;
+        }
+
+        const answer = (await ran.json()) as {
+          columns: string[];
+          percents?: string[];
+        };
+        const missing = drawnColumns(widget.body).filter(
+          (name) => !answer.columns.includes(name)
+        );
+        expect(missing.length > 0, widget.id).toBe(MISNAMED.has(widget.id));
+        expect(answer.percents, widget.id).toEqual(widget.percents);
+      }
+    }
+  );
 });

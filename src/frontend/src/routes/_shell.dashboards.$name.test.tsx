@@ -57,6 +57,11 @@ vi.mock("recharts", async (importOriginal) => ({
     </div>
   ),
 }));
+vi.mock("@/components/custom/frontx-board", () => ({
+  default: ({ id, range }: { id: string; range?: string }) => (
+    <div data-testid="frontx-board" data-id={id} data-range={range ?? ""} />
+  ),
+}));
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -70,13 +75,14 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as customClient from "@/api/custom-client";
 import type { DashboardWidget, Widget } from "@/api/custom-client";
+import { setPortalShowPlanned } from "@/lib/portal/portal-store";
 import { portalRouter } from "@/test/portal-router";
 
 import { Route } from "./_shell.dashboards.$name";
@@ -427,6 +433,45 @@ describe("/dashboards/$name", () => {
     expect(
       await screen.findByRole("button", { name: /retry/i })
     ).toBeInTheDocument();
+  });
+});
+
+describe("/dashboards/$name — with planned sections on", () => {
+  afterEach(() => setPortalShowPlanned(false));
+
+  it("draws the board through FrontX on the selected window and keeps the page around it", async () => {
+    setPortalShowPlanned(true);
+    boardOfCommits({
+      body: {
+        title: "Engineering",
+        widgets: ["commits_table"],
+        time_ranges: ["P7D", "P30D"],
+        default_range: "P30D",
+      },
+    });
+
+    render(<Component />, { wrapper });
+
+    const board = await screen.findByTestId("frontx-board");
+    expect(board).toHaveAttribute("data-id", "engineering");
+    expect(board).toHaveAttribute("data-range", "P30D");
+    expect(
+      screen.getByRole("heading", { name: "Engineering" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Period" })).toBeInTheDocument();
+    expect(customClient.runDashboardWidget).not.toHaveBeenCalled();
+  });
+
+  it("goes back to the current board when planned sections turn off", async () => {
+    setPortalShowPlanned(true);
+    boardOfCommits();
+    render(<Component />, { wrapper });
+    await screen.findByTestId("frontx-board");
+
+    act(() => setPortalShowPlanned(false));
+
+    expect(await screen.findByRole("cell", { name: "59" })).toBeInTheDocument();
+    expect(screen.queryByTestId("frontx-board")).not.toBeInTheDocument();
   });
 });
 

@@ -10,7 +10,14 @@ import type {
   GrantLevel,
 } from "@/api/custom-client";
 
+import { dashboardItems } from "@/lib/custom/dashboard-items";
+
 import { isAdministrator } from "./admin-assignments";
+import {
+  EXAMPLE_DASHBOARDS,
+  EXAMPLE_WIDGETS,
+  exampleRun,
+} from "./example-dashboards";
 import { PEOPLE } from "./registry";
 
 const CALLER = PEOPLE[0]?.person_id ?? "";
@@ -82,6 +89,10 @@ const dashboards: Record<string, MockDashboard> = {
   },
 };
 
+for (const [id, example] of Object.entries(EXAMPLE_DASHBOARDS)) {
+  dashboards[id] = { ...example, owner: CALLER, grants: [] };
+}
+
 const widgets: Record<string, DashboardWidget> = {
   "deploys-per-week": {
     id: "deploys-per-week",
@@ -89,6 +100,7 @@ const widgets: Record<string, DashboardWidget> = {
     body: { type: "table", metric: "deploys", columns: ["week", "deploys"] },
     clock: null,
   },
+  ...Object.fromEntries(EXAMPLE_WIDGETS.map((widget) => [widget.id, widget])),
 };
 
 export const DEPLOYS_ROWS = {
@@ -406,20 +418,40 @@ export const dashboardHandlers = [
     const dashboard = dashboards[id];
     if (!dashboard || !accessOf(id)) return notFound();
 
-    const items = (dashboard.body.widgets ?? []).flatMap((widget) => {
-      const drawn = widgets[widget];
+    const items = dashboardItems(dashboard.body).flatMap((item) => {
+      const drawn = "widget" in item ? widgets[item.widget] : undefined;
       return drawn ? [drawn] : [];
     });
     return HttpResponse.json({ items });
   }),
-  http.post("/api/v3/v1/dashboards/:id/widgets/:widget/run", ({ params }) => {
-    const id = String(params.id);
-    const widget = String(params.widget);
-    const drawn = dashboards[id]?.body.widgets?.includes(widget);
-    if (!accessOf(id) || !drawn || !widgets[widget]) return notFound();
+  http.post(
+    "/api/v3/v1/dashboards/:id/widgets/:widget/run",
+    async ({ params, request }) => {
+      const id = String(params.id);
+      const widget = String(params.widget);
+      const board = dashboards[id];
+      const drawn =
+        board &&
+        dashboardItems(board.body).some(
+          (item) => "widget" in item && item.widget === widget
+        );
+      if (!accessOf(id) || !drawn || !widgets[widget]) return notFound();
 
-    return HttpResponse.json(DEPLOYS_ROWS);
-  }),
+      const asked = (await request.json().catch(() => ({}))) as {
+        range?: string;
+      };
+      const answer = exampleRun(widget, asked.range);
+      if (!answer) return HttpResponse.json(DEPLOYS_ROWS);
+      if ("status" in answer) {
+        return HttpResponse.json(answer.body, { status: answer.status });
+      }
+      const percents = widgets[widget]?.percents;
+      return HttpResponse.json({
+        ...answer.result,
+        ...(percents ? { percents } : {}),
+      });
+    }
+  ),
   http.get("/api/v3/v1/:kind/:id/grants", ({ params }) => {
     const shared = sharedThing(String(params.kind), String(params.id));
     if (shared instanceof Response) return shared;

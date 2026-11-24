@@ -157,6 +157,7 @@ export interface DashboardWidget {
   name: string;
   body: Widget;
   clock?: EffectiveClock | null;
+  percents?: string[];
 }
 
 export type GrantLevel = "viewer" | "editor";

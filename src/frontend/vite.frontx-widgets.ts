@@ -3,7 +3,10 @@ import path from "node:path";
 import type { Connect, Plugin } from "vite";
 
 // INVARIANT: `pnpm build:widgets` writes the FrontX widget bundles here.
-const BUNDLES = path.resolve(import.meta.dirname, "node_modules/.frontx-widgets");
+const BUNDLES = path.resolve(
+  import.meta.dirname,
+  "node_modules/.frontx-widgets"
+);
 const PREFIX = "/widgets/";
 const TYPES: Record<string, string> = {
   ".js": "text/javascript",

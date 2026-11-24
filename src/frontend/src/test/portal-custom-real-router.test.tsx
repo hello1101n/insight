@@ -19,6 +19,12 @@ import { setPortalShowPlanned } from "@/lib/portal/portal-store";
 
 vi.mock("@/api/custom-client");
 vi.mock("@/api/identity-client");
+// WORKAROUND: planned sections draw a dashboard through FrontX, whose widget bundles jsdom cannot load.
+vi.mock("@/components/custom/frontx-board", () => ({
+  default: ({ read }: { read: { body: { widgets?: string[] } } }) => (
+    <p>FrontX board of {read.body.widgets?.join(", ")}</p>
+  ),
+}));
 
 const LISTING = {
   items: [
@@ -228,7 +234,11 @@ describe("the /dashboards routes, through the real router", { timeout: 20_000 },
     await userEvent.click(screen.getByTestId("chat-send"));
 
     expect(
-      await screen.findByRole("cell", { name: "100" }, { timeout: 10000 })
+      await screen.findByText(
+        "FrontX board of revenue_table",
+        {},
+        { timeout: 10000 }
+      )
     ).toBeInTheDocument();
   });
 

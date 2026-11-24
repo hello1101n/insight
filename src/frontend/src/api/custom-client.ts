@@ -508,7 +508,7 @@ export async function fetchDashboardWidgets(
   return read.items;
 }
 
-function dashboardWidgetPath(dashboard: string, widget: string): string {
+export function dashboardWidgetPath(dashboard: string, widget: string): string {
   return `${BASE}/dashboards/${named(dashboard)}/widgets/${named(widget)}`;
 }
 
