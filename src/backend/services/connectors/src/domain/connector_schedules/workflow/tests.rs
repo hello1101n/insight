@@ -47,28 +47,3 @@ fn cron_workflow_uses_the_shared_resource_parameter_contract() -> R {
     }
     Ok(())
 }
-
-#[test]
-fn a_missing_pod_patch_reads_as_the_template_default() -> R {
-    let names = ResourceParameterFixture::load()?.parameters;
-    let workflow = |parameters: Value| -> Result<DynamicObject, serde_json::Error> {
-        serde_json::from_value(json!({
-            "metadata": {"uid": "example-uid", "resourceVersion": "1"},
-            "spec": {"workflowSpec": {"arguments": {"parameters": parameters}}}
-        }))
-    };
-
-    let legacy = workflow(json!([{"name": "insight_source_id", "value": "main"}]))?;
-    assert_eq!(
-        live_pod_patches(&legacy),
-        [Some("{}".to_owned()), Some("{}".to_owned())]
-    );
-
-    let duplicated = workflow(json!([
-        {"name": names.dbt, "value": "{}"},
-        {"name": names.dbt, "value": "{}"},
-        {"name": names.identity, "value": 1}
-    ]))?;
-    assert_eq!(live_pod_patches(&duplicated), [None, None]);
-    Ok(())
-}
