@@ -1,6 +1,7 @@
 use std::fmt;
 
 use async_trait::async_trait;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -12,18 +13,24 @@ pub(crate) mod values;
 
 const RESERVED_PREFIX: &str = "__";
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PersonalMark {
+    /// The `as_name` of the field that names the person.
     pub(crate) person_field: String,
+    /// The `as_name` of the aggregated numeric field read as the value.
     pub(crate) value_field: String,
+    /// A label for the value such as `lines`, or null for none.
     pub(crate) unit: Option<String>,
+    /// How the value is written: `number`, `percent`, `duration` or `currency`.
     pub(crate) format: MetricFormat,
+    /// Which way is better: `higher_is_better`, `lower_is_better` or `neutral`.
     pub(crate) direction: Direction,
+    /// What the value means, in words people read.
     pub(crate) description: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum MetricFormat {
     Number,
@@ -32,7 +39,7 @@ pub(crate) enum MetricFormat {
     Currency,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Direction {
     HigherIsBetter,
@@ -159,10 +166,6 @@ pub(crate) struct Marked {
 
 #[async_trait]
 pub(crate) trait Marks: Send + Sync + fmt::Debug {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the MCP mark tools write the mark")
-    )]
     async fn mark(
         &self,
         metric: &DefinitionId,

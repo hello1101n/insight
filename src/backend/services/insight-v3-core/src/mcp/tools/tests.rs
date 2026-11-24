@@ -14,6 +14,7 @@ use crate::api::AppState;
 use crate::chat::ChatClient;
 use crate::domain::access::PersonId;
 use crate::domain::kinds::dashboard::{HeadingItem, TextItem, WidgetItem};
+use crate::domain::personal::{Direction, MetricFormat, PersonalMark};
 use crate::domain::query::metric_query::{MetricRunner, People};
 use crate::store::catalog::{Catalog, Column, Layer, TableSchema};
 use crate::store::definitions::memory::MemoryDefinitions;
@@ -84,16 +85,32 @@ fn table(database: &str, table: &str, layer: Layer, columns: &[(&str, &str)]) ->
 }
 
 fn built_over(catalog: Catalog, datasets: crate::api::Datasets) -> CustomSurfaces {
-    let client = || {
-        insight_clickhouse::Client::new(insight_clickhouse::Config::new(
-            "http://clickhouse.invalid",
-            "insight",
-        ))
-    };
+    built_reading(catalog, datasets, "http://clickhouse.invalid")
+}
 
-    let Ok(identity) = IdentityClient::new("http://identity.invalid") else {
-        panic!("a plain http base URL builds an identity client");
-    };
+fn built_reading(
+    catalog: Catalog,
+    datasets: crate::api::Datasets,
+    warehouse: &str,
+) -> CustomSurfaces {
+    built_with(catalog, datasets, warehouse, None)
+}
+
+fn built_with(
+    catalog: Catalog,
+    datasets: crate::api::Datasets,
+    warehouse: &str,
+    identity: Option<IdentityClient>,
+) -> CustomSurfaces {
+    let client =
+        || insight_clickhouse::Client::new(insight_clickhouse::Config::new(warehouse, "insight"));
+
+    let identity = identity.unwrap_or_else(|| {
+        let Ok(identity) = IdentityClient::new("http://identity.invalid") else {
+            panic!("a plain http base URL builds an identity client");
+        };
+        identity
+    });
 
     let state = Arc::new(AppState::new(
         MetricRunner::new(client(), People::new("identity")),
@@ -1965,4 +1982,473 @@ async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -
     assert_eq!(read["body"], per_reviewer);
 
     Ok(())
+}
+
+const ALICE: &str = "0192a1b2-0000-7000-8000-0000000000c1";
+const STRANGER: &str = "0192a1b2-0000-7000-8000-0000000000d1";
+
+fn uuid_of(raw: &str) -> uuid::Uuid {
+    uuid::Uuid::parse_str(raw).unwrap_or_else(|error| panic!("a uuid: {error}"))
+}
+
+fn people_commits() -> Value {
+    json!({
+        "title": "Commits",
+        "fields": [
+            { "name": "occurred_at", "path": "occurred_at", "type": "datetime", "default_clock": true },
+            { "name": "author", "path": "author", "type": "string", "person": "email" },
+            { "name": "lines", "path": "lines", "type": "int" }
+        ]
+    })
+}
+
+fn lines_metric() -> Value {
+    json!({
+        "dataset": "commits",
+        "fields": [
+            { "field": "author", "type": "string", "as_name": "author" },
+            { "field": "lines", "type": "int", "agg": "sum", "as_name": "lines" }
+        ],
+        "group_by": ["author"]
+    })
+}
+
+fn lines_mark() -> PersonalMark {
+    PersonalMark {
+        person_field: "author".to_owned(),
+        value_field: "lines".to_owned(),
+        unit: Some("lines".to_owned()),
+        format: MetricFormat::Number,
+        direction: Direction::HigherIsBetter,
+        description: "Lines merged in the period".to_owned(),
+    }
+}
+
+fn marking(metric: &str, mark: PersonalMark) -> Parameters<MarkRequest> {
+    Parameters(MarkRequest {
+        metric: metric.to_owned(),
+        mark,
+    })
+}
+
+fn for_metric(metric: &str) -> Parameters<MetricRequest> {
+    Parameters(MetricRequest {
+        metric: metric.to_owned(),
+    })
+}
+
+fn to_grantee(metric: &str, grantee: &str) -> Parameters<GranteeRequest> {
+    Parameters(GranteeRequest {
+        metric: metric.to_owned(),
+        grantee: grantee.to_owned(),
+    })
+}
+
+async fn warehouse(failing: bool) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap_or_else(|error| panic!("the upstream must bind: {error}"));
+    let address = listener
+        .local_addr()
+        .unwrap_or_else(|error| panic!("the upstream must have an address: {error}"));
+    let answering = axum::Router::new().route(
+        "/",
+        axum::routing::post(move |sql: String| async move {
+            if failing {
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(json!({ "exception": "synthetic failure" })),
+                );
+            }
+            if sql.contains("AS undated") {
+                return (
+                    axum::http::StatusCode::OK,
+                    axum::Json(json!({
+                        "meta": [{ "name": "undated", "type": "UInt64" }],
+                        "data": [{ "undated": "0" }]
+                    })),
+                );
+            }
+
+            (
+                axum::http::StatusCode::OK,
+                axum::Json(json!({
+                    "meta": [
+                        { "name": "author", "type": "String" },
+                        { "name": "lines", "type": "Nullable(Int64)" }
+                    ],
+                    "data": [
+                        { "author": "alice@example.com", "lines": "15" },
+                        { "author": "bob@example.com", "lines": "7" },
+                        { "author": "carol@example.com", "lines": null }
+                    ]
+                })),
+            )
+        }),
+    );
+    let server = tokio::spawn(async move {
+        let _ = axum::serve(listener, answering).await;
+    });
+
+    (format!("http://{address}"), server)
+}
+
+async fn personal_surfaces(failing: bool) -> (CustomSurfaces, tokio::task::JoinHandle<()>) {
+    let (url, server) = warehouse(failing).await;
+    let surfaces = built_reading(
+        Catalog::fixed(Vec::new()),
+        crate::api::Datasets::holding(&url, &[("commits", people_commits())]),
+        &url,
+    );
+
+    (surfaces, server)
+}
+
+async fn mark_of(surfaces: &CustomSurfaces, metric: &str) -> Option<PersonalMark> {
+    let id = DefinitionId::parse(metric).unwrap_or_else(|error| panic!("an id: {error}"));
+
+    surfaces
+        .state()
+        .store()
+        .mark_of(&id)
+        .await
+        .unwrap_or_else(|error| panic!("the mark is read: {error}"))
+}
+
+#[tokio::test]
+async fn mark_answers_people_with_values() -> R {
+    let (surfaces, server) = personal_surfaces(false).await;
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+
+    let answer = assert_accepted(
+        &surfaces
+            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .await,
+    );
+
+    assert_eq!(answer["calculation"], "sum");
+    assert_eq!(answer["people_with_values"], 2);
+    assert_eq!(mark_of(&surfaces, &metric).await, Some(lines_mark()));
+    server.abort();
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn mark_refuses_a_metric_without_a_person_field() {
+    let (surfaces, server) = personal_surfaces(false).await;
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+    let mark = PersonalMark {
+        person_field: "nobody".to_owned(),
+        ..lines_mark()
+    };
+
+    let result = surfaces
+        .mark_metric_personal(administrator(), marking(&metric, mark))
+        .await;
+
+    assert_refused(&result, "person field `nobody`");
+    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    server.abort();
+}
+
+#[tokio::test]
+async fn mark_refuses_a_metric_with_no_time_source() {
+    let (url, server) = warehouse(false).await;
+    let surfaces = built_reading(
+        Catalog::fixed(Vec::new()),
+        crate::api::Datasets::holding(
+            &url,
+            &[(
+                "commits",
+                json!({
+                    "title": "Commits",
+                    "fields": [
+                        { "name": "author", "path": "author", "type": "string", "person": "email" },
+                        { "name": "lines", "path": "lines", "type": "int" }
+                    ]
+                }),
+            )],
+        ),
+        &url,
+    );
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+
+    let result = surfaces
+        .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+        .await;
+
+    assert_refused(&result, "no time source");
+    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    server.abort();
+}
+
+#[tokio::test]
+async fn mark_refuses_a_metric_that_was_never_stored() {
+    let (surfaces, server) = personal_surfaces(false).await;
+
+    let result = surfaces
+        .mark_metric_personal(administrator(), marking("absent", lines_mark()))
+        .await;
+
+    assert_refused(&result, "was not found");
+    server.abort();
+}
+
+#[tokio::test]
+async fn mark_keeps_the_mark_and_says_why_the_preview_run_failed() {
+    let (surfaces, server) = personal_surfaces(true).await;
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+
+    let answer = assert_accepted(
+        &surfaces
+            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .await,
+    );
+
+    assert_eq!(answer["calculation"], "sum");
+    assert!(answer["run_error"].is_string(), "{answer}");
+    assert!(answer.get("people_with_values").is_none(), "{answer}");
+    assert_eq!(mark_of(&surfaces, &metric).await, Some(lines_mark()));
+    server.abort();
+}
+
+#[tokio::test]
+async fn unmark_removes_the_mark_and_keeps_the_grants() {
+    let (surfaces, server) = personal_surfaces(false).await;
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+    assert_accepted(
+        &surfaces
+            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .await,
+    );
+    assert_accepted(
+        &surfaces
+            .share_metric(administrator(), to_grantee(&metric, "everyone"))
+            .await,
+    );
+
+    assert_accepted(
+        &surfaces
+            .unmark_metric_personal(administrator(), for_metric(&metric))
+            .await,
+    );
+
+    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    let listed = assert_accepted(
+        &surfaces
+            .list_metric_grants(administrator(), for_metric(&metric))
+            .await,
+    );
+    assert_eq!(listed["grants"].as_array().map(Vec::len), Some(1));
+    server.abort();
+}
+
+#[tokio::test]
+async fn unmark_refuses_a_metric_that_was_never_stored() {
+    let result = surfaces()
+        .unmark_metric_personal(administrator(), for_metric("absent"))
+        .await;
+
+    assert_refused(&result, "was not found");
+}
+
+#[tokio::test]
+async fn share_then_list_shows_the_grant() {
+    let surfaces = surfaces();
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", metric_body()))
+            .await,
+    );
+
+    assert_accepted(
+        &surfaces
+            .share_metric(administrator(), to_grantee(&metric, "everyone"))
+            .await,
+    );
+
+    let listed = assert_accepted(
+        &surfaces
+            .list_metric_grants(administrator(), for_metric(&metric))
+            .await,
+    );
+    let grants = listed["grants"]
+        .as_array()
+        .unwrap_or_else(|| panic!("grants are listed: {listed}"));
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0]["grantee"], "everyone");
+    assert_eq!(grants[0]["granted_by"], ADMIN);
+    assert!(grants[0]["created_at"].is_string(), "{listed}");
+}
+
+#[tokio::test]
+async fn unshare_withdraws_the_grant() {
+    let surfaces = surfaces();
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", metric_body()))
+            .await,
+    );
+    assert_accepted(
+        &surfaces
+            .share_metric(administrator(), to_grantee(&metric, "everyone"))
+            .await,
+    );
+
+    assert_accepted(
+        &surfaces
+            .unshare_metric(administrator(), to_grantee(&metric, "everyone"))
+            .await,
+    );
+
+    let listed = assert_accepted(
+        &surfaces
+            .list_metric_grants(administrator(), for_metric(&metric))
+            .await,
+    );
+    assert_eq!(listed["grants"], json!([]));
+}
+
+#[tokio::test]
+async fn share_refuses_a_person_the_directory_does_not_know() {
+    let surfaces = built_with(
+        Catalog::fixed(Vec::new()),
+        crate::api::Datasets::holding("http://offline.invalid", &[("commits", people_commits())]),
+        "http://clickhouse.invalid",
+        Some(
+            IdentityClient::fixed(true)
+                .with_members(&[uuid_of(ALICE)])
+                .with_strangers(&[uuid_of(STRANGER)]),
+        ),
+    );
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+
+    assert_accepted(
+        &surfaces
+            .share_metric(administrator(), to_grantee(&metric, ALICE))
+            .await,
+    );
+    let refused = surfaces
+        .share_metric(administrator(), to_grantee(&metric, STRANGER))
+        .await;
+
+    assert_refused(&refused, STRANGER);
+}
+
+#[tokio::test]
+async fn share_refuses_a_grantee_that_is_neither_a_person_nor_everyone() {
+    let surfaces = surfaces();
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", metric_body()))
+            .await,
+    );
+
+    let result = surfaces
+        .share_metric(administrator(), to_grantee(&metric, "the-team"))
+        .await;
+
+    assert_refused(&result, "person id or `everyone`");
+}
+
+#[tokio::test]
+async fn sharing_a_metric_that_was_never_stored_says_so() {
+    let result = surfaces()
+        .share_metric(administrator(), to_grantee("absent", "everyone"))
+        .await;
+
+    assert_refused(&result, "was not found");
+}
+
+#[tokio::test]
+async fn personal_tools_refuse_a_caller_who_is_not_an_administrator() {
+    let result = surfaces()
+        .share_metric(parts(None), to_grantee("absent", "everyone"))
+        .await;
+
+    assert_refused(&result, "only an administrator");
+}
+
+#[test]
+fn the_personal_tools_describe_the_mark_and_name_the_metric_shape() {
+    let tools = CustomSurfaces::personal_tool_router().list_all();
+
+    let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        [
+            "list_metric_grants",
+            "mark_metric_personal",
+            "share_metric",
+            "unmark_metric_personal",
+            "unshare_metric",
+        ]
+    );
+
+    let marking = tools
+        .iter()
+        .find(|tool| tool.name == "mark_metric_personal")
+        .and_then(|tool| tool.description.as_ref())
+        .unwrap_or_else(|| panic!("the mark tool is described"));
+    for word in [
+        "higher_is_better",
+        "lower_is_better",
+        "neutral",
+        "percent",
+        "currency",
+        "duration",
+        "person_field",
+        "value_field",
+    ] {
+        assert!(marking.contains(word), "{word} is missing: {marking}");
+    }
+}
+
+#[test]
+fn every_tool_router_is_part_of_the_server() {
+    let state = Arc::new(AppState::new(
+        MetricRunner::new(
+            insight_clickhouse::Client::new(insight_clickhouse::Config::new(
+                "http://clickhouse.invalid",
+                "insight",
+            )),
+            People::new("identity"),
+        ),
+        Arc::new(MemoryDefinitions::new()),
+        ChatClient::keyless(),
+        IdentityClient::fixed(true),
+        crate::api::Datasets::offline("http://offline.invalid"),
+        Catalog::fixed(Vec::new()),
+    ));
+
+    let server = CustomSurfaces::new(state);
+
+    assert!(server.tool_router.has_route("mark_metric_personal"));
+    assert!(server.tool_router.has_route("share_metric"));
 }

@@ -49,9 +49,9 @@ struct Paging {
     offset: Option<u64>,
 }
 
-struct ForwardedDirectory<'a> {
-    identity: &'a IdentityClient,
-    authorization: Option<&'a str>,
+pub(crate) struct ForwardedDirectory<'a> {
+    pub(crate) identity: &'a IdentityClient,
+    pub(crate) authorization: Option<&'a str>,
 }
 
 fn unavailable(error: &IdentityError) -> AdministratorsError {
