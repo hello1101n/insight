@@ -288,8 +288,8 @@ async fn a_bronze_row_follows_a_relaunched_airbyte_job() -> anyhow::Result<()> {
     let at = |seconds| epoch + chrono::Duration::seconds(seconds);
     let mut bronze = StageSnapshot::new("bronze", 2, at(1));
     bronze.bronze_execution = Some(at(1));
-    bronze.status = "cancelled";
-    bronze.reason = Some("airbyte_job_cancelled".into());
+    bronze.status = "failed";
+    bronze.reason = Some("source_pod_oom".into());
     bronze.job = Some(19);
     bronze.started_at = Some(at(2));
     bronze.finished_at = Some(at(3));
@@ -358,5 +358,50 @@ async fn a_bronze_row_follows_a_relaunched_airbyte_job() -> anyhow::Result<()> {
         (2, Some(at(4)), Some(at(5)))
     );
     assert_eq!(result[0].records_reported, Some(7));
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn a_closed_bronze_row_without_a_job_reopens_with_its_first_job() -> anyhow::Result<()> {
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let epoch = DateTime::UNIX_EPOCH;
+    let at = |seconds| epoch + chrono::Duration::seconds(seconds);
+    let mut first = StageSnapshot::new("bronze", 1, at(1));
+    first.bronze_execution = Some(at(1));
+    first.status = "failed";
+    first.reason = Some("stage_failed".into());
+    first.finished_at = Some(at(2));
+    let mut run = RunSnapshot {
+        uid: uuid::Uuid::new_v4().to_string(),
+        name: "example".into(),
+        connector: "jira".into(),
+        tenant: "tenant".into(),
+        source: "source".into(),
+        created_at: epoch,
+        execution: at(1),
+        status: None,
+        finished_at: None,
+        stages: vec![first],
+    };
+    save(&db, &stand, &run, at(2)).await?;
+    let stage = &mut run.stages[0];
+    stage.status = "loading";
+    stage.reason = None;
+    stage.job = Some(21);
+    stage.finished_at = None;
+    save(&db, &stand, &run, at(3)).await?;
+    let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("source")).await?;
+    let row = &result[0].stages[0];
+    assert_eq!(
+        (
+            row.status.as_str(),
+            row.airbyte_job_id.as_deref(),
+            row.reason.as_deref()
+        ),
+        ("loading", Some("21"), None)
+    );
     Ok(())
 }

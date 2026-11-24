@@ -159,7 +159,8 @@ fn merge_capacity_wait(waits: &mut Vec<StageWait>, capacity: &StageWait) {
     waits.insert(index, capacity.clone());
 }
 
-const RELAUNCHED: &str = "airbyte_job_id<>VALUES(airbyte_job_id)";
+const RELAUNCHED: &str =
+    "(VALUES(airbyte_job_id) IS NOT NULL AND NOT (airbyte_job_id<=>VALUES(airbyte_job_id)))";
 
 async fn save_stage(
     tx: &DatabaseTransaction,

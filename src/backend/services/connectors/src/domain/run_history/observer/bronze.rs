@@ -93,9 +93,8 @@ pub(super) fn observation(
     let status = &wf.data["status"];
     let execution = nodes::time(status, "startedAt");
     let capacity = capacity_wait(wf);
-    let marks = launch_marks(wf);
-    let marked = !marks.is_empty();
-    let launch = receipt(marks, execution, capacity.as_ref());
+    let marked = has_launch_marks(wf);
+    let launch = receipt(launch_marks(wf), execution, capacity.as_ref());
     let trigger = latest_node(status, "trigger-sync", execution);
     let resolve = latest_node(status, "resolve-connection-by-name", execution);
     let poll = latest_node(status, "poll-job", execution);
@@ -299,8 +298,12 @@ fn apply_argo_phase(
 ) {
     let (status, reason) = match (poll.and_then(nodes::phase), trigger.and_then(nodes::phase)) {
         (Some("Succeeded"), _) => ("succeeded", None),
-        (Some("Failed" | "Error"), _) => ("failed", Some("airbyte_job_failed")),
-        (_, Some("Failed" | "Error")) => ("failed", Some("stage_failed")),
+        (Some("Failed" | "Error"), _) if stage.job.is_some() => {
+            ("failed", Some("airbyte_job_failed"))
+        }
+        (Some("Failed" | "Error"), _) | (_, Some("Failed" | "Error")) => {
+            ("failed", Some("stage_failed"))
+        }
         _ if workflow_end.is_some() => ("unknown", Some("stage_failed")),
         _ if stage.job.is_some() => ("loading", None),
         _ => ("starting", None),
@@ -313,6 +316,16 @@ fn apply_argo_phase(
             .and_then(|node| nodes::time(node, "finishedAt"))
             .or(workflow_end);
     }
+}
+
+fn has_launch_marks(wf: &DynamicObject) -> bool {
+    wf.metadata
+        .annotations
+        .as_ref()
+        .is_some_and(|a| a.contains_key(LAUNCH_ANNOTATION))
+        || nodes::nodes(&wf.data["status"])
+            .filter(|node| matches!(nodes::template(node), Some("trigger-sync" | "poll-job")))
+            .any(|node| nodes::parameter(node, "outputs", "airbyte-launch-evidence").is_some())
 }
 
 fn launch_marks(wf: &DynamicObject) -> Vec<LaunchReceipt> {

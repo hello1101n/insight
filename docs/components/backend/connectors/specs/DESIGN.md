@@ -483,7 +483,8 @@ The observer closes an open wait when the Workflow ends and keeps the stage outc
 The observer uses the Workflow start time to distinguish Bronze attempts across Argo retries.
 A retry adds a Bronze attempt only if it runs the trigger or poll step, or records a capacity wait.
 When the Workflow has a launch mark, a Bronze attempt takes its Airbyte job only from the launch mark of its own execution.
-When a new launch gives an attempt a different job, the attempt takes the start time, records and reason of the new job.
+When an attempt gets a job it did not have, the attempt takes the start time, records and reason of that job.
+A poll step that fails before it has a job fails with `stage_failed`.
 The observer uses the actual replication pod request from the launch receipt when available.
 The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
 It reads the query log by the stage's `log_comment`.

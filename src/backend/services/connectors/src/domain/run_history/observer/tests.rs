@@ -648,7 +648,7 @@ fn bronze_capacity_wait_is_a_placement_wait_for_the_current_execution_and_surviv
 fn failed_workflow_closes_the_capacity_wait_and_keeps_its_failure() -> Result<()> {
     for (template, expected_reason) in [
         ("trigger-sync", "stage_failed"),
-        ("poll-job", "airbyte_job_failed"),
+        ("poll-job", "stage_failed"),
         ("", "stage_failed"),
     ] {
         let mut status = json!({"phase":"Failed", "startedAt":at(1), "finishedAt":at(4)});
@@ -1070,6 +1070,34 @@ fn bronze_retry_takes_the_job_only_from_the_new_launch_mark() -> Result<()> {
     let pods = HashMap::new();
     let (load, lookup) = bronze::observation(&wf, at(1), &pods, None);
     assert_eq!((load.job, lookup, load.status), (None, false, "starting"));
+
+    wf.data["status"]["nodes"]["poll"]["phase"] = json!("Failed");
+    wf.data["status"]["nodes"]["poll"]["finishedAt"] = json!(at(7));
+    let (failed, _) = bronze::observation(&wf, at(1), &pods, Some(at(7)));
+    assert_eq!(
+        (failed.job, failed.status, failed.reason.as_deref()),
+        (None, "failed", Some("stage_failed"))
+    );
+    wf.data["status"]["nodes"]["poll"]["phase"] = json!("Running");
+    wf.data["status"]["nodes"]["poll"]["finishedAt"] = Value::Null;
+
+    for foreign in [
+        bronze_launch_mark(1, 1, 19)
+            .to_string()
+            .replace("aaaaaaaa", "cccccccc"),
+        json!({"workflow_uid":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","outcome":"later"})
+            .to_string(),
+    ] {
+        let mut other = wf.clone();
+        other.data["status"]["nodes"]["trigger"]["outputs"]["parameters"][0]["value"] =
+            json!(foreign);
+        other.metadata.annotations.get_or_insert_default().insert(
+            "insight.cyberfabric.com/airbyte-launch".into(),
+            foreign.clone(),
+        );
+        let (load, lookup) = bronze::observation(&other, at(1), &pods, None);
+        assert_eq!((load.job, lookup), (None, false), "{foreign}");
+    }
 
     let relaunch = bronze_launch_mark(6, 2, 20);
     wf.metadata.annotations.get_or_insert_default().insert(
