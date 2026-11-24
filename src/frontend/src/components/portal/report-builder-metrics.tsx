@@ -212,9 +212,26 @@ function MetricFamilyGroup({
       <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-2 xl:grid-cols-3">
         {visibleMetrics.map((metric) => {
           const checked = selected.includes(metric.metric_key);
+          const toggle = () =>
+            setSelected((current) =>
+              checked
+                ? current.filter((key) => key !== metric.metric_key)
+                : [...current, metric.metric_key]
+            );
           const row = (
             <div
               key={metric.metric_key}
+              onClick={(event) => {
+                if (metric.reason != null) return;
+                const target = event.target as Element;
+                if (
+                  !event.currentTarget.contains(target) ||
+                  target.closest("label, button")
+                ) {
+                  return;
+                }
+                toggle();
+              }}
               className={cn(
                 "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-sm",
                 metric.reason
@@ -234,22 +251,16 @@ function MetricFamilyGroup({
                   id={`report-${metric.metric_key}`}
                   checked={checked}
                   disabled={metric.reason != null}
-                  onCheckedChange={() =>
-                    setSelected((current) =>
-                      checked
-                        ? current.filter((key) => key !== metric.metric_key)
-                        : [...current, metric.metric_key]
-                    )
-                  }
+                  onCheckedChange={toggle}
                 />
                 <span className="min-w-0 flex-1 truncate" title={metric.label}>
                   {metric.label}
                 </span>
               </label>
-              {metric.description ? (
+              {metric.description?.trim() ? (
                 <MetricDescription
                   label={metric.label}
-                  description={metric.description}
+                  description={metric.description.trim()}
                 />
               ) : null}
               <span
@@ -295,7 +306,7 @@ function MetricDescription({
         render={
           <button
             type="button"
-            aria-label={t("metrics_view.about_metric", { label })}
+            aria-label={t("reports.about_metric", { label })}
             className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
           />
         }
@@ -309,7 +320,7 @@ function MetricDescription({
             type="button"
             variant="ghost"
             size="sm"
-            aria-label={t("metrics_view.close_description")}
+            aria-label={t("common.actions.close")}
             icon={<X />}
             onClick={() => setOpen(false)}
           />

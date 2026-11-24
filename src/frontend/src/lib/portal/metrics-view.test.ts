@@ -357,6 +357,8 @@ describe("columnFormula", () => {
     ["a median", "median", "decimal", "h", "Median · h min"],
     ["a percentile", "percentile", "decimal", "min", "Percentile · min"],
     ["a standard deviation", "stddev", "decimal", "min", "Std dev · min"],
+    ["a unitless ratio", "ratio", "decimal", null, "Ratio"],
+    ["a unitless median", "median", "decimal", null, "Median"],
     ["a distinct count", "distinct_count", "integer", null, "Total · count"],
     ["a currency with no unit", "sum", "currency", null, "Total · USD"],
     ["a currency with a unit", "sum", "currency", "EUR", "Total · EUR"],

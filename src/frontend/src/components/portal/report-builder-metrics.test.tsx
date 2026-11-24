@@ -34,6 +34,7 @@ const families = [
       metric("git.review", "Review turnaround", "Hours until the first human review."),
       metric("git.blank", "Blank metric", ""),
       metric("git.none", "Null metric", null),
+      metric("git.spaces", "Spaces metric", "   "),
     ],
   },
 ] as unknown as MetricFamily<OfferedReportMetric>[];
@@ -84,5 +85,22 @@ describe("ReportMetricPicker description button", () => {
 
     expect(screen.queryByRole("button", { name: "About Blank metric" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "About Null metric" })).not.toBeInTheDocument();
+  });
+
+  it("offers no button when the description is only spaces", () => {
+    render(<Harness />);
+
+    expect(screen.queryByRole("button", { name: "About Spaces metric" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ReportMetricPicker row click", () => {
+  it("toggles the checkbox when the unit tag is clicked", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getAllByText("integer")[0]);
+
+    expect(screen.getByRole("checkbox", { name: /Review turnaround/ })).toBeChecked();
   });
 });

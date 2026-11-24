@@ -840,6 +840,7 @@
     "quarterly": "Quarterly",
     "yearly": "Yearly",
     "search_metrics": "Search metrics",
+    "about_metric": "About {{label}}",
     "selected_one": "{{count}} selected",
     "selected_other": "{{count}} selected",
     "too_short": "A {{split}} split needs a period of at least {{period}} — pick {{finer}} or finer",
@@ -1126,8 +1127,6 @@
       "failed": "The download failed. Try again."
     },
     "count": "Metrics: {{picked}} of {{total}}",
-    "about_metric": "About {{label}}",
-    "close_description": "Close",
     "selected_count": "{{count}} selected",
     "reset_to_defaults": "Reset to defaults",
     "select_all": "Select all",

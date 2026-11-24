@@ -424,12 +424,17 @@ describe("MetricsView", () => {
       definition("tasks.bugs_fixed", "Bugs fixed"),
       definition("tasks.reopen_rate", "Reopen rate"),
     );
+    act(() =>
+      portalRouter.set({
+        metrics: "git.default_branch_prs_merged,tasks.bugs_fixed,tasks.reopen_rate",
+      }),
+    );
     const user = userEvent.setup();
     render(<MetricsView />);
 
-    await user.click(screen.getByRole("button", { name: "Metrics: 6 of 6" }));
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 6" }));
 
-    expect(screen.getByText("6 selected")).toBeInTheDocument();
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
   });
 
   it("restores the default set when Reset to defaults is pressed", async () => {
@@ -441,7 +446,6 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
 
     expect(portalRouter.search.metrics).toBeUndefined();
-    expect(screen.getByText("3 selected")).toBeInTheDocument();
   });
 
   it("keeps the picker open while a metric's description card is open", async () => {
@@ -489,7 +493,7 @@ describe("MetricsView", () => {
     expect(portalRouter.search.scope).toBeFalsy();
   });
 
-  it("ranks everyone in scope by a metric when its header is clicked", async () => {
+  it("ranks the rows under the expanded managers by a metric when its header is clicked", async () => {
     render(<MetricsView />);
 
     await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));

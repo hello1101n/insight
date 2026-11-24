@@ -80,7 +80,7 @@ function byName(a: { displayName: string }, b: { displayName: string }): number 
   return a.displayName.localeCompare(b.displayName);
 }
 
-export interface RowOrder {
+export interface MetricsRowOrder {
   key: string;
   direction: SortDirection;
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
@@ -88,7 +88,7 @@ export interface RowOrder {
 
 function siblingComparator<T extends { displayName: string }>(
   idOf: (item: T) => string,
-  order: RowOrder | undefined,
+  order: MetricsRowOrder | undefined,
 ): (a: T, b: T) => number {
   const result = order?.byKey.get(order.key);
   if (!order || !result) return byName;
@@ -107,7 +107,7 @@ function treeRows(
   node: IdentityPerson,
   depth: number,
   expanded: ReadonlySet<string>,
-  order: RowOrder | undefined,
+  order: MetricsRowOrder | undefined,
 ): MetricsRow[] {
   const entityId = normalizePersonId(node.person_id);
   const hasReports = node.subordinates.length > 0;
@@ -139,7 +139,7 @@ export function metricsRows(
   root: IdentityPerson | null,
   people: ReadonlyArray<PersonNaming & { person_id: string }>,
   expanded: ReadonlySet<string>,
-  order?: RowOrder,
+  order?: MetricsRowOrder,
 ): MetricsRow[] {
   if (root) return treeRows(root, 0, expanded, order);
 
@@ -257,7 +257,12 @@ export function columnFormula(
       ? "%"
       : result.format === "currency"
         ? (result.unit ?? "USD")
-        : (result.unit ?? "count");
+        : result.unit;
 
-  return `${COMPUTATION_LABEL[result.computation]} · ${unit}`;
+  const word = COMPUTATION_LABEL[result.computation];
+  if (unit != null) return `${word} · ${unit}`;
+
+  return result.computation === "sum" || result.computation === "distinct_count"
+    ? `${word} · count`
+    : word;
 }
