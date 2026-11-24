@@ -2,6 +2,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use authn_resolver_sdk::{
+    AuthNResolverClient, AuthNResolverError, AuthenticationResult, ClientCredentialsRequest,
+};
 use axum::Json;
 use axum::body::Body;
 use axum::http::{HeaderValue, Request, Response, StatusCode};
@@ -202,13 +205,16 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     ));
     let busy = SqlExplorer::new(QueryExecutor::new(client, 0))
         .executor
-        .query("SELECT 1".to_owned(), Ok)
+        .query("SELECT 1".to_owned(), None, Ok)
         .await;
     assert!(matches!(busy, Err(QueryFailure::Busy)));
 
     let (invalid, invalid_server) = spawn_clickhouse(StatusCode::OK, b"not-json".to_vec()).await?;
     assert!(matches!(
-        invalid.executor.query("SELECT 1".to_owned(), Ok).await,
+        invalid
+            .executor
+            .query("SELECT 1".to_owned(), None, Ok)
+            .await,
         Err(QueryFailure::InvalidResponse(_))
     ));
     invalid_server.abort();
@@ -216,7 +222,7 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     let (failed, failed_server) =
         spawn_clickhouse(StatusCode::INTERNAL_SERVER_ERROR, Vec::new()).await?;
     assert!(matches!(
-        failed.executor.query("SELECT 1".to_owned(), Ok).await,
+        failed.executor.query("SELECT 1".to_owned(), None, Ok).await,
         Err(QueryFailure::ClickHouse(_))
     ));
     failed_server.abort();
@@ -224,7 +230,7 @@ async fn query_execution_reports_busy_backend_and_response_failures() -> anyhow:
     let (large, large_server) =
         spawn_clickhouse(StatusCode::OK, vec![b'x'; MAX_RESULT_BYTES + 1]).await?;
     assert!(matches!(
-        large.executor.query("SELECT 1".to_owned(), Ok).await,
+        large.executor.query("SELECT 1".to_owned(), None, Ok).await,
         Err(QueryFailure::ResultTooLarge)
     ));
     large_server.abort();
@@ -266,6 +272,22 @@ fn configuration_requires_a_complete_safe_origin_and_credentials() {
     }
 }
 
+struct NoAuthN;
+
+#[async_trait::async_trait]
+impl AuthNResolverClient for NoAuthN {
+    async fn authenticate(&self, _: &str) -> Result<AuthenticationResult, AuthNResolverError> {
+        Err(AuthNResolverError::NoPluginAvailable)
+    }
+
+    async fn exchange_client_credentials(
+        &self,
+        _: &ClientCredentialsRequest,
+    ) -> Result<AuthenticationResult, AuthNResolverError> {
+        Err(AuthNResolverError::NoPluginAvailable)
+    }
+}
+
 #[tokio::test]
 async fn start_accepts_valid_configuration_and_cancellation() -> anyhow::Result<()> {
     let cancellation = CancellationToken::new();
@@ -273,6 +295,7 @@ async fn start_accepts_valid_configuration_and_cancellation() -> anyhow::Result<
     start(
         &mcp_config(),
         &SqlApiConfig::default(),
+        Arc::new(NoAuthN),
         "http://127.0.0.1:1",
         "gold",
         cancellation.clone(),

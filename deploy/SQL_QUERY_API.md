@@ -38,14 +38,35 @@ Leave `global.mcp.enabled` and `global.mcp.publicUrl` unchanged.
 
 Inherit gateway route defaults. A custom `gateway.gateway.routes` list replaces
 the complete default list and must explicitly include `/api/sql/query` with
-`auth: instance_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
-`timeoutMs: 40000`, and `sqlApiOnly: true`.
+`auth: api_token`, upstream `http://{{ .Release.Name }}-analytics:8086`,
+`timeoutMs: 40000`, and `sqlApiOnly: true`. It must also keep `/api/authenticator`
+with `stripPrefix: true`.
 
 For Docker Compose, set `SQL_API_ENABLED=true`, `SQL_API_TOKEN`, and
 `CLICKHOUSE_MCP_PASSWORD` in your untracked environment file. Restart analytics
 after changing the token. In Kubernetes, update the token Secret and roll the
 analytics Deployment: environment-injected secrets are read only at startup.
 During a rolling rotation, old and new pods may temporarily accept different tokens.
+
+## Personal tokens
+
+The authenticator service stores and manages personal tokens. It needs its
+`database_url`; when it is empty, the token API answers 503.
+
+An admin creates a token in **Manage → People & access → API tokens** for a
+person in the tenant roster, with a label and a lifetime of 30 days, 90 days,
+1 year (the default) or 2 years. The dialog shows the token once.
+
+The admin API is `GET`, `POST` and `DELETE` on
+`/api/authenticator/v1/api-tokens` with a session. Only an admin can call it.
+`docs/components/backend/authenticator/openapi.json` has its contract.
+
+The authenticator stores only the token's SHA-256 in MariaDB. A personal token
+works until it expires or an admin removes it.
+
+The gateway limits personal token lookups per client address. Behind an
+ingress, set `gateway.gateway.setRealIpFrom` to the ingress address range, or
+all clients share one limit.
 
 ## Query
 
@@ -92,7 +113,8 @@ no-store`. Database details and the token are not returned in errors.
 ## Access scope
 
 The instance token grants all SQL explorer access, not access on behalf of an
-individual user. There are no personal role checks, per-user revocation, or
-automatic tenant-row filters on this endpoint. Distribute it only to trusted
-operators authorized to access the entire allowed dataset, and require HTTPS.
-Revoke access by rotating the token or disabling `global.sqlApi.enabled`.
+individual user. A personal token names its holder but adds no role checks or
+tenant-row filters. Distribute tokens only to people authorized to access the
+entire allowed dataset, and require HTTPS. Remove a personal token to revoke one
+holder; revoke the instance token by rotating it or disabling
+`global.sqlApi.enabled`.

@@ -69,7 +69,16 @@ pub fn validate(config: &RouteConfig) -> Result<(), ValidationErrors> {
             Authentication::InstanceToken if !p.starts_with("/api/") => errors.push(format!(
                 "instance-token route prefix '{p}' must start with '/api/'"
             )),
-            Authentication::Session | Authentication::Bearer | Authentication::InstanceToken => {}
+            Authentication::ApiToken if p != crate::schema::API_TOKEN_PREFIX => {
+                errors.push(format!(
+                    "api-token route prefix '{p}' must be exactly {}",
+                    crate::schema::API_TOKEN_PREFIX
+                ));
+            }
+            Authentication::Session
+            | Authentication::Bearer
+            | Authentication::InstanceToken
+            | Authentication::ApiToken => {}
         }
 
         match parse_upstream(&route.upstream) {

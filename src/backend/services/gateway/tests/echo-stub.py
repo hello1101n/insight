@@ -8,6 +8,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def _echo(self):
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
         body = json.dumps(
             {
                 "method": self.command,

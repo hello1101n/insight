@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve the pod network for gateway.setRealIpFrom.
+"""Resolve the pod network for gateway.gateway.setRealIpFrom.
 
 Prints the CIDR on stdout, progress on stderr. Env: KUBE_CTX,
 ENVOY_GATEWAY_NAME (optional).
@@ -27,7 +27,7 @@ def skip(message: str) -> None:
     """Undeterminable is not the same as wrong: a deployer scoped to one
     namespace cannot read cluster-scoped nodes, and blocking it would be worse
     than the unset trust list it already deploys with."""
-    print(f"WARNING: {message}; leaving gateway.setRealIpFrom unset", file=sys.stderr)
+    print(f"WARNING: {message}; leaving gateway.gateway.setRealIpFrom unset", file=sys.stderr)
     raise SystemExit(0)
 
 

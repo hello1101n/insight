@@ -111,6 +111,7 @@ graph LR
 - The gateway owns security headers (HSTS on every response) -- they ride with the component all traffic crosses.
 - One hostname, one entry: `__Host-sid` pins the cookie to a single host, so the SPA is routed through the gateway too (`location /` to the insight-front static server). One origin, one TLS cert, one place where a path exists or does not.
 - `/internal/*` never routes (generated 404) -- nothing external can name the authenticator.
+- `/api/authenticator` reaches only the authenticator's `/v1/` API; every other path under it gets a generated 404.
 
 ## 2. Principles & Constraints
 
@@ -355,7 +356,7 @@ Validation rules (enforced by the configurator in CI, before nginx ever sees the
 
 - `version` must be a known schema version.
 - `prefix` unique across the table; no two routes share an exact prefix.
-- `auth` is one of `session` (the default), `bearer`, `instance_token`. A `session` or `instance_token` `prefix` must start with `/api/`; a `bearer` `prefix` must be exactly one of the MCP prefixes, `/mcp` or `/mcp/v3` (the set mirrors the authenticator's MCP resources -- a prefix it does not declare could never be authorized).
+- `auth` is one of `session` (the default), `bearer`, `instance_token`, `api_token`. A `session` or `instance_token` `prefix` must start with `/api/`; a `api_token` `prefix` must be `/api/sql/query`; a `bearer` `prefix` must be exactly one of the MCP prefixes, `/mcp` or `/mcp/v3` (the set mirrors the authenticator's MCP resources -- a prefix it does not declare could never be authorized).
 - `upstream` must be a valid URL with hostname and port.
 - `timeout_ms >= 0`; `0` only allowed when `websocket: true`.
 - `strip_request_headers` entries must be valid HTTP header names; reserved gateway headers (`Authorization`, `X-Correlation-Id`, `X-Forwarded-*`, gateway cookies) **MUST NOT** appear in this list -- their treatment is owned by the selected auth mode and the common hygiene block. There is no tenant selector: session JWTs carry a single signed `tenant_id`, while instance-token routes have instance-wide scope. An inbound `X-Tenant-ID`/`X-Insight-Tenant-Id` is not authority (deployments may strip it for hygiene).
@@ -376,6 +377,8 @@ Every generated `auth: session` location gets the following block. Explicit non-
 8. `error_page` wiring for the fail-closed exits (3.12).
 
 `auth: instance_token` forwards the caller's token header untouched to the upstream, which validates its configured instance token on every request: `Authorization` for the analytics SQL API at `/api/sql/query` (Helm renders that route only when `global.sqlApi.enabled` is true), `X-Insight-Token` for insight-v3-core raw-data ingest at `/api/core`. It does not invoke the session exchange or advertise MCP OAuth. Its Lua handler strips all cookies and replaces the correlation and forwarding context; operator header stripping, proxy timeouts, and response handling still apply. This mode grants instance-wide access to the routed API, not a user or tenant identity.
+
+`auth: api_token` is `instance_token` plus one step on the SQL API route: a bearer that starts with `iapi_` is swapped for a short JWT from the authenticator's `/internal/api-token/authz` and that JWT replaces `Authorization`. The exchange result is cached in `api_token_cache` under the SHA-256 of the token, for the `Cache-Control` max-age; a 401 is never cached. Each client address may start 10 lookups per second, burst 20, in `api_token_misses`; more answer 429. Any other bearer reaches the upstream unchanged.
 
 `auth: bearer` similarly forwards bearer credentials for the MCP prefixes -- `/mcp` to analytics, `/mcp/v3` to insight-v3-core -- where the MCP server verifies the OAuth token. A request arriving without a usable bearer is refused at the edge with a `WWW-Authenticate` challenge naming that route's own protected-resource metadata document and its `mcp_scope` (default `mcp:query`). This is separate from instance-token authentication.
 

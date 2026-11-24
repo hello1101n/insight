@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from insight_stand import analytics_path, connectors_path, identity_path
+from insight_stand import analytics_path, authenticator_path, connectors_path, identity_path
 
 # Concrete stand-ins for path parameters. The 401 sweep runs before any
 # authentication, so the gateway never reaches a handler and these are never
@@ -79,7 +79,7 @@ class Operation:
 
     method: str
     path: str
-    #: `analytics` | `connectors` | `identity` — which service answers, per routes.yaml.
+    #: `analytics` | `authenticator` | `connectors` | `identity` — which service answers, per routes.yaml.
     service: str
 
     @property
@@ -94,6 +94,10 @@ class Operation:
 
 def _a(method: str, suffix: str) -> Operation:
     return Operation(method=method, path=analytics_path(suffix), service="analytics")
+
+
+def _t(method: str, suffix: str) -> Operation:
+    return Operation(method=method, path=authenticator_path(suffix), service="authenticator")
 
 
 def _i(method: str, suffix: str) -> Operation:
@@ -187,6 +191,12 @@ IDENTITY_OPERATIONS: Final[tuple[Operation, ...]] = (
     _i("POST", "/v1/visible-persons"),
 )
 
+AUTHENTICATOR_OPERATIONS: Final[tuple[Operation, ...]] = (
+    _t("GET", "/v1/api-tokens"),
+    _t("POST", "/v1/api-tokens"),
+    _t("DELETE", f"/v1/api-tokens/{SOME_ID}"),
+)
+
 CONNECTORS_OPERATIONS: Final[tuple[Operation, ...]] = tuple(
     Operation(method="GET", path=connectors_path(suffix), service="connectors")
     for suffix in (
@@ -210,7 +220,7 @@ CONNECTORS_OPERATIONS: Final[tuple[Operation, ...]] = tuple(
 )
 
 ALL_OPERATIONS: Final[tuple[Operation, ...]] = (
-    ANALYTICS_OPERATIONS + CONNECTORS_OPERATIONS + IDENTITY_OPERATIONS
+    ANALYTICS_OPERATIONS + AUTHENTICATOR_OPERATIONS + CONNECTORS_OPERATIONS + IDENTITY_OPERATIONS
 )
 
 #: Suffixes of the identity operations behind `require_admin`, enumerated

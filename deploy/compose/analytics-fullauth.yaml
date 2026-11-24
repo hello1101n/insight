@@ -49,6 +49,7 @@ gears:
         require_audience: true
         expected_audience:
           - "internal-services"
+          - "sql-api"
         trusted_issuers:
           # = token `iss` (authenticator gateway_issuer). discovery_url omitted
           # → {issuer}/.well-known/openid-configuration, served by authn-tls.

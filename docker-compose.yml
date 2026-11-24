@@ -571,6 +571,34 @@ services:
     ports:
       - "127.0.0.1:${INSIGHT_V3_CORE_PORT:-8087}:8086"
 
+  authenticator-migrate:
+    !!merge <<: *backend-common
+    image: ${AUTHENTICATOR_IMAGE:-insight-authenticator:dev}
+    container_name: ${COMPOSE_PROJECT_NAME:-insight}-authenticator-migrate
+    build:
+      context: src/backend
+      dockerfile: Dockerfile
+      target: authenticator
+    depends_on:
+      mariadb: {condition: service_healthy, required: false}
+    environment:
+      APP__gears__authenticator__config__database_url: "mysql://${MARIADB_USER:-insight}:${MARIADB_PASSWORD:-insight-local}@${MARIADB_HOST:-mariadb}:${MARIADB_INTERNAL_PORT:-3306}/authenticator"
+    volumes:
+      - type: bind
+        source: ./deploy/compose/build/authenticator/authenticator
+        target: /app/authenticator
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./src/backend/services/authenticator/config:/app/config:ro
+    command:
+      - "/app/authenticator" # <watched path — unused, one-shot>
+      - "--"
+      - "/app/authenticator"
+      - "-c"
+      - "/app/config/insight.yaml"
+      - "migrate"
+
   # ── Authenticator (OIDC login + sessions + cookie-to-JWT exchange) ─────
   #
   # The BFF / token-handler service (nginx+auth step 04). Runs the OIDC
@@ -594,9 +622,11 @@ services:
     depends_on:
       redis: {condition: service_healthy}
       identity-resolution: {condition: service_started}
+      authenticator-migrate: {condition: service_completed_successfully}
     environment:
       !!merge <<: *backend-env
       APP__gears__authenticator__config__redis_url: "redis://redis:6379"
+      APP__gears__authenticator__config__database_url: "mysql://${MARIADB_USER:-insight}:${MARIADB_PASSWORD:-insight-local}@${MARIADB_HOST:-mariadb}:${MARIADB_INTERNAL_PORT:-3306}/authenticator"
       APP__gears__authenticator__config__signing_keys_path: "/app/keys"
       APP__gears__authenticator__config__identity_url: "${AUTHENTICATOR_IDENTITY_URL:-http://identity-resolution:8082}"
       # Token `iss` = the TLS discovery front, so downstream verifiers resolve

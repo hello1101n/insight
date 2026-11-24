@@ -11,7 +11,7 @@ defaults:
 routes:
   - prefix: /api/sql/query
     upstream: http://analytics:8086
-    auth: instance_token
+    auth: api_token
     timeout_ms: 40000
   - prefix: /mcp
     upstream: http://analytics:8086
@@ -29,6 +29,9 @@ routes:
     timeout_ms: 135000
   - prefix: /api/identity
     upstream: http://identity-resolution:8082
+    strip_prefix: true
+  - prefix: /api/authenticator
+    upstream: http://authenticator:8083
     strip_prefix: true
   # No `auth` key -> defaults to session. /v1/raw-data is NOT routed here:
   # ingest uses its own token and is reached on the published host port.

@@ -22,6 +22,7 @@ service:
 sqlApi:
   tokenSecret: insight-sql-api-creds
   tokenKey: token
+  jwtAudience: sql-api
 
 mcp:
   port: 8086

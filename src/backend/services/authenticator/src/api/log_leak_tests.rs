@@ -1,5 +1,9 @@
 use insight_log_context::test_support::capture_output;
 
+use crate::api_tokens::http_tests::{
+    ADMIN, KNOWN_PERSON, KNOWN_PERSON_EMAIL, KNOWN_PERSON_NAME, R, StubSpec, app, body_json,
+    env_or_skip, request, spawn_identity,
+};
 use crate::config::{HostIdpConfig, IdpConfig};
 use crate::session::{LoginState, SessionRecord};
 
@@ -95,4 +99,123 @@ fn a_logged_idp_config_renders_a_marker_never_the_client_secret() {
         "leaked: client_secret in {output}"
     );
     assert!(output.contains("<redacted>"), "no marker in {output}");
+}
+
+#[test]
+#[ignore = "requires MariaDB and Redis; set INTEGRATION_TESTS_MARIADB_URL and INTEGRATION_TESTS_REDIS_URL"]
+fn the_api_token_routes_log_neither_the_token_nor_the_label_nor_a_name() -> R {
+    use crate::api_tokens::exchange_tests::SEEDED_LABEL;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut outcome: R = Ok(());
+    let mut token = String::new();
+    let mut token_id = String::new();
+    let mut ran = false;
+
+    let output = capture_output(|| {
+        outcome = runtime.block_on(async {
+            let Some(env) = env_or_skip().await else {
+                return Ok(());
+            };
+            ran = true;
+            let identity = spawn_identity(StubSpec::default()).await?;
+            let app = app(
+                &env.redis_url,
+                &identity,
+                Some(env.db.clone()),
+                uuid::Uuid::now_v7(),
+                crate::audit::AuditEmitter::disabled(),
+            )
+            .await?;
+
+            let created = body_json(
+                tower::ServiceExt::oneshot(
+                    app.clone(),
+                    request(
+                        "POST",
+                        "/v1/api-tokens",
+                        Some(&serde_json::json!({
+                            "person_id": KNOWN_PERSON.to_string(),
+                            "label": SEEDED_LABEL,
+                        })),
+                    )?,
+                )
+                .await?,
+            )
+            .await?;
+            token = created["token"].as_str().unwrap_or_default().to_owned();
+            token_id = created["token_id"].as_str().unwrap_or_default().to_owned();
+
+            tower::ServiceExt::oneshot(app.clone(), request("GET", "/v1/api-tokens", None)?)
+                .await?;
+            tower::ServiceExt::oneshot(
+                app,
+                request("DELETE", &format!("/v1/api-tokens/{token_id}"), None)?,
+            )
+            .await?;
+            Ok(())
+        });
+    });
+    outcome?;
+
+    if !ran {
+        return Ok(());
+    }
+    assert!(token.starts_with("iapi_"), "no token was created");
+    for seeded in [
+        token.as_str(),
+        SEEDED_LABEL,
+        KNOWN_PERSON_NAME,
+        KNOWN_PERSON_EMAIL,
+    ] {
+        assert!(!output.contains(seeded), "leaked: {seeded} in {output}");
+    }
+    let removal = output
+        .lines()
+        .find(|line| line.contains("api_token_removed"))
+        .ok_or("no removal audit line")?;
+    for named in [
+        KNOWN_PERSON.to_string(),
+        ADMIN.to_string(),
+        token_id.clone(),
+    ] {
+        assert!(
+            removal.contains(&named),
+            "removal line lacks {named}: {removal}"
+        );
+    }
+    assert!(
+        output.contains("api_token_created"),
+        "no creation audit line: {output}"
+    );
+    Ok(())
+}
+
+#[test]
+fn the_api_token_exchange_logs_neither_the_token_nor_the_label_nor_a_name()
+-> crate::api_tokens::http_tests::R {
+    use crate::api_tokens::exchange_tests::{SEEDED_LABEL, exchange_outcomes};
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let mut outcome = Ok(Vec::new());
+
+    let output = capture_output(|| {
+        outcome = runtime.block_on(exchange_outcomes());
+    });
+
+    let tokens = outcome?;
+
+    assert_eq!(tokens.len(), 3, "the three exchanges must run");
+    for token in &tokens {
+        assert!(
+            !output.contains(token.as_str()),
+            "leaked the token: {output}"
+        );
+    }
+    assert!(!output.contains(SEEDED_LABEL), "leaked the label: {output}");
+    Ok(())
 }

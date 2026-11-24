@@ -29,6 +29,22 @@ pub struct GatewayClaims {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiTokenClaims {
+    pub sub: String,
+    pub tenant_id: String,
+    #[serde(with = "space_delimited")]
+    pub roles: Vec<String>,
+    pub sub_type: String,
+    pub sid: String,
+    pub token_label: String,
+    pub iss: String,
+    pub aud: String,
+    pub iat: u64,
+    pub exp: u64,
+    pub jti: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpAccessClaims {
     pub sub: String,
     pub tenant_id: String,
@@ -148,6 +164,17 @@ impl KeyStore {
             .context("sign gateway JWT")
     }
 
+    pub fn sign_api_token(&self, claims: &ApiTokenClaims) -> anyhow::Result<String> {
+        anyhow::ensure!(
+            !claims.tenant_id.trim().is_empty(),
+            "refusing to sign an API token JWT with an empty tenant_id"
+        );
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some(self.current.kid.clone());
+        toolkit_security::jwt::encode(&header, claims, &self.current.signing)
+            .context("sign API token JWT")
+    }
+
     pub fn sign_mcp_access_token(&self, claims: &McpAccessClaims) -> anyhow::Result<String> {
         anyhow::ensure!(
             !claims.tenant_id.trim().is_empty(),
@@ -168,7 +195,7 @@ impl KeyStore {
     }
 
     #[cfg(test)]
-    fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
+    pub(crate) fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
         let mut validation = Validation::new(Algorithm::ES256);
         validation.set_audience(&[audience]);
         validation.validate_exp = true;

@@ -89,12 +89,39 @@ fn instance_token_route_bypasses_session_and_mcp_oauth() {
 }
 
 #[test]
+fn api_token_exchange_url_can_point_elsewhere() {
+    let routes = "version: 1\nroutes:\n  - prefix: /api/sql/query\n    upstream: http://analytics:8086\n    auth: api_token\n";
+    let conf = generate(
+        routes,
+        &Settings {
+            api_token_authz_url: Some("http://api-token-stub:9091/exchange".to_owned()),
+            ..Settings::default()
+        },
+    )
+    .unwrap();
+    assert!(conf.contains("api_token_authz_url = \"http://api-token-stub:9091/exchange\","));
+}
+
+#[test]
+fn api_token_is_refused_on_any_other_prefix() {
+    for prefix in ["/api/core", "/api/sql/query/x", "/api/sql", "/mcp"] {
+        let routes = format!(
+            "version: 1\nroutes:\n  - prefix: {prefix}\n    upstream: http://core:8086\n    auth: api_token\n"
+        );
+        let err = generate(&routes, &Settings::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("/api/sql/query"), "{prefix}: {err}");
+    }
+}
+
+#[test]
 fn every_session_location_has_the_hygiene_block() {
     let conf = generate(&fixture("full.routes.yaml"), &Settings::default()).unwrap();
     assert_eq!(
         conf.matches("access_by_lua_block { require(\"gateway\").exchange() }")
             .count(),
-        3
+        4
     );
     assert!(conf.contains("location /api/ {\n            return 404;"));
     assert!(conf.contains("location /internal/ {\n            return 404;"));

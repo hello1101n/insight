@@ -457,6 +457,8 @@ authenticator:
   # Leaf config (redis/identity/gateway_issuer/idp/redirect) is composed by the
   # umbrella into `insight-authenticator-config` (templates/secrets.yaml).
   existingSecret: "insight-authenticator-config"
+  databaseName: authenticator
+  migrateEnvSecret: "insight-authenticator-migrate-env"
   # ES256 signing keys (current.pem PKCS#8). NOT auto-generated — supplied as a
   # sealed/BYO Secret with key `current.pem` (local: sealed under
   # environments/local/sealed-secrets/insight/).

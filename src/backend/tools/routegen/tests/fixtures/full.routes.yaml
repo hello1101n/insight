@@ -19,3 +19,12 @@ routes:
     upstream: http://analytics.insight.svc.cluster.local:8081
     websocket: true
     timeout_ms: 0
+
+  - prefix: /api/sql/query
+    upstream: http://analytics.insight.svc.cluster.local:8086
+    auth: api_token
+    timeout_ms: 40000
+
+  - prefix: /api/authenticator
+    upstream: http://authenticator.insight.svc.cluster.local:8083
+    strip_prefix: true

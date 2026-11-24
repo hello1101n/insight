@@ -22,6 +22,10 @@ vi.mock("@/components/portal/identities-view", () => ({
   IdentitiesView: () => <div data-testid="identities-view" />,
 }));
 
+vi.mock("@/components/portal/api-tokens-view", () => ({
+  ApiTokensView: () => <div data-testid="api-tokens-view" />,
+}));
+
 vi.mock("@/components/portal/connector-health", () => ({
   ConnectorHealthPane: () => <div data-testid="connector-health-pane" />,
 }));
@@ -75,6 +79,22 @@ describe("Manage · Connectors", () => {
   it("no longer offers the pane it replaced", () => {
     expect(MANAGE_ITEMS.map((entry) => entry.id)).toContain("connector-health");
     expect(MANAGE_ITEMS.map((entry) => entry.id)).not.toContain("data-health");
+  });
+});
+
+describe("Manage · API tokens", () => {
+  it("refuses a non-admin, since only an admin creates or removes tokens", () => {
+    render(<ManageView item="api-tokens" />);
+
+    expect(screen.queryByTestId("api-tokens-view")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("opens for an admin", () => {
+    adminGate.value = { ...adminGate.value, isAdmin: true };
+    render(<ManageView item="api-tokens" />);
+
+    expect(screen.getByTestId("api-tokens-view")).toBeInTheDocument();
   });
 });
 

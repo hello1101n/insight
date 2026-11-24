@@ -10,12 +10,16 @@ use url::Url;
 use crate::schema::{Authentication, ResolvedRoute, RouteConfig};
 
 const STUB_STATUS_LISTEN: &str = "127.0.0.1:8090";
+const API_TOKEN_AUTHZ_PATH: &str = "/internal/api-token/authz";
+const API_TOKEN_CACHE_SIZE: &str = "16m";
+const API_TOKEN_MISSES_SIZE: &str = "4m";
 
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub listen: u16,
     pub authenticator_url: String,
     pub authz_path: String,
+    pub api_token_authz_url: Option<String>,
     pub front_url: String,
     pub mcp_public_url: Option<String>,
     pub jwt_cache_size: String,
@@ -33,6 +37,7 @@ impl Default for Settings {
             listen: 8080,
             authenticator_url: "http://authenticator.insight.svc.cluster.local:8083".to_owned(),
             authz_path: "/internal/authz".to_owned(),
+            api_token_authz_url: None,
             front_url: "http://insight-front.insight.svc.cluster.local:8080".to_owned(),
             mcp_public_url: None,
             jwt_cache_size: "64m".to_owned(),
@@ -160,6 +165,12 @@ pub fn emit(config: &RouteConfig, settings: &Settings) -> anyhow::Result<String>
         settings.authenticator_url.trim_end_matches('/'),
         settings.authz_path
     );
+    let api_token_authz_url = settings.api_token_authz_url.clone().unwrap_or_else(|| {
+        format!(
+            "{}{API_TOKEN_AUTHZ_PATH}",
+            settings.authenticator_url.trim_end_matches('/')
+        )
+    });
     let mcp_resource_metadata_url =
         mcp_resource_metadata_url(settings.mcp_public_url.as_deref(), "/mcp")?;
 
@@ -189,6 +200,7 @@ pub fn emit(config: &RouteConfig, settings: &Settings) -> anyhow::Result<String>
         &mut c,
         settings,
         &authz_url,
+        &api_token_authz_url,
         mcp_resource_metadata_url.as_deref(),
     )?;
 
@@ -231,6 +243,7 @@ fn emit_http_runtime(
     c: &mut String,
     settings: &Settings,
     authz_url: &str,
+    api_token_authz_url: &str,
     mcp_resource_metadata_url: Option<&str>,
 ) -> anyhow::Result<()> {
     c.push_str("    # --- OpenResty Lua runtime (DESIGN 3.11; ADR-0001 Option A) ---\n");
@@ -240,6 +253,14 @@ fn emit_http_runtime(
         "    lua_shared_dict jwt_cache {};",
         settings.jwt_cache_size
     )?;
+    writeln!(
+        c,
+        "    lua_shared_dict api_token_cache {API_TOKEN_CACHE_SIZE};"
+    )?;
+    writeln!(
+        c,
+        "    lua_shared_dict api_token_misses {API_TOKEN_MISSES_SIZE};"
+    )?;
     // local=on reads nameservers from /etc/resolv.conf -- one config for
     // in-cluster (kube-dns) and compose (docker DNS), no per-cluster address.
     c.push_str("    resolver local=on ipv6=off;\n");
@@ -247,6 +268,10 @@ fn emit_http_runtime(
     c.push_str("    init_by_lua_block {\n");
     c.push_str("        require(\"gateway\").init({\n");
     writeln!(c, "            authz_url = \"{authz_url}\",")?;
+    writeln!(
+        c,
+        "            api_token_authz_url = \"{api_token_authz_url}\","
+    )?;
     match mcp_resource_metadata_url {
         Some(url) => writeln!(c, "            mcp_resource_metadata_url = \"{url}\",")?,
         None => c.push_str("            mcp_resource_metadata_url = nil,\n"),
@@ -377,6 +402,10 @@ fn emit_server(
     c.push_str("        location /api/ {\n");
     c.push_str("            return 404;\n");
     c.push_str("        }\n\n");
+    c.push_str("        # /api/authenticator reaches only the authenticator's /v1/ API\n");
+    c.push_str("        location ~ ^/api/authenticator(?!/v1/) {\n");
+    c.push_str("            return 404;\n");
+    c.push_str("        }\n\n");
     c.push_str("        # /internal/* never routes through the gateway (G4 layer 1)\n");
     c.push_str("        location /internal/ {\n");
     c.push_str("            return 404;\n");
@@ -453,11 +482,11 @@ fn emit_api_location(
         Authentication::Session => {
             emit_api_location_block(c, &ctx, "", "")?;
         }
-        Authentication::InstanceToken if route.strip_prefix => {
+        Authentication::InstanceToken | Authentication::ApiToken if route.strip_prefix => {
             emit_api_location_block(c, &ctx, "= ", "")?;
             emit_api_location_block(c, &ctx, "^~ ", "/")?;
         }
-        Authentication::Bearer | Authentication::InstanceToken => {
+        Authentication::Bearer | Authentication::InstanceToken | Authentication::ApiToken => {
             emit_api_location_block(c, &ctx, "= ", "")?;
         }
     }
@@ -499,6 +528,9 @@ fn emit_api_location_block(
                 "            access_by_lua_block { require(\"gateway\").pass_instance_token() }\n",
             );
         }
+        Authentication::ApiToken => {
+            c.push_str("            access_by_lua_block { require(\"gateway\").api_token() }\n");
+        }
     }
     if route.strip_prefix {
         writeln!(
@@ -509,7 +541,7 @@ fn emit_api_location_block(
     }
     writeln!(c, "            proxy_pass {scheme}://{ident};")?;
     match route.auth {
-        Authentication::Session | Authentication::InstanceToken => {
+        Authentication::Session | Authentication::InstanceToken | Authentication::ApiToken => {
             c.push_str("            proxy_set_header Host $host;\n");
         }
         Authentication::Bearer => c.push_str("            proxy_set_header Host localhost;\n"),

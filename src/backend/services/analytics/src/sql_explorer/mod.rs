@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use authn_resolver_sdk::AuthNResolverClient;
 use axum::Router;
 use secrecy::ExposeSecret as _;
 use tokio_util::sync::CancellationToken;
@@ -45,6 +47,7 @@ pub(crate) fn validate_config(mcp: &McpConfig, api: &SqlApiConfig) -> anyhow::Re
 pub(crate) async fn start(
     mcp: &McpConfig,
     api: &SqlApiConfig,
+    authn: Arc<dyn AuthNResolverClient>,
     clickhouse_url: &str,
     clickhouse_database: &str,
     cancellation: CancellationToken,
@@ -71,7 +74,7 @@ pub(crate) async fn start(
         )?);
     }
     if api.enabled {
-        router = router.merge(api::router(api, executor));
+        router = router.merge(api::router(api, authn, executor));
     }
     let listener = tokio::net::TcpListener::bind(&mcp.bind_addr).await?;
     tracing::info!(bind_addr = %mcp.bind_addr, "SQL explorer listening");

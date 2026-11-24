@@ -97,6 +97,13 @@ fn exception_code(message: &str) -> Option<u16> {
         .ok()
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TokenHolder {
+    pub(crate) person_id: String,
+    pub(crate) token_id: String,
+    pub(crate) label: String,
+}
+
 #[derive(Clone)]
 pub(crate) struct QueryExecutor {
     client: insight_clickhouse::Client,
@@ -153,7 +160,12 @@ impl QueryExecutor {
         })
     }
 
-    pub(crate) async fn query<T, F>(&self, sql: String, encode: F) -> Result<T, QueryFailure>
+    pub(crate) async fn query<T, F>(
+        &self,
+        sql: String,
+        holder: Option<&TokenHolder>,
+        encode: F,
+    ) -> Result<T, QueryFailure>
     where
         T: Send + 'static,
         F: FnOnce(serde_json::Value) -> Result<T, serde_json::Error> + Send + 'static,
@@ -175,11 +187,17 @@ impl QueryExecutor {
 
         let started = Instant::now();
         let query_hash = hex::encode(Sha256::digest(sql.as_bytes()));
+        let person_id = holder.map(|holder| holder.person_id.as_str());
+        let token_id = holder.map(|holder| holder.token_id.as_str());
+        let token_label = holder.map(|holder| holder.label.as_str());
         let result = self.execute_admitted(&sql).await;
         match result {
             Ok(result) => {
                 tracing::info!(
                     query_hash,
+                    person_id,
+                    token_id,
+                    token_label,
                     duration_ms = started.elapsed().as_millis(),
                     rows = result.row_count,
                     outcome = "success",
@@ -201,7 +219,8 @@ impl QueryExecutor {
                 }
             }
             Err(error) => {
-                tracing::warn!(query_hash, duration_ms = started.elapsed().as_millis(),
+                tracing::warn!(query_hash, person_id, token_id, token_label,
+                    duration_ms = started.elapsed().as_millis(),
                     %error, outcome = "error", "SQL explorer query failed");
                 Err(error)
             }

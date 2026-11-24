@@ -192,6 +192,15 @@ impl AuditEmitter {
         }
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub fn recording() -> (Self, mpsc::Receiver<AuditEvent>) {
+        let (tx, rx) = mpsc::channel(QUEUE_DEPTH);
+        let mut emitter = Self::disabled();
+        emitter.tx = Some(tx);
+        (emitter, rx)
+    }
+
     pub fn emit(&self, event: AuditEvent) {
         let Some(tx) = &self.tx else { return };
         if let Err(e) = tx.try_send(event) {

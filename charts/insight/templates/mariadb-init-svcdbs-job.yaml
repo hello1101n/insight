@@ -119,6 +119,11 @@ spec:
                 "$CONNECTORS_DB" "$CONNECTORS_DB" "$MARIADB_USER")
               mariadb -h"$MARIADB_HOST" -P"$MARIADB_PORT" -uroot -e "$SQL"
               echo "Provisioned ${CONNECTORS_DB} (granted to ${MARIADB_USER}@%)."
+              AUTHENTICATOR_DB={{ required "authenticator.databaseName is required" .Values.authenticator.databaseName | quote }}
+              SQL=$(printf 'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@`%%`; FLUSH PRIVILEGES;' \
+                "$AUTHENTICATOR_DB" "$AUTHENTICATOR_DB" "$MARIADB_USER")
+              mariadb -h"$MARIADB_HOST" -P"$MARIADB_PORT" -uroot -e "$SQL"
+              echo "Provisioned ${AUTHENTICATOR_DB} (granted to ${MARIADB_USER}@%)."
               {{- if $kcdb }}
               KC_DB={{ .Values.keycloak.database.name | quote }}
               KC_DB_USER={{ required "keycloak.database.username is required" .Values.keycloak.database.username | quote }}

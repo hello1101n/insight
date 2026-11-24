@@ -63,9 +63,17 @@ type QueryValue = str | int | float | bool | None
 type QueryParams = Mapping[str, QueryValue | Sequence[QueryValue]]
 
 ANALYTICS_PREFIX = "/api/analytics"
+AUTHENTICATOR_PREFIX = "/api/authenticator"
 CONNECTORS_PREFIX = "/api/connectors"
 IDENTITY_PREFIX = "/api/identity"
-GATEWAY_API_PREFIXES: tuple[str, ...] = (ANALYTICS_PREFIX, CONNECTORS_PREFIX, IDENTITY_PREFIX)
+SQL_PREFIX = "/api/sql"
+GATEWAY_API_PREFIXES: tuple[str, ...] = (
+    ANALYTICS_PREFIX,
+    AUTHENTICATOR_PREFIX,
+    CONNECTORS_PREFIX,
+    IDENTITY_PREFIX,
+    SQL_PREFIX,
+)
 
 # Served by the edge itself rather than routed to a backend: the SPA at `/` and
 # the authenticator's browser endpoints under `/auth/`.
@@ -75,6 +83,11 @@ EDGE_PATH_PREFIXES: tuple[str, ...] = ("/auth/",)
 def analytics_path(suffix: str) -> str:
     """`analytics_path("/v1/metrics") -> "/api/analytics/v1/metrics"`."""
     return f"{ANALYTICS_PREFIX}/{suffix.lstrip('/')}"
+
+
+def authenticator_path(suffix: str) -> str:
+    """`authenticator_path("/v1/api-tokens") -> "/api/authenticator/v1/api-tokens"`."""
+    return f"{AUTHENTICATOR_PREFIX}/{suffix.lstrip('/')}"
 
 
 def connectors_path(suffix: str) -> str:
@@ -327,14 +340,17 @@ class ApiClient:
 
 __all__: Sequence[str] = (
     "ANALYTICS_PREFIX",
+    "AUTHENTICATOR_PREFIX",
     "CONNECTORS_PREFIX",
     "EDGE_PATH_PREFIXES",
     "GATEWAY_API_PREFIXES",
     "IDENTITY_PREFIX",
+    "SQL_PREFIX",
     "ApiClient",
     "ApiResponse",
     "StandSession",
     "analytics_path",
+    "authenticator_path",
     "connectors_path",
     "identity_path",
 )

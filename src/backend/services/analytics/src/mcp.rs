@@ -98,7 +98,7 @@ impl SqlExplorer {
     async fn run_query_sql(&self, sql: String) -> CallToolResult {
         match self
             .executor
-            .query(sql, |value| Ok(CallToolResult::structured(value)))
+            .query(sql, None, |value| Ok(CallToolResult::structured(value)))
             .await
         {
             Ok(result) => result,

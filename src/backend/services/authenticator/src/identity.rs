@@ -31,6 +31,14 @@ pub struct PersonResolution {
     pub tenant_id: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RosterPerson {
+    pub person_id: Uuid,
+    pub display_name: Option<String>,
+    pub username: Option<String>,
+    pub email: Option<String>,
+}
+
 #[async_trait]
 pub trait PersonResolver: Send + Sync {
     async fn resolve(&self, id: &IdpIdentity) -> anyhow::Result<Option<PersonResolution>>;
@@ -42,6 +50,15 @@ pub trait PersonResolver: Send + Sync {
 
     async fn active_roles(&self, person_id: &str, tenant_id: &str) -> anyhow::Result<Vec<String>> {
         let _ = (person_id, tenant_id);
+        Ok(Vec::new())
+    }
+
+    async fn tenant_people(
+        &self,
+        person_ids: &[Uuid],
+        authorization: Option<&str>,
+    ) -> anyhow::Result<Vec<RosterPerson>> {
+        let _ = (person_ids, authorization);
         Ok(Vec::new())
     }
 }
@@ -213,6 +230,11 @@ impl IdentityPersonResolver {
 }
 
 #[derive(serde::Deserialize)]
+struct PeopleList {
+    items: Vec<RosterPerson>,
+}
+
+#[derive(serde::Deserialize)]
 struct ActiveRolesProfile {
     roles: Vec<String>,
 }
@@ -265,6 +287,42 @@ impl PersonResolver for IdentityPersonResolver {
         );
         let profile: ActiveRolesProfile = resp.json().await.context("decode ActiveRolesProfile")?;
         Ok(profile.roles)
+    }
+
+    async fn tenant_people(
+        &self,
+        person_ids: &[Uuid],
+        authorization: Option<&str>,
+    ) -> anyhow::Result<Vec<RosterPerson>> {
+        if self.base_url.is_empty() || person_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = person_ids
+            .iter()
+            .map(Uuid::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let limit = person_ids.len().to_string();
+        let url = format!("{}/v1/people", self.base_url);
+        let mut request = self.http.get(&url).query(&[
+            ("visibility", "tenant"),
+            ("ids", ids.as_str()),
+            ("limit", limit.as_str()),
+        ]);
+        if let Some(authorization) = authorization {
+            request = request.header(reqwest::header::AUTHORIZATION, authorization);
+        }
+        let resp = request
+            .send()
+            .await
+            .context("Identity tenant roster request")?;
+        anyhow::ensure!(
+            resp.status().is_success(),
+            "Identity returned {} for /v1/people",
+            resp.status()
+        );
+        let page: PeopleList = resp.json().await.context("decode PeopleList")?;
+        Ok(page.items)
     }
 }
 
@@ -359,6 +417,79 @@ mod tests {
             .await?;
 
         assert!(provisioned.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn the_tenant_roster_is_read_for_exactly_these_ids_as_the_caller() -> anyhow::Result<()> {
+        use axum::extract::Query;
+        use axum::http::{HeaderMap, header::AUTHORIZATION};
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+
+        type Seen = Arc<Mutex<Vec<(Option<String>, HashMap<String, String>)>>>;
+        let seen: Seen = Arc::default();
+        let record = Arc::clone(&seen);
+        let ada = Uuid::from_u128(0xa);
+        let bob = Uuid::from_u128(0xb);
+        let router = axum::Router::new().route(
+            "/v1/people",
+            axum::routing::get(
+                move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
+                    let auth = headers
+                        .get(AUTHORIZATION)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned);
+                    record
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push((auth, params));
+                    async move {
+                        axum::Json(serde_json::json!({
+                            "items": [{
+                                "person_id": ada.to_string(),
+                                "display_name": "Ada Example",
+                                "username": "ada",
+                                "email": "ada@example.com",
+                                "attributes": {},
+                            }],
+                            "next_cursor": null,
+                        }))
+                    }
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let url = format!("http://{}", listener.local_addr()?);
+        tokio::spawn(async move { axum::serve(listener, router).await });
+        let pem = {
+            use p256::elliptic_curve::Generate as _;
+            use p256::pkcs8::{EncodePrivateKey as _, LineEnding};
+            p256::SecretKey::generate().to_pkcs8_pem(LineEnding::LF)?
+        };
+        let resolver = IdentityPersonResolver::new(
+            &url,
+            Arc::new(KeyStore::from_pem_for_test(&pem)?),
+            "issuer".to_owned(),
+            "audience".to_owned(),
+            "source".to_owned(),
+        )?;
+
+        let people = resolver
+            .tenant_people(&[ada, bob], Some("Bearer caller"))
+            .await?;
+
+        assert_eq!(people.len(), 1);
+        assert_eq!(people[0].person_id, ada);
+        assert_eq!(people[0].display_name.as_deref(), Some("Ada Example"));
+        let seen = seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (auth, params) = &seen[0];
+        assert_eq!(auth.as_deref(), Some("Bearer caller"));
+        assert_eq!(params.get("visibility").map(String::as_str), Some("tenant"));
+        assert_eq!(params.get("ids").cloned(), Some(format!("{ada},{bob}")));
+        assert_eq!(params.get("limit").map(String::as_str), Some("2"));
         Ok(())
     }
 }

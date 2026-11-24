@@ -412,17 +412,17 @@ values-present:
 		|| { echo "$(C_RED)ERROR$(C_RST): values file not found at $(VALUES)"; exit 1; }
 
 # A file, not a variable: a $(shell ...) here would run kubectl on every make
-# invocation. An explicit gateway.setRealIpFrom in the env's values wins.
+# invocation. An explicit gateway.gateway.setRealIpFrom in the env's values wins.
 REALIP_ARGS = $(RENDER_DIR)/realip-$(ENV).args
 
 .PHONY: gateway-realip-args
 gateway-realip-args: values-present
 	@mkdir -p $(RENDER_DIR)
-	@if [ "$$(yq -r '.gateway.setRealIpFrom // "null"' $(VALUES))" = "null" ]; then \
+	@if [ "$$(yq -r '.gateway.gateway.setRealIpFrom // "null"' $(VALUES))" = "null" ]; then \
 		CIDRS=$$(KUBE_CTX=$(KUBE_CTX) python3 scripts/gateway-realip.py) || exit 1; \
 		: > $(REALIP_ARGS); \
 		if [ -n "$$CIDRS" ]; then \
-			printf -- '--set gateway.setRealIpFrom={%s}' "$$CIDRS" > $(REALIP_ARGS); \
+			printf -- '--set gateway.gateway.setRealIpFrom={%s}' "$$CIDRS" > $(REALIP_ARGS); \
 		fi; \
 	else \
 		echo "gateway client-IP trust: pinned in $(VALUES)" >&2; \
@@ -431,7 +431,7 @@ gateway-realip-args: values-present
 
 .PHONY: show-gateway-realip
 show-gateway-realip: vpn-up kube-ctx values-present
-	@STORED=$$(yq -r '.gateway.setRealIpFrom // "null"' $(VALUES)); \
+	@STORED=$$(yq -r '.gateway.gateway.setRealIpFrom // "null"' $(VALUES)); \
 	if [ "$$STORED" != "null" ]; then \
 		echo "pinned in $(VALUES): $$STORED"; \
 	else \

@@ -80,7 +80,7 @@ data:
               - "internal-services"
             trusted_issuers:
 {{- if .Values.tlsDiscovery.enabled }}
-              - issuer: "https://{{ include "insight-authenticator.fullname" . }}:{{ .Values.tlsDiscovery.port }}"
+              - issuer: {{ include "insight-authenticator.gatewayIssuer" . | quote }}
 {{- else }}
               - issuer: "https://gateway.invalid"
 {{- end }}
@@ -99,7 +99,7 @@ data:
           # required config; never fetched unless an exchange is performed.
           s2s_oauth:
 {{- if .Values.tlsDiscovery.enabled }}
-            discovery_url: "https://{{ include "insight-authenticator.fullname" . }}:{{ .Values.tlsDiscovery.port }}"
+            discovery_url: {{ include "insight-authenticator.gatewayIssuer" . | quote }}
 {{- else }}
             discovery_url: "https://gateway.invalid"
 {{- end }}

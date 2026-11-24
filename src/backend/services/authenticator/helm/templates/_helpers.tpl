@@ -15,3 +15,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "insight-authenticator.authnTlsSecret" -}}
 {{- .Values.tlsDiscovery.certSecret | default (printf "%s-authn-tls-cert" (include "insight-authenticator.fullname" .)) -}}
 {{- end }}
+
+{{- define "insight-authenticator.gatewayIssuer" -}}
+{{- printf "https://%s.%s.svc.cluster.local:%v" (include "insight-authenticator.fullname" .) .Release.Namespace .Values.tlsDiscovery.port -}}
+{{- end }}

@@ -33,6 +33,11 @@ struct Cli {
     #[arg(long, default_value_t = Settings::default().authz_path)]
     authz_path: String,
 
+    /// Full URL the Lua exchange calls to swap a personal API token for a JWT
+    /// (default: the authenticator URL plus /internal/api-token/authz).
+    #[arg(long)]
+    api_token_authz_url: Option<String>,
+
     /// Base URL of the insight-front SPA server.
     #[arg(long, default_value_t = Settings::default().front_url)]
     front_url: String,
@@ -69,6 +74,7 @@ impl Cli {
             listen: self.listen,
             authenticator_url: self.authenticator_url.clone(),
             authz_path: self.authz_path.clone(),
+            api_token_authz_url: self.api_token_authz_url.clone(),
             front_url: self.front_url.clone(),
             mcp_public_url: self.mcp_public_url.clone(),
             jwt_cache_size: self.jwt_cache_size.clone(),

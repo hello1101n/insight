@@ -211,6 +211,10 @@ COMPONENTS = [
         # Linked dependency crates (authenticator-sdk, workspace libs/plugins)
         # self-report in their own jobs; scope this component to its own code.
         "cover_ignore_regex": "src/backend/(libs|plugins)/",
+        "live_db": True,
+        "live_db_name": "authenticator",
+        # Not include_ignored: the tests/e2e_* suites need the run-e2e.sh stack.
+        "live_test": "cargo test -p authenticator --bin authenticator -- --include-ignored api_tokens:: api::log_leak_tests::",
         "paths": ["src/backend/services/authenticator", "docs/components/backend/authenticator/openapi.json"],
         "drift_test": True,
     },

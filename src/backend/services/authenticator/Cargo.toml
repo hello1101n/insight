@@ -16,6 +16,7 @@ authenticator-sdk = { workspace = true }
 insight-http-metrics = { workspace = true }
 insight-log-context = { workspace = true }
 insight-openapi = { workspace = true }
+insight-migration = { workspace = true }
 
 toolkit = { workspace = true, features = ["bootstrap"] }
 toolkit-security = { workspace = true }
@@ -56,6 +57,9 @@ url = "2.5"
 openidconnect = "4"
 axum-extra = { version = "0.12", features = ["cookie"] }
 time = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+secrecy = { workspace = true }
 
 # Workspace dep: jsonwebtoken v10 panics if two crypto providers are active under feature unification.
 jsonwebtoken = { workspace = true }
@@ -63,6 +67,8 @@ base64 = "0.23"
 rand = "0.10"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+sea-orm = { workspace = true, features = ["mock"] }
 insight-log-context = { workspace = true, features = ["test-support"] }
 p256 = { version = "0.14", features = ["pkcs8", "pem", "ecdsa", "getrandom"] }
 tower = { version = "0.5", features = ["util"] }

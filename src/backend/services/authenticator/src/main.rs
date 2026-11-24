@@ -2,6 +2,7 @@
 #![allow(clippy::doc_markdown)]
 
 mod api;
+mod api_tokens;
 mod audit;
 mod backchannel;
 mod config;
@@ -14,6 +15,7 @@ mod janitor;
 mod jwt;
 mod local_client;
 mod mcp_oauth;
+mod migration;
 mod oidc;
 mod ratelimit;
 mod refresher;
@@ -66,6 +68,8 @@ enum Commands {
     Run,
     /// Validate configuration and exit.
     Check,
+    /// Apply the personal API token schema migrations and exit.
+    Migrate,
     /// Print the OpenAPI document to stdout and exit. Built offline from the
     /// route table — no Redis, IdP, or config needed. Used to regenerate
     /// docs/components/backend/authenticator/openapi.json and to drift-check
@@ -81,7 +85,10 @@ async fn main() -> Result<()> {
     config.apply_cli_overrides(cli.verbose);
 
     if cli.print_config {
-        println!("Effective configuration:\n{}", config.to_yaml()?);
+        println!(
+            "Effective configuration:\n{}",
+            config::redacted_yaml(&config)?
+        );
         return Ok(());
     }
 
@@ -93,6 +100,15 @@ async fn main() -> Result<()> {
                 &resource.attributes,
             );
             run_server(config).await
+        }
+        Commands::Migrate => {
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                )
+                .try_init();
+            gear::run_migrate(&config).await
         }
         Commands::Check => {
             println!("configuration OK");

@@ -470,7 +470,7 @@ create_connectors_database() {
 
   local db_user="${MARIADB_USER:-insight}"
   db_user="${db_user//\`/\`\`}"
-  printf 'CREATE DATABASE IF NOT EXISTS connectors CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON connectors.* TO `%s`@`%%`;\n' "$db_user" |
+  printf 'CREATE DATABASE IF NOT EXISTS connectors CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON connectors.* TO `%s`@`%%`;\nCREATE DATABASE IF NOT EXISTS authenticator CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON authenticator.* TO `%s`@`%%`;\n' "$db_user" "$db_user" |
     "$@" exec -T -e "MYSQL_PWD=${MARIADB_ROOT_PASSWORD:-root-local}" mariadb mariadb -uroot
 }
 
@@ -670,7 +670,7 @@ cmd_up() {
     platform: linux/amd64
 $(ghcr_volumes_block "$svc")
 YML
-          if [[ "$svc" == "analytics" || "$svc" == "identity-resolution" || "$svc" == "connectors" ]]; then
+          if [[ "$svc" == "analytics" || "$svc" == "identity-resolution" || "$svc" == "connectors" || "$svc" == "authenticator" ]]; then
             # The one-shot migrate companion must flip to the ghcr image too:
             # left alone it keeps the build + local-binary bind mount (which
             # was intentionally not built in ghcr mode), never starts, and the
@@ -2053,6 +2053,11 @@ test_stand_write_env() {
   update_env_var "$TEST_STAND_ENV_FILE" SEEDED_LOCAL_MARIA ""
   update_env_var "$TEST_STAND_ENV_FILE" SEEDED_LOCAL_CH    ""
   update_env_var "$TEST_STAND_ENV_FILE" ANALYTICS_PERIODIC_VALIDATION_ENABLED "false"
+  if [[ "${SQL_API_ENABLED:-false}" == "true" ]]; then
+    update_env_var "$TEST_STAND_ENV_FILE" SQL_API_ENABLED "true"
+    update_env_var "$TEST_STAND_ENV_FILE" SQL_API_TOKEN "${SQL_API_TOKEN:?SQL_API_TOKEN is required with SQL_API_ENABLED=true}"
+    update_env_var "$TEST_STAND_ENV_FILE" CLICKHOUSE_MCP_PASSWORD "${CLICKHOUSE_MCP_PASSWORD:-$(openssl rand -hex 16)}"
+  fi
   # Point the authenticator at the same origin the realm registers and the
   # browser runner drives, so the callback lands where the session cookie
   # can be set. Left at its .env.compose.example default

@@ -4,7 +4,14 @@ defaults:
     - X-Real-IP
     - Forwarded
 routes:
+  - prefix: /api/sql/query
+    upstream: http://echo:9090
+    auth: api_token
   - prefix: /api/analytics
     upstream: http://echo:9090
   - prefix: /api/identity
     upstream: http://echo:9090
+    strip_prefix: true
+  - prefix: /api/authenticator
+    upstream: http://echo:9090
+    strip_prefix: true

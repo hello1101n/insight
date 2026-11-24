@@ -17,11 +17,12 @@ import pytest
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parents[4]
 COMPOSE = ["docker", "compose", "-f", str(HERE / "docker-compose.e2e.yml")]
-CORE_SERVICES = ["redis", "identity-stub", "keycloak", "authenticator", "echo", "gateway"]
+CORE_SERVICES = ["redis", "identity-stub", "keycloak", "authenticator", "echo", "api-token-stub", "gateway"]
 
 GW = "http://localhost:18080"
 KEYCLOAK = "http://localhost:18084"
 AUTHENTICATOR = "http://localhost:18083"
+API_TOKEN_STUB = "http://localhost:18091"
 
 REWRITES = {"http://gateway:8080": GW, "http://keycloak:8085": KEYCLOAK}
 
@@ -251,7 +252,16 @@ def authenticator_down(session_sid):
 
 
 @pytest.fixture
+def api_token_stub_down():
+    _compose("kill", "api-token-stub")
+    yield
+    _compose("start", "api-token-stub")
+    _wait_http(f"{API_TOKEN_STUB}/calls", want={200})
+
+
+@pytest.fixture
 def echo_down():
     _compose("kill", "echo")
     yield
     _compose("start", "echo")
+    _wait_http(f"{GW}/", want={200})

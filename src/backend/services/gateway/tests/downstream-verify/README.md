@@ -27,7 +27,7 @@ keycloak ─▶ authenticator ─▶ gateway ─▶ {analytics, identity-resolut
 - `MariaDB` backs analytics (migrations run at boot) and identity-resolution
   (a one-shot `migrate` service runs its migrations first).
 
-## The five scenarios (`test_downstream.py`)
+## The scenarios (`test_downstream.py`)
 
 1. Browser-less login → cookie → `GET /api/analytics/...` → **200**.
 2. Same request **directly to analytics' port** without a JWT → **401**
@@ -36,6 +36,9 @@ keycloak ─▶ authenticator ─▶ gateway ─▶ {analytics, identity-resolut
 4. Step-06 **service token** → analytics accepts it; `roles: ["service"]`.
 5. A request reaching analytics without a valid gateway JWT (models a gateway
    route shipped without `auth_request`, or a forged/browser token) → **401**.
+6. A validly-signed JWT with `aud` `sql-api` (a personal API token's JWT)
+   → identity-resolution answers **401**; the same claims with `aud`
+   `internal-services` are not refused.
 
 ## Running
 

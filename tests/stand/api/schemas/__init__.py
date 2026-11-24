@@ -11,9 +11,9 @@ Two halves, and a reader should be able to tell which one they are in:
   from documents
   the services emit themselves (`cargo run -p <service> -- openapi`) and each
   service's test suite drift-gates, so the models describe
-  the very structs that serialize the wire. `authenticator.py` is currently just
-  the error envelope, because that document declares every `/auth/*` success
-  body as a bare `type: object`.
+  the very structs that serialize the wire. `authenticator.py` holds the error
+  envelope and the API-token admin bodies; the document declares every `/auth/*`
+  success body as a bare `type: object`.
 
   The generated identity models carry the contract's names — `SubchartResponse`,
   `ProfileResponse` — where the hand-written module said `Subchart`, `Profile`.
@@ -77,6 +77,7 @@ from .analytics import (
 from .analytics import (
     MetricResultViewDto8 as NotReadyView,
 )
+from .authenticator import ApiTokenListResponse, CreatedApiToken
 from .common import (
     EXTRACTOR_REJECTION_CONTENT_TYPE,
     PROBLEM_CONTENT_TYPE,
@@ -146,11 +147,13 @@ __all__: Sequence[str] = (
     "PROBLEM_CONTENT_TYPE",
     "AccountBindingResponse",
     "AccountSearchResponse",
+    "ApiTokenListResponse",
     "AttentionResponse",
     "BatchProfilesResponse",
     "BreakdownView",
     "ConnectorHealthResponse",
     "CorrectionResponse",
+    "CreatedApiToken",
     "CustomMetric",
     "CustomMetricInput",
     "CustomMetricListResponse",

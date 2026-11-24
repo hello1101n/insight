@@ -72,3 +72,31 @@ def test_gateway_misconfig_or_forged_token_is_401(client):
         headers={"Cookie": "__Host-sid=whatever", "Authorization": "Bearer forged.not-a.gateway-jwt"},
     )
     assert status == 401, f"forged/browser token reached analytics as {status}, expected 401"
+
+
+def _api_token_claims(audience: str) -> dict:
+    now = int(time.time())
+    return {
+        "sub": str(uuid.uuid4()),
+        "tenant_id": TENANT_DEV,
+        "roles": "sql_api",
+        "sub_type": "api_token",
+        "sid": str(uuid.uuid4()),
+        "token_label": "e2e",
+        "iss": GATEWAY_ISSUER,
+        "aud": audience,
+        "iat": now,
+        "exp": now + 300,
+        "jti": str(uuid.uuid4()),
+    }
+
+
+def test_identity_resolution_refuses_a_sql_api_jwt(client):
+    refused = mint_gateway_jwt(_api_token_claims("sql-api"))
+    control = mint_gateway_jwt(_api_token_claims("internal-services"))
+
+    status, _, _ = client.request(IDENTITY_LIST_DIRECT, headers={"Authorization": f"Bearer {refused}"})
+    assert status == 401, f"identity-resolution accepted a JWT with aud sql-api: {status}"
+
+    status, _, _ = client.request(IDENTITY_LIST_DIRECT, headers={"Authorization": f"Bearer {control}"})
+    assert status != 401, f"the control JWT with aud internal-services was refused: {status}"

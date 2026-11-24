@@ -1,17 +1,23 @@
+use std::sync::Arc;
+
+use authn_resolver_sdk::{AuthNResolverClient, AuthNResolverError};
 use axum::extract::{DefaultBodyLimit, Request, State, rejection::JsonRejection};
 use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use secrecy::ExposeSecret as _;
 use serde::Deserialize;
 use toolkit_canonical_errors::{CanonicalError, Http, resource_error};
 use toolkit_security::crypto::{constant_time_eq, hash::Sha256};
 
-use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure};
+use super::executor::{MAX_REQUEST_BODY_BYTES, QueryExecutor, QueryFailure, TokenHolder};
 use crate::config::SqlApiConfig;
+
+const API_TOKEN_SUB_TYPE: &str = "api_token";
+const MAX_CREDENTIAL_BYTES: usize = 4096;
 
 #[resource_error("gts.cf.insight.analytics_api.sql_query.v1~")]
 struct SqlQueryError;
@@ -25,32 +31,64 @@ struct QueryRequest {
     sql: String,
 }
 
-pub(super) fn router(config: &SqlApiConfig, executor: QueryExecutor) -> Router {
-    let token_hash = Sha256::digest(config.token.expose_secret().as_bytes());
+#[derive(Clone)]
+struct AuthState {
+    token_hash: [u8; 32],
+    authn: Arc<dyn AuthNResolverClient>,
+}
+
+enum AuthFailure {
+    Unauthorized,
+    Unavailable,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiTokenClaims {
+    sid: String,
+    token_label: String,
+}
+
+pub(super) fn router(
+    config: &SqlApiConfig,
+    authn: Arc<dyn AuthNResolverClient>,
+    executor: QueryExecutor,
+) -> Router {
+    let state = AuthState {
+        token_hash: Sha256::digest(config.token.expose_secret().as_bytes()),
+        authn,
+    };
     Router::new()
         .route("/api/sql/query", post(query))
         .with_state(executor)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(token_hash, authenticate))
+        .layer(middleware::from_fn_with_state(state, authenticate))
 }
 
 async fn authenticate(
-    State(expected): State<[u8; 32]>,
+    State(state): State<AuthState>,
     headers: HeaderMap,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
-    let mut response = if valid_token(&headers, &expected) {
-        next.run(request).await
-    } else {
-        let mut response = CanonicalError::unauthenticated()
-            .with_reason("INVALID_INSTANCE_TOKEN")
+    let mut response = match identify(&state, &headers).await {
+        Ok(holder) => {
+            request.extensions_mut().insert(holder);
+            next.run(request).await
+        }
+        Err(AuthFailure::Unauthorized) => {
+            let mut response = CanonicalError::unauthenticated()
+                .with_reason("INVALID_INSTANCE_TOKEN")
+                .create()
+                .into_response();
+            response
+                .headers_mut()
+                .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+            response
+        }
+        Err(AuthFailure::Unavailable) => CanonicalError::service_unavailable()
+            .with_detail("credential verification is unavailable; retry shortly")
             .create()
-            .into_response();
-        response
-            .headers_mut()
-            .insert(WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
-        response
+            .into_response(),
     };
     response
         .headers_mut()
@@ -58,29 +96,55 @@ async fn authenticate(
     response
 }
 
-fn valid_token(headers: &HeaderMap, expected: &[u8; 32]) -> bool {
-    if headers.get_all(AUTHORIZATION).iter().count() != 1 {
-        return false;
+async fn identify(
+    state: &AuthState,
+    headers: &HeaderMap,
+) -> Result<Option<TokenHolder>, AuthFailure> {
+    let token = bearer_credential(headers).ok_or(AuthFailure::Unauthorized)?;
+    if constant_time_eq(&Sha256::digest(token.as_bytes()), &state.token_hash) {
+        return Ok(None);
     }
-    let Some(value) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
-        return false;
-    };
-    let Some((scheme, token)) = value.split_once(' ') else {
-        return false;
-    };
+    let subject = state
+        .authn
+        .authenticate(token)
+        .await
+        .map_err(|error| match error {
+            AuthNResolverError::Unauthorized(_) => AuthFailure::Unauthorized,
+            _ => AuthFailure::Unavailable,
+        })?
+        .security_context;
+    if subject.subject_type() != Some(API_TOKEN_SUB_TYPE) {
+        return Err(AuthFailure::Unauthorized);
+    }
+    let claims = jsonwebtoken::dangerous::insecure_decode::<ApiTokenClaims>(token)
+        .map_err(|_| AuthFailure::Unauthorized)?
+        .claims;
+    Ok(Some(TokenHolder {
+        person_id: subject.subject_id().to_string(),
+        token_id: claims.sid,
+        label: claims.token_label,
+    }))
+}
+
+fn bearer_credential(headers: &HeaderMap) -> Option<&str> {
+    if headers.get_all(AUTHORIZATION).iter().count() != 1 {
+        return None;
+    }
+    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, token) = value.split_once(' ')?;
     if !scheme.eq_ignore_ascii_case("bearer")
         || token.is_empty()
-        || token.len() > 1024
+        || token.len() > MAX_CREDENTIAL_BYTES
         || !token.bytes().all(|b| b.is_ascii_graphic())
     {
-        return false;
+        return None;
     }
-    let actual = Sha256::digest(token.as_bytes());
-    constant_time_eq(&actual, expected)
+    Some(token)
 }
 
 async fn query(
     State(executor): State<QueryExecutor>,
+    Extension(holder): Extension<Option<TokenHolder>>,
     body: Result<Json<QueryRequest>, JsonRejection>,
 ) -> Result<Response, CanonicalError> {
     let Json(request) = body.map_err(|error| {
@@ -91,7 +155,9 @@ async fn query(
         }
     })?;
     let bytes = executor
-        .query(request.sql, |result| serde_json::to_vec(&result))
+        .query(request.sql, holder.as_ref(), |result| {
+            serde_json::to_vec(&result)
+        })
         .await
         .map_err(|error| query_error(&error))?;
     Ok(([(CONTENT_TYPE, "application/json")], bytes).into_response())

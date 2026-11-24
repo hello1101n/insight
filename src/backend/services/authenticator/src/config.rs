@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
+use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
+use toolkit::bootstrap::AppConfig;
 
 const REDACTED_SECRET: &str = "<redacted>";
 
@@ -231,6 +233,8 @@ pub struct AuthenticatorConfig {
     pub authz_cache_max_age_seconds: u64,
     pub gateway_issuer: String,
     pub jwt_audience: String,
+    pub sql_api_audience: String,
+    pub api_token_lookup_slots: usize,
 
     pub redirect_uri: String,
     #[serde(deserialize_with = "de_scopes")]
@@ -251,6 +255,7 @@ pub struct AuthenticatorConfig {
     pub redis_url: String,
     pub signing_keys_path: String,
     pub identity_url: String,
+    pub database_url: SecretString,
 
     pub bind_addr: String,
 
@@ -309,6 +314,8 @@ impl Default for AuthenticatorConfig {
             authz_cache_max_age_seconds: 30,
             gateway_issuer: String::new(),
             jwt_audience: "internal-services".to_owned(),
+            sql_api_audience: "sql-api".to_owned(),
+            api_token_lookup_slots: 8,
             redirect_uri: String::new(),
             // offline_access omitted: survives-logout token, wrong for a BFF.
             oidc_scopes: vec![
@@ -330,6 +337,7 @@ impl Default for AuthenticatorConfig {
             redis_url: String::new(),
             signing_keys_path: String::new(),
             identity_url: String::new(),
+            database_url: SecretString::default(),
             bind_addr: "0.0.0.0:8083".to_owned(),
             idp: IdpConfig::default(),
             service_tokens: ServiceTokensConfig::default(),
@@ -352,6 +360,7 @@ impl AuthenticatorConfig {
         );
 
         validate_required_fields(self)?;
+        validate_api_tokens(self)?;
 
         anyhow::ensure!(
             !(self.idp.resolve_by == ResolveBy::Email && self.idp.provision_on_login),
@@ -441,7 +450,25 @@ impl AuthenticatorConfig {
         }
 
         validate_mcp_oauth(&self.mcp_oauth)?;
+        self.api_tokens_database_url()?;
         Ok(())
+    }
+
+    pub fn api_tokens_database_url(&self) -> anyhow::Result<Option<&SecretString>> {
+        let raw = self.database_url.expose_secret();
+        if raw.trim().is_empty() {
+            return Ok(None);
+        }
+
+        let url = url::Url::parse(raw)
+            .map_err(|_| anyhow::anyhow!("database_url must be a MySQL URL"))?;
+        anyhow::ensure!(
+            url.scheme() == "mysql"
+                && url.host_str().is_some()
+                && !url.path().trim_matches('/').is_empty(),
+            "database_url must select a MySQL database"
+        );
+        Ok(Some(&self.database_url))
     }
 }
 
@@ -454,6 +481,18 @@ fn validate_required_fields(config: &AuthenticatorConfig) -> anyhow::Result<()> 
     ] {
         anyhow::ensure!(!value.trim().is_empty(), "{name} is required (empty)");
     }
+    Ok(())
+}
+
+fn validate_api_tokens(config: &AuthenticatorConfig) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !config.sql_api_audience.trim().is_empty(),
+        "sql_api_audience is required (empty)"
+    );
+    anyhow::ensure!(
+        config.api_token_lookup_slots > 0,
+        "api_token_lookup_slots must be > 0"
+    );
     Ok(())
 }
 
@@ -497,6 +536,32 @@ fn validate_mcp_oauth(config: &McpOAuthConfig) -> anyhow::Result<()> {
         "mcp_oauth.access_token_ttl_seconds must be > 0"
     );
     Ok(())
+}
+
+pub fn extract_gear_config(app: &AppConfig) -> anyhow::Result<AuthenticatorConfig> {
+    let raw = app
+        .gears
+        .get("authenticator")
+        .and_then(|gear| gear.get("config"))
+        .ok_or_else(|| {
+            anyhow::anyhow!("missing `gears.authenticator.config` section in configuration")
+        })?;
+    serde_json::from_value(raw.clone())
+        .map_err(|_| anyhow::anyhow!("invalid `gears.authenticator.config` configuration"))
+}
+
+pub fn redacted_yaml(config: &AppConfig) -> anyhow::Result<String> {
+    let mut redacted = config.clone();
+    if let Some(secret) = redacted
+        .gears
+        .get_mut("authenticator")
+        .and_then(|gear| gear.get_mut("config"))
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|config| config.get_mut("database_url"))
+    {
+        *secret = serde_json::Value::String(REDACTED_SECRET.to_owned());
+    }
+    redacted.to_yaml()
 }
 
 #[cfg(test)]
@@ -550,6 +615,84 @@ mod tests {
             };
             assert!(cfg.validate().is_err(), "should reject prefix {bad:?}");
         }
+    }
+
+    #[test]
+    fn the_sql_api_audience_and_lookup_slots_have_defaults_and_must_be_usable() {
+        let defaults = AuthenticatorConfig::default();
+        assert_eq!(defaults.sql_api_audience, "sql-api");
+        assert_eq!(defaults.api_token_lookup_slots, 8);
+
+        for audience in ["", "  "] {
+            let cfg = AuthenticatorConfig {
+                sql_api_audience: audience.to_owned(),
+                ..valid_config()
+            };
+            assert!(
+                cfg.validate().is_err(),
+                "should reject audience {audience:?}"
+            );
+        }
+        let cfg = AuthenticatorConfig {
+            api_token_lookup_slots: 0,
+            ..valid_config()
+        };
+        assert!(cfg.validate().is_err(), "should reject zero slots");
+    }
+
+    #[test]
+    fn database_url_is_empty_or_a_mysql_url_naming_a_database() {
+        for ok in ["", "  ", "mysql://u:p@mariadb:3306/authenticator"] {
+            let cfg = AuthenticatorConfig {
+                database_url: SecretString::from(ok),
+                ..valid_config()
+            };
+            assert!(cfg.validate().is_ok(), "should accept {ok:?}");
+        }
+
+        for bad in [
+            "postgres://u:p@db/authenticator",
+            "mysql://u:p@mariadb:3306",
+            "mysql://u:p@mariadb:3306/",
+            "not a url",
+        ] {
+            let cfg = AuthenticatorConfig {
+                database_url: SecretString::from(bad),
+                ..valid_config()
+            };
+            assert!(cfg.validate().is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn an_empty_database_url_turns_api_tokens_off() -> anyhow::Result<()> {
+        assert!(valid_config().api_tokens_database_url()?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn print_config_redacts_the_database_url() -> anyhow::Result<()> {
+        let mut app = AppConfig::default();
+        app.gears.insert(
+            "authenticator".to_owned(),
+            serde_json::json!({"config": {"database_url": "mysql://u:hunter2@mariadb/authenticator"}}),
+        );
+
+        let yaml = redacted_yaml(&app)?;
+
+        assert!(!yaml.contains("hunter2"));
+        assert!(yaml.contains(REDACTED_SECRET));
+        Ok(())
+    }
+
+    #[test]
+    fn the_config_debug_output_hides_the_database_url() {
+        let cfg = AuthenticatorConfig {
+            database_url: SecretString::from("mysql://u:hunter2@mariadb/authenticator"),
+            ..valid_config()
+        };
+
+        assert!(!format!("{cfg:?}").contains("hunter2"));
     }
 
     #[test]

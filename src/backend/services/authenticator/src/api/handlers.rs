@@ -24,7 +24,7 @@ use crate::session::{LoginState, NewSession, SessionRecord};
 const ROLES_CONVERGE_BUDGET_SECS: u64 = 3;
 const JWT_TRAVEL_MARGIN_SECONDS: u64 = 60;
 
-static X_GATEWAY_JWT: HeaderName = HeaderName::from_static("x-gateway-jwt");
+pub(crate) static X_GATEWAY_JWT: HeaderName = HeaderName::from_static("x-gateway-jwt");
 
 #[derive(Debug, Deserialize)]
 pub struct LoginParams {
@@ -386,7 +386,7 @@ impl ClientInfo {
     }
 }
 
-fn correlation_id(headers: &axum::http::HeaderMap) -> String {
+pub(crate) fn correlation_id(headers: &axum::http::HeaderMap) -> String {
     headers
         .get("x-correlation-id")
         .and_then(|v| v.to_str().ok())
@@ -605,6 +605,27 @@ fn effective_roles(fetched: Option<Vec<String>>, default_roles: &[String]) -> Ve
         Some(roles) if !roles.is_empty() => roles,
         Some(_) | None => default_roles.to_vec(),
     }
+}
+
+pub async fn api_token_authz(
+    Extension(state): Extension<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let authorization = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+
+    crate::api_tokens::exchange::respond(
+        &crate::api_tokens::exchange::ExchangeEnv {
+            db: state.api_tokens_db.as_ref(),
+            slots: &state.api_token_lookup_slots,
+            keystore: &state.keystore,
+            cfg: &state.cfg,
+        },
+        authorization,
+        chrono::Utc::now(),
+    )
+    .await
 }
 
 pub async fn authz(Extension(state): Extension<Arc<AppState>>, jar: CookieJar) -> Response {
@@ -1410,7 +1431,11 @@ fn jwt_exp(jwt: &str) -> Option<u64> {
     value.get("exp")?.as_u64()
 }
 
-fn build_response(status: StatusCode, headers: Vec<(HeaderName, String)>, body: Body) -> Response {
+pub(crate) fn build_response(
+    status: StatusCode,
+    headers: Vec<(HeaderName, String)>,
+    body: Body,
+) -> Response {
     let mut resp = Response::new(body);
     *resp.status_mut() = status;
     let h = resp.headers_mut();

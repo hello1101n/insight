@@ -67,6 +67,9 @@ data:
             require_audience: true
             expected_audience:
               - {{ .Values.gateway.audience | default "internal-services" | quote }}
+              {{- if .Values.global.sqlApi.enabled }}
+              - {{ .Values.sqlApi.jwtAudience | default "sql-api" | quote }}
+              {{- end }}
             trusted_issuers:
               - issuer: {{ tpl (.Values.gateway.issuer | default "") . | quote }}
                 {{- with .Values.gateway.discoveryUrl }}

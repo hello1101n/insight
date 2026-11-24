@@ -5,13 +5,22 @@
 local http = require("resty.http")
 local uuid = require("resty.uuid")
 local errors = require("errors")
+local limit_req = require("resty.limit.req")
+local resty_sha256 = require("resty.sha256")
+local resty_string = require("resty.string")
 
 local _M = {}
 
 local CACHE = "jwt_cache"
+local API_TOKEN_CACHE = "api_token_cache"
+local API_TOKEN_MISSES = "api_token_misses"
+local API_TOKEN_PREFIX = "iapi_"
+local API_TOKEN_MISS_RATE = 10
+local API_TOKEN_MISS_BURST = 20
 
 local cfg = {
     authz_url = nil,
+    api_token_authz_url = nil,
     mcp_resource_metadata_url = nil,
     authz_connect_timeout_ms = 2000,
     authz_read_timeout_ms = 2000,
@@ -19,6 +28,7 @@ local cfg = {
 
 function _M.init(opts)
     cfg.authz_url = opts.authz_url
+    cfg.api_token_authz_url = opts.api_token_authz_url
     cfg.mcp_resource_metadata_url = opts.mcp_resource_metadata_url
     cfg.authz_connect_timeout_ms = opts.authz_connect_timeout_ms or cfg.authz_connect_timeout_ms
     cfg.authz_read_timeout_ms = opts.authz_read_timeout_ms or cfg.authz_read_timeout_ms
@@ -147,6 +157,92 @@ function _M.pass_bearer(resource_metadata_url, scope)
 end
 
 function _M.pass_instance_token()
+    ngx.req.clear_header("Cookie")
+    set_request_context()
+end
+
+local miss_limiter
+
+local function api_token_miss_limiter()
+    if not miss_limiter then
+        miss_limiter = assert(limit_req.new(API_TOKEN_MISSES, API_TOKEN_MISS_RATE, API_TOKEN_MISS_BURST))
+    end
+    return miss_limiter
+end
+
+local function sha256_hex(value)
+    local digest = resty_sha256:new()
+    digest:update(value)
+    return resty_string.to_hex(digest:final())
+end
+
+local function api_token_unavailable(reason)
+    ngx.log(ngx.ERR, "API token exchange failed: ", reason)
+    return errors.sql_api_unavailable
+end
+
+local function exchange_api_token(token)
+    local cache = ngx.shared[API_TOKEN_CACHE]
+    local key = sha256_hex(token)
+    local jwt = cache:get(key)
+    if jwt then
+        return jwt
+    end
+
+    local delay, limit_err = api_token_miss_limiter():incoming(ngx.var.remote_addr, true)
+    if not delay then
+        if limit_err == "rejected" then
+            return nil, errors.too_many_requests
+        end
+        return nil, api_token_unavailable("limiter: " .. tostring(limit_err))
+    end
+
+    local httpc = http.new()
+    httpc:set_timeouts(
+        cfg.authz_connect_timeout_ms,
+        cfg.authz_read_timeout_ms,
+        cfg.authz_read_timeout_ms
+    )
+    local res, err = httpc:request_uri(cfg.api_token_authz_url, {
+        method = "GET",
+        headers = { ["Authorization"] = "Bearer " .. token },
+    })
+    if not res then
+        return nil, api_token_unavailable(err)
+    end
+    if res.status == 401 then
+        return nil, errors.sql_api_unauthorized
+    end
+    if res.status ~= 200 then
+        return nil, api_token_unavailable("authz status " .. tostring(res.status))
+    end
+    jwt = res.headers["X-Gateway-Jwt"]
+    if not jwt or jwt == "" then
+        return nil, api_token_unavailable("authz 200 without X-Gateway-Jwt")
+    end
+
+    local ttl = parse_max_age(res.headers["Cache-Control"])
+    if ttl and ttl > 0 then
+        cache:set(key, jwt, ttl)
+    end
+    return jwt
+end
+
+function _M.api_token()
+    local scheme, token = string.match(ngx.var.http_authorization or "", "^(%S+) (%S+)$")
+    if not scheme or string.lower(scheme) ~= "bearer" then
+        token = nil
+    end
+    if not token or string.sub(token, 1, #API_TOKEN_PREFIX) ~= API_TOKEN_PREFIX then
+        return _M.pass_instance_token()
+    end
+
+    local jwt, deny = exchange_api_token(token)
+    if not jwt then
+        return deny()
+    end
+
+    ngx.req.set_header("Authorization", jwt)
     ngx.req.clear_header("Cookie")
     set_request_context()
 end

@@ -64,6 +64,14 @@ services:
       - ./echo-stub.py:/echo-stub.py:ro
     command: ["python", "/echo-stub.py", "0.0.0.0:9090"]
 
+  api-token-stub:
+    image: python:3.12-slim
+    volumes:
+      - ./api-token-stub.py:/api-token-stub.py:ro
+    command: ["python", "/api-token-stub.py", "0.0.0.0:9091"]
+    ports:
+      - "${API_TOKEN_STUB_E2E_PORT:-18091}:9091"
+
   gateway:
     image: insight-gateway:e2e-prebuilt
     build:
@@ -72,8 +80,10 @@ services:
     depends_on:
       authenticator: {condition: service_started}
       echo: {condition: service_started}
+      api-token-stub: {condition: service_started}
     environment:
       GATEWAY_AUTHENTICATOR_URL: "http://authenticator:8083"
+      GATEWAY_API_TOKEN_AUTHZ_URL: "http://api-token-stub:9091/internal/api-token/authz"
       GATEWAY_FRONT_URL: "http://echo:9090"
     volumes:
       - ./routes.e2e.yaml:/etc/gateway/routes.yaml:ro
