@@ -154,7 +154,10 @@ pub(super) fn live_pod_patches(object: &DynamicObject) -> [Option<String>; 2] {
     };
     resources::POD_PATCH_PARAMETERS.map(|name| {
         let mut entries = parameters.iter().filter(|p| p["name"] == name);
-        let value = entries.next()?["value"].as_str()?;
+        let Some(entry) = entries.next() else {
+            return Some("{}".to_owned());
+        };
+        let value = entry["value"].as_str()?;
         entries.next().is_none().then(|| value.to_owned())
     })
 }
