@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { PaneGroupLabel } from "@/components/portal/pane-group-label";
 import {
@@ -8,7 +9,8 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
+import { resolveText, type DisplayText } from "@/i18n/localized-text";
 import {
   PLANNED_GROUP_LABEL,
   partitionByReadiness,
@@ -36,7 +38,6 @@ export function CountBadge({
   return (
     <SidebarMenuBadge
       className={cn(
-        "rounded-full bg-muted px-1.5 font-normal text-muted-foreground",
         className
       )}
     >
@@ -59,6 +60,11 @@ export function ItemBadge({ item }: { item: PaneItem }) {
   );
 }
 
+function ItemLabel({ text }: { text: DisplayText }) {
+  const { t } = useTranslation();
+  return <span>{resolveText(t, text)}</span>;
+}
+
 export function UnbuiltRow({ item }: { item: PaneItem }) {
   const Icon = item.icon;
   return (
@@ -66,13 +72,12 @@ export function UnbuiltRow({ item }: { item: PaneItem }) {
       <SidebarMenuButton
         data-planned
         aria-disabled
-        className="text-muted-foreground aria-disabled:opacity-100"
       >
         <Icon />
-        <span>{item.label}</span>
+        <ItemLabel text={item.label} />
       </SidebarMenuButton>
-      <SidebarMenuBadge className="font-normal text-muted-foreground">
-        {PLANNED_GROUP_LABEL}
+      <SidebarMenuBadge>
+        <ItemLabel text={PLANNED_GROUP_LABEL} />
       </SidebarMenuBadge>
     </SidebarMenuItem>
   );
@@ -102,10 +107,10 @@ export function ItemButton({
           else setItem(item.id);
           dismiss();
         }}
-        className={item.readiness != null ? "text-muted-foreground" : undefined}
+        className={item.readiness != null ? "" : undefined}
       >
         <Icon />
-        <span>{item.label}</span>
+        <ItemLabel text={item.label} />
         <ItemBadge item={item} />
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -119,6 +124,7 @@ export function GroupsNav({
   groups: readonly PaneGroup[];
   active: string | null;
 }) {
+  const { t } = useTranslation();
   const showPlanned = usePortalShowPlanned();
   const split = groups.map((g) => partitionByReadiness(g.items, showPlanned));
   const planned = split.flatMap((s) => s.planned);
@@ -127,8 +133,8 @@ export function GroupsNav({
     <>
       {groups.map((g, i) =>
         split[i]!.live.length ? (
-          <SidebarGroup key={g.label ?? i}>
-            {g.label ? <PaneGroupLabel>{g.label}</PaneGroupLabel> : null}
+          <SidebarGroup key={g.label ? (typeof g.label === "string" ? g.label : g.label.key) : i}>
+            {g.label ? <PaneGroupLabel>{resolveText(t, g.label)}</PaneGroupLabel> : null}
             <SidebarGroupContent>
               <SidebarMenu>
                 {split[i]!.live.map((it) => (
@@ -141,7 +147,7 @@ export function GroupsNav({
       )}
       {planned.length ? (
         <SidebarGroup>
-          <PaneGroupLabel>{PLANNED_GROUP_LABEL}</PaneGroupLabel>
+          <PaneGroupLabel>{resolveText(t, PLANNED_GROUP_LABEL)}</PaneGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {planned.map((it) => (

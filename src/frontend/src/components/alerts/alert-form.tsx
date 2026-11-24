@@ -46,7 +46,6 @@ import {
   useReplaceAlert,
 } from "@/queries/alerts";
 
-/** The page a new alert is written on. */
 export function NewAlertPage() {
   const destinations = useQuery(alertDestinationsQuery());
 
@@ -76,11 +75,9 @@ export function NewAlertPage() {
   );
 }
 
-/** The page an existing alert is changed on. */
 export function EditAlertPage({ id }: { id: string }) {
   const alert = useQuery({
     ...alertQuery(id),
-    // Seeded once; a refresh underneath the form would be neither shown nor wanted.
     refetchInterval: false,
     refetchOnWindowFocus: false,
   });
@@ -94,8 +91,6 @@ export function EditAlertPage({ id }: { id: string }) {
       </Shell>
     );
   }
-  // INVARIANT: the form seeds once, from what this page read now, never from
-  // the copy the alert page cached, or a save would overwrite what changed since.
   if (!alert.isFetchedAfterMount || !alert.isSuccess) {
     return (
       <CenteredSpinner
@@ -121,14 +116,13 @@ const CANCEL = cn(
   "self-start underline decoration-dotted underline-offset-4"
 );
 
-/** Leaves the form for the list, or for the alert it was editing. */
 function Cancel({ id }: { id?: string }) {
   return id ? (
-    <Link to="/portal/custom/alerts/$id" params={{ id }} className={CANCEL}>
+    <Link to="/dashboards/alerts/$id" params={{ id }} className={CANCEL}>
       Cancel
     </Link>
   ) : (
-    <Link to="/portal/custom/alerts" className={CANCEL}>
+    <Link to="/dashboards/alerts" className={CANCEL}>
       Cancel
     </Link>
   );
@@ -142,7 +136,6 @@ function Shell({
 }: {
   "data-testid": string;
   title: string;
-  /** The alert the form edits, which Cancel returns to. */
   backTo?: string;
   children: ReactNode;
 }) {
@@ -182,8 +175,6 @@ function withoutCondition(errors: FieldErrors): FieldErrors {
   );
 }
 
-// INVARIANT: the draft is one document shown two ways, and whichever view was
-// edited last is believed.
 function AlertEditor({
   initial,
   existing,
@@ -195,9 +186,6 @@ function AlertEditor({
     hold(existing ? formOf(existing) : (initial ?? blankForm()))
   );
   const [view, setView] = useState<"fields" | "text">("fields");
-  // INVARIANT: a save expects the revision the form was filled from; keying
-  // the form on the cache's revision remounts it mid-save and the navigation
-  // is lost.
   const [base, setBase] = useState<Alert | undefined>(existing);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [focusAsked, setFocusAsked] = useState(0);
@@ -294,7 +282,7 @@ function AlertEditor({
 
     const saved = (alert: Alert) =>
       void navigate({
-        to: "/portal/custom/alerts/$id",
+        to: "/dashboards/alerts/$id",
         params: { id: alert.id },
       });
     const refused = (error: unknown) => refuse(savingRefusal(error).fields);

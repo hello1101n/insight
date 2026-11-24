@@ -7,7 +7,7 @@ import {
   KpiTilePlaceholder,
 } from "@/components/widgets/dashboard/kpi-tile";
 import type { KpiTileData } from "@/lib/insight/kpi-row";
-import { AppTooltips } from "@/test/tooltip";
+import { AppTooltips, openTooltip } from "@/test/tooltip";
 
 function tile(overrides: Partial<KpiTileData> = {}): KpiTileData {
   return {
@@ -18,10 +18,6 @@ function tile(overrides: Partial<KpiTileData> = {}): KpiTileData {
     medianLabel: "median 11",
     gapText: null,
     gapStatus: "neutral",
-    help: {
-      description: "Days with any AI tool activity",
-      explanation: "Counted from tool events, one day per person.",
-    },
     groupId: "ai_adoption",
     ...overrides,
   };
@@ -42,20 +38,8 @@ describe("KpiTile", () => {
   it("renders the display-ready value, delta, median, and context", () => {
     render(<KpiTile periodNoun="month" tile={tile()} />);
     expect(screen.getByText("14")).toBeInTheDocument();
-    // The change now says what it is measured against, in the line under the
-    // value — a bare "+17%" was readable as either comparison.
     expect(screen.getByText(/\+17% since last month/)).toBeInTheDocument();
     expect(screen.getByText(/Team median 11/)).toBeInTheDocument();
-  });
-
-  it("gives the catalog description to assistive technology without writing it on the tile", () => {
-    render(<KpiTile periodNoun="month" tile={tile()} onOpenGroup={vi.fn()} />);
-    expect(screen.getByRole("button")).toHaveAccessibleDescription(
-      "Days with any AI tool activity. Counted from tool events, one day per person."
-    );
-    expect(screen.getByText(/^Days with any AI tool activity/)).toHaveClass(
-      "sr-only"
-    );
   });
 
   it("shows the divergence gap next to the median", () => {
@@ -94,9 +78,6 @@ describe("KpiTile", () => {
   });
 
   it("shows the line only once the readings arrive, never waiting on them", () => {
-    // The request for readings sits outside every loading gate: the numbers
-    // are the page, and a tile that held them back until a second request
-    // landed would trade the first screen for a decoration.
     const { container, rerender } = render(
       <KpiTile periodNoun="month" tile={tile()} />
     );
@@ -109,8 +90,6 @@ describe("KpiTile", () => {
   });
 
   it("draws no line when there is nothing worth drawing", () => {
-    // `personTrendPoints` returns null below its minimum; the tile must take
-    // that as "no line", not fall back to something of its own.
     const { container } = render(
       <KpiTile periodNoun="month" tile={tile()} trend={null} />
     );
@@ -128,24 +107,24 @@ describe("KpiTile", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("opens no explanation over the rest of the tile", async () => {
+  it("opens no tooltip when the pointer rests on the metric name", async () => {
     render(<KpiTile periodNoun="month" tile={tile()} onOpenGroup={vi.fn()} />, {
       wrapper: AppTooltips,
     });
 
-    await userEvent.hover(screen.getByRole("button"));
+    await userEvent.hover(screen.getByText("Active AI days"));
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    expect(screen.queryByTestId("metric-help")).not.toBeInTheDocument();
+    expect(openTooltip()).toBeNull();
   });
 
-  it("names the metric in full on keyboard focus when it opens nothing", async () => {
-    render(<KpiTile periodNoun="month" tile={tile({ groupId: null })} />);
+  it("titles the name it may cut with the full name", () => {
+    render(<KpiTile periodNoun="month" tile={tile()} />);
 
-    await userEvent.tab();
-
-    const tip = await screen.findByTestId("metric-help");
-    expect(tip.firstElementChild).toHaveTextContent("Active AI days");
+    expect(screen.getByText("Active AI days")).toHaveAttribute(
+      "title",
+      "Active AI days"
+    );
   });
 });
 
@@ -155,33 +134,7 @@ describe("KpiTilePlaceholder", () => {
     expect(screen.getByText("Coming soon")).toBeInTheDocument();
   });
 
-  it("explains the metric on its name, in the catalog's own words", async () => {
-    // The number alone is not readable: a viewer meeting "14" has no way to
-    // learn what it counts. The tile itself is the trigger, so the answer is
-    // one pointer-rest away instead of one more icon per tile.
-    render(<KpiTile periodNoun="month" tile={tile()} onOpenGroup={vi.fn()} />);
-    await userEvent.hover(screen.getByText("Active AI days"));
-    const tip = await screen.findByTestId("metric-help");
-    expect(tip).toHaveTextContent("Days with any AI tool activity");
-    expect(tip).toHaveTextContent("Counted from tool events");
-  });
-
-  it("names the metric in full on hover, since the tile may cut its name", async () => {
-    render(
-      <KpiTile
-        periodNoun="month"
-        tile={tile({ help: null })}
-        onOpenGroup={vi.fn()}
-      />
-    );
-    await userEvent.hover(screen.getByText("Active AI days"));
-    const tip = await screen.findByTestId("metric-help");
-    expect(tip).toHaveTextContent(/^Active AI days$/);
-  });
-
   it("says where the value sits when it is exactly at the median", () => {
-    // "median 22,774" alone breaks the pattern every other tile follows and
-    // reads as a stray label rather than a comparison.
     render(
       <KpiTile
         periodNoun="month"
@@ -192,8 +145,6 @@ describe("KpiTilePlaceholder", () => {
   });
 
   it("does not raise an alarm over a change of one percent", () => {
-    // Four coloured badges per row, one of them for a rounding-sized move,
-    // teach the reader that the colour means nothing.
     render(
       <KpiTile
         periodNoun="month"

@@ -4,7 +4,8 @@ use toolkit_canonical_errors::CanonicalError;
 
 use crate::domain::metric_definitions::ComputationSpec;
 use crate::domain::metric_definitions::definition::{MetricInputRole, RatioDenominatorAggregation};
-use crate::domain::metric_results::compiler::tenant_predicate_on;
+use crate::domain::metric_definitions::evidence_presentation::RECORD_REF_KEY;
+use crate::domain::metric_results::compiler::{sql_string_literal, tenant_predicate_on};
 
 use super::cursor::CursorKey;
 use super::dto::{
@@ -13,34 +14,46 @@ use super::dto::{
 };
 use super::error::config_error;
 use super::presentation::presentation_columns;
+use super::row_shape::{RowShape, record_parts};
 use super::sort::{
-    MetricDrilldownSort, MetricDrilldownSortDirection, PERSON_KEY, column_sql, empty_flag,
+    MetricDrilldownSort, MetricDrilldownSortDirection, PARTS_KEY, PERSON_KEY, column_sql,
+    dimension_text, empty_flag,
 };
 
-/// Person evidence is keyed by the source identity, so a person's rows are the
-/// rows of every identity the live map resolves to them; tenant evidence
-/// repeats its tenant key as the entity id.
+const NAMED_RECORD_PARTS: usize = 3;
+
+const RATIO_TIEBREAKERS: &[&str] = &[
+    "role",
+    "metric_date",
+    "observed_at",
+    "source_key",
+    "measure_key",
+    "record_id",
+    "record_kind",
+    "subject_key",
+    "entity_id",
+];
+
 pub fn compile_query(
     req: &ValidatedMetricDrilldown,
 ) -> Result<(String, Vec<String>), CanonicalError> {
-    if matches!(req.plan.definition.spec, ComputationSpec::Ratio { .. }) {
-        return compile_ratio_query(req);
+    let shape = RowShape::of(&req.plan);
+    match shape {
+        RowShape::Record => compile_value_query(req, shape, None),
+        RowShape::FoldedRecord => compile_value_query(req, shape, record_parts(&req.plan)),
+        RowShape::DailyRatio | RowShape::RecordRatio | RowShape::RecordsPerSubject => {
+            compile_ratio_query(req, shape)
+        }
     }
-    compile_value_query(req)
 }
 
 fn compile_value_query(
     req: &ValidatedMetricDrilldown,
+    shape: RowShape,
+    parts: Option<&str>,
 ) -> Result<(String, Vec<String>), CanonicalError> {
     let (database, table) = req.plan.relation.table_ref();
     let mut params = Vec::new();
-    let measures = req
-        .plan
-        .inputs
-        .iter()
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(", ");
     let role_expr = role_expression(&req.plan.inputs);
     for input in &req.plan.inputs {
         params.push(input.measure_key.clone());
@@ -52,26 +65,26 @@ fn compile_value_query(
         &req.selection.display_dimensions,
         &req.selection.entity,
     );
-    let order = OrderKey::build(&columns, &req.selection.sort, false)?;
-    let person = person_projection(&req.selection.entity, &columns, &mut params);
-    params.extend([
-        req.tenant_id.to_string(),
-        req.plan.source_key.clone(),
-        req.selection.entity.entity_type().to_owned(),
-    ]);
-    let entity = entity_predicate(&req.selection.entity, &mut params);
-    params.extend([req.from.to_string(), req.to.to_string()]);
-    params.extend(
-        req.plan
-            .inputs
-            .iter()
-            .map(|input| input.measure_key.clone()),
-    );
-    let filter_sql = filter_predicate(&req.selection.filters, &mut params);
+    let order = OrderKey::build(&columns, &req.selection.sort, shape)?;
+
+    let mut person_params = Vec::new();
+    let person = person_projection(&req.selection.entity, &columns, &mut person_params);
+    let mut scope_params = Vec::new();
+    let scope = evidence_scope(req, &mut scope_params);
+    let (rows, scope) = if let Some(parts) = parts {
+        params.append(&mut scope_params);
+        params.append(&mut person_params);
+        (folded_record_source(database, table, &scope, parts), None)
+    } else {
+        params.append(&mut person_params);
+        params.append(&mut scope_params);
+        (format!("{database}.{table} AS evidence"), Some(scope))
+    };
+
     let search = search_predicate(
         req.selection.search.as_deref(),
         &columns,
-        false,
+        shape,
         &person,
         &req.search_person_ids,
         &mut params,
@@ -81,9 +94,8 @@ fn compile_value_query(
         "role, toString(evidence.metric_date), ifNull(toString(evidence.observed_at), ''), evidence.source_key, evidence.measure_key, evidence.record_id, evidence.record_kind, ifNull(evidence.subject_key, ''), evidence.entity_id",
         &mut params,
     );
-    let narrowing_sql = conjunction("AND", &[search, cursor]);
+    let where_sql = where_clause(&[scope, search, cursor]);
     let limit = req.limit + 1;
-    let tenant = tenant_predicate_on("evidence");
     let order_by = order.order_by(&[
         "role",
         "metric_date",
@@ -104,10 +116,7 @@ fn compile_value_query(
                 ifNull(evidence.subject_key, '') AS subject_key, \
                 toJSONString(evidence.dimensions) AS dimensions_json, evidence.details, \
                 {person} AS person_id, {projection} \
-         FROM {database}.{table} AS evidence{person_join} \
-         WHERE {tenant} AND evidence.source_key = ? AND evidence.entity_type = ? AND {entity} \
-           AND evidence.metric_date >= toDate(?) AND evidence.metric_date <= toDate(?) \
-           AND evidence.measure_key IN ({measures}){filter_sql}{narrowing_sql} \
+         FROM {rows}{person_join}{where_sql} \
          ORDER BY {order_by} \
          LIMIT {limit}",
         person = person.expression,
@@ -118,16 +127,100 @@ fn compile_value_query(
     Ok((sql, params))
 }
 
-/// The `person` column's identity resolution, and nothing more: a selection
-/// that does not present the column pays for no join.
+fn evidence_scope(req: &ValidatedMetricDrilldown, params: &mut Vec<String>) -> String {
+    let tenant = tenant_predicate_on("evidence");
+    params.extend([
+        req.tenant_id.to_string(),
+        req.plan.source_key.clone(),
+        req.selection.entity.entity_type().to_owned(),
+    ]);
+    let entity = entity_predicate(&req.selection.entity, params);
+    params.extend([req.from.to_string(), req.to.to_string()]);
+    params.extend(
+        req.plan
+            .inputs
+            .iter()
+            .map(|input| input.measure_key.clone()),
+    );
+    let measures = vec!["?"; req.plan.inputs.len()].join(", ");
+    let filter_sql = filter_predicate(&req.selection.filters, params);
+    format!(
+        "{tenant} AND evidence.source_key = ? AND evidence.entity_type = ? AND {entity} \
+         AND evidence.metric_date >= toDate(?) AND evidence.metric_date <= toDate(?) \
+         AND evidence.measure_key IN ({measures}){filter_sql}"
+    )
+}
+
+fn folded_record_source(database: &str, table: &str, scope: &str, parts: &str) -> String {
+    format!(
+        "(SELECT evidence.entity_id AS entity_id, \
+                 evidence.account_source_type AS account_source_type, \
+                 evidence.account_source_id AS account_source_id, \
+                 evidence.account_id AS account_id, \
+                 evidence.source_key AS source_key, \
+                 evidence.measure_key AS measure_key, \
+                 {record_key} AS record_id, \
+                 max(evidence.metric_date) AS metric_date, \
+                 max(evidence.observed_at) AS observed_at, \
+                 any(evidence.record_kind) AS record_kind, \
+                 sum(evidence.contribution) AS contribution, \
+                 any(evidence.subject_key) AS subject_key, \
+                 groupArrayIntersect(evidence.dimensions) AS dimensions, \
+                 mapUpdate(any(evidence.details), map({parts_key}, {parts})) AS details \
+          FROM {database}.{table} AS evidence \
+          WHERE {scope} \
+          GROUP BY evidence.entity_id, evidence.account_source_type, \
+                   evidence.account_source_id, evidence.account_id, \
+                   evidence.source_key, evidence.measure_key, record_id) AS evidence",
+        record_key = record_key_expr(),
+        parts_key = sql_string_literal(PARTS_KEY),
+        parts = parts_expr(parts),
+    )
+}
+
+fn parts_expr(dimension: &str) -> String {
+    let part = dimension_text(&sql_string_literal(dimension));
+    let totals = format!("sumMap([{part}], [ifNull(evidence.contribution, 0)])");
+    let nonzero = format!(
+        "arrayFilter(part -> part.2 != 0, arrayZip(tupleElement({totals}, 1), tupleElement({totals}, 2)))"
+    );
+    let largest_first = format!("arrayReverseSort(part -> part.2, {nonzero})");
+    let named = |parts: &str| {
+        format!("arrayMap(part -> concat(part.1, ' ', toString(round(part.2, 2))), {parts})")
+    };
+    let rest = format!(
+        "arraySlice({largest_first}, {first_unnamed})",
+        first_unnamed = NAMED_RECORD_PARTS + 1
+    );
+    format!(
+        "arrayStringConcat(if(length({largest_first}) > {foldable}, \
+             arrayConcat({top}, \
+                         [concat(toString(length({rest})), ' other types ', \
+                                 toString(round(arraySum(part -> part.2, {rest}), 2)))]), \
+             {all}), ' · ')",
+        foldable = NAMED_RECORD_PARTS + 1,
+        top = named(&format!(
+            "arraySlice({largest_first}, 1, {NAMED_RECORD_PARTS})"
+        )),
+        all = named(&largest_first),
+    )
+}
+
+fn record_key_expr() -> String {
+    format!(
+        "concat(evidence.record_kind, ':', evidence.details['source_id'], ':', \
+                arrayFirst(dimension -> dimension.1 = 'repository', evidence.dimensions).2, ':', \
+                evidence.details[{reference}])",
+        reference = sql_string_literal(RECORD_REF_KEY),
+    )
+}
+
 struct PersonProjection {
     expression: String,
     join: String,
 }
 
 impl PersonProjection {
-    /// A query that resolves nobody: the column is not presented, so there is
-    /// no join to read and no identity to compare against.
     fn unresolved() -> Self {
         Self {
             expression: "''".to_owned(),
@@ -140,9 +233,6 @@ impl PersonProjection {
     }
 }
 
-/// INVARIANT: both identity relations are views, so an unnarrowed join reads
-/// every account and every email the tenant holds. The roster the selection
-/// already binds is what bounds them.
 fn person_projection(
     entity: &MetricDrilldownEntity,
     columns: &[MetricDrilldownColumn],
@@ -181,11 +271,9 @@ fn person_projection(
     }
 }
 
-/// The two halves of the division and how the denominator adds up — a plan
-/// missing any of the three describes a ratio nothing can compute.
 fn ratio_halves(
     req: &ValidatedMetricDrilldown,
-) -> Result<(&EvidenceInput, &EvidenceInput, &'static str), CanonicalError> {
+) -> Result<(&EvidenceInput, &EvidenceInput, RatioDenominatorAggregation), CanonicalError> {
     let numerator = req
         .plan
         .inputs
@@ -205,95 +293,61 @@ fn ratio_halves(
     else {
         return Err(config_error());
     };
-    let denominator_expr = match denominator_aggregation {
-        RatioDenominatorAggregation::Sum => {
-            "sumIf(collapsed.contribution, collapsed.measure_key = ?)"
-        }
-        RatioDenominatorAggregation::DistinctCount => {
-            "toFloat64(uniqExactIf((collapsed.person_key, collapsed.subject_key), collapsed.measure_key = ? AND collapsed.subject_key IS NOT NULL))"
-        }
-    };
-    Ok((numerator, denominator, denominator_expr))
+    Ok((numerator, denominator, *denominator_aggregation))
 }
 
 fn compile_ratio_query(
     req: &ValidatedMetricDrilldown,
+    shape: RowShape,
 ) -> Result<(String, Vec<String>), CanonicalError> {
     let (database, table) = req.plan.relation.table_ref();
-    let (numerator, denominator, denominator_expr) = ratio_halves(req)?;
+    let (numerator, denominator, aggregation) = ratio_halves(req)?;
+    let rows = RatioRowSql::of(shape, aggregation)?;
     let columns = presentation_columns(
         &req.plan,
         &req.selection.filters,
         &req.selection.display_dimensions,
         &req.selection.entity,
     );
-    let order = OrderKey::build(&columns, &req.selection.sort, true)?;
+    let order = OrderKey::build(&columns, &req.selection.sort, shape)?;
     let mut params = vec![
         numerator.measure_key.clone(),
         denominator.measure_key.clone(),
-        req.tenant_id.to_string(),
-        req.plan.source_key.clone(),
-        req.selection.entity.entity_type().to_owned(),
     ];
-    let entity = entity_predicate(&req.selection.entity, &mut params);
-    params.extend([
-        req.from.to_string(),
-        req.to.to_string(),
-        numerator.measure_key.clone(),
-        denominator.measure_key.clone(),
-    ]);
-    let filter_sql = filter_predicate(&req.selection.filters, &mut params);
-    // Both terms read the aggregates the subquery emits, so both wait for the
-    // outer level rather than joining the filters inside.
+    let scope = evidence_scope(req, &mut params);
     let search = search_predicate(
         req.selection.search.as_deref(),
         &columns,
-        true,
+        shape,
         &PersonProjection::unresolved(),
         &[],
         &mut params,
     );
     let cursor = order.cursor_predicate(
         req.cursor.as_ref(),
-        "role, metric_date, observed_at, source_key, measure_key, record_id, record_kind, subject_key, entity_id",
+        &RATIO_TIEBREAKERS.join(", "),
         &mut params,
     );
     let outer_sql = where_clause(&[search, cursor]);
     let limit = req.limit + 1;
-    let tenant = tenant_predicate_on("evidence");
-    let order_by = order.order_by(&[
-        "role",
-        "metric_date",
-        "observed_at",
-        "source_key",
-        "measure_key",
-        "record_id",
-        "record_kind",
-        "subject_key",
-        "entity_id",
-    ]);
-    // INVARIANT: a flagged measure collapses identities before the daily rollup
-    // sums it, or the drilldown explains a ratio the tile never showed.
+    let order_by = order.order_by(RATIO_TIEBREAKERS);
     let collapsed = collapsed_evidence_value(numerator, denominator);
     let sql = format!(
         "WITH {sort_source} \
          SELECT *, {projection} FROM (\
-            SELECT 'value' AS role, '' AS entity_id, '' AS person_id, toString(collapsed.metric_date) AS metric_date, \
-                   '' AS observed_at, \
-                   any(collapsed.source_key) AS source_key, '' AS measure_key, \
-                   toString(collapsed.metric_date) AS record_id, 'daily_ratio' AS record_kind, \
+            SELECT 'value' AS role, '' AS entity_id, '' AS person_id, {outer_row}, \
                    CAST(NULL AS Nullable(Float64)) AS contribution, \
                    sumIf(collapsed.contribution, collapsed.measure_key = ?) AS numerator, \
-                   {denominator_expr} AS denominator, \
+                   {denominator} AS denominator, \
                    '' AS subject_key, any(collapsed.dimensions_json) AS dimensions_json, \
-                   CAST(map() AS Map(String, String)) AS details \
+                   {outer_details} \
             FROM (\
                 SELECT evidence.metric_date AS metric_date, \
                        any(evidence.source_key) AS source_key, \
                        evidence.measure_key AS measure_key, \
                        evidence.subject_key AS subject_key, {resolved_person} AS person_key, \
                        toJSONString(evidence.dimensions) AS dimensions_json, \
-                       {collapsed} AS contribution \
+                       {collapsed} AS contribution{record_columns} \
                 FROM {database}.{table} AS evidence \
                 LEFT JOIN {account_map_relation} AS account_map \
                     ON account_map.tenant_id = toString(evidence.tenant_id) AND account_map.source_type = evidence.account_source_type \
@@ -301,17 +355,21 @@ fn compile_ratio_query(
                    AND account_map.account_id = {account_id} \
                 LEFT JOIN {person_map_relation} AS person_map \
                     ON person_map.tenant_id = toString(evidence.tenant_id) AND person_map.email = evidence.entity_id \
-                WHERE {tenant} AND evidence.source_key = ? AND evidence.entity_type = ? AND {entity} \
-                  AND evidence.metric_date >= toDate(?) AND evidence.metric_date <= toDate(?) \
-                  AND evidence.measure_key IN (?, ?){filter_sql} \
+                WHERE {scope} \
                 GROUP BY evidence.metric_date, evidence.measure_key, \
                          evidence.subject_key, toJSONString(evidence.dimensions), \
-                         {resolved_person}\
+                         {resolved_person}{record_group}\
             ) AS collapsed \
-            GROUP BY collapsed.metric_date\
-         ){outer_sql} \
+            GROUP BY {outer_group}\
+         ) AS evidence{outer_sql} \
          ORDER BY {order_by} \
          LIMIT {limit}",
+        outer_row = rows.outer_row,
+        denominator = rows.denominator,
+        outer_details = rows.outer_details,
+        outer_group = rows.outer_group,
+        record_columns = rows.inner_columns,
+        record_group = rows.inner_group,
         sort_source = order.source(),
         projection = order.projection(),
         account_map_relation = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
@@ -324,10 +382,66 @@ fn compile_ratio_query(
     Ok((sql, params))
 }
 
-/// INVARIANT: the collapse groups by the resolved PERSON, not the source
-/// identity. Grouping by identity would leave one person's aliases uncollapsed;
-/// omitting the person entirely would collapse a roster's people into each
-/// other, so a flagged denominator would read `1` for a whole team.
+struct RatioRowSql {
+    outer_row: &'static str,
+    denominator: &'static str,
+    outer_details: &'static str,
+    outer_group: &'static str,
+    inner_columns: String,
+    inner_group: &'static str,
+}
+
+const SUMMED_DENOMINATOR: &str = "sumIf(collapsed.contribution, collapsed.measure_key = ?)";
+
+impl RatioRowSql {
+    fn of(
+        shape: RowShape,
+        aggregation: RatioDenominatorAggregation,
+    ) -> Result<Self, CanonicalError> {
+        match shape {
+            RowShape::RecordRatio | RowShape::RecordsPerSubject => {
+                let (denominator, subject_records) = match aggregation {
+                    RatioDenominatorAggregation::Sum => (SUMMED_DENOMINATOR, ""),
+                    RatioDenominatorAggregation::DistinctCount => (
+                        "toFloat64(anyIf(collapsed.subject_records, collapsed.measure_key = ? AND collapsed.subject_key IS NOT NULL))",
+                        ", count() OVER (PARTITION BY evidence.measure_key, person_key, evidence.subject_key) AS subject_records",
+                    ),
+                };
+                Ok(Self {
+                    outer_row: "toString(max(collapsed.metric_date)) AS metric_date, '' AS observed_at, \
+                                any(collapsed.source_key) AS source_key, '' AS measure_key, \
+                                collapsed.record_key AS record_id, any(collapsed.record_kind) AS record_kind",
+                    denominator,
+                    outer_details: "any(collapsed.dimensions) AS dimensions, any(collapsed.details) AS details",
+                    outer_group: "collapsed.record_key HAVING numerator != 0 OR denominator != 0",
+                    inner_columns: format!(
+                        ", {record_key} AS record_key, any(evidence.record_kind) AS record_kind, \
+                         any(evidence.dimensions) AS dimensions, any(evidence.details) AS details{subject_records}",
+                        record_key = record_key_expr(),
+                    ),
+                    inner_group: ", record_key",
+                })
+            }
+            RowShape::DailyRatio => Ok(Self {
+                outer_row: "toString(collapsed.metric_date) AS metric_date, '' AS observed_at, \
+                            any(collapsed.source_key) AS source_key, '' AS measure_key, \
+                            toString(collapsed.metric_date) AS record_id, 'daily_ratio' AS record_kind",
+                denominator: match aggregation {
+                    RatioDenominatorAggregation::Sum => SUMMED_DENOMINATOR,
+                    RatioDenominatorAggregation::DistinctCount => {
+                        "toFloat64(uniqExactIf((collapsed.person_key, collapsed.subject_key), collapsed.measure_key = ? AND collapsed.subject_key IS NOT NULL))"
+                    }
+                },
+                outer_details: "CAST(map() AS Map(String, String)) AS details",
+                outer_group: "collapsed.metric_date",
+                inner_columns: String::new(),
+                inner_group: "",
+            }),
+            RowShape::Record | RowShape::FoldedRecord => Err(config_error()),
+        }
+    }
+}
+
 fn resolved_person_expr() -> &'static str {
     "multiIf(coalesce(account_map.account_id, '') != '', \
       toString(assumeNotNull(account_map.person_id)), \
@@ -336,8 +450,6 @@ fn resolved_person_expr() -> &'static str {
       evidence.entity_id)"
 }
 
-/// Per-identity combination for the two halves of a ratio, at evidence grain.
-/// `sum` needs no special case: summing identities then days is the same sum.
 fn collapsed_evidence_value(numerator: &EvidenceInput, denominator: &EvidenceInput) -> String {
     let mut arms = String::new();
     for input in [numerator, denominator] {
@@ -358,8 +470,6 @@ fn collapsed_evidence_value(numerator: &EvidenceInput, denominator: &EvidenceInp
     format!("multiIf({arms}sum(ifNull(evidence.contribution, 0)))")
 }
 
-/// The evidence row's account-binding key, in the identity store's form —
-/// shared with the observation reads so both surfaces resolve identically.
 fn account_binding_key(alias: &str) -> String {
     format!(
         "(toString({alias}.tenant_id), {alias}.account_source_type, {source_uuid}, {account_id})",
@@ -368,12 +478,6 @@ fn account_binding_key(alias: &str) -> String {
     )
 }
 
-/// Person selections resolve account-first: a row whose account key is bound
-/// decides by that binding alone — a binding to the requested person matches,
-/// any other binding (the excluded person included) terminates — and only an
-/// unbound row falls back to the person's email set. Tenant evidence keys on
-/// the tenant itself. Pushes its own params where the predicate renders; a
-/// person id is bound once per arm, never interpolated into the SQL.
 fn entity_predicate(
     entity: &super::dto::MetricDrilldownEntity,
     params: &mut Vec<String>,
@@ -410,9 +514,6 @@ fn entity_predicate(
         super::dto::MetricDrilldownEntity::Tenant {} => {
             "evidence.entity_id = evidence.tenant_id".to_owned()
         }
-        // An empty roster is rejected in validation, so it cannot arrive
-        // through the API; matching no row beats emitting `IN ()`, which is a
-        // syntax error rather than an empty result.
         super::dto::MetricDrilldownEntity::Persons { .. }
         | super::dto::MetricDrilldownEntity::Unknown => "1 = 0".to_owned(),
     }
@@ -433,22 +534,8 @@ fn filter_predicate(filters: &[MetricDrilldownFilter], params: &mut Vec<String>)
     sql
 }
 
-/// The sorted cell, bound once. The flag, the key, the cursor comparison and
-/// the ORDER BY all read it, and the fallback expression behind it is long
-/// enough that repeating it would dominate the query text.
-///
-/// INVARIANT: the bound term carries no placeholder. It leads the query, so
-/// one would take the first bound parameter and shift every other by one —
-/// column keys reach it as inlined literals for exactly this reason.
 const SORT_SOURCE: &str = "sort_source";
 
-/// The order the rows travel in, and everything that has to agree with it: the
-/// ORDER BY, the columns the cursor replays, and how a replayed key re-enters
-/// the comparison.
-///
-/// INVARIANT: one direction for the whole key. Blank cells are pushed last by
-/// the leading flag rather than by a second direction, so the next page stays a
-/// single tuple comparison instead of a per-column chain.
 struct OrderKey {
     source: String,
     flag: String,
@@ -458,21 +545,15 @@ struct OrderKey {
 }
 
 impl OrderKey {
-    /// INVARIANT: an unresolved sort has no ordering key to fall back on. A
-    /// constant one would still be replayed against a cursor minted by a real
-    /// key, and the two leading tuple elements would decide the comparison
-    /// before the tiebreakers were reached — serving a page twice or dropping
-    /// the rest of the result set, silently. Validation refuses such a sort
-    /// first, so reaching here is a fault, not a degradation.
     fn build(
         columns: &[MetricDrilldownColumn],
         sort: &MetricDrilldownSort,
-        ratio: bool,
+        shape: RowShape,
     ) -> Result<Self, CanonicalError> {
         let sql = columns
             .iter()
             .find(|column| column.key == sort.key)
-            .and_then(|column| column_sql(&column.key, column.r#type, ratio))
+            .and_then(|column| column_sql(&column.key, column.r#type, shape))
             .ok_or_else(config_error)?;
         Ok(Self {
             flag: empty_flag(SORT_SOURCE, sort.direction),
@@ -483,7 +564,6 @@ impl OrderKey {
         })
     }
 
-    /// The `WITH` term the rest of the key reads through.
     fn source(&self) -> String {
         format!("{source} AS {SORT_SOURCE}", source = self.source)
     }
@@ -512,7 +592,6 @@ impl OrderKey {
         params: &mut Vec<String>,
     ) -> Option<String> {
         let cursor = cursor?;
-        // INVARIANT: bound in the order the tuple names the columns.
         params.push(u8::from(cursor.sort_flag).to_string());
         params.push(cursor.sort_value.clone());
         params.extend([
@@ -537,20 +616,10 @@ impl OrderKey {
     }
 }
 
-/// A free-text needle against every column the reader can see, read exactly as
-/// the cell is rendered.
-///
-/// INVARIANT: the UTF-8 form of the comparison. A name or a commit subject is
-/// not always ASCII, and the ASCII form would fold only half of one.
-///
-/// `Who` is the one column the row does not carry as text — the query holds an
-/// identity and the reader sees a name — so it is matched by the ids whose
-/// names the caller's needle already picked out. Leaving it out would make a
-/// visible column silently unsearchable.
 fn search_predicate(
     search: Option<&str>,
     columns: &[MetricDrilldownColumn],
-    ratio: bool,
+    shape: RowShape,
     person: &PersonProjection,
     person_ids: &[String],
     params: &mut Vec<String>,
@@ -559,7 +628,7 @@ fn search_predicate(
     let mut matches = Vec::new();
     for column in columns
         .iter()
-        .filter_map(|column| column_sql(&column.key, column.r#type, ratio))
+        .filter_map(|column| column_sql(&column.key, column.r#type, shape))
     {
         params.push(needle.to_owned());
         matches.push(format!(
@@ -579,14 +648,6 @@ fn search_predicate(
         return None;
     }
     Some(format!("({})", matches.join(" OR ")))
-}
-
-fn conjunction(keyword: &str, predicates: &[Option<String>]) -> String {
-    let mut sql = String::new();
-    for predicate in predicates.iter().flatten() {
-        let _ = write!(sql, " {keyword} {predicate}");
-    }
-    sql
 }
 
 fn where_clause(predicates: &[Option<String>]) -> String {
@@ -629,7 +690,8 @@ mod tests {
         EvidenceGranularity, EvidencePresentation, RatioDenominatorAggregation,
     };
     use crate::domain::metric_drilldown::test_support::{
-        TEST_PERSON, TEST_TENANT, commit_presentation, input, plan, validated,
+        TEST_PERSON, TEST_TENANT, commit_input, commit_presentation, input, plan, ratio_over,
+        validated,
     };
     use crate::domain::metric_results::compiler::values_bound_by;
     use uuid::Uuid;
@@ -675,22 +737,22 @@ mod tests {
         assert_eq!(
             params,
             [
-                "commit_count", // role expression branch
+                "commit_count",
                 "value",
-                &TEST_TENANT.to_string(), // tenant predicate leads the scope
-                "git",                    // scope: source, entity type, entity id
+                &TEST_TENANT.to_string(),
+                "git",
                 "person",
-                &TEST_PERSON.to_string(), // the person, once per resolution arm:
-                &TEST_PERSON.to_string(), // account binding first, email fallback
-                "2026-07-01",             // period bounds
+                &TEST_PERSON.to_string(),
+                &TEST_PERSON.to_string(),
+                "2026-07-01",
                 "2026-07-31",
-                "commit_count", // measure_key IN
-                "repository",   // filter: indexOf twice, then values
+                "commit_count",
+                "repository",
                 "repository",
                 "org/repo",
-                "0", // cursor tuple: emptiness flag, then the sorted cell
+                "0",
                 "2026-07-01",
-                "value", // then the tiebreakers, the complete ordering key
+                "value",
                 "2026-07-01",
                 "",
                 "git",
@@ -698,7 +760,7 @@ mod tests {
                 "abc",
                 "commit",
                 "",
-                "person@example.com", // source identity closes the ordering key
+                "person@example.com",
             ]
         );
         assert_eq!(sql.matches('?').count(), params.len());
@@ -759,9 +821,6 @@ mod tests {
             ),
             "email fallback arm"
         );
-        // The roster reads as one query over people, not as a tenant total:
-        // the entity type stays `person`, which is the partition the evidence
-        // rows are keyed by.
         assert!(params.iter().any(|value| value == "person"));
         assert!(params.iter().any(|value| *value == TEST_PERSON.to_string()));
         assert!(params.iter().any(|value| *value == second.to_string()));
@@ -815,18 +874,18 @@ mod tests {
         assert_eq!(
             params,
             [
-                "focus_hours", // sumIf numerator, then denominator
+                "focus_hours",
                 "work_hours",
-                &TEST_TENANT.to_string(), // tenant predicate leads the scope
-                "git",                    // scope: source, entity type, entity id
+                &TEST_TENANT.to_string(),
+                "git",
                 "person",
-                &TEST_PERSON.to_string(), // the person, once per resolution arm:
-                &TEST_PERSON.to_string(), // account binding first, email fallback
-                "2026-07-01",             // period bounds
+                &TEST_PERSON.to_string(),
+                &TEST_PERSON.to_string(),
+                "2026-07-01",
                 "2026-07-31",
-                "focus_hours", // measure_key IN
+                "focus_hours",
                 "work_hours",
-                "repository", // filter: indexOf twice, then values
+                "repository",
                 "repository",
                 "org/repo",
             ]
@@ -878,9 +937,6 @@ mod tests {
         assert_eq!(sql.matches('?').count(), params.len());
     }
 
-    // INVARIANT: the identity closes the ordering key. Two identities of one
-    // person can tie on every other column, and a page boundary between two
-    // indistinguishable rows repeats or skips one.
     #[test]
     fn the_ordering_key_ends_with_the_source_identity() {
         let request = validated(plan(
@@ -1017,8 +1073,6 @@ mod tests {
         assert_eq!(sql.matches('?').count(), params.len());
     }
 
-    // One person's own drilldown already knows whose records it shows, so it
-    // pays for neither the column nor the joins behind it.
     #[test]
     fn one_person_pays_for_no_identity_join() {
         let (sql, params) = compile_query(&commit_plan())
@@ -1093,9 +1147,6 @@ mod tests {
         assert_eq!(sql.matches('?').count(), params.len());
     }
 
-    // The reader searches a column they can see. `Who` shows a name and the
-    // row carries an identity, so the needle reaches the query as the people
-    // it already picked out.
     #[test]
     fn a_search_reaches_the_who_column_through_the_people_it_names() {
         let mut request = roster_plan(&[TEST_PERSON]);
@@ -1111,8 +1162,6 @@ mod tests {
         assert_eq!(sql.matches('?').count(), params.len());
     }
 
-    // Nothing to compare against, so nothing is added — and never a bare `IN
-    // ()`, which is a syntax error rather than an empty result.
     #[test]
     fn a_search_matching_nobody_adds_no_identity_term() {
         let mut request = roster_plan(&[TEST_PERSON]);
@@ -1135,7 +1184,7 @@ mod tests {
         let (sql, params) =
             compile_query(&request).unwrap_or_else(|error| panic!("query must compile: {error}"));
 
-        assert!(sql.contains(") WHERE (positionCaseInsensitiveUTF8"));
+        assert!(sql.contains(") AS evidence WHERE (positionCaseInsensitiveUTF8"));
         assert!(sql.contains("ORDER BY sort_flag DESC, sort_key DESC"));
         assert_eq!(sql.matches('?').count(), params.len());
     }
@@ -1172,6 +1221,197 @@ mod tests {
                 },
             ],
         ))
+    }
+
+    fn record_ratio_plan(aggregation: RatioDenominatorAggregation) -> ValidatedMetricDrilldown {
+        validated(ratio_over(commit_input, aggregation))
+    }
+
+    #[test]
+    fn a_ratio_of_records_answers_one_row_per_record_it_counts() {
+        let mut request = record_ratio_plan(RatioDenominatorAggregation::Sum);
+        request.selection.search = Some("fix".to_owned());
+        request.selection.sort = MetricDrilldownSort {
+            key: "title".to_owned(),
+            direction: MetricDrilldownSortDirection::Asc,
+        };
+        let (sql, params) =
+            compile_query(&request).unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        assert!(
+            sql.contains("GROUP BY collapsed.record_key HAVING numerator != 0 OR denominator != 0")
+        );
+        assert!(!sql.contains("daily_ratio"));
+        assert!(
+            sql.contains("toJSONString(evidence.dimensions), multiIf(coalesce(account_map"),
+            "records of different people never merge: {sql}"
+        );
+        assert!(
+            sql.contains("evidence.details['ref']"),
+            "the record is named by its source ref: {sql}"
+        );
+        assert!(sql.contains("evidence.details['title']"));
+        assert_eq!(sql.matches('?').count(), params.len());
+        assert_eq!(
+            &params[..3],
+            ["focus_hours", "work_hours", &TEST_TENANT.to_string()]
+        );
+    }
+
+    #[test]
+    fn a_ratio_of_records_counting_distinct_days_counts_the_records_sharing_each_day() {
+        let (sql, params) = compile_query(&record_ratio_plan(
+            RatioDenominatorAggregation::DistinctCount,
+        ))
+        .unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        assert!(
+            sql.contains("GROUP BY collapsed.record_key HAVING numerator != 0 OR denominator != 0")
+        );
+        assert!(!sql.contains("daily_ratio"));
+        assert!(!sql.contains("subject_share"));
+        assert!(
+            sql.contains(
+                "count() OVER (PARTITION BY evidence.measure_key, person_key, evidence.subject_key) AS subject_records"
+            ),
+            "a record knows how many records share its day: {sql}"
+        );
+        assert!(
+            sql.contains(
+                "toFloat64(anyIf(collapsed.subject_records, collapsed.measure_key = ? AND collapsed.subject_key IS NOT NULL)) AS denominator"
+            ),
+            "the row carries that whole count: {sql}"
+        );
+        assert_eq!(sql.matches('?').count(), params.len());
+    }
+
+    #[test]
+    fn a_ratio_of_records_that_sums_its_denominator_counts_no_subject_records() {
+        let (sql, _) = compile_query(&record_ratio_plan(RatioDenominatorAggregation::Sum))
+            .unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        assert!(!sql.contains("subject_records"));
+    }
+
+    fn folded_plan(entity: MetricDrilldownEntity) -> ValidatedMetricDrilldown {
+        let mut lines = commit_input(MetricInputRole::Value, "code_lines_added");
+        lines.presentation.show_value = true;
+        lines.presentation.record_parts = Some("file_extension".to_owned());
+        let mut request = validated(plan(
+            ComputationSpec::Sum {
+                value: input(MetricInputRole::Value, "code_lines_added"),
+            },
+            vec![lines],
+        ));
+        request.selection.entity = entity;
+        request
+    }
+
+    #[test]
+    fn a_record_split_into_parts_answers_as_one_row_listing_them() {
+        let (sql, params) = compile_query(&folded_plan(MetricDrilldownEntity::Person {
+            id: TEST_PERSON.to_string(),
+        }))
+        .unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        assert!(sql.contains("sum(evidence.contribution) AS contribution"));
+        assert!(
+            sql.contains("groupArrayIntersect(evidence.dimensions) AS dimensions"),
+            "only what every part shares stays a dimension of the record: {sql}"
+        );
+        assert!(
+            sql.contains("map('parts', arrayStringConcat("),
+            "the record lists its parts: {sql}"
+        );
+        assert!(sql.contains("dimension.1 = 'file_extension'"));
+        assert!(sql.contains("evidence.source_key, evidence.measure_key, record_id) AS evidence"));
+        assert_eq!(sql.matches('?').count(), params.len());
+        assert_eq!(
+            params,
+            [
+                "code_lines_added",
+                "value",
+                &TEST_TENANT.to_string(),
+                "git",
+                "person",
+                &TEST_PERSON.to_string(),
+                &TEST_PERSON.to_string(),
+                "2026-07-01",
+                "2026-07-31",
+                "code_lines_added",
+                "repository",
+                "repository",
+                "org/repo",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_record_split_into_many_parts_names_the_largest_three_and_totals_the_other_types() {
+        let (sql, _) = compile_query(&folded_plan(MetricDrilldownEntity::Person {
+            id: TEST_PERSON.to_string(),
+        }))
+        .unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        assert!(
+            sql.contains(", 1, 3)"),
+            "only the three largest parts are named: {sql}"
+        );
+        assert!(
+            sql.contains("' other types '") && !sql.contains("' more '"),
+            "the parts beyond them read as the other types they are: {sql}"
+        );
+        assert!(
+            sql.contains(") > 4,"),
+            "a single leftover part is named rather than folded: {sql}"
+        );
+    }
+
+    #[test]
+    fn a_record_is_keyed_by_its_repository_value_not_its_label() {
+        let key = "concat(evidence.record_kind, ':', evidence.details['source_id'], ':', \
+                   arrayFirst(dimension -> dimension.1 = 'repository', evidence.dimensions).2, ':', \
+                   evidence.details['ref'])";
+        for plan in [
+            folded_plan(MetricDrilldownEntity::Person {
+                id: TEST_PERSON.to_string(),
+            }),
+            record_ratio_plan(RatioDenominatorAggregation::Sum),
+        ] {
+            let (sql, _) =
+                compile_query(&plan).unwrap_or_else(|error| panic!("query must compile: {error}"));
+            assert!(
+                sql.split_whitespace()
+                    .collect::<String>()
+                    .contains(&key.split_whitespace().collect::<String>()),
+                "two repositories sharing a label stay two records: {sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_roster_names_who_after_folding_each_record() {
+        let (sql, params) = compile_query(&folded_plan(MetricDrilldownEntity::Persons {
+            ids: vec![TEST_PERSON.to_string()],
+        }))
+        .unwrap_or_else(|error| panic!("query must compile: {error}"));
+
+        let folded = sql
+            .find("record_id) AS evidence")
+            .unwrap_or_else(|| panic!("the rows fold: {sql}"));
+        let joined = sql
+            .find("AS account_map")
+            .unwrap_or_else(|| panic!("the roster resolves who: {sql}"));
+        assert!(
+            folded < joined,
+            "the identity join reads the folded rows: {sql}"
+        );
+        assert_eq!(sql.matches('?').count(), params.len());
+        assert_eq!(
+            &params[params.len() - 2..],
+            [TEST_PERSON.to_string(), TEST_PERSON.to_string()],
+            "the roster binds where its join reads it, after the scope"
+        );
     }
 
     #[test]
@@ -1215,16 +1455,11 @@ mod tests {
         ))
         .unwrap_or_else(|error| panic!("query must compile: {error}"));
 
-        // Pinned to the collapse arms, not to `multiIf(` — the resolved-person
-        // expression is a multiIf and is present in every ratio drilldown.
         assert!(!sql.contains("max(ifNull(evidence.contribution, 0))"));
         assert!(!sql.contains("min(ifNull(evidence.contribution, 0))"));
         assert!(sql.contains("sum(ifNull(evidence.contribution, 0))"));
     }
 
-    // A roster drilldown collapses each person separately: grouping without the
-    // person would take one `max` across the whole team, so a flagged
-    // denominator would read 1 for five active people.
     #[test]
     fn the_ratio_collapse_groups_by_the_resolved_person() {
         let (sql, _) = compile_query(&ratio_plan(

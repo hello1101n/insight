@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
   SidebarMenu: ({ children }: { children?: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -39,8 +40,6 @@ describe("SidebarSettings", () => {
   it("offers no switch into the interface the portal replaced", () => {
     render(<SidebarSettings />);
 
-    // Not hidden behind a state: there is no portal preference left to show,
-    // and `portal-store` deletes the key it used to live in.
     expect(screen.queryByText("Portal")).not.toBeInTheDocument();
     expect(screen.getByText("Show planned sections")).toBeInTheDocument();
   });

@@ -28,14 +28,11 @@ describe("downloadMatrixCsv", () => {
   it("leads with a BOM, so a spreadsheet reads it as UTF-8", async () => {
     downloadMatrixCsv("report.csv", matrix);
     const blob = mocked.mock.calls[0]?.[0] as Blob;
-    // Checked as bytes: a text decoder strips the mark, which is the whole
-    // reason it is there — Excel reads the bytes, not a decoded string.
     const head = new Uint8Array((await blob.arrayBuffer()).slice(0, 3));
     expect([...head]).toEqual([0xef, 0xbb, 0xbf]);
 
     const text = await blob.text();
     expect(text).toContain("Person,Period,Commits");
-    // The escaping rule travels with the writer.
     expect(text).toContain("'=Sam");
   });
 });
@@ -61,8 +58,6 @@ describe("downloadMatrixXlsx", () => {
   });
 
   it("drops a non-finite number rather than writing it into a cell", async () => {
-    // ExcelJS writes a number straight through, and Infinity in a cell can
-    // make the workbook unreadable. The CSV writer already refuses it.
     await downloadMatrixXlsx("report.xlsx", "Report", {
       columns: ["Person", "Ratio"],
       rows: [["Jane Doe", Number.POSITIVE_INFINITY], ["Sam Smith", Number.NaN]],

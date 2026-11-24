@@ -3,14 +3,16 @@ import { useId, useState, type RefObject } from "react";
 
 import { DASHBOARD_TAGS_MAX, TAG_NAME_MAX } from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
-import { Button, Checkbox, Input } from "@gears-frontx/ui-kit";
 import {
+  Button,
+  Checkbox,
+  Input,
+  Spinner,
   Popover,
   PopoverContent,
   PopoverHeader,
   PopoverTitle,
-} from "@/components/ui/popover";
-import { Spinner } from "@/components/ui/spinner";
+} from "@gears-frontx/ui-kit";
 import { sameTagName } from "@/lib/custom/tag-names";
 import {
   dashboardTagsQuery,
@@ -29,7 +31,6 @@ export function EditTags({
 }: {
   id: string;
   open: boolean;
-  /** What the panel opens beside: the menu it was asked from. */
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
@@ -124,7 +125,7 @@ export function EditTags({
         if (!next) close();
       }}
     >
-      <PopoverContent anchor={anchor} align="end" className="gap-3">
+      <PopoverContent anchor={anchor} align="end">
         <PopoverHeader>
           <PopoverTitle>Edit tags</PopoverTitle>
         </PopoverHeader>
@@ -133,7 +134,7 @@ export function EditTags({
             The dashboard's tags could not be read.
           </p>
         ) : !ready ? (
-          <Spinner className="mx-auto size-4" />
+          <Spinner className="mx-auto" />
         ) : (
           <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {choices.map((tag) => (

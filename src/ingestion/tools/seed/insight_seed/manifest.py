@@ -57,6 +57,7 @@ class TenantRefs(TypedDict):
 class Capabilities(TypedDict):
     ingestion: bool
     service_principals: bool
+    connector_schedules: bool
     idp: str
 
 
@@ -329,6 +330,7 @@ def build_manifest(
             # the ingestion path is not exercised on this stand.
             "ingestion": False,
             "service_principals": config.service_principals_reachable(env),
+            "connector_schedules": config.connector_schedules_present(env),
             "idp": idp,
         },
         "seed_revision": seed_revision(),

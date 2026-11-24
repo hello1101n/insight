@@ -1,6 +1,3 @@
-// The index.html <base>-injecting inline script must stay byte-identical to
-// the sha256 the nginx CSP allows: a reformat breaks the hash, CSP blocks the
-// script, and prefix serving (/exp/<name>/) silently dies.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,7 +27,6 @@ describe("base-href bootstrap script", () => {
   });
 
   it("prefix regex accepts experiment slugs and rejects lookalikes", () => {
-    // Test the regex the script actually ships, not a copy of it.
     const source = /location\.pathname\.match\(\s*\/((?:\\.|[^/])*)\/\s*\)/.exec(
       scriptElement?.[1] ?? ""
     )?.[1];

@@ -1,0 +1,411 @@
+import { useMemo, useState, type SetStateAction } from "react";
+import { useTranslation } from "react-i18next";
+import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+
+import type { DateRange } from "@/api/period-to-date-range";
+import { useViewer } from "@/auth";
+import { MetricsComparePicker } from "@/components/portal/metrics-compare-picker";
+import { MetricsCompareTable } from "@/components/portal/metrics-compare-table";
+import { MetricsDownloadMenu } from "@/components/portal/metrics-download-menu";
+import {
+  MetricsTable,
+  type MetricsSort,
+} from "@/components/portal/metrics-table";
+import { orgScopeGate } from "@/components/portal/org-scope-gate";
+import { CenteredSpinner } from "@/components/widgets/centered-spinner";
+import {
+  ReportMetricPicker,
+  type OfferedReportMetric,
+} from "@/components/portal/report-builder-metrics";
+import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@gears-frontx/ui-kit";
+import { usePortalPeriod } from "@/hooks/use-portal-period";
+import { personDisplayName } from "@/lib/identities/person-display";
+import { offeredMetricFilter } from "@/lib/insight/groups";
+import { flattenSubordinates } from "@/lib/insight/identity-tree";
+import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { normalizePersonId } from "@/lib/metrics/entity";
+import { usePageTitle } from "@/lib/portal/document-title-frame";
+import {
+  compareTeams,
+  rolesById,
+  keysWithData,
+  metricGroups,
+  metricsRows,
+  metricsViewCatalog,
+  sortRows,
+} from "@/lib/portal/metrics-view";
+import {
+  setMetricsViewPaneShown,
+  useMetricsViewPaneShown,
+} from "@/lib/portal/metrics-view-pane";
+import { usePortalNavActions, usePortalScope } from "@/lib/portal/portal-nav";
+import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search";
+import { usePortalShowPlanned } from "@/lib/portal/portal-store";
+import { useOrgScope } from "@/lib/portal/use-org-scope";
+import { useShellLayout } from "@/lib/portal/use-shell-layout";
+import { byFamily } from "@/lib/reports/families";
+import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
+import { useMetricsViewData } from "@/queries/metrics-view";
+import type { IdentityPerson } from "@/types/insight";
+
+const TEST_ID = "page-people-metrics";
+
+function comparedNames(
+  compareParam: string,
+  members: readonly MembersGridMember[],
+): string[] {
+  const byId = new Map(
+    members.map((member) => [member.entityId, member.displayName]),
+  );
+  const names: string[] = [];
+  for (const id of compareParam.split(",")) {
+    const name = byId.get(id);
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+export function MetricsView() {
+  const { t } = useTranslation();
+  const { dateRange } = usePortalPeriod();
+  const orgScope = useOrgScope();
+  const definitions = useMetricDefinitionsResponse();
+  const showPlanned = usePortalShowPlanned();
+
+  const catalog = useMemo(
+    () =>
+      metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+    [definitions.data, showPlanned],
+  );
+  const catalogKeys = useMemo(
+    () => catalog.map((metric) => metric.metric_key),
+    [catalog],
+  );
+  const families = useMemo(
+    () =>
+      byFamily<OfferedReportMetric>(
+        catalog.map((metric) => ({ ...metric, reason: null })),
+      ),
+    [catalog],
+  );
+
+  const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
+  const setSearch = useSetPortalSearch();
+  const picked = useMemo(
+    () =>
+      metricsParam == null ? null : metricsParam === "none" ? [] : metricsParam.split(","),
+    [metricsParam],
+  );
+  const setPicked = (next: string[] | null) =>
+    setSearch(
+      { metrics: next == null ? undefined : next.length === 0 ? "none" : next.join(",") },
+      { replace: true },
+    );
+  const selected = picked ?? catalogKeys;
+  const setSelected = (action: SetStateAction<string[]>) =>
+    setPicked(typeof action === "function" ? action(selected) : action);
+  const metricKeys = useMemo(() => {
+    const chosen = new Set(selected);
+    return catalogKeys.filter((key) => chosen.has(key));
+  }, [catalogKeys, selected]);
+
+  const { pivot, roster } = orgScope;
+  const people = useMemo(
+    () => (pivot ? [pivot, ...flattenSubordinates(pivot)] : (roster ?? [])),
+    [pivot, roster],
+  );
+  const members = useMemo<MembersGridMember[]>(
+    () =>
+      people.map((person) => ({
+        entityId: normalizePersonId(person.person_id),
+        displayName: personDisplayName(person),
+      })),
+    [people],
+  );
+  const memberIds = useMemo(
+    () => members.map((member) => member.entityId),
+    [members],
+  );
+  const compared = compareParam
+    ? comparedNames(compareParam, members)
+    : [];
+  usePageTitle(compared.length > 0 ? compared.join(", ") : null);
+
+  const data = useMetricsViewData(metricKeys, memberIds, dateRange);
+
+  const gate = orgScopeGate({
+    "data-testid": TEST_ID,
+    viewerLoading: orgScope.isLoading,
+    viewerError: orgScope.isError,
+    membersLoading: false,
+    membersError: false,
+    memberCount: members.length,
+    gridPending: definitions.isPending,
+    gridError: definitions.isError || data.isError,
+    emptyLabel: t("metrics_view.no_people"),
+    onRetry: () => {
+      orgScope.refetch();
+      void definitions.refetch();
+      data.refetch();
+    },
+  });
+
+  return (
+    <div data-testid={TEST_ID} className="flex flex-col gap-3 p-4 md:p-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <PaneToggle />
+        <h1 className="text-lg font-semibold tracking-tight">{t("metrics_view.title")}</h1>
+        <ScopeChip label={orgScope.label} />
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={<Columns3 />}
+                className="ms-auto"
+              >
+                {t("metrics_view.count", {
+                  picked: metricKeys.length,
+                  total: catalogKeys.length,
+                })}
+              </Button>
+            }
+          />
+          <PopoverContent
+            align="end"
+            className="max-h-[70svh] w-[min(56rem,90vw)] overflow-y-auto"
+          >
+            <div className="flex items-center justify-end gap-2 border-b px-4 py-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t("metrics_view.select_all_metrics")}
+                onClick={() => setPicked(null)}
+              >
+                {t("metrics_view.select_all")}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={t("metrics_view.clear_all_metrics")}
+                onClick={() => setPicked([])}
+              >
+                {t("metrics_view.clear_all")}
+              </Button>
+            </div>
+            <ReportMetricPicker
+              families={families}
+              selected={selected}
+              setSelected={setSelected}
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
+      {gate ?? (
+        <MetricsBody
+          key={orgScope.pivotPersonId}
+          pivot={pivot}
+          people={people}
+          members={members}
+          metricKeys={metricKeys}
+          byKey={data.byKey}
+          loading={data.isPending}
+          range={dateRange}
+        />
+      )}
+    </div>
+  );
+}
+
+function PaneToggle() {
+  const { t } = useTranslation();
+  const shown = useMetricsViewPaneShown();
+  if (useShellLayout() !== "wide") return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      icon={shown ? <PanelLeftClose /> : <PanelLeftOpen />}
+      onClick={() => setMetricsViewPaneShown(!shown)}
+    >
+      {shown ? t("metrics_view.hide_menu") : t("metrics_view.show_menu")}
+    </Button>
+  );
+}
+
+function ScopeChip({ label }: { label: string }) {
+  const { t } = useTranslation();
+  const { root } = usePortalScope();
+  const { personId } = useViewer();
+  const { setScope } = usePortalNavActions();
+
+  const scopedToSomeoneElse =
+    root != null &&
+    normalizePersonId(root) !== normalizePersonId(personId ?? "");
+  if (!scopedToSomeoneElse) return null;
+
+  return (
+    <span className="flex items-center gap-1 rounded-full border bg-muted/50 py-0.5 ps-3 pe-1 text-sm">
+      <span className="text-muted-foreground">{t("metrics_view.scoped")}</span>
+      <span className="font-medium">{label}</span>
+      <button
+        type="button"
+        aria-label={t("metrics_view.clear_scope", { label })}
+        onClick={() => setScope({ root: null })}
+        className="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <X className="size-3.5" />
+      </button>
+    </span>
+  );
+}
+
+function nextSort(current: MetricsSort | null, key: string): MetricsSort | null {
+  if (current?.key !== key) return { key, direction: "descending" };
+  if (current.direction === "descending") return { key, direction: "ascending" };
+  return null;
+}
+
+function MetricsBody({
+  pivot,
+  people,
+  members,
+  metricKeys,
+  byKey,
+  loading,
+  range,
+}: {
+  pivot: IdentityPerson | null;
+  people: ReadonlyArray<{ person_id: string; display_name?: string | null }>;
+  members: MembersGridMember[];
+  metricKeys: readonly string[];
+  byKey: Map<string, NormalizedMetricResult>;
+  loading: boolean;
+  range: DateRange;
+}) {
+  const { t } = useTranslation();
+  const { setScope } = usePortalNavActions();
+  const { compare: compareParam } = usePortalSearch();
+  const setSearch = useSetPortalSearch();
+  const comparing = compareParam ? compareParam.split(",") : null;
+  const setComparing = (ids: string[] | null) =>
+    setSearch({ compare: ids?.length ? ids.join(",") : undefined });
+  const [sort, setSort] = useState<MetricsSort | null>(null);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(pivot ? [normalizePersonId(pivot.person_id)] : []),
+  );
+  const teams = compareTeams(pivot);
+  const roles = rolesById(pivot);
+  const allManagers = teams.map((team) => team.id);
+  const allExpanded = allManagers.every((id) => expanded.has(id));
+
+  const byId = new Map(members.map((member) => [member.entityId, member]));
+  const compared = (comparing ?? []).flatMap((id) => {
+    const member = byId.get(id);
+    return member ? [member] : [];
+  });
+  const inView = comparing ? compared : members;
+  const inViewIds = inView.map((member) => member.entityId);
+  const columns = keysWithData(metricKeys, byKey, inViewIds);
+
+  const toggle = (entityId: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(entityId)) next.add(entityId);
+      return next;
+    });
+
+  const rows = sort
+    ? sortRows(metricsRows(null, people, expanded), sort.key, sort.direction, byKey)
+    : metricsRows(pivot, people, expanded);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-muted-foreground">
+          {comparing
+            ? t("metrics_view.comparing", { count: inView.length })
+            : t("metrics_view.people_count", { count: inView.length })}
+        </p>
+        {allManagers.length > 0 && !sort && !comparing ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(new Set(allExpanded ? [] : allManagers))}
+          >
+            {allExpanded ? t("metrics_view.collapse_all") : t("metrics_view.expand_all")}
+          </Button>
+        ) : null}
+        <div className="ms-auto flex items-center gap-2">
+          {comparing ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              icon={<X />}
+              onClick={() => setComparing(null)}
+            >
+              {t("metrics_view.exit_compare")}
+            </Button>
+          ) : null}
+          <MetricsComparePicker
+            people={members}
+            teams={teams}
+            picked={comparing ?? []}
+            onCompare={setComparing}
+          />
+          <MetricsDownloadMenu
+            view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
+            disabled={metricKeys.length === 0 || loading}
+          />
+        </div>
+      </div>
+      {metricKeys.length === 0 ? (
+        <EmptyNote text={t("metrics_view.no_metrics")} />
+      ) : loading ? (
+        <CenteredSpinner className="min-h-[40vh]" />
+      ) : comparing ? (
+        <div className="rounded-lg border bg-card">
+          <MetricsCompareTable
+            people={compared}
+            keys={columns}
+            byKey={byKey}
+            roles={roles}
+          />
+        </div>
+      ) : (
+        <MetricsTable
+          rows={rows}
+          groups={metricGroups(columns)}
+          byKey={byKey}
+          roles={roles}
+          sort={sort}
+          onSort={(key) => setSort((current) => nextSort(current, key))}
+          onToggle={toggle}
+          onScope={(entityId) => setScope({ root: entityId })}
+        />
+      )}
+    </section>
+  );
+}
+
+function EmptyNote({ text }: { text: string }) {
+  return (
+    <p className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+      {text}
+    </p>
+  );
+}

@@ -6,8 +6,9 @@ use axum::http::header::{AUTHORIZATION, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode_header};
 use serde::Deserialize;
 use tokio::sync::{Mutex, RwLock};
 
@@ -17,12 +18,8 @@ mod tests;
 const MAX_JWKS_BYTES: usize = 1024 * 1024;
 const JWKS_REFRESH_COOLDOWN: Duration = Duration::from_secs(5);
 
-/// The scope a grant for this server carries. The read-only warehouse server
-/// has its own, and neither is valid for the other's resource.
 pub(crate) const MCP_SCOPE: &str = "mcp:author";
 
-/// The path this server answers on, which is also the resource its tokens are
-/// minted for.
 pub(crate) const MCP_PATH: &str = "/mcp/v3";
 
 #[derive(Debug, Deserialize)]
@@ -90,14 +87,12 @@ impl TokenVerifier {
     ) -> anyhow::Result<Self> {
         validate_public_url(public_url, allow_insecure_private_network)?;
         let issuer = public_url.trim_end_matches('/').to_owned();
-        // Only where the keys come from. The token still has to name the
-        // advertised origin, which is checked below against `issuer`.
         let jwks_url = if jwks_url.trim().is_empty() {
             format!("{issuer}/.well-known/jwks.json")
         } else {
             jwks_url.trim().to_owned()
         };
-        let client = reqwest::Client::builder()
+        let client = insight_http_client::client_builder()?
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(5))
             .build()?;
@@ -117,8 +112,6 @@ impl TokenVerifier {
         })
     }
 
-    /// The `admin` role is read off the token, not from identity: the gateway
-    /// forwards an MCP bearer unchanged, and only an administrator is granted one.
     pub(crate) async fn verify(&self, token: &str) -> Result<McpAccessClaims, AuthFailure> {
         let header = decode_header(token).map_err(|_| AuthFailure::Unauthorized)?;
         if header.alg != Algorithm::ES256 {
@@ -137,8 +130,8 @@ impl TokenVerifier {
         validation.set_issuer(&[self.inner.issuer.as_str()]);
         validation.set_audience(&[self.inner.audience.as_str()]);
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
-        let claims = decode::<McpAccessClaims>(token, &key, &validation)
-            .map_err(|_| AuthFailure::Unauthorized)?
+        let claims = toolkit_security::jwt::decode::<McpAccessClaims>(token, &key, &validation)
+            .map_err(|error| decode_failure(&error))?
             .claims;
 
         if claims.sub_type != "user"
@@ -309,4 +302,15 @@ pub(crate) fn validate_public_url(
     );
 
     Ok(())
+}
+
+/// A backend outage is not a bad token: `Provider` means the crypto facade
+/// could not run, so the caller gets 503, not 401.
+fn decode_failure(error: &jsonwebtoken::errors::Error) -> AuthFailure {
+    if matches!(error.kind(), ErrorKind::Provider(_)) {
+        tracing::error!(error = %error, "crypto backend unavailable for MCP token");
+        AuthFailure::Unavailable
+    } else {
+        AuthFailure::Unauthorized
+    }
 }

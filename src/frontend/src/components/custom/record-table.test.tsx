@@ -39,7 +39,6 @@ function draw(
 }
 
 describe("<RecordTable>", () => {
-  // The columns are the declaration's, not the keys a record happens to hold.
   it("draws a column per chosen declared field, read by its path", () => {
     draw();
 
@@ -70,7 +69,6 @@ describe("<RecordTable>", () => {
     await user.click(screen.getByRole("button", { name: /Columns/ }));
     await user.click(screen.getByRole("checkbox", { name: /tags/ }));
 
-    // Kept in declaration order, whatever order they were picked in.
     expect(onShow).toHaveBeenCalledWith(["author", "lines", "tags"]);
   });
 
@@ -95,8 +93,6 @@ describe("<RecordTable>", () => {
     expect(onOrder).toHaveBeenCalledWith({ by: "author", descending: false });
   });
 
-  // A reader who cannot see the arrow has nothing else to tell them which
-  // column the page is ordered by.
   it("says in the header which column is ordering the page, and which way", () => {
     render(
       <RecordTable
@@ -117,8 +113,6 @@ describe("<RecordTable>", () => {
     ).toHaveAttribute("aria-sort", "none");
   });
 
-  // A row that says it is a button stops being a row, and its cells stop
-  // being in one.
   it("keeps every record a row of the table", () => {
     draw();
 
@@ -136,8 +130,6 @@ describe("<RecordTable>", () => {
     ).toBeInTheDocument();
   });
 
-  // A cell holding a list or an object shows it compactly; the whole record
-  // is a click away.
   it("shows a value that is not a scalar as the JSON it is", async () => {
     const user = userEvent.setup();
     draw(["tags"]);
@@ -164,8 +156,6 @@ describe("<RecordTable>", () => {
     expect(screen.getAllByRole("cell").at(-1)).toBeEmptyDOMElement();
   });
 
-  // The service stands the substitute in for a metric; a table that did not
-  // would say the field is empty while every metric over it says otherwise.
   it("stands an absent value in the way the service does", () => {
     render(
       <RecordTable
@@ -181,8 +171,6 @@ describe("<RecordTable>", () => {
     expect(screen.getByRole("cell", { name: "unknown" })).toBeInTheDocument();
   });
 
-  // A payload key may hold a dot, and the declaration escapes it. Splitting
-  // on a plain dot showed an empty cell for a field metrics read a value from.
   it("reads a path whose key holds an escaped dot", () => {
     render(
       <RecordTable

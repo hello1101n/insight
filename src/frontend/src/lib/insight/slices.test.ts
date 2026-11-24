@@ -25,6 +25,7 @@ function rosterPerson(
     email: null,
     attributes,
     manager_person_id: managerPersonId,
+    manager_name: null,
   };
 }
 
@@ -60,7 +61,6 @@ describe("personAttributes", () => {
 
 describe("availableSlices — data-driven gates", () => {
   it("hides a single-valued dimension (slices nothing)", () => {
-    // Everyone in the same division: division must NOT be offered.
     const rosters = ["a", "b", "c", "d"].map(() => attrs("R&D", undefined));
     expect(availableSlices(rosters).map((d) => d.key)).toEqual([]);
   });
@@ -71,13 +71,11 @@ describe("availableSlices — data-driven gates", () => {
   });
 
   it("hides a near-unique dimension (effectively an id)", () => {
-    // 10 people, 10 distinct titles → unique ratio 1.0 ≥ 0.9 → hidden.
     const rosters = Array.from({ length: 10 }, (_, i) => attrs(undefined, `T${i}`));
     expect(availableSlices(rosters).map((d) => d.key)).toEqual([]);
   });
 
   it("keeps a repeating dimension under the unique-ratio ceiling", () => {
-    // 10 people, 5 titles ×2 → ratio 0.5 → offered.
     const rosters = Array.from({ length: 10 }, (_, i) => attrs(undefined, `T${i % 5}`));
     expect(availableSlices(rosters).map((d) => d.key)).toEqual(["title"]);
   });
@@ -93,8 +91,6 @@ describe("availableSlices — data-driven gates", () => {
 
 describe("collectRosterAttrs", () => {
   it("walks the whole subtree and keys entities via keyOf", () => {
-    // Keys are person ids (upper-cased here to prove `keyOf` is applied), not
-    // emails — the map feeds metric entity lookups.
     const root = person({
       person_id: "AAAAAAAA-0000-4000-8000-000000000001",
       division: "R&D",
@@ -128,6 +124,7 @@ describe("collectPeopleAttrs", () => {
           { division: "R&D", job_title: "Developer", customTeam: "Core" },
           "PERSON-MANAGER",
         ),
+        rosterPerson("PERSON-MANAGER", {}),
       ],
       (id) => id.toLowerCase(),
     );
@@ -146,6 +143,16 @@ describe("collectPeopleAttrs", () => {
         value: "PERSON-MANAGER",
       },
     });
+  });
+
+  it("forms no manager cohort around a manager missing from the roster", () => {
+    const result = collectPeopleAttrs(
+      [rosterPerson("LEAD", {}, "CHIEF"), rosterPerson("REPORT", {}, "LEAD")],
+      (id) => id.toLowerCase(),
+    );
+
+    expect(result.get("lead")).toEqual({});
+    expect(result.get("report")?.manager?.value).toBe("LEAD");
   });
 });
 

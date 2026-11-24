@@ -37,7 +37,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
-/** A metric a window can select by, and the date it would use. */
 const CLOCKED = {
   name: "Merged pull requests",
   definition: {
@@ -48,7 +47,6 @@ const CLOCKED = {
   clock: { field: "merged_at", from: "metric" as const },
 };
 
-/** The same metric over a dataset that marks no date: nothing windows it. */
 const CLOCKLESS = {
   name: "Pull requests",
   definition: {
@@ -58,8 +56,8 @@ const CLOCKLESS = {
 };
 
 const COLUMNS: DrilldownPage["columns"] = [
-  { key: "service", label: "service", type: "string", sortable: true, percent: false },
-  { key: "commits", label: "commits", type: "number", sortable: true, percent: false },
+  { key: "service", label: "service", type: "string", sortable: true, percent: false, exact: false },
+  { key: "commits", label: "commits", type: "number", sortable: true, percent: false, exact: false },
 ];
 
 function page(
@@ -96,7 +94,6 @@ function renderDrilldown(
   );
 }
 
-/** A page whose answer the test releases when it is ready. */
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
   const promise = new Promise<T>((settle) => {
@@ -169,15 +166,14 @@ describe("<WidgetDrilldown>", () => {
     ).toHaveAttribute("aria-sort", "none");
   });
 
-  // The card and the rows behind it are the same numbers, so they are
-  // written the same way: grouped, and with the unit the metric declares.
-  it("shows numbers as the record holds them, a percent marked as one", async () => {
+  it("rounds a fraction and a percent to two decimals and keeps whole numbers as the record holds them", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
     vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(
-      page([{ service: "example-api", commits: 1234567, share: 83.91167 }], {
+      page([{ service: "example-api", commits: 1234567, cost: 12.3456, share: 83.91167 }], {
         columns: [
           ...COLUMNS,
-          { key: "share", label: "share", type: "number", sortable: true, percent: true },
+          { key: "cost", label: "cost", type: "number", sortable: true, percent: false, exact: false },
+          { key: "share", label: "share", type: "number", sortable: true, percent: true, exact: false },
         ],
       })
     );
@@ -185,12 +181,10 @@ describe("<WidgetDrilldown>", () => {
     renderDrilldown();
 
     expect(await screen.findByText("1234567")).toBeInTheDocument();
-    expect(screen.getByText("83.91167%")).toBeInTheDocument();
+    expect(screen.getByText("12.35")).toBeInTheDocument();
+    expect(screen.getByText("83.91%")).toBeInTheDocument();
   });
 
-  // A header click is a question to the service; the answer is the next
-  // page it sends. The window travels with it, or the rows would be the
-  // right order of the wrong period.
   it("asks the service for the order a header click chooses, over the same window", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKED);
@@ -222,8 +216,6 @@ describe("<WidgetDrilldown>", () => {
     }, { timeout: 5000 });
   });
 
-  // The service picked `service ↑` itself. The first click on that header
-  // has to flip it, not ask for what is already on screen.
   it("flips the column the service chose on the first click", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
@@ -376,8 +368,6 @@ describe("<WidgetDrilldown>", () => {
     );
   });
 
-  // The dialog is sized for a result of a few columns. A wider one is read by
-  // filling the window rather than by scrolling a small frame.
   it("fills the window when asked, and gives the room back", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);

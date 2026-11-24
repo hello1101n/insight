@@ -7,15 +7,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@gears-frontx/ui-kit";
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@gears-frontx/ui-kit";
 import { formatHoursDuration, isDurationUnit } from "@/lib/format";
 
 const PREVIEW_ROWS = 20;
@@ -55,9 +53,6 @@ export function ReportPreviewDialog({
             {granularity} · {period.from} to {period.to}
           </p>
         </DialogHeader>
-        {/* A report whose metrics read a relation nothing has built yet has no
-            table to show and nothing worth exporting — "0 rows" over the
-            export buttons would read as a measured answer. */}
         {response?.not_ready ? (
           <p className="text-sm text-muted-foreground">
             One of these metrics is not collected yet. The report fills in once
@@ -65,7 +60,7 @@ export function ReportPreviewDialog({
           </p>
         ) : response ? (
           <>
-            <Table className="text-xs" containerClassName="overflow-auto">
+            <Table containerClassName="overflow-auto">
               <TableHeader>
                 <TableRow>
                   {response.columns.map((column) => (

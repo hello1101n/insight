@@ -5,10 +5,8 @@ import "@/i18n";
 
 import { MockBanner } from "@/components/mock-banner";
 
-// `isVisible()` also requires import.meta.env.DEV, which vitest sets to true.
-// Both mock flags are stubbed to a known baseline first: vite loads the
-// developer's own `.env.local`, so a machine with VITE_HIDE_MOCK_BANNER=true
-// would otherwise fail the visible case while CI (no `.env.local`) passes.
+// WORKAROUND: vite loads the developer's `.env.local`, so both mock flags are
+// stubbed to a known baseline first.
 describe("MockBanner", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_ENABLE_MOCKS", "false");

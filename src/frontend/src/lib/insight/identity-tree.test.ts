@@ -1,15 +1,3 @@
-/**
- * Lookups and roster derivation over the identity tree.
- *
- * `findIdentityNode` keys on the canonical person id since the cutover.
- *
- * `flattenSubordinates` marks depth-1 reports `is_direct`;
- * `scopeRosterToDirectReports` narrows a roster to those entries when the
- * "Direct reports only" toggle is on, and passes `null` through so screens
- * keep their roster-not-loaded gate. `hasIndirectReports` tells screens
- * whether that toggle can change anything at all (#1756).
- */
-
 import { describe, expect, it } from "vitest";
 
 import type { IdentityPerson } from "@/types/insight";
@@ -39,6 +27,7 @@ function rosterPerson(
     email: null,
     attributes,
     manager_person_id: managerPersonId,
+    manager_name: null,
   };
 }
 
@@ -98,9 +87,6 @@ describe("rosterTree", () => {
   });
 });
 
-// One UUID per persona, derived from the local part so a failure names the
-// person. person_id is deliberately NOT the email: keying them the same would
-// hide a lookup that still matches on the wrong field.
 function personId(email: string): string {
   const tag = email.split("@")[0]!.padEnd(4, "0").slice(0, 4);
   return `019e2803-0000-7000-8000-0000${Buffer.from(tag).toString("hex")}`;

@@ -3,12 +3,6 @@ import { ConfirmRemove } from "@/components/custom/confirm-remove";
 import { Button } from "@gears-frontx/ui-kit";
 import { useRemoveDefinition } from "@/queries/custom";
 
-/**
- * Removes one definition.
- *
- * The service refuses while something still draws it and names what does, so
- * the refusal is shown as it came back rather than guessed at here.
- */
 export function RemoveDefinition({
   kind,
   id,

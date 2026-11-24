@@ -1,24 +1,23 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
 import { fmtCompact } from "@/lib/portal/metric-stats";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const HISTOGRAM_CONFIG: ChartConfig = { count: { label: "Runs" } };
 
-/** Per-run distribution served by the backend. */
 export function HistogramSection({
   section,
   resolve,
@@ -42,7 +41,7 @@ export function HistogramSection({
         {section.title} · {total} runs
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           <p className="mb-3 text-xs text-muted-foreground">{section.caption}</p>
           <ChartContainer config={HISTOGRAM_CONFIG} className="h-56 w-full">
             <BarChart
@@ -82,7 +81,7 @@ export function HistogramSection({
               <ChartBar
                 dataKey="count"
                 name="Runs"
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>

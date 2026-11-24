@@ -3,7 +3,6 @@ export interface TagRow {
   available: number;
   gap: number;
   moreWidth: number;
-  /** Whether tags beyond `widths` exist, so "+N" shows even when they all fit. */
   overflowing: boolean;
 }
 
@@ -14,10 +13,6 @@ function rowWidth(widths: number[], gap: number): number {
   return chips + gap * (widths.length - 1);
 }
 
-/**
- * How many whole chips fit on one row beside the "+N" chip. Never fewer than
- * one, so a row too narrow for any whole chip still names a tag, truncated.
- */
 export function fittingCount({
   widths,
   available,

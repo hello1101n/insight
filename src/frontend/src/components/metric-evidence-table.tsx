@@ -28,16 +28,14 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@gears-frontx/ui-kit";
-import { Spinner } from "@/components/ui/spinner";
-import {
+  Spinner,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@gears-frontx/ui-kit";
 import {
   cellText,
   evidenceRowKeys,
@@ -45,7 +43,9 @@ import {
 } from "@/lib/metrics/evidence-rows";
 import { fitWidths, type ColumnNeed } from "@/lib/metrics/evidence-widths";
 import { evidenceRefText } from "@/lib/metrics/provider-links";
+import { formatTimeMetricValue, type MetricValueFormat } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useMetricDefinition } from "@/queries/metric-definitions";
 
 function columnLayout(column: MetricEvidenceColumn) {
   if (column.key === "person") return { basisRem: 11, grow: 0.5 };
@@ -54,8 +54,6 @@ function columnLayout(column: MetricEvidenceColumn) {
   if (column.key === "type") return { basisRem: 8, grow: 0 };
   if (column.key === "repository") return { basisRem: 12, grow: 0.5 };
   if (column.key === "author") return { basisRem: 10, grow: 0.25 };
-  // A branch name is unbounded (`release/1.4`, `feature/long-description`), so
-  // it grows like a title rather than sitting at the generic basis.
   if (column.key === "destination_branch") return { basisRem: 11, grow: 1 };
   if (column.key === "branch_scope") return { basisRem: 9, grow: 0.25 };
   if (column.key === "date") return { basisRem: 8, grow: 0 };
@@ -64,14 +62,11 @@ function columnLayout(column: MetricEvidenceColumn) {
 }
 
 const CELL_PADDING_PX = 24;
-/** offsetWidth rounds down, so a measured text can come up a pixel short. */
+// WORKAROUND: offsetWidth rounds down, so a measured text can come up a pixel short.
 const ROUNDING_PX = 2;
 const SORT_ICON_PX = 18;
-/** The copy button beside a ref, and the gap before it. */
 const COPY_BUTTON_PX = 42;
-/** The widest a column grows to show its values; past it, a value is cut. */
 const CAP_CHARACTERS = 40;
-/** The first page: widths settle on it and do not shift as more rows load. */
 const MEASURED_ROWS = 100;
 
 const EXPANDER_REM = 2.25;
@@ -79,33 +74,33 @@ const NUMBER_REM = 3.5;
 const LEADING_REM: readonly number[] = [EXPANDER_REM];
 const NUMBERED_LEADING_REM: readonly number[] = [NUMBER_REM, EXPANDER_REM];
 
-/**
- * Columns whose link belongs to the summary line only. The full record shows a
- * value entire, and a commit message carries its trailers — one link wrapped
- * around all of that is a paragraph-sized target, not something to click.
- */
 const SUMMARY_ONLY_LINKS: ReadonlySet<string> = new Set(["title"]);
 
-/** The text a cell shows on its one line. */
+function valueText(
+  row: MetricEvidenceRow,
+  column: MetricEvidenceColumn,
+  metric: MetricValueFormat | null
+): string {
+  const value = row.values[column.key];
+  return (
+    (column.key === "value" ? formatTimeMetricValue(value, metric) : null) ??
+    cellText(value)
+  );
+}
+
 function cellLine(
   row: MetricEvidenceRow,
   column: MetricEvidenceColumn,
-  metricKey: string | null
+  metricKey: string | null,
+  metric: MetricValueFormat | null
 ): { full: string; line: string } {
-  const full = summaryLine(cellText(row.values[column.key]));
-  // The ref column shows the issue number alone; the tooltip keeps the
-  // repository, which is the only place a row states it when the metric
-  // declares no `source` to link from.
+  const full = summaryLine(valueText(row, column, metric));
   const line =
     column.key === "ref" ? evidenceRefText(metricKey ?? "", full) : full;
   return { full, line };
 }
 
-/**
- * Lays every text out once, hidden, inside the table, so each takes the cells'
- * own font, digits and spacing; a canvas measures neither tabular digits nor
- * letter-spacing.
- */
+// WORKAROUND: a canvas measures neither tabular digits nor letter-spacing.
 function measureTexts(
   element: HTMLElement,
   texts: readonly { text: string; header: boolean }[]
@@ -123,7 +118,7 @@ function measureTexts(
     probe.append(span);
   }
   element.append(probe);
-  // offsetWidth, not getBoundingClientRect: the dialog may still be scaling in.
+  // WORKAROUND: offsetWidth ignores the transform of a dialog still scaling in.
   const widths = [...probe.children].map(
     (child) => (child as HTMLElement).offsetWidth
   );
@@ -131,12 +126,12 @@ function measureTexts(
   return widths;
 }
 
-/** What each column needs to show its header and its longest value, up to the cap. */
 function columnNeeds(
   element: HTMLElement,
   columns: readonly MetricEvidenceColumn[],
   rows: readonly MetricEvidenceRow[],
-  metricKey: string | null
+  metricKey: string | null,
+  metric: MetricValueFormat | null
 ): ColumnNeed[] | null {
   const sample = rows.slice(0, MEASURED_ROWS);
   const texts = [
@@ -144,7 +139,7 @@ function columnNeeds(
     ...columns.flatMap((column) => [
       { text: column.label, header: true },
       ...sample.map((row) => ({
-        text: cellLine(row, column, metricKey).line,
+        text: cellLine(row, column, metricKey, metric).line,
         header: false,
       })),
     ]),
@@ -174,10 +169,6 @@ function columnNeeds(
   });
 }
 
-/**
- * A value on one line, cut with an ellipsis when its column is narrower; the
- * whole value then shows in a tooltip, as it does when the line abbreviates it.
- */
 function CutText({
   full,
   className,
@@ -243,11 +234,6 @@ export function MetricEvidenceTable({
   fetchNextPage: () => Promise<unknown>;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
-  /**
-   * A read is replacing these rows wholesale. The header keeps announcing the
-   * order the rows are actually in, so this is the only acknowledgement a
-   * click on a column gets until the new rows land.
-   */
   reordering?: boolean;
   nextPageError: boolean;
   pageLimitReached: boolean;
@@ -256,14 +242,13 @@ export function MetricEvidenceTable({
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const metric = useMetricDefinition(metricKey);
   const rowKeys = useMemo(() => evidenceRowKeys(rows), [rows]);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewport,
     estimateSize: () => 44,
     overscan: 8,
-    // INVARIANT: must match the row's React key — the measured height of an
-    // expanded row is cached under it.
     getItemKey: useCallback(
       (index: number) => rowKeys[index] ?? index,
       [rowKeys]
@@ -284,16 +269,22 @@ export function MetricEvidenceTable({
     return () => observer.disconnect();
   }, [viewport]);
 
-  // Widths come from the values themselves, measured on the page's own font;
-  // until a viewport has a width to share, the type-based layout stands in.
   const measured = useMemo(() => {
     if (!viewport || viewportWidth === 0) return null;
-    const needs = columnNeeds(viewport, columns, rows, metricKey);
+    const needs = columnNeeds(viewport, columns, rows, metricKey, metric);
     if (!needs) return null;
     const remPx =
       parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     return fitWidths(needs, viewportWidth - leadingTotalRem * remPx);
-  }, [viewport, viewportWidth, columns, rows, metricKey, leadingTotalRem]);
+  }, [
+    viewport,
+    viewportWidth,
+    columns,
+    rows,
+    metricKey,
+    metric,
+    leadingTotalRem,
+  ]);
 
   const minimumWidth = measured
     ? `calc(${leadingTotalRem}rem + ${measured.reduce((total, px) => total + px, 0)}px)`
@@ -301,10 +292,6 @@ export function MetricEvidenceTable({
         (total, column) => total + columnLayout(column).basisRem,
         leadingTotalRem
       )}rem`;
-  // INVARIANT: the header and every body row lay out on THIS template. Two
-  // rows sizing themselves independently drift apart as soon as one of them
-  // has different free space to grow into, and a value under the wrong
-  // heading is worse than no value.
   const gridTemplate = useMemo(() => {
     const tracks = measured
       ? measured.map((px) => `${px.toFixed(1)}px`)
@@ -349,9 +336,7 @@ export function MetricEvidenceTable({
       <Table
         role="table"
         aria-busy={reordering ? true : undefined}
-        // Counting the header row, which is row 1: `aria-rowindex` below starts
-        // the data at 2, so a total of `rows.length` would make the last row
-        // "n+1 of n".
+        // INVARIANT: ARIA counts the header as row 1, so the data starts at 2.
         aria-rowcount={rows.length + 1}
         containerRef={setViewport}
         containerClassName="h-full overflow-auto"
@@ -364,24 +349,24 @@ export function MetricEvidenceTable({
       >
         <TableHeader
           role="rowgroup"
-          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)] [&_tr]:border-b-0"
+          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)]"
         >
           <TableRow
             role="row"
-            className="grid w-full border-b-0 hover:bg-transparent"
+            className="grid w-full"
             style={{ gridTemplateColumns: gridTemplate }}
           >
             {numbered ? (
               <TableHead
                 role="columnheader"
-                className="flex h-10 items-center justify-end px-2 py-0 text-muted-foreground"
+                className="flex items-center justify-end"
               >
                 #
               </TableHead>
             ) : null}
             <TableHead
               role="columnheader"
-              className="flex h-10 items-center p-0"
+              className="flex items-center"
             >
               <span className="sr-only">Expand record</span>
             </TableHead>
@@ -407,20 +392,18 @@ export function MetricEvidenceTable({
                         : "none"
                   }
                   className={cn(
-                    "flex h-10 min-w-0 items-center px-3 py-0",
+                    "flex min-w-0 items-center",
                     numeric
                       ? "justify-end text-right"
                       : "justify-start text-left"
                   )}
                 >
-                  {/* A header the server cannot order by is a label, not a
-                    control that does nothing when clicked. */}
                   {column.sortable ? (
                     <button
                       type="button"
                       onClick={() => onSortChange(column.key)}
                       className={cn(
-                        "group/sort flex min-w-0 items-center gap-1 rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                        "group/sort flex min-w-0 items-center gap-1 rounded-sm [text-transform:inherit] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                         numeric && "flex-row-reverse",
                         state && "text-foreground"
                       )}
@@ -456,7 +439,7 @@ export function MetricEvidenceTable({
                 aria-rowindex={virtualRow.index + 2}
                 aria-expanded={isOpen}
                 onClick={() => toggleRow(key)}
-                className="absolute top-0 left-0 grid w-full cursor-pointer hover:bg-muted/20"
+                className="absolute top-0 left-0 grid w-full cursor-pointer"
                 style={{
                   gridTemplateColumns: gridTemplate,
                   transform: `translateY(${virtualRow.start}px)`,
@@ -465,14 +448,14 @@ export function MetricEvidenceTable({
                 {numbered ? (
                   <TableCell
                     role="cell"
-                    className="flex h-11 items-center justify-end px-2 py-0 text-muted-foreground tabular-nums"
+                    className="flex items-center justify-end tabular-nums"
                   >
                     {virtualRow.index + 1}
                   </TableCell>
                 ) : null}
                 <TableCell
                   role="cell"
-                  className="flex h-11 items-center justify-center p-0"
+                  className="flex items-center justify-center"
                 >
                   <Button
                     type="button"
@@ -482,7 +465,6 @@ export function MetricEvidenceTable({
                     aria-label={
                       isOpen ? "Hide full record" : "Show full record"
                     }
-                    className="text-muted-foreground"
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleRow(key);
@@ -492,14 +474,19 @@ export function MetricEvidenceTable({
                 </TableCell>
                 {columns.map((column) => {
                   const value = row.values[column.key];
-                  const { full, line } = cellLine(row, column, metricKey);
+                  const { full, line } = cellLine(
+                    row,
+                    column,
+                    metricKey,
+                    metric
+                  );
                   return (
                     <TableCell
                       role="cell"
                       key={column.key}
                       className={cn(
-                        "h-11 min-w-0 px-3 py-3 tabular-nums",
-                        column.type === "number" && "text-right"
+                        "flex min-w-0 items-center tabular-nums",
+                        column.type === "number" && "justify-end text-right"
                       )}
                     >
                       {column.key === "ref" && value != null ? (
@@ -532,16 +519,14 @@ export function MetricEvidenceTable({
                     // INVARIANT: selecting text here must not reach the row's
                     // expand toggle.
                     onClick={(event) => event.stopPropagation()}
-                    className="cursor-auto border-t bg-muted/40 px-3 py-3"
-                    // The record entire, under the row it belongs to: a track
-                    // of its own across every column.
+                    className="h-auto cursor-auto"
                     style={{ gridColumn: "1 / -1" }}
                   >
                     {/* INVARIANT: a fixed cap, not a vh — the window can
                       exceed the table's own height. */}
                     <dl className="grid max-h-96 gap-x-6 gap-y-2 overflow-y-auto overscroll-contain sm:grid-cols-[10rem_1fr]">
                       {columns.map((column) => {
-                        const text = cellText(row.values[column.key]);
+                        const text = valueText(row, column, metric);
                         return (
                           <Fragment key={column.key}>
                             <dt className="text-sm text-muted-foreground">

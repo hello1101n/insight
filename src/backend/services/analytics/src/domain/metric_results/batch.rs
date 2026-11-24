@@ -11,7 +11,7 @@ use super::compiler::{
     CompiledQuery, PeerQueryRow, PeriodQueryRow, compile_breakdown_query,
     compile_group_ranking_query, compile_histogram_query, compile_peer_batch_query,
     compile_period_batch_query, compile_pooled_histogram_query, compile_rollup_query,
-    compile_timeseries_query,
+    compile_timeseries_query, compile_unattributed_query,
 };
 use super::failure::ViewAbsence;
 use super::validation::{
@@ -45,14 +45,11 @@ pub enum UnbatchedView {
     Rollup {
         dimensions: Vec<String>,
     },
-    // Histogram bins one entity's own per-event values; it never batches with
-    // other metrics (per-entity bin membership is metric-specific).
     Histogram,
-    // The pooled shape bins the same values per dimension tuple instead, with
-    // no entity grain — same reason it cannot batch.
     PooledHistogram {
         dimensions: Vec<String>,
     },
+    Unattributed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,9 +85,6 @@ pub struct PlannedRanking {
     pub query: CompiledQuery,
 }
 
-/// Ranking pre-pass outcomes: the groups for rankings that answered and the
-/// reason the others have none. A view whose ranking did not answer plans as
-/// `PlannedQuery::Unanswered` instead of aborting the whole request.
 #[derive(Debug, Default)]
 pub struct RankingResults {
     pub groups: BTreeMap<RankingPolicyKey, Vec<RankedGroup>>,
@@ -114,9 +108,6 @@ pub enum PlannedQuery {
         view: UnbatchedView,
         query: CompiledQuery,
     },
-    // A view settled before planning (its group ranking query did not answer);
-    // it flows through the same execution pipeline so the response keeps every
-    // requested view slot.
     Unanswered {
         metric_index: usize,
         view_index: usize,
@@ -162,9 +153,6 @@ pub fn plan_rankings(req: &ValidatedMetricResultsRequest) -> Vec<PlannedRanking>
         .collect()
 }
 
-/// Both histogram shapes are single (never batched) queries; which one is
-/// planned is decided by whether the request asked to bin per dimension tuple
-/// instead of per entity.
 fn plan_histogram(
     req: &ValidatedMetricResultsRequest,
     metric: &ValidatedMetricRequest,
@@ -272,6 +260,15 @@ pub fn plan_queries(
                         (metric_index, view_index),
                         dimensions,
                     ));
+                }
+                ValidatedMetricView::Unattributed => {
+                    singles.push(PlannedQuery::Single {
+                        metric_index,
+                        view_index,
+                        def: Box::new(metric.def.clone()),
+                        view: UnbatchedView::Unattributed,
+                        query: compile_unattributed_query(&metric.def, req, &metric.filters),
+                    });
                 }
             }
         }
@@ -427,9 +424,6 @@ pub(crate) fn period_alias(item_index: usize) -> String {
     format!("m{item_index}")
 }
 
-/// The alias carrying one item's value over the comparison window. The primary
-/// period keeps the bare `period_alias`, so a request without a comparison
-/// window compiles unchanged.
 pub(crate) fn period_compare_alias(item_index: usize) -> String {
     format!("m{item_index}_compare")
 }
@@ -604,6 +598,26 @@ mod tests {
             filters: vec![],
             views,
         }
+    }
+
+    #[test]
+    fn plan_reads_the_unattributed_view_on_its_own() -> Result<(), CanonicalError> {
+        let req = request(vec![views(vec![ValidatedMetricView::Unattributed], "m_a")]);
+
+        let planned = plan_queries(
+            &req,
+            &RankingResults::default(),
+            PeerPopulation::DeclaredCohort,
+        )?;
+
+        assert!(matches!(
+            planned.as_slice(),
+            [PlannedQuery::Single {
+                view: UnbatchedView::Unattributed,
+                ..
+            }]
+        ));
+        Ok(())
     }
 
     #[test]
@@ -890,8 +904,6 @@ mod tests {
 
     #[test]
     fn demux_peer_parses_quoted_n() {
-        // ClickHouse quotes UInt64 in JSONEachRow output by default; the
-        // demuxed row must decode "7" through PeerQueryRow's optional_u64.
         let rows = vec![PeerWideRow {
             entity_id: "00000000-0000-0000-0000-00000000000a".to_owned(),
             extra: [

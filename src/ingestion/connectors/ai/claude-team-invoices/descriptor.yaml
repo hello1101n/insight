@@ -4,7 +4,12 @@ name: claude-team-invoices
 #   shape and the RMT promotion step is gone (#2877). MINOR per ADR-0015:
 #   reconcile must republish this connector so the connection catalog is
 #   refreshed; nothing already stored changes meaning.
-version: "0.19.0"
+# 1.0.0: no schema change of its own. MAJOR so reconcile dispatches the
+#   one-shot scoped `dbt --full-refresh`: staging writes period_start_ts into
+#   invoice_metrics_json, and lines staged before that never return from the
+#   vendor once paid, so only a rebuild from Bronze gives them the key gold
+#   prices a seat's billed tier by.
+version: "1.1.0"
 type: cdk
 schedule: "0 4 * * *" # daily at 04:00 UTC — invoices are monthly; a daily pass keeps a new one within a day
 workflow: sync
@@ -16,7 +21,7 @@ images:
     name: source-claude-team-invoices-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-claude-team-invoices-insight:2026.11.02.11.55-82d45ab"
+    image: "ghcr.io/hello1101n/source-claude-team-invoices-insight:2026.11.20.13.24-f15a8f6"
 dbt_select: "tag:claude-team-invoices+"
 connection:
   # Its own namespace, though it is the same vendor through the same proxy: dbt

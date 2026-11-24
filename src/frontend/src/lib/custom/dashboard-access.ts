@@ -4,7 +4,6 @@ import type {
   FolderSummary,
 } from "@/api/custom-client";
 
-/** What a caller with this access may do to a dashboard beyond opening, pinning and filing it. */
 export interface DashboardAllows {
   edit: boolean;
   share: boolean;
@@ -30,7 +29,6 @@ export interface FolderAllows {
   remove: boolean;
 }
 
-/** INVARIANT: only an administrator shares, even a folder they own. */
 export function folderAllows(
   access: FolderAccess,
   isAdmin: boolean
@@ -47,11 +45,6 @@ export function folderAllows(
   }
 }
 
-/**
- * The folders a dashboard may be added to: those the caller can edit, an
- * ownerless dashboard only in ownerless ones and any other never in one,
- * leaving out the folders already holding it.
- */
 export function fileableFolders(
   access: DashboardAccess,
   folders: readonly FolderSummary[],

@@ -13,6 +13,7 @@ import {
   collectionSetPending,
   useMetricCollection,
   useMetricCollectionSet,
+  useUnattributedShares,
   type MetricCollectionResult,
 } from "@/queries/metric-results";
 
@@ -20,14 +21,12 @@ vi.mock("@/api/metric-results-client", async (orig) => ({
   ...(await orig<typeof import("@/api/metric-results-client")>()),
   queryMetricResults: vi.fn(),
 }));
-// The catalog gate reads this; tests that do not care about it get every key.
 vi.mock("@/api/metric-definitions-client", () => ({
   listMetricDefinitions: vi.fn(async () => ({ metrics: catalog })),
 }));
 
 const mock = vi.mocked(queryMetricResults);
 
-/** What the installation's catalog offers, per test. */
 type CatalogEntry = {
   metric_key: string;
   is_enabled: boolean;
@@ -42,8 +41,6 @@ function offers(...keys: string[]) {
   }));
 }
 
-// Echo the requested metrics/entities back as a valid response so merges and
-// pairing have real data to operate on.
 function respond(req: MetricResultsRequest): MetricResultsResponse {
   if (req.entity.type !== "person") throw new Error("person request expected");
   const ids = req.entity.ids;
@@ -57,7 +54,9 @@ function respond(req: MetricResultsRequest): MetricResultsResponse {
       direction: "higher_is_better",
       computation: "sum",
       views: m.views.map((v) =>
-        v.view === "peer"
+        v.view === "unattributed"
+          ? { view: "unattributed" as const, value: 4 }
+          : v.view === "peer"
           ? {
               view: "peer",
               values: ids.map((id) => ({
@@ -106,9 +105,6 @@ describe("useMetricCollection", () => {
   });
 
   it("asks only for metrics this installation's catalog offers", async () => {
-    // The backend rejects the whole request over one unknown key, so a
-    // compiled-in key a tenant does not have must not reach it — otherwise a
-    // single missing metric blanks the screen instead of its own tile.
     offers("m");
     const withUnknown: MetricCollectionConfig = {
       metrics: [
@@ -132,8 +128,6 @@ describe("useMetricCollection", () => {
     { state: "a schema-error", entry: { schema_status: "error" }, asked: ["m"] },
     { state: "an unchecked", entry: { schema_status: "unchecked" }, asked: ["m", "other"] },
   ] as const)("asks for $state metric only when the backend would serve it", async ({ entry, asked }) => {
-    // The backend refuses a disabled or schema-error definition like an unknown
-    // key, and one refused key fails the whole collection.
     offers("m", "other");
     catalog = catalog.map((c) => (c.metric_key === "other" ? { ...c, ...entry } : c));
     const both: MetricCollectionConfig = {
@@ -151,8 +145,6 @@ describe("useMetricCollection", () => {
   });
 
   it("makes no request at all when the catalog offers none of the collection", async () => {
-    // An empty `metrics: []` is itself a 400, and a screen must not sit on a
-    // spinner waiting for a request that will never be sent.
     offers("something.else");
     const { result } = renderHook(
       () => useMetricCollection(COLLECTION, ENTITY, RANGE),
@@ -221,8 +213,6 @@ describe("useMetricCollection", () => {
     expect(mock).toHaveBeenCalledTimes(1);
     expect(mock.mock.calls[0]![0].compare_to).toEqual(compareTo);
     expect(result.current.previousByKey?.get("m")?.period?.values[0]?.value).toBe(10);
-    // The window carries no standing: reading `peer` here would answer over the
-    // primary period instead.
     expect(result.current.previousByKey?.get("m")?.peer).toBeUndefined();
   });
 
@@ -242,6 +232,35 @@ describe("useMetricCollection", () => {
       { wrapper: wrapper() },
     );
     await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUnattributedShares", () => {
+  beforeEach(() => {
+    mock.mockReset();
+    mock.mockImplementation(async (req) => respond(req));
+    offers("m");
+  });
+
+  it("reads each metric's share through the one person it is anchored on", async () => {
+    const { result } = renderHook(
+      () => useUnattributedShares(["m"], "me@x.com", RANGE),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.get("m")).toBe(4));
+    expect(mock.mock.calls[0]![0].entity).toEqual({ type: "person", ids: ["me@x.com"] });
+  });
+
+  it("asks nothing without an anchor", async () => {
+    const { result } = renderHook(
+      () => useUnattributedShares(["m"], null, RANGE),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.byKey.size).toBe(0);
     expect(mock).not.toHaveBeenCalled();
   });
 });
@@ -273,8 +292,6 @@ describe("useMetricCollectionSet", () => {
       { wrapper: wrapper() },
     );
     await waitFor(() => expect(collectionSetPending(result.current)).toBe(false));
-    // One request for the collection the catalog covers; none for the other,
-    // which would have failed BOTH of them as a single 400.
     expect(mock).toHaveBeenCalledTimes(1);
     expect(mock.mock.calls[0]![0].metrics.map((m) => m.metric_key)).toEqual(["m"]);
     expect(result.current.get("g")?.byKey.get("m")).toBeDefined();
@@ -294,8 +311,7 @@ describe("useMetricCollectionSet", () => {
     await waitFor(() =>
       expect(result.current.get("g")?.isPending).toBe(false),
     );
-    // period+peer → 2 rows/entity → 2250/chunk → 3000 ids span 2 requests.
-    expect(mock).toHaveBeenCalledTimes(2);
+    expect(mock).toHaveBeenCalledTimes(3);
     expect(result.current.get("g")?.byKey.get("m")?.period?.values).toHaveLength(
       3000,
     );
@@ -317,12 +333,10 @@ describe("useMetricCollectionSet", () => {
     );
     mock.mockClear();
     result.current.get("g")?.refetch();
-    await waitFor(() => expect(mock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mock).toHaveBeenCalledTimes(3));
   });
 
   it("serves a tenant entity as one unchunked id-less request", async () => {
-    // The tenant lens fans its extra collections through this hook; a tenant
-    // names nobody, so the person-roster gates must not keep it disabled.
     mock.mockImplementation(async (req) => ({
       metrics: req.metrics.map((m) => ({
         metric_key: m.metric_key,
@@ -382,13 +396,6 @@ describe("collectionSetPending", () => {
   });
 });
 
-/**
- * Reported from the review environment: `/v1/metric-results` answering 400
- * `entity.ids must not be empty`. The request was ours — `refetch()` ignores
- * `enabled`, so a Retry on a view whose roster had not resolved posted an empty
- * entity list, and the resulting error then latched the view into a hard-error
- * card that no further Retry could clear.
- */
 describe("a disabled collection has nothing to retry", () => {
   beforeEach(() => {
     mock.mockReset();
@@ -413,7 +420,6 @@ describe("a disabled collection has nothing to retry", () => {
 
     result.current.refetch();
 
-    // A short settle window: the failure mode is a request that DOES go out.
     await new Promise((r) => setTimeout(r, 20));
     expect(mock).not.toHaveBeenCalled();
   });
@@ -448,9 +454,6 @@ describe("a disabled collection has nothing to retry", () => {
   });
 
   it("does not carry a failure across into a resolved roster", async () => {
-    // The failure was recorded against the entity list that produced it (ids
-    // ride in the query key), so once the roster resolves the view starts from
-    // a clean query rather than inheriting "Unable to load".
     mock.mockRejectedValue(new Error("400 invalid_argument"));
     const { result, rerender } = renderHook(
       ({ ids }: { ids: string[] }) =>

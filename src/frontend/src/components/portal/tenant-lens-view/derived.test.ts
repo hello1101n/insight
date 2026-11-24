@@ -1,8 +1,3 @@
-/**
- * The tenant lens's derived readings are pure math over view rows — tested
- * here without a DOM. The gate constants must mirror silver's is_gate
- * (github__ci_runs.sql): commit-triggered AND decided.
- */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -51,9 +46,7 @@ describe("gateStatsBy", () => {
     const rows = [
       runRow("ci", "push", "success", 8),
       runRow("ci", "pull_request", "failure", 2),
-      // Not commit-triggered — runs, but never a gate run.
       runRow("ci", "schedule", "success", 5),
-      // Not decided — approval walls and cancels decide nothing.
       runRow("ci", "push", "action_required", 3),
       runRow("ci", "push", "cancelled", 4),
     ];
@@ -152,7 +145,6 @@ describe("series statistics", () => {
         { date: "d2", value: 10 },
       ])
     ).toEqual([]);
-    // A perfectly flat prior window has σ = 0 — nothing to be 2σ below.
     expect(
       trailingOutlierDates([
         { date: "d1", value: 90 },
@@ -168,7 +160,6 @@ describe("decomposeBy / cumulativeShares", () => {
   const rows: DimRow[] = [
     { value: 30, dimensions: [{ key: "outcome", value: "success" }] },
     { value: 10, dimensions: [{ key: "outcome", value: "failure" }] },
-    // Finer-grouped rows of the same segment sum.
     {
       value: 20,
       dimensions: [
@@ -253,7 +244,6 @@ describe("smallMultiples", () => {
         ["2026-03-01", 5],
         ["2026-03-02", 6],
       ]),
-      // One point cannot draw a line.
       series([{ key: "repository", value: "thin" }], [["2026-03-01", 99]]),
     ];
     const { multiples, max } = smallMultiples(input, "repository", 2);
@@ -265,7 +255,6 @@ describe("smallMultiples", () => {
 describe("dayHourMatrix", () => {
   it("folds day buckets into weekday × hour-block cells, UTC", () => {
     const input = [
-      // 2026-03-02 is a Monday.
       series([{ key: "hour_block", value: "08" }], [
         ["2026-03-02", 3],
         ["2026-03-09", 2],
@@ -273,8 +262,8 @@ describe("dayHourMatrix", () => {
       series([{ key: "hour_block", value: "22" }], [["2026-03-07", 4]]),
     ];
     const { cells, max, total } = dayHourMatrix(input);
-    expect(cells[0][4]).toBe(5); // Monday, block "08".
-    expect(cells[5][11]).toBe(4); // Saturday, block "22".
+    expect(cells[0][4]).toBe(5);
+    expect(cells[5][11]).toBe(4);
     expect(max).toBe(5);
     expect(total).toBe(9);
   });
@@ -343,7 +332,6 @@ describe("dumbbellPairs", () => {
       runRow("slowfail", "push", "success", 10),
       runRow("fastfail", "push", "failure", 2),
       runRow("fastfail", "push", "success", 12),
-      // Only one side observed — no pair, no row.
       runRow("halfpipe", "push", "success", 7),
     ];
     const pairs = dumbbellPairs(rows, "pipeline", "outcome", "failure", "success");
@@ -362,7 +350,6 @@ describe("scatterPoints", () => {
     const y: DimRow[] = [
       { value: 90, dimensions: [{ key: "repository", value: "a" }] },
       { value: 70, dimensions: [{ key: "repository", value: "b" }] },
-      // "c" has no y — not a point.
     ];
     const size: DimRow[] = [
       { value: 5, dimensions: [{ key: "repository", value: "a" }] },
@@ -420,7 +407,6 @@ describe("weeklyVerdicts", () => {
       struggling: "struggling",
       healthy: "healthy",
     });
-    // Worst mean first — the reader starts at the problem.
     expect(verdicts[0].value).toBe("struggling");
   });
 

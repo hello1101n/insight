@@ -5,13 +5,6 @@ import { TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 import { useSetAlertEnabled } from "@/queries/alerts";
 
-/**
- * Turns an alert's checks on or off where it is listed or shown.
- *
- * `revision` is passed where the caller holds the alert; the list holds only a
- * summary, and the alert is then read before the change is sent.
- * `describedBy` names the element that says what the change does.
- */
 export function AlertSwitch({
   id,
   name,

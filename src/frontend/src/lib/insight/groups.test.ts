@@ -5,6 +5,7 @@ import {
   KPI_ROW_COLLECTION,
   GROUPS,
   groupIdForMetricKey,
+  offeredMetricFilter,
   visibleGroups,
   type DrilldownBlock,
   type GroupId,
@@ -71,19 +72,15 @@ describe("groups registry", () => {
     };
     expect(timeseries[0]?.groupBy?.limits?.repository).toEqual({
       count: 10,
-      rankBy: "git.default_branch_commits",
+      rankBy: "git.default_branch_prs_merged",
       includeRemainder: true,
     });
-    // The request is built from the block's `metrics`, not from its columns, so
-    // a column whose metric is missing here renders empty.
     expect(timeseries[0]?.metrics).toEqual([
-      "git.default_branch_commits",
       "git.default_branch_prs_merged",
       "git.default_branch_lines_added",
       "git.default_branch_lines_removed",
     ]);
     expect(timeseries[0]?.table?.columns).toEqual([
-      { metric: "git.default_branch_commits" },
       { metric: "git.default_branch_prs_merged", labelSource: "short" },
       lines,
     ]);
@@ -101,8 +98,6 @@ describe("groups registry", () => {
       "git.default_branch_commits",
       "git.default_branch_prs_merged",
     ]) {
-      // The number alone says nothing: "commits that landed" is only readable
-      // against the pool's middle, which is what the peer view carries.
       const views = byKey.get(key)?.views.map((view) => view.view);
       expect(views, key).toEqual(expect.arrayContaining(["period", "peer"]));
     }
@@ -111,10 +106,6 @@ describe("groups registry", () => {
 
 describe("every collection asks for a metric key at most once", () => {
   it("holds for every group", () => {
-    // `/v1/metric-results` refuses a request naming one key twice, and the
-    // refusal is all-or-nothing: a duplicate blanks the whole section rather
-    // than dropping one tile. A merge that appends a key another branch had
-    // already added is exactly how this slips in.
     for (const group of GROUPS) {
       const keys = group.collection.metrics.map((metric) => metric.key);
       expect(new Set(keys).size, `${group.id} names a key twice: ${keys.join(", ")}`).toBe(
@@ -182,5 +173,85 @@ describe("visibleGroups", () => {
     );
 
     expect(groups).toEqual(GROUPS);
+  });
+});
+
+describe("offeredMetricFilter", () => {
+  const gate = (planned: string[], hide: string[] = []) => ({
+    hide: parseNavPaths(hide, "hide"),
+    planned: parseNavPaths(planned, "planned"),
+  });
+  const builtinPerson = (metric_key: string) => ({
+    metric_key,
+    entity_type: "person" as const,
+    origin: "builtin" as const,
+  });
+
+  it("offers a built-in person metric a shown section reads", () => {
+    const offered = offeredMetricFilter(false, gate([]));
+
+    expect(offered(builtinPerson("git.default_branch_prs_created"))).toBe(true);
+  });
+
+  it("withholds a built-in person metric no section reads", () => {
+    const offered = offeredMetricFilter(false, gate([]));
+
+    expect(offered(builtinPerson("git.prs_created"))).toBe(false);
+  });
+
+  it("withholds the metrics of a section the install marks planned", () => {
+    const planned = gate(["zone:person/section:collaboration"]);
+
+    expect(offeredMetricFilter(false, planned)(builtinPerson("collab.messages_sent"))).toBe(
+      false
+    );
+    expect(offeredMetricFilter(true, planned)(builtinPerson("collab.messages_sent"))).toBe(
+      true
+    );
+  });
+
+  it("offers a custom person metric no section reads", () => {
+    const offered = offeredMetricFilter(false, gate([]));
+
+    expect(
+      offered({ metric_key: "custom.velocity", entity_type: "person", origin: "custom" })
+    ).toBe(true);
+  });
+
+  it("withholds a custom metric the install hides", () => {
+    const offered = offeredMetricFilter(false, gate([], ["metric:custom.velocity"]));
+
+    expect(
+      offered({ metric_key: "custom.velocity", entity_type: "person", origin: "custom" })
+    ).toBe(false);
+  });
+
+  it("offers a tenant metric the install does not gate", () => {
+    const offered = offeredMetricFilter(false, gate([]));
+
+    expect(offered({ metric_key: "ci.runs", entity_type: "tenant", origin: "builtin" })).toBe(
+      true
+    );
+  });
+});
+
+describe("commit counts lead no group surface", () => {
+  const COMMITS = "git.default_branch_commits";
+
+  it("on any metric group card", () => {
+    for (const group of GROUPS) {
+      expect(group.card.preview[0], group.id).not.toBe(COMMITS);
+    }
+  });
+
+  it("in the ranking of any drilldown table", () => {
+    for (const group of GROUPS) {
+      for (const block of group.drilldown) {
+        if (!("groupBy" in block)) continue;
+        for (const [dimension, limit] of Object.entries(block.groupBy?.limits ?? {})) {
+          expect(limit.rankBy, `${group.id} ${block.id} by ${dimension}`).not.toBe(COMMITS);
+        }
+      }
+    }
   });
 });

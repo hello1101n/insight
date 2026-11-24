@@ -1,7 +1,3 @@
-/**
- * The debounce contract: the value holds until the pause, then snaps to the
- * latest — intermediate keystrokes never surface.
- */
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

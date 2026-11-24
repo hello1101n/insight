@@ -10,7 +10,7 @@ Runs the full test cycle for a connector.
 ## Prerequisites
 
 - Connector package exists at `CONNECTOR_DIR`
-- Tenant credentials configured in `connections/<tenant>.yaml`
+- `connections/<tenant>.yaml` with `tenant_id`, and the connector's credentials in `secrets/connectors/<name>.yaml`
 
 ## Phase 1: Resolve Tenant
 
@@ -48,7 +48,7 @@ src/ingestion/tests/connectors/.venv/bin/pytest src/ingestion/connectors/CONNECT
 ```
 
 Expected: `CONNECTION_STATUS: SUCCEEDED`
-If fails: check credentials in tenant yaml, show error.
+If fails: check the credentials in `secrets/connectors/<name>.yaml`, show error.
 
 ## Phase 5: Discover Streams
 
@@ -67,7 +67,7 @@ Discovered N streams:
 
 ```bash
 # Generate catalog if missing
-./airbyte-toolkit/generate-catalog.sh CONNECTOR_NAME <tenant>
+./tools/declarative-connector/generate-catalog.sh CONNECTOR_NAME <tenant>
 
 # Read data
 ./tools/declarative-connector/source.sh read CONNECTOR_PATH <tenant>
@@ -78,6 +78,7 @@ Parse output and verify:
 - [ ] Every RECORD has `source_id` field (not null, not empty)
 - [ ] Every RECORD has `unique_key` field (not null, not empty)
 - [ ] `unique_key` contains `tenant_id` and `source_id`
+- [ ] Every RECORD of a stream with a cursor carries a non-null value in its `cursor_field` — the destination creates that column NOT NULL, and one null fails every sync attempt. The per-stream script in create.md §5.6 reports it as `null_cursor`; CDK connectors are checked the same way, not only nocode ones.
 - [ ] Expected streams are present in output
 - [ ] Records have expected fields from API
 
@@ -94,13 +95,13 @@ Stream: email_activity (N records)
 
 ## Phase 7: Verify Schema Completeness
 
-After discover, verify that ALL cursor fields exist in the schema:
+After discover, verify that ALL cursor fields exist in the schema (Phase 6 already checked that every record fills them):
 - For each stream with `incremental_sync`, check that `cursor_field` is in the stream's `json_schema.properties`
 - If missing: the field is from raw API response but not in inline schema → add it to schema and re-test
 
 ```bash
 # Generate schema from real data
-./airbyte-toolkit/generate-schema.sh <name> <tenant>
+./tools/declarative-connector/generate-schema.sh <name> <tenant>
 
 # Compare generated schema with inline schema in manifest
 # Every field in generated schema should be in manifest inline schema
@@ -121,6 +122,7 @@ This prevents ClickHouse destination NPE on deploy.
   tenant_id: PASS (present in all records)
   source_id: PASS (present in all records)
   unique_key: PASS (contains tenant_id + source_id)
+  Cursor:    PASS (no record with a null cursor value)
   Schema:    PASS (all cursor fields present)
 
 Next: /connector deploy <name>

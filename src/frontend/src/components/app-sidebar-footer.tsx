@@ -7,35 +7,23 @@ import { useFeedbackDialog } from "@/components/feedback-context";
 import { personName } from "@/lib/identities/person-display";
 import { SidebarSettings } from "@/components/sidebar-settings";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@gears-frontx/ui-kit";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 import { getInitials } from "@/lib/insight/get-initials";
 import { resolveZoneItem } from "@/lib/portal/nav-model";
-import { usePortalItem } from "@/lib/portal/portal-nav";
-import { useActiveZone } from "@/lib/portal/use-active-zone";
+import { linkTo } from "@/lib/portal/portal-routes";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useIcPerson } from "@/queries/ic-dashboard";
 
-/**
- * Shared footer for the sidebar chrome: What's new, view
- * settings (planned sections), theme switch, and the viewer
- * identity block. The portal's rail and its context pane both mount it, so the
- * settings popover and the pane offer the same controls.
- *
- * `onNavigate` fires for the entries that put something else on screen: what
- * they open renders behind the popover the portal mounts this in, so the opener
- * has to dismiss it. The toggles stay silent — a menu that shut on every flip
- * would need reopening each time.
- */
 export function AppSidebarFooter({
   onNavigate,
   showFeedback = true,
 }: {
   onNavigate?: () => void;
-  /** False where the shell already offers it — the rail has its own slot. */
   showFeedback?: boolean;
 }) {
   const { t } = useTranslation();
@@ -77,8 +65,8 @@ export function AppSidebarFooter({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="cursor-default">
-              <Avatar className="size-8 shrink-0">
-                <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+              <Avatar className="shrink-0">
+                <AvatarFallback>
                   {getInitials(primary) || "?"}
                 </AvatarFallback>
               </Avatar>
@@ -100,11 +88,6 @@ export function AppSidebarFooter({
   );
 }
 
-/**
- * Active state resolves through `resolveZoneItem`, the resolver the context
- * pane and the zone content use: a private comparison disagrees with them on a
- * bare `?zone=manage` and on a `?zone=` stranded by a person route.
- */
 function MenuEntry({
   surface,
   icon: Icon,
@@ -116,21 +99,15 @@ function MenuEntry({
   label: string;
   onNavigate?: () => void;
 }) {
-  const { activeZone } = useActiveZone();
-  const item = resolveZoneItem(activeZone, usePortalItem());
+  const { zone, item: picked } = useNavLocation();
+  const item = resolveZoneItem(zone, picked);
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        isActive={activeZone === "manage" && item === surface}
+        isActive={zone === "manage" && item === surface}
         render={
-          // `acct` is cleared, not omitted: `retainSearchParams` restores
-          // any portal key ABSENT from the target search.
-          <Link
-            to="/portal"
-            search={{ zone: "manage", item: surface, acct: undefined }}
-            onClick={onNavigate}
-          />
+          <Link {...linkTo({ zone: "manage", item: surface })} onClick={onNavigate} />
         }
       >
         <Icon />

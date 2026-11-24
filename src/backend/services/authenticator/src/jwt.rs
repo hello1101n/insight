@@ -1,54 +1,30 @@
-//! JWT Issuer, Key Store, and JWKS (§3.8 claim contract, DESIGN 3.10).
-//!
-//! **§9.6 decision — ES256.** The gateway JWT is signed ES256 (ECDSA P-256 /
-//! SHA-256): 64-byte signatures + fast verify, and the downstream verifier
-//! (`cf-gears-oidc-authn-plugin`, whose JWKS goes through `jsonwebtoken`'s
-//! EC-capable `JwkSet`) validates EC keys natively. Keys are a plain mounted
-//! directory (`signing_keys_path`): `current.pem` (PKCS#8 EC P-256 private key,
-//! required) and optional `previous.pem` for the rotation overlap. The `kid` is
-//! the RFC 7638 JWK thumbprint — stable, needs no manifest. Rotation = drop a
-//! new `current.pem` and re-read (or roll pods).
-
 use std::path::Path;
 
 use anyhow::Context as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use p256::SecretKey;
-use p256::elliptic_curve::sec1::ToSec1Point as _;
-use p256::pkcs8::DecodePrivateKey as _;
+use jsonwebtoken::{Algorithm, Header};
+#[cfg(test)]
+use jsonwebtoken::{DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
+use toolkit_security::crypto::hash::Sha256;
+use toolkit_security::crypto::signature::EcdsaP256KeyPair;
 
-/// The gateway JWT claim set (§3.8). Serializes to the wire claims verbatim.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayClaims {
-    /// Internal `person_id` (a UUID), or a service's UUID for service tokens.
     pub sub: String,
-    /// The single tenant this token is scoped to (UUID). The only tenant
-    /// authority — downstream reads it as `subject_tenant_id`.
     pub tenant_id: String,
-    /// Access-control roles (default `["user"]` until the permissions service;
-    /// service tokens include `"service"`). Serialized on the wire as a single
-    /// space-delimited string (OAuth `scope` convention): the downstream
+    /// Serialized as one space-delimited string (OAuth `scope` convention): the downstream
     /// verifier (`cf-gears-oidc-authn-plugin`) reads `token_scopes` via
     /// `as_str().split_whitespace()`, so a JSON array would be dropped.
     #[serde(with = "space_delimited")]
     pub roles: Vec<String>,
-    /// Subject type — `"user"` for people, `"service"` for service tokens.
     pub sub_type: String,
-    /// Stable session id (UUIDv7) — survives cookie rotation.
     pub sid: String,
-    /// Gateway origin issuer URL.
     pub iss: String,
-    /// Audience — `internal-services`.
     pub aud: String,
-    /// Issued-at (epoch seconds).
     pub iat: u64,
-    /// Expiry (epoch seconds), clamped to the session absolute cap.
     pub exp: u64,
-    /// Unique token id (UUIDv7) — replay/audit correlation.
     pub jti: String,
 }
 
@@ -68,29 +44,25 @@ pub struct McpAccessClaims {
     pub jti: String,
 }
 
-/// One loaded signing key: its `kid`, the signer, the public JWK, and a matching
-/// verifier (used by the JWKS-verify path and tests).
 struct LoadedKey {
     kid: String,
-    encoding: EncodingKey,
-    // Read by `KeyStore::verify` (unit-tested; downstream services verify via
-    // the published JWKS rather than this in-process path).
-    #[allow(dead_code)]
+    signing: EcdsaP256KeyPair,
+    #[cfg(test)]
     decoding: DecodingKey,
     jwk: serde_json::Value,
 }
 
 impl LoadedKey {
-    /// Load from a PKCS#8 EC P-256 private-key PEM.
     fn from_pkcs8_pem(pem: &str) -> anyhow::Result<Self> {
-        let secret = SecretKey::from_pkcs8_pem(pem)
+        let signing = EcdsaP256KeyPair::from_pkcs8_pem(pem)
             .context("parse PKCS#8 EC P-256 private key (expected an ES256 signing key)")?;
-        let public = secret.public_key();
 
         // Uncompressed SEC1 point: 0x04 || X(32) || Y(32).
-        let point = public.to_sec1_point(false);
-        let x = point.x().context("EC public key missing X coordinate")?;
-        let y = point.y().context("EC public key missing Y coordinate")?;
+        let point = signing.public_key();
+        let (x, y) = point
+            .get(1..)
+            .context("EC public key is not an uncompressed point")?
+            .split_at(32);
         let x_b64 = B64.encode(x);
         let y_b64 = B64.encode(y);
 
@@ -106,15 +78,12 @@ impl LoadedKey {
             "kid": kid,
         });
 
-        let encoding = EncodingKey::from_ec_pem(pem.as_bytes())
-            .context("build ES256 encoding key from PEM")?;
-        let decoding = DecodingKey::from_ec_components(&x_b64, &y_b64)
-            .context("build ES256 decoding key from EC components")?;
-
         Ok(Self {
             kid,
-            encoding,
-            decoding,
+            signing,
+            #[cfg(test)]
+            decoding: DecodingKey::from_ec_components(&x_b64, &y_b64)
+                .context("build ES256 decoding key from EC components")?,
             jwk,
         })
     }
@@ -130,17 +99,12 @@ fn jwk_thumbprint_es256(x_b64: &str, y_b64: &str) -> String {
     B64.encode(digest)
 }
 
-/// Loads the signing keys and serves both signing and JWKS.
 pub struct KeyStore {
     current: LoadedKey,
     previous: Option<LoadedKey>,
 }
 
 impl KeyStore {
-    /// Load `current.pem` (required) and optional `previous.pem` from `dir`.
-    ///
-    /// # Errors
-    /// Fails when `current.pem` is missing or not a valid PKCS#8 EC P-256 key.
     pub fn load(dir: &Path) -> anyhow::Result<Self> {
         let current_path = dir.join("current.pem");
         let current_pem = std::fs::read_to_string(&current_path).with_context(|| {
@@ -163,7 +127,6 @@ impl KeyStore {
         Ok(Self { current, previous })
     }
 
-    /// The JWKS document: current key first, then previous during an overlap.
     #[must_use]
     pub fn jwks(&self) -> serde_json::Value {
         let mut keys = vec![self.current.jwk.clone()];
@@ -173,16 +136,7 @@ impl KeyStore {
         serde_json::json!({ "keys": keys })
     }
 
-    /// Sign `claims` with the current key.
-    ///
-    /// # Errors
-    /// Fails when `claims.tenant_id` is empty (the tenant invariant), or on an
-    /// internal serialization/signing error.
     pub fn sign(&self, claims: &GatewayClaims) -> anyhow::Result<String> {
-        // Invariant: never mint a gateway JWT without a tenant. `tenant_id` is
-        // the sole tenant authority downstream, which fails closed without it,
-        // so a tenant-less token is useless — refuse it at the one chokepoint
-        // every mint path (login, reissue, service tokens) goes through.
         anyhow::ensure!(
             !claims.tenant_id.trim().is_empty(),
             "refusing to sign a gateway JWT with an empty tenant_id (sub={})",
@@ -190,7 +144,8 @@ impl KeyStore {
         );
         let mut header = Header::new(Algorithm::ES256);
         header.kid = Some(self.current.kid.clone());
-        encode(&header, claims, &self.current.encoding).context("sign gateway JWT")
+        toolkit_security::jwt::encode(&header, claims, &self.current.signing)
+            .context("sign gateway JWT")
     }
 
     pub fn sign_mcp_access_token(&self, claims: &McpAccessClaims) -> anyhow::Result<String> {
@@ -200,10 +155,10 @@ impl KeyStore {
         );
         let mut header = Header::new(Algorithm::ES256);
         header.kid = Some(self.current.kid.clone());
-        encode(&header, claims, &self.current.encoding).context("sign MCP access token")
+        toolkit_security::jwt::encode(&header, claims, &self.current.signing)
+            .context("sign MCP access token")
     }
 
-    /// Build a store directly from a PKCS#8 PEM (tests only).
     #[cfg(test)]
     pub(crate) fn from_pem_for_test(current_pem: &str) -> anyhow::Result<Self> {
         Ok(Self {
@@ -212,22 +167,16 @@ impl KeyStore {
         })
     }
 
-    /// Verify a gateway JWT against current, then previous, key.
-    ///
-    /// Validates the signature, `exp`, and `aud`. Used by the JWKS-verify e2e
-    /// path and unit tests; downstream services verify independently via JWKS.
-    ///
-    /// # Errors
-    /// Fails when the token verifies against no held key.
-    #[allow(dead_code)] // exercised by unit tests; kept as the in-process verify path
-    pub fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
+    #[cfg(test)]
+    fn verify(&self, token: &str, audience: &str) -> anyhow::Result<GatewayClaims> {
         let mut validation = Validation::new(Algorithm::ES256);
         validation.set_audience(&[audience]);
         validation.validate_exp = true;
 
         let mut last_err = None;
         for key in std::iter::once(&self.current).chain(self.previous.iter()) {
-            match decode::<GatewayClaims>(token, &key.decoding, &validation) {
+            match toolkit_security::jwt::decode::<GatewayClaims>(token, &key.decoding, &validation)
+            {
                 Ok(data) => return Ok(data.claims),
                 Err(e) => last_err = Some(e),
             }
@@ -239,9 +188,6 @@ impl KeyStore {
     }
 }
 
-/// Serde adapter: represent `Vec<String>` as one space-delimited string on the
-/// wire (the OAuth `scope` shape the downstream verifier's `token_scopes`
-/// mapping expects). Empty roles serialize to `""` and split back to `[]`.
 mod space_delimited {
     use serde::{Deserialize as _, Deserializer, Serializer};
 
@@ -289,7 +235,6 @@ mod tests {
         let store = KeyStore::from_pem_for_test(&gen_pem()).unwrap();
         let jwt = store.sign(&sample_claims()).unwrap();
 
-        // Header advertises ES256 + a kid.
         let header = jsonwebtoken::decode_header(&jwt).unwrap();
         assert_eq!(header.alg, Algorithm::ES256);
         assert!(header.kid.is_some());
@@ -304,7 +249,6 @@ mod tests {
 
     #[test]
     fn sign_refuses_empty_tenant() {
-        // The invariant: no gateway JWT is ever minted without a tenant.
         let store = KeyStore::from_pem_for_test(&gen_pem()).unwrap();
         let mut claims = sample_claims();
         claims.tenant_id = String::new();
@@ -321,13 +265,9 @@ mod tests {
 
     #[test]
     fn roles_serialize_as_space_delimited_string() {
-        // The downstream verifier reads `token_scopes` via
-        // `as_str().split_whitespace()`, so `roles` must be a STRING on the
-        // wire, not a JSON array — else scopes are silently dropped.
         let json = serde_json::to_value(sample_claims()).unwrap();
         assert_eq!(json["roles"], serde_json::json!("user admin"));
 
-        // And it round-trips back to the Vec model.
         let back: GatewayClaims = serde_json::from_value(json).unwrap();
         assert_eq!(back.roles, vec!["user", "admin"]);
     }
@@ -351,6 +291,32 @@ mod tests {
         assert!(key["kid"].as_str().is_some_and(|k| !k.is_empty()));
         assert!(key["x"].as_str().is_some());
         assert!(key["y"].as_str().is_some());
+    }
+
+    #[test]
+    fn published_jwk_verifies_tokens_independently_of_the_facade() {
+        use p256::elliptic_curve::sec1::ToSec1Point as _;
+        use p256::pkcs8::DecodePrivateKey as _;
+        let pem = gen_pem();
+        let store = KeyStore::from_pem_for_test(&pem).unwrap();
+        let jwks = store.jwks();
+        let jwk = &jwks["keys"][0];
+
+        let point = p256::SecretKey::from_pkcs8_pem(&pem)
+            .unwrap()
+            .public_key()
+            .to_sec1_point(false);
+        assert_eq!(jwk["x"], B64.encode(point.x().unwrap()));
+        assert_eq!(jwk["y"], B64.encode(point.y().unwrap()));
+
+        let set: jsonwebtoken::jwk::JwkSet = serde_json::from_value(jwks.clone()).unwrap();
+        let key = DecodingKey::from_jwk(&set.keys[0]).unwrap();
+        let mut validation = Validation::new(Algorithm::ES256);
+        validation.set_audience(&["internal-services"]);
+        let jwt = store.sign(&sample_claims()).unwrap();
+        let data = jsonwebtoken::decode::<GatewayClaims>(&jwt, &key, &validation).unwrap();
+        assert_eq!(data.claims.sub, "person-123");
+        assert_eq!(data.header.kid.as_deref(), jwk["kid"].as_str());
     }
 
     #[test]

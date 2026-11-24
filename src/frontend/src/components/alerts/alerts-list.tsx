@@ -21,7 +21,6 @@ import {
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { alertPagesQuery, useDeleteAlert } from "@/queries/alerts";
 
-/** Long enough that a word is typed before the service hears about it. */
 const SEARCH_DEBOUNCE_MS = 400;
 
 export function AlertsList() {
@@ -56,7 +55,7 @@ export function AlertsList() {
           size="sm"
           icon={<Plus />}
           nativeButton={false}
-          render={<Link to="/portal/custom/alerts/new" />}
+          render={<Link to="/dashboards/alerts/new" />}
         >
           New alert
         </Button>
@@ -71,7 +70,7 @@ function AlertCard({ alert }: { alert: AlertSummary }) {
   return (
     <CardFrame
       title={alert.name}
-      open={{ to: "/portal/custom/alerts/$id", params: { id: alert.id } }}
+      open={{ to: "/dashboards/alerts/$id", params: { id: alert.id } }}
       icon={Bell}
       facts={[<MetricName key="metric" id={alert.metric} />]}
       control={
@@ -102,7 +101,6 @@ function AlertMenu({ alert }: { alert: AlertSummary }) {
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${alert.name}`}
               icon={<Ellipsis />}
             />
@@ -111,7 +109,7 @@ function AlertMenu({ alert }: { alert: AlertSummary }) {
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem
             onClick={() =>
-              void navigate({ to: "/portal/custom/alerts/$id", params })
+              void navigate({ to: "/dashboards/alerts/$id", params })
             }
           >
             <Eye />
@@ -119,7 +117,7 @@ function AlertMenu({ alert }: { alert: AlertSummary }) {
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() =>
-              void navigate({ to: "/portal/custom/alerts/$id/edit", params })
+              void navigate({ to: "/dashboards/alerts/$id/edit", params })
             }
           >
             <Pencil />

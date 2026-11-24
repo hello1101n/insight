@@ -1,11 +1,12 @@
 import { useMemo, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useViewer } from "@/auth";
 import { DomainLensView, Pending } from "@/components/portal/domain-lens-view";
 import { HomeDashboards } from "@/components/portal/home-dashboards";
 import { MetricGroupsView } from "@/components/portal/metric-groups-view";
-import { OwnCoverage } from "@/components/portal/own-coverage";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
+import { resolveText, type DisplayText } from "@/i18n/localized-text";
 import { visibleGroups, type GroupId } from "@/lib/insight/groups";
 import { homeItemShown, useHomeSubject } from "@/lib/portal/home-subject";
 import { zoneById } from "@/lib/portal/nav-model";
@@ -19,17 +20,11 @@ import {
   overviewMetricKeys,
 } from "@/lib/portal/overview-configs";
 
-/**
- * Home and the Overview items, each read for the viewer alone or for their
- * team (`useHomeSubject`). The team grid fetch is zone-scoped (union across
- * all items) so switching items never re-spins the loading gate.
- */
 export function OverviewView({ item }: { item: string | null }) {
+  const { t } = useTranslation();
   const gridKeys = useMemo(() => overviewMetricKeys(), []);
   const { subject, isPending } = useHomeSubject();
   const asked = item ?? DEFAULT_OVERVIEW_ITEM;
-  // A manager's Home would otherwise open on their own view, then switch to
-  // the team's once their reach is known.
   if (isPending) {
     return (
       <CenteredSpinner
@@ -52,7 +47,7 @@ export function OverviewView({ item }: { item: string | null }) {
         data-testid="page-overview-at-a-glance"
         className="@container flex flex-col gap-6 p-4 md:p-6"
       >
-        <h1 className={TEXT_TITLE}>Home</h1>
+        <h1 className={TEXT_TITLE}>{t("overview.home")}</h1>
         <HomeDashboards />
         {subject === "me" ? <OwnGlance /> : null}
         {subject === "team" && rollup ? (
@@ -65,7 +60,7 @@ export function OverviewView({ item }: { item: string | null }) {
 
   const entry = OVERVIEW_ITEMS[shown];
   if (!entry) {
-    return <Pending label={`“${item}” isn't an Overview view yet.`} />;
+    return <Pending label={t("overview.not_a_view", { item })} />;
   }
   return (
     <DomainLensView
@@ -77,16 +72,17 @@ export function OverviewView({ item }: { item: string | null }) {
 }
 
 function OwnItem({ item }: { item: string }) {
+  const { t } = useTranslation();
   const { personId } = useViewer();
   const openSection = useOpenOwnSection();
   const groupIds = useVisibleGroupIds();
   const own = OWN_OVERVIEW_ITEMS[item];
 
   if (!own || own.kind === "home") {
-    return <Pending label={`“${item}” isn't an Overview view yet.`} />;
+    return <Pending label={t("overview.not_a_view", { item })} />;
   }
   if (!personId) {
-    return <Pending label="There is no person record to show here." />;
+    return <Pending label={t("overview.no_person")} />;
   }
 
   switch (own.kind) {
@@ -110,12 +106,6 @@ function OwnItem({ item }: { item: string }) {
           />
         </OwnThemePage>
       );
-    case "coverage":
-      return (
-        <OwnThemePage item={item} title={own.title} tagline={own.tagline}>
-          <OwnCoverage personId={personId} onOpenSection={openSection} />
-        </OwnThemePage>
-      );
   }
 }
 
@@ -126,18 +116,19 @@ function OwnThemePage({
   children,
 }: {
   item: string;
-  title: string;
-  tagline: string;
+  title: DisplayText;
+  tagline: DisplayText;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid={`page-overview-${item}`}
       className="flex flex-col gap-6 p-4 md:p-6"
     >
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground">{tagline}</p>
+        <h1 className="text-lg font-semibold tracking-tight">{resolveText(t, title)}</h1>
+        <p className="text-sm text-muted-foreground">{resolveText(t, tagline)}</p>
       </div>
       {children}
     </div>

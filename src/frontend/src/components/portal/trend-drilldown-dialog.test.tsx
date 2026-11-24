@@ -52,6 +52,13 @@ vi.mock("@/components/metric-evidence-table", () => ({
   },
 }));
 
+vi.mock("@/queries/metric-definitions", () => ({
+  useMetricDefinition: (metricKey: string | null) =>
+    metricKey === "collab.meeting_hours"
+      ? { metric_key: metricKey, format: "decimal", unit: "h" }
+      : null,
+}));
+
 vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
   Dialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -115,7 +122,6 @@ function renderDialog(next: TrendDrilldownState = state) {
   return render(<TrendDrilldownDialog state={next} onClose={vi.fn()} />);
 }
 
-/** What the query would show while a read keyed `previousKey` is replaced. */
 function placeholderAgainst(previousKey: unknown[]): unknown {
   const placeholderData = mocks.queryOptions?.placeholderData as (
     previous: unknown,
@@ -148,8 +154,6 @@ describe("TrendDrilldownDialog", () => {
     >;
   }
 
-  // INVARIANT: one read for the roster. A request per member could only order
-  // and narrow what each answer already held, and a team is many answers.
   it("reads the whole roster in one request", async () => {
     renderDialog();
 
@@ -159,6 +163,11 @@ describe("TrendDrilldownDialog", () => {
       period: state.period,
     });
     expect(mocks.queryMetricDrilldown).toHaveBeenCalledTimes(1);
+  });
+
+  it("numbers its records, as custom tables do", () => {
+    renderDialog();
+    expect(mocks.tableProps?.numbered).toBe(true);
   });
 
   it("announces the order the server actually served", () => {
@@ -174,8 +183,6 @@ describe("TrendDrilldownDialog", () => {
 
     act(() => onSortChange("ref"));
 
-    // The header keeps announcing the order the rows are in; only the request
-    // moves ahead.
     expect(mocks.tableProps?.sort).toEqual({ key: "date", direction: "desc" });
     expect(await requested()).toMatchObject({
       sort: { key: "ref", direction: "asc" },
@@ -194,8 +201,6 @@ describe("TrendDrilldownDialog", () => {
     ).toBe("the rows already on screen");
   });
 
-  // Another chart, another member set, another period: a new question, whose
-  // answer waits for the spinner rather than borrowing the last one's rows.
   it("drops the rows when another chart is opened", () => {
     renderDialog();
     const key = mocks.queryOptions?.queryKey as unknown[];
@@ -208,8 +213,6 @@ describe("TrendDrilldownDialog", () => {
     expect(placeholderAgainst(otherChart)).toBeUndefined();
   });
 
-  // A scope with nobody in it has no records; telling its reader to narrow it
-  // is the opposite of the truth.
   it("says an empty scope is empty, not that it is too wide", () => {
     renderDialog({ ...state, members: [] });
 
@@ -245,7 +248,6 @@ describe("TrendDrilldownDialog", () => {
     expect(retry(1, new AnalyticsApiError(500, {}))).toBe(false);
   });
 
-  // "No records" is a claim about the data, and a read that failed made none.
   it("says nothing could be read rather than that there was nothing", () => {
     mocks.query = readyQuery({ isError: true, data: undefined });
     renderDialog();
@@ -255,8 +257,6 @@ describe("TrendDrilldownDialog", () => {
     );
   });
 
-  // The same claim one step further: the read reached the warehouse and was
-  // told nothing has been built, which says nothing about the window.
   it("says no data yet when the warehouse has not built the records", () => {
     mocks.query = readyQuery({
       data: {
@@ -295,8 +295,6 @@ describe("TrendDrilldownDialog", () => {
     expect(screen.queryByText("evidence table")).not.toBeInTheDocument();
   });
 
-  // A table that stood for only part of a scope would be a different figure
-  // from the one on the chart, silently.
   it("refuses a scope wider than one read can stand behind", () => {
     renderDialog({
       ...state,
@@ -309,13 +307,22 @@ describe("TrendDrilldownDialog", () => {
     expect(screen.getByText(/more than one table can stand behind/)).toBeInTheDocument();
   });
 
-  // A card derived from another metric's rows has no catalog metric to
-  // evidence, so the periods it is built from are all it can show.
   it("shows only the period breakdown for a derived card", () => {
     renderDialog({ ...state, metricKey: null });
 
     expect(screen.queryByText("evidence table")).not.toBeInTheDocument();
     expect(screen.getByText("2026-07-06")).toBeInTheDocument();
+  });
+
+  it("totals a period of hours in hours and minutes", () => {
+    renderDialog({
+      ...state,
+      metricKey: "collab.meeting_hours",
+      label: "Meeting hours",
+      breakdown: [{ date: "2026-07-06", total: 2.75, contributors: ["Ada"] }],
+    });
+
+    expect(screen.getByText("2 h 45 min")).toBeInTheDocument();
   });
 
   it("says so when the chart has no readings to break down", () => {

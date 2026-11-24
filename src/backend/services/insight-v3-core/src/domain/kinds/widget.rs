@@ -1,8 +1,3 @@
-//! What a widget draws, and whether its metric can supply it.
-//!
-//! A widget names columns by the `as_name` its metric gives them, so a name
-//! the metric never produces is a broken definition, not missing data.
-
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -36,6 +31,14 @@ enum Widget {
         x: String,
         y: String,
         #[serde(default)]
+        series: Option<String>,
+        #[serde(default)]
+        #[expect(
+            dead_code,
+            reason = "parsed only to refuse a `labels` that is not a flag"
+        )]
+        labels: bool,
+        #[serde(default)]
         detail: Option<String>,
     },
     Area {
@@ -45,7 +48,6 @@ enum Widget {
         #[serde(default)]
         detail: Option<String>,
     },
-    /// One number, which is what most questions actually answer with.
     Stat {
         metric: String,
         value: String,
@@ -62,7 +64,6 @@ enum Widget {
 }
 
 impl Widget {
-    /// The metric this widget draws.
     fn metric(&self) -> &str {
         match self {
             Self::Table { metric, .. }
@@ -74,8 +75,6 @@ impl Widget {
         }
     }
 
-    /// The metric a reader drills into, when the author named one: the facts
-    /// that went into the figure rather than the figure itself.
     fn detail(&self) -> Option<&str> {
         match self {
             Self::Table { detail, .. }
@@ -87,9 +86,6 @@ impl Widget {
         }
     }
 
-    /// The columns a reader narrows the detail by: the group a bar, a slice
-    /// or a row stands for. A table row stands for the groups its metric
-    /// makes, where the table draws them; a stat stands for no group.
     fn narrowing_columns<'w>(&'w self, drawn: &'w MetricQuery) -> Vec<&'w str> {
         match self {
             Self::Line { x, .. } | Self::Bar { x, .. } | Self::Area { x, .. } => vec![x.as_str()],
@@ -105,19 +101,20 @@ impl Widget {
         }
     }
 
-    /// The columns it reads out of that metric's result.
     fn columns(&self) -> Vec<&str> {
         match self {
             Self::Table { columns, .. } => columns.iter().map(String::as_str).collect(),
-            Self::Line { x, y, .. } | Self::Bar { x, y, .. } | Self::Area { x, y, .. } => {
-                vec![x.as_str(), y.as_str()]
-            }
+            Self::Line { x, y, .. } | Self::Area { x, y, .. } => vec![x.as_str(), y.as_str()],
+            Self::Bar { x, y, series, .. } => [Some(x), Some(y), series.as_ref()]
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect(),
             Self::Stat { value, .. } => vec![value.as_str()],
             Self::Pie { label, value, .. } => vec![label.as_str(), value.as_str()],
         }
     }
 
-    /// Refuses a widget whose metric cannot supply what it draws.
     fn check_against(&self, metric: &MetricQuery, clocked: bool) -> Result<(), WidgetError> {
         let available = metric.column_names(clocked);
 
@@ -138,9 +135,6 @@ impl Widget {
         Ok(())
     }
 
-    /// Refuses a detail metric that cannot be narrowed to what the widget
-    /// draws: a reader who clicks one bar is shown that bar's rows, which
-    /// takes the bar's column in the detail as well.
     fn check_detail_against(
         &self,
         drawn: &MetricQuery,
@@ -170,7 +164,8 @@ pub(crate) enum WidgetError {
     #[error(
         "a widget needs a metric, a type of `table`, `line`, `bar`, `area`, `stat` or `pie`, \
          and the columns that type draws: columns for a table, x and y for a line, bar or \
-         area, value for a stat, label and value for a pie"
+         area, value for a stat, label and value for a pie; a bar may add a `series` column \
+         to stack by and `labels: true` to print each bar's total"
     )]
     Shape(#[from] serde_json::Error),
     #[error("`{column}` is not a column of metric `{metric}`; its columns are: {available}")]
@@ -192,10 +187,6 @@ pub(crate) enum WidgetError {
     },
 }
 
-/// Checks a widget against the metric it draws.
-///
-/// The metric is read because a widget names the columns that metric produces,
-/// and naming one it does not is the mistake this catches.
 pub(crate) async fn check(
     body: &Value,
     definitions: &dyn Lookup,
@@ -232,7 +223,6 @@ pub(crate) async fn check(
         .map_err(KindError::Widget)
 }
 
-/// A stored metric, read as one, or the refusal that there is none.
 async fn stored_metric(named: &str, definitions: &dyn Lookup) -> Result<MetricQuery, KindError> {
     let name = DefinitionId::parse(named)
         .map_err(|_| KindError::Widget(WidgetError::NoMetric(named.to_owned())))?;
@@ -246,11 +236,6 @@ async fn stored_metric(named: &str, definitions: &dyn Lookup) -> Result<MetricQu
     serde_json::from_value(stored).map_err(|error| KindError::Widget(error.into()))
 }
 
-/// Whether a windowed run of this metric has a date to bucket by, and so
-/// whether it produces a `bucket` column at all.
-///
-/// A metric over a dataset may name no date and inherit the dataset's, so the
-/// metric body alone cannot answer it.
 async fn clocked(metric: &MetricQuery, datasets: &dyn Datasets) -> bool {
     let Some(named) = metric.dataset() else {
         return metric.has_clock().unwrap_or(false);
@@ -265,21 +250,16 @@ async fn clocked(metric: &MetricQuery, datasets: &dyn Datasets) -> bool {
 
 const METRIC_KEYS: [&str; 2] = ["metric", "detail"];
 
-/// The metric a widget draws, when its body names one readably.
 pub(crate) fn drawn_metric(body: &Value) -> Option<&str> {
     body.get("metric")?.as_str()
 }
 
-/// The metric a reader drills into: the widget's detail, else the metric it
-/// draws.
 pub(crate) fn drilled_metric(body: &Value) -> Option<&str> {
     body.get("detail")
         .and_then(Value::as_str)
         .or_else(|| drawn_metric(body))
 }
 
-/// The metrics a widget draws and drills into, when its body names them
-/// readably. One metric named twice is one reference.
 pub(crate) fn refers_to(body: &Value) -> Vec<Reference> {
     let mut named = Vec::new();
 
@@ -296,7 +276,6 @@ pub(crate) fn refers_to(body: &Value) -> Vec<Reference> {
     named
 }
 
-/// The same widget, drawing and drilling into `to` where it named `from`.
 pub(crate) fn rename_reference(mut body: Value, from: &str, to: &str) -> Value {
     for key in METRIC_KEYS {
         if body.get(key).and_then(Value::as_str) == Some(from) {

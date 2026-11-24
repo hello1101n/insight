@@ -1,4 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
@@ -18,7 +19,6 @@ import type { MetricFamily } from "@/lib/reports/families";
 import { cn } from "@/lib/utils";
 import { TEXT_EYEBROW } from "@/lib/type-scale";
 
-import styles from "./report-builder-metrics.module.css";
 
 const ALL_FAMILIES = "all";
 
@@ -37,6 +37,7 @@ export function ReportMetricPicker({
   selected,
   setSelected,
 }: ReportMetricPickerProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [pickedFamily, setPickedFamily] = useState(ALL_FAMILIES);
   const activeFamily =
@@ -62,7 +63,7 @@ export function ReportMetricPicker({
 
   if (families.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="p-4 text-sm text-muted-foreground">
         No metrics are available for this scope.
       </p>
     );
@@ -72,27 +73,21 @@ export function ReportMetricPicker({
     <div className="flex flex-col">
       <div className="flex flex-col gap-3 pt-3">
         <div className="px-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search metrics"
-              aria-label="Search metrics"
-              className="ps-8"
-            />
-          </div>
+          <Input
+            type="search"
+            icon={<Search />}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("reports.search_metrics")}
+            aria-label={t("reports.search_metrics")}
+          />
         </div>
         <Tabs
           value={activeFamily}
           onValueChange={(value) => setPickedFamily(String(value))}
         >
           <div className="flex overflow-x-auto overflow-y-hidden border-b px-4">
-            <TabsList
-              variant="line"
-              className={cn("w-max", styles.tabsList)}
-            >
+            <TabsList variant="line" className="w-max">
               <FamilyTab
                 value={ALL_FAMILIES}
                 label="All metrics"
@@ -212,53 +207,51 @@ function MetricFamilyGroup({
       <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-2 xl:grid-cols-3">
         {visibleMetrics.map((metric) => {
           const checked = selected.includes(metric.metric_key);
-          return (
-            <Tooltip key={metric.metric_key}>
-              <TooltipTrigger
-                render={
-                  <label
-                    htmlFor={`report-${metric.metric_key}`}
-                    title={metric.reason ?? undefined}
-                    className={cn(
-                      "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm",
-                      metric.reason
-                        ? "text-muted-foreground"
-                        : "cursor-pointer hover:bg-muted",
-                      checked && "bg-primary/5 font-medium"
-                    )}
-                  >
-                    <Checkbox
-                      id={`report-${metric.metric_key}`}
-                      checked={checked}
-                      disabled={metric.reason != null}
-                      onCheckedChange={() =>
-                        setSelected((current) =>
-                          checked
-                            ? current.filter((key) => key !== metric.metric_key)
-                            : [...current, metric.metric_key]
-                        )
-                      }
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      {metric.label}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="shrink-0 text-xs text-muted-foreground uppercase"
-                    >
-                      {metricTag(metric)}
-                    </span>
-                  </label>
+          const row = (
+            <label
+              key={metric.metric_key}
+              htmlFor={`report-${metric.metric_key}`}
+              className={cn(
+                "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm",
+                metric.reason
+                  ? "text-muted-foreground"
+                  : "cursor-pointer hover:bg-muted",
+                checked && "bg-primary/5 font-medium"
+              )}
+            >
+              <Checkbox
+                id={`report-${metric.metric_key}`}
+                checked={checked}
+                disabled={metric.reason != null}
+                onCheckedChange={() =>
+                  setSelected((current) =>
+                    checked
+                      ? current.filter((key) => key !== metric.metric_key)
+                      : [...current, metric.metric_key]
+                  )
                 }
               />
+              <span className="min-w-0 flex-1 truncate" title={metric.label}>
+                {metric.label}
+              </span>
+              <span
+                aria-hidden="true"
+                className="shrink-0 text-xs text-muted-foreground uppercase"
+              >
+                {metricTag(metric)}
+              </span>
+            </label>
+          );
+          if (metric.reason == null) return row;
+
+          return (
+            <Tooltip key={metric.metric_key}>
+              <TooltipTrigger render={row} />
               <TooltipContent
                 side="top"
-                className="max-w-xs text-xs leading-relaxed"
+                className="max-w-xs"
               >
-                {metric.reason ??
-                  metric.description ??
-                  metric.explanation ??
-                  metric.label}
+                {metric.reason}
               </TooltipContent>
             </Tooltip>
           );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -10,12 +11,11 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import {
   groupFlagsByTheme,
   type AttentionFlag,
 } from "@/lib/insight/attention-flags";
-import { usePortalNavActions } from "@/lib/portal/portal-nav";
 import { cn } from "@/lib/utils";
 
 const FLAG_ICON = {
@@ -35,15 +35,11 @@ function people(n: number): string {
 }
 
 function PersonRow({ flag }: { flag: AttentionFlag }) {
-  const { setZone } = usePortalNavActions();
   const Icon = FLAG_ICON[iconKey(flag)];
   return (
     <Link
-      to="/ic/$person/personal"
+      to="/people/$person"
       params={{ person: flag.personId }}
-      // A pinned theme zone (Overview, Manage) wins over the route in
-      // `useActiveZone` — clear it so the navigation lands on the Person zone.
-      onClick={() => setZone(null)}
       className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors hover:bg-muted"
     >
       <Icon
@@ -67,7 +63,6 @@ function PersonRow({ flag }: { flag: AttentionFlag }) {
   );
 }
 
-/** People listed inside an opened metric before the rest wait behind "+N more". */
 const PEOPLE_PER_THEME = 12;
 
 function MoreButton({
@@ -103,8 +98,6 @@ function Theme({
   const [all, setAll] = useState(false);
   const shown = all ? flags : flags.slice(0, PEOPLE_PER_THEME);
   return (
-    // Clipping keeps the header fill inside the border's inner radius, which is
-    // the outer radius minus the border width.
     <div className="overflow-hidden rounded-lg border bg-card">
       <button
         type="button"
@@ -141,11 +134,6 @@ function Theme({
   );
 }
 
-/**
- * What stands out this period, gathered by the metric it is about.
- *
- * Used by the team-state roster and the org overview.
- */
 export function AttentionList({
   flags,
   summary,
@@ -153,20 +141,20 @@ export function AttentionList({
 }: {
   flags: AttentionFlag[];
   summary: string;
-  /** Metrics listed before the rest wait behind "+N more". */
   max?: number;
 }) {
+  const { t } = useTranslation();
   const [allThemes, setAllThemes] = useState(false);
   const themes = groupFlagsByTheme(flags);
   const shownThemes = allThemes ? themes : themes.slice(0, max);
   return (
     <section className="flex flex-col gap-3">
       <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-        Needs attention
+        {t("worth_a_look.title")}
       </p>
 
       <Card>
-        <CardContent className="p-3 text-sm">{summary}</CardContent>
+        <CardContent>{summary}</CardContent>
       </Card>
 
       {themes.length > 0 ? (
@@ -189,7 +177,7 @@ export function AttentionList({
         </div>
       ) : (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-          Nothing stands out this period.
+          {t("worth_a_look.nothing_stands_out")}
         </div>
       )}
     </section>

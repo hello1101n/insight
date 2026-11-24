@@ -1,8 +1,3 @@
-/**
- * The two things this file exists to pin are the two that were got wrong
- * before: buckets must be read as UTC regardless of where the reader sits, and
- * a log axis must leave room under the smallest possible bar.
- */
 import { describe, expect, it } from "vitest";
 
 import type { IngestionPoint } from "@/api/ingestion-client";
@@ -29,16 +24,12 @@ function point(bucket: string, key: string, rows: number): IngestionPoint {
 
 describe("bucket timestamps are UTC", () => {
   it("reads a zone-less server bucket as UTC, not as local time", () => {
-    // The server emits `YYYY-MM-DD HH:MM:SS` with no marker. `Date.parse` of
-    // that shape is LOCAL, which would slide every bar by the reader's offset.
     expect(bucketToEpoch("2026-08-26 14:30:00")).toBe(
       Date.parse("2026-08-26T14:30:00Z"),
     );
   });
 
   it("reads the millisecond form the 1s grain emits", () => {
-    // toStartOfSecond() over a DateTime64(3) stringifies WITH milliseconds,
-    // while toStartOfInterval() at 15 minutes does not. Both reach this parser.
     expect(bucketToEpoch("2026-08-26 14:30:45.000")).toBe(
       Date.parse("2026-08-26T14:30:45Z"),
     );
@@ -55,8 +46,6 @@ describe("bucket timestamps are UTC", () => {
   });
 
   it("labels an instant that falls on a different local day", () => {
-    // Late-UTC instants are the previous or next day in many zones; the label
-    // must name the UTC one either way.
     expect(formatUtcBucket(Date.parse("2026-08-26T23:45:00Z"), "15m")).toBe(
       "26 Aug 23:45",
     );
@@ -68,8 +57,6 @@ describe("bucket timestamps are UTC", () => {
 
 describe("the log axis leaves room for a single row", () => {
   it("floors below one, so a one-row bucket has height", () => {
-    // A bar is drawn from the axis minimum: a floor of exactly 1 gives every
-    // one-row bucket zero height and the sparse tail disappears.
     expect(LOG_FLOOR).toBeLessThan(1);
     expect(LOG_FLOOR).toBeGreaterThan(0);
   });
@@ -91,8 +78,6 @@ describe("colour follows the entity", () => {
   });
 
   it("does not move when the neighbouring set changes", () => {
-    // The whole point: a connector keeps its swatch when the window changes,
-    // when a neighbour stops ingesting, and across the two pages.
     const alone = seriesColorVar("bamboohr");
     const crowded = totalsByKey([
       point("2026-08-26 00:00:00", "bamboohr", 1),
@@ -102,10 +87,6 @@ describe("colour follows the entity", () => {
   });
 
   it("resolves to a palette slot that exists", () => {
-    // index.css defines --chart-1 … --chart-12 and repeats them in the
-    // dark-mode block. An index past 12 is an undefined var(), which paints the
-    // band the fallback colour instead of failing loudly — so the ceiling is
-    // asserted over enough keys to catch a wrong PALETTE_SIZE.
     const keys = [
       "jira", "slack", "zoom", "_boards", "m365", "cursor", "bamboohr",
       "confluence", "bitbucket_cloud", "claude_enterprise", "demo_tasks",
@@ -138,8 +119,6 @@ describe("pivoting flat points into stackable rows", () => {
   });
 
   it("leaves an unextracted bucket absent rather than zero-filled", () => {
-    // The charts plot a numeric time axis, so a missing bucket is a gap. A
-    // filled zero would also mean inventing rows for the widest window.
     const { rows } = pivotIntensity(points);
     expect(rows.map((row) => row.epoch)).toEqual([
       Date.parse("2026-08-26T00:00:00Z"),
@@ -201,7 +180,6 @@ describe("naming", () => {
 
   it("names the single band of a total read", () => {
     expect(bandLabel("all", "total")).toBe("All connectors");
-    // `all` is only special for a total read — a connector could be called that.
     expect(bandLabel("all", "connector")).toBe("all");
     expect(bandLabel("jira", "connector")).toBe("jira");
   });
@@ -209,8 +187,6 @@ describe("naming", () => {
 
 describe("the lookback bound", () => {
   it("anchors to the start of a UTC day, not to the instant", () => {
-    // Stable for a whole day, so a chart refetching every minute asks for the
-    // same window instead of sliding it.
     const midMorning = Date.parse("2026-08-26T09:41:17Z");
     const lateEvening = Date.parse("2026-08-26T23:59:59Z");
     expect(lookbackFrom(midMorning, 30)).toBe("2026-07-27T00:00:00.000Z");
@@ -220,9 +196,6 @@ describe("the lookback bound", () => {
 
 describe("the plotted domain", () => {
   it("widens by half a bucket so an edge bar is not clipped", () => {
-    // A bar on a numeric axis is centred on its value: without the padding the
-    // first and last buckets each lose half their width off the plot, and the
-    // first one overlaps the y-axis labels.
     const half = bucketMs("15m") / 2;
     expect(
       paddedDomain("2026-08-26T00:00:00Z", "2026-08-26T01:00:00Z", "15m"),

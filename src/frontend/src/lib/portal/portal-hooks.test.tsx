@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Hook-level tests for the small portal hooks that glue viewer identity,
- * router state and the portal store together: useActiveZone,
- * useViewerIsManager, usePersonCohort and the useOrgScope wrapper.
- * Identity/auth/router dependencies are stubbed at the module boundary;
- * assertions are about the derived semantics, not the wiring.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityPerson } from "@/types/insight";
 import { portalRouter } from "@/test/portal-router";
 
-// Person ids are canonical UUIDs since the identity cutover (see
-// `lib/metrics/entity.ts`); the fixtures use real UUID shapes so a test can
-// never pass on a value the route guard and the metrics API would reject.
 const BOSS = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-1111-4111-8111-111111111111";
 const B = "bbbbbbbb-1111-4111-8111-111111111111";
@@ -47,8 +37,6 @@ vi.mock("@/auth", () => ({
   useViewer: () => ({ email: "viewer@x", personId: mocks.personId }),
 }));
 vi.mock("@/queries/ic-dashboard", () => ({ useIcPerson: () => mocks.ic }));
-// `useOrgScope` reads the deployment's visibility policy, and its flat branch
-// reads the roster. This suite is about the view, so both answer statically.
 vi.mock("@/queries/identity-me", () => ({
   useVisibilityPolicy: () => ({
     policy: "org_chart",
@@ -59,8 +47,6 @@ vi.mock("@/queries/identity-me", () => ({
 vi.mock("@/queries/visible-roster", () => ({
   useVisibleRoster: () => mocks.roster,
 }));
-// Only the request is stubbed; `useMetricDefinitionsResponse` itself runs, so
-// a cohort built from an attribute the catalog does not offer fails here.
 vi.mock("@/api/metric-definitions-client", () => ({
   listMetricDefinitions: () => Promise.resolve(mocks.definitions),
 }));
@@ -71,7 +57,7 @@ vi.mock("@tanstack/react-router", async () => {
 
 import { usePortalSlice } from "./portal-nav";
 import { setPortalShowPlanned } from "./portal-store";
-import { useActiveZone } from "./use-active-zone";
+import { useNavLocation } from "./use-nav-location";
 import { useOrgScope } from "./use-org-scope";
 import { usePersonCohort } from "./use-person-cohort";
 import { useViewerIsManager } from "./use-viewer-is-manager";
@@ -115,6 +101,7 @@ function rosterRows(
         ...(root.status ? { status: root.status } : {}),
       },
       manager_person_id: managerPersonId,
+      manager_name: null,
     },
     ...root.subordinates.flatMap((report) =>
       rosterRows(report, root.person_id),
@@ -141,69 +128,26 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
-describe("useActiveZone", () => {
-  it("follows the route when no zone is pinned: /personal → person", () => {
-    portalRouter.go(`/ic/${A}/personal`);
-    const { result } = renderHook(() => useActiveZone());
-    expect(result.current).toEqual({ activeZone: "person", activePerson: A });
-  });
-
-  it("maps /team routes to the people zone", () => {
-    portalRouter.go(`/ic/${A}/team`);
-    expect(renderHook(() => useActiveZone()).result.current.activeZone).toBe(
-      "people"
-    );
-  });
-
-  it("only the trailing /team segment means People", () => {
-    // The person key lives in the path, so a substring check would hijack any
-    // route whose id or a stale pre-cutover email happens to contain "team".
-    portalRouter.go("/ic/teamlead%40x/personal");
-    expect(renderHook(() => useActiveZone()).result.current).toEqual({
-      activeZone: "person",
-      activePerson: "teamlead@x",
+describe("useNavLocation", () => {
+  it("names the person the path is about", () => {
+    portalRouter.go(`/people/${A}/team`);
+    expect(renderHook(() => useNavLocation()).result.current).toMatchObject({
+      zone: "people",
+      person: A,
     });
   });
 
-  it("tolerates a trailing slash on the team route", () => {
-    portalRouter.go(`/ic/${A}/team/`);
-    expect(renderHook(() => useActiveZone()).result.current.activeZone).toBe(
-      "people"
-    );
+  it("falls back to the viewer off a person's pages", () => {
+    portalRouter.go("/home");
+    expect(renderHook(() => useNavLocation()).result.current).toMatchObject({
+      zone: "overview",
+      person: BOSS,
+    });
   });
 
-  it("the path wins over a stale ?zone= — the URL cannot contradict itself", () => {
-    // The old shell let a pinned zone override the route, so a person link
-    // could navigate while the screen stayed on Overview. With the URL as the
-    // source of truth that state is unrepresentable: on a person path the zone
-    // IS person, whatever an older param says.
-    portalRouter.go(`/ic/${A}/personal`);
-    act(() => portalRouter.set({ zone: "overview" }));
-    expect(renderHook(() => useActiveZone()).result.current.activeZone).toBe(
-      "person"
-    );
-  });
-
-  it("uses ?zone= when the path names no zone", () => {
-    portalRouter.go("/portal");
-    act(() => portalRouter.set({ zone: "overview" }));
-    expect(renderHook(() => useActiveZone()).result.current.activeZone).toBe(
-      "overview"
-    );
-  });
-
-  it("opens Home on a bare /portal", () => {
-    portalRouter.go("/portal");
-    expect(renderHook(() => useActiveZone()).result.current.activeZone).toBe(
-      "overview"
-    );
-  });
-
-  it("falls back to the viewer for a non-person route", () => {
-    portalRouter.go("/metrics");
-    expect(renderHook(() => useActiveZone()).result.current.activePerson).toBe(
-      BOSS
-    );
+  it("opens on Home where no route names a zone", () => {
+    portalRouter.go("/");
+    expect(renderHook(() => useNavLocation()).result.current.zone).toBe("overview");
   });
 });
 
@@ -248,7 +192,6 @@ describe("usePortalSlice", () => {
 });
 
 describe("usePersonCohort", () => {
-  /** A real query client, so the catalog query runs rather than being faked. */
   const cohortOf = (id: string) =>
     renderHook(() => usePersonCohort(id), {
       wrapper: ({ children }) => (
@@ -273,9 +216,6 @@ describe("usePersonCohort", () => {
   });
 
   it("drops a slice the catalog does not offer, rather than comparing by it", async () => {
-    // The control falls back to "Team (all)" when the options lose a
-    // dimension. If the cohort kept building from the stored value, the
-    // screen would show one thing and compare by another.
     mocks.definitions = {
       metrics: [],
       comparison_attributes: [{ id: "job_title", label: "Title" }],

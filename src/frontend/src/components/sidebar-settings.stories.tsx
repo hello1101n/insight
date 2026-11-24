@@ -1,12 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@gears-frontx/ui-kit";
 
 import { SidebarSettings } from "./sidebar-settings";
 
-// INVARIANT: `w-64 p-1` mirrors the rail's settings popover (lens-rail.tsx),
-// the narrowest surface these controls render in.
 const meta: Meta<typeof SidebarSettings> = {
   title: "Components/SidebarSettings",
   component: SidebarSettings,

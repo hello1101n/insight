@@ -7,37 +7,104 @@
     tags=['slack']
 ) }}
 
--- Dedup bronze_slack.users_details to one row per Slack user.
--- Identity is (tenant_id, source_id, user_id) so email changes register as
--- attribute updates in the downstream SCD2 snapshot, not as new entities.
--- Bronze has one row per user per day; we keep the latest `date` seen and
--- drop rows with null/empty email.
+{%- set members = adapter.get_relation(database=none, schema='bronze_slack', identifier='users') -%}
+{%- set activity = adapter.get_relation(database=none, schema='bronze_slack', identifier='users_details') -%}
 
-WITH ranked AS (
+-- depends_on: {{ source('bronze_slack', 'users_details') }}
+-- depends_on: {{ source('bronze_slack', 'users') }}
+
+WITH
+{% if activity %}
+activity_users AS (
+    SELECT
+        insight_tenant_id AS tenant_id,
+        insight_source_id AS source_id,
+        user_id,
+        nullIf(argMaxIf(assumeNotNull(email_address), date, coalesce(email_address, '') != ''), '') AS activity_email,
+        argMax(is_guest, date) AS activity_is_guest
+    FROM {{ source('bronze_slack', 'users_details') }} FINAL
+    WHERE insight_tenant_id IS NOT NULL
+      AND insight_source_id IS NOT NULL
+      AND coalesce(user_id, '') != ''
+    GROUP BY
+        tenant_id,
+        source_id,
+        user_id
+),
+{% else %}
+activity_users AS (
+    SELECT
+        CAST(NULL AS Nullable(String)) AS tenant_id,
+        CAST(NULL AS Nullable(String)) AS source_id,
+        CAST(NULL AS Nullable(String)) AS user_id,
+        CAST(NULL AS Nullable(String)) AS activity_email,
+        CAST(NULL AS Nullable(Bool)) AS activity_is_guest
+    WHERE 0
+),
+{% endif %}
+
+{% if members %}
+member_users AS (
+    SELECT
+        insight_tenant_id AS tenant_id,
+        insight_source_id AS source_id,
+        user_id,
+        nullIf(coalesce(email, ''), '') AS member_email,
+        coalesce(nullIf(real_name, ''), nullIf(display_name, '')) AS member_display_name,
+        is_bot AS member_is_bot,
+        coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false) AS member_is_guest
+    FROM {{ source('bronze_slack', 'users') }} FINAL
+    WHERE insight_tenant_id IS NOT NULL
+      AND insight_source_id IS NOT NULL
+      AND coalesce(user_id, '') != ''
+),
+{% else %}
+member_users AS (
+    SELECT
+        CAST(NULL AS Nullable(String)) AS tenant_id,
+        CAST(NULL AS Nullable(String)) AS source_id,
+        CAST(NULL AS Nullable(String)) AS user_id,
+        CAST(NULL AS Nullable(String)) AS member_email,
+        CAST(NULL AS Nullable(String)) AS member_display_name,
+        CAST(NULL AS Nullable(Bool)) AS member_is_bot,
+        CAST(NULL AS Nullable(Bool)) AS member_is_guest
+    WHERE 0
+),
+{% endif %}
+
+known_users AS (
     SELECT
         tenant_id,
         source_id,
-        user_id,
-        email_address AS email,
-        is_guest,
-        is_billable_seat,
-        date,
-        row_number() OVER (
-            PARTITION BY tenant_id, source_id, user_id
-            ORDER BY date DESC
-        ) AS rn
-    FROM {{ source('bronze_slack', 'users_details') }} FINAL
-    WHERE email_address IS NOT NULL
-      AND email_address != ''
+        user_id
+    FROM activity_users
+    UNION DISTINCT
+    SELECT
+        tenant_id,
+        source_id,
+        user_id
+    FROM member_users
 )
 
 SELECT
-    tenant_id,
-    source_id,
-    user_id,
-    email,
-    is_guest,
-    is_billable_seat,
-    concat(tenant_id, '-', source_id, '-', user_id) AS unique_key
-FROM ranked
-WHERE rn = 1
+    k.tenant_id AS tenant_id,
+    k.source_id AS source_id,
+    k.user_id AS user_id,
+    -- INVARIANT: the Activity email wins; the Members email is the fallback.
+    coalesce(a.activity_email, m.member_email) AS email,
+    m.member_display_name AS display_name,
+    concat(k.tenant_id, '-', k.source_id, '-', k.user_id) AS unique_key
+FROM known_users AS k
+LEFT JOIN activity_users AS a
+    ON a.tenant_id = k.tenant_id
+   AND a.source_id = k.source_id
+   AND a.user_id = k.user_id
+LEFT JOIN member_users AS m
+    ON m.tenant_id = k.tenant_id
+   AND m.source_id = k.source_id
+   AND m.user_id = k.user_id
+-- INVARIANT: a bot or a proven guest never becomes an account. Each one would mint a person.
+WHERE k.user_id != 'USLACKBOT'
+  AND NOT coalesce(m.member_is_bot, false)
+  AND NOT coalesce(m.member_is_guest, false)
+  AND NOT coalesce(a.activity_is_guest, false)

@@ -7,8 +7,9 @@ use axum::http::header::{AUTHORIZATION, WWW_AUTHENTICATE};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
+use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::jwk::JwkSet;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode_header};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
@@ -155,7 +156,11 @@ pub(crate) fn router(
                 .with_max_request_body_bytes(MAX_REQUEST_BODY_BYTES)
                 .with_cancellation_token(cancellation_token),
         );
-    let auth = TokenVerifier::new(&config.public_url, config.allow_insecure_private_network)?;
+    let auth = TokenVerifier::new(
+        &config.public_url,
+        &config.jwks_url,
+        config.allow_insecure_private_network,
+    )?;
     Ok(Router::new()
         .nest_service("/mcp", service)
         .layer(middleware::from_fn_with_state(auth, authenticate)))
@@ -184,10 +189,18 @@ async fn authenticate(
 }
 
 impl TokenVerifier {
-    fn new(public_url: &str, allow_insecure_private_network: bool) -> anyhow::Result<Self> {
+    fn new(
+        public_url: &str,
+        jwks_url: &str,
+        allow_insecure_private_network: bool,
+    ) -> anyhow::Result<Self> {
         validate_public_url(public_url, allow_insecure_private_network)?;
         let issuer = public_url.trim_end_matches('/').to_owned();
-        let client = reqwest::Client::builder()
+        let jwks_url = match jwks_url.trim() {
+            "" => format!("{issuer}/.well-known/jwks.json"),
+            configured => configured.to_owned(),
+        };
+        let client = insight_http_client::client_builder()?
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(5))
             .build()?;
@@ -195,7 +208,7 @@ impl TokenVerifier {
             inner: Arc::new(TokenVerifierInner {
                 audience: format!("{issuer}/mcp"),
                 resource_metadata: format!("{issuer}/.well-known/oauth-protected-resource/mcp"),
-                jwks_url: format!("{issuer}/.well-known/jwks.json"),
+                jwks_url,
                 issuer,
                 client,
                 jwks: RwLock::new(None),
@@ -221,8 +234,8 @@ impl TokenVerifier {
         validation.set_issuer(&[self.inner.issuer.as_str()]);
         validation.set_audience(&[self.inner.audience.as_str()]);
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
-        let claims = decode::<McpAccessClaims>(token, &key, &validation)
-            .map_err(|_| AuthFailure::Unauthorized)?
+        let claims = toolkit_security::jwt::decode::<McpAccessClaims>(token, &key, &validation)
+            .map_err(|error| decode_failure(&error))?
             .claims;
         if claims.sub_type != "user"
             || claims
@@ -357,6 +370,17 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 fn tool_error(message: impl Into<String>) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(message.into())])
+}
+
+/// A backend outage is not a bad token: `Provider` means the crypto facade
+/// could not run, so the caller gets 503, not 401.
+fn decode_failure(error: &jsonwebtoken::errors::Error) -> AuthFailure {
+    if matches!(error.kind(), ErrorKind::Provider(_)) {
+        tracing::error!(error = %error, "crypto backend unavailable for MCP token");
+        AuthFailure::Unavailable
+    } else {
+        AuthFailure::Unauthorized
+    }
 }
 
 #[cfg(test)]

@@ -1,12 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The list that keeps a section honest about what it measures.
- *
- * Before it, a section showed three metrics closely and the other sixteen
- * were unreachable — so these tests are about completeness and about the two
- * ways a list of numbers stops being findable: repeating what is already on
- * screen, and being in no order at all.
- */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -54,17 +46,12 @@ function renderIndex(shown: string[] = []) {
 
 describe("SectionMetricIndex", () => {
   it("lists what the section measures in alphabetical order", () => {
-    // The only thing done with this list is looking something up, and
-    // declaration order is invisible to a reader.
     renderIndex();
     const names = screen.getAllByRole("term").map((n) => n.textContent);
     expect(names).toEqual(["Alpha", "Zeta"]);
   });
 
   it("leaves out a metric that holds nothing", () => {
-    // A row reading "—" against "median —" costs a line to say nothing. Why
-    // the metric is silent is a fact about the section, stated once at its
-    // top, not repeated down every row that happens to be empty.
     renderIndex();
     expect(screen.queryByText("—")).toBeNull();
   });

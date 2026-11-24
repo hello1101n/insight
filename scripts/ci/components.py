@@ -138,6 +138,24 @@ COMPONENTS = [
         # own component); `triggered_by` is the registry's co-trigger for this.
         "triggered_by": ["insight-clickhouse", "insight-migration"],
     },
+    {
+        "name": "connectors",
+        "lang": "rust",
+        "root": "src/backend",
+        "package": "connectors",
+        "live_db": True,
+        "live_db_name": "connectors",
+        "live_ch": True,
+        "include_ignored": True,
+        "cover": False,
+        "drift_test": True,
+        "paths": [
+            "src/backend/services/connectors",
+            "docs/components/backend/connectors/openapi.json",
+            "src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql",
+        ],
+        "triggered_by": ["insight-clickhouse", "insight-migration"],
+    },
     # cover=False (mirrors identity-resolution): the crate is a thin HTTP
     # shell over the Kubernetes API — the pure domain (object builders,
     # slug/tag validation, TTL/status rules) is unit-tested, but the kube I/O
@@ -235,6 +253,13 @@ COMPONENTS = [
         "cov_package": "source_claude_team_invoices",
         "paths": ["src/ingestion/connectors/ai/claude-team-invoices"],
     },
+    {
+        "name": "slack",
+        "lang": "python",
+        "root": "src/ingestion/connectors/collaboration/slack",
+        "cov_package": "source_slack",
+        "paths": ["src/ingestion/connectors/collaboration/slack"],
+    },
     # Deploy-time ClickHouse schema tooling (the migration Job's Python half).
     # Owning the whole scripts/ tree means a change anywhere in it re-runs these
     # tests. Shell scripts in the same tree have no measured lines.
@@ -301,6 +326,7 @@ COMPONENTS = [
             "src/ingestion/connectors/dev-portal/compass",
             "src/ingestion/connectors/quality/allure",
             "src/ingestion/connectors/support/zendesk",
+            "src/ingestion/connectors/testing/mock",
         ],
     },
     # The sample-data seeder. Its pytest suite otherwise runs only inside the

@@ -1,15 +1,3 @@
-//! Persons-seed write store (MariaDB).
-//!
-//! Two halves:
-//!   * resolver-feeding reads — current `account → person` bindings and the
-//!     latest `email → person` map (fed to [`crate::domain::seed`]);
-//!   * the transactional `apply` — `INSERT IGNORE` the resolved observations
-//!     into `persons`, then rebuild the tenant's `org_chart` (SCD2).
-//!
-//! These queries use `LEAD()`/`ROW_NUMBER()` window functions (SCD2
-//! `valid_from`/`valid_to`) and `INSERT … SELECT` cache rebuilds — constructs `toolkit-db` cannot express, hence the raw-SQL /
-//! self-managed pool (see `infra::db` module docs + constructorfabric/gears-rust#4239).
-
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -20,13 +8,12 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::domain::people::PersonChange;
+use crate::domain::roster::RosterSource;
 use crate::domain::seed::{KnownBinding, SeedObservationRow, SourceAccountKey, normalize_email};
 use crate::domain::seed_service::{ApplyCounts, SeedStore};
 use crate::infra::db::{people_repo, resolution_repo};
 use crate::infra::metrics::{self, DbQuery};
 
-/// MariaDB-backed [`SeedStore`] — wraps a connection so the persons-seed service
-/// can be driven against the real DB (or a fake in tests).
 pub struct MariaDbSeedStore<'a> {
     db: &'a DatabaseConnection,
 }
@@ -60,6 +47,17 @@ impl SeedStore for MariaDbSeedStore<'_> {
         result
     }
 
+    async fn roster_employee_ids(
+        &self,
+        tenant_id: Uuid,
+        roster: &RosterSource,
+    ) -> anyhow::Result<Vec<(String, Uuid)>> {
+        let started = std::time::Instant::now();
+        let result = roster_employee_ids(self.db, tenant_id, roster.name()).await;
+        metrics::record_db_query(DbQuery::RosterEmployeeIds, started.elapsed());
+        result
+    }
+
     async fn apply(
         &self,
         tenant_id: Uuid,
@@ -83,13 +81,6 @@ impl SeedStore for MariaDbSeedStore<'_> {
     }
 }
 
-/// Distinct tenants present in the `persons` log, capped at `cap` rows —
-/// the seed runner's tenant inference only needs "zero, one, or more", so a
-/// tiny cap keeps this a loose index scan on `idx_tenant_person`.
-///
-/// # Errors
-///
-/// Returns an error if the query fails or a stored tenant id is not 16 bytes.
 pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Result<Vec<Uuid>> {
     const SQL: &str = "SELECT DISTINCT insight_tenant_id FROM persons LIMIT ?";
     let rows = db
@@ -107,22 +98,10 @@ pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Resu
         .collect()
 }
 
-/// Current bindings for the tenant — the latest `value_type='id'` observation
-/// per account, with the row's author (seed sentinel vs operator UUID) so the
-/// resolver can classify divergence. Feeds the known-account branch.
-///
-/// # Errors
-///
-/// Returns an error if the query fails or a stored id column is not 16 bytes.
 pub async fn known_account_bindings(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> anyhow::Result<HashMap<SourceAccountKey, KnownBinding>> {
-    // One ranking of the journal's bindings, shared with the review surface: two
-    // copies would be two answers to "who holds this account", and the seed and
-    // the console must not disagree about that. Unbounded where the console
-    // accepts a ceiling — a binding this batch does not see is an account it
-    // mints a second person for.
     Ok(resolution_repo::current_bindings_in_tenant(
         db,
         tenant_id,
@@ -132,14 +111,6 @@ pub async fn known_account_bindings(
     .by_account)
 }
 
-/// Current `email → person_id` map for the tenant — the latest
-/// `value_type='email'` observation per email. Keys are normalized via
-/// [`normalize_email`] (lowercase only, no trim — ADR-0011) so the resolver's
-/// lookups match.
-///
-/// # Errors
-///
-/// Returns an error if the query fails or a stored `person_id` is not 16 bytes.
 pub async fn latest_email_to_person(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -180,16 +151,52 @@ pub async fn latest_email_to_person(
     Ok(map)
 }
 
-/// Rebuild the tenant's `org_chart` from `persons` inside an open transaction.
-/// Shared by the persons-seed and the operator corrections so a journal write
-/// and its derived edges always commit together. Returns the rows written.
-///
-/// # Errors
-///
-/// Returns an error if any statement fails; the transaction is the caller's to
-/// roll back.
-// The length is dominated by the verbatim org_chart CTE string constant, not
-// control flow — keeping the SQL inline (co-located, greppable) over hoisting it.
+pub async fn roster_employee_ids(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    roster_source_type: &str,
+) -> anyhow::Result<Vec<(String, Uuid)>> {
+    const SQL: &str = r"
+        WITH ranked AS (
+            SELECT
+                value_id AS employee_id,
+                person_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY insight_tenant_id, person_id, insight_source_id
+                    ORDER BY created_at DESC, id DESC
+                ) AS rn
+            FROM persons
+            WHERE value_type = 'employee_id'
+              AND insight_source_type = ?
+              AND value_id IS NOT NULL
+              AND value_id != ''
+              AND insight_tenant_id = ?
+        )
+        SELECT employee_id, person_id
+        FROM ranked
+        WHERE rn = 1
+    ";
+
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::MySql,
+        SQL,
+        [
+            roster_source_type.into(),
+            tenant_id.as_bytes().to_vec().into(),
+        ],
+    );
+
+    let rows = db.query_all_raw(stmt).await?;
+    let mut pairs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let employee_id: String = row.try_get("", "employee_id")?;
+        let person_id: Vec<u8> = row.try_get("", "person_id")?;
+        pairs.push((employee_id, Uuid::from_slice(&person_id)?));
+    }
+    Ok(pairs)
+}
+
+// Length is the verbatim org_chart CTE string constant, not control flow.
 #[expect(clippy::too_many_lines)]
 async fn rebuild_org_chart(
     txn: &DatabaseTransaction,
@@ -197,10 +204,6 @@ async fn rebuild_org_chart(
     author_person_id: Uuid,
 ) -> anyhow::Result<u64> {
     const DELETE_ORG_CHART: &str = "DELETE FROM org_chart WHERE insight_tenant_id = ?";
-    // The `?` markers bind, in order: `insight_tenant_id` SIX times (state_log,
-    // default_active, pe_periods, email_to_person, existing_edges,
-    // source_member_latest_active), then `author_person_id` once (the Path-B
-    // no-parent rows). Keep this order in lock-step with the params vec below.
     const INSERT_ORG_CHART: &str = r"
         INSERT INTO org_chart
             (insight_tenant_id, insight_source_type, insight_source_id,
@@ -414,8 +417,6 @@ async fn rebuild_org_chart(
     let tenant_bytes = tenant_id.as_bytes().to_vec();
     let author_bytes = author_person_id.as_bytes().to_vec();
 
-    // Rebuild org_chart for the tenant. The CTE binds the tenant six times, then
-    // the author once — same order as INSERT_ORG_CHART's `?` markers.
     txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::MySql,
         DELETE_ORG_CHART,
@@ -446,15 +447,6 @@ async fn rebuild_org_chart(
     Ok(org_chart_rows_rebuilt)
 }
 
-/// Apply a seed's resolved observations: `INSERT IGNORE` each into `persons`,
-/// then rebuild the tenant's `org_chart` — all in one transaction, so the log
-/// and the edges derived from it are never left cross-inconsistent. `author_person_id` stamps the computed `org_chart`
-/// no-parent rows (the seed operation's author). Returns the number of
-/// observation rows actually inserted (duplicates are ignored).
-///
-/// # Errors
-///
-/// Returns an error if any statement fails; the transaction is rolled back.
 pub async fn apply(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -463,11 +455,6 @@ pub async fn apply(
     people: &[PersonChange],
     retained_people: Option<&std::collections::HashSet<Uuid>>,
 ) -> anyhow::Result<ApplyCounts> {
-    // Idempotent insert — uq_person_observation dedups a re-emitted identical
-    // observation; INSERT IGNORE swallows the duplicate-key error. Batched
-    // (multi-row VALUES) so N observations cost ~N/INSERT_CHUNK round-trips
-    // instead of N — 25k+ single-row inserts over a remote pool take minutes;
-    // batches take seconds. Same semantics as per-row INSERT IGNORE.
     const INSERT_PREFIX: &str = "INSERT IGNORE INTO persons \
         (value_type, insight_source_type, insight_source_id, insight_tenant_id, \
          value_id, value_full_text, value, person_id, author_person_id, reason, \

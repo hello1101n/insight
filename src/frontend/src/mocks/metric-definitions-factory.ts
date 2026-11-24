@@ -51,8 +51,6 @@ function keysFrom(group: MetricGroup): string[] {
   ];
 }
 
-// A single unavailable key fails the whole /metric-results call, so these come
-// from the screens' own config and cannot fall behind it.
 function catalogKeys(): string[] {
   return [
     ...new Set([
@@ -76,13 +74,17 @@ function define(
     metric_key: metricKey,
     entity_type: "person",
     label: meta.label,
-    short_label: null,
-    description: family
-      ? `${meta.label} for the selected period, read from ${family.source}.`
-      : `${meta.label} for the selected period.`,
-    explanation: `Counted per person and rolled up to whatever scope is in view. Higher is ${
-      meta.direction === "higher_is_better" ? "better" : "worse"
-    } for ${noun}.`,
+    short_label: meta.short_label ?? null,
+    description:
+      meta.description ??
+      (family
+        ? `${meta.label} for the selected period, read from ${family.source}.`
+        : `${meta.label} for the selected period.`),
+    explanation:
+      meta.explanation ??
+      `Counted per person and rolled up to whatever scope is in view. Higher is ${
+        meta.direction === "higher_is_better" ? "better" : "worse"
+      } for ${noun}.`,
     unit: meta.unit,
     format: meta.format,
     direction: meta.direction,
@@ -101,8 +103,6 @@ const MOCK_HISTORY_DAYS = 365;
 export function buildMetricDefinitions(): MetricDefinition[] {
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  // A year of history behind every mock metric, so no screen built on these
-  // renders its period as time before anything was collected.
   const collectedFrom = new Date(now - MOCK_HISTORY_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);

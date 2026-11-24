@@ -5,118 +5,136 @@ import {
 } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
+import { toISODate } from "@/api/period-to-date-range";
+
 import {
-  PORTAL_SEARCH_KEYS,
+  GLOBAL_SEARCH_KEYS,
   applySearchPatch,
-  validatePortalSearch,
+  validateDashboardListSearch,
+  validateDashboardSearch,
+  validateExploreSearch,
+  validateGlobalSearch,
+  validateIdentitiesSearch,
+  validateMetricsViewSearch,
 } from "./portal-search";
 
-/**
- * Search params are user-editable text and arrive from links other people
- * wrote. The contract is to DEGRADE — drop what makes no sense and fall back to
- * a computed default — never to error, because the alternative is an error
- * boundary in place of a dashboard over one mistyped character.
- */
-describe("validatePortalSearch", () => {
-  it("keeps the navigation keys it recognises", () => {
-    expect(
-      validatePortalSearch({ zone: "directions", dir: "dev", lens: "Delivery" }),
-    ).toMatchObject({ zone: "directions", dir: "dev", lens: "Delivery" });
-    // A repository is carried by its dimension VALUE, so a shared link
-    // reproduces the one that was opened even when two share a display name.
-    expect(
-      validatePortalSearch({ lens: "Repositories", repo: "src-a:acme/api" }),
-    ).toMatchObject({ lens: "Repositories", repo: "src-a:acme/api" });
-    expect(validatePortalSearch({ repo: "" }).repo).toBeUndefined();
+function asMatched(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...raw, ...validateGlobalSearch(raw) };
+}
+
+function isoDaysFromToday(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+
+describe("the identities console keys", () => {
+  it("normalises the picked sources and drops an empty list", () => {
+    expect(validateIdentitiesSearch({ src: " gitlab,github,github" }).src).toBe(
+      "github,gitlab",
+    );
+    expect(validateIdentitiesSearch({ src: ",," }).src).toBeUndefined();
+    expect(validateIdentitiesSearch({ src: 5 }).src).toBeUndefined();
   });
 
+  it("degrades an oversized src to at most 20 entries of at most 30 characters", () => {
+    const many = Array.from({ length: 25 }, (_, i) => `s${String(i).padStart(2, "0")}`);
+    const long = "x".repeat(31);
+    const fits = "y".repeat(30);
+
+    const kept = validateIdentitiesSearch({ src: [...many, long, fits].join(",") }).src?.split(",");
+
+    expect(kept).toHaveLength(20);
+    expect(kept?.every((entry) => entry.length <= 30)).toBe(true);
+    expect(kept).not.toContain(long);
+    expect(validateIdentitiesSearch({ src: `${long},${fits}` }).src).toBe(fits);
+  });
+
+  it("lowercases the person and stays on the console", () => {
+    expect(validateIdentitiesSearch({ person: "AB12" }).person).toBe("ab12");
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("person");
+  });
+});
+
+describe("the repository under inspection", () => {
+  it("keeps a repository by its dimension value and drops an empty one", () => {
+    expect(validateExploreSearch({ repo: "src-a:acme/api" }).repo).toBe("src-a:acme/api");
+    expect(validateExploreSearch({ repo: "" }).repo).toBeUndefined();
+  });
+
+  it("stays on the lens it was opened on", () => {
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("repo");
+  });
+});
+
+describe("the settings every page shares", () => {
   it("lowercases the scope — an email is case-insensitive but our keys are not", () => {
-    expect(validatePortalSearch({ scope: "Head@X.COM" }).scope).toBe("head@x.com");
+    expect(validateGlobalSearch({ scope: "Head@X.COM" }).scope).toBe("head@x.com");
   });
 
   it("drops empty and non-string values rather than passing them on", () => {
-    const out = validatePortalSearch({ zone: "", item: 42, dir: null });
-    expect(out.zone).toBeUndefined();
-    expect(out.item).toBeUndefined();
-    expect(out.dir).toBeUndefined();
+    const out = validateGlobalSearch({ scope: "", slice: 42, period: null });
+    expect(out.scope).toBeUndefined();
+    expect(out.slice).toBeUndefined();
+    expect(out.period).toBeUndefined();
+  });
+
+  it("are carried across every navigation", () => {
+    expect([...GLOBAL_SEARCH_KEYS].sort()).toEqual(
+      ["direct", "from", "period", "scope", "slice", "to"].sort(),
+    );
   });
 
   it("omits `direct` unless it is truthy — no defaults in a shared URL", () => {
-    expect(validatePortalSearch({ direct: "false" })).not.toHaveProperty("direct");
-    expect(validatePortalSearch({})).not.toHaveProperty("direct");
-    expect(validatePortalSearch({ direct: "true" }).direct).toBe(true);
+    expect(asMatched({ direct: "false" }).direct).toBeUndefined();
+    expect(validateGlobalSearch({}).direct).toBeUndefined();
+    expect(validateGlobalSearch({ direct: "true" }).direct).toBe(true);
   });
 
   it("ignores an unknown period preset", () => {
-    expect(validatePortalSearch({ period: "fortnight" }).period).toBeUndefined();
-    expect(validatePortalSearch({ period: "quarter" }).period).toBe("quarter");
+    expect(validateGlobalSearch({ period: "fortnight" }).period).toBeUndefined();
+    expect(validateGlobalSearch({ period: "quarter" }).period).toBe("quarter");
   });
 
   describe("custom range", () => {
     it("keeps a well-formed, correctly ordered pair", () => {
-      const out = validatePortalSearch({ from: "2026-01-01", to: "2026-01-31" });
+      const out = validateGlobalSearch({ from: "2026-01-01", to: "2026-01-31" });
       expect(out).toMatchObject({ from: "2026-01-01", to: "2026-01-31" });
     });
 
-    it("drops an INVERTED pair instead of letting it reach the range assert", () => {
-      // Well-formed and nonsensical: this used to pass validation and throw
-      // downstream, turning a bad link into an error boundary.
-      expect(
-        validatePortalSearch({ from: "2026-07-30", to: "2026-01-01" }),
-      ).not.toHaveProperty("from");
-    });
-
-    it("drops a pair that exceeds the maximum span", () => {
-      expect(
-        validatePortalSearch({ from: "2000-01-01", to: "2026-01-01" }),
-      ).not.toHaveProperty("from");
-    });
-
-    it("drops a half-specified range — one bound cannot resolve a window", () => {
-      expect(validatePortalSearch({ from: "2026-01-01" })).not.toHaveProperty("from");
-      expect(validatePortalSearch({ to: "2026-01-31" })).not.toHaveProperty("to");
-    });
-
-    it("drops malformed dates", () => {
-      expect(
-        validatePortalSearch({ from: "01/01/2026", to: "31/01/2026" }),
-      ).not.toHaveProperty("from");
-      expect(
-        validatePortalSearch({ from: "2026-13-45", to: "2026-13-46" }),
-      ).not.toHaveProperty("from");
+    it.each([
+      ["inverted", { from: "2026-07-30", to: "2026-01-01" }],
+      ["longer than the maximum span", { from: "2000-01-01", to: "2026-01-01" }],
+      ["past today", { from: "2026-01-01", to: isoDaysFromToday(2) }],
+      ["missing its end", { from: "2026-01-01" }],
+      ["missing its start", { to: "2026-01-31" }],
+      ["not ISO", { from: "01/01/2026", to: "31/01/2026" }],
+      ["not a calendar date", { from: "2026-13-45", to: "2026-13-46" }],
+    ])("drops a range that is %s, so the page opens on the preset", (_case, raw) => {
+      const search = asMatched(raw);
+      expect(search.from, JSON.stringify(raw)).toBeUndefined();
+      expect(search.to, JSON.stringify(raw)).toBeUndefined();
     });
   });
 });
 
-describe("the ingestion drill-down key", () => {
-  it("keeps a connector slug", () => {
-    expect(validatePortalSearch({ conn: "bamboohr" }).conn).toBe("bamboohr");
-    expect(validatePortalSearch({ conn: "claude_enterprise" }).conn).toBe(
-      "claude_enterprise",
-    );
-  });
-
-  it("drops anything the endpoint would refuse as a scope", () => {
-    // A hand-edited value must degrade to the overview, not reach the API and
-    // come back a 400 the reader cannot act on.
-    for (const raw of ["Jira", "bronze jira", "jira;drop", "jira/../x", ""]) {
-      expect(validatePortalSearch({ conn: raw }).conn, raw).toBeUndefined();
-    }
-  });
-
-  it("is retained across navigation", () => {
-    // Without this the drill-down is lost the moment anything else navigates.
-    expect(PORTAL_SEARCH_KEYS).toContain("conn");
+describe("Metrics view links", () => {
+  it.each([
+    ["keeps well-formed metric keys and drops the rest", { metrics: "git.commits,<b>,ai.cost" }, { metrics: "git.commits,ai.cost" }],
+    ["keeps an empty pick", { metrics: "none" }, { metrics: "none" }],
+    ["drops a list with nothing usable", { metrics: ",," }, { metrics: undefined }],
+    ["keeps compared ids, lower-cased", { compare: "AB12-CD,x y" }, { compare: "ab12-cd" }],
+  ])("%s", (_case, raw, expected) => {
+    expect(validateMetricsViewSearch(raw)).toMatchObject(expected);
   });
 });
 
 describe("applySearchPatch", () => {
-  /** The real middleware the portal routes install, over the patched result. */
   function afterRetain(
     prev: Record<string, unknown>,
     patched: Record<string, unknown>
   ): Record<string, unknown> {
-    const middleware = retainSearchParams(PORTAL_SEARCH_KEYS);
+    const middleware = retainSearchParams(GLOBAL_SEARCH_KEYS);
     return middleware({
       search: prev as never,
       next: (() => ({ search: patched, meta: {} })) as never,
@@ -124,9 +142,6 @@ describe("applySearchPatch", () => {
   }
 
   it("survives retention when a key is cleared", () => {
-    // Choosing a preset clears the custom range. Deleting the keys handed them
-    // back: the middleware restores whatever is absent, so the range stayed in
-    // force and the preset did nothing.
     const prev = { period: "month", from: "2026-05-01", to: "2026-05-08" };
     const patched = applySearchPatch(prev, {
       period: "quarter",
@@ -139,15 +154,15 @@ describe("applySearchPatch", () => {
     expect(kept.period).toBe("quarter");
     expect(kept.from).toBeUndefined();
     expect(kept.to).toBeUndefined();
-    expect(validatePortalSearch(kept)).toEqual({ period: "quarter" });
+    expect(validateGlobalSearch(kept)).toEqual({ period: "quarter" });
   });
 
   it("clears a key given an empty string or false, and leaves omitted keys alone", () => {
     const patched = applySearchPatch(
-      { zone: "directions", slice: "division", direct: true },
+      { scope: "ab12", slice: "division", direct: true },
       { slice: "", direct: false }
     );
-    expect(patched.zone).toBe("directions");
+    expect(patched.scope).toBe("ab12");
     expect(patched.slice).toBeUndefined();
     expect(patched.direct).toBeUndefined();
   });
@@ -155,8 +170,8 @@ describe("applySearchPatch", () => {
 
 describe("the picked time range", () => {
   it("keeps a preset and an interval the server would accept", () => {
-    expect(validatePortalSearch({ range: "P30D" }).range).toBe("P30D");
-    expect(validatePortalSearch({ range: "2026-08-01/2026-09-01" }).range).toBe(
+    expect(validateDashboardSearch({ range: "P30D" }).range).toBe("P30D");
+    expect(validateDashboardSearch({ range: "2026-08-01/2026-09-01" }).range).toBe(
       "2026-08-01/2026-09-01",
     );
   });
@@ -169,36 +184,30 @@ describe("the picked time range", () => {
       "2026-09-01/2026-09-02/2026-09-03",
       "",
     ]) {
-      expect(validatePortalSearch({ range }).range, range).toBeUndefined();
+      expect(validateDashboardSearch({ range }).range, range).toBeUndefined();
     }
   });
 
-  it("does not disturb the rest of the search", () => {
-    expect(
-      validatePortalSearch({ range: "nonsense", zone: "custom", item: "x" }),
-    ).toMatchObject({ zone: "custom", item: "x" });
-  });
-
-  it("is carried across a route change like every other portal key", () => {
-    expect(PORTAL_SEARCH_KEYS).toContain("range");
+  it("stays on the dashboard it was picked on", () => {
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("range");
   });
 });
 
 describe("the dashboard folder param", () => {
   it("keeps the folder a link names", () => {
-    expect(validatePortalSearch({ folder: "unfiled" }).folder).toBe("unfiled");
-    expect(validatePortalSearch({ folder: "" }).folder).toBeUndefined();
+    expect(validateDashboardListSearch({ folder: "unfiled" }).folder).toBe("unfiled");
+    expect(validateDashboardListSearch({ folder: "" }).folder).toBeUndefined();
   });
 
   it("rides only on the link that names it, never into another zone", () => {
-    expect(PORTAL_SEARCH_KEYS).not.toContain("folder");
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("folder");
   });
 });
 
 describe("the dashboard tag param", () => {
   it("keeps every tag a link names, one or several", () => {
-    expect(validatePortalSearch({ tag: "Ops" }).tag).toEqual(["Ops"]);
-    expect(validatePortalSearch({ tag: ["Ops", "Platform"] }).tag).toEqual([
+    expect(validateDashboardListSearch({ tag: "Ops" }).tag).toEqual(["Ops"]);
+    expect(validateDashboardListSearch({ tag: ["Ops", "Platform"] }).tag).toEqual([
       "Ops",
       "Platform",
     ]);
@@ -210,7 +219,7 @@ describe("the dashboard tag param", () => {
     ["a list of empty values", ["", ""]],
     ["an object", { name: "Ops" }],
   ])("drops %s", (_case, tag) => {
-    expect(validatePortalSearch({ tag }).tag).toBeUndefined();
+    expect(validateDashboardListSearch({ tag }).tag).toBeUndefined();
   });
 
   it("reads the tags a hand-written link repeats, and the list the router writes", () => {
@@ -219,18 +228,18 @@ describe("the dashboard tag param", () => {
       defaultStringifySearch({ tag: ["Ops", "2026"] }),
     );
 
-    expect(validatePortalSearch(repeated).tag).toEqual(["Ops", "2026"]);
-    expect(validatePortalSearch(written).tag).toEqual(["Ops", "2026"]);
+    expect(validateDashboardListSearch(repeated).tag).toEqual(["Ops", "2026"]);
+    expect(validateDashboardListSearch(written).tag).toEqual(["Ops", "2026"]);
   });
 
   it("rides only on the link that names it, never into another zone", () => {
-    expect(PORTAL_SEARCH_KEYS).not.toContain("tag");
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("tag");
   });
 });
 
 describe("the dashboard ownership param", () => {
   it.each(["me", "shared"])("keeps %s", (owned) => {
-    expect(validatePortalSearch({ owned }).owned).toBe(owned);
+    expect(validateDashboardListSearch({ owned }).owned).toBe(owned);
   });
 
   it.each([
@@ -238,23 +247,23 @@ describe("the dashboard ownership param", () => {
     ["an unknown filter", "everyone"],
     ["a list", ["me"]],
   ])("drops %s", (_case, owned) => {
-    expect(validatePortalSearch({ owned }).owned).toBeUndefined();
+    expect(validateDashboardListSearch({ owned }).owned).toBeUndefined();
   });
 
   it("rides only on the link that names it, never into another zone", () => {
-    expect(PORTAL_SEARCH_KEYS).not.toContain("owned");
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("owned");
   });
 });
 
 describe("the expanded widget", () => {
   it("keeps a widget id and drops an empty one", () => {
-    expect(validatePortalSearch({ widget: "commits_table" }).widget).toBe(
+    expect(validateDashboardSearch({ widget: "commits_table" }).widget).toBe(
       "commits_table",
     );
-    expect(validatePortalSearch({ widget: "" }).widget).toBeUndefined();
+    expect(validateDashboardSearch({ widget: "" }).widget).toBeUndefined();
   });
 
   it("stays on the dashboard it was opened on", () => {
-    expect(PORTAL_SEARCH_KEYS).not.toContain("widget");
+    expect(GLOBAL_SEARCH_KEYS).not.toContain("widget");
   });
 });

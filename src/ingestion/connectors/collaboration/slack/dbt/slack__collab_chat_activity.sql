@@ -1,12 +1,16 @@
 {{ config(
     materialized='incremental',
     unique_key='unique_key',
+    incremental_strategy='delete+insert',
     on_schema_change='append_new_columns',
+    engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
     schema='staging',
     tags=['slack', 'silver:class_collab_chat_activity']
 ) }}
+
+{%- set members = adapter.get_relation(database=none, schema='bronze_slack', identifier='users') -%}
 
 -- Slack daily chat activity per user, sourced from admin.analytics.getFile?type=member.
 -- Bronze row is already one per (user, date); we simply reshape to the shared
@@ -28,11 +32,11 @@
 -- otherwise produce a negative residual.
 
 SELECT
-    u.tenant_id,
-    u.source_id AS insight_source_id,
+    u.insight_tenant_id AS tenant_id,
+    u.insight_source_id,
     MD5(concat(
-        u.tenant_id, '-',
-        u.source_id, '-',
+        u.insight_tenant_id, '-',
+        u.insight_source_id, '-',
         coalesce(u.user_id, ''), '-',
         toString(toDate(parseDateTimeBestEffortOrNull(u.date)))
     )) AS unique_key,
@@ -47,37 +51,54 @@ SELECT
     CAST(NULL AS Nullable(Int64)) AS group_chat_messages,
     -- #266: total - channel = DMs + MPIMs (everything posted outside channels).
     toNullable(toInt64(greatest(
-        coalesce(u.messages_posted_count, 0) - coalesce(u.channel_messages_posted_count, 0),
+        assumeNotNull(u.messages_posted_count) - assumeNotNull(u.channel_messages_posted_count),
         0
     ))) AS direct_and_group_messages,
-    coalesce(u.messages_posted_count, 0) AS total_chat_messages,
+    assumeNotNull(u.messages_posted_count) AS total_chat_messages,
     u.channel_messages_posted_count AS channel_posts,
     CAST(NULL AS Nullable(Int64)) AS channel_replies,
     CAST(NULL AS Nullable(Int64)) AS urgent_messages,
     CAST(NULL AS Nullable(String)) AS report_period,
-    now() AS collected_at,
+    toDateTime(u._airbyte_extracted_at) AS collected_at,
     'insight_slack' AS data_source,
+    'slack' AS account_source_type,
+    coalesce(u.insight_source_id, '') AS account_source_id,
+    coalesce(u.user_id, '') AS account_id,
     toUnixTimestamp64Milli(now64()) AS _version
 FROM {{ source('bronze_slack', 'users_details') }} AS u FINAL
 WHERE u.user_id IS NOT NULL
   AND u.user_id != ''
   AND parseDateTimeBestEffortOrNull(u.date) IS NOT NULL
+  -- Bronze columns are all Nullable (the destination NULLs what it cannot coerce),
+  -- but Slack sends both counters on every row: a NULL is a broken row, not zero
+  -- messages. Dropped here, reported by assert_slack_bronze_rows_reach_metrics.
+  AND u.messages_posted_count IS NOT NULL
+  AND u.channel_messages_posted_count IS NOT NULL
   -- INVARIANT: the class holds workspace members only — a proven guest is dropped,
-  -- an unknown flag keeps the row. `is_active` and `is_billable_seat` derive from
+  -- an unknown flag keeps the row. The analytics runtime counts that row only when
+  -- the member resolves to a person; assert_slack_members_resolve reports
+  -- a member that does not. `is_active` and `is_billable_seat` derive from
   -- activity (the latter is unreliable off invoiced plans): never filter on them.
   AND NOT coalesce(u.is_guest, false)
+  -- INVARIANT: bots are never counted. Slackbot is USLACKBOT; the Members stream flags the others.
+  AND u.user_id != 'USLACKBOT'
+{%- if members %}
+  AND (u.insight_tenant_id, u.insight_source_id, u.user_id) NOT IN (
+      SELECT insight_tenant_id, insight_source_id, user_id
+      FROM {{ source('bronze_slack', 'users') }} FINAL
+      WHERE coalesce(is_bot, false)
+  )
+{%- endif %}
 {% if is_incremental() %}
-  -- Watermark on the source EXTRACT time, not the business date (see zoom model header for
-  -- the backfill-strand failure mode this fixes — Slack chat had the same gap on virtuozzo,
-  -- bronze from Jan but staging only from late Mar). Re-pulled rows carry a fresh
-  -- `_airbyte_extracted_at`, so reprocess every business date touched by a recent extract.
-  AND (
-    (SELECT count() FROM {{ this }}) = 0
-    OR toDate(parseDateTimeBestEffortOrNull(u.date)) IN (
-      SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
-      FROM {{ source('bronze_slack', 'users_details') }}
-      WHERE _airbyte_extracted_at
-            > (SELECT max(_airbyte_extracted_at) FROM {{ source('bronze_slack', 'users_details') }}) - INTERVAL 3 DAY
-    )
+  -- INVARIANT: the window starts at the newest extract this model has already built for
+  -- the source instance, so days extracted while runs failed are built on the next run.
+  AND toDate(parseDateTimeBestEffortOrNull(u.date)) IN (
+    SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
+    FROM {{ source('bronze_slack', 'users_details') }}
+    WHERE _airbyte_extracted_at
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
   )
 {% endif %}
+-- INVARIANT: one row per key in the batch; delete+insert keeps one row per key across runs.
+ORDER BY u._airbyte_extracted_at DESC
+LIMIT 1 BY unique_key

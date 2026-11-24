@@ -1,15 +1,14 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { CartesianGrid, ComposedChart, XAxis } from "recharts";
 import {
-  CartesianGrid,
+  type ChartConfig,
   ChartContainer,
-  ChartLine,
   ChartTooltip,
   ChartTooltipContent,
-  ComposedChart,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
 import {
   formatHoursDuration,
   formatMetricValue,
@@ -17,24 +16,22 @@ import {
 } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
+import { chartColor } from "@/lib/chart-palette";
 import { cn } from "@/lib/utils";
 
 import { halvesComparison, type HalfComparison } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** The lines a slope chart stays readable at. */
 const SLOPE_LIMIT = 8;
 const MOMENTUM_LIMIT = 12;
 const STAGE_FIRST = "First half";
 const STAGE_SECOND = "Second half";
-const LINE_COLORS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
 
 function resolveHalves(
   section: Extract<TenantSectionSpec, { kind: "slope" | "momentum" }>,
   resolve: ResolveView
 ): { r: NormalizedMetricResult; rows: HalfComparison[] } | null {
-  // Windowed needs carry no bucket; both halves must have answered.
   const needs = sectionNeeds(section, "day");
   const first = resolve(needs[0]);
   const second = resolve(needs[1]);
@@ -44,7 +41,6 @@ function resolveHalves(
     tenantData(second).breakdown,
     section.dimension
   );
-  // A single mover is an anecdote, not momentum.
   return rows.length < 2 ? null : { r: second, rows };
 }
 
@@ -57,7 +53,6 @@ function deltaText(r: NormalizedMetricResult, delta: number): string {
   return `${sign}${Math.abs(delta).toFixed(1)}${unit}`;
 }
 
-/** First half of the window against the second, one line per value. */
 export function SlopeSection({
   section,
   resolve,
@@ -69,8 +64,7 @@ export function SlopeSection({
   if (!halves) return null;
   const { r, rows } = halves;
   const top = rows.slice(0, SLOPE_LIMIT);
-  // Dimension values carry dots and slashes recharts would read as paths —
-  // remap each line to a safe alias (same trick as SectionTrend).
+  // WORKAROUND: Recharts reads dots and slashes in a dataKey as a path, so lines use aliases.
   const keys = top.map((_, index) => `s${index}`);
   const data = [
     {
@@ -92,7 +86,7 @@ export function SlopeSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}
@@ -126,13 +120,12 @@ export function SlopeSection({
                   key={row.value}
                   dataKey={keys[index]}
                   name={row.label}
-                  stroke={`var(--${LINE_COLORS[index % LINE_COLORS.length]})`}
+                  stroke={chartColor(index)}
                   strokeWidth={2}
                 />
               ))}
             </ComposedChart>
           </ChartContainer>
-          {/* Direction labelled, not colour-only. */}
           <ul className="mt-2 grid grid-cols-1 gap-x-4 text-xs text-muted-foreground md:grid-cols-2">
             {top.map((row) => (
               <li key={row.value} className="flex justify-between gap-2">
@@ -153,7 +146,6 @@ export function SlopeSection({
   );
 }
 
-/** Signed change between the window's two halves, one bar per value. */
 export function MomentumSection({
   section,
   resolve,
@@ -173,7 +165,7 @@ export function MomentumSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {section.description ? (
             <p className="text-xs text-muted-foreground">{section.description}</p>
           ) : null}

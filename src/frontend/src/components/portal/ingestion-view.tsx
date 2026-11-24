@@ -1,5 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type {
   IngestionGrain,
   IngestionIntensity,
@@ -7,20 +10,15 @@ import type {
 } from "@/api/ingestion-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { Button } from "@gears-frontx/ui-kit";
 import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
+  Button,
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
+} from "@gears-frontx/ui-kit";
 import {
   LOG_FLOOR,
   bandLabel,
@@ -35,46 +33,27 @@ import {
   totalsByKey,
   type PivotRow,
 } from "@/lib/ingestion-chart";
-import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search";
 import { useIngestionIntensity } from "@/queries/ingestion";
 import { formatAxisTick, formatMetricNumber, formatUtcClock } from "@/lib/format";
 import { TEXT_BODY, TEXT_LABEL, TEXT_NAME, TEXT_TITLE } from "@/lib/type-scale";
+import { chartColor } from "@/lib/chart-palette";
 
-/**
- * How far back the trend reads. Long enough to show a weekly rhythm and a
- * stalled connector, short enough that 15-minute buckets stay one bar each
- * rather than a sub-pixel smear.
- */
 const TREND_DAYS = 30;
 
-/** The live close-up re-reads often; the wider windows do not need to. */
 const LIVE_REFRESH_MS = 5_000;
 const RECENT_REFRESH_MS = 60_000;
 
-/**
- * Admin ops lens over bronze extraction intensity.
- *
- * Two pages, one component: the overview bands every connector, and picking one
- * re-bands the same three charts by the streams inside it. The selected
- * connector lives in the URL (`conn`), so a reload and a shared link both land
- * on the same drill-down.
- */
-export function IngestionView() {
-  const { conn } = usePortalSearch();
-  const setSearch = useSetPortalSearch();
+export function IngestionView({ connector }: { connector?: string }) {
+  const conn = connector;
+  const navigate = useNavigate();
   const scope = conn ? scopeForConnector(conn) : null;
 
-  // `lookbackDays` rather than a resolved `from`: the client turns it into an
-  // instant when the request goes out, which keeps the clock out of this render.
   const trend = useIngestionIntensity({
     grain: "15m",
     series: "total",
     scope,
     lookbackDays: TREND_DAYS,
   });
-  // Both omit the window on purpose — the server's per-grain default IS the
-  // window these charts want (a day back at 15m, 30 minutes at 1s), and an
-  // omitted bound keeps the query key stable while the chart refetches.
   const recent = useIngestionIntensity(
     { grain: "15m", scope },
     { refetchInterval: RECENT_REFRESH_MS },
@@ -92,7 +71,7 @@ export function IngestionView() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setSearch({ conn: undefined })}
+              onClick={() => void navigate({ to: "/manage/ingestion" })}
             >
               ← All connectors
             </Button>
@@ -217,7 +196,6 @@ function SectionBody({
   );
 }
 
-/** The window the server actually read, not the one the chart asked for. */
 function WindowNote({ data }: { data: IngestionIntensity }) {
   return (
     <span className={TEXT_LABEL}>
@@ -249,8 +227,6 @@ function IntensityChart({
 }) {
   const { rows, keys } = useMemo(() => pivotIntensity(data.points), [data.points]);
   const config = useMemo(() => buildConfig(keys, data.series), [keys, data.series]);
-  // The log axis needs the plotted maximum, which for a stack is the stack
-  // height rather than the tallest single band.
   const peak = useMemo(
     () => rows.reduce((max, row) => Math.max(max, row.total), 0),
     [rows],
@@ -261,8 +237,6 @@ function IntensityChart({
     <ChartContainer config={config} className="w-full" style={{ height: 200 }}>
       <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-        {/* A numeric time axis, not a category one: an hour with no extraction
-            must read as a gap, and a categorical axis would close it up. */}
         <XAxis
           dataKey="epoch"
           type="number"
@@ -283,8 +257,6 @@ function IntensityChart({
           {...(logScale
             ? {
                 scale: "log" as const,
-                // The floor sits below 1 so a single-row bucket still has
-                // height; see LOG_FLOOR.
                 domain: [LOG_FLOOR, Math.max(peak, 1)],
                 ticks: logTicks(peak),
               }
@@ -315,7 +287,7 @@ function IntensityChart({
             key={key}
             dataKey={key}
             stackId={stacked ? "rows" : undefined}
-            fill={stacked ? seriesColorVar(key) : "var(--chart-1)"}
+            fill={stacked ? seriesColorVar(key) : chartColor(0)}
             radius={0}
           />
         ))}
@@ -324,19 +296,12 @@ function IntensityChart({
   );
 }
 
-/**
- * The clickable connector list.
- *
- * Derived from the recent-window read rather than a separate catalogue call, so
- * it lists connectors that extracted something in the window the chart above
- * plots — a connector idle for longer is absent, which the heading says.
- */
 function ConnectorRoster({
   query,
 }: {
   query: ReturnType<typeof useIngestionIntensity>;
 }) {
-  const setSearch = useSetPortalSearch();
+  const navigate = useNavigate();
   const rows = useMemo(
     () => (query.data ? totalsByKey(query.data.points) : []),
     [query.data],
@@ -353,7 +318,7 @@ function ConnectorRoster({
             key={row.key}
             type="button"
             className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/50"
-            onClick={() => setSearch({ conn: row.key })}
+            onClick={() => void navigate({ to: "/manage/ingestion/$connector", params: { connector: row.key } })}
           >
             <span
               aria-hidden

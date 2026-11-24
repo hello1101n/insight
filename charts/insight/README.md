@@ -81,7 +81,7 @@ If you install under a different name, override all cross-service URLs in your o
 The published artifact is the normal install path:
 
 ```bash
-helm upgrade --install insight oci://ghcr.io/constructorfabric/charts/insight \
+helm upgrade --install insight oci://ghcr.io/hello1101n/charts/insight \
   --version <x.y.z> \
   --namespace insight --create-namespace \
   -f my-values.yaml \
@@ -247,6 +247,11 @@ Atomic database the Airbyte destination creates, so nothing replays DDL issued
 in it, and a heal or migration that creates, drops, renames or exchanges a
 table there carries the clause.
 
+The destination also creates its connection-check table with `ON CLUSTER`. In
+cluster mode, its `database` is the Atomic `default`, not the Replicated app
+database. Set `ingestion.reconcile.destinationDatabase` to use a different
+Atomic database.
+
 With a replica down, a deploy does not start: the bronze-engine sweep needs
 every replica to answer, since the absent one may hold the table it looks for.
 Restore the replica, then deploy. A replica that drops out while a deploy
@@ -345,6 +350,6 @@ deploy first ([upgrade floor](../../docs/operations/CLICKHOUSE-UPGRADE-FLOOR.md)
 Publishing is automated: the `publish-chart` job in
 [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml)
 packages the umbrella and pushes it to
-`oci://ghcr.io/constructorfabric/charts/insight` on every push to `main` and
+`oci://ghcr.io/hello1101n/charts/insight` on every push to `main` and
 `release-*`, then commits the `version`/`appVersion` bump back to the branch.
 Do not push chart packages by hand.

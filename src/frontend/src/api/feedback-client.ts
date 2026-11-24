@@ -7,7 +7,6 @@ const BASE =
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-/** The service's own budget for one submission; past it the write is refused. */
 export const FEEDBACK_MESSAGE_MAX = 4000;
 
 export interface FeedbackSubmission {
@@ -23,6 +22,7 @@ export interface FeedbackEntry {
   person_id: string;
   display_name: string;
   username: string;
+  email: string | null;
   message: string;
   path: string;
 }

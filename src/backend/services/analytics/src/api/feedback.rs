@@ -14,15 +14,13 @@ use uuid::Uuid;
 
 use super::error::FeedbackError;
 use super::person_names::{self, PersonName};
+use super::roster_names::{self, Naming, Roster};
 use super::sort_direction::SortDirection;
-use super::{ADMIN_ONLY, AppState, clip, require_admin};
+use super::{ADMIN_ONLY, AppState, clip, forwarded_authorization, require_admin};
 use crate::domain::date_window::{self, Window, WindowError};
 use crate::infra::db::entities::feedback;
 use crate::migration::feedback_schema;
 
-/// The first submissions in the requested order. A window holding more is cut
-/// without saying so — narrowing the period is the only way to reach what falls
-/// past it.
 const LIST_LIMIT: u64 = 200;
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -39,10 +37,14 @@ pub struct FeedbackEntry {
     pub feedback_id: String,
     pub ts: String,
     pub person_id: String,
-    /// Empty when the sender has not been mirrored into the identity rows yet.
+    /// The roster's name when it lists the sender, as People shows it; else
+    /// the identity rows', empty when they hold none.
     pub display_name: String,
-    /// The account handle, empty when no identity row carries one.
+    /// The roster's handle when it lists the sender; else the identity rows',
+    /// empty when they hold none.
     pub username: String,
+    /// The roster's address; null for a sender the roster does not list.
+    pub email: Option<String>,
     pub message: String,
     pub path: String,
 }
@@ -107,12 +109,18 @@ pub async fn list_feedback(
         .await
         .map_err(read_error)?;
 
-    let names = person_names::lookup(&state.ch, tenant, &senders(&rows)).await;
+    let senders = senders(&rows);
+    let names = person_names::lookup(&state.ch, tenant, &senders).await;
+    let roster =
+        roster_names::roster(&state.identity, &senders, forwarded_authorization(&headers)).await;
 
     Ok(Json(FeedbackListResponse {
         since: window.since.to_string(),
         until: window.until.to_string(),
-        items: rows.into_iter().map(|row| entry(row, &names)).collect(),
+        items: rows
+            .into_iter()
+            .map(|row| entry(row, &names, &roster))
+            .collect(),
     }))
 }
 
@@ -160,8 +168,6 @@ fn to_row(
     })
 }
 
-/// Who to ask the identity mirror about: one id per person on the page, not
-/// one per row.
 fn senders(rows: &[feedback::Model]) -> Vec<Uuid> {
     rows.iter()
         .map(|row| row.person_id)
@@ -170,18 +176,24 @@ fn senders(rows: &[feedback::Model]) -> Vec<Uuid> {
         .collect()
 }
 
-fn entry(row: feedback::Model, names: &HashMap<Uuid, PersonName>) -> FeedbackEntry {
+fn entry(
+    row: feedback::Model,
+    names: &HashMap<Uuid, PersonName>,
+    roster: &Roster,
+) -> FeedbackEntry {
     let (display_name, username) = names
         .get(&row.person_id)
         .map(|sender| (sender.display_name.clone(), sender.username.clone()))
         .unwrap_or_default();
+    let naming = Naming::of(roster.get(&row.person_id), display_name, username);
 
     FeedbackEntry {
         feedback_id: row.id.to_string(),
         ts: row.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
         person_id: row.person_id.to_string(),
-        display_name,
-        username,
+        display_name: naming.display_name,
+        username: naming.username,
+        email: naming.email,
         message: row.message,
         path: row.path,
     }
@@ -191,8 +203,6 @@ fn day_start(day: NaiveDate) -> DateTime<Utc> {
     Utc.from_utc_datetime(&day.and_time(NaiveTime::MIN))
 }
 
-/// The window names whole UTC days, so the upper bound is the midnight AFTER
-/// `until` — anything narrower drops part of that day.
 fn day_after(day: NaiveDate) -> DateTime<Utc> {
     day_start(day) + Duration::days(1)
 }

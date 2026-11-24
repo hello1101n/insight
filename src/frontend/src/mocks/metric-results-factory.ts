@@ -1,5 +1,7 @@
 import type {
+  MetricDirection,
   MetricErrorView,
+  MetricFormat,
   MetricNotReadyView,
   MetricResult,
   MetricResultView,
@@ -7,15 +9,10 @@ import type {
   MetricResultsResponse,
 } from "@/api/metric-results-client";
 
+import catalog from "./metric-catalog.json";
 import { metricResultFixtureByKey } from "./metric-results-fixtures";
 
-/**
- * Builds a `/v1/metric-results` response from the request body: every
- * requested metric and view is echoed back (the backend never returns
- * partial views), with deterministic per-(entity, metric) values so the UI
- * is stable across reloads. Metric metadata comes from the wire fixtures
- * when the key is known, synthesized otherwise.
- */
+const CATALOG = new Map(catalog.map((entry) => [entry.metric_key, entry]));
 
 function hash(input: string): number {
   let h = 2166136261;
@@ -30,11 +27,31 @@ function valueFor(entityId: string, metricKey: string, salt = ""): number {
   return (hash(`${entityId}|${metricKey}|${salt}`) % 900) + 50;
 }
 
+function inFormat(value: number, format: MetricFormat): number {
+  if (format === "percent") return Math.round(((value - 50) / 899) * 100);
+  if (format === "decimal") return value / 100;
+  return value;
+}
+
 export function metaFor(metricKey: string): Omit<MetricResult, "views"> {
   const fixture = metricResultFixtureByKey(metricKey);
   if (fixture) {
     const { views: _views, ...meta } = fixture;
     return meta;
+  }
+  const entry = CATALOG.get(metricKey);
+  if (entry) {
+    return {
+      metric_key: metricKey,
+      label: entry.label ?? metricKey,
+      ...(entry.short_label ? { short_label: entry.short_label } : {}),
+      ...(entry.description ? { description: entry.description } : {}),
+      ...(entry.explanation ? { explanation: entry.explanation } : {}),
+      unit: entry.unit ?? null,
+      format: (entry.format ?? "integer") as MetricFormat,
+      direction: (entry.direction ?? "neutral") as MetricDirection,
+      computation: (entry.computation ?? "sum") as MetricResult["computation"],
+    };
   }
   const label = metricKey
     .split(".")
@@ -66,12 +83,6 @@ const MOCK_TOOLS = [
   { key: "tool", value: "cursor", label: "Cursor" },
 ];
 
-/**
- * Values a dimension breaks down into, so a mock answers the dimension it was
- * ASKED for. Returning one fixed set meant a section reading any other
- * dimension found nothing in its rows and rendered as absent — which reads as
- * a broken screen rather than as a mock with no fixture.
- */
 const MOCK_DIMENSION_VALUES: Record<
   string,
   { value: string; label: string }[]
@@ -100,11 +111,6 @@ function mockDimensionValues(key: string): { value: string; label: string }[] {
   );
 }
 
-/**
- * A failed-computation view, delivered in a requested view's slot the way the
- * backend does since ClickHouse error isolation: the request still answers
- * 200 and the other views/metrics are unaffected.
- */
 export function buildMetricErrorView(
   overrides: Partial<Omit<MetricErrorView, "view">> = {},
 ): MetricErrorView {
@@ -117,10 +123,6 @@ export function buildMetricErrorView(
   };
 }
 
-/**
- * A view whose data has not been built yet — what a fresh install answers
- * before the first connector sync, in a requested view's slot.
- */
 export function buildMetricNotReadyView(
   overrides: Partial<Omit<MetricNotReadyView, "view">> = {},
 ): MetricNotReadyView {
@@ -141,6 +143,7 @@ export function buildMetricResultsResponse(
   const metrics: MetricResult[] = request.metrics.map((metricRequest) => {
     const meta = metaFor(metricRequest.metric_key);
     const key = metricRequest.metric_key;
+    const keyInPeriod = `${key}|${request.period.from}|${request.period.to}`;
     const views: MetricResultView[] = metricRequest.views.map((view) => {
       switch (view.view) {
         case "period":
@@ -148,9 +151,14 @@ export function buildMetricResultsResponse(
             view: "period",
             values: ids.map((entityId) => ({
               entity_id: entityId,
-              value: valueFor(entityId, key),
+              value: inFormat(valueFor(entityId, keyInPeriod), meta.format),
               ...(request.compare_to
-                ? { compare_to: valueFor(entityId, key, "previous-period") }
+                ? {
+                    compare_to: inFormat(
+                      valueFor(entityId, keyInPeriod, "previous-period"),
+                      meta.format,
+                    ),
+                  }
                 : {}),
             })),
           };
@@ -158,10 +166,10 @@ export function buildMetricResultsResponse(
           return {
             view: "peer",
             values: ids.map((entityId) => {
-              const median = valueFor("cohort-median", key);
+              const median = inFormat(valueFor("cohort-median", keyInPeriod), meta.format);
               return {
                 entity_id: entityId,
-                target_value: valueFor(entityId, key),
+                target_value: inFormat(valueFor(entityId, keyInPeriod), meta.format),
                 p25: median * 0.6,
                 median,
                 p75: median * 1.4,
@@ -197,11 +205,6 @@ export function buildMetricResultsResponse(
           };
         }
         case "breakdown": {
-          // One row per combination the caller asked for, keyed by the
-          // requested dimension rather than by a fixed one. Every key draws
-          // from its OWN vocabulary: a composition splitting repositories by
-          // branch scope would otherwise label its segments with repository
-          // names, which reads as a broken screen rather than as a mock.
           const axis = view.dimensions[0] ?? "tool";
           return {
             view: "breakdown",
@@ -218,7 +221,7 @@ export function buildMetricResultsResponse(
                     label: pick.label,
                   };
                 }),
-                value: valueFor(entityId, key, dimension.value),
+                value: inFormat(valueFor(entityId, keyInPeriod, dimension.value), meta.format),
               })),
             ),
           };
@@ -233,7 +236,7 @@ export function buildMetricResultsResponse(
                 value: dimension.value,
                 label: dimension.label,
               })),
-              value: valueFor("rollup", key, dimension.value),
+              value: inFormat(valueFor("rollup", keyInPeriod, dimension.value), meta.format),
               contributing_entity_count: ids.length,
             })),
           };
@@ -252,13 +255,15 @@ export function buildMetricResultsResponse(
               };
             }),
           };
+        case "unattributed":
+          return {
+            view: "unattributed",
+            value: valueFor("unattributed", key, "share") % 20,
+          };
         default:
           return view satisfies never;
       }
     });
-    // Every mock metric carries evidence and its canonical selection: without
-    // both, no surface offers the drilldown at all and mock mode cannot reach
-    // the records dialog.
     return {
       ...meta,
       views,

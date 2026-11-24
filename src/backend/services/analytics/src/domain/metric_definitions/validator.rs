@@ -18,18 +18,9 @@ use crate::domain::metric_definitions::repository::{
 };
 use crate::domain::metric_drilldown::with_evidence_query_limits;
 
-// Dimension coverage is checked over a trailing window anchored at the
-// newest observed row, not at today(): rows predating a dimension's
-// introduction would otherwise fail coverage forever, and a paused
-// connector would empty the window entirely. Measure existence and
-// freshness are probed over all history — schema validity is structural
-// and does not decay with time.
+mod coverage;
+
 const PROBE_WINDOW_DAYS: u32 = 35;
-// Managed observation relations are dbt-created and can appear (or regress)
-// while the service is running — a one-shot startup scan would pin
-// `table_not_found` until the next pod restart. Sweeps are idempotent:
-// transient probe failures never overwrite an established status, and
-// status writes pin `updated_at`.
 const SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_mins(5);
 
 #[derive(Clone)]
@@ -43,7 +34,6 @@ impl MetricDefinitionValidator {
         Self { db, ch }
     }
 
-    /// Validates immediately, then every [`SWEEP_INTERVAL`] when periodic validation is enabled.
     pub async fn run(self, periodic_validation_enabled: bool) {
         let mut ticks = tokio::time::interval(SWEEP_INTERVAL);
         ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -332,16 +322,12 @@ impl MetricDefinitionValidator {
         spec: &MetricDefinitionValidationSpec,
     ) -> (ProbeOutcome, ObservedSpan) {
         let Some(target) = resolve_probe_target(&spec.inputs, relation) else {
-            // Nothing was read: the definition never resolved to a relation to
-            // read from, so the stored bounds are not contradicted.
             return (
                 ProbeOutcome::Definitive(ValidationState::Error(MetricSchemaErrorCode::Unknown)),
                 ObservedSpan::Unknown,
             );
         };
 
-        // One probe answers both questions: which declared measures have
-        // ever been observed (schema), and what span each one covers (data).
         let measure_keys = target.measure_keys.iter().copied().collect::<Vec<_>>();
         let dates = match self
             .measure_dates(
@@ -362,17 +348,11 @@ impl MetricDefinitionValidator {
 
         let freshness = classify_freshness(&target.measure_keys, &last_dates);
         if freshness == Freshness::NeverObserved {
-            // The query succeeded and matched no row. Whatever lower bound was
-            // stored describes rows that are no longer there — most often a
-            // retention drop that took the last of them.
             return (
                 ProbeOutcome::Definitive(ValidationState::Unchecked),
                 ObservedSpan::Empty,
             );
         }
-        // Widest across the measures on both ends: a definition is readable
-        // wherever any of its inputs is, and narrowing to the intersection
-        // would call a day uncollected because one input started later.
         let observed = ObservedSpan::Seen {
             first: dates.first.values().min().copied(),
             last: last_dates.values().max().copied(),
@@ -384,25 +364,17 @@ impl MetricDefinitionValidator {
             .copied()
             .filter(|key| last_dates.contains_key(*key))
             .collect::<Vec<_>>();
-        if let Some(outcome) = self
-            .check_dimension_coverage(
-                relation,
-                target.source_key,
-                spec,
-                &observed_keys,
-                &last_dates,
-            )
-            .await
-        {
-            return (outcome, observed);
-        }
+        self.check_dimension_coverage(
+            relation,
+            target.source_key,
+            spec,
+            &observed_keys,
+            &last_dates,
+        )
+        .await;
 
         match freshness {
             Freshness::Complete(_) => (ProbeOutcome::Definitive(ValidationState::Ok), observed),
-            // A declared measure with no observation ever is a data condition,
-            // not a schema error: filtered measures (e.g. tool-scoped
-            // conversations) legitimately stay quiet, so the definition stays
-            // unchecked but runtime-available.
             Freshness::Partial(_) | Freshness::NeverObserved => {
                 let unobserved = target
                     .measure_keys
@@ -430,16 +402,14 @@ impl MetricDefinitionValidator {
         spec: &MetricDefinitionValidationSpec,
         observed_keys: &[&str],
         last_dates: &HashMap<String, NaiveDate>,
-    ) -> Option<ProbeOutcome> {
-        // Window each measure against its OWN newest observation, never the
-        // definition-wide max: a stale measure judged against a fresher
-        // sibling's date sees an empty window and fakes DimensionNotCovered.
+    ) {
         let windows = measure_windows(observed_keys, last_dates);
         if windows.is_empty() {
-            return None;
+            return;
         }
+        let mut results = Vec::with_capacity(spec.dimensions.len());
         for dimension in &spec.dimensions {
-            match self
+            let result = self
                 .dimension_present_on_all_rows(
                     relation,
                     source_key,
@@ -447,21 +417,11 @@ impl MetricDefinitionValidator {
                     &windows,
                     dimension,
                 )
-                .await
-            {
-                Ok(true) => {}
-                Ok(false) => {
-                    return Some(ProbeOutcome::Definitive(ValidationState::Error(
-                        MetricSchemaErrorCode::DimensionNotCovered,
-                    )));
-                }
-                Err(error) => {
-                    tracing::warn!(error = %error, "metric dimension probe failed");
-                    return Some(ProbeOutcome::Inconclusive);
-                }
-            }
+                .await;
+            results.push((dimension.as_str(), result));
         }
-        None
+
+        coverage::report(&spec.metric_key, results);
     }
 
     async fn has_columns(
@@ -528,8 +488,6 @@ impl MetricDefinitionValidator {
         Ok(ColumnCheck::Present)
     }
 
-    /// Reads the evidence rows a source's measures actually produced and holds
-    /// them against what those measures declare. `None` is agreement.
     async fn evidence_contract_violation(
         &self,
         relation: &EvidenceRelation,
@@ -636,9 +594,6 @@ impl MetricDefinitionValidator {
     }
 }
 
-// The columns the RUNTIME actually reads. `entity_id` carries the source
-// identity; the runtime resolves it through `identity.person_map` while serving,
-// so the relation never publishes a second, pre-resolved identity column.
 const OBSERVATION_COLUMNS: &[&str] = &[
     "tenant_id",
     "source_key",
@@ -679,13 +634,10 @@ const EVIDENCE_COLUMN_TYPES: &[(&str, &str)] = &[
     ("details", "Map(String, String)"),
 ];
 
-/// The live email → person map every person read joins. Probed like any other
-/// serving contract: a missing map makes the relation unqueryable, not empty.
 const PERSON_MAP_TABLE: (&str, &str) = ("identity", "person_map");
 
 const PERSON_MAP_COLUMNS: &[&str] = &["tenant_id", "email", "person_id"];
 
-/// The live account → person binding consulted before the email map.
 const ACCOUNT_ASSIGNMENT_TABLE: (&str, &str) = ("identity", "account_assignment");
 
 const ACCOUNT_ASSIGNMENT_COLUMNS: &[&str] = &[
@@ -718,19 +670,12 @@ struct MeasureDateProbeRow {
     last_date: String,
 }
 
-/// The span of dates a probe found, per measure. One probe answers both ends,
-/// so they travel together rather than costing a second scan each sweep.
 #[derive(Debug, Default)]
 struct MeasureDates {
     first: HashMap<String, NaiveDate>,
     last: HashMap<String, NaiveDate>,
 }
 
-/// What a definition's measures currently cover, across all of them.
-///
-/// `Empty` is not `Unknown` with no dates: the first says the relation was read
-/// and holds nothing, which retires a stored lower bound, and the second says
-/// the probe never got far enough to claim anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ObservedSpan {
     Unknown,
@@ -742,8 +687,6 @@ enum ObservedSpan {
 }
 
 impl ObservedSpan {
-    /// The oldest date to store, in the shape the writer needs to tell a
-    /// cleared bound from an untouched one.
     fn oldest(self) -> OldestObservation {
         match self {
             Self::Unknown => OldestObservation::Unknown,
@@ -754,9 +697,6 @@ impl ObservedSpan {
         }
     }
 
-    /// The newest date to store. `None` leaves the stored value alone, which is
-    /// what keeps it the monotonic freshness marker it is: an empty relation
-    /// does not make a definition less fresh than it was last seen to be.
     fn newest(self) -> Option<NaiveDate> {
         match self {
             Self::Unknown | Self::Empty => None,
@@ -823,9 +763,6 @@ impl ValidationState {
     }
 }
 
-/// The single observation source + measure set a definition probes, resolved
-/// from its inputs for a given relation. `None` = misconfigured (no inputs for
-/// the relation, or inputs spanning more than one source).
 struct ProbeTarget<'a> {
     source_key: &'a str,
     measure_keys: BTreeSet<&'a str>,
@@ -862,16 +799,10 @@ fn resolve_probe_target<'a>(
     })
 }
 
-/// Data-freshness classification of a definition's declared measures against
-/// the dates observed for them. Orthogonal to dimension coverage, which gates
-/// separately.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Freshness {
-    /// No declared measure has ever been observed.
     NeverObserved,
-    /// Some, but not all, declared measures have been observed.
     Partial(Option<NaiveDate>),
-    /// Every declared measure has been observed.
     Complete(Option<NaiveDate>),
 }
 
@@ -894,8 +825,6 @@ fn classify_freshness(
     }
 }
 
-/// Pair each observed measure with its own newest observation date. Measures
-/// absent from `last_dates` are dropped (they have no window to check).
 fn measure_windows<'a>(
     observed_keys: &[&'a str],
     last_dates: &HashMap<String, NaiveDate>,
@@ -964,8 +893,6 @@ fn evidence_contract_sql(
     )
 }
 
-// The window trails the oldest per-measure last-observed date so a stale
-// measure widens it instead of falling outside it.
 fn evidence_window_start(observed_dates: &HashMap<String, NaiveDate>) -> Option<NaiveDate> {
     observed_dates
         .values()
@@ -1014,10 +941,6 @@ fn granularities_match(
     })
 }
 
-/// Every detail column a measure declares has to occur in the rows it produced,
-/// or the drilldown serves that column blank on every row. A measure with no
-/// rows in the window declares against nothing and passes — the granularity
-/// check above is what catches a measure that should have produced some.
 fn declared_details_present(
     expected: &[SourceMeasureEvidence],
     actual: &HashMap<String, EvidenceContractProbeRow>,
@@ -1073,9 +996,6 @@ fn parse_probe_date(raw: &str, measure_key: &str) -> Result<NaiveDate, clickhous
 }
 
 fn dimension_coverage_sql(database: &str, table: &str, measure_count: usize) -> String {
-    // One batched query, but each measure carries its own freshness window
-    // (`measure_key = ? AND metric_date >= toDate(?) - N`) so a stale measure
-    // is scored over its own history, not a fresher sibling's.
     let per_measure = (0..measure_count)
         .map(|_| format!("(measure_key = ? AND metric_date >= toDate(?) - {PROBE_WINDOW_DAYS})"))
         .collect::<Vec<_>>()
@@ -1206,8 +1126,6 @@ mod tests {
         assert_eq!(ok.first.get("a"), Some(&date("2026-01-04")));
         assert_eq!(ok.last.get("a"), Some(&date("2026-07-01")));
 
-        // Either end being unreadable fails the probe: a span with one usable
-        // bound would be reported as a collection boundary it is not.
         assert!(
             parse_measure_dates(vec![MeasureDateProbeRow {
                 measure_key: "a".to_owned(),
@@ -1228,8 +1146,6 @@ mod tests {
 
     #[test]
     fn an_empty_relation_retires_the_lower_bound_and_a_failed_probe_leaves_it() {
-        // Both reach the writer carrying no dates, and they mean opposite
-        // things: one read the relation, the other never got to.
         assert_eq!(ObservedSpan::Empty.oldest(), OldestObservation::Absent);
         assert_eq!(ObservedSpan::Unknown.oldest(), OldestObservation::Unknown);
         assert_eq!(
@@ -1244,8 +1160,6 @@ mod tests {
 
     #[test]
     fn an_empty_relation_leaves_the_freshness_marker_where_it_stood() {
-        // `last_observed_date` is monotonic: a relation that holds nothing
-        // today does not unsay the newest day it was once seen to hold.
         assert_eq!(ObservedSpan::Empty.newest(), None);
         assert_eq!(ObservedSpan::Unknown.newest(), None);
         assert_eq!(
@@ -1531,7 +1445,6 @@ mod tests {
         ];
         assert!(!all_measures_covered(&windows, partial));
 
-        // A measure with no rows at all in its window is not covered.
         let missing = vec![DimensionCoverageProbeRow {
             measure_key: "a".to_owned(),
             total_rows: 4,
@@ -1562,11 +1475,6 @@ mod tests {
         );
     }
 
-    // A custom_observation_sql source is executed at query time and
-    // materialises nothing, and the validator must not run tenant-authored SQL
-    // to probe it. It is therefore left inconclusive, which keeps the previous
-    // status: custom definitions stay `unchecked` and never get a
-    // last_observed_date. Returns without touching the (disconnected) backends.
     #[tokio::test]
     async fn custom_observation_sql_sources_are_never_probed() {
         let validator = MetricDefinitionValidator::new(
@@ -1584,9 +1492,6 @@ mod tests {
         assert!(matches!(outcome, ProbeOutcome::Inconclusive));
     }
 
-    // Drives the two-probe contract check (observation dates, then granularity
-    // and detail keys) against an in-process mock server, so the bounded query
-    // paths run end-to-end.
     #[tokio::test]
     async fn contract_probe_matches_against_a_mock_server() {
         use clickhouse::test::{Mock, handlers};

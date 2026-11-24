@@ -7,13 +7,38 @@ name: slack
 # 2027.0.0 (major): the chat feeder drops guest accounts.
 #   MAJOR so reconcile dispatches the one-shot `dbt --full-refresh` that purges
 #   rows materialised before the filter — incremental models never retro-delete.
-version: "2027.0.0"
+# 2027.1.0: Python CDK instead of a declarative manifest, so a day Slack refuses
+#   with {"ok": false} fails the sync instead of landing as an all-NULL row.
+#   Same stream, schema, unique_key and {"date"} state: reconcile migrates the
+#   definition and restores the connection state; bronze keeps its meaning.
+#   Staging drops a row with a NULL message counter instead of reading it as 0
+#   (none exist on vz, so no full refresh is needed).
+# 2028.0.0 (major): chat rows carry the Slack account (user_id), and the gold
+#   chat evidence resolves each Slack row by that account first, then by the email.
+#   MAJOR so reconcile runs `dbt --full-refresh`: staging rows built before the
+#   change have no account. Slack sends identity inputs from the members models.
+# 2029.0.0 (major): the chat staging feeders replace rows by key (delete+insert
+#   on ReplacingMergeTree). They build every day extracted after the newest
+#   extract they already built, so a gap of more than 3 days heals (#4323,
+#   #4317). MAJOR so reconcile runs the one-shot `dbt --full-refresh` that
+#   removes the stored duplicate keys and creates the new table engine.
+version: "2029.4.0"
+type: cdk
 schedule: 0 4 * * *
+# images.cdk.image stays empty until the first main build of build-images.yml,
+# whose bump-descriptors job pins it; reconcile skips the connector until then.
+images:
+  cdk:
+    name: source-slack-insight
+    dockerfile: ./Dockerfile
+    context: .
+    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.20.13.24-f15a8f6"
 dbt_select: tag:slack+
 workflow: sync
 connection:
   namespace: bronze_slack
+# INVARIANT: the token key is not listed. A Secret can name it slack_user_token
+# or slack_bot_token, and the connection check reports a missing token.
 secret:
   required_fields:
-    - slack_bot_token
     - slack_start_date

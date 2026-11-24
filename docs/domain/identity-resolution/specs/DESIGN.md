@@ -332,6 +332,7 @@ Implemented behaviour (groups accounts by normalized current e-mail, then resolv
 - Reads `identity_inputs` — the **full evidence set each run** (no incremental watermark yet; REC-IR-02) for the configured tenant only (the evidence carries the canonical tenant UUID). UPSERT rows carry values; DELETE rows are closure signals only. **Known gap**: by the write contract DELETE rows arrive with an empty `value`, and the current reader's non-empty filter drops them — closure/tombstone handling is inert until the reader fix ships with the manual-resolution feature. Groups observations per source account and accounts by e-mail.
 - Branch 1 — reuse: a group containing an already-bound account reuses that binding. **Known gap**: if the group's accounts are bound to *different* persons, the whole group currently collapses onto the first binding (with `known_binding_conflicts` counted and logged) — which can silently re-bind the other accounts.
 - Branch 2 — `LinkedByEmail`: an unbound group whose e-mail already maps to an existing person is linked to that person automatically.
+- Branch 2b — `LinkedByEmployeeId`: when the e-mail names no person, a group links to the person that its `employee_id` names. Only the roster source (`roster_source_type`) teaches an ID. An ID that two persons hold links nobody. The journal reason is `auto-seed-employee-id-link`.
 - Branch 3 — mint: a new person for a group with a new e-mail (at least one active profile); groups with no e-mail, or wholly closed, are skipped.
 - Writes observations via `INSERT IGNORE` (idempotent for re-emitted observations under the natural key, which includes `created_at` taken from `_synced_at`); rebuilds `org_chart` atomically.
 - Guards destructive/suspicious runs (no evidence for the configured tenant) with an explicit `--force` override; journals every run in `operations` (queued → running → completed/failed with summary counters).
@@ -785,6 +786,12 @@ transactional apply is the tenant-scoped rebuild of the derived
 5. Group accounts by normalized current e-mail; resolve each group in priority order (`domain/seed.rs::resolve_assignments`):
    - **Group with a bound account** (step 3 set): reuse that `person_id` for the whole group; no new binding decision. **Known gap**: if the group's accounts are bound to *different* persons, the group currently collapses onto the first binding (counted in `known_binding_conflicts`, logged) and can thereby silently re-derive a binding — the manual-resolution hardening replaces this with per-account binding respect and surfacing.
    - **Unbound group, e-mail present in step 4 set**: link the group to that person (`LinkedByEmail`) — the account joins an existing person automatically when the e-mail is unambiguous.
+   - **Unbound group, no e-mail match, a roster employee ID**: link the group to the person that its `employee_id` names (`LinkedByEmployeeId`). Rules:
+     - Only a configured roster source teaches IDs. Without a roster, this branch is off. An employee ID has meaning only in the system that issued it.
+     - The map comes from the latest roster `employee_id` of each person in `persons`, plus the roster groups of the same run. Roster groups resolve first.
+     - An ID that two persons hold links nobody. IDs of one group that name different persons link nobody.
+     - The e-mail wins: this branch applies only when the e-mail names no person.
+     - The reason on the new rows is `auto-seed-employee-id-link`.
    - **Unbound group, new e-mail, at least one active profile**: mint a new `person_id` (random UUIDv7); accounts sharing the new e-mail within the run share the person.
    - **No e-mail, or all profiles closed**: skip — no binding is created. Skipped active accounts are not hidden: the review queue surfaces them from `identity_inputs` as no-evidence items awaiting an operator bind. E-mail remains the sole automatic identity anchor for this seed.
 
@@ -913,7 +920,7 @@ The MatchingEngine (`cpt-insightspec-ir-component-matching-engine`) evaluates ru
 | Rule (`condition_type`) | Confidence | Description |
 |---|---|---|
 | `email_exact` | 1.0 | Identical email after normalization |
-| `hr_id_match` | 1.0 | Identical `employee_id` from same `insight_source_type` |
+| `hr_id_match` | 1.0 | Identical `employee_id` from same `insight_source_type`. The persons-seed already links a non-roster account by the roster `employee_id` (`LinkedByEmployeeId`, step 5). |
 | `username_same_sys` | 0.95 | Same username within same `insight_source_type` |
 
 **Phase B2 — Normalization & Cross-System (medium-confidence proposals)**:

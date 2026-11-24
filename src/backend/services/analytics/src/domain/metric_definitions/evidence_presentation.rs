@@ -11,9 +11,6 @@ pub enum EvidenceColumnType {
     Date,
 }
 
-/// One human-facing column the drilldown projects out of an evidence row's
-/// `details` map. `key` names the map entry the gold model writes; the label
-/// and type are what the reader sees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceDetailColumn {
@@ -23,37 +20,46 @@ pub struct EvidenceDetailColumn {
     pub r#type: EvidenceColumnType,
 }
 
-/// How a measure's evidence reads: the detail columns its rows carry, in the
-/// order the reader sees them, and whether the contributed number earns a
-/// column of its own. Declared per measure in the builtin registry, stored on
-/// the measure row, and probed against the evidence relation by the validator —
-/// so the gold model and the serving layer agree through one declaration
-/// instead of parallel edits.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EvidencePresentation {
     #[serde(default)]
     pub detail_columns: Vec<EvidenceDetailColumn>,
     pub show_value: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_parts: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_label: Option<String>,
 }
 
+pub(crate) const RECORD_REF_KEY: &str = "ref";
+
 impl EvidencePresentation {
-    /// What a measure presents when it declares nothing: no detail columns, and
-    /// a value column everywhere the row is not itself the thing counted.
     pub fn undeclared(granularity: EvidenceGranularity) -> Self {
         Self {
             detail_columns: Vec::new(),
             show_value: granularity != EvidenceGranularity::Event,
+            record_parts: None,
+            value_label: None,
         }
+    }
+
+    pub fn names_a_record(&self) -> bool {
+        self.detail_keys().any(|key| key == RECORD_REF_KEY)
     }
 
     fn parse(json: &str) -> Option<Self> {
         let presentation: Self = serde_json::from_str(json).ok()?;
-        presentation
-            .detail_columns
-            .iter()
-            .all(|column| is_column_key(&column.key))
-            .then_some(presentation)
+        let parts_fold_a_record = presentation
+            .record_parts
+            .as_deref()
+            .is_none_or(|dimension| is_column_key(dimension) && presentation.names_a_record());
+        (parts_fold_a_record
+            && presentation
+                .detail_columns
+                .iter()
+                .all(|column| is_column_key(&column.key)))
+        .then_some(presentation)
     }
 
     pub fn detail_keys(&self) -> impl Iterator<Item = &str> {
@@ -75,10 +81,6 @@ fn is_column_key(key: &str) -> bool {
         && !key.starts_with(|first: char| first.is_ascii_digit() || first == '_')
 }
 
-/// What a measure row holds under `evidence_presentation`. Three states rather
-/// than an `Option`, because stored JSON that does not describe a presentation
-/// is a configuration fault to report — not the absence of a declaration, which
-/// is ordinary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredPresentation {
     Absent,
@@ -94,9 +96,6 @@ impl StoredPresentation {
         EvidencePresentation::parse(stored).map_or(Self::Unreadable, Self::Declared)
     }
 
-    /// How the measure presents, given the granularity its rows carry. `None`
-    /// where the declaration is unreadable — the caller decides what an
-    /// unusable declaration costs it.
     pub fn or_undeclared(&self, granularity: EvidenceGranularity) -> Option<EvidencePresentation> {
         match self {
             Self::Absent => Some(EvidencePresentation::undeclared(granularity)),
@@ -162,6 +161,8 @@ mod tests {
                 },
             ],
             show_value: false,
+            record_parts: Some("file_extension".to_owned()),
+            value_label: Some("Lines".to_owned()),
         };
         let stored = serde_json::to_string(&declared)
             .unwrap_or_else(|error| panic!("declaration must serialize: {error}"));
@@ -218,5 +219,35 @@ mod tests {
             .unwrap_or_else(|| panic!("a readable declaration must resolve"));
         assert!(presentation.show_value);
         assert_eq!(presentation.detail_keys().collect::<Vec<_>>(), ["ref"]);
+    }
+
+    #[test]
+    fn a_declaration_without_parts_stores_no_parts_field() {
+        let StoredPresentation::Declared(parsed) = StoredPresentation::read(Some(
+            r#"{"detail_columns":[{"key":"ref","label":"Ref"}],"show_value":true}"#,
+        )) else {
+            panic!("declaration must parse");
+        };
+
+        assert!(parsed.names_a_record());
+        assert!(!EvidencePresentation::undeclared(EvidenceGranularity::Event).names_a_record());
+        assert_eq!(
+            serde_json::to_string(&parsed).unwrap_or_default(),
+            r#"{"detail_columns":[{"key":"ref","label":"Ref","type":"string"}],"show_value":true}"#
+        );
+    }
+
+    #[test]
+    fn parts_fold_only_a_record_and_only_by_a_key_shaped_dimension() {
+        for stored in [
+            r#"{"detail_columns":[{"key":"title","label":"Title"}],"show_value":true,"record_parts":"file_extension"}"#,
+            r#"{"detail_columns":[{"key":"ref","label":"Ref"}],"show_value":true,"record_parts":"file?extension"}"#,
+        ] {
+            assert_eq!(
+                StoredPresentation::read(Some(stored)),
+                StoredPresentation::Unreadable,
+                "should reject: {stored}"
+            );
+        }
     }
 }

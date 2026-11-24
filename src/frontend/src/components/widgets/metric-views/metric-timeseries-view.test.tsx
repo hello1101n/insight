@@ -68,7 +68,6 @@ vi.mock("@/components/widgets/metric-views/metric-timeseries-table", () => ({
   }: {
     onVerticalOverflow?: (overflows: boolean) => void;
   }) => {
-    // The real table measures and reports; jsdom cannot, so the test says.
     useEffect(() => {
       onVerticalOverflow?.(mocks.tableOverflows);
     }, [onVerticalOverflow]);
@@ -355,7 +354,7 @@ describe("MetricTimeseriesView", () => {
         groupBy={{ default: "repository" }}
       />
     );
-    const body = () => container.querySelector('[data-slot="card-content"]')!;
+    const body = () => container.querySelector("[aria-busy]")!;
     await user.click(screen.getByRole("button", { name: "Table view" }));
     expect(body().className).toContain("max-h-96");
 
@@ -365,8 +364,6 @@ describe("MetricTimeseriesView", () => {
       screen.getByRole("button", { name: "Scroll the table" })
     ).toHaveAttribute("aria-pressed", "true");
 
-    // Round trip through the chart: the ceiling comes back rather than the
-    // next table opening uncapped.
     await user.click(screen.getByRole("button", { name: "Chart view" }));
     await user.click(screen.getByRole("button", { name: "Table view" }));
     expect(body().className).toContain("max-h-96");
@@ -383,7 +380,7 @@ describe("MetricTimeseriesView", () => {
         groupBy={{ default: "repository" }}
       />
     );
-    const body = () => container.querySelector('[data-slot="card-content"]')!;
+    const body = () => container.querySelector("[aria-busy]")!;
     expect(body().className).toContain("h-96");
     expect(body().className).not.toContain("max-h-96");
 
@@ -500,7 +497,6 @@ describe("MetricTimeseriesView", () => {
 
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     expect(screen.getByText("chart presentation")).toBeInTheDocument();
-    // The export action is disabled while fetching.
     expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
   });
 
@@ -630,8 +626,6 @@ describe("MetricTimeseriesView", () => {
     expect(
       targets.map((target: EvidenceDialogTarget) => target.selection.metric_key)
     ).toEqual(["git.commits", "git.lines_added"]);
-    // Picking the other metric in the dialog must not widen the period back
-    // out to the widget's own range.
     for (const target of targets as EvidenceDialogTarget[]) {
       expect(target.selection.period).toEqual({
         from: "2026-04-20",

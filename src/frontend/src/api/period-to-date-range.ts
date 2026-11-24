@@ -1,8 +1,3 @@
-/**
- * Local-timezone aware: a "week" means 7 local days. ISO output is
- * YYYY-MM-DD without a timezone suffix — the backend filters by date string.
- */
-
 import { differenceInCalendarDays, isValid, parseISO, subDays } from "date-fns";
 
 import type { CustomRange, PeriodValue } from "@/types/insight";
@@ -21,10 +16,6 @@ export type DateRangeValidation =
       days?: number;
     };
 
-/**
- * A real calendar date, or null. `2026-02-30` is well-formed and not a date,
- * so the round trip through `Date` is what tells them apart.
- */
 export function parseISOCalendarDate(value: string): Date | null {
   if (!ISO_DATE_RE.test(value)) return null;
 
@@ -73,7 +64,6 @@ export function localToday(): Date {
   return today;
 }
 
-// INVARIANT: some surfaces report by UTC day, which west of UTC can be local tomorrow.
 export function latestPickableDay(now: Date = new Date()): Date {
   const localDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const utcDay = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -146,8 +136,6 @@ export function resolveDateRange(
   return periodToDateRange(period);
 }
 
-// Month/quarter shifts clamp to the last day of the target month so
-// end-of-month boundaries don't roll forward.
 export function previousPeriodRange(
   range: DateRange,
   period: PeriodValue

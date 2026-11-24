@@ -1,11 +1,3 @@
-/**
- * The rows behind one metric, fetched for showing inline.
- *
- * What matters here is when it does NOT fetch. A section renders one of these
- * per headline metric, so a hook that asks anyway — with no session, with no
- * selection, or for a metric that offers no detail — turns one screen into
- * several pointless round trips.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -51,8 +43,6 @@ beforeEach(() => {
 
 describe("useMetricDetail", () => {
   it("asks for one page, bounded", async () => {
-    // A section is a first look, not an export: it takes what one request
-    // returns rather than paging until the source runs out.
     vi.mocked(drilldown.queryMetricDrilldown).mockResolvedValue({
       selection: SELECTION,
       columns: [{ key: "date", label: "Date", type: "date" }],
@@ -76,8 +66,6 @@ describe("useMetricDetail", () => {
   });
 
   it("does not fetch for a metric that offers no detail", async () => {
-    // The caller passes `enabled: false` for a metric declaring no grain.
-    // Asking anyway would spend a request to be told there is nothing.
     const { wrapper } = harness();
     renderHook(() => useMetricDetail(SELECTION, false), { wrapper });
     await new Promise((r) => setTimeout(r, 0));
@@ -92,9 +80,6 @@ describe("useMetricDetail", () => {
   });
 
   it("does not fetch before a session exists", async () => {
-    // On a cold load the session resolves after the first render. Firing then
-    // produces a 401 the screen would have to explain, for a request that was
-    // never going to work.
     session.value = null;
     const { wrapper } = harness();
     renderHook(() => useMetricDetail(SELECTION), { wrapper });
@@ -103,8 +88,6 @@ describe("useMetricDetail", () => {
   });
 
   it("keeps two different selections apart", async () => {
-    // The key carries the selection, so a second metric does not read the
-    // first one's rows out of the cache.
     vi.mocked(drilldown.queryMetricDrilldown).mockResolvedValue({
       selection: SELECTION,
       columns: [],

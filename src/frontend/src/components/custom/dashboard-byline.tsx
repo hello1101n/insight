@@ -20,7 +20,6 @@ const VISIBILITY: Record<
   everyone: { label: "Shared with org", variant: "info" },
 };
 
-/** Owner · last change · where it is filed · who else sees it, as a card and the open dashboard show them. */
 export function DashboardByline({
   owner,
   updatedAt,
@@ -33,7 +32,6 @@ export function DashboardByline({
   updatedAt: string | undefined;
   visibility: DashboardVisibility | null | undefined;
   access: DashboardAccess;
-  /** The folders holding it that the viewer sees. */
   folders?: readonly Folder[];
   className?: string;
 }) {
@@ -75,7 +73,7 @@ function FiledIn({ folders }: { folders: readonly Folder[] }) {
     <span className="min-w-0 truncate not-first:before:me-1.5 not-first:before:content-['·']">
       in{" "}
       <Link
-        to="/portal/custom"
+        to="/dashboards"
         search={{ folder: first.id }}
         className="underline-offset-4 hover:text-foreground hover:underline"
       >

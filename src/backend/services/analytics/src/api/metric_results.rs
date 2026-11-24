@@ -9,6 +9,7 @@ use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::SecurityContext;
 
 use super::AppState;
+use crate::api::error::MetricError;
 use crate::config::VisibilityPolicy;
 use crate::domain::metric_access::authorize_tenant_metrics;
 use crate::domain::metric_definitions::MetricDefinition;
@@ -17,10 +18,11 @@ use crate::domain::metric_results::{
     BatchItem, BreakdownQueryRow, CompiledQuery, HistogramQueryRow, MetricResultDto,
     MetricResultViewDto, MetricResultsRequest, MetricResultsResponse, PeerPopulation, PeerWideRow,
     PeriodWideRow, PlannedQuery, PooledHistogramQueryRow, RankingQueryRow, RankingResults,
-    RollupQueryRow, TimeseriesQueryRow, UnbatchedView, ValidatedMetricResultsRequest, ViewAbsence,
-    ViewFailure, build_breakdown_view, build_histogram_view, build_metric_result, build_peer_view,
-    build_period_view, build_pooled_histogram_view, build_ranked_groups, build_rollup_view,
-    build_timeseries_view, demux_peer_rows, demux_period_rows, enforce_view_row_limit,
+    RollupQueryRow, TimeseriesQueryRow, UnattributedQueryRow, UnbatchedView,
+    ValidatedMetricResultsRequest, ViewAbsence, ViewFailure, build_breakdown_view,
+    build_histogram_view, build_metric_result, build_peer_view, build_period_view,
+    build_pooled_histogram_view, build_ranked_groups, build_rollup_view, build_timeseries_view,
+    build_unattributed_view, demux_peer_rows, demux_period_rows, enforce_view_row_limit,
     plan_queries, plan_rankings, validate_request,
 };
 use crate::domain::person_visibility::authorize_person_ids;
@@ -39,6 +41,7 @@ pub async fn query_metric_results(
     authorize_tenant_request(&state, &req)?;
     let req = validate_request(&state.db, tenant_id, req).await?;
     authorize_person_request(&state, &ctx, &headers, &req).await?;
+    authorize_unattributed_request(&state, &headers, &req).await?;
 
     let (metrics, absence_context) = tokio::join!(
         compute_metrics(&state, &req, &headers),
@@ -72,8 +75,6 @@ async fn compute_metrics(
         .map(|metric| (0..metric.views.len()).map(|_| None).collect())
         .collect();
 
-    // A query that does not answer settles only its own view slots; the other
-    // queries keep running so one broken metric cannot empty the response.
     let mut results = stream::iter(planned)
         .map(|query| execute_planned(state, req, query))
         .buffer_unordered(QUERY_CONCURRENCY);
@@ -83,8 +84,6 @@ async fn compute_metrics(
         }
     }
 
-    // Not-ready views are left out: they are answered, not failed, and their
-    // one line is the throttled relation warning the read already emitted.
     let failed_views = views_by_metric
         .iter()
         .flatten()
@@ -191,14 +190,37 @@ async fn authorize_person_request(
     .await
 }
 
+async fn authorize_unattributed_request(
+    state: &AppState,
+    headers: &HeaderMap,
+    req: &ValidatedMetricResultsRequest,
+) -> Result<(), CanonicalError> {
+    if !req.asks_unattributed() || !unattributed_needs_admin(state.config.visibility_policy) {
+        return Ok(());
+    }
+
+    super::require_admin(state, headers, unattributed_denied).await
+}
+
+fn unattributed_needs_admin(visibility_policy: VisibilityPolicy) -> bool {
+    match visibility_policy {
+        VisibilityPolicy::Flat => false,
+        VisibilityPolicy::OrgChart => true,
+    }
+}
+
+fn unattributed_denied() -> CanonicalError {
+    MetricError::permission_denied()
+        .with_reason("unattributed_requires_admin")
+        .create()
+}
+
 struct MetricViewResult {
     metric_index: usize,
     view_index: usize,
     view: Result<MetricResultViewDto, ViewAbsence>,
 }
 
-// A ranking that does not answer settles keyed by its policy, so only the
-// views that asked for that ranking carry its outcome.
 async fn collect_rankings(
     state: &Arc<AppState>,
     req: &ValidatedMetricResultsRequest,
@@ -362,6 +384,13 @@ async fn build_single_view(
             build_pooled_histogram_view(rows, &dimensions)
                 .map_err(|e| assembly_failure(&e, &comment))
         }
+        UnbatchedView::Unattributed => {
+            let comment = format!("metric-results:unattributed:{}", def.key());
+            let rows =
+                fetch_rows::<UnattributedQueryRow>(state, query, QueryKind::Unattributed, &comment)
+                    .await?;
+            build_unattributed_view(rows).map_err(|e| assembly_failure(&e, &comment))
+        }
     }
 }
 
@@ -377,9 +406,6 @@ fn assembly_failure(error: &CanonicalError, comment: &str) -> ViewAbsence {
     ViewFailure::from_assembly_error(comment).into()
 }
 
-// Detail routing only: identity being unreachable must not turn a partial
-// answer into a 500, so an unanswerable admin check degrades to the generic
-// message rather than failing the request.
 async fn admin_for_error_detail(state: &AppState, headers: &HeaderMap) -> bool {
     match super::is_admin_caller(state, headers).await {
         Ok(admin) => admin,
@@ -390,8 +416,6 @@ async fn admin_for_error_detail(state: &AppState, headers: &HeaderMap) -> bool {
     }
 }
 
-// Batching collapses the per-metric query_log signal; the log_comment keeps
-// per-query attribution measurable (`system.query_log.log_comment`).
 fn batch_log_comment(kind: &str, items: &[BatchItem]) -> String {
     let keys = items
         .iter()
@@ -437,7 +461,22 @@ mod tests {
     use crate::config::VisibilityPolicy;
     use crate::domain::metric_results::PeerPopulation;
 
-    use super::peer_population;
+    use super::{peer_population, unattributed_denied, unattributed_needs_admin};
+
+    #[test]
+    fn the_unattributed_share_needs_an_admin_only_under_an_org_chart() {
+        assert!(unattributed_needs_admin(VisibilityPolicy::OrgChart));
+        assert!(!unattributed_needs_admin(VisibilityPolicy::Flat));
+    }
+
+    #[test]
+    fn a_refused_unattributed_read_is_forbidden() {
+        use axum::response::IntoResponse;
+
+        let status = unattributed_denied().into_response().status();
+
+        assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
+    }
 
     #[test]
     fn visibility_policy_selects_peer_population() {

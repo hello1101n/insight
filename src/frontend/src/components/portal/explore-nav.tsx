@@ -1,7 +1,9 @@
 import { Layers, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { CountBadge, ItemBadge, ItemButton } from "@/components/portal/pane-nav";
+import { resolveText } from "@/i18n/localized-text";
 import { PaneGroupLabel } from "@/components/portal/pane-group-label";
 import {
   SidebarGroup,
@@ -12,7 +14,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 import {
   lensRoadmap,
   visibleDirections,
@@ -26,15 +28,11 @@ import {
   type PaneGroup,
 } from "@/lib/portal/nav-model";
 import {
-  usePortalDir,
-  usePortalItem,
-  usePortalLens,
   usePortalNavActions,
 } from "@/lib/portal/portal-nav";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
-import { useActiveZone } from "@/lib/portal/use-active-zone";
+import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useDismissDrawer } from "@/lib/portal/use-dismiss-drawer";
-import { cn } from "@/lib/utils";
 
 interface FolderRow {
   key: string;
@@ -93,10 +91,7 @@ function Folder({
                 render={<button type="button" />}
                 data-planned={row.muted || undefined}
                 isActive={row.active}
-                className={cn(
-                  "w-full text-start",
-                  row.muted && "text-muted-foreground"
-                )}
+                className="w-full text-start"
                 onClick={() => {
                   row.onPick();
                   dismiss();
@@ -114,11 +109,12 @@ function Folder({
 }
 
 function DirectionsGroup() {
+  const { t } = useTranslation();
   const showPlanned = usePortalShowPlanned();
   const directions = visibleDirections(showPlanned);
   return (
     <SidebarGroup>
-      <PaneGroupLabel>Directions</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.groups.directions")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {directions.map((d) => (
@@ -131,10 +127,9 @@ function DirectionsGroup() {
 }
 
 function DirectionItem({ direction }: { direction: Direction }) {
-  const { setDir, openDirection } = usePortalNavActions();
-  const { activeZone } = useActiveZone();
-  const activeDir = usePortalDir();
-  const activeLens = usePortalLens();
+  const { t } = useTranslation();
+  const { openDirection } = usePortalNavActions();
+  const { zone: activeZone, dir: activeDir, lens: activeLens } = useNavLocation();
   const showPlanned = usePortalShowPlanned();
   const expanded = activeZone === "directions" && activeDir === direction.id;
   const lenses = visibleLenses(direction, showPlanned);
@@ -143,11 +138,11 @@ function DirectionItem({ direction }: { direction: Direction }) {
     <Folder
       data-planned={visibleLenses(direction, false).length === 0 || undefined}
       icon={direction.icon}
-      label={direction.name}
+      label={resolveText(t, direction.name)}
       expanded={expanded}
       onToggle={() =>
         expanded
-          ? setDir("")
+          ? openDirection("")
           : openDirection(direction.id, lenses[0] ?? direction.lenses[0]!)
       }
       rows={lenses.map((lens) => ({
@@ -162,20 +157,25 @@ function DirectionItem({ direction }: { direction: Direction }) {
 }
 
 function AiCostGroup() {
-  const { activeZone } = useActiveZone();
+  const { t } = useTranslation();
+  const { zone: activeZone, item: picked } = useNavLocation();
   const { openItem } = usePortalNavActions();
   const showPlanned = usePortalShowPlanned();
-  const resolved = resolveZoneItem("aicost", usePortalItem());
+  const resolved = resolveZoneItem("aicost", picked);
   const active = activeZone === "aicost" ? resolved : null;
 
   return (
     <SidebarGroup>
-      <PaneGroupLabel>AI &amp; Cost</PaneGroupLabel>
+      <PaneGroupLabel>{t("nav.zones.aicost")}</PaneGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {zoneSections("aicost").map((group, i) =>
             group.label ? (
-              <AiCostFolder key={group.label} group={group} active={active} />
+              <AiCostFolder
+                key={typeof group.label === "string" ? group.label : group.label.key}
+                group={group}
+                active={active}
+              />
             ) : (
               orderByReadiness(group.items, showPlanned).map((item) => (
                 <ItemButton
@@ -194,6 +194,7 @@ function AiCostGroup() {
 }
 
 function AiCostFolder({ group, active }: { group: PaneGroup; active: string | null }) {
+  const { t } = useTranslation();
   const { openItem } = usePortalNavActions();
   const showPlanned = usePortalShowPlanned();
   const [collapsed, setCollapsed] = useState(false);
@@ -207,7 +208,7 @@ function AiCostFolder({ group, active }: { group: PaneGroup; active: string | nu
     <Folder
       data-planned={orderByReadiness(group.items, false).length === 0 || undefined}
       icon={group.icon ?? Layers}
-      label={group.label ?? ""}
+      label={group.label ? resolveText(t, group.label) : ""}
       expanded={expanded}
       onToggle={() => {
         if (expanded) {
@@ -219,7 +220,7 @@ function AiCostFolder({ group, active }: { group: PaneGroup; active: string | nu
       }}
       rows={items.map((item) => ({
         key: item.id,
-        label: item.label,
+        label: resolveText(t, item.label),
         active: active === item.id,
         muted: item.readiness != null,
         badge: <ItemBadge item={item} />,

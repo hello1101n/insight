@@ -1,3 +1,4 @@
+import type { DisplayText } from "@/i18n/localized-text";
 import { evidenceCarriers } from "@/lib/metrics/evidence-via";
 import {
   directionHidden,
@@ -16,33 +17,19 @@ import {
   type Direction,
 } from "@/lib/portal/nav-model";
 
-/**
- * The Directions registry: every direction × lens maps to either a LensConfig
- * (rendered by DomainLensView from typed sections) or an honest ComingSoon
- * note naming what would enable it (design D1, rule 9).
- *
- * Metric MEANING stays server-owned; configs carry keys + section composition
- * only. No named individuals anywhere (design D4/rule 10).
- */
-
 export type ConcentrationFraming = "bus-factor" | "load-balance";
 
 export type SectionSpec =
   | {
       kind: "headline";
       metrics: readonly string[];
-      /** Heads each card with the catalogue's short label where it has one. */
+      unattributed?: true;
       labelSource?: "short";
     }
   | { kind: "stat-tiles"; title: string; metrics: readonly string[] }
   | {
       kind: "trend";
       metrics: readonly string[];
-      /**
-       * Chart the roster's active contributors alongside the totals, derived
-       * from this metric's own per-person rows. A total says how much; this
-       * says how many people it came from.
-       */
       activeContributorsFor?: string;
     }
   | {
@@ -57,60 +44,35 @@ export type SectionSpec =
       metrics: readonly string[];
       framing: ConcentrationFraming;
     }
-  // `splitBy` cuts each bar into segments of a second dimension — the same
-  // total, showing what it is made of.
   | {
       kind: "composition";
       metric: string;
       dimension: string;
       title: string;
       splitBy?: string;
-      /**
-       * Lines shown under the bars, for a dimension whose values are derived
-       * rather than reported — a reader cannot tell how a bucket was decided
-       * from its label alone. One line each, the first is the lead.
-       */
       notes?: readonly string[];
     }
-  // Flow-depth sections: event-histogram merges per-entity server bins when
-  // edges align (they don't on the current API — honest fallback, see design §7);
-  // participation counts active people.
   | { kind: "event-histogram"; metric: string; title: string }
-  // One row per value of a dimension, columns from the listed metrics — the
-  // rollup view collapses the person grain server-side. The FIRST metric ranks
-  // the rows and supplies the distinct-person count column.
   | {
       kind: "dimension-table";
       title: string;
       dimension: string;
       metrics: readonly string[];
-      /** What one row is, for the section label's count ("repositories"). */
       noun: string;
-      /** Rows shown before the rest folds into a remainder line. */
       limit?: number;
     }
-  // Concentration risk per dimension value: how much of the metric the top
-  // contributors carry inside each value (bus factor per repository). Shares
-  // are computed from the per-person breakdown; nobody is named.
   | {
       kind: "ownership";
       metric: string;
       dimension: string;
       title: string;
     }
-  // The people who carried one dimension value, ranked, with the leader's
-  // share called out. Only ever rendered inside a drilldown, where the value
-  // is already the subject — a leaderboard of the whole roster is a different
-  // thing and this is not it.
   | {
       kind: "contributors";
       metric: string;
       title: string;
-      /** People shown before the rest folds into one line. */
       limit?: number;
     }
-  // Weekday × two-hour block ramp of one event-grain metric: when the work
-  // lands, read from the metric's own `hour_block` dimension.
   | {
       kind: "heatmap-hours";
       metric: string;
@@ -123,32 +85,16 @@ export type SectionSpec =
       title: string;
       noun: string;
     }
-  // Overview-motivated, zone-agnostic sections (design DESIGN-2026-07-27-overview §4).
   | { kind: "attention"; metrics: readonly string[]; max: number }
-  | { kind: "direction-cards"; variant: "compact" | "full" }
-  // How much of each person's work we can see at all, and for how many
-  // people (#2408). Fetches its own period-only collection across every
-  // group, so it contributes no keys to the zone grid.
-  | { kind: "coverage-levels" };
+  | { kind: "direction-cards"; variant: "compact" | "full" };
 
 export interface LensConfig {
-  title: string;
-  /** Subtitle tail after "N people · " (defaults to "trend & balance"). */
-  tagline?: string;
+  title: DisplayText;
+  tagline?: DisplayText;
   sections: readonly SectionSpec[];
-  /** Whole-tab message when no metric of the lens is observed (rule 6). */
   notIngested?: string;
-  /**
-   * The screen for ONE value of a dimension the lens already groups by.
-   *
-   * A lens answers "which of these", and past a certain point the reader is
-   * asking about one of them instead. The drilldown is that screen: the same
-   * section kinds, every request filtered to the value, reached by clicking a
-   * row and left by the breadcrumb.
-   */
   drilldown?: {
     dimension: string;
-    /** Shown after the value, e.g. "activity, reach & risk". */
     tagline?: string;
     sections: readonly SectionSpec[];
   };
@@ -158,34 +104,24 @@ export interface LensRoadmap {
   comingSoon: string;
 }
 
-/**
- * A lens over ORG-grain (tenant-entity) metrics — CI is the first. Rendered by
- * TenantLensView: no roster, no peer view, no per-person anything; the entity
- * is the organization and every value is one number per period/bucket/row.
- */
 export interface TenantLensConfig {
   title: string;
   tagline?: string;
   entity: "tenant";
   sections: readonly TenantSectionSpec[];
-  /** Whole-tab message when no metric of the lens is observed (rule 6). */
   notIngested: string;
 }
 
 export type TenantSectionSpec =
   | { kind: "headline"; metrics: readonly string[] }
   | { kind: "stat-tiles"; title: string; metrics: readonly string[] }
-  // One chart per section: volume and rate never share an axis, so a lens
-  // draws them as two sections rather than one chart with two scales.
   | {
       kind: "trend";
       title: string;
       description?: string;
       metrics: readonly string[];
       plot?: "line" | "step" | "area";
-      /** Draw the window average of the FIRST metric as a reference rule. */
       referenceMean?: boolean;
-      /** List buckets that fell 2σ below their trailing mean under the chart. */
       flagOutliers?: boolean;
     }
   | {
@@ -194,12 +130,9 @@ export type TenantSectionSpec =
       dimension: string;
       title: string;
       splitBy?: string;
-      /** Reader-facing names for split values the vendor words misleadingly. */
       segmentLabels?: Readonly<Record<string, string>>;
     }
   | { kind: "histogram"; metric: string; title: string; caption: string }
-  // Weekly columns of one metric cut by a dimension; share=true draws the
-  // same data as a 100% composition instead of absolute volume.
   | {
       kind: "stacked-trend";
       metric: string;
@@ -209,7 +142,6 @@ export type TenantSectionSpec =
       share?: boolean;
       segmentLabels?: Readonly<Record<string, string>>;
     }
-  // A grid of small line charts, one per dimension value, identical y-axis.
   | {
       kind: "small-multiples";
       metric: string;
@@ -217,8 +149,6 @@ export type TenantSectionSpec =
       title: string;
       top?: number;
     }
-  // Two measures per dimension value at once; size (optional) is a third.
-  // quadrants=true rules the medians and labels the four cells.
   | {
       kind: "scatter";
       x: string;
@@ -229,11 +159,8 @@ export type TenantSectionSpec =
       description?: string;
       quadrants?: boolean;
     }
-  // Day-of-week × two-hour block magnitude ramp of one metric.
   | { kind: "heatmap-hours"; metric: string; title: string }
-  // Per-hour-block columns of a rate with a ±1σ band around its mean.
   | { kind: "hour-columns"; metric: string; title: string; description?: string }
-  // First half of the window against the second, one slope per dimension value.
   | {
       kind: "slope";
       metric: string;
@@ -241,7 +168,6 @@ export type TenantSectionSpec =
       title: string;
       description?: string;
     }
-  // Signed change between the window's two halves, one bar per value.
   | {
       kind: "momentum";
       metric: string;
@@ -249,12 +175,8 @@ export type TenantSectionSpec =
       title: string;
       description?: string;
     }
-  // Derived signals over the gate population (computed from ci.runs rows):
-  // what fixing the worst pipelines would buy.
   | { kind: "marginal-impact"; title: string; description?: string }
-  // The org headline rate against the unweighted mean over a dimension.
   | { kind: "callout-pair"; metric: string; dimension: string; title: string }
-  // Median of one metric split two ways per dimension value (fail vs pass).
   | {
       kind: "dumbbell";
       metric: string;
@@ -265,9 +187,7 @@ export type TenantSectionSpec =
       title: string;
       description?: string;
     }
-  // Cumulative share curve of one metric over a ranked dimension.
   | { kind: "cumulative"; metric: string; dimension: string; title: string; description?: string }
-  // One 100% bar of a metric split by a dimension.
   | {
       kind: "decomposition";
       metric: string;
@@ -275,8 +195,6 @@ export type TenantSectionSpec =
       title: string;
       segmentLabels?: Readonly<Record<string, string>>;
     }
-  // Mean weekly value and its volatility per dimension value, resolved to a
-  // verdict (computed client-side from the weekly series).
   | {
       kind: "verdict-table";
       metric: string;
@@ -286,9 +204,6 @@ export type TenantSectionSpec =
       minWeeks?: number;
     };
 
-/** Metric keys a tenant lens fetches — deliberately NOT part of the person
- *  grid union: a tenant-entity key inside a person-entity request would fail
- *  the whole batch. */
 export function tenantSectionMetricKeys(config: TenantLensConfig): string[] {
   const keys = new Set<string>();
   for (const s of config.sections) {
@@ -319,7 +234,6 @@ export function tenantSectionMetricKeys(config: TenantLensConfig): string[] {
         if (s.size) keys.add(s.size);
         break;
       case "marginal-impact":
-        // Derived from the ci.runs rows the lens fetches anyway.
         keys.add("ci.runs");
         break;
       default: {
@@ -331,10 +245,8 @@ export function tenantSectionMetricKeys(config: TenantLensConfig): string[] {
   return [...keys];
 }
 
-/** Either a lens we render or one we only name — the pane treats the two differently. */
 export type LensEntry = LensConfig | LensRoadmap | TenantLensConfig;
 
-/** The registry entry for a direction's lens — a config, a roadmap note, or nothing. */
 export function lensEntry(dir: string, lens: string): LensEntry | undefined {
   return DIRECTION_LENSES[dir]?.[lens];
 }
@@ -361,10 +273,6 @@ export function visibleLenses(
   });
 }
 
-/**
- * Directions worth listing: a branch whose every lens is filtered out expands
- * into nothing, so it is a dead end rather than a place to look.
- */
 export function visibleDirections(
   showPlanned: boolean,
   policy: InstanceNavPolicy = navPolicy()
@@ -385,11 +293,8 @@ export function overviewCardDirections(
   );
 }
 
-/** Unique metric keys a config needs in its period+peer grid. */
 export function sectionMetricKeys(config: LensConfig): string[] {
   const keys = new Set<string>();
-  // The drilldown's own sections count: they ride the same grid request, so a
-  // key it needs and the lens does not would otherwise never be asked for.
   for (const s of [...config.sections, ...(config.drilldown?.sections ?? [])]) {
     switch (s.kind) {
       case "headline":
@@ -412,7 +317,6 @@ export function sectionMetricKeys(config: LensConfig): string[] {
         for (const k of s.metrics) keys.add(k);
         break;
       case "direction-cards":
-        // Cards derive from every configured direction Overview lens (design O4).
         for (const lenses of Object.values(DIRECTION_LENSES)) {
           const overview = lenses["Overview"];
           if (!overview || "comingSoon" in overview) continue;
@@ -421,12 +325,6 @@ export function sectionMetricKeys(config: LensConfig): string[] {
               for (const k of sec.metrics) keys.add(k);
           }
         }
-        break;
-      case "coverage-levels":
-        // Deliberately none. Coverage asks whether ANY metric of a group
-        // reads, so it needs every group's keys rather than the zone's
-        // chosen few — widening the shared grid to that would make one tab
-        // pay for all of them. It fetches its own period-only collection.
         break;
       default: {
         const _exhaustive: never = s;
@@ -439,15 +337,6 @@ export function sectionMetricKeys(config: LensConfig): string[] {
   return [...keys];
 }
 
-/**
- * The lens as this install shows it: sections lose the metrics it gates, and a
- * section left with none of its own is dropped rather than drawn empty.
- *
- * The data layer already refuses to fetch a gated metric, so a tile or a row
- * would simply not appear — but a section that draws its own frame (a title, a
- * participation card counting people rather than reading a value) would keep
- * standing over the hole. Composition is where that is settled.
- */
 export function visibleSections(
   config: LensConfig,
   showPlanned: boolean,
@@ -482,10 +371,6 @@ export function visibleSections(
         break;
       }
       case "direction-cards":
-      case "coverage-levels":
-        // Neither names a metric of its own: the cards read each direction's
-        // own Overview lens (gated where that lens is composed) and coverage
-        // counts sections.
         sections.push(s);
         break;
       default: {
@@ -499,30 +384,14 @@ export function visibleSections(
   return { ...config, sections };
 }
 
-/* ── Development ─────────────────────────────────────────────────────── */
-
-/** Product-side gap: the metric family is not in the semantic layer yet. */
 const PRODUCT_GAP = (what: string): LensRoadmap => ({
   comingSoon: `${what} — not available yet.`,
 });
 
-/**
- * Our gap: the dimensions this needs already ride on the git observations
- * (repository / project / file_extension / change_type), so this is frontend
- * work we owe, not a data request. Worded so nobody schedules a metric task.
- */
 const SCREEN_GAP = (what: string): LensRoadmap => ({
   comingSoon: `${what} — the data is there (git observations carry the dimensions); this view is still in development.`,
 });
 
-/**
- * How the git file-category taxonomy is decided, in the order the warehouse
- * applies it (`git_file_category` in the dbt macros). Wording stays behavioural
- * — what lands in a bucket — rather than quoting the regexes, which change.
- *
- * Frontend copy on purpose: a dimension value carries a label over the wire and
- * nothing else, so there is no server field to put this in.
- */
 const GIT_CATEGORY_NOTES = [
   "Every file gets one category, from its path — the first rule that matches wins.",
   "Vendored / Generated — dependency folders, build output, minified and generated files, lockfiles.",
@@ -550,23 +419,24 @@ const DEV: Record<string, LensEntry> = {
       {
         kind: "headline",
         metrics: [
-          "git.default_branch_commits",
           "git.default_branch_prs_merged",
+          "git.pr_size",
           "git.default_branch_lines_added",
+          "git.reviews_performed",
         ],
       },
       {
         kind: "stat-tiles",
         title: "Typical values (median)",
-        metrics: ["git.pr_cycle_time_h", "git.pr_size", "git.default_branch_merge_rate"],
+        metrics: ["git.pr_cycle_time_h", "git.default_branch_merge_rate"],
       },
       {
         kind: "trend",
-        metrics: ["git.default_branch_commits", "git.default_branch_prs_merged"],
+        metrics: ["git.default_branch_prs_created", "git.default_branch_prs_merged"],
       },
       {
         kind: "concentration",
-        metrics: ["git.default_branch_commits"],
+        metrics: ["git.default_branch_prs_merged"],
         framing: "bus-factor",
       },
       {
@@ -574,10 +444,6 @@ const DEV: Record<string, LensEntry> = {
         metric: "git.default_branch_lines_added",
         dimension: "category",
         title: "Lines by category",
-        // The taxonomy is a path match in the warehouse, so the labels alone
-        // do not say what landed where — and the order is the part a reader
-        // cannot guess: one file has one category, decided by the first rule
-        // that matches it.
         notes: GIT_CATEGORY_NOTES,
       },
     ],
@@ -589,28 +455,26 @@ const DEV: Record<string, LensEntry> = {
         kind: "headline",
         labelSource: "short",
         metrics: [
-          "git.default_branch_commits",
-          "git.default_branch_prs_created",
           "git.default_branch_prs_merged",
+          "git.default_branch_prs_created",
+          "git.pr_size",
           "git.default_branch_code_lines",
         ],
       },
       {
         kind: "trend",
-        metrics: ["git.default_branch_commits", "git.default_branch_prs_merged"],
-      },
-      {
-        kind: "distribution",
-        metric: "git.default_branch_commits",
-        title: "How many commits people made",
-        caption:
-          "How many people fall in each commit-count band — when the bars stretch far to the right, a few people account for most of it.",
-        unitLabel: "commits per person",
+        metrics: ["git.default_branch_prs_merged"],
       },
       {
         kind: "concentration",
-        metrics: ["git.default_branch_commits"],
+        metrics: ["git.default_branch_prs_merged"],
         framing: "bus-factor",
+      },
+      {
+        kind: "contributors",
+        metric: "git.default_branch_prs_merged",
+        title: "PRs merged per person",
+        limit: Infinity,
       },
       {
         kind: "composition",
@@ -683,15 +547,15 @@ const DEV: Record<string, LensEntry> = {
     title: "Development · Delivery",
     notIngested: "Jira is not connected yet.",
     sections: [
-      { kind: "headline", metrics: ["tasks.closed", "tasks.bugs_fixed"] },
+      {
+        kind: "headline",
+        metrics: ["tasks.closed", "tasks.bugs_fixed", "tasks.logged_hours"],
+        unattributed: true,
+      },
       {
         kind: "stat-tiles",
         title: "Typical task times (median)",
-        metrics: [
-          "tasks.resolution_time",
-          "tasks.pickup_time",
-          "tasks.dev_time",
-        ],
+        metrics: ["tasks.resolution_time", "tasks.pickup_time"],
       },
       { kind: "trend", metrics: ["tasks.closed", "tasks.bugs_fixed"] },
       {
@@ -753,8 +617,6 @@ const DEV: Record<string, LensEntry> = {
       },
     ],
   },
-  // Org-grain (issue #2803): a pipeline run belongs to the organization, so
-  // this lens renders tenant-entity metrics — no roster, no peer, no person.
   CI: {
     title: "Development · CI",
     tagline: "pipelines, org-wide",
@@ -804,11 +666,6 @@ const DEV: Record<string, LensEntry> = {
         splitBy: "outcome",
         title: "CI hours by repository",
       },
-      // Data-trust panel: how far CI joins to git history. PR runs build
-      // synthetic merge refs the commit stream never sees, so the matched
-      // line sitting far below runs is the known join defect (#2803) made
-      // visible — the reader learns how much any commit-joined CI reading
-      // can be trusted, per bucket.
       {
         kind: "trend",
         title: "CI ↔ commit join coverage",
@@ -833,8 +690,7 @@ const DEV: Record<string, LensEntry> = {
         dimension: "environment",
         splitBy: "outcome",
         title: "Deployments by environment",
-        // GitHub marks a deployment superseded by a newer one "inactive" —
-        // reading that as broken would make every busy environment look red.
+        // WORKAROUND: GitHub marks a deployment superseded by a newer one "inactive".
         segmentLabels: { inactive: "superseded" },
       },
       {
@@ -1025,7 +881,6 @@ const DEV: Record<string, LensEntry> = {
         title: "How long pull requests stayed open",
       },
     ],
-    // One repository: who carried it and when the work landed.
     drilldown: {
       dimension: "repository",
       tagline: "one repository",
@@ -1079,8 +934,6 @@ const DEV: Record<string, LensEntry> = {
   Elements: SCREEN_GAP("Element-level (file/module) analytics"),
 };
 
-/* ── Collaboration (ported unchanged from ModalityView configs) ──────── */
-
 const COLLAB: Record<string, LensEntry> = {
   Overview: {
     title: "Collaboration",
@@ -1120,6 +973,7 @@ const COLLAB: Record<string, LensEntry> = {
         metrics: [
           "collab.messages_sent",
           "collab.msgs_per_active_day",
+          "collab.chat_active_days",
           "collab.active_days",
         ],
       },
@@ -1166,8 +1020,6 @@ const COLLAB: Record<string, LensEntry> = {
       },
     ],
   },
-  // emails_received deliberately omitted: it counts inbox volume (mailing lists,
-  // automated notifications), not work; its registry explanation says so.
   Email: {
     title: "Email",
     sections: [
@@ -1237,8 +1089,6 @@ const COLLAB: Record<string, LensEntry> = {
   },
 };
 
-/* ── Knowledge / Wiki ────────────────────────────────────────────────── */
-
 const WIKI: Record<string, LensEntry> = {
   Overview: {
     title: "Knowledge / Wiki",
@@ -1306,16 +1156,10 @@ const WIKI: Record<string, LensEntry> = {
         title: "Participation",
         noun: "Active authors",
       },
-      // Participation's per-bucket count reads the trend query; wiki.edits
-      // dominates wiki activity, so the trend fetch keys off it alone — do NOT
-      // add all three (row budget at org scope). The headline "N of M" uses the
-      // period grid over all three metrics.
       { kind: "trend", metrics: ["wiki.edits"] },
     ],
   },
 };
-
-/* ── Sales / Support (bullet-only directions) ────────────────────────── */
 
 const SALES_NOTE: LensRoadmap = {
   comingSoon: "HubSpot data is not available yet.",
@@ -1345,19 +1189,12 @@ export const DIRECTION_LENSES: Record<string, Record<string, LensEntry>> = {
   support: SUPPORT,
 };
 
-/** Union of metric keys across every configured lens of a direction — one
- * stable grid collection per direction so switching lenses never changes the
- * query key (no spinner). ComingSoon entries contribute nothing. */
 export function directionMetricKeys(dir: string): string[] {
   const keys = new Set<string>();
   for (const entry of Object.values(DIRECTION_LENSES[dir] ?? {})) {
-    // ComingSoon entries contribute nothing; tenant lenses fetch their own
-    // tenant-entity collection and must stay out of the person grid.
     if ("comingSoon" in entry || "entity" in entry) continue;
     for (const k of sectionMetricKeys(entry)) keys.add(k);
   }
-  // A figure whose records live under another metric needs that metric in the
-  // same request, or its tile has nothing to open.
   for (const carrier of evidenceCarriers([...keys])) keys.add(carrier);
   return [...keys];
 }

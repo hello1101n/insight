@@ -1,4 +1,3 @@
-/** See docs/testing/storybook-component-tests.md. */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { http, HttpResponse } from "msw";
 import { expect, userEvent, within } from "storybook/test";
@@ -78,8 +77,6 @@ function identity({
   ];
 }
 
-/** The window renders in a portal: the story canvas holds only the inert
- *  backdrop, so every query runs against the document. */
 const body = () => within(document.body);
 
 const meta: Meta<typeof PersonDialog> = {
@@ -94,8 +91,6 @@ const meta: Meta<typeof PersonDialog> = {
     layout: "fullscreen",
     msw: { handlers: identity() },
   },
-  // The preview resets `authStore`, and `useMe` is keyed on the session scope:
-  // without one the role read never fires and the control renders as non-admin.
   beforeEach: () => {
     authStore.setAuthenticated(makeSession());
   },
@@ -157,7 +152,6 @@ export const TestRefusedReadOffersNoVerb: Story = {
   play: async () => {
     const canvas = body();
 
-    // Anchor on the window, or every queryBy below passes on an empty document.
     await canvas.findByRole("dialog");
     await expect(
       await canvas.findByText("Admin status could not be read.")
@@ -197,7 +191,6 @@ export const TestNonAdminViewerSeesNothing: Story = {
   play: async () => {
     const canvas = body();
 
-    // The viewer gate short-circuits ahead of the read: silence, not "unknown".
     await canvas.findByRole("dialog");
     await expect(
       canvas.queryByText("Admin status could not be read.")

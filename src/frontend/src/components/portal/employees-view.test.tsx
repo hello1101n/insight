@@ -3,12 +3,7 @@ vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
 });
-/**
- * Employees directory semantics: the org tree flattens into a de-duplicated,
- * sorted roster; search filters across name/title/department; rows link into
- * Person; identity failures surface as a retryable error.
- */
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,6 +55,7 @@ function rosterPerson(
   label: string,
   managerPersonId: string | null = null,
   attributes: Record<string, string> = {},
+  managerName: string | null = null,
 ): PeopleListItem {
   return {
     person_id: pid(label),
@@ -70,6 +66,7 @@ function rosterPerson(
     email: `${label}@example.com`,
     attributes,
     manager_person_id: managerPersonId,
+    manager_name: managerName,
   };
 }
 
@@ -92,7 +89,6 @@ beforeEach(() => {
   mocks.ic.data = person("boss", { display_name: "Boss", job_title: "Director" }, [
     person("zoe", { display_name: "Zoe", job_title: "QA Engineer", department: "Quality" } as never),
     person("adam", { display_name: "Adam", job_title: "Backend Dev" } as never, [
-      // the same person deeper in the tree must NOT double a row
       person("zoe", { display_name: "Zoe" } as never),
     ]),
   ]);
@@ -110,7 +106,7 @@ describe("EmployeesView", () => {
     render(<EmployeesView />);
     expect(screen.getAllByRole("link")[2]).toHaveAttribute(
       "href",
-      `/ic/${pid("zoe")}/personal`,
+      `/people/${pid("zoe")}`,
     );
   });
 
@@ -119,6 +115,23 @@ describe("EmployeesView", () => {
     await userEvent.type(screen.getByRole("textbox"), "quality");
     expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual(["Zoe"]);
     expect(screen.getByText(/1 of 3/)).toBeInTheDocument();
+  });
+
+  it("shows each row's manager by the name the listing returns", () => {
+    mocks.roster.roster = [
+      rosterPerson("boss", pid("chief"), {}, "Chief Example"),
+      rosterPerson("zoe", pid("boss"), {}, "Boss"),
+    ];
+
+    render(<EmployeesView />);
+
+    const row = (name: string) => screen.getByRole("link", { name }).closest("tr")!;
+    expect(within(row("Boss")).getByText("Chief Example")).toBeInTheDocument();
+    expect(within(row("Zoe")).getByText("Boss")).toBeInTheDocument();
+    expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
+      "Boss",
+      "Zoe",
+    ]);
   });
 
   it("surfaces an identity failure as a retryable error", async () => {
@@ -133,8 +146,6 @@ describe("EmployeesView", () => {
 describe("EmployeesView on an organisation with no reporting lines", () => {
   beforeEach(() => {
     mocks.isFlat = true;
-    // The tree answers with the viewer alone — the case that used to leave this
-    // directory with a single row.
     mocks.ic.data = person("boss");
     mocks.roster.roster = [
       { ...rosterPerson("boss"), display_name: "Boss Person" },

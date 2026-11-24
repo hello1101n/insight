@@ -4,14 +4,13 @@ vi.mock("@tanstack/react-router", async () => {
   return portalRouterMock();
 });
 
-import { portalRouter } from "@/test/portal-router";
-
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import "@/i18n";
+
 import type { AttentionFlag } from "@/lib/insight/attention-flags";
-import { usePortalZone } from "@/lib/portal/portal-nav";
 
 import { pid } from "@/test/identity";
 
@@ -32,7 +31,6 @@ function flag(over: Partial<AttentionFlag>): AttentionFlag {
   };
 }
 
-/** Three people on Commits, one on Meetings. */
 const MIXED = [
   ...Array.from({ length: 3 }, (_, i) =>
     flag({ personId: pid(`p${i}`), name: `Person ${i}`, severity: 3 - i })
@@ -97,17 +95,8 @@ describe("AttentionList", () => {
     await openTheme(/Commits/);
     expect(screen.getByRole("link")).toHaveAttribute(
       "href",
-      `/ic/${pid("who")}/personal`
+      `/people/${pid("who")}`
     );
-  });
-
-  it("clears the pinned zone on click so the route-driven Person zone wins", async () => {
-    act(() => portalRouter.set({ zone: "overview" }));
-    const { result } = renderHook(() => usePortalZone());
-    render(<AttentionList flags={[flag({})]} summary="s" />);
-    await openTheme(/Commits/);
-    await userEvent.click(screen.getByRole("link"));
-    expect(result.current).toBeNull();
   });
 
   it("caps the metrics listed, and expands on request", async () => {
@@ -124,7 +113,6 @@ describe("AttentionList", () => {
   });
 
   it("caps the people inside one metric, and expands on request", async () => {
-    // 14 people on Commits: the twelfth is the last one listed.
     const many = Array.from({ length: 14 }, (_, i) =>
       flag({ personId: pid(`q${i}`), name: `Q${i}`, severity: 14 - i }),
     );
@@ -137,8 +125,6 @@ describe("AttentionList", () => {
   });
 
   it("points the arrow the way the number actually went", async () => {
-    // A rise is adverse on a lower-is-better metric. A down arrow beside
-    // "well above the median" contradicts the sentence next to it.
     render(
       <AttentionList
         flags={[
@@ -156,6 +142,11 @@ describe("AttentionList", () => {
     const link = screen.getByRole("link");
     expect(link.querySelector(".lucide-arrow-up-right")).not.toBeNull();
     expect(link.querySelector(".lucide-arrow-down-right")).toBeNull();
+  });
+
+  it("titles the list as worth a look", () => {
+    render(<AttentionList flags={MIXED} summary="s" />);
+    expect(screen.getByText("Worth a look")).toBeInTheDocument();
   });
 
   it("says so when nothing stands out", () => {

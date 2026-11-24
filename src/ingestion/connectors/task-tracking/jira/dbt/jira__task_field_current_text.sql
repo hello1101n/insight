@@ -4,6 +4,9 @@
     schema='staging',
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
+    query_settings={
+        'query_plan_join_swap_table': 'false',
+    },
     tags=['staging', 'jira', 'silver:class_task_field_current_text']
 ) }}
 
@@ -11,18 +14,14 @@
 -- it (`adf_json`): a reference into `jira__task_field_text`. The history's newest
 -- reference is Jira's changelog rendering once the field has changed, so this is
 -- the only way to the exact current document. An empty field has no row.
+--
+-- MEMORY. The issue JSON streams on the left of every join, and the planner
+-- may not swap it to the build side (#4370); the dedup is an `IN` filter.
 
 WITH long_text_fields AS (
     SELECT tenant_id, insight_source_id, field_id
     FROM {{ ref('jira__task_field_kind') }}
     WHERE field_kind = 'long_text'
-),
-
-issue_winner AS (
-    -- Read-time dedup by the issue's stable key within a tenant's source.
-    SELECT tenant_id, source_id, jira_id, argMax(_airbyte_raw_id, _airbyte_extracted_at) AS raw_id
-    FROM {{ source('bronze_jira', 'jira_issue') }}
-    GROUP BY tenant_id, source_id, jira_id
 ),
 
 current_bodies AS (
@@ -33,13 +32,18 @@ current_bodies AS (
         kv.1                                              AS field_id,
         kv.2                                              AS content
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN issue_winner AS w ON i._airbyte_raw_id = w.raw_id
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
         ON f.tenant_id = i.tenant_id
        AND f.insight_source_id = CAST(i.source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
+      -- Read-time dedup by the issue's stable key within a tenant's source.
+      AND i._airbyte_raw_id IN (
+          SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
+          FROM {{ source('bronze_jira', 'jira_issue') }}
+          GROUP BY tenant_id, source_id, jira_id
+      )
 )
 
 SELECT

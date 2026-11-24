@@ -33,6 +33,8 @@ uv.lock
 !tests/uv.lock
 # ...and the seeder's: the demo population it generates depends on the resolved versions.
 !src/ingestion/tools/seed/uv.lock
+# ...and the CDK connectors': their images install exactly what the lock pins.
+!src/ingestion/connectors/*/*/uv.lock
 .DS_Store
 local
 access
@@ -44,6 +46,8 @@ access
 !deploy/gitops/bootstrap/local/**
 !deploy/gitops/environments/local/
 !deploy/gitops/environments/local/**
+deploy/gitops/environments/local/**/__pycache__/
+deploy/gitops/environments/local/**/*.pyc
 
 # IDE
 .vs/

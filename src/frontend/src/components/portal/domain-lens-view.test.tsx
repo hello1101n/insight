@@ -1,12 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Behavioral tests for DomainLensView — the single renderer behind every
- * Directions lens and Overview item. Data enters through the query hooks
- * (viewer tree, roster, member grid, timeseries), which are stubbed at the
- * module boundary with REALISTIC payloads; every assertion is about what a
- * manager actually reads on screen: per-capita numbers, deltas, honest
- * not-ingested/suppression states, framing copy and roll-up math.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -18,7 +10,6 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GROUPS } from "@/lib/insight/groups";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { setPortalShowPlanned } from "@/lib/portal/portal-store";
 import {
@@ -28,10 +19,12 @@ import {
 } from "@/test/identity";
 import type { IdentityPerson } from "@/types/insight";
 
-/* ── module mocks ────────────────────────────────────────────────────── */
-
 const mocks = vi.hoisted(() => ({
   personId: null as string | null,
+  isAdmin: false,
+  unattributed: new Map<string, number | null>(),
+  unattributedPending: false,
+  unattributedAnchors: [] as Array<string | null>,
   tree: undefined as IdentityPerson | undefined,
   roster: [] as import("@/api/identity-client").PeopleListItem[],
   grid: {
@@ -43,7 +36,6 @@ const mocks = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   call: 0,
-  /** Every collection the view asked for, in call order. */
   requested: [] as Array<{
     metrics: Array<{
       key: string;
@@ -51,7 +43,6 @@ const mocks = vi.hoisted(() => ({
       views: unknown[];
     }>;
   }>,
-  collectionSet: new Map<string, unknown>(),
   definitions: [] as unknown[],
   dateRange: { from: "2026-07-20", to: "2026-07-26" },
   collections: [] as Array<{
@@ -74,9 +65,13 @@ vi.mock("@/queries/ic-dashboard", () => ({
     refetch: vi.fn(),
   }),
 }));
-// `useOrgScope` reads the deployment's visibility policy, and its flat branch
-// reads the roster. This suite is about the view, so both answer statically.
 vi.mock("@/queries/identity-me", () => ({
+  useIsAdmin: () => ({
+    isAdmin: mocks.isAdmin,
+    isPending: false,
+    isError: false,
+    retry: () => {},
+  }),
   useVisibilityPolicy: () => ({
     policy: "org_chart",
     isFlat: false,
@@ -94,11 +89,6 @@ vi.mock("@/queries/visible-roster", () => ({
 vi.mock("@/queries/member-grid", () => ({
   useMemberGridData: () => mocks.grid,
 }));
-// DomainLensView calls useMetricCollection five times (trend, composition,
-// event-histogram, dimension-table rollup, hour-block heatmap) in that order on
-// every render. The counter is reset per test (see beforeEach): left running,
-// each caller's slot would depend on how many renders every earlier test
-// happened to do.
 const COLLECTION_CALLS = 5;
 vi.mock("@/queries/metric-results", () => ({
   useMetricCollection: (collection: unknown) => {
@@ -109,9 +99,15 @@ vi.mock("@/queries/metric-results", () => ({
     mocks.call += 1;
     return r;
   },
-  // Only the coverage section reads the set form; it fetches its own
-  // period-only collection rather than riding the zone grid.
-  useMetricCollectionSet: () => mocks.collectionSet,
+  useUnattributedShares: (_keys: readonly string[], anchor: string | null) => {
+    mocks.unattributedAnchors.push(anchor);
+    return {
+      byKey: anchor ? mocks.unattributed : new Map(),
+      isPending: anchor !== null && mocks.unattributedPending,
+      isError: false,
+      refetch: () => {},
+    };
+  },
 }));
 vi.mock("@/queries/metric-definitions", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -126,8 +122,6 @@ vi.mock("@/hooks/use-portal-period", () => ({
     dateRange: mocks.dateRange,
   }),
 }));
-// Charts are exercised by the browser/storybook project; here they'd render
-// into a 0×0 jsdom box. Stub them with introspectable placeholders.
 vi.mock("@/components/portal/section-trend", () => ({
   SectionTrend: ({
     title,
@@ -146,13 +140,9 @@ vi.mock("@/components/portal/section-trend", () => ({
     />
   ),
 }));
-// The sparkle reads the AI config through react-query; this suite renders the
-// view without a client, and what it explains is covered by its own tests.
 vi.mock("@/components/widgets/dashboard/explain-with-ai", () => ({
   ExplainWithAi: () => null,
 }));
-// The drilldown fetches per member; this suite is about which drilldown the
-// view asks for, so the dialog reports the state it was handed instead.
 vi.mock("@/components/portal/trend-drilldown-dialog", () => ({
   TrendDrilldownDialog: ({ state }: { state: unknown }) =>
     state ? (
@@ -164,8 +154,6 @@ vi.mock("@/components/portal/trend-drilldown-dialog", () => ({
 import { EvidenceDialogContext } from "@/components/metric-evidence-context";
 import type { LensConfig } from "@/lib/portal/lens-configs";
 import { DomainLensView } from "./domain-lens-view";
-
-/* ── fixtures ────────────────────────────────────────────────────────── */
 
 function emptyCollection() {
   return {
@@ -209,7 +197,6 @@ const person = (
 ): IdentityPerson => identityPerson(label, over, subordinates);
 
 
-// Roster entity ids are person UUIDs (identity cutover); labels stay legible.
 const LABELS = ["a", "b", "c", "d"];
 const IDS = LABELS.map(pid);
 
@@ -217,7 +204,6 @@ function seedHappyOrg() {
   mocks.personId = pid("boss");
   mocks.tree = person("boss", {}, LABELS.map((l) => person(l)));
   mocks.roster = peopleFromIdentityTree(mocks.tree);
-  // 4 members, 10+20+30+40 = 100 commits; everyone active.
   mocks.grid.byKey = new Map([
     ["t.commits", metric("t.commits", [[pid("a"), 10], [pid("b"), 20], [pid("c"), 30], [pid("d"), 40]], { short_label: "Commits", unit: "commits" })],
   ]);
@@ -236,6 +222,10 @@ const HEADLINE_CONFIG: LensConfig = {
 beforeEach(() => {
   mocks.call = 0;
   mocks.requested = [];
+  mocks.isAdmin = false;
+  mocks.unattributed = new Map();
+  mocks.unattributedPending = false;
+  mocks.unattributedAnchors = [];
   mocks.dateRange = { from: "2026-07-20", to: "2026-07-26" };
   seedHappyOrg();
   mocks.grid.isPending = false;
@@ -248,8 +238,6 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.clearAllMocks());
-
-/* ── tests ───────────────────────────────────────────────────────────── */
 
 describe("headline (rules 1–2: per-capita + PoP delta)", () => {
   it("keeps metric values when Home supplies the page heading", () => {
@@ -297,7 +285,6 @@ describe("headline (rules 1–2: per-capita + PoP delta)", () => {
 
   it("leads with the per-person figure and keeps the team total in its caption", () => {
     render(<DomainLensView config={HEADLINE_CONFIG} />);
-    // 100 commits over 4 active people.
     expect(screen.getByText("25 commits")).toBeInTheDocument();
     expect(screen.getByText("average of 4 active people")).toBeInTheDocument();
     expect(screen.getByText("100 total")).toBeInTheDocument();
@@ -316,7 +303,6 @@ describe("headline (rules 1–2: per-capita + PoP delta)", () => {
   });
 
   it("compares per-person figures, not team totals", () => {
-    // Same 40-commit total both periods; two people carried it before, four now.
     mocks.grid.byKey = new Map([
       ["t.commits", metric("t.commits", IDS.map((id) => [id, 10] as [string, number]), { unit: "commits" })],
     ]);
@@ -343,6 +329,101 @@ describe("headline (rules 1–2: per-capita + PoP delta)", () => {
     ]);
     render(<DomainLensView config={HEADLINE_CONFIG} />);
     expect(screen.getByText("no activity")).toBeInTheDocument();
+  });
+});
+
+describe("headline: the organisation's unattributed share", () => {
+  const UNATTRIBUTED_CONFIG: LensConfig = {
+    ...HEADLINE_CONFIG,
+    sections: [{ kind: "headline", metrics: ["t.commits"], unattributed: true }],
+  };
+
+  it("sets the work no person reaches beside the team total, not inside it", () => {
+    mocks.isAdmin = true;
+    mocks.unattributed = new Map([["t.commits", 7]]);
+    render(<DomainLensView config={UNATTRIBUTED_CONFIG} />);
+
+    expect(screen.getByText("25 commits")).toBeInTheDocument();
+    expect(screen.getByText("100 total")).toBeInTheDocument();
+    expect(screen.getByText("+ 7 unattributed")).toBeInTheDocument();
+    expect(screen.getByText("107 in all")).toBeInTheDocument();
+  });
+
+  it("keeps the lens and the card when only work nobody reached exists", () => {
+    mocks.isAdmin = true;
+    mocks.grid.byKey = new Map([
+      ["t.commits", metric("t.commits", [], { short_label: "Commits", unit: "commits" })],
+    ]);
+    mocks.grid.previousByKey = new Map();
+    mocks.unattributed = new Map([["t.commits", 7]]);
+    render(<DomainLensView config={UNATTRIBUTED_CONFIG} />);
+
+    expect(screen.getByText("7 commits")).toBeInTheDocument();
+    expect(screen.getByText("all unattributed · no person reached")).toBeInTheDocument();
+    expect(screen.queryByText(/active people|total$/)).toBeNull();
+    expect(screen.queryByText("Per person")).toBeNull();
+  });
+
+  it("opens no roster records from a card that shows only the share", () => {
+    mocks.isAdmin = true;
+    mocks.grid.byKey = new Map([
+      [
+        "t.commits",
+        metric("t.commits", [], {
+          short_label: "Commits",
+          unit: "commits",
+          drilldown: { granularity: ["event"] },
+          selection: {
+            metric_key: "t.commits",
+            entity: { type: "person", ids: IDS },
+            period: { from: "2026-01-01", to: "2026-01-31" },
+            filters: [],
+          },
+        }),
+      ],
+    ]);
+    mocks.grid.previousByKey = new Map();
+    mocks.unattributed = new Map([["t.commits", 7]]);
+    render(
+      <EvidenceDialogContext.Provider
+        value={{ openEvidence: vi.fn(), openEvidenceTargets: vi.fn(), openEvidencePeople: vi.fn() }}
+      >
+        <DomainLensView config={UNATTRIBUTED_CONFIG} />
+      </EvidenceDialogContext.Provider>
+    );
+
+    expect(screen.getByText("7 commits")).toBeInTheDocument();
+    expect(document.querySelector('[aria-haspopup="dialog"]')).toBeNull();
+  });
+
+  it("waits for the share before calling a source unconnected", () => {
+    mocks.isAdmin = true;
+    mocks.grid.byKey = new Map([
+      ["t.commits", metric("t.commits", [], { short_label: "Commits", unit: "commits" })],
+    ]);
+    mocks.grid.previousByKey = new Map();
+    mocks.unattributedPending = true;
+    render(<DomainLensView config={{ ...UNATTRIBUTED_CONFIG, notIngested: "not wired" }} />);
+
+    expect(screen.queryByText("not wired")).toBeNull();
+  });
+
+  it.each([
+    ["a viewer the org-chart policy refuses it to", () => {}],
+    [
+      "a subtree smaller than the organisation",
+      () => {
+        mocks.isAdmin = true;
+        act(() => portalRouter.set({ scope: pid("a"), direct: false }));
+      },
+    ],
+  ])("asks for no share for %s", (_name, arrange) => {
+    arrange();
+    mocks.unattributed = new Map([["t.commits", 7]]);
+    render(<DomainLensView config={UNATTRIBUTED_CONFIG} />);
+
+    expect(mocks.unattributedAnchors.every((anchor) => anchor === null)).toBe(true);
+    expect(screen.queryByText(/unattributed/)).toBeNull();
   });
 });
 
@@ -388,7 +469,6 @@ describe("headline cards open the people behind them", () => {
     expect(openEvidencePeople).toHaveBeenCalledTimes(1);
     const [view] = openEvidencePeople.mock.calls[0]!;
     expect(view.title).toBe("t.commits · 20 commits per active person");
-    // The inactive person stays in the list: the reader sees who the average left out.
     expect(view.rows.map((row: { entityId: string }) => row.entityId)).toEqual([
       pid("c"), pid("d"), pid("a"), pid("b"),
     ]);
@@ -543,7 +623,6 @@ describe("stat-tiles (medians, never sums)", () => {
       />,
     );
     expect(screen.getByText("Flow health")).toBeInTheDocument();
-    // median of 10,20,30,40 = 25
     expect(screen.getByText("25")).toBeInTheDocument();
     expect(screen.getByText(/median \/ person/)).toBeInTheDocument();
   });
@@ -554,7 +633,6 @@ describe("aggregate sections open the people behind them", () => {
   const openEvidence = vi.fn();
   const openEvidencePeople = vi.fn();
 
-  /** A metric with a real spread: 1, 2, 3 and 9 commits over the four members. */
   function seedSpread({ drillable }: { drillable: boolean }) {
     const evidence = drillable
       ? {
@@ -625,8 +703,6 @@ describe("aggregate sections open the people behind them", () => {
     seedSpread({ drillable: true });
     drawWithEvidence(SPREAD_CONFIG);
 
-    // Step 1 over a maximum of 9 → unit-wide bands, and the top value is
-    // clamped into the last one, so the lone 9 is the whole "8–9" band.
     await user.click(screen.getByRole("button", { name: /^8–9 commits/ }));
 
     expect(openEvidencePeople).toHaveBeenCalledTimes(1);
@@ -636,11 +712,8 @@ describe("aggregate sections open the people behind them", () => {
       pid("d"),
     ]);
     expect(view.rows[0].value).toBe(9);
-    // The roster's name and its route id, each from its own lookup: this is
-    // what makes the list about people rather than about ids.
     expect(view.rows[0].name).toBe("d");
     expect(view.rows[0].personId).toBe(pid("d"));
-    // Every row's records at once stays available, scoped to the same band.
     expect(view.allRecords.selection.entity).toEqual({
       type: "persons",
       ids: [pid("d")],
@@ -654,8 +727,6 @@ describe("aggregate sections open the people behind them", () => {
 
     await user.click(screen.getByRole("button", { name: /^8–9 commits/ }));
 
-    // The values are the surface's own, so who is in the band is answerable
-    // even where no source backs a record table.
     const [view] = openEvidencePeople.mock.calls[0]!;
     expect(view.rows[0].target).toBeNull();
     expect(view.allRecords).toBeNull();
@@ -670,8 +741,74 @@ describe("aggregate sections open the people behind them", () => {
 
     const [view] = openEvidencePeople.mock.calls[0]!;
     expect(view.title).toContain("busiest 1 of 4");
-    // Busiest tenth of 4 contributors = 1 person, and it is the busiest one.
     expect(view.rows.map((row: { value: number }) => row.value)).toEqual([9]);
+  });
+
+  const CONTRIBUTORS_CONFIG: LensConfig = {
+    title: "T",
+    sections: [{ kind: "contributors", metric: "t.commits", title: "Per person" }],
+  };
+
+  it("opens one person's own records from their bar", async () => {
+    const user = userEvent.setup();
+    seedSpread({ drillable: true });
+    drawWithEvidence(CONTRIBUTORS_CONFIG);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open the records behind d" })
+    );
+
+    expect(openEvidence).toHaveBeenCalledTimes(1);
+    const [selection, label] = openEvidence.mock.calls[0]!;
+    expect(selection.entity).toEqual({ type: "person", id: pid("d") });
+    expect(label).toBe("Commits · d");
+  });
+
+  it("leaves a person's bar inert when the metric's records cannot be read", () => {
+    seedSpread({ drillable: false });
+    drawWithEvidence(CONTRIBUTORS_CONFIG);
+
+    expect(
+      screen.queryByRole("button", { name: /Open the records behind/ })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("concentration names the busiest tenth on the card", () => {
+  function seedRoster(size: number) {
+    const labels = Array.from({ length: size }, (_, i) => `p${String(i).padStart(2, "0")}`);
+    mocks.tree = person("boss", {}, labels.map((l) => person(l)));
+    mocks.roster = peopleFromIdentityTree(mocks.tree);
+    mocks.grid.byKey = new Map([
+      [
+        "t.commits",
+        metric(
+          "t.commits",
+          labels.map((l, i) => [pid(l), i + 1] as [string, number]),
+          { short_label: "Commits" }
+        ),
+      ],
+    ]);
+    mocks.grid.previousByKey = new Map();
+  }
+
+  const config: LensConfig = {
+    title: "T",
+    sections: [{ kind: "concentration", metrics: ["t.commits"], framing: "bus-factor" }],
+  };
+
+  it("lists the busiest people by name, busiest first", () => {
+    seedRoster(20);
+    render(<DomainLensView config={config} />);
+
+    expect(screen.getByText("p19, p18")).toBeInTheDocument();
+  });
+
+  it("names five and counts the rest when the busiest tenth is larger", () => {
+    seedRoster(60);
+    render(<DomainLensView config={config} />);
+
+    expect(screen.getByText("p59, p58, p57, p56, p55 +1 more")).toBeInTheDocument();
   });
 });
 
@@ -705,7 +842,6 @@ describe("concentration (rule 5: top-decile share with framing)", () => {
         }}
       />,
     );
-    // top 10% of 4 people = busiest 1 of 4 → 40 of 100 = 40%
     expect(screen.getByText("40%")).toBeInTheDocument();
     expect(screen.getByText(/carried by the busiest 1 of 4/)).toBeInTheDocument();
     expect(screen.getByText(/continuity risk/)).toBeInTheDocument();
@@ -752,13 +888,10 @@ describe("composition (rule 7: only real server dimensions)", () => {
     );
     expect(screen.getByText("Lines by category")).toBeInTheDocument();
     expect(screen.getByText("docs")).toBeInTheDocument();
-    // docs 120 of 160 total = 75%
     expect(screen.getByText(/75%/)).toBeInTheDocument();
   });
 
   it("explains a derived dimension under the bars, not above them", () => {
-    // A category label says nothing about how the bucket was decided, and the
-    // explanation belongs after the reading rather than in front of it.
     const comp = emptyCollection();
     comp.byKey.set("t.commits", {
       ...metric("t.commits", []),
@@ -882,13 +1015,10 @@ describe("composition (rule 7: only real server dimensions)", () => {
 
     expect(openEvidenceTargets).toHaveBeenCalledTimes(1);
     const [targets] = openEvidenceTargets.mock.calls[0]!;
-    // Narrowed to the repository AND the segment: a bar that opened the
-    // unfiltered metric would answer a different question from the one asked.
     expect(targets[0].selection.filters).toEqual([
       { dimension: "repository", values: ["src:acme/api"] },
       { dimension: "branch_scope", values: ["default"] },
     ]);
-    // And the row says which slice it belongs to.
     expect(targets[0].selection.display_dimensions).toEqual([
       "branch_scope",
       "repository",
@@ -911,7 +1041,6 @@ describe("composition (rule 7: only real server dimensions)", () => {
             ],
             value: 30,
           },
-          // No `branch_scope` at all: the row lands in the synthetic segment.
           {
             entity_id: id,
             dimensions: [
@@ -964,8 +1093,6 @@ describe("composition (rule 7: only real server dimensions)", () => {
       </EvidenceDialogContext.Provider>,
     );
 
-    // The named segment offers its records; the unnamed one has no value to
-    // filter on, so it must not offer a dialog that would come back empty.
     expect(
       screen.getByRole("button", { name: /acme\/api · Default branch/ }),
     ).toBeInTheDocument();
@@ -1136,7 +1263,6 @@ describe("composition (rule 7: only real server dimensions)", () => {
       />
     );
 
-    // An affordance that opens an empty dialog is worse than none.
     expect(
       screen.queryByRole("button", { name: /Open the records behind/ })
     ).not.toBeInTheDocument();
@@ -1190,7 +1316,6 @@ describe("by-unit auto-section (rule 7: slice cohorts inside scope)", () => {
   };
 
   function seedSliced() {
-    // Two divisions of 4 people each with very different output.
     const labels = ["a1", "a2", "a3", "a4", "b1", "b2", "b3", "b4"];
     mocks.tree = person("boss", {}, labels.map((l) =>
       person(l, { division: l.startsWith("a") ? "R&D" : "Sales" } as never),
@@ -1219,7 +1344,6 @@ describe("by-unit auto-section (rule 7: slice cohorts inside scope)", () => {
 
   it("explains itself when units are too small to compare (never silent)", () => {
     act(() => portalRouter.set({ slice: "division" }));
-    // default org: 4 people all WITHOUT division values → no comparable units
     render(<DomainLensView config={CONFIG} />);
     expect(screen.getByText(/Nothing to compare at this grouping/)).toBeInTheDocument();
   });
@@ -1227,7 +1351,6 @@ describe("by-unit auto-section (rule 7: slice cohorts inside scope)", () => {
 
 describe("direction-cards / attention sections", () => {
   it("renders attention rows for cohort outliers, named and linked (O3)", () => {
-    // 7 healthy + 1 collapsed member
     const labels = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "z"];
     mocks.tree = person("boss", {}, labels.map((l) => person(l)));
     mocks.roster = peopleFromIdentityTree(mocks.tree);
@@ -1244,20 +1367,17 @@ describe("direction-cards / attention sections", () => {
       />,
     );
     expect(screen.getByText(/1 of 9 people stands out this period/)).toBeInTheDocument();
-    // The metric leads; the person is named once it is opened.
     fireEvent.click(screen.getByRole("button", { name: /Commits\s*1 person/ }));
-    // Identity owns the display name now.
     expect(screen.getByText("z")).toBeInTheDocument();
     expect(screen.getByText(/no commits/)).toBeInTheDocument();
   });
 
   it("compares a direction card's per-person figure, not the team total", () => {
-    // Same 40-commit total both periods; two people carried it before, four now.
     mocks.grid.byKey = new Map([
-      ["git.default_branch_commits", metric("git.default_branch_commits", IDS.map((id) => [id, 10] as [string, number]))],
+      ["git.default_branch_prs_merged", metric("git.default_branch_prs_merged", IDS.map((id) => [id, 10] as [string, number]))],
     ]);
     mocks.grid.previousByKey = new Map([
-      ["git.default_branch_commits", metric("git.default_branch_commits", [[pid("a"), 20], [pid("b"), 20], [pid("c"), 0], [pid("d"), 0]])],
+      ["git.default_branch_prs_merged", metric("git.default_branch_prs_merged", [[pid("a"), 20], [pid("b"), 20], [pid("c"), 0], [pid("d"), 0]])],
     ]);
     render(
       <DomainLensView
@@ -1268,73 +1388,6 @@ describe("direction-cards / attention sections", () => {
     expect(screen.getByTitle("Compared with previous period")).toHaveTextContent("-50%");
   });
 });
-
-describe("coverage section (#2408)", () => {
-  /** One group reading for the named people, the rest silent. */
-  function coverageWorld(seenByGitOutput: string[]) {
-    const ids = seenByGitOutput.map((l) => pid(l));
-    mocks.definitions = GROUPS.flatMap((g) =>
-      g.collection.metrics.map((m) => ({
-        metric_key: m.key,
-        is_enabled: true,
-        schema_status: "ok",
-        schema_error_code: null,
-        // Only git output has ever observed anything for this tenant, so every
-        // other part must read as "no connector" rather than as idle people.
-        last_observed_date: g.id === "git_output" ? "2026-07-26" : null,
-      })),
-    );
-    const gitKey = GROUPS.find((g) => g.id === "git_output")!.collection
-      .metrics[0]!.key;
-    mocks.collectionSet = new Map(
-      GROUPS.map((g) => [
-        g.id,
-        {
-          byKey:
-            g.id === "git_output"
-              ? new Map([
-                  [gitKey, metric(gitKey, ids.map((id) => [id, 3]))],
-                ])
-              : new Map(),
-          isPending: false,
-        },
-      ]),
-    );
-  }
-
-  it("opens a level into exactly the people at it, and why each is thin", async () => {
-    mocks.tree = person("boss", {}, [person("a"), person("b"), person("c")]);
-    mocks.roster = peopleFromIdentityTree(mocks.tree);
-    coverageWorld(["a"]);
-    render(
-      <DomainLensView
-        config={{ title: "T", sections: [{ kind: "coverage-levels" }] }}
-      />,
-    );
-
-    // One person reads in one part; the other two read in none.
-    await userEvent.click(screen.getByRole("button", { name: /1 of 5/ }));
-    expect(screen.getByText("a")).toBeInTheDocument();
-    expect(screen.queryByText("b")).not.toBeInTheDocument();
-
-    // And the reason is the actionable half: nothing feeds those parts for the
-    // tenant, which is a plumbing job — not people who did no work.
-    expect(screen.getAllByText(/not measured for anyone:/).length).toBeGreaterThan(0);
-  });
-
-  it("does not open a level nobody is at", async () => {
-    mocks.tree = person("boss", {}, [person("a")]);
-    mocks.roster = peopleFromIdentityTree(mocks.tree);
-    coverageWorld([]);
-    render(
-      <DomainLensView
-        config={{ title: "T", sections: [{ kind: "coverage-levels" }] }}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /5 of 5/ })).toBeDisabled();
-  });});
-
-/* ── trend ───────────────────────────────────────────────────────────── */
 
 const TREND_CONFIG: LensConfig = {
   title: "Dev · Test",
@@ -1365,7 +1418,6 @@ function timeseries(
   } as unknown as NormalizedMetricResult;
 }
 
-/** Two buckets: one person contributes in the first, two in the second. */
 function trendWorld() {
   const trend = emptyCollection();
   trend.byKey = new Map([
@@ -1436,7 +1488,6 @@ describe("trend section", () => {
 
     const state = openedDrilldown();
     expect(state.metricKey).toBeNull();
-    // Still counted from the metric it is derived from.
     expect(state.breakdown.map((b) => b.contributors)).toEqual([
       ["a"],
       ["a", "b"],
@@ -1445,8 +1496,6 @@ describe("trend section", () => {
 });
 
 describe("trend lines hold only buckets the range covers whole", () => {
-  // A hundred people coarsen a quarter to weeks and a year to months, so the
-  // range's first and last buckets can run past its ends.
   function seedLargeOrg() {
     const labels = ["a", "b", ...Array.from({ length: 97 }, (_, i) => `p${i}`)];
     mocks.tree = person("boss", {}, labels.map((l) => person(l)));
@@ -1609,24 +1658,18 @@ describe("dimension-table (rollup: one row per dimension value)", () => {
     render(<DomainLensView config={TABLE_CONFIG} />);
 
     expect(screen.getByText("Repositories ranked · 3 repositories")).toBeInTheDocument();
-    const rows = screen.getAllByRole("row").slice(1); // skip the header
-    // Ranked by t.commits: org/two (60) before org/one (40); r3 folds away.
+    const rows = screen.getAllByRole("row").slice(1);
     expect(rows[0]).toHaveTextContent("org/two");
     expect(rows[0]).toHaveTextContent("60");
     expect(rows[0]).toHaveTextContent("24");
     expect(rows[0]).toHaveTextContent("2");
     expect(rows[1]).toHaveTextContent("org/one");
-    // The remainder sums the sum metric and stays honest about the median.
     expect(rows[2]).toHaveTextContent("Other (1)");
     expect(rows[2]).toHaveTextContent("10");
     expect(rows[2]).toHaveTextContent("—");
   });
 
   it("keeps two repositories that share a label as two rows", () => {
-    // The dimension VALUE identifies a row; a label is what a reader sees.
-    // Two sources whose repositories are both called `org/app` are two
-    // repositories, and keying the rows by label would collapse them in
-    // React's reconciliation.
     const table = emptyCollection();
     table.byKey.set(
       "t.commits",
@@ -1671,8 +1714,6 @@ describe("dimension-table (rollup: one row per dimension value)", () => {
     ];
     render(<DomainLensView config={TABLE_CONFIG} />);
 
-    // The limit is 2, so org/three is inside the remainder and nowhere else:
-    // without this control the tail is unreachable.
     expect(screen.queryByText("org/three")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Other (1)" }));
     expect(screen.getByText("org/three")).toBeInTheDocument();
@@ -1719,11 +1760,9 @@ describe("ownership (concentration risk per dimension value)", () => {
       breakdown: {
         view: "breakdown",
         values: [
-          // alpha: a=70, b=20, c=10 → top-1 70% (flagged), top-3 100%
           breakdownRow(pid("a"), "alpha", 70),
           breakdownRow(pid("b"), "alpha", 20),
           breakdownRow(pid("c"), "alpha", 10),
-          // beta: a=30, b=30, c=40, d=20 → top-1 33%, top-3 83%
           breakdownRow(pid("a"), "beta", 30),
           breakdownRow(pid("b"), "beta", 30),
           breakdownRow(pid("c"), "beta", 40),
@@ -1741,7 +1780,6 @@ describe("ownership (concentration risk per dimension value)", () => {
     expect(
       screen.getByRole("img", { name: /beta: top person 33%, top three 83%/ }),
     ).toBeInTheDocument();
-    // No member names anywhere on the section.
     expect(screen.queryByText("a")).not.toBeInTheDocument();
   });
 
@@ -1769,12 +1807,8 @@ describe("ownership (concentration risk per dimension value)", () => {
     ];
     render(<DomainLensView config={OWNERSHIP_CONFIG} />);
 
-    // Nothing on the row names anyone, which is the section's standing rule.
     expect(screen.queryByText(/Top person ·/)).not.toBeInTheDocument();
 
-    // Hovering is the reader asking who, and the answer names the leader of
-    // that value — a section that withheld it could not inform the decision
-    // it exists for.
     const bar = screen.getByRole("img", { name: /alpha: top person 70%/ });
     await user.hover(bar.firstElementChild as Element);
     expect(await screen.findByText(/Top person · 70% · a/)).toBeInTheDocument();
@@ -1783,7 +1817,6 @@ describe("ownership (concentration risk per dimension value)", () => {
   it("reaches the rows beyond the first few, and folds them back", async () => {
     const user = userEvent.setup();
     const comp = emptyCollection();
-    // One value more than the section shows, so the control is the only way in.
     const repos = Array.from({ length: 13 }, (_, i) => `repo-${i}`);
     comp.byKey.set("t.commits", {
       ...metric("t.commits", []),
@@ -1895,8 +1928,6 @@ describe("descending into one dimension value", () => {
     await user.click(screen.getByRole("button", { name: "acme/api" }));
     expect(portalRouter.search.repo).toBe("src:acme/api");
 
-    // The URL is what makes a shared link reproduce this screen, so the id and
-    // not the label is what it carries — the heading shows the label.
     expect(
       screen.getByRole("heading", { level: 1, name: "acme/api" }),
     ).toBeInTheDocument();
@@ -1916,8 +1947,6 @@ describe("descending into one dimension value", () => {
 
     const asked = mocks.requested.flatMap((c) => c.metrics);
     expect(asked.length).toBeGreaterThan(0);
-    // Not one request may answer about the whole tenant: a section that
-    // forgot the filter would read as this repository carrying everyone's work.
     for (const metric of asked) {
       expect(metric.filters, metric.key).toEqual([
         { dimension: "repository", values: ["src:acme/api"] },
@@ -1978,8 +2007,6 @@ describe("descending into one dimension value", () => {
       </EvidenceDialogContext.Provider>,
     );
 
-    // Every block is openable, not only the labelled ones: the density choice
-    // must not take six of twelve drilldowns with it.
     expect(
       screen.getAllByRole("button", { name: /Open the records from the/ }),
     ).toHaveLength(12);
@@ -1991,9 +2018,6 @@ describe("descending into one dimension value", () => {
     );
 
     const [targets] = openEvidenceTargets.mock.calls[0]!;
-    // The block across the period, and still inside the repository. A CELL is
-    // that block on ONE weekday, which the request has no predicate for — so
-    // the cells stay inert rather than answering a wider question.
     expect(targets[0].selection.filters).toEqual([
       { dimension: "repository", values: ["src:acme/api"] },
       { dimension: "hour_block", values: ["08"] },
@@ -2012,8 +2036,6 @@ describe("descending into one dimension value", () => {
       />,
     );
 
-    // A `repo` left over from another lens must not turn this one into a
-    // screen about a value it does not group by.
     expect(
       screen.getByRole("heading", { level: 1, name: "Dev · Test" }),
     ).toBeInTheDocument();
@@ -2034,7 +2056,6 @@ describe("descending into one dimension value", () => {
         series: IDS.map((id) => ({
           entity_id: id,
           dimensions: [{ key: "hour_block", value: "08", label: "08–10" }],
-          // 2026-10-05 is a Monday.
           points: [{ bucket_start: "2026-10-05", value: 3 }],
         })),
       },
@@ -2049,10 +2070,8 @@ describe("descending into one dimension value", () => {
     act(() => portalRouter.set({ repo: "src:acme/api" }));
     render(<DomainLensView config={SCOPED_CONFIG} />);
 
-    // 4 members × 3 = 12, all in Monday's 08 block.
     expect(screen.getByText(/When commits land · 12/)).toBeInTheDocument();
     expect(screen.getByTitle(/^Mon 08:00 · 12/)).toBeInTheDocument();
-    // A block nobody committed in stays empty rather than borrowing a number.
     expect(screen.getByTitle(/^Tue 08:00 · 0/)).toBeInTheDocument();
   });
 });

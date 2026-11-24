@@ -5,25 +5,18 @@
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
-    query_settings={'join_use_nulls': 1},
+    query_settings={
+        'join_use_nulls': 1,
+        'query_plan_join_swap_table': 'false',
+    },
     tags=['staging', 'jira']
 ) }}
 
 -- MEMORY. Same two-pass read as `jira__issue_field_snapshot`: the dedup
 -- resolves a raw id per issue in an aggregation carrying only that String, and
--- the JSON is read after joining back, one row per issue.
+-- the JSON is read through an `IN` filter on it, one row per issue.
 
-WITH winner AS (
-    SELECT
-        tenant_id,
-        source_id,
-        jira_id,
-        argMax(_airbyte_raw_id, _airbyte_extracted_at) AS raw_id
-    FROM {{ source('bronze_jira', 'jira_issue') }}
-    GROUP BY tenant_id, source_id, jira_id
-),
-
-issues AS (
+WITH issues AS (
     SELECT
         i.tenant_id                                                   AS tenant_id,
         CAST(i.source_id AS String)                                   AS insight_source_id,
@@ -33,7 +26,11 @@ issues AS (
         JSONExtractArrayRaw(COALESCE(i.custom_fields_json, '{}'), 'issuelinks') AS link_objects,
         JSONExtractRaw(COALESCE(i.custom_fields_json, '{}'), 'parent')          AS parent_object
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN winner AS w ON i._airbyte_raw_id = w.raw_id
+    WHERE i._airbyte_raw_id IN (
+        SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
+        FROM {{ source('bronze_jira', 'jira_issue') }}
+        GROUP BY tenant_id, source_id, jira_id
+    )
 ),
 
 link_rows AS (

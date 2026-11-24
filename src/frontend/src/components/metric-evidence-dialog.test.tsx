@@ -30,9 +30,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
-// Which dimensions a metric will accept. Most of these tests declare none, so
-// the selection they assert on is the caller's own; the export test below
-// declares `source` because that is when the two diverge.
 vi.mock("@/queries/metric-definitions", () => ({
   useDeclaredMetricDimensions: () => ({
     byMetricKey: mocks.declaredDimensions,
@@ -40,8 +37,6 @@ vi.mock("@/queries/metric-definitions", () => ({
   }),
 }));
 
-// Identity by default; a test that cares about the debounce WINDOW pins
-// `held` to the value the debounce is still carrying.
 vi.mock("@/hooks/use-debounced-value", () => ({
   useDebouncedValue: <T,>(value: T) => (mocks.held as T | null) ?? value,
 }));
@@ -67,8 +62,7 @@ vi.mock("@/api/metric-drilldown-client", async (importOriginal) => {
   };
 });
 
-// The people body virtualizes like the record table does; jsdom measures no
-// viewport, so without this every row would be scrolled out of existence.
+// WORKAROUND: jsdom measures no viewport, so a real virtualizer would render no rows.
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -173,7 +167,6 @@ const selection = {
 
 type RecordsState = Extract<EvidenceDialogState, { kind: "records" }>;
 
-/** What a server that orders its own rows echoes back. */
 const ordered = {
   ...selection,
   sort: { key: "date" as const, direction: "desc" as const },
@@ -221,6 +214,63 @@ describe("MetricEvidenceDialog", () => {
     mocks.tableProps = null;
     mocks.declaredDimensions = new Map();
     mocks.held = null;
+  });
+
+  it("numbers its records, as custom tables do", () => {
+    render(
+      <MetricEvidenceDialog state={state} onMetricChange={vi.fn()} onClose={vi.fn()} />
+    );
+
+    expect(mocks.tableProps?.numbered).toBe(true);
+  });
+
+  it.each([
+    [
+      "names a record's own value after the metric, right after its title",
+      [
+        { key: "date", label: "Date", type: "date" },
+        { key: "value", label: "Value", type: "number" },
+        { key: "repository", label: "Repository", type: "string" },
+        { key: "title", label: "Title", type: "string" },
+        { key: "ref", label: "Ref", type: "string" },
+      ],
+      [
+        ["ref", "Ref"],
+        ["title", "Title"],
+        ["value", "Commits"],
+        ["repository", "Repository"],
+        ["date", "Date"],
+      ],
+    ],
+    [
+      "puts a ratio's two parts right after the record's title",
+      [
+        { key: "date", label: "Date", type: "date" },
+        { key: "denominator", label: "PRs opened", type: "number" },
+        { key: "numerator", label: "PRs merged", type: "number" },
+        { key: "ref", label: "Ref", type: "string" },
+      ],
+      [
+        ["ref", "Ref"],
+        ["numerator", "PRs merged"],
+        ["denominator", "PRs opened"],
+        ["date", "Date"],
+      ],
+    ],
+  ] as const)("%s", (_case, columns, shown) => {
+    mocks.query = readyQuery({
+      data: {
+        pages: [{ selection: ordered, columns, rows: [{ values: { ref: "a" } }], next_cursor: null }],
+      },
+    });
+    render(<MetricEvidenceDialog state={state} onMetricChange={vi.fn()} onClose={vi.fn()} />);
+
+    expect(
+      (mocks.tableProps?.columns as Array<{ key: string; label: string }>).map((column) => [
+        column.key,
+        column.label,
+      ]),
+    ).toEqual(shown);
   });
 
   it("loads, orders, paginates, exports, and closes evidence", async () => {
@@ -326,9 +376,6 @@ describe("MetricEvidenceDialog", () => {
       screen.getByText("No supporting data for this selection")
     ).toBeInTheDocument();
 
-    // Same empty page, but the warehouse said it has nothing built yet: "no
-    // supporting data for this selection" would be a claim about a selection
-    // that was never read against data.
     mocks.query = readyQuery({
       data: {
         pages: [
@@ -570,13 +617,9 @@ describe("MetricEvidenceDialog", () => {
       expect(screen.getByText("2 people")).toBeInTheDocument();
       expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
       expect(screen.getByText("142")).toBeInTheDocument();
-      // Same table furniture as the records it drills into: a head over the
-      // values, so the number is named rather than floating.
       expect(
         screen.getByRole("columnheader", { name: "Commits" })
       ).toBeInTheDocument();
-      // A list computed from values this session already had is not a server
-      // read, so there is nothing for the export endpoint to produce.
       expect(
         screen.queryByRole("button", { name: /export/i })
       ).not.toBeInTheDocument();
@@ -633,8 +676,6 @@ describe("MetricEvidenceDialog", () => {
         type: "person",
         id: "e1",
       });
-      // The way out of a person's records, for a reader who wants the rest of
-      // what is known about them.
       expect(
         screen.getByRole("link", { name: /Person page/ })
       ).toBeInTheDocument();
@@ -678,8 +719,6 @@ describe("MetricEvidenceDialog", () => {
         screen.getByRole("button", { name: "Open records for Ada Lovelace" })
       );
 
-      // The control that was clicked is gone: focus has to land somewhere that
-      // says where the reader now is.
       expect(document.activeElement?.textContent).toBe(
         "Commits · Ada Lovelace"
       );
@@ -715,8 +754,6 @@ describe("MetricEvidenceDialog", () => {
         screen.getByRole("button", { name: /^Back to/ })
       );
 
-      // A failure reported under a body that has no export control at all, and
-      // then over the NEXT person's table, is a lie about both.
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
@@ -901,7 +938,6 @@ describe("MetricEvidenceDialog", () => {
       );
     }
 
-    /** What the next page would ask the server for, as the dialog stands. */
     async function requested(): Promise<Record<string, unknown>> {
       const options = mocks.queryOptions as {
         queryFn: (context: { signal: AbortSignal }) => Promise<unknown>;
@@ -921,7 +957,6 @@ describe("MetricEvidenceDialog", () => {
       act(() => onSortChange(key));
     }
 
-    /** What the query would show while a read keyed `previousKey` is replaced. */
     function placeholderAgainst(previousKey: unknown[]): unknown {
       const placeholderData = mocks.queryOptions?.placeholderData as (
         previous: unknown,
@@ -932,7 +967,6 @@ describe("MetricEvidenceDialog", () => {
       });
     }
 
-    /** The same read, asked for under a different order or needle. */
     function placeholderFor(view: Record<string, unknown>): unknown {
       const key = mocks.queryOptions?.queryKey as unknown[];
       return placeholderAgainst([...key.slice(0, -1), view]);
@@ -943,9 +977,6 @@ describe("MetricEvidenceDialog", () => {
       expect(screen.getByText("3 records")).toBeInTheDocument();
     });
 
-    // A new order is a new query key, and a key change is a pending query. The
-    // rows and the search box have to survive it, or the caret is lost
-    // mid-word and the scroll position with it.
     it("keeps the rows on screen while a new order is fetched", () => {
       renderDialog();
 
@@ -954,9 +985,6 @@ describe("MetricEvidenceDialog", () => {
       );
     });
 
-    // Closing one metric's records and opening another's asks a new question.
-    // Rows held over from the last one render under the new title, where they
-    // read as its answer until the real ones land.
     it("drops the rows when the records of another metric are opened", () => {
       renderDialog();
       const key = mocks.queryOptions?.queryKey as unknown[];
@@ -969,8 +997,6 @@ describe("MetricEvidenceDialog", () => {
       expect(placeholderAgainst(otherMetric)).toBeUndefined();
     });
 
-    // The debounce delays ASKING. A cleared box is not an ask, and leaving the
-    // old needle in flight makes "Clear search" do nothing for 400 ms.
     it("drops the needle the moment the box is cleared", async () => {
       const user = userEvent.setup();
       renderDialog();
@@ -987,9 +1013,6 @@ describe("MetricEvidenceDialog", () => {
       expect(await requested()).not.toHaveProperty("search");
     });
 
-    // INVARIANT: the server narrows. Hiding rows the client already holds
-    // would answer for the pages that happened to be loaded, and call that
-    // the answer.
     it("asks the server to narrow rather than hiding rows it already has", async () => {
       const user = userEvent.setup();
       renderDialog();
@@ -1003,8 +1026,6 @@ describe("MetricEvidenceDialog", () => {
       expect(screen.getByText("3 matching records")).toBeInTheDocument();
     });
 
-    // A header reading "not sorted" over rows that plainly are is the table
-    // disagreeing with itself.
     it("announces the order the server actually served", () => {
       renderDialog();
       expect(mocks.tableProps?.sort).toEqual({
@@ -1027,13 +1048,9 @@ describe("MetricEvidenceDialog", () => {
       });
 
       sortBy("value");
-      // Back to no order of its own: the server's default is what answers.
       expect(await requested()).not.toHaveProperty("sort");
     });
 
-    // The rows on screen are still the previous answer while the new one is in
-    // flight, and an arrow that moved ahead of them would describe a table
-    // nobody is looking at.
     it("keeps the arrow on the order the rows are in until the new ones land", () => {
       renderDialog({ isFetching: true });
 
@@ -1072,8 +1089,6 @@ describe("MetricEvidenceDialog", () => {
       expect(box).toHaveValue("");
     });
 
-    // A server that predates server-side narrowing would answer a search with
-    // every row, which reads as "everything matched".
     it("leaves the search inert against a server that cannot narrow", () => {
       renderDialog({
         data: {

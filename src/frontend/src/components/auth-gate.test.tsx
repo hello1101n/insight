@@ -30,7 +30,6 @@ describe("<AuthGate>", () => {
   });
 
   it("shows the redirect overlay instead of children while loading", () => {
-    // reset() leaves the store in its initial `loading` status.
     renderGate();
     expect(screen.queryByText("protected")).not.toBeInTheDocument();
     expect(screen.getByText(redirectingText())).toBeInTheDocument();

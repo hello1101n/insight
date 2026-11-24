@@ -16,8 +16,10 @@ import {
   grantPersonRole,
   listPeople,
   listPersonRoles,
+  listSources,
   mergePersons,
   revokePersonRole,
+  searchAccounts,
   searchPersons,
 } from "./identity-client";
 
@@ -52,6 +54,7 @@ describe("listPeople", () => {
             email: null,
             attributes: { department: "Engineering" },
             manager_person_id: null,
+            manager_name: null,
           },
         ],
         next_cursor: "next-page",
@@ -93,6 +96,31 @@ describe("listPeople", () => {
       body: { error: "malformed_roster" },
     });
   });
+
+  it("rejects a roster row whose manager name is not text", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({
+        items: [
+          {
+            person_id: "019e27bc-dec0-7626-81a9-c5524662a6a9",
+            display_name: null,
+            first_name: null,
+            last_name: null,
+            username: "example-user",
+            email: null,
+            attributes: {},
+            manager_person_id: null,
+            manager_name: 42,
+          },
+        ],
+        next_cursor: null,
+      })
+    );
+
+    await expect(listPeople()).rejects.toMatchObject({
+      body: { error: "malformed_roster" },
+    });
+  });
 });
 
 describe("getPerson", () => {
@@ -110,6 +138,7 @@ describe("getPerson", () => {
           job_title: "Lead",
         },
         manager_person_id: "019e27bc-dec0-7626-81a9-c5524662a6aa",
+        manager_name: null,
       })
     );
 
@@ -219,9 +248,6 @@ describe("getMe", () => {
     });
   });
 
-  // The gate reads `role_id` off every entry, so a well-shaped list of badly
-  // shaped members has to fail here — downstream it would throw during render
-  // instead of failing closed.
   it.each([
     ["a null member", [null]],
     ["a non-object member", ["admin"]],
@@ -287,6 +313,71 @@ describe("getAttention", () => {
     );
 
     await expect(getAttention()).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("source filter on the wire", () => {
+  const empty = { items: [], rates: { observed: 0, bound: 0, pending: 0, no_evidence: 0, excluded: 0 } };
+
+  it("leaves the source param off when no sources are picked", async () => {
+    mockFetch.mockResolvedValueOnce(response(empty));
+    await getAttention(50, []);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/identity/v1/resolution/attention?limit=50");
+  });
+
+  it("sends picked sources comma-joined and sorted on the queue", async () => {
+    mockFetch.mockResolvedValueOnce(response(empty));
+    await getAttention(50, ["gitlab", "github"]);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/api/identity/v1/resolution/attention?limit=50&source=github,gitlab"
+    );
+  });
+
+  it("trims and drops blank entries before sending", async () => {
+    mockFetch.mockResolvedValueOnce(response(empty));
+    await getAttention(50, [" gitlab ", "", "github", "gitlab"]);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/api/identity/v1/resolution/attention?limit=50&source=github,gitlab"
+    );
+  });
+
+  it("sends picked kinds comma-joined and sorted after the sources", async () => {
+    mockFetch.mockResolvedValueOnce(response(empty));
+    await getAttention(50, ["gitlab"], ["no_evidence", "contested", "no_evidence"]);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/api/identity/v1/resolution/attention?limit=50&source=gitlab&kind=contested,no_evidence"
+    );
+  });
+
+  it("leaves the kind param off when no kinds are asked for", async () => {
+    mockFetch.mockResolvedValueOnce(response(empty));
+    await getAttention(50, [], []);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/identity/v1/resolution/attention?limit=50");
+  });
+
+  it("omits source from the account search when none are picked", async () => {
+    mockFetch.mockResolvedValueOnce(response({ items: [] }));
+    await searchAccounts("ann", {}, undefined, []);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/identity/v1/resolution/accounts?q=ann");
+  });
+
+  it("sends picked sources on the account search beside the query", async () => {
+    mockFetch.mockResolvedValueOnce(response({ items: [] }));
+    await searchAccounts("ann", { limit: 50 }, undefined, ["gitlab", "github"]);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/api/identity/v1/resolution/accounts?q=ann&limit=50&source=github,gitlab"
+    );
+  });
+
+  it("lists the sources from /resolution/sources", async () => {
+    mockFetch.mockResolvedValueOnce(response({ items: ["github", "gitlab"] }));
+    await expect(listSources()).resolves.toEqual(["github", "gitlab"]);
+    expect(mockFetch.mock.calls[0][0]).toBe("/api/identity/v1/resolution/sources");
+  });
+
+  it("throws on a failed sources read", async () => {
+    mockFetch.mockResolvedValueOnce(response({}, { ok: false, status: 403 }));
+    await expect(listSources()).rejects.toMatchObject({ status: 403 });
   });
 });
 
@@ -399,8 +490,6 @@ describe("searchPersons", () => {
     });
   });
 
-  // The caller's signal is how a superseded keystroke stops costing the service
-  // a scan of the person journal; dropped here, every one of them is answered.
   it("hands the caller's abort signal to the request", async () => {
     mockFetch.mockResolvedValueOnce(response({ items: [] }));
     const controller = new AbortController();
@@ -457,8 +546,6 @@ describe("getPersonAccounts", () => {
     });
   });
 
-  // The merge preview counts this list, so a malformed body must not read as
-  // "no accounts move" — that would understate what the merge is about to do.
   it("rejects a malformed body rather than reading it as nothing to move", async () => {
     mockFetch.mockResolvedValueOnce(response({ person_id: "p-1" } as never));
 

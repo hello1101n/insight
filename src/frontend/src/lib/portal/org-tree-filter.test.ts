@@ -17,11 +17,6 @@ function person(
   };
 }
 
-//  root
-//  ├── lead        (Engineering)
-//  │   ├── deep    (job title: Parser wrangler)
-//  │   └── other
-//  └── peer
 const tree = person("root", { display_name: "Root Person" }, [
   person("lead", { display_name: "Lead Person", department: "Engineering" }, [
     person("deep", { display_name: "Deep Person", job_title: "Parser wrangler" }),

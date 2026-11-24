@@ -11,8 +11,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Card,
+  CardContent,
 } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
 import { PREVIEWED, type PreviewedKind } from "@/lib/custom/catalogue-paths";
 import { changedAgo } from "@/lib/custom/changed-ago";
 import { TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";
@@ -33,10 +34,6 @@ const REMOVAL_NOTE: Record<PreviewedKind, string> = {
   datasets: "The records it holds are deleted with it. This can't be undone.",
 };
 
-/**
- * One metric, widget or dataset in its catalogue, laid out as a dashboard card
- * is: what it is under its title, when it last changed, and a menu.
- */
 export function CatalogueCard({
   kind,
   id,
@@ -63,17 +60,13 @@ interface CardFrameProps {
   title: string;
   open: LinkOptions;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  /** What it is, each part a short phrase. */
   facts: ReactNode[];
-  /** The one fact cut short when the line runs out of room. */
   squeezed?: number;
   updatedAt?: string;
   menu: ReactNode;
-  /** A control the card acts on in place, set before the menu. */
   control?: ReactNode;
 }
 
-/** A catalogue card's layout, for a kind whose menu is its own. */
 export function CardFrame({
   title,
   open,
@@ -161,7 +154,6 @@ function CatalogueMenu({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${title}`}
               icon={<Ellipsis />}
             />
@@ -179,7 +171,7 @@ function CatalogueMenu({
           <DropdownMenuItem
             onClick={() =>
               void navigate({
-                to: "/portal/custom/edit/$kind/$name",
+                to: "/dashboards/edit/$kind/$name",
                 params: { kind, name: id },
               })
             }

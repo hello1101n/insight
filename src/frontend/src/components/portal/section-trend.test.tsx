@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The shared trend card. Two things here are load-bearing and invisible when
- * they break: metric keys are remapped to CSS-safe aliases (a dot in a custom
- * property name silently yields no colour, and recharts reads it as a nested
- * path), and a right-axis series needs its axis to exist or recharts drops the
- * series without a word. The rest is the honest set of states.
- */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,12 +8,9 @@ import {
   type SectionTrendSeries,
 } from "./section-trend";
 
-// Recharts needs a real layout; the assertions here are about what SectionTrend
-// hands it, so the chart primitives report their props as data attributes.
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+// WORKAROUND: Recharts draws nothing without a real layout, so the primitives report their props as data attributes.
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   ComposedChart: ({
     data,
     children,
@@ -32,6 +22,25 @@ vi.mock("@/components/ui/chart", () => ({
       {children}
     </div>
   ),
+  XAxis: () => <div data-testid="x" />,
+  CartesianGrid: () => null,
+  ReferenceLine: ({ y }: { y: number }) => (
+    <div data-testid="target" data-y={y} />
+  ),
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
+  ChartLegend: () => null,
+  ChartLegendContent: () => null,
+  ChartTooltip: () => null,
+  ChartTooltipContent: () => null,
+}));
+
+vi.mock("@/components/chart-series", () => ({
   ChartLine: ({ dataKey, yAxisId }: { dataKey: string; yAxisId: string }) => (
     <div data-testid="line" data-key={dataKey} data-axis={yAxisId} />
   ),
@@ -44,15 +53,6 @@ vi.mock("@/components/ui/chart", () => ({
   }) => <div data-testid="area" data-key={dataKey} data-stack={stackId ?? ""} />,
   YAxis: ({ yAxisId }: { yAxisId: string }) => (
     <div data-testid={`y-${yAxisId}`} />
-  ),
-  XAxis: () => <div data-testid="x" />,
-  CartesianGrid: () => null,
-  ChartLegend: () => null,
-  ChartLegendContent: () => null,
-  ChartTooltip: () => null,
-  ChartTooltipContent: () => null,
-  ReferenceLine: ({ y }: { y: number }) => (
-    <div data-testid="target" data-y={y} />
   ),
 }));
 
@@ -79,8 +79,6 @@ describe("SectionTrend", () => {
       .getAllByTestId(/line|area/)
       .map((el) => el.getAttribute("data-key"));
     expect(keys.every((k) => k && !k.includes("."))).toBe(true);
-    // The rows must be rewritten to the same aliases, or every point is
-    // undefined and the chart renders empty with no error.
     const rows = JSON.parse(
       screen.getByTestId("plot").getAttribute("data-rows")!,
     ) as Array<Record<string, unknown>>;
@@ -93,8 +91,6 @@ describe("SectionTrend", () => {
     const rows = JSON.parse(
       screen.getByTestId("plot").getAttribute("data-rows")!,
     ) as Array<Record<string, unknown>>;
-    // Day two has no meeting hours: the key is absent, so the line shows a gap
-    // rather than a measured zero.
     expect(Object.keys(rows[1]!)).toHaveLength(2);
   });
 

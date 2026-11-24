@@ -29,6 +29,7 @@
     },
     "table": {
       "member": "Member",
+      "period": "Period",
       "person": "Person",
       "role": "Role",
       "status": "Status",
@@ -36,14 +37,22 @@
     },
     "cohort": {
       "org": "org",
-      "team": "team"
+      "team": "team",
+      "filters": "View filters",
+      "label": "Cohort",
+      "help": "What the cohort controls",
+      "tooltip": "The people every comparison on screen is made against. \"Team (all)\" compares within the org you are looking at; picking an attribute compares each person with the people who share their value for it.",
+      "compare_against": "Compare against",
+      "team_all": "Team (all)",
+      "none": "Comparisons are made within each person's organization unit. Other cohorts are not available here yet."
     },
     "sections": {
       "task_delivery": "Task delivery",
       "git_output": "Git output",
       "code_quality": "Code quality",
       "collaboration": "Collaboration",
-      "ai_adoption": "AI adoption"
+      "ai_adoption": "AI adoption",
+      "wiki": "Wiki"
     },
     "section_blocks": {
       "counters": "Counters",
@@ -60,14 +69,14 @@
       "retry": "Retry",
       "cancel": "Cancel",
       "scroll_to_top": "Back to the top of the list",
-      "scroll_to_bottom": "Jump to the end of the list"
-    },
-    "ui_components": {
-      "sidebar": {
-        "title": "Sidebar",
-        "description": "Displays the mobile sidebar.",
-        "toggle": "Toggle Sidebar"
-      }
+      "scroll_to_bottom": "Jump to the end of the list",
+      "download": "Download",
+      "apply": "Apply",
+      "clear": "Clear",
+      "shrink": "Shrink",
+      "edit": "Edit",
+      "save": "Save",
+      "details": "Details"
     },
     "period_presets": {
       "7d": "7d",
@@ -83,14 +92,78 @@
     },
     "team_sections_meta": {
       "team_summary": "Team summary",
-      "attention": "Attention needed",
       "members": "Members"
     },
     "copy": "Copy",
     "copied": "Copied",
     "copy_failed": "Unable to copy",
     "a11y": {
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "section_navigation": "Section navigation",
+      "expand_navigation": "Expand navigation",
+      "collapse_navigation": "Collapse navigation"
+    },
+    "states": {
+      "empty": "No data for this period",
+      "error": "Unable to load",
+      "loading": "Loading…"
+    },
+    "period": {
+      "week": "Week",
+      "week_short": "W",
+      "month": "Month",
+      "month_short": "M",
+      "quarter": "Quarter",
+      "quarter_short": "Q",
+      "year": "Year",
+      "year_short": "Y",
+      "custom_range": "Custom date range: {{range}}",
+      "utc": "UTC",
+      "utc_days": "Days are counted in UTC",
+      "utc_tooltip": "All dates here are bucketed by UTC midnight.",
+      "pick_end": " → pick end date",
+      "range_too_long": "Selected range is {{days}} days. Choose up to {{max}} days."
+    },
+    "chart": {
+      "group_by": "Group by",
+      "filters": "Filters",
+      "clear_filter": "Clear {{dimension}} filter",
+      "metric": "Metric",
+      "supporting_data": "View supporting data",
+      "scroll_table": "Scroll the table",
+      "show_every_row": "Show every row",
+      "chart_view": "Chart view",
+      "table_view": "Table view",
+      "chart": "Chart",
+      "table": "Table",
+      "export": "Export",
+      "excel": "Excel (.xlsx)",
+      "csv": "CSV (.csv)",
+      "unable_to_load_timeseries": "Unable to load timeseries",
+      "no_data_period": "No data in this period",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "no_trend": "No trend data yet.",
+      "unable_to_load_named": "{{title}} — unable to load"
+    },
+    "standing": {
+      "no_comparison": "no comparison",
+      "behind_peers": "{{count}} of {{total}} behind peers",
+      "ahead_peers": "{{count}} of {{total}} ahead of peers",
+      "near_median": "near the median"
+    },
+    "legend": {
+      "sort_column": "{{column}} — sort by this column",
+      "top": "Top 25%",
+      "near_median": "Near the median",
+      "bottom": "Bottom 25%",
+      "no_comparison": "No comparison"
+    },
+    "lens": {
+      "scope_line_one": "{{scope}} · {{count}} person · ",
+      "scope_line_other": "{{scope}} · {{count}} people · ",
+      "default_tagline": "trend & balance"
     }
   },
   "theme": {
@@ -101,74 +174,119 @@
   "whats_new": {
     "nav_label": "What's new",
     "eyebrow": "Insight · What's new",
-    "title": "What's new · November 2026",
+    "title": "What's new · 10 November 2026",
     "stamp": {
       "release_label": "Release",
-      "release": "26.11"
+      "release": "26.11.10"
     },
     "improvements_label": "Improvements you'll notice",
     "other_changes": {
       "label": "Other changes and fixes",
       "items": {
-        "expand_widget": "Added an expanded view for widgets.",
-        "dashboard_range": "Added a time range picker to each custom dashboard.",
-        "collab_names": "Gave Collaboration metrics clearer names: Focus Time is now Time Outside Meetings, and Email Read Actions is now Email Read Events.",
-        "meeting_kinds": "Split Meetings by kind and removed the Scheduled and Ad-hoc Meetings cards."
+        "drilldown_records": "Changed drill-downs for line, active-day, task and ratio metrics to list the commit, pull request or issue behind each value.",
+        "reports_self": "Let employees with no reports build reports on themselves.",
+        "worth_a_look": "Renamed “Needs attention” to “Worth a look”.",
+        "folded_pages": "Folded the Contribution breakdown and Data coverage pages into other pages. Git output shows each person's share of merged PRs, and each section names the sources that feed it."
       }
     },
     "sections": {
-      "dashboards": {
-        "title": "Dashboards"
+      "people": {
+        "title": "People"
+      },
+      "development": {
+        "title": "Development"
+      },
+      "delivery": {
+        "title": "Delivery"
       },
       "connectors": {
         "title": "Connectors"
-      },
-      "ai_cost": {
-        "title": "AI & Cost"
-      },
-      "collaboration": {
-        "title": "Collaboration"
-      },
-      "new_ui": {
-        "title": "New UI"
       }
     },
     "items": {
-      "build_dashboards": {
-        "title": "Custom dashboards",
-        "description_html": "Build custom metrics, widgets and dashboards through MCP, from any table in the warehouse. Share them to view or edit, and organize them with folders and tags. Building requires administrator access."
+      "metrics_view": {
+        "title": "Metrics view",
+        "description_html": "See every metric for everyone in scope in one table, under People. Drill into a team or a person, compare people or whole teams side by side, and share the view by link."
       },
-      "allure": {
-        "title": "Allure TestOps",
-        "description_html": "New connector: test launches, results, test cases, failure categories and defects, each linked back to Allure."
+      "merged_prs": {
+        "title": "Merged PRs over commits",
+        "description_html": "Commit counts carry less weight: with AI-assisted work, hundreds of commits can say nothing about delivered work. Home, Development Overview and Git output open with PRs merged and PR size, and repositories rank by merged PRs. Git output ranks people by merged PRs, and each name opens that person's PRs."
       },
-      "youtrack": {
-        "title": "YouTrack",
-        "description_html": "Issues, sprints, comments, worklogs and field history now count in task metrics, like Jira and GitHub."
+      "unattributed": {
+        "title": "Unattributed work",
+        "description_html": "At organization level, the Delivery headline shows task work that reaches no person, such as unassigned issues, beside the team total. With reporting lines on, seeing it requires identity administrator access."
       },
-      "gitlab": {
-        "title": "GitLab",
-        "description_html": "Rebuilt on the git proxy, like GitHub and Bitbucket. Adds line counts, CI pipelines and jobs, and deployments."
-      },
-      "codex_credits": {
-        "title": "Codex spend",
-        "description_html": "Extra usage cost now includes Codex, at the credit price you set."
-      },
-      "meetings_once": {
-        "title": "Meeting counts",
-        "description_html": "Teams and Zoom meeting counts are now consistent, and a Zoom meeting joined from two addresses counts once. Zoom participants who join without signing in are matched to a person by display name, or kept for an administrator to match in Identities."
-      },
-      "rail": {
-        "title": "New sidebar",
-        "description_html": "Six sections: Home, Dashboards, Explore, People, Reports and Manage. Directions and AI & Cost are under Explore, Person and People under People. Old links still work."
-      },
-      "home": {
-        "title": "Home",
-        "description_html": "Opens for everyone with your own metrics, attention list and recent dashboards. Managers switch between Me and My team."
+      "hubspot": {
+        "title": "HubSpot",
+        "description_html": "Adds notes, communications, deal and ticket pipelines, tickets and stage history, and matches deal owners to people."
       }
     },
     "history_label": "Earlier releases",
     "history": {
+      "release_2026_11_08": {
+        "title": "What's new — 8 November 2026",
+        "release": "26.11.3",
+        "summary": "Custom dashboards through MCP, new connectors, new sidebar and Home",
+        "sections": {
+          "dashboards": {
+            "title": "Dashboards"
+          },
+          "connectors": {
+            "title": "Connectors"
+          },
+          "ai_cost": {
+            "title": "AI & Cost"
+          },
+          "collaboration": {
+            "title": "Collaboration"
+          },
+          "new_ui": {
+            "title": "New UI"
+          }
+        },
+        "items": {
+          "build_dashboards": {
+            "title": "Custom dashboards",
+            "description_html": "Build custom metrics, widgets and dashboards through MCP, from any table in the warehouse. Share them to view or edit, and organize them with folders and tags. Building requires administrator access."
+          },
+          "allure": {
+            "title": "Allure TestOps",
+            "description_html": "New connector: test launches, results, test cases, failure categories and defects, each linked back to Allure."
+          },
+          "youtrack": {
+            "title": "YouTrack",
+            "description_html": "Issues, sprints, comments, worklogs and field history now count in task metrics, like Jira and GitHub."
+          },
+          "gitlab": {
+            "title": "GitLab",
+            "description_html": "Rebuilt on the git proxy, like GitHub and Bitbucket. Adds line counts, CI pipelines and jobs, and deployments."
+          },
+          "codex_credits": {
+            "title": "Codex spend",
+            "description_html": "Extra usage cost now includes Codex, at the credit price you set."
+          },
+          "meetings_once": {
+            "title": "Meeting counts",
+            "description_html": "Teams and Zoom meeting counts are now consistent, and a Zoom meeting joined from two addresses counts once. Zoom participants who join without signing in are matched to a person by display name, or kept for an administrator to match in Identities."
+          },
+          "rail": {
+            "title": "New sidebar",
+            "description_html": "Six sections: Home, Dashboards, Explore, People, Reports and Manage. Directions and AI & Cost are under Explore, Person and People under People. Old links still work."
+          },
+          "home": {
+            "title": "Home",
+            "description_html": "Opens for everyone with your own metrics, attention list and recent dashboards. Managers switch between Me and My team."
+          }
+        },
+        "other_changes": {
+          "items": {
+            "expand_widget": "Added an expanded view for widgets.",
+            "dashboard_range": "Added a time range picker to each custom dashboard.",
+            "collab_names": "Gave Collaboration metrics clearer names: Focus Time is now Time Outside Meetings, and Email Read Actions is now Email Read Events.",
+            "meeting_kinds": "Split Meetings by kind and removed the Scheduled and Ad-hoc Meetings cards."
+          }
+        }
+      },
       "release_2026_08_31": {
         "title": "What's new — 31 August 2026",
         "release": "26.08",
@@ -350,7 +468,7 @@
         }
       }
     },
-    "footer": "Insight · what's new · November 2026"
+    "footer": "Insight · what's new · 10 November 2026"
   },
   "auth": {
     "loginFailedAccessDenied": "Your account is not authorized to access this application. Contact your administrator if you believe this is a mistake.",
@@ -437,6 +555,7 @@
       "exclude": "Excluded",
       "linked": "Linked",
       "auto_seed_link": "Linked by address",
+      "auto_seed_employee_id_link": "Linked by employee ID",
       "to": "to",
       "by_operator": "by an operator",
       "login_bootstrap": "First sign-in",
@@ -456,7 +575,8 @@
       "assign_person": "Assign to a person",
       "merge_into_person": "Merge into this person",
       "confirm_group_one": "Confirm 1 account",
-      "confirm_group_other": "Confirm all {{count}} accounts"
+      "confirm_group_other": "Confirm all {{count}} accounts",
+      "skip": "Skip"
     },
     "dialogs": {
       "bind_title": "Bind this account?",
@@ -538,6 +658,13 @@
       "bind_description": "The account is bound to this person.",
       "bind_from_description": "The account is taken from {{name}} and bound to this person."
     },
+    "sources": {
+      "title": "Sources",
+      "search": "Find a source",
+      "all": "All",
+      "none": "No source matches",
+      "failed": "Sources could not be loaded"
+    },
     "accounts": {
       "placeholder": "Find an account by source, address, handle, id or observed name…",
       "no_matches": "No observed account carries that",
@@ -547,11 +674,23 @@
       "none_observed_description": "Accounts appear once a connector reports them. If you expected some, the identity build may not have run yet.",
       "no_matches_description": "Only accounts a connector has seen can be found here.",
       "loading_more": "Loading…",
-      "excluded": "excluded — bot / CI"
+      "excluded": "excluded — bot / CI",
+      "unmatched": "Unmatched",
+      "none_unmatched": "No unmatched accounts",
+      "all_accounts": "All accounts",
+      "matched_by_email": "matched by email",
+      "reasons": {
+        "no_evidence": "No address to match on",
+        "no_source_id": "No person has this address",
+        "contested": "More than one person claims it"
+      }
     }
   },
+  "settings": {
+    "nav_label": "Settings"
+  },
   "feedback": {
-    "nav_label": "Send feedback",
+    "nav_label": "Feedback",
     "title": "Submit feedback / bug report",
     "message": "Your feedback",
     "placeholder": "Describe the issue",
@@ -559,5 +698,463 @@
     "send": "Send",
     "sent": "Thanks — your feedback was sent.",
     "failed": "Could not send your feedback. Try again."
+  },
+  "worth_a_look": {
+    "title": "Worth a look",
+    "overview_title": "Overview · Worth a look",
+    "nothing_stands_out": "Nothing stands out this period."
+  },
+  "nav": {
+    "home": "Home",
+    "portal": "Portal",
+    "personal": "Personal",
+    "insight": "Insight",
+    "menu": "Menu",
+    "settings": "Settings",
+    "show_planned": "Show planned sections",
+    "brand_alt": "Constructor Fabric",
+    "product": "Constructor Insight",
+    "rail": {
+      "home": "Home",
+      "dashboards": "Dashboards",
+      "explore": "Explore",
+      "people": "People",
+      "reports": "Reports",
+      "manage": "Manage"
+    },
+    "zones": {
+      "overview": "Overview",
+      "directions": "Directions",
+      "person": "Person",
+      "people": "People",
+      "aicost": "AI & Cost",
+      "reports": "Reports",
+      "custom": "Dashboards",
+      "manage": "Manage"
+    },
+    "groups": {
+      "themes": "Themes",
+      "cost": "Cost",
+      "planned": "Planned",
+      "data": "Data",
+      "people_access": "People & access",
+      "platform": "Platform",
+      "views": "Views",
+      "workchart": "WorkChart",
+      "sections": "Sections",
+      "directions": "Directions",
+      "browse": "Browse",
+      "catalogue": "Catalogue",
+      "dashboards": "Dashboards",
+      "folders": "Folders",
+      "pinned": "Pinned"
+    },
+    "items": {
+      "at_a_glance": "At a glance",
+      "by_direction": "By direction",
+      "overview": "Overview",
+      "adoption_funnel": "Adoption funnel",
+      "by_unit_role": "By unit / role",
+      "per_tool": "Per-tool",
+      "autofix": "Autofix",
+      "ai_audit": "AI Audit",
+      "spend_by_tool": "Spend by tool",
+      "cost_by_unit": "Cost by unit / user",
+      "idle_seats": "Idle seats",
+      "credits": "Credits burn-down",
+      "ai_pricing": "AI pricing",
+      "report_builder": "Report builder",
+      "snapshots": "Snapshots",
+      "export_pdf": "Export PDF / HTML",
+      "templates": "Templates",
+      "starred": "Starred",
+      "starter": "Starter",
+      "starter_dashboards": "Starter dashboards",
+      "my_team": "My team",
+      "roster_by_role": "Roster · by role",
+      "metrics_view": "Metrics view",
+      "roster": "Roster",
+      "data_exclusions": "Data exclusions",
+      "org_snapshots": "Org snapshots",
+      "identities": "Identities · roles & taxonomy",
+      "access": "Access",
+      "group_mgmt": "Group management",
+      "ingestion": "Ingestion",
+      "previews": "Previews",
+      "ai_assistant": "AI assistant config",
+      "platform_usage": "Platform usage",
+      "mcp": "MCP servers",
+      "config": "Config & setup",
+      "scorecard": "Scorecard management",
+      "me": "Me",
+      "all_dashboards": "All dashboards",
+      "my_dashboards": "My dashboards",
+      "shared_with_me": "Shared with me",
+      "metrics": "Metrics",
+      "widgets": "Widgets",
+      "datasets": "Datasets",
+      "alerts": "Alerts",
+      "dashboard": "Dashboard",
+      "metric": "Metric",
+      "widget": "Widget",
+      "dataset": "Dataset",
+      "alert": "Alert",
+      "new": "New",
+      "edit": "Edit",
+      "all": "All",
+      "connectors": "Connectors"
+    },
+    "directions": {
+      "dev": "Development",
+      "collab": "Collaboration",
+      "wiki": "Knowledge / Wiki",
+      "sales": "Sales / CRM",
+      "support": "Support"
+    },
+    "find_someone": "Find someone",
+    "find_someone_org": "Find someone in the org",
+    "no_data_period": "No data this period",
+    "no_source_connected": "No data source is connected for this section",
+    "browse_dashboards": "Browse dashboards",
+    "pending": "Portal lens — structure in place, wiring pending."
+  },
+  "overview": {
+    "home": "Home",
+    "title": "Overview",
+    "by_direction_title": "Overview · By direction",
+    "by_direction": "By direction",
+    "tagline_rollup": "cross-functional org rollup",
+    "tagline_next": "where to look next",
+    "tagline_who": "who to look at",
+    "tagline_own_direction": "your work in each direction",
+    "not_a_view": "“{{item}}” isn't an Overview view yet.",
+    "tagline_own_attention": "what stands out in your work",
+    "no_person": "There is no person record to show here."
+  },
+  "reports": {
+    "unable_to_load_catalogue": "Unable to load the metric catalogue",
+    "scope": "Scope",
+    "people": "People",
+    "tenant": "Tenant",
+    "granularity": "Granularity",
+    "reading_catalogue": "Reading the catalogue…",
+    "quarterly": "Quarterly",
+    "yearly": "Yearly",
+    "search_metrics": "Search metrics",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "too_short": "A {{split}} split needs a period of at least {{period}} — pick {{finer}} or finer",
+    "split": {
+      "day": "daily",
+      "week": "weekly",
+      "month": "monthly",
+      "quarter": "quarterly",
+      "year": "yearly"
+    },
+    "period_name": {
+      "day": "a day",
+      "week": "a week",
+      "month": "a month",
+      "quarter": "a quarter",
+      "year": "a year"
+    },
+    "selected_word": "selected",
+    "preparing": "Preparing report…",
+    "preview": "Preview report"
+  },
+  "connectors": {
+    "connector": "Connector",
+    "instance": "Instance",
+    "state": "State",
+    "last_sync_started": "Last sync started",
+    "duration": "Duration",
+    "records_reported": "Records reported",
+    "next_sync": "Next sync",
+    "suspended": "Suspended",
+    "suspended_detail": "Suspended: no run is scheduled.",
+    "unknown": "Unknown",
+    "unknown_timezone": "Next run unknown: this schedule runs in the Argo controller's timezone, which is not recorded.",
+    "unknown_expression": "Next run unknown: a recorded expression cannot be read.",
+    "in_under_minute": "in < 1 min",
+    "in_minutes": "in ~{{count}} min",
+    "in_hours": "in ~{{count}} h",
+    "in_days": "in ~{{count}} d",
+    "controller_time": "controller time",
+    "schedule_suspended": "{{timezone}} · suspended",
+    "just_now": "just now",
+    "minutes_ago": "{{count}} min ago",
+    "hours_ago": "{{count}} h ago",
+    "days_ago": "{{count}} d ago",
+    "never_read": "Nothing has been read from the connectors yet",
+    "never_read_detail": "The records appear here after the first connector check.",
+    "unreadable": "Cannot tell when the connectors were last read",
+    "unreadable_detail": "Nothing below can be dated, so treat it as unverified.",
+    "last_checked": "Last checked {{age}}",
+    "last_checked_unmeasured": "Too few reads are recorded to know how often this should happen, so nothing here says whether that is normal.",
+    "last_checked_stopped": "Last checked {{age}} — recording appears to have stopped",
+    "stopped_detail": "The connector states below may no longer be current.",
+    "queued": "queued",
+    "syncing": "syncing",
+    "sync_failed": "sync failed",
+    "sync_incomplete": "sync incomplete",
+    "sync_cancelled": "sync cancelled",
+    "sync_ok": "sync ok",
+    "state_unknown": "state unknown",
+    "no_longer_configured": "no longer configured",
+    "never_synced": "never synced",
+    "so_far": "{{duration}} so far",
+    "schedule": {
+      "heading": "Schedule",
+      "unavailable_error": "Schedule unavailable",
+      "loading": "Loading schedule…",
+      "load_error": "Could not load the schedule.",
+      "default_schedule": "Default schedule",
+      "next_utc": "Next (UTC)",
+      "details_load_error": "{{label}}. Schedule details could not be loaded.",
+      "you": "you",
+      "you_subject": "You",
+      "another_admin": "another admin",
+      "another_admin_subject": "Another admin",
+      "status": {
+        "not_scheduled": "Not scheduled yet",
+        "pending": "Pending",
+        "applied": "Set by admin",
+        "default": "Default",
+        "paused": "Paused",
+        "unavailable": "Can't read",
+        "not_loaded": "Not loaded"
+      },
+      "with_utc": "{{words}} UTC",
+      "expression_count_with_utc": "{{expressions}}, UTC",
+      "date_at_time": "{{date}} at {{time}}",
+      "at_time": "at {{time}}",
+      "on_date_at_time": "on {{date}} at {{time}}",
+      "summary": {
+        "hourly": "Syncs every hour at :{{minute}} UTC.",
+        "hours": "Syncs every {{count}} hours: {{times}} UTC.",
+        "daily": "Syncs every day at {{time}} UTC.",
+        "weekdays": "Syncs Monday to Friday at {{time}} UTC.",
+        "expressions": "Syncs on {{count}} expressions (all UTC)."
+      },
+      "concise": {
+        "hourly": "Every hour at :{{minute}}",
+        "hours": "Every {{count}} hours: {{times}}",
+        "daily": "Every day at {{time}}",
+        "weekdays": "Monday to Friday at {{time}}",
+        "expressions_one": "{{count}} cron expression",
+        "expressions_other": "{{count}} cron expressions"
+      },
+      "deployment_unrecorded": "The deployment schedule is shown after the next check.",
+      "applied_next": "Schedule applied · next sync {{time}}",
+      "applied_message": "Schedule applied",
+      "relative_minutes": "in {{count}} min",
+      "relative_hours": "in {{count}} h",
+      "relative_days": "in {{count}} d",
+      "pending_reason": {
+        "no_cronworkflow": "This instance has no sync schedule yet.",
+        "different_schedule": "The sync job runs a different schedule."
+      },
+      "deployment_inherited": {
+        "annotation": "Runs the schedule set at deployment in instance settings.",
+        "descriptor": "Runs the connector's default schedule.",
+        "default": "Runs the default schedule: every day at 00:00 UTC.",
+        "api": "Runs the schedule set through the API."
+      },
+      "tooltip": {
+        "running": "Running",
+        "target": "Target",
+        "deployment": "Deployment",
+        "as_of": "as of {{time}}",
+        "saved_by": "saved by {{person}} {{time}}",
+        "origin": {
+          "annotation": "instance settings",
+          "descriptor": "connector default",
+          "default": "built-in default",
+          "api": "API"
+        }
+      },
+      "not_loaded": "The schedule has not been loaded yet.",
+      "details_loading": "{{label}}. Schedule details are loading.",
+      "paused_detail": "The sync job is paused. No sync runs are scheduled.",
+      "request_author": "Saved by {{person}} {{time}}.",
+      "live_unrecorded": "The live schedule has not been recorded yet.",
+      "live_unreadable": "The live sync job cannot be read.",
+      "starts_by": "Starts by {{time}}.",
+      "shown_after": "The deployment schedule is shown after {{time}}.",
+      "next_pass": "Takes effect after the next check.",
+      "with_timezone": "{{crons}} ({{timezone}})",
+      "until_then": "Until then: {{schedule}}.",
+      "no_job_until_then": "No sync job runs until then.",
+      "overdue_one": "Not applied after {{count}} minute.",
+      "overdue_other": "Not applied after {{count}} minutes.",
+      "overdue_action": "Save again",
+      "overdue_conflict": "Another save changed this schedule. Review the updated schedule.",
+      "missing_revision": "Could not confirm the schedule. Reload and try again."
+    },
+    "title": "Connectors",
+    "no_next_run": "No next run: the recorded expressions never run.",
+    "empty_never_read": "No connector has been recorded yet. This page reports what has been read from the data mover, and nothing has been read.",
+    "empty_recorded": "The data mover was read and reported no connector. Nothing here says a connector is missing — only that none was recorded.",
+    "history": {
+      "succeeded_share": "{{percent}}% succeeded",
+      "succeeded_counts": "{{succeeded}} of {{total}} finished syncs succeeded, {{failed}} failed",
+      "latest_recorded": "Latest {{shown}} of {{total}} recorded",
+      "latest": "Latest {{count}}",
+      "heading": "Recent syncs",
+      "statuses_label": "Recorded sync statuses, newest on the right",
+      "run_label": "Run {{index}}: {{state}}, started {{started}}",
+      "empty": "No sync has been recorded for this connector.",
+      "started_utc": "Started (UTC)",
+      "records": "Records",
+      "show_latest": "Show latest {{count}}",
+      "show_all": "Show all {{count}}",
+      "unmeasured": "{{value}} means the mover reported no count, not a count of zero"
+    },
+    "editor": {
+      "empty_expression": "Enter an expression or remove the row",
+      "fields": "UTC · minute hour day month weekday",
+      "invalid_minute": "Enter a minute from 0 to 59.",
+      "reload_error": "Could not reload the changed schedule. Your input is kept; try again.",
+      "validation_error": "The schedule could not be saved. Check the expressions and try again.",
+      "save_error": "Could not save the schedule. Your input is kept; try again.",
+      "expression_label": "Cron expression {{index}}",
+      "remove_expression": "Remove expression {{index}}",
+      "syntax_help": "Syntax help ↗",
+      "add_expression": "+ Add expression",
+      "max_expressions": "Up to 10 expressions",
+      "minute": "Minute",
+      "hour": "Hour",
+      "every_hours_one": "Every hour",
+      "every_hours_other": "Every {{count}} hours",
+      "every_day": "Every day",
+      "every_weekday": "Every weekday (Mon–Fri)",
+      "custom_cron": "Custom cron (UTC)",
+      "conflict_self": "{{author}} changed this schedule in another tab {{time}}. It is reloaded below; check it and save again.",
+      "conflict_other": "{{author}} changed this schedule {{time}}. It is reloaded below; check it and save again.",
+      "runs": "Runs",
+      "at_minute": "at minute",
+      "starting": "starting",
+      "at": "at",
+      "start_time": "Start time",
+      "time": "Time",
+      "replaces_expressions": "Replaces all {{count}} expressions",
+      "invalid_schedule": "Enter a valid schedule before saving.",
+      "reset_default": "Reset to default"
+    },
+    "save_error": {
+      "request_not_applied": "Request saved but not applied; restoring the previous schedule failed.",
+      "reset_error": "Can't reset yet. Try after the next check.",
+      "reset_error_at": "Can't reset yet. Try after {{time}}.",
+      "save_error": "Could not save the schedule. Try again.",
+      "not_changed": "Schedule not changed. Try again.",
+      "cluster_error": "Schedule not changed: the cluster returned an error.",
+      "cluster_timeout": "Schedule not changed: the cluster did not answer in time.",
+      "cluster_refused": "Schedule not changed: the cluster refused the change."
+    },
+    "validation": {
+      "empty_item": "Empty list item.",
+      "invalid_step": "Step must be a positive integer.",
+      "invalid_range": "Range start exceeds range end.",
+      "too_long": "Cron expression exceeds 100 characters.",
+      "control_characters": "Cron expression contains control characters or line breaks.",
+      "descriptors": "@ descriptors are not supported.",
+      "timezone_prefix": "TZ= and CRON_TZ= prefixes are not supported.",
+      "field_count": "Cron expression must have exactly five fields (no seconds or years).",
+      "never_runs": "Expression never runs: no listed month has any listed day of month (including leap years).",
+      "expression_count": "Expected 1 to 10 cron expressions.",
+      "unsupported_value": "Unsupported value {{value}}; L, W, # and misplaced ? are not supported.",
+      "outside_bounds": "Value {{value}} is outside {{min}}–{{max}}.",
+      "field_error": "{{field}}: {{message}}",
+      "duplicate": "Duplicates crons[{{index}}] after whitespace normalization.",
+      "fields": {
+        "minute": "minute",
+        "hour": "hour",
+        "day_of_month": "day of month",
+        "month": "month",
+        "day_of_week": "day of week"
+      }
+    }
+  },
+  "directions": {
+    "pick": "Pick a direction to see its metrics.",
+    "unknown_lens": "“{{lens}}” isn't a metric family in {{direction}} yet.",
+    "not_connected": "this data source is not connected yet"
+  },
+  "people": {
+    "no_people_selected": "No people selected.",
+    "show_all": "Show all",
+    "team_possessive": "{{name}}'s team",
+    "people_state": "{{count}} people · state & attention",
+    "direct_reports_only": "Direct reports only",
+    "team_total": "team total",
+    "team_median": "team median",
+    "empty_scope": "No people in the current scope. Pick a different scope at the top of the page.",
+    "caption": "{{team}} — people × metrics",
+    "all_people": "All people",
+    "people_count": "{{selected}} of {{total}} people",
+    "filter_all": "Filter people, all {{count}} shown",
+    "filter_some": "Filter people, {{selected}} of {{total}} shown",
+    "filter_title": "People",
+    "all": "All",
+    "none": "None",
+    "no_people_found": "No people found.",
+    "employees": "Employees",
+    "roster": "Roster",
+    "people_filtered": "{{shown}} of {{total}} people · live from the identity directory",
+    "search_placeholder": "Search name, title, department…",
+    "name": "Name",
+    "title": "Title",
+    "department": "Department",
+    "division": "Division",
+    "manager": "Manager",
+    "people_live": "{{count}} people · live from the identity directory",
+    "section": {
+      "nothing_for_period": "Nothing to show here for the selected period.",
+      "no_source": "No data source is connected for this section — nothing is measured here for anyone yet.",
+      "nothing_recorded": "Nothing recorded here for the selected period.",
+      "caption": "{{title}} metrics for each person, compared with their own {{cohort}} peers",
+      "coverage_unmeasured": "No data source is connected for {{sections}} — this page shows what is measured, not everything this person does.",
+      "coverage_inactive": "Nothing recorded in {{sections}} this period.",
+      "list_pair": "{{left}} and {{right}}",
+      "list_many": "{{head}} and {{last}}"
+    }
+  },
+  "metrics_view": {
+    "title": "Metrics view",
+    "download": {
+      "xlsx": "Excel (.xlsx)",
+      "csv": "CSV (.csv)",
+      "failed": "The download failed. Try again."
+    },
+    "count": "Metrics: {{picked}} of {{total}}",
+    "select_all": "Select all",
+    "select_all_metrics": "Select all metrics",
+    "clear_all_metrics": "Clear all metrics",
+    "hide_menu": "Hide menu",
+    "show_menu": "Show menu",
+    "scoped": "Scoped:",
+    "clear_scope": "Clear scope {{label}}",
+    "collapse_all": "Collapse all",
+    "expand_all": "Expand all",
+    "no_metrics": "No metrics picked.",
+    "no_people": "No people in the current scope.",
+    "compare_caption": "Metrics compared side by side",
+    "people_caption": "People × metrics",
+    "teams": "Teams",
+    "people": "People",
+    "clear_all": "Clear all",
+    "comparing": "Comparing {{count}} people",
+    "people_count": "{{count}} people",
+    "exit_compare": "Exit compare"
+  },
+  "dashboards": {
+    "no_shared": "No shared dashboards",
+    "no_search_tags": "No dashboards match your search and tags",
+    "no_search": "No dashboards match your search",
+    "no_tags": "No dashboards with these tags",
+    "all_filed": "Every dashboard is in a folder",
+    "empty_folder": "This folder is empty",
+    "none_yet": "No dashboards yet",
+    "describe_assistant": "Describe one to the assistant and it will build it."
   }
 }

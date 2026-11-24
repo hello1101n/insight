@@ -21,10 +21,7 @@ def test_navigation_shows_every_expected_zone_and_entry(
         "Home": {
             "At a glance": (),
             "By direction": (),
-            "Trend": (),
-            "Attention needed": (),
-            "Data coverage": (),
-            "Contribution breakdown": (),
+            "Worth a look": (),
         },
         "Explore": {
             "Development": ("Git output", "Flow", "Repositories"),
@@ -70,7 +67,7 @@ def test_navigation_shows_every_expected_zone_and_entry(
             "Collaboration": ("Files & sharing",),
         },
         "Manage": {
-            "Sources & connectors": (),
+            "Connectors": (),
             "Identities · roles & taxonomy": (),
             "Platform usage": (),
         },
@@ -78,9 +75,7 @@ def test_navigation_shows_every_expected_zone_and_entry(
     covered_page_ids = {
         "page-overview-at-a-glance",
         "page-overview-by-direction",
-        "page-overview-trend",
         "page-overview-attention",
-        "page-overview-health",
         "page-overview-contribution",
         "page-custom-dashboards",
         "page-custom-dashboard",

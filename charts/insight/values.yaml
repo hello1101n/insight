@@ -95,6 +95,13 @@ credentials:
 # their images to use it. Do NOT set `imageRegistry` here — each of our
 # services sets `image.repository` explicitly.
 global:
+  connectorSchedules:
+    database:
+      secretName: insight-schedule-db
+      userKey: username
+      passwordKey: password
+      # Empty derives insight_schedule_<connectors.databaseName>, shortened with a stable hash above 80 characters.
+      username: ""
   imagePullSecrets: [] # pull-secrets for a private registry
   storageClass: "" # empty = default StorageClass of the cluster
   sqlApi:
@@ -103,6 +110,9 @@ global:
     enabled: false
     # Public origin of this Insight instance, for example https://insight.example.com.
     publicUrl: ""
+    # Where the MCP servers fetch signing keys: through the in-cluster gateway, because a pod may not reach publicUrl.
+    # Empty derives it from publicUrl.
+    jwksUrl: 'http://{{ .Release.Name }}-gateway.{{ .Release.Namespace }}.svc.cluster.local:8080/.well-known/jwks.json'
     # Permits an http:// publicUrl on a private address. Both the authenticator,
     # which issues the tokens, and insight-v3-core, which verifies them, refuse
     # one otherwise — so a cluster with no TLS at its edge cannot serve MCP
@@ -212,14 +222,14 @@ ingestion:
   # `serviceaccount "argo-workflow" not found`.
   templates:
     enabled: true
-  toolboxImage: "ghcr.io/constructorfabric/insight-toolbox:2026.11.04.17.08-dcea16a" # e.g. "ghcr.io/constructorfabric/insight-toolbox:2026.04.28.10.34-b08b460"
+  toolboxImage: "ghcr.io/hello1101n/insight-toolbox:2026.11.23.14.01-9600b9e" # e.g. "ghcr.io/hello1101n/insight-toolbox:2026.04.28.10.34-b08b460"
   # The sample-data seeder's image, for TEST stands only. Nothing in the chart
   # runs it: `src/ingestion/tools/seed/seed-stand.sh` reads this value to render
   # a one-shot Job. Its own image rather than the toolbox on purpose — the
   # toolbox runs migrations on real stands and does not carry demo data. Empty
   # (the default) means the stand cannot be seeded until an operator names an
   # image, either here or with the script's `--image` flag.
-  seedImage: "ghcr.io/constructorfabric/insight-seed:2026.11.04.17.08-dcea16a" # e.g. "ghcr.io/constructorfabric/insight-seed:2026.04.28.10.34-b08b460"
+  seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.23.14.01-9600b9e" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
   airbyteSync:
     pollIntervalSeconds: 30
     statusUnreadableThresholdSeconds: 1800
@@ -245,7 +255,15 @@ ingestion:
     # Airbyte workspace UUID is auto-discovered at runtime via ab_workspace_id (ADR-0009) — no value to set.
     destinationId: "" # Optional override: explicit Airbyte destination UUID. Leave empty for fresh installs — reconcile auto-creates the Bronze ClickHouse destination by name (ADR-0012).
     destinationName: "" # Optional: name of the Bronze destination managed by reconcile. Default `clickhouse-bronze`.
+    destinationDatabase: "" # Optional: the database of the Bronze destination. Default: `default` in cluster mode, clickhouse.database standalone.
     argoInstanceId: "" # Optional. Set only if the cluster's Argo workflow controller runs with `instanceID:` configured (e.g. "argo-workflows-insight" on dev-vhc). Empty leaves the controller-instanceid label off — controllers without instanceID accept that.
+    # Registry mirrors for connector images (descriptor images.cdk.image),
+    # applied before reconcile registers them in Airbyte. For a cluster that
+    # may only pull from its own registry, e.g.
+    #   imageMirrors: {"ghcr.io": "harbor.example.com/proxy-ghcr.io"}
+    # Airbyte's JOB_KUBE_CONNECTOR_IMAGE_REGISTRY does not cover these: it only
+    # prefixes references that name no registry.
+    imageMirrors: {}
     # NB: the old `logs:` block (PVC/emptyDir file logger at
     # /var/log/insight) is gone — reconcile emits structured JSON to
     # stdout and the cluster's log collector is the durable destination.
@@ -400,7 +418,8 @@ redpanda:
 gateway:
   replicaCount: 2
   image:
-    repository: ghcr.io/constructorfabric/insight-gateway
+    # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
+    repository: ghcr.io/hello1101n/insight-gateway
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -422,7 +441,7 @@ gateway:
 authenticator:
   replicaCount: 1
   image:
-    repository: ghcr.io/constructorfabric/insight-authenticator
+    repository: ghcr.io/hello1101n/insight-authenticator
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -595,7 +614,7 @@ keycloakConfig:
 analytics:
   replicaCount: 2
   image:
-    repository: ghcr.io/constructorfabric/insight-analytics
+    repository: ghcr.io/hello1101n/insight-analytics
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -664,7 +683,7 @@ analytics:
 insightV3Core:
   replicaCount: 2
   image:
-    repository: ghcr.io/constructorfabric/insight-v3-core
+    repository: ghcr.io/hello1101n/insight-v3-core
     tag: ""
     pullPolicy: IfNotPresent
   resources:
@@ -754,7 +773,7 @@ gitCliProxy:
   deploy: true
   replicaCount: 1
   image:
-    repository: ghcr.io/constructorfabric/insight-git-cli-proxy
+    repository: ghcr.io/hello1101n/insight-git-cli-proxy
     tag: ""
     pullPolicy: IfNotPresent
   # The git subprocesses run in this pod's cgroup and dominate its memory,
@@ -823,7 +842,7 @@ identityResolution:
   replicaCount: 1
   visibilityPolicy: "org_chart"
   image:
-    repository: ghcr.io/constructorfabric/insight-identity-resolution
+    repository: ghcr.io/hello1101n/insight-identity-resolution
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -883,7 +902,7 @@ identityResolution:
 previews:
   replicaCount: 1 # the subchart refuses more: the TTL sweep has no leader election
   image:
-    repository: ghcr.io/constructorfabric/insight-previews
+    repository: ghcr.io/hello1101n/insight-previews
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -912,7 +931,7 @@ frontend:
   deploy: true
   replicaCount: 1
   image:
-    repository: ghcr.io/constructorfabric/insight-frontend
+    repository: ghcr.io/hello1101n/insight-frontend
     tag: "" # MUST be set (e.g. "0.1.0")
     pullPolicy: IfNotPresent
   resources:
@@ -951,3 +970,19 @@ frontend:
     # toggled by the viewer's "Show planned sections" switch. A path in both
     # lists is hidden.
     planned: []
+connectors:
+  infraFromUmbrella: true
+  replicaCount: 1
+  databaseName: connectors
+  image:
+    repository: ghcr.io/hello1101n/insight-connectors
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  gateway:
+    issuer: 'https://{{ .Release.Name }}-authenticator.{{ .Release.Namespace }}.svc.cluster.local:8443'
+    audience: internal-services
+    caCertSecret: insight-authenticator-authn-tls-cert
+    caCertPaths: ["/etc/insight/authn-ca/ca.crt"]

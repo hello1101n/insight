@@ -5,7 +5,7 @@ vi.mock("@/api/fetch-with-auth", () => ({ fetchWithAuth: vi.fn() }));
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 
 import { getConnectorHealth, getConnectorSyncs } from "./connector-health-client";
-import { AnalyticsApiError } from "./analytics-client";
+import { ConnectorsApiError } from "./connectors-client";
 
 const mockFetch = fetchWithAuth as unknown as ReturnType<typeof vi.fn>;
 
@@ -36,7 +36,7 @@ describe("getConnectorHealth", () => {
     mockFetch.mockResolvedValueOnce(response(summary));
 
     await expect(getConnectorHealth()).resolves.toEqual(summary);
-    expect(mockFetch).toHaveBeenCalledWith("/api/analytics/v1/connector-health");
+    expect(mockFetch).toHaveBeenCalledWith("/api/connectors/v1/connector-health");
   });
 
   it("surfaces a refusal as an API error rather than an empty page", async () => {
@@ -44,7 +44,7 @@ describe("getConnectorHealth", () => {
       response({ title: "forbidden" }, { ok: false, status: 403 }),
     );
 
-    await expect(getConnectorHealth()).rejects.toBeInstanceOf(AnalyticsApiError);
+    await expect(getConnectorHealth()).rejects.toBeInstanceOf(ConnectorsApiError);
   });
 });
 
@@ -55,7 +55,7 @@ describe("getConnectorSyncs", () => {
 
     await expect(getConnectorSyncs({ connector: "example-tracker" })).resolves.toEqual(history);
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/connector-health/example-tracker/syncs",
+      "/api/connectors/v1/connector-health/example-tracker/syncs",
     );
   });
 
@@ -67,7 +67,7 @@ describe("getConnectorSyncs", () => {
     await getConnectorSyncs({ connector: "a/b?c" });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/connector-health/a%2Fb%3Fc/syncs",
+      "/api/connectors/v1/connector-health/a%2Fb%3Fc/syncs",
     );
   });
 
@@ -83,15 +83,12 @@ describe("getConnectorSyncs", () => {
     });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/connector-health/claude-team/syncs" +
+      "/api/connectors/v1/connector-health/claude-team/syncs" +
         "?tenant_id=acme&source_id=claude-team-second",
     );
   });
 
   it("sends no scope at all when only one half is known", async () => {
-    // The service refuses half an identity. Sending it would turn a question
-    // about one installation into a 400 instead of the answer about the
-    // connector the caller can actually be given.
     mockFetch.mockResolvedValueOnce(
       response({ connector: "claude-team", syncs: [], window: 50 }),
     );
@@ -99,7 +96,7 @@ describe("getConnectorSyncs", () => {
     await getConnectorSyncs({ connector: "claude-team", source_id: "main" });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/api/analytics/v1/connector-health/claude-team/syncs",
+      "/api/connectors/v1/connector-health/claude-team/syncs",
     );
   });
 
@@ -109,7 +106,7 @@ describe("getConnectorSyncs", () => {
     );
 
     await expect(getConnectorSyncs({ connector: "example-tracker" })).rejects.toBeInstanceOf(
-      AnalyticsApiError,
+      ConnectorsApiError,
     );
   });
 });

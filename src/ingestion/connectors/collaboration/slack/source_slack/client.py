@@ -1,0 +1,400 @@
+"""Slack Web API over HTTP: the workspace plan, the members list, user groups, message history and admin.analytics.getFile.
+
+Slack answers a served day with a gzip file of JSON Lines and a refused day with
+HTTP 200 and a JSON body `{"ok": false, "error": "<code>"}`. The two share a
+status code, so the body decides: a refusal is raised as `SlackApiError` and
+never reaches the stream as a record.
+
+The file is streamed, never held whole: wire bytes are read in chunks, gunzipped
+incrementally and parsed line by line, under hard limits on the compressed size,
+the decompressed size and the line length. A large org's file costs one line of
+memory; a decompression bomb stops at the limit.
+"""
+
+from __future__ import annotations
+
+import itertools
+import logging
+import math
+import time
+import zlib
+from collections.abc import Iterable, Iterator, Mapping
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from typing import Any
+
+import requests
+from pydantic import TypeAdapter, ValidationError
+from requests.structures import CaseInsensitiveDict
+
+from source_slack.models import (
+    Answer,
+    Billing,
+    BillingAnswer,
+    Conversation,
+    ConversationsPage,
+    Member,
+    Message,
+    MessagesPage,
+    Page,
+    Refusal,
+    Usergroup,
+    UsergroupsAnswer,
+    UsergroupUsersAnswer,
+    UsersPage,
+    describe,
+)
+
+logger = logging.getLogger("airbyte")
+
+API_URL = "https://slack.com/api/admin.analytics.getFile"
+BILLING_URL = "https://slack.com/api/team.billing.info"
+USERS_URL = "https://slack.com/api/users.list"
+CONVERSATIONS_URL = "https://slack.com/api/conversations.list"
+HISTORY_URL = "https://slack.com/api/conversations.history"
+REPLIES_URL = "https://slack.com/api/conversations.replies"
+USERGROUPS_URL = "https://slack.com/api/usergroups.list"
+USERGROUP_USERS_URL = "https://slack.com/api/usergroups.users.list"
+CONVERSATION_TYPES = "public_channel,private_channel,mpim,im"
+MAX_ANSWER_BYTES = 64 * 1024
+LIST_PAGE_SIZE = 200
+MESSAGES_PAGE_SIZE = 100
+# A users.list member with a full profile is ~2 KiB, so a page of 200 is ~400 KiB.
+MAX_PAGE_BYTES = 16 * 1024**2
+# A message has 40,000 characters of text maximum. With its blocks, a page of 100 messages stays below this.
+MAX_MESSAGES_PAGE_BYTES = 64 * 1024**2
+TIMEOUT = 60
+MAX_RETRIES = 5
+BACKOFF_BASE_SECS = 2.0
+# A sync waits at most this long per retry, whatever Retry-After asks for.
+MAX_WAIT_SECS = 300.0
+_GZIP_MAGIC = b"\x1f\x8b"
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+# Refusals Slack itself calls temporary; retried like the HTTP statuses above.
+RETRY_ERRORS = frozenset({"fatal_error", "internal_error", "ratelimited", "request_timeout", "service_unavailable"})
+
+# Limits per day file. A member row is ~600 bytes, so 2 GiB is ~3.5M members: far
+# above any Enterprise Grid, far below what a bomb would expand to.
+MAX_COMPRESSED_BYTES = 512 * 1024**2
+MAX_DECOMPRESSED_BYTES = 2 * 1024**3
+MAX_LINE_BYTES = 1024**2
+_READ_CHUNK = 64 * 1024
+_INFLATE_STEP = 1024**2
+# Transport Content-Encoding plus the file itself; anything deeper is not Slack.
+_MAX_GZIP_LAYERS = 2
+
+_LINE = TypeAdapter(dict[str, Any])
+
+
+class SlackApiError(Exception):
+    """Slack refused a request with `ok: false`."""
+
+    def __init__(self, code: str, day: str | None = None, method: str = "admin.analytics.getFile") -> None:
+        super().__init__(f"Slack refused {method}" + (f" for {day}" if day else "") + f": {code}")
+        self.code = code
+        self.day = day
+        self.method = method
+
+
+class SlackResponseError(Exception):
+    """Slack answered with something that is neither a member file nor a refusal.
+
+    The message never quotes the body: a member file carries email addresses.
+    """
+
+
+def _retry_after(header: str | None) -> float | None:
+    """Seconds from a Retry-After header: delay-seconds or an HTTP-date (RFC 9110 §10.2.3)."""
+    if not header:
+        return None
+    try:
+        seconds = float(header)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(header)
+        except (TypeError, ValueError):
+            return None
+        if when.tzinfo is None:
+            return None
+        seconds = (when - datetime.now(UTC)).total_seconds()
+    if not math.isfinite(seconds):
+        return None
+    return max(seconds, 0.0)
+
+
+def _wait(response: requests.Response | None, attempt: int) -> float:
+    asked = _retry_after(response.headers.get("Retry-After")) if response is not None else None
+    wait = asked if asked is not None else BACKOFF_BASE_SECS * 2**attempt
+    return min(wait, MAX_WAIT_SECS)
+
+
+def _wire(response: requests.Response, day: str) -> Iterator[bytes]:
+    """Body bytes as sent, transport encoding included, under the compressed cap."""
+    declared = response.headers.get("Content-Length")
+    try:
+        oversized = declared is not None and int(declared) > MAX_COMPRESSED_BYTES
+    except ValueError:
+        oversized = False  # a malformed header is left to the cap enforced while reading
+    if oversized:
+        raise SlackResponseError(f"{day}: body of {declared} bytes exceeds {MAX_COMPRESSED_BYTES}")
+    total = 0
+    while chunk := response.raw.read(_READ_CHUNK, decode_content=False):
+        total += len(chunk)
+        if total > MAX_COMPRESSED_BYTES:
+            raise SlackResponseError(f"{day}: body exceeds {MAX_COMPRESSED_BYTES} bytes")
+        yield chunk
+
+
+def _gunzip(chunks: Iterable[bytes], day: str) -> Iterator[bytes]:
+    """Inflate one gzip stream (members concatenated) in bounded steps."""
+    inflater = zlib.decompressobj(wbits=31)
+    started = False
+    total = 0
+    try:
+        for chunk in chunks:
+            data = chunk
+            started = started or bool(data)
+            while True:
+                out = inflater.decompress(data, _INFLATE_STEP)
+                total += len(out)
+                if total > MAX_DECOMPRESSED_BYTES:
+                    raise SlackResponseError(f"{day}: member file expands past {MAX_DECOMPRESSED_BYTES} bytes")
+                if out:
+                    yield out
+                if inflater.eof:
+                    data = inflater.unused_data
+                    inflater = zlib.decompressobj(wbits=31)
+                    started = bool(data)
+                    if not data:
+                        break
+                    continue
+                data = inflater.unconsumed_tail
+                if not data and len(out) < _INFLATE_STEP:
+                    break
+    except zlib.error as error:
+        raise SlackResponseError(f"{day}: corrupt gzip body ({error})") from error
+    if started and not inflater.eof:
+        raise SlackResponseError(f"{day}: gzip body ends mid-stream")
+
+
+def _peel(chunks: Iterable[bytes], day: str) -> Iterator[bytes]:
+    """Inflate as many gzip layers as the body carries, up to the limit."""
+    for _ in range(_MAX_GZIP_LAYERS + 1):
+        source = iter(chunks)
+        head = b""
+        for chunk in source:
+            head += chunk
+            if len(head) >= len(_GZIP_MAGIC):
+                break
+        chunks = itertools.chain([head], source)
+        if not head.startswith(_GZIP_MAGIC):
+            return (c for c in chunks if c)
+        chunks = _gunzip(chunks, day)
+    raise SlackResponseError(f"{day}: more than {_MAX_GZIP_LAYERS} gzip layers")
+
+
+def _lines(chunks: Iterable[bytes], day: str) -> Iterator[bytes]:
+    """Non-empty lines. Splitting and dropping empties run in C, so a body of bare
+    newlines costs the decompressed cap in bytes, not a Python step per line."""
+    tail = b""
+    for chunk in chunks:
+        *complete, tail = (tail + chunk).split(b"\n")
+        for line in filter(None, complete):
+            if len(line) > MAX_LINE_BYTES:
+                raise SlackResponseError(f"{day}: a line exceeds {MAX_LINE_BYTES} bytes")
+            yield line
+        if len(tail) > MAX_LINE_BYTES:
+            raise SlackResponseError(f"{day}: a line exceeds {MAX_LINE_BYTES} bytes")
+    if tail:
+        yield tail
+
+
+def _parse(line: bytes, response: requests.Response, day: str) -> dict[str, Any]:
+    try:
+        return _LINE.validate_json(line)
+    except ValidationError as error:
+        if any(detail["type"] == "json_invalid" for detail in error.errors(include_input=False)):
+            raise SlackResponseError(
+                f"{day}: body is not JSON Lines (Content-Type {response.headers.get('Content-Type')!r})"
+            ) from None
+        raise SlackResponseError(f"{day}: a member file line is not a JSON object ({describe(error)})") from None
+
+
+def _refusal_error(row: dict[str, Any], day: str) -> SlackApiError:
+    try:
+        refusal = Refusal.model_validate(row)
+    except ValidationError as error:
+        raise SlackResponseError(f"{day}: JSON answer without a member file ({describe(error)})") from None
+    if refusal.ok:
+        raise SlackResponseError(f"{day}: JSON answer without a member file")
+    return SlackApiError(refusal.error or "unknown_error", day)
+
+
+def _rows(response: requests.Response, day: str) -> Iterator[dict[str, Any]]:
+    """Rows of the member file, or the refusal it carries.
+
+    A refusal is a single JSON object with `ok`; no member row has that key, so
+    the first line decides.
+    """
+    first = True
+    for line in _lines(_peel(_wire(response, day), day), day):
+        if not line.strip():
+            continue
+        row = _parse(line, response, day)
+        if first and "ok" in row:
+            raise _refusal_error(row, day)
+        first = False
+        yield row
+
+
+def _answer[A: Answer](response: requests.Response, method: str, model: type[A], limit: int) -> A:
+    body = response.raw.read(limit + 1, decode_content=True)
+    if len(body) > limit:
+        raise SlackResponseError(f"{method}: answer exceeds {limit} bytes")
+    try:
+        return model.model_validate_json(body)
+    except ValidationError as error:
+        raise SlackResponseError(f"{method}: unexpected answer ({describe(error)})") from None
+
+
+def _billing(answer: BillingAnswer, headers: CaseInsensitiveDict[str]) -> Billing:
+    """Slack sends the token's scopes in `x-oauth-scopes` on every Web API answer."""
+    try:
+        return Billing.model_validate({"plan": answer.plan, "scopes": headers.get("x-oauth-scopes")})
+    except ValidationError as error:
+        raise SlackResponseError(f"team.billing.info: unexpected answer ({describe(error)})") from None
+
+
+class SlackClient:
+    def __init__(self, token: str, session: requests.Session | None = None) -> None:
+        self._session = session or requests.Session()
+        self._session.headers["Authorization"] = f"Bearer {token}"
+
+    def _send(self, method: str, url: str, label: str, params: Mapping[str, str] | None = None) -> requests.Response:
+        """The response, headers read and body unread, after retrying what Slack calls temporary."""
+        for attempt in itertools.count():
+            try:
+                response = self._session.request(method, url, params=params, timeout=TIMEOUT, stream=True)
+            except requests.RequestException as error:
+                if attempt >= MAX_RETRIES:
+                    raise
+                logger.warning("%s failed (%s), retrying", label, type(error).__name__)
+                time.sleep(_wait(None, attempt))
+                continue
+            if response.status_code in _RETRY_STATUSES and attempt < MAX_RETRIES:
+                wait = _wait(response, attempt)
+                response.close()
+                logger.warning("%s answered HTTP %s, retrying in %.0fs", label, response.status_code, wait)
+                time.sleep(wait)
+                continue
+            if response.status_code != 200:
+                response.close()
+                raise SlackResponseError(f"{label}: HTTP {response.status_code}")
+            return response
+        raise AssertionError("unreachable")
+
+    def _get(self, day: str) -> requests.Response:
+        return self._send("GET", API_URL, day, {"type": "member", "date": day})
+
+    def _call[A: Answer](
+        self,
+        http_method: str,
+        url: str,
+        method: str,
+        model: type[A],
+        limit: int,
+        params: Mapping[str, str] | None = None,
+    ) -> tuple[A, CaseInsensitiveDict[str]]:
+        """A JSON answer with `ok: true` and its headers, after retrying what Slack calls temporary."""
+        for attempt in itertools.count():
+            with self._send(http_method, url, method, params) as response:
+                answer = _answer(response, method, model, limit)
+                if answer.ok:
+                    return answer, response.headers
+                refusal = SlackApiError(answer.error or "unknown_error", method=method)
+                if refusal.code not in RETRY_ERRORS or attempt >= MAX_RETRIES:
+                    raise refusal
+                wait = _wait(response, attempt)
+                logger.warning("%s, retrying in %.0fs", refusal, wait)
+                time.sleep(wait)
+        raise AssertionError("unreachable")
+
+    def billing(self) -> Billing:
+        """The plan from team.billing.info and the scopes of the token."""
+        answer, headers = self._call("POST", BILLING_URL, "team.billing.info", BillingAnswer, MAX_ANSWER_BYTES)
+        return _billing(answer, headers)
+
+    def _pages[P: Page](
+        self, url: str, method: str, model: type[P], params: Mapping[str, str], limit: int = MAX_PAGE_BYTES
+    ) -> Iterator[P]:
+        """Each page of a method that pages with `cursor`."""
+        cursor = ""
+        seen: set[str] = set()
+        while True:
+            page_params = {**params, "cursor": cursor} if cursor else params
+            page, _ = self._call("GET", url, method, model, limit, page_params)
+            yield page
+            seen.add(cursor)
+            cursor = page.response_metadata.next_cursor
+            if not cursor:
+                return
+            if cursor in seen:
+                raise SlackResponseError(f"{method}: the next page cursor repeats an earlier cursor")
+
+    def members(self) -> Iterator[Member]:
+        """Every member on all pages of users.list."""
+        for page in self._pages(USERS_URL, "users.list", UsersPage, {"limit": str(LIST_PAGE_SIZE)}):
+            yield from page.members
+
+    def usergroups(self) -> tuple[Usergroup, ...]:
+        """The enabled user groups, without members. usergroups.list has no pages."""
+        answer, _ = self._call("GET", USERGROUPS_URL, "usergroups.list", UsergroupsAnswer, MAX_PAGE_BYTES)
+        return answer.usergroups
+
+    def usergroup_users(self, usergroup: str) -> tuple[str, ...]:
+        """The member IDs of one user group. usergroups.users.list has no pages."""
+        params = {"usergroup": usergroup}
+        answer, _ = self._call(
+            "GET", USERGROUP_USERS_URL, "usergroups.users.list", UsergroupUsersAnswer, MAX_PAGE_BYTES, params
+        )
+        return answer.users
+
+    def conversations(self) -> Iterator[Conversation]:
+        """Every channel, private channel, DM and group DM that the token can see, archived included."""
+        params = {"types": CONVERSATION_TYPES, "exclude_archived": "false", "limit": str(LIST_PAGE_SIZE)}
+        for page in self._pages(CONVERSATIONS_URL, "conversations.list", ConversationsPage, params):
+            yield from page.channels
+
+    def history(self, channel: str, oldest: str, latest: str | None = None) -> Iterator[Message]:
+        """The messages of a conversation from `oldest` to `latest` (epoch seconds; none is now), without replies."""
+        params = {"channel": channel, "oldest": oldest, "limit": str(MESSAGES_PAGE_SIZE)}
+        if latest is not None:
+            params["latest"] = latest
+        for page in self._pages(HISTORY_URL, "conversations.history", MessagesPage, params, MAX_MESSAGES_PAGE_BYTES):
+            yield from page.messages
+
+    def replies(self, channel: str, thread_ts: str, oldest: str) -> Iterator[Message]:
+        """The messages of a thread from `oldest` to now. Slack also sends the parent message."""
+        params = {"channel": channel, "ts": thread_ts, "oldest": oldest, "limit": str(MESSAGES_PAGE_SIZE)}
+        for page in self._pages(REPLIES_URL, "conversations.replies", MessagesPage, params, MAX_MESSAGES_PAGE_BYTES):
+            yield from page.messages
+
+    def member_day(self, day: str) -> Iterator[dict[str, Any]]:
+        """Every member row Slack reports for one UTC day, streamed."""
+        for attempt in itertools.count():
+            response = self._get(day)
+            with response:
+                rows = _rows(response, day)
+                try:
+                    first = next(rows, None)
+                except SlackApiError as error:
+                    if error.code not in RETRY_ERRORS or attempt >= MAX_RETRIES:
+                        raise
+                    wait = _wait(response, attempt)
+                    logger.warning("%s, retrying in %.0fs", error, wait)
+                    time.sleep(wait)
+                    continue
+                if first is not None:
+                    yield first
+                    yield from rows
+                return

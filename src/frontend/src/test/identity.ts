@@ -1,18 +1,6 @@
 import type { PeopleListItem } from "@/api/identity-client";
 import type { IdentityPerson } from "@/types/insight";
 
-/**
- * Identity fixtures for portal tests.
- *
- * Person keys are canonical UUIDs since the identity cutover — the route guard
- * (`lib/metrics/entity.ts`) redirects anything else and the metrics API rejects
- * it — which makes hand-written fixtures unreadable. `pid("lead")` mints a
- * stable, valid UUID from a short label so tests stay legible while still
- * exercising the real key shape, and `identityPerson` builds the tree nodes
- * every org view resolves its roster from.
- */
-
-/** A deterministic, valid person UUID for a short fixture label. */
 export function pid(label: string): string {
   const hex = [...label]
     .map((c) => c.charCodeAt(0).toString(16).padStart(2, "0"))
@@ -27,11 +15,6 @@ export function pid(label: string): string {
   ].join("-");
 }
 
-/**
- * An identity tree node keyed by `pid(label)`, with the label doubling as the
- * display name and the local part of the email (emails still exist on the
- * profile — they are just no longer the key).
- */
 export function identityPerson(
   label: string,
   over: Partial<IdentityPerson> = {},
@@ -49,6 +32,7 @@ export function identityPerson(
 export function peopleFromIdentityTree(
   root: IdentityPerson,
   managerPersonId: string | null = null,
+  managerName: string | null = null,
 ): PeopleListItem[] {
   return [
     {
@@ -65,9 +49,10 @@ export function peopleFromIdentityTree(
         ...(root.status ? { status: root.status } : {}),
       },
       manager_person_id: managerPersonId,
+      manager_name: managerName,
     },
     ...root.subordinates.flatMap((report) =>
-      peopleFromIdentityTree(report, root.person_id),
+      peopleFromIdentityTree(report, root.person_id, root.display_name || null),
     ),
   ];
 }

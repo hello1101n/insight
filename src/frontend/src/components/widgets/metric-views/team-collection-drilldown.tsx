@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+
+import { resolveText } from "@/i18n/localized-text";
 
 import type { DateRange } from "@/api/period-to-date-range";
-import { Card, CardContent } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner, Card, CardContent } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   MembersGrid,
@@ -27,13 +29,6 @@ export interface TeamCollectionDrilldownProps {
   className?: string;
 }
 
-/**
- * Drilldown for a metrics-backed group over a roster of people: the members
- * grid scoped to the group's full metric collection. Every cell is a
- * member's own value, trend, and standing vs their OWN department cohort —
- * nothing is pooled; the group card's judgment surfaces stay on the
- * dashboard.
- */
 export function TeamCollectionDrilldown({
   def,
   members,
@@ -42,6 +37,7 @@ export function TeamCollectionDrilldown({
   cohortLabel = "department",
   className,
 }: TeamCollectionDrilldownProps) {
+  const { t } = useTranslation();
   const gridMembers = useMemo<MembersGridMember[]>(
     () =>
       members.map((member) => ({
@@ -71,7 +67,7 @@ export function TeamCollectionDrilldown({
   if (data.isPending) {
     return (
       <div className="flex h-full min-h-96 w-full items-center justify-center p-10">
-        <Spinner className="size-12 text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -103,7 +99,10 @@ export function TeamCollectionDrilldown({
             byKey={data.byKey}
             previousByKey={data.previousByKey}
             showIssues
-            caption={`${def.title} metrics for each person, compared with their own ${cohortLabel} peers`}
+            caption={t("people.section.caption", {
+              title: resolveText(t, def.title),
+              cohort: cohortLabel,
+            })}
             cohortLabel={cohortLabel}
           />
         </CardContent>

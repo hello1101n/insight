@@ -59,7 +59,6 @@ export function CreateFolderDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  /** `shared` says the folder was granted to people as it was made. */
   onCreated?: (folder: { id: string; name: string }, shared: boolean) => void;
 }) {
   const queryClient = useQueryClient();

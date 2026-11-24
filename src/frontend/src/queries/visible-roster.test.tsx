@@ -1,10 +1,3 @@
-/**
- * The roster every flat-org zone counts. What matters: the walk collects every
- * page rather than the first, rejects a cursor cycle instead of looping, and a
- * refusal surfaces as an error — an empty roster would
- * read to every zone as "this person can see nobody", which is a different
- * fact.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -46,6 +39,7 @@ function person(id: string): identityClient.PeopleListItem {
     email: null,
     attributes: {},
     manager_person_id: null,
+    manager_name: null,
   };
 }
 

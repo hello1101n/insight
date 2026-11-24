@@ -4,7 +4,6 @@ import { formatGapMagnitude } from "@/lib/metrics/gap";
 
 describe("formatGapMagnitude", () => {
   it("renders percent metrics as points, never a relative percent or ratio", () => {
-    // Focus 55% vs median 90%: the gap is 35 points below, not "-39%".
     expect(
       formatGapMagnitude({
         value: 55,
@@ -18,8 +17,6 @@ describe("formatGapMagnitude", () => {
   });
 
   it("computes points from the displayed operands so the arithmetic closes", () => {
-    // 54.7% renders as 55% and the median as 90% — the gap must reconcile
-    // with those (55 + 35 = 90), not the raw fractions (35.3).
     expect(
       formatGapMagnitude({
         value: 54.7,
@@ -33,8 +30,6 @@ describe("formatGapMagnitude", () => {
   });
 
   it("drops the gap when rounding collapses it to zero", () => {
-    // 89.6% and 90.4% both render as 90% — a "-0.8 pp" beside two equal
-    // numbers reads as a bug.
     expect(
       formatGapMagnitude({
         value: 89.6,
@@ -45,7 +40,6 @@ describe("formatGapMagnitude", () => {
         unit: null,
       })
     ).toBeNull();
-    // Same for a sub-half-percent relative gap on a count metric.
     expect(
       formatGapMagnitude({
         value: 1001,

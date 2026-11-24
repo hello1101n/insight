@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useViewer } from "@/auth";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
@@ -46,11 +47,7 @@ import {
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 
-/**
- * Column counts by how many tiles there are. Written out rather than composed,
- * because the class scanner reads source text and cannot see a name built at
- * runtime.
- */
+// WORKAROUND: Tailwind's scanner reads source text, so every class name is spelled out whole.
 const TILE_GRID: Record<number, string> = {
   0: "grid-cols-1",
   1: "grid-cols-1",
@@ -69,36 +66,17 @@ const CLOSED_DRILLDOWN_DATA = {
   refetch: () => {},
 } as const;
 
-/** The person and catalogue slice a metric-groups screen renders. */
 export interface MetricGroupsViewProps {
   "data-testid"?: string;
-  /** Person id the lens is scoped to (org-level rollup is a backend follow-up). */
   personId: string;
-  /** Which metric-family groups to render; empty ⇒ nothing available yet. */
   groupIds: readonly GroupId[];
-  /**
-   * The glance is the KPI row with needs-attention thinned against it;
-   * attention is the list alone; direction lenses show neither.
-   */
   content?: MetricGroupsContent;
-  /**
-   * When set, a group card selects the group via this callback (e.g. to expand
-   * it inline in a second sidebar level) instead of opening the drilldown
-   * modal. Passing it also suppresses the modal sheets entirely.
-   */
   onSelectGroup?: (id: GroupId) => void;
-  /** Rendered inside another page, which owns the padding and landmark. */
   embedded?: boolean;
 }
 
 export type MetricGroupsContent = "glance" | "attention" | "none";
 
-/**
- * Catalog-driven metric-group screen — the reusable body behind the portal's
- * Overview and Direction lenses. Reuses the v2 dashboard widgets
- * (KpiTile / MetricGroupCard / GroupDrilldownSheet) and the `/metric-results`
- * collection queries, parameterised by the set of groups to show.
- */
 export function MetricGroupsView({
   "data-testid": testId,
   personId,
@@ -107,13 +85,12 @@ export function MetricGroupsView({
   onSelectGroup,
   embedded = false,
 }: MetricGroupsViewProps) {
+  const { t } = useTranslation();
   const showKpis = content === "glance";
   const showAttention = content !== "none";
   const cohortLabel = useCohortLabel();
   const { period, dateRange, compareTo, comparisonNoun } = usePortalPeriod();
   const entityId = normalizePersonId(personId);
-  // Whose page this is. A person reading their own page and a manager
-  // reading it want different things first — see `orderAttentionItems`.
   const { personId: viewerPersonId } = useViewer();
   const isSelf = normalizePersonId(viewerPersonId ?? "") === entityId;
   const entity = { type: "person" as const, ids: [entityId] };
@@ -126,33 +103,21 @@ export function MetricGroupsView({
     dateRange,
     { compareTo }
   );
-  // Shared with the nav mark, comparison window included — see the invariant on
-  // `usePersonSectionCollection`. It covers every visible section; this view
-  // reads the `defs` it renders and leaves the rest in the map.
   const groupData = usePersonSectionCollection(personId);
 
-  // Slice cohort: the people who share this person's active-slice attribute
-  // value. Only fetched when a slice is picked — otherwise the person's own
-  // numbers stand alone (no cohort, tiles show "no comparison" as before).
   const cohortIds = usePersonCohort(entityId);
   const cohortEntity = cohortIds.length
     ? { type: "person" as const, ids: cohortIds }
     : CLOSED_ENTITY;
   const cohortKpi = useMetricCollection(
     cohortIds.length && showKpis ? KPI_ROW_COLLECTION : EMPTY_COLLECTION,
-    // Entity gated on the SAME condition as the collection — a live entity
-    // with an empty collection still issues a useless network request.
     cohortIds.length && showKpis ? cohortEntity : CLOSED_ENTITY,
     dateRange
   );
-  // Shared with the nav mark for the same reason `groupData` is.
   const cohortGroup = usePersonSectionCohort(personId);
 
   const sectionStandings = usePersonSectionStandings(personId);
 
-  // Deliberately outside every loading and error gate below: the tiles render
-  // from the current period, and the line appears when it arrives. A first
-  // screen must not wait on decoration.
   const bucket = trendBucket(period);
   const trendCollection = useMemo(
     () => ({
@@ -170,8 +135,6 @@ export function MetricGroupsView({
   );
 
   const [openGroup, setOpenGroup] = useState<GroupId | null>(null);
-  // With `onSelectGroup` a card/alert navigates to the section inline; without
-  // it, it opens the drilldown modal.
   const openOrSelect = onSelectGroup ?? setOpenGroup;
   const openDef =
     openGroup != null ? (defs.find((d) => d.id === openGroup) ?? null) : null;
@@ -199,16 +162,6 @@ export function MetricGroupsView({
     );
   }
 
-  // The previous period counts as part of the picture: attention needs it to
-  // tell a change from a standing, so a pending one is still loading and a
-  // failed one is an error. Left out, a failed comparison would render as
-  // "nothing needs attention" — the most misleading empty state on the page.
-  //
-  // The cohort's own results count too. Every comparison on the page is drawn
-  // against them — `injectCohortPeer` only copies peer values that have
-  // arrived — so rendering before they do shows the person measured against a
-  // cohort that is not yet there, under a heading naming how many people are
-  // in it.
   const cohortPending =
     cohortIds.length > 0 &&
     ((showKpis && cohortKpi.isPending) || collectionSetPending(cohortGroup));
@@ -220,7 +173,6 @@ export function MetricGroupsView({
     return <CenteredSpinner data-testid={testId} className={embedded ? "min-h-40" : "min-h-[60vh]"} />;
   }
 
-  // Surface a backend failure as a retryable error, not empty section cards.
   const isError =
     (showKpis && kpiData.isError) ||
     [...groupData.values()].some((r) => r.isError) ||
@@ -243,8 +195,6 @@ export function MetricGroupsView({
       </div>
     );
 
-  // Cohort-injected views: with a slice active, the person's results carry
-  // their cohort's peer stats so tiles/cards/attention read "vs <slice> median".
   const kpiByKey = injectCohortPeer(kpiData.byKey, cohortKpi.byKey, cohortIds);
   const groupResult = (id: GroupId) => {
     const r = groupData.get(id);
@@ -260,24 +210,14 @@ export function MetricGroupsView({
     ? metricKpiTiles(kpiByKey, kpiData.previousByKey, entityId)
     : [];
 
-  // What the row actually rendered — the block skips exactly those, no more.
   const headlineKeys = new Set(tiles.map((t) => t.key));
 
-  // Sections with no reading at all, split by whose fault the blank is: a
-  // pool that reads means the measurement works and this person is absent
-  // from it, an empty pool means nobody here is measured. A page that shows
-  // only what it can see otherwise reads as a whole picture of a person.
   const blank = showKpis
     ? sectionStandings.filter((st) => !st.isPending && !st.hasData)
     : [];
   const unmeasured = blank.filter((st) => !st.peersHaveData).map((st) => st.title);
   const inactive = blank.filter((st) => st.peersHaveData).map((st) => st.title);
 
-  // Deduped across groups, not within one: a metric and the wider metric that
-  // contains it need not live in the same section.
-  // Thinned across groups AND against the row above: a metric and the one it
-  // restates need not live in the same section, and the row is the more
-  // prominent of the two places a fact can appear.
   const attentionItems = showAttention
     ? orderAttentionItems(
         defs.flatMap((def) =>
@@ -314,53 +254,32 @@ export function MetricGroupsView({
             />
           ) : (
             <p className="text-sm text-muted-foreground">
-              Nothing needs attention this period.
+              {t("worth_a_look.nothing_stands_out")}
             </p>
           )
         ) : null}
         {showKpis ? (
           <>
-            {/* Before the numbers, not after them. On a person's own page the
-                first question is what this thing knows about them, and a page
-                that answers it only at the bottom has already been read as a
-                complete picture by then. */}
             <PersonCoverage unmeasured={unmeasured} inactive={inactive} />
             <section className="flex flex-col gap-3">
               <p className={cn("flex flex-wrap items-baseline gap-x-2", TEXT_EYEBROW)}>
                 At a glance
-                {/* Whose median. Every comparison on this page says "vs median"
-                    and none of them said against whom — which is the one thing
-                    a reader needs to judge any of it, and the one that reveals
-                    a lead being measured against their own reports. */}
                 {peerPool ? (
                   <span className="font-normal tracking-normal normal-case">
                     · compared with {peerPool} people in the same {cohortLabel}
                   </span>
                 ) : null}
-                {/* The lines carry no axis and no labels — a tile has room for
-                    neither — so the one thing they cannot say for themselves
-                    is said once, here: what a line spans. */}
                 <span className="font-normal tracking-normal normal-case">
                   · lines cover the last {TREND_BUCKETS}{" "}
                   {bucket === "week" ? "weeks" : "months"}
                 </span>
               </p>
-              {/* A counted column grid, not auto-fit: auto-fit packs in as many
-                  tiles as the width allows and leaves whatever is left over on
-                  its own. The count follows how many tiles there ARE, so a
-                  person with two of them gets two full-width tiles rather than
-                  half a row of blanks — which reads as tiles that failed to
-                  load, not as a person with two measurements. */}
               <div
                 className={cn(
                   "grid gap-3",
                   TILE_GRID[tiles.length] ?? TILE_GRID[4]
                 )}
               >
-                {/* The tiles ARE the row: `metricKpiTiles` already picked the
-                    metrics this person is observed for, in candidate order. A
-                    slot per fixed key is what painted "—" over the most
-                    valuable space on the page. */}
                 {tiles.map((tile) => (
                   <KpiTile
                     key={tile.key}
@@ -384,12 +303,6 @@ export function MetricGroupsView({
         ) : null}
       </Shell>
 
-      {/* A click on a number is answered here, with the evidence behind it.
-          This used to be gated on a `showSections` flag that also hid the
-          per-group cards — and those cards moved to the navigation long ago,
-          so the flag survived only to make clicks land nowhere. Only a caller
-          that routes clicks elsewhere (`onSelectGroup`) has no use for the
-          drilldowns. */}
       {onSelectGroup
         ? null
         : defs.map((def) => (

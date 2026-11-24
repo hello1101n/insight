@@ -18,10 +18,8 @@ vi.mock("@/api/custom-client", async (importOriginal) => {
   };
 });
 
-// Deterministic, DOM-inspectable stand-ins for the recharts wrappers (which
-// render nothing under jsdom's zero-size ResponsiveContainer). Partial, not
-// whole: the kit's own chart container imports pieces of recharts these tests
-// never look at, and a bare object mock hid them.
+// WORKAROUND: recharts draws nothing in jsdom's zero-size ResponsiveContainer.
+// Partial, since the kit's chart container imports recharts pieces a bare mock hides.
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("recharts")>();
 
@@ -55,8 +53,25 @@ vi.mock("recharts", async (importOriginal) => {
     );
   const series =
     (testId: string) =>
-    ({ dataKey }: { dataKey: string }) => (
-      <div data-testid={testId} data-key={dataKey} />
+    ({
+      dataKey,
+      name,
+      stackId,
+      children,
+    }: {
+      dataKey: string;
+      name?: string;
+      stackId?: string;
+      children?: React.ReactNode;
+    }) => (
+      <div
+        data-testid={testId}
+        data-key={dataKey}
+        data-name={name}
+        data-stack-id={stackId}
+      >
+        {children}
+      </div>
     );
 
   return {
@@ -70,7 +85,22 @@ vi.mock("recharts", async (importOriginal) => {
     PieChart: chart("pie-chart"),
     CartesianGrid: () => null,
     Tooltip: () => null,
-    Legend: () => null,
+    Legend: ({
+      itemSorter,
+      content,
+    }: {
+      itemSorter?: unknown;
+      content?: React.ReactElement<{ className?: string }>;
+    }) => (
+      <div
+        data-testid="legend"
+        data-item-sorter={String(itemSorter)}
+        data-content-class={content?.props.className}
+      />
+    ),
+    LabelList: ({ dataKey }: { dataKey: string }) => (
+      <div data-testid="label-list" data-key={dataKey} />
+    ),
     XAxis: ({ dataKey }: { dataKey: string }) => (
       <div data-testid="x-axis" data-key={dataKey} />
     ),
@@ -230,8 +260,6 @@ describe("<CustomWidget>", () => {
     ]);
   });
 
-  // A card is where a reader meets a refusal, so it shows what the service
-  // said rather than the status it said it with.
   it("shows the service's refusal in place of the content", () => {
     render(
       <CustomWidget
@@ -319,8 +347,6 @@ describe("<CustomWidget>", () => {
     expect(screen.getByText(/unknown widget type/i)).toBeInTheDocument();
   });
 
-  // Switching boards leaves a card with no result for a moment. Saying "No
-  // data" there reads as an answer, and then the answer changes.
   it("waits rather than saying there is no data while the run is in flight", () => {
     const { rerender } = render(
       <CustomWidget
@@ -391,6 +417,103 @@ describe("<CustomWidget>", () => {
     expect(screen.getByTestId(series)).toHaveAttribute("data-key", "lines");
   });
 
+  describe("a stacked bar", () => {
+    const runs = {
+      columns: ["week", "outcome", "runs"],
+      rows: [
+        ["2026-11-02", "merged", 3],
+        ["2026-11-02", "failed", 1],
+        ["2026-11-09", "merged", 2],
+      ],
+    };
+    const stacked = {
+      type: "bar",
+      metric: "m",
+      x: "week",
+      y: "runs",
+      series: "outcome",
+    } as const;
+
+    it("draws one segment per series value, all in one stack", () => {
+      render(<CustomWidget widget={stacked} result={runs} />);
+
+      const segments = screen.getAllByTestId("bar");
+      expect(segments.map((bar) => bar.dataset.name)).toEqual([
+        "failed",
+        "merged",
+      ]);
+      expect(new Set(segments.map((bar) => bar.dataset.stackId)).size).toBe(1);
+      expect(segments[0].dataset.stackId).toBeTruthy();
+      expect(screen.getByTestId("legend")).toBeInTheDocument();
+    });
+
+    it("lists the legend in stack order rather than alphabetically", () => {
+      render(<CustomWidget widget={stacked} result={runs} />);
+
+      expect(screen.getByTestId("legend")).toHaveAttribute(
+        "data-item-sorter",
+        "null"
+      );
+    });
+
+    it("can label a stack's total on whichever segment ends up on top", () => {
+      render(
+        <CustomWidget widget={{ ...stacked, labels: true }} result={runs} />
+      );
+
+      for (const segment of screen.getAllByTestId("bar")) {
+        expect(
+          segment.querySelector('[data-testid="label-list"]')
+        ).not.toBeNull();
+      }
+    });
+
+    it("wraps a long legend rather than clipping it", () => {
+      render(<CustomWidget widget={stacked} result={runs} />);
+
+      expect(screen.getByTestId("legend").dataset.contentClass).toContain(
+        "flex-wrap"
+      );
+    });
+
+    it("draws no labels unless asked", () => {
+      render(<CustomWidget widget={stacked} result={runs} />);
+
+      expect(screen.queryByTestId("label-list")).not.toBeInTheDocument();
+    });
+
+    it("names a series column the metric did not return", () => {
+      render(
+        <CustomWidget widget={{ ...stacked, series: "cause" }} result={runs} />,
+        { wrapper }
+      );
+
+      expect(screen.getByRole("alert")).toHaveTextContent("draws cause");
+      expect(screen.queryByTestId("custom-bar-chart")).not.toBeInTheDocument();
+    });
+  });
+
+  it("labels a plain bar's value on top when asked", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "bar",
+          metric: "m",
+          x: "day",
+          y: "lines",
+          labels: true,
+        }}
+        result={result}
+      />
+    );
+
+    expect(screen.getByTestId("label-list")).toHaveAttribute(
+      "data-key",
+      "lines"
+    );
+    expect(screen.queryByTestId("legend")).not.toBeInTheDocument();
+  });
+
   it("renders a stat widget as the one number it is", () => {
     render(
       <CustomWidget
@@ -458,8 +581,6 @@ describe("<CustomWidget>", () => {
   });
 
   it("says which column is missing instead of drawing an empty chart", async () => {
-    // Seen live: y named the metric's raw json field instead of its as_name,
-    // so every point was undefined and the chart drew axes and no line.
     render(
       <CustomWidget
         widget={{ type: "line", metric: "lines_per_day", x: "day", y: "lines" }}

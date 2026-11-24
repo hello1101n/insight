@@ -442,6 +442,89 @@ SQL
 
 heal_task_field_history_class_event_order
 
+echo "=== Healing CRM deletion, property and team columns ==="
+# Same positional invariant: the CRM classes and their HubSpot staging gained
+# deletion, the full property map, engagement bodies and owner teams after
+# `_version`, in the order the staging models project them. Stored rows keep
+# the defaults until the full refresh the connector's major bump dispatches.
+# INVARIANT: repairs releases without #4178 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+heal_crm_class_columns() {
+  local db="$1" table="$2" grain="$3"
+  ch_table_exists "$db" "$table" || return 0
+  echo "  ${db}.${table}"
+  case "${grain}" in
+    accounts)
+      run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} MODIFY COLUMN is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} MODIFY COLUMN deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} MODIFY COLUMN properties Map(String, String) AFTER deleted_at;
+SQL
+      ;;
+    contacts)
+      run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} MODIFY COLUMN is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} MODIFY COLUMN deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} MODIFY COLUMN properties Map(String, String) AFTER deleted_at;
+SQL
+      ;;
+    deals)
+      run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} MODIFY COLUMN is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} MODIFY COLUMN deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} MODIFY COLUMN properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS currency Nullable(String) AFTER properties;
+ALTER TABLE ${db}.${table} MODIFY COLUMN currency Nullable(String) AFTER properties;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS exchange_rate Nullable(Float64) AFTER currency;
+ALTER TABLE ${db}.${table} MODIFY COLUMN exchange_rate Nullable(Float64) AFTER currency;
+SQL
+      ;;
+    activities)
+      run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} MODIFY COLUMN is_deleted UInt8 AFTER _version;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} MODIFY COLUMN deleted_at Nullable(DateTime64(3)) AFTER is_deleted;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} MODIFY COLUMN properties Map(String, String) AFTER deleted_at;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS subject Nullable(String) AFTER properties;
+ALTER TABLE ${db}.${table} MODIFY COLUMN subject Nullable(String) AFTER properties;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS body Nullable(String) AFTER subject;
+ALTER TABLE ${db}.${table} MODIFY COLUMN body Nullable(String) AFTER subject;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS direction Nullable(String) AFTER body;
+ALTER TABLE ${db}.${table} MODIFY COLUMN direction Nullable(String) AFTER body;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS status Nullable(String) AFTER direction;
+ALTER TABLE ${db}.${table} MODIFY COLUMN status Nullable(String) AFTER direction;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS channel Nullable(String) AFTER status;
+ALTER TABLE ${db}.${table} MODIFY COLUMN channel Nullable(String) AFTER status;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS ended_at Nullable(DateTime64(3)) AFTER channel;
+ALTER TABLE ${db}.${table} MODIFY COLUMN ended_at Nullable(DateTime64(3)) AFTER channel;
+SQL
+      ;;
+    users)
+      run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS primary_team_id Nullable(String) AFTER _version;
+ALTER TABLE ${db}.${table} MODIFY COLUMN primary_team_id Nullable(String) AFTER _version;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS team_ids Array(String) AFTER primary_team_id;
+ALTER TABLE ${db}.${table} MODIFY COLUMN team_ids Array(String) AFTER primary_team_id;
+SQL
+      ;;
+  esac
+}
+
+for _crm_grain in accounts activities contacts deals users; do
+  heal_crm_class_columns staging "hubspot__crm_${_crm_grain}" "${_crm_grain}"
+  heal_crm_class_columns silver "class_crm_${_crm_grain}" "${_crm_grain}"
+done
+
 echo "=== Healing collab-meeting contract schema ==="
 # Same positional invariant: collab meeting rows gained the account triple
 # after data_source (zoom-guest attribution), then the attended meeting keys
@@ -468,6 +551,32 @@ SQL
 heal_collab_meeting_table staging m365__collab_meeting_activity
 heal_collab_meeting_table staging zoom__collab_meeting_activity
 heal_collab_meeting_table silver class_collab_meeting_activity
+
+echo "=== Healing collab-chat contract schema ==="
+# Same positional invariant: collab chat rows gained the account triple after
+# data_source (Slack rows keyed by the Slack account). A row written before the
+# columns existed is keyed by its email, which the default states, until the
+# Slack descriptor's major bump rebuilds the Slack rows.
+# INVARIANT: repairs releases without #4320 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+heal_collab_chat_account_table() {
+  local db="$1" table="$2"
+  ch_table_exists "$db" "$table" || return 0
+  echo "  ${db}.${table}"
+  run_ch <<SQL
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_source_type String DEFAULT 'email' AFTER data_source;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_source_type String DEFAULT 'email' AFTER data_source;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_source_id String AFTER account_source_type;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_source_id String AFTER account_source_type;
+ALTER TABLE ${db}.${table} ADD COLUMN IF NOT EXISTS account_id String AFTER account_source_id;
+ALTER TABLE ${db}.${table} MODIFY COLUMN account_id String AFTER account_source_id;
+SQL
+}
+
+heal_collab_chat_account_table staging m365__collab_chat_activity
+heal_collab_chat_account_table staging slack__collab_chat_activity
+heal_collab_chat_account_table staging slack__collab_chat_activity_messages
+heal_collab_chat_account_table staging zulip_proxy__collab_chat_activity
+heal_collab_chat_account_table silver class_collab_chat_activity
 
 echo "=== Healing git pull-request reported close-time column ==="
 # Same positional invariant: every projection feeding class_git_pull_requests
@@ -743,23 +852,46 @@ ALTER TABLE ${db}.${table} MODIFY COLUMN ${column} ${type};
 SQL
 }
 
-# `Nullable(<type>)` becomes `<type>`. ClickHouse refuses the narrowing while a
-# row holds NULL, so those rows first take `<fallback>`, the value the current
-# model writes where the old one wrote NULL.
+# WORKAROUND: some ClickHouse servers require DEFAULT for Nullable-to-non-Nullable retypes;
+# fill NULLs first for older servers, then remove the temporary fallback default.
 retype_column_not_null() {
-  local db="$1" table="$2" column="$3" type="$4" fallback="$5" current pending
+  local db="$1" table="$2" column="$3" type="$4" fallback="$5" current pending existing_default fallback_literal
   current="$(ch_column_type "${db}" "${table}" "${column}")"
-  [[ "${current}" == "Nullable(${type})" ]] || return 0
-  pending="$(ch_scalar "SELECT count() FROM ${db}.${table} WHERE ${column} IS NULL")"
-  if [[ "${pending}" -gt 0 ]]; then
-    echo "  ${db}.${table}.${column}: ${pending} NULL row(s) take ${fallback}"
-    run_ch <<SQL
+  if [[ "${current}" == "${type}" ]]; then
+    fallback_literal=${fallback//\\/\\\\}
+    fallback_literal=${fallback_literal//\'/\\\'}
+    pending="$(ch_scalar "SELECT count() FROM system.columns
+      WHERE database = '${db}' AND table = '${table}' AND name = '${column}'
+        AND default_kind = 'DEFAULT' AND default_expression = '${fallback_literal}'")"
+    [[ "${pending}" -gt 0 ]] || return 0
+  elif [[ "${current}" == "Nullable(${type})" ]]; then
+    existing_default="$(ch_scalar "SELECT count() FROM system.columns
+      WHERE database = '${db}' AND table = '${table}' AND name = '${column}'
+        AND default_kind != ''")"
+    pending="$(ch_scalar "SELECT count() FROM ${db}.${table} WHERE ${column} IS NULL")"
+    if [[ "${pending}" -gt 0 ]]; then
+      echo "  ${db}.${table}.${column}: ${pending} NULL row(s) take ${fallback}"
+      run_ch <<SQL
 ALTER TABLE ${db}.${table} UPDATE ${column} = ${fallback} WHERE ${column} IS NULL SETTINGS mutations_sync = 2;
 SQL
-  fi
-  echo "  ${db}.${table}.${column}: ${current} -> ${type}"
-  run_ch <<SQL
+    fi
+    echo "  ${db}.${table}.${column}: ${current} -> ${type}"
+    if [[ "${existing_default}" -gt 0 ]]; then
+      run_ch <<SQL
 ALTER TABLE ${db}.${table} MODIFY COLUMN ${column} ${type};
+SQL
+      return 0
+    fi
+
+    run_ch <<SQL
+ALTER TABLE ${db}.${table} MODIFY COLUMN ${column} ${type} DEFAULT ${fallback};
+SQL
+  else
+    return 0
+  fi
+
+  run_ch <<SQL
+ALTER TABLE ${db}.${table} MODIFY COLUMN ${column} REMOVE DEFAULT;
 SQL
 }
 
@@ -864,5 +996,58 @@ SQL
 }
 
 heal_zoom_participant_device_columns
+
+echo "=== Renaming the Slack activity platform columns ==="
+# The destination drops a column that leaves the stream catalog. The rename
+# must land before the first sync of the new connector, or stored rows lose
+# their tenant. A rename moves no row. A converged table has no old column.
+# INVARIANT: repairs releases without #4342 (main before 0.7.200); delete once every CH_FLOOR_RELEASES release runs it.
+heal_slack_users_details_platform_columns() {
+  local old new old_type new_type
+  ch_table_exists bronze_slack users_details || return 0
+  for old in tenant_id source_id; do
+    new="insight_${old}"
+    old_type="$(ch_column_type bronze_slack users_details "${old}")"
+    new_type="$(ch_column_type bronze_slack users_details "${new}")"
+    [[ -n "${old_type}" && -z "${new_type}" ]] || continue
+    echo "  bronze_slack.users_details: ${old} -> ${new}"
+    run_ch <<SQL
+ALTER TABLE bronze_slack.users_details RENAME COLUMN ${old} TO ${new};
+SQL
+  done
+}
+
+heal_slack_users_details_platform_columns
+
+echo "=== Aligning the Slack users snapshot with slack__users_latest ==="
+# The snapshot refuses to append when its columns differ from its source.
+# The old shape kept bots and guests. A kept version mints its member as an account,
+# so the heal removes the versions that slack__users_latest now drops, before the guest flag goes.
+# INVARIANT: repairs releases without #4328 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+heal_slack_users_snapshot_columns() {
+  local is_guest_type
+  local excluded="coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
+  ch_table_exists staging slack__users_snapshot || return 0
+  is_guest_type="$(ch_column_type staging slack__users_snapshot is_guest)"
+  echo "  staging.slack__users_snapshot"
+  if [[ -n "${is_guest_type}" ]]; then
+    if ch_table_exists bronze_slack users_details; then
+      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id HAVING argMax(coalesce(is_guest, false), date))"
+    fi
+    if ch_table_exists bronze_slack users; then
+      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users FINAL WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
+    fi
+    run_ch <<SQL
+ALTER TABLE staging.slack__users_snapshot DELETE WHERE ${excluded} SETTINGS mutations_sync = 2;
+SQL
+  fi
+  run_ch <<'SQL'
+ALTER TABLE staging.slack__users_snapshot ADD COLUMN IF NOT EXISTS display_name Nullable(String) AFTER email;
+ALTER TABLE staging.slack__users_snapshot MODIFY COLUMN display_name Nullable(String) AFTER email;
+ALTER TABLE staging.slack__users_snapshot DROP COLUMN IF EXISTS is_guest, DROP COLUMN IF EXISTS is_billable_seat;
+SQL
+}
+
+heal_slack_users_snapshot_columns
 
 echo "=== ClickHouse migrations complete ==="

@@ -1,8 +1,3 @@
-/**
- * The `?acct=` key must survive a round trip for ANY account_id — including
- * one containing the separator itself — and a malformed or hand-mangled key
- * must read as "nothing selected", never as a different account.
- */
 import { describe, expect, it } from "vitest";
 
 import { accountKey, parseAccountKey } from "./account-key";

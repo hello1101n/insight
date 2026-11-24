@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type {
   ReportGranularity,
@@ -6,13 +7,14 @@ import type {
   ReportRecipe,
 } from "@/api/reports-client";
 import { MAX_REPORT_PEOPLE } from "@/api/reports-client";
-import { Card, CardContent } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  Spinner,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  ToggleGroup,
+  ToggleGroupItem,
+  Card,
 } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ReportBuilderActions } from "@/components/portal/report-builder-actions";
@@ -22,7 +24,7 @@ import {
 } from "@/components/portal/report-builder-metrics";
 import { ReportPreviewDialog } from "@/components/portal/report-builder-preview";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
-import { metricVisible } from "@/lib/portal/nav-policy";
+import { offeredMetricFilter } from "@/lib/insight/groups";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { byFamily } from "@/lib/reports/families";
@@ -37,13 +39,18 @@ import { recordUsageEvent } from "@/telemetry";
 
 const GRANULARITIES: ReadonlyArray<{
   value: ReportGranularity;
-  label: string;
+  labelKey:
+    | "common.chart.daily"
+    | "common.chart.weekly"
+    | "common.chart.monthly"
+    | "reports.quarterly"
+    | "reports.yearly";
 }> = [
-  { value: "day", label: "Daily" },
-  { value: "week", label: "Weekly" },
-  { value: "month", label: "Monthly" },
-  { value: "quarter", label: "Quarterly" },
-  { value: "year", label: "Yearly" },
+  { value: "day", labelKey: "common.chart.daily" },
+  { value: "week", labelKey: "common.chart.weekly" },
+  { value: "month", labelKey: "common.chart.monthly" },
+  { value: "quarter", labelKey: "reports.quarterly" },
+  { value: "year", labelKey: "reports.yearly" },
 ];
 
 type ReportSubjectKind = "people" | "tenant";
@@ -54,6 +61,7 @@ interface PreviewState {
 }
 
 export function ReportBuilderView() {
+  const { t } = useTranslation();
   const { dateRange } = usePortalPeriod();
   const scope = useOrgScope();
   const definitions = useMetricDefinitionsResponse();
@@ -71,15 +79,16 @@ export function ReportBuilderView() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const people = useMemo(() => scope.roster ?? [], [scope.roster]);
-  const catalogue = useMemo(
-    () =>
-      (definitions.data?.metrics ?? []).filter(
-        (metric) =>
-          metric.is_enabled && metricVisible(metric.metric_key, showPlanned)
-      ),
-    [definitions.data, showPlanned]
+  const personIds = useMemo(
+    () => reportPersonIds(scope.roster, scope.pivotPersonId),
+    [scope.roster, scope.pivotPersonId]
   );
+  const catalogue = useMemo(() => {
+    const isOffered = offeredMetricFilter(showPlanned);
+    return (definitions.data?.metrics ?? []).filter(
+      (metric) => metric.is_enabled && isOffered(metric)
+    );
+  }, [definitions.data, showPlanned]);
   const offered = useMemo<OfferedReportMetric[]>(
     () =>
       catalogue
@@ -107,13 +116,13 @@ export function ReportBuilderView() {
     () => ({
       subject:
         subject === "people"
-          ? { type: "people", ids: people.map((person) => person.person_id) }
+          ? { type: "people", ids: personIds }
           : { type: "tenant" },
       period: dateRange,
       granularity,
       metric_keys: selectedMetrics,
     }),
-    [dateRange, granularity, people, selectedMetrics, subject]
+    [dateRange, granularity, personIds, selectedMetrics, subject]
   );
   const recipeKey = JSON.stringify(recipe);
   const currentPreview =
@@ -121,7 +130,7 @@ export function ReportBuilderView() {
   const running = previewRequest.isPending || exportRequest.isPending;
   const blocker = reportBlocker(
     subject,
-    people.length,
+    personIds.length,
     selected,
     selectedMetrics
   );
@@ -183,7 +192,7 @@ export function ReportBuilderView() {
         <ComingSoon
           variant="card"
           state="error"
-          label="Unable to load the metric catalogue"
+          label={t("reports.unable_to_load_catalogue")}
         />
       </div>
     );
@@ -191,12 +200,13 @@ export function ReportBuilderView() {
 
   return (
     <div data-testid="page-reports-report-builder" className="flex flex-col gap-4 p-4 pb-24 md:p-6 md:pb-24">
-      <Card className="gap-0 py-0">
-        <CardContent className="flex flex-col p-0">
+      <Card variant="panel">
+        <div className="flex flex-col">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b p-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className={TEXT_LABEL}>Scope</span>
+              <span className={TEXT_LABEL}>{t("reports.scope")}</span>
               <ToggleGroup
+                spacing={0}
                 value={[subject]}
                 onValueChange={(value) => {
                   const next = Array.isArray(value) ? value[0] : value;
@@ -205,16 +215,17 @@ export function ReportBuilderView() {
                 variant="outline"
                 size="sm"
               >
-                <ToggleGroupItem value="people">People</ToggleGroupItem>
-                <ToggleGroupItem value="tenant">Tenant</ToggleGroupItem>
+                <ToggleGroupItem value="people">{t("reports.people")}</ToggleGroupItem>
+                <ToggleGroupItem value="tenant">{t("reports.tenant")}</ToggleGroupItem>
               </ToggleGroup>
             </div>
 
             <div className="hidden h-6 border-l md:block" />
 
             <div className="flex flex-wrap items-center gap-3">
-              <span className={TEXT_LABEL}>Granularity</span>
+              <span className={TEXT_LABEL}>{t("reports.granularity")}</span>
               <ToggleGroup
+                spacing={0}
                 value={[granularity]}
                 onValueChange={(value) => {
                   const next = Array.isArray(value) ? value[0] : value;
@@ -234,14 +245,14 @@ export function ReportBuilderView() {
                             disabled={reason != null}
                             title={reason ?? undefined}
                           >
-                            {option.label}
+                            {t(option.labelKey)}
                           </ToggleGroupItem>
                         }
                       />
                       {reason ? (
                         <TooltipContent
                           side="top"
-                          className="max-w-xs text-xs leading-relaxed"
+                          className="max-w-xs"
                         >
                           {reason}
                         </TooltipContent>
@@ -255,7 +266,7 @@ export function ReportBuilderView() {
 
           {definitions.isPending ? (
             <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-              <Spinner className="size-4" /> Reading the catalogue…
+              <Spinner /> {t("reports.reading_catalogue")}
             </div>
           ) : (
             <ReportMetricPicker
@@ -264,7 +275,7 @@ export function ReportBuilderView() {
               setSelected={setSelected}
             />
           )}
-        </CardContent>
+        </div>
       </Card>
 
       <ReportPreviewDialog
@@ -289,6 +300,15 @@ export function ReportBuilderView() {
       />
     </div>
   );
+}
+
+function reportPersonIds(
+  roster: ReadonlyArray<{ person_id: string }> | null,
+  pivotPersonId: string
+): string[] {
+  if (roster == null) return [];
+  if (roster.length > 0) return roster.map((person) => person.person_id);
+  return pivotPersonId ? [pivotPersonId] : [];
 }
 
 function metricReason(metric: {

@@ -12,7 +12,15 @@ import { AiAssistantBody } from "@/screens/ai-assistant";
 import { PreviewsBody } from "@/screens/previews";
 import { WhatsNewBody } from "@/screens/whats-new";
 
-export function ManageView({ item }: { item: string | null }) {
+export function ManageView({
+  item,
+  mode,
+  connector,
+}: {
+  item: string | null;
+  mode?: string;
+  connector?: string;
+}) {
   if (item === "connector-health")
     return (
       <AdminGate>
@@ -22,7 +30,7 @@ export function ManageView({ item }: { item: string | null }) {
   if (item === "identities")
     return (
       <AdminGate>
-        <IdentitiesView />
+        <IdentitiesView mode={mode} />
       </AdminGate>
     );
   if (item === "platform-usage")
@@ -34,12 +42,11 @@ export function ManageView({ item }: { item: string | null }) {
   if (item === "ingestion")
     return (
       <AdminGate>
-        <IngestionView />
+        <IngestionView connector={connector} />
       </AdminGate>
     );
   if (item === "ai-assistant") return <AiAssistantBody />;
   if (item === "whats-new") return <WhatsNewBody />;
-  // PreviewsBody carries its own gate, so no wrapper.
   if (item === "previews") return <PreviewsBody />;
   return (
     <div className="mx-auto w-full max-w-md p-8">
@@ -48,16 +55,6 @@ export function ManageView({ item }: { item: string | null }) {
   );
 }
 
-/**
- * The role gate in front of the identity-resolution console. Bookmarks and
- * pasted URLs land here directly (the nav hides the item, the URL does not),
- * so a non-admin gets an explicit refusal rather than a broken or empty
- * screen — and never a flash of the console while the check is in flight.
- * A FAILED check is a third state: still no console (fail closed), but the
- * copy says "could not verify" with a retry — telling a real admin to go ask
- * for a role they already hold would send them chasing a grant that fixes
- * nothing.
- */
 function AdminGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { isAdmin, isPending, isError, retry } = useIsAdmin();

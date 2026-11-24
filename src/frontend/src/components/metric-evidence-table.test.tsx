@@ -8,6 +8,17 @@ import { AppTooltips, openTooltip } from "@/test/tooltip";
 const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   measureElement: vi.fn(),
+  definitions: new Map<string, { format: string; unit: string | null }>([
+    ["t.hours", { format: "decimal", unit: "h" }],
+    ["t.minutes", { format: "decimal", unit: "min" }],
+    ["t.span_days", { format: "decimal", unit: "d" }],
+    ["t.active_days", { format: "integer", unit: "days" }],
+  ]),
+}));
+
+vi.mock("@/queries/metric-definitions", () => ({
+  useMetricDefinition: (metricKey: string | null) =>
+    (metricKey && mocks.definitions.get(metricKey)) ?? null,
 }));
 
 vi.mock("@tanstack/react-virtual", () => ({
@@ -70,9 +81,6 @@ describe("MetricEvidenceTable", () => {
     });
   });
 
-  // A row that sized its own cells drifted out of the headings above it as
-  // soon as the two had different space to grow into, and put its last cell on
-  // a line of its own. One template decides both.
   it("lays the headings and the rows out on one set of columns", () => {
     renderTable();
     const [header, ...body] = screen.getAllByRole("row");
@@ -85,8 +93,6 @@ describe("MetricEvidenceTable", () => {
     }
   });
 
-  // A column the reader can widen must widen in both places or the values slide
-  // out from under their heading.
   it("gives every column a track, expander included", () => {
     renderTable();
     const header = screen.getAllByRole("row")[0]!;
@@ -125,8 +131,6 @@ describe("MetricEvidenceTable", () => {
   });
 
   it("renders a branch column the server sent, value and header alike", () => {
-    // The branch is server-driven like every other column (#2806): the table
-    // must not need to know the key to show it.
     renderTable({
       columns: [
         { key: "ref", label: "Ref", type: "string" as const },
@@ -192,10 +196,6 @@ describe("MetricEvidenceTable", () => {
     expect(onSortChange).toHaveBeenCalledWith("value");
   });
 
-  // A control that does nothing when clicked is worse than a label: the
-  // reader spends the click finding out.
-  // Announcing the served order means a click on a header changes nothing on
-  // screen until the rows land; the busy state is what acknowledges it.
   it("says it is busy while the rows it shows are being replaced", () => {
     renderTable({ reordering: true });
 
@@ -212,6 +212,88 @@ describe("MetricEvidenceTable", () => {
 
     expect(screen.queryByRole("button", { name: "Who" })).toBeNull();
     expect(screen.getByRole("columnheader", { name: "Who" })).toBeDefined();
+  });
+
+  describe("a metric measured in time", () => {
+    const timeColumns = [
+      { key: "value", label: "Duration", type: "number" as const },
+      { key: "date", label: "Date", type: "date" as const },
+    ];
+
+    function timeRows(values: number[]) {
+      return values.map((value) => ({ values: { value, date: "2026-07-06" } }));
+    }
+
+    function valueCells(): string[] {
+      return screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[1]!.textContent ?? "");
+    }
+
+    it.each([
+      [
+        "t.hours",
+        [1.5, 0.2, 0, 130.5],
+        ["1 h 30 min", "12 min", "0 min", "131 h"],
+      ],
+      ["t.minutes", [3.25, 12.3456, 75.5], ["3.3 min", "12.3 min", "75.5 min"]],
+      ["t.span_days", [0.5, 2.25, 7.125], ["0.5 d", "2.3 d", "7.1 d"]],
+    ])(
+      "shows a value of %s the way its metric reads",
+      (metricKey, values, shown) => {
+        renderTable({
+          metricKey,
+          columns: timeColumns,
+          rows: timeRows(values),
+        });
+
+        expect(valueCells()).toEqual(shown);
+      }
+    );
+
+    it("leaves a count of days as the server sent it", () => {
+      renderTable({
+        metricKey: "t.active_days",
+        columns: timeColumns,
+        rows: timeRows([1, 0]),
+      });
+
+      expect(valueCells()).toEqual(["1", "0"]);
+    });
+
+    it("keeps hours and minutes in the full record", async () => {
+      const user = userEvent.setup();
+      renderTable({
+        metricKey: "t.hours",
+        columns: timeColumns,
+        rows: timeRows([2.25]),
+      });
+
+      await user.click(
+        screen.getAllByRole("button", { name: "Show full record" })[0]!
+      );
+
+      const record = screen
+        .getAllByRole("cell")
+        .find((cell) => cell.hasAttribute("aria-colspan"))!;
+      expect(within(record).getByText("2 h 15 min")).toBeInTheDocument();
+      expect(within(record).queryByText("2.25")).toBeNull();
+    });
+
+    it("leaves a number column that is not the metric value alone", () => {
+      renderTable({
+        metricKey: "t.hours",
+        columns: [
+          ...timeColumns,
+          { key: "attendees", label: "Attendees", type: "number" as const },
+        ],
+        rows: [{ values: { value: 1.5, date: "2026-07-06", attendees: 4 } }],
+      });
+
+      expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
   });
 
   describe("the full record", () => {
@@ -336,7 +418,6 @@ describe("MetricEvidenceTable", () => {
 
     it("shows a cut value whole in a tooltip, and leaves a whole one alone", async () => {
       const user = userEvent.setup();
-      // A text past twelve characters overflows its cell.
       vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
         function (this: HTMLElement) {
           return (this.textContent?.length ?? 0) * 10;
@@ -520,8 +601,6 @@ describe("MetricEvidenceTable", () => {
       vi.restoreAllMocks();
     });
 
-    // Who needs 82px, Title 346px (its 80 characters cut at the 40-character
-    // cap) and Lines 66px for its header. The expander takes 36px.
     it.each([
       [
         "a row with room gives the spare to its text columns",
@@ -582,8 +661,6 @@ describe("MetricEvidenceTable", () => {
       );
     });
 
-    // A link inside a row must not also work the row: the whole row toggles
-    // the expanded record, and following a link is not asking for that.
     it("does not expand the row when a link is followed", async () => {
       renderTable({
         columns: linkColumns,
@@ -598,8 +675,6 @@ describe("MetricEvidenceTable", () => {
       );
     });
 
-    // The expanded record shows a value entire, trailers included, so the
-    // title is a paragraph there rather than something to click.
     it("leaves the title unlinked in the expanded record", async () => {
       renderTable({
         columns: linkColumns,

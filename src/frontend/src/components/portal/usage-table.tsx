@@ -1,4 +1,3 @@
-/** The virtualized table the platform-usage surfaces share. */
 import { useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
@@ -12,8 +11,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -58,8 +55,7 @@ export function VirtualTable<T, K extends string = string>({
   onSort?: (key: K) => void;
   pending?: boolean;
 }) {
-  // State, not a ref: the virtualizer re-reads the scroll element once it
-  // exists, and a ref never re-renders to tell it.
+  // WORKAROUND: the virtualizer reads its scroll element on render, and a ref never re-renders.
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -96,7 +92,7 @@ export function VirtualTable<T, K extends string = string>({
               <TableHead
                 key={column.header}
                 aria-sort={sortKey ? (direction ? ARIA_SORT[direction] : "none") : undefined}
-                className={cn(cellClass(column), "flex h-10 items-center")}
+                className={cn(cellClass(column), "flex items-center")}
                 style={cellStyle(column)}
               >
                 {sortKey && onSort ? (
@@ -104,7 +100,7 @@ export function VirtualTable<T, K extends string = string>({
                     type="button"
                     onClick={() => onSort(sortKey)}
                     className={cn(
-                      "group/sort flex min-w-0 items-center gap-1 rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                      "group/sort flex min-w-0 items-center gap-1 rounded-sm [text-transform:inherit] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                       direction && "text-foreground",
                     )}
                   >
@@ -151,13 +147,6 @@ export function VirtualTable<T, K extends string = string>({
   );
 }
 
-/**
- * A row is one line high and its value often is not: the cell shows what fits
- * and the tooltip carries the whole of it.
- *
- * No `TooltipProvider` — the app root mounts one, and a second per cell would
- * be built twice per visible virtualized row.
- */
 export function TruncatedCell({
   children,
   detail,
@@ -175,7 +164,7 @@ export function TruncatedCell({
       <TooltipContent
         className={cn(
           "max-h-[var(--available-height)] items-start overflow-y-auto overscroll-contain",
-          detailClassName ?? "font-mono text-xs",
+          detailClassName ?? "font-mono",
         )}
       >
         {detail}
@@ -184,7 +173,6 @@ export function TruncatedCell({
   );
 }
 
-/** Whoever the row is about, named the way every usage surface names them. */
 export function PersonName({ row }: { row: VisitorNaming }) {
   const { label, detail } = visitorLabel(row);
 

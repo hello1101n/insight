@@ -27,7 +27,6 @@ function fixture(
   } as unknown as NormalizedMetricResult;
 }
 
-/** 7 well-behaved members around 10, plus one member under test. */
 const BASE: Array<[string, number]> = [
   ["m1", 9], ["m2", 10], ["m3", 10], ["m4", 11], ["m5", 10], ["m6", 9], ["m7", 11],
 ];
@@ -136,9 +135,6 @@ describe("computeAttentionFlags", () => {
   });
 
   it("ignores a big drop that leaves the person inside the pack", () => {
-    // Halved against their own past, and still sitting on the cohort median.
-    // A quarter of one's own past is ordinary; without the pack agreeing that
-    // something is off, this is movement, not attention.
     const flags = computeAttentionFlags(
       params({
         byKey: new Map([["t.metric", fixture([...BASE, ["x", 10]])]]),
@@ -172,9 +168,6 @@ describe("computeAttentionFlags", () => {
   });
 
   it("flags a decline when the cohort is too small to say where the pack is", () => {
-    // Two cohorts of four: A has stats, B's single measured member does not
-    // reach MIN_COHORT, so there is no pack to be inside of and the move
-    // stands on its own.
     const now: Array<[string, number | null]> = [
       ["a1", 9], ["a2", 10], ["a3", 11], ["a4", 10],
       ["b1", 10], ["b2", null], ["b3", null], ["b4", null],
@@ -197,8 +190,6 @@ describe("computeAttentionFlags", () => {
   });
 
   it("treats an INCREASE as adverse when lower is better", () => {
-    // x=12 stays inside the Tukey fence (so the outlier branch, which is
-    // checked first and wins, stays quiet) but is +50% from last period.
     const flags = computeAttentionFlags(
       params({
         byKey: new Map([
@@ -216,8 +207,6 @@ describe("computeAttentionFlags", () => {
   });
 
   it("judges members within their own cohort, not the whole roster", () => {
-    // Cohort A hovers at 10; cohort B at 1000. x belongs to B with 900 —
-    // fine within B, catastrophic vs the global median. Must NOT flag.
     const period: Array<[string, number]> = [
       ["a1", 9], ["a2", 10], ["a3", 11], ["a4", 10],
       ["b1", 990], ["b2", 1000], ["b3", 1010], ["b4", 1000], ["x", 995],
@@ -233,7 +222,6 @@ describe("computeAttentionFlags", () => {
   });
 
   it("keeps only the strongest flag per person+metric and ranks by severity", () => {
-    // x collapses (0 vs median) AND declined from last period — collapse wins.
     const flags = computeAttentionFlags(
       params({
         byKey: new Map([["t.metric", fixture([...BASE, ["x", 0], ["y", 2]])]]),
@@ -244,7 +232,6 @@ describe("computeAttentionFlags", () => {
     const x = flags.filter((f) => f.personId === "person-x");
     expect(x).toHaveLength(1);
     expect(x[0]!.kind).toBe("collapse");
-    // collapse severity (1 + relGap) outranks y's outlier severity (relGap)
     expect(flags[0]!.personId).toBe("person-x");
   });
 });
@@ -263,10 +250,6 @@ describe("attentionSummary", () => {
   });
 
   it("names the top metric themes, counted in people", () => {
-    // The line already opens in people, so the theme has to be in people too:
-    // "most flags on Commits (5)" over "3 of 16 people" holds two units in one
-    // sentence, and leaves a reader to work out that five flags can belong to
-    // two people.
     const flags = computeAttentionFlags(
       params({ byKey: new Map([["t.metric", fixture([...BASE, ["x", 0]])]]) }),
     );
@@ -277,7 +260,6 @@ describe("attentionSummary", () => {
 });
 
 describe("one fact is one flag", () => {
-  /** A metric with its own key and label, so containment can be exercised. */
   function metric(
     key: string,
     label: string,
@@ -287,11 +269,6 @@ describe("one fact is one flag", () => {
   }
 
   it("keeps the more specific metric when a person trips both", () => {
-    // "All lines added" contains "lines added to code files"; a person whose
-    // output collapses trips both at once, and that is one fact. Reported
-    // twice it doubles their rows and doubles any count of what is wrong.
-    // The NARROWER one survives — it excludes documentation, tests and
-    // configuration, so it says something the wider metric cannot.
     const flags = computeAttentionFlags(
       params({
         headlineKeys: ["git.lines_added", "git.code_lines"],
@@ -305,8 +282,6 @@ describe("one fact is one flag", () => {
   });
 
   it("keeps the same pair for two people as two findings", () => {
-    // Thinning is per person: two people tripping the same related metrics are
-    // two findings, not one.
     const flags = computeAttentionFlags(
       params({
         headlineKeys: ["git.lines_added", "git.code_lines"],
@@ -347,7 +322,6 @@ describe("one fact is one flag", () => {
 });
 
 describe("severity is scale-free", () => {
-  /** Flags for a single metric over `values`, every value multiplied by `factor`. */
   function flagsFor(values: Array<[string, number]>, factor = 1, cohortOf?: (id: string) => string) {
     const scaled = values.map(([id, v]) => [id, v * factor] as [string, number]);
     return computeAttentionFlags(
@@ -359,7 +333,6 @@ describe("severity is scale-free", () => {
     );
   }
 
-  // A cohort with real spread and one member at zero.
   const SPREAD: Array<[string, number]> = [
     ["m1", 10], ["m2", 11], ["m3", 12], ["m4", 13], ["m5", 14], ["m6", 15], ["x", 0],
   ];
@@ -377,9 +350,6 @@ describe("severity is scale-free", () => {
   });
 
   it("separates collapses instead of tying them at a constant", () => {
-    // Two cohorts, each with a zero. The tight cohort's zero sits further out
-    // in IQRs, so it must outrank the scattered cohort's zero — under the old
-    // constant both scored exactly 2 and the order was arbitrary.
     const values: Array<[string, number]> = [
       ["t1", 10], ["t2", 10], ["t3", 10], ["t4", 11], ["t0", 0],
       ["w1", 2], ["w2", 20], ["w3", 40], ["w4", 60], ["w0", 0],
@@ -392,8 +362,6 @@ describe("severity is scale-free", () => {
   });
 
   it("raises nothing for a cohort with no scale at all", () => {
-    // Everyone identical and at zero: nothing is unusual, and no scale exists to
-    // rank by. A flag here would carry a number that means something else.
     expect(flagsFor([["m1", 0], ["m2", 0], ["m3", 0], ["m4", 0]])).toEqual([]);
   });
 });
@@ -425,8 +393,6 @@ describe("groupFlagsByTheme", () => {
   });
 
   it("puts the metric that touches more people first, however weak", () => {
-    // The lone flag is the more severe one. People count still wins: the point
-    // of the screen is what is happening broadly, not who is worst.
     const themes = groupFlagsByTheme([
       f({ personId: "a", metricKey: "t.meetings", metricLabel: "Meeting hours", severity: 99 }),
       f({ personId: "b", severity: 1 }),

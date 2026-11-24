@@ -15,7 +15,8 @@ export type MetricResultViewKind =
   | "peer"
   | "breakdown"
   | "rollup"
-  | "histogram";
+  | "histogram"
+  | "unattributed";
 export type MetricBucket = "day" | "week" | "month";
 export type MetricComputation =
   | "sum"
@@ -32,11 +33,6 @@ export type MetricResultsEntity =
 export interface MetricResultsRequest {
   entity: MetricResultsEntity;
   period: { from: string; to: string };
-  /**
-   * A second window answered in the same response — what a delta is measured
-   * against. The `period` and `breakdown` views carry it; every other view
-   * answers over `period`.
-   */
   compare_to?: { from: string; to: string };
   metrics: MetricRequest[];
 }
@@ -87,7 +83,8 @@ export type MetricViewRequest =
       dimensions: string[];
       group_limit?: MetricGroupLimit;
     }
-  | { view: "histogram" };
+  | { view: "histogram" }
+  | { view: "unattributed" };
 
 export interface MetricDimension {
   key: string;
@@ -107,7 +104,6 @@ export type MetricResult =
 interface MetricResultBase {
   metric_key: string;
   label: string;
-  /** Compact label for dense surfaces (member grids); falls back to `label`. */
   short_label?: string;
   description?: string;
   explanation?: string;
@@ -134,7 +130,6 @@ export interface MedianMetricResult extends MetricResultBase {
 
 export interface PercentileMetricResult extends MetricResultBase {
   computation: "percentile";
-  /** The quantile as a probability, e.g. 0.75 — stored in the definition's scale. */
   q: number;
 }
 
@@ -153,6 +148,7 @@ export type MetricResultView =
   | BreakdownView
   | RollupView
   | HistogramView
+  | UnattributedView
   | MetricErrorView
   | MetricNotReadyView;
 
@@ -161,7 +157,6 @@ export interface PeriodView {
   values: Array<{
     entity_id: string;
     value: number | null;
-    /** The same reading over `compare_to`; absent when none was asked for. */
     compare_to?: number | null;
   }>;
 }
@@ -179,7 +174,6 @@ export interface TimeseriesView {
     points: Array<{
     bucket_start: string;
     value: number | null;
-    /** Both sides of a ratio, for the bucket. Ratio metrics only. */
     numerator?: number | null;
     denominator?: number | null;
   }>;
@@ -202,11 +196,6 @@ export interface PeerView {
 
 export interface BreakdownComparisonValue {
   value: number | null;
-  /**
-   * Whether a standalone request over the comparison window would have
-   * returned this group at all. Independent of `value`: a ratio over a group
-   * that IS in the window reads null whenever its denominator is zero.
-   */
   present: boolean;
 }
 
@@ -217,9 +206,7 @@ export interface BreakdownView {
     entity_id: string;
     dimensions: MetricDimension[];
     value: number | null;
-    /** Whether the group has observations inside the primary period. */
     present?: boolean;
-    /** This group's reading over `compare_to`. */
     compare_to?: BreakdownComparisonValue;
   }>;
 }
@@ -237,6 +224,11 @@ export interface RollupView {
   }>;
 }
 
+export interface UnattributedView {
+  view: "unattributed";
+  value: number | null;
+}
+
 interface HistogramBin {
   lo: number;
   hi: number;
@@ -245,10 +237,8 @@ interface HistogramBin {
 
 export interface HistogramView {
   view: "histogram";
-  /** Set only on the pooled shape — the dimensions the request asked to bin by. */
   dimensions?: string[];
   values: Array<{
-    /** Per-entity shape only; a pooled row is keyed by `dimensions` instead. */
     entity_id?: string;
     dimensions?: MetricDimension[];
     bins: HistogramBin[];
@@ -261,27 +251,14 @@ export type MetricErrorCode =
   | "RESULT_PARSE_FAILED"
   | "QUERY_FAILED";
 
-/** Why an answer carries no values although nothing failed. */
 export type NotReadyReason = "SOURCE_RELATION_MISSING";
 
-/**
- * A view whose computation failed. The request itself still answers 200:
- * the failure arrives in the failed view's requested slot, and other views
- * and metrics are unaffected. `message` is safe to render — admins get the
- * underlying error text, everyone else a generic one.
- */
 export interface MetricErrorView {
   view: "error";
   code: MetricErrorCode;
   message: string;
 }
 
-/**
- * A view whose data has not been built yet — no connector has synced, or the
- * build has not reached the relation it reads. It carries no values at all,
- * which is what separates it from a view whose every reading is `0`: nothing
- * failed, and nothing was measured either.
- */
 export interface MetricNotReadyView {
   view: "not_ready";
   reason: NotReadyReason;
@@ -302,10 +279,6 @@ export async function queryMetricResults(
   body: MetricResultsRequest,
   signal?: AbortSignal
 ): Promise<MetricResultsResponse> {
-  // Refuse a request the backend is guaranteed to reject (400 invalid_argument,
-  // "entity.ids must not be empty"). Callers are expected to keep the query
-  // disabled until they have entities; failing here names the real cause
-  // instead of surfacing a server validation error in the network log.
   if (body.entity.type === "person" && body.entity.ids.length === 0) {
     throw new Error(
       "metric-results: refusing to request an empty entity list — the caller should stay disabled until the roster resolves",

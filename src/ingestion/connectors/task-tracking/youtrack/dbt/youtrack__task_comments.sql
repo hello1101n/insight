@@ -3,6 +3,8 @@
 WITH comments AS (
     -- WORKAROUND: rows written before the stream carried `id`/`issue_id` keep only
     -- their key, `{tenant}-{source}-{comment id}`; the issue comes from the snapshots.
+    -- Such a row that no snapshot lists cannot name its issue (one deleted or
+    -- hidden from the source since) and is left out until a snapshot lists it.
     SELECT *, coalesce(id, substring(unique_key, length(concat(tenant_id, '-', source_id, '-')) + 1)) AS resolved_comment_id
     FROM {{ source('bronze_youtrack', 'youtrack_comments') }} FINAL
 )
@@ -19,3 +21,4 @@ LEFT JOIN {{ ref('youtrack__comment_issues') }} AS m
 LEFT JOIN {{ ref('youtrack__issues') }} AS i
     ON i.tenant_id = c.tenant_id AND i.insight_source_id = c.source_id
     AND i.issue_id = coalesce(c.issue_id, nullIf(m.issue_id, ''))
+WHERE coalesce(c.issue_id, nullIf(m.issue_id, '')) IS NOT NULL

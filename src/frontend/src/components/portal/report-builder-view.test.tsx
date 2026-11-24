@@ -51,6 +51,7 @@ vi.mock("@/telemetry", async () => {
 });
 
 import { ReportBuilderView } from "@/components/portal/report-builder-view";
+import { AppTooltips, openTooltip } from "@/test/tooltip";
 
 const personId = "00000000-0000-0000-0000-000000000001";
 
@@ -58,7 +59,7 @@ const preview = {
   columns: [
     { key: "person", label: "Person", data_type: "text" as const },
     {
-      key: "git.commits",
+      key: "git.default_branch_commits",
       label: "Commits",
       data_type: "number" as const,
       format: "decimal" as const,
@@ -70,7 +71,7 @@ const preview = {
 
 function metric(overrides: Record<string, unknown>) {
   return {
-    metric_key: "git.commits",
+    metric_key: "git.default_branch_commits",
     entity_type: "person",
     label: "Commits",
     short_label: null,
@@ -192,6 +193,54 @@ describe("ReportBuilderView", () => {
     expect(mocks.preview).not.toHaveBeenCalled();
   });
 
+  it("titles each metric's name, which the row may cut, with the full name", () => {
+    mocks.definitions = [
+      metric({}),
+      metric({
+        metric_key: "tasks.closed",
+        label: "Issues closed",
+        last_observed_date: null,
+      }),
+    ];
+    render(<ReportBuilderView />);
+
+    expect(screen.getByText("Commits")).toHaveAttribute("title", "Commits");
+    expect(screen.getByText("Issues closed")).toHaveAttribute(
+      "title",
+      "Issues closed"
+    );
+  });
+
+  it("shows only the reason over a metric that cannot be picked", async () => {
+    mocks.definitions = [
+      metric({}),
+      metric({
+        metric_key: "tasks.closed",
+        label: "Issues closed",
+        last_observed_date: null,
+      }),
+    ];
+    render(<ReportBuilderView />, { wrapper: AppTooltips });
+
+    expect(checkbox("Issues closed")).toHaveAttribute("aria-disabled", "true");
+    await userEvent.hover(screen.getByText("Issues closed"));
+
+    await waitFor(() =>
+      expect(openTooltip()).toHaveTextContent(
+        /^No data source is connected for this metric yet$/
+      )
+    );
+  });
+
+  it("opens no tooltip over a metric that can be picked", async () => {
+    render(<ReportBuilderView />, { wrapper: AppTooltips });
+
+    await userEvent.hover(screen.getByText("Commits"));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(openTooltip()).toBeNull();
+  });
+
   it("keeps selection actions available and clears the current selection", async () => {
     const user = userEvent.setup();
     render(<ReportBuilderView />);
@@ -226,6 +275,26 @@ describe("ReportBuilderView", () => {
     expect(screen.queryByText("Development · Delivery")).toBeNull();
   });
 
+  it("omits a person metric no person section shows", () => {
+    mocks.definitions.push(
+      metric({ metric_key: "git.prs_created", label: "PRs opened, any branch" })
+    );
+    render(<ReportBuilderView />);
+
+    expect(
+      screen.queryByRole("checkbox", { name: "PRs opened, any branch" })
+    ).toBeNull();
+  });
+
+  it("offers a custom person metric no person section shows", () => {
+    mocks.definitions.push(
+      metric({ metric_key: "custom.velocity", label: "Velocity", origin: "custom" })
+    );
+    render(<ReportBuilderView />);
+
+    expect(checkbox("Velocity")).toBeInTheDocument();
+  });
+
   it("sends visible people IDs in a people recipe", async () => {
     const user = userEvent.setup();
     render(<ReportBuilderView />);
@@ -239,11 +308,49 @@ describe("ReportBuilderView", () => {
           subject: { type: "people", ids: [personId] },
           period: mocks.dateRange,
           granularity: "month",
-          metric_keys: ["git.commits"],
+          metric_keys: ["git.default_branch_commits"],
         },
         signal: expect.any(AbortSignal),
       })
     );
+  });
+
+  it.each([
+    ["a viewer with no reports reports on themself", [], personId, [personId]],
+    [
+      "a roster reports on its members, not the pivot",
+      [{ person_id: "p-2" }],
+      personId,
+      ["p-2"],
+    ],
+  ])("%s", async (_rule, roster, pivotPersonId, expectedIds) => {
+    mocks.scope = { roster, pivotPersonId, label: "Jane Doe" };
+    const user = userEvent.setup();
+    render(<ReportBuilderView />);
+
+    await user.click(checkbox("Commits"));
+    await user.click(screen.getByRole("button", { name: "Preview report" }));
+
+    await waitFor(() =>
+      expect(mocks.preview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recipe: expect.objectContaining({
+            subject: { type: "people", ids: expectedIds },
+          }),
+        })
+      )
+    );
+  });
+
+  it("blocks a people report while the scope is still loading", async () => {
+    mocks.scope = { roster: null, pivotPersonId: personId, label: "" };
+    const user = userEvent.setup();
+    render(<ReportBuilderView />);
+
+    await user.click(checkbox("Commits"));
+
+    expect(screen.getByText("This scope has no people")).toBeTruthy();
+    expect(mocks.preview).not.toHaveBeenCalled();
   });
 
   it("sends tenant subject without people IDs", async () => {
@@ -277,6 +384,18 @@ describe("ReportBuilderView", () => {
     expect(
       screen.queryByRole("checkbox", { name: "Issues closed" })
     ).toBeNull();
+  });
+
+  it("insets the empty-scope message like the rest of the card", async () => {
+    mocks.definitions = [metric({})];
+    const user = userEvent.setup();
+    render(<ReportBuilderView />);
+
+    await user.click(screen.getByRole("button", { name: "Tenant" }));
+
+    expect(
+      screen.getByText("No metrics are available for this scope.")
+    ).toHaveClass("p-4");
   });
 
   it("does not offer a separate report rows selector", async () => {
@@ -332,7 +451,7 @@ describe("ReportBuilderView", () => {
       expect(mocks.export).toHaveBeenCalledWith(
         expect.objectContaining({
           format: "csv",
-          recipe: expect.objectContaining({ metric_keys: ["git.commits"] }),
+          recipe: expect.objectContaining({ metric_keys: ["git.default_branch_commits"] }),
           signal: expect.any(AbortSignal),
         })
       )

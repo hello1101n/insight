@@ -12,7 +12,7 @@ replicaCount: 1
 podAnnotations: {}
 
 image:
-  repository: ghcr.io/constructorfabric/insight-gateway
+  repository: ghcr.io/hello1101n/insight-gateway
   tag: "" # MUST be set by the operator. No `:latest` default.
   pullPolicy: IfNotPresent
 
@@ -78,6 +78,10 @@ gateway:
       timeoutMs: 40000
       mcpOnly: true
       v3Only: true
+    - prefix: /api/connectors
+      upstream: 'http://{{ .Release.Name }}-connectors:8088'
+      timeoutMs: 135000
+      stripPrefix: true
     - prefix: /api/analytics
       upstream: 'http://{{ .Release.Name }}-analytics:8081'
       timeoutMs: 135000
@@ -137,8 +141,6 @@ resources:
 # Liveness = static /healthz. Readiness = LOCAL only, deliberately NOT gated on
 # the authenticator (DESIGN 3.15): coupling a caching proxy's readiness to a
 # downstream dependency turns a transient auth blip into a fleet-wide outage.
-# The authenticator dependency is surfaced separately at /healthz/authenticator
-# for monitoring/alerting only, never the readiness gate.
 livenessProbe:
   httpGet:
     path: /healthz

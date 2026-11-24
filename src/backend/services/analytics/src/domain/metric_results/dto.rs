@@ -88,6 +88,10 @@ pub enum MetricViewRequest {
         #[serde(default)]
         dimensions: Vec<String>,
     },
+    /// The tenant-wide sum of the work that resolves to no person: rows with no
+    /// person account or email, and accounts identity has not bound. Sum
+    /// metrics only; work bound to the excluded person is not counted.
+    Unattributed,
 }
 
 impl MetricViewRequest {
@@ -99,6 +103,7 @@ impl MetricViewRequest {
             Self::Breakdown { .. } => MetricResultViewKind::Breakdown,
             Self::Rollup { .. } => MetricResultViewKind::Rollup,
             Self::Histogram { .. } => MetricResultViewKind::Histogram,
+            Self::Unattributed => MetricResultViewKind::Unattributed,
         }
     }
 }
@@ -201,6 +206,9 @@ pub enum MetricResultViewDto {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         dimensions: Vec<String>,
         values: Vec<HistogramValueDto>,
+    },
+    Unattributed {
+        value: Option<f64>,
     },
     /// This view's computation failed; sibling views and metrics are
     /// unaffected. `message` detail depends on the caller's role: admins get
@@ -402,8 +410,6 @@ mod tests {
 
     #[test]
     fn histogram_view_deserializes_with_and_without_dimensions() {
-        // Bare `{"view": "histogram"}` must keep parsing exactly as before the
-        // pooled shape existed (dimensions default to empty).
         let bare = serde_json::from_value::<MetricResultsRequest>(json!({
             "entity": { "type": "person", "ids": ["019e27bc-dec0-7626-81a9-c5524662a6a9"] },
             "period": { "from": "2026-01-01", "to": "2026-01-31" },

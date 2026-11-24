@@ -75,6 +75,10 @@ class Tier(StrEnum):
     EXACT_RATIO = "exact_ratio"
     #: Distinct count whose counted subject is the day itself.
     EXACT_DISTINCT_DATES = "exact_distinct_dates"
+    #: Ratio over a distinct-day denominator, paged one row per record: each row
+    #: is one unit of the numerator, `records_that_day` counts the rows sharing
+    #: its date, and the scalar is rows over distinct dates, scaled.
+    EXACT_RECORDS_PER_DATE = "exact_records_per_date"
     #: Sum of a measure that collapses by `max` or `min` across a person's
     #: source accounts: evidence sums to at least the period scalar.
     COLLAPSE_BOUNDED_SUM = "collapse_bounded_sum"
@@ -167,6 +171,7 @@ MATRIX: Sequence[Expectation] = (
     Expectation("ci.runs", "ci", Tier.EXACT_COUNT, entity=_TENANT),
     Expectation("ci.runs_matched_commit", "ci", Tier.EXACT_COUNT, entity=_TENANT),
     Expectation("collab.active_days", "collab", Tier.EXACT_DISTINCT_DATES),
+    Expectation("collab.chat_active_days", "collab", Tier.EXACT_DISTINCT_DATES),
     Expectation("collab.channel_posts", "collab", Tier.EXACT_SUM),
     Expectation("collab.dm_ratio", "collab", Tier.EXACT_RATIO, scale=100.0),
     Expectation("collab.emails_read", "collab", Tier.EXACT_SUM),
@@ -192,20 +197,17 @@ MATRIX: Sequence[Expectation] = (
     Expectation("git.active_days", "git", Tier.EXACT_DISTINCT_DATES),
     Expectation("git.approval_to_merge_time_h", "git", Tier.EXACT_MEDIAN),
     Expectation("git.code_lines", "git", Tier.EXACT_SUM),
-    Expectation(
-        "git.commit_size",
-        "git",
-        Tier.DERIVED_MEDIAN,
-        derived_from=("lines_added", "lines_removed"),
-    ),
+    Expectation("git.commit_size", "git", Tier.EXACT_MEDIAN),
     Expectation("git.commits", "git", Tier.EXACT_COUNT),
-    Expectation("git.commits_per_active_day", "git", Tier.EXACT_RATIO, scale=1.0),
+    Expectation("git.commits_per_active_day", "git", Tier.EXACT_RECORDS_PER_DATE, scale=1.0),
     Expectation("git.first_review_time_p75_h", "git", Tier.EXACT_PERCENTILE, quantile=0.75),
     Expectation("git.first_review_time_h", "git", Tier.EXACT_MEDIAN),
     Expectation("git.default_branch_active_days", "git", Tier.EXACT_DISTINCT_DATES),
     Expectation("git.default_branch_code_lines", "git", Tier.EXACT_SUM),
     Expectation("git.default_branch_commits", "git", Tier.EXACT_COUNT),
-    Expectation("git.default_branch_commits_per_active_day", "git", Tier.EXACT_RATIO, scale=1.0),
+    Expectation(
+        "git.default_branch_commits_per_active_day", "git", Tier.EXACT_RECORDS_PER_DATE, scale=1.0
+    ),
     Expectation("git.default_branch_lines_added", "git", Tier.EXACT_SUM),
     Expectation("git.default_branch_lines_removed", "git", Tier.EXACT_SUM),
     Expectation("git.default_branch_merge_rate", "git", Tier.EXACT_RATIO, scale=100.0),
@@ -245,7 +247,6 @@ MATRIX: Sequence[Expectation] = (
     Expectation("tasks.closed_fixed", "task", Tier.EXACT_COUNT),
     Expectation("tasks.closed_duplicate", "task", Tier.EXACT_COUNT),
     Expectation("tasks.closed_wontfix", "task", Tier.EXACT_COUNT),
-    Expectation("tasks.dev_time", "task", Tier.EXACT_MEDIAN),
     Expectation("tasks.due_date_compliance", "task", Tier.EXACT_RATIO, scale=100.0),
     Expectation(
         "tasks.estimation_accuracy",
@@ -255,11 +256,12 @@ MATRIX: Sequence[Expectation] = (
         transform=_INVERTED_PERCENT,
     ),
     Expectation("tasks.flow_efficiency", "task", Tier.EXACT_RATIO, scale=100.0, transform=_PERCENT),
+    Expectation("tasks.logged_hours", "task", Tier.EXACT_SUM),
     Expectation("tasks.on_time_delivery", "task", Tier.EXACT_RATIO, scale=100.0),
     Expectation("tasks.pickup_time", "task", Tier.EXACT_MEDIAN),
     Expectation("tasks.reopen_rate", "task", Tier.EXACT_RATIO, scale=100.0),
     Expectation("tasks.resolution_time", "task", Tier.EXACT_MEDIAN),
-    Expectation("tasks.stale_in_progress", "task", Tier.EXACT_SUM),
+    Expectation("tasks.stale_in_progress", "task", Tier.EXACT_COUNT),
     Expectation(
         "tasks.worklog_accuracy", "task", Tier.EXACT_RATIO, scale=100.0, transform=_PERCENT
     ),
@@ -290,7 +292,7 @@ EXPORT_SHAPES: Sequence[str] = (
     "git.prs_created",
     "git.pr_cycle_time_h",
     "tasks.closed",
-    "tasks.dev_time",
+    "tasks.resolution_time",
     "git.merge_rate",
     "collab.messages_sent",
     "wiki.pages_created",

@@ -41,16 +41,7 @@ WITH pull_request_events AS (
         e._airbyte_extracted_at AS _airbyte_extracted_at
     FROM {{ source('bronze_github', 'pull_request_timeline_events') }} AS e FINAL
     {% if is_incremental() %}
-    LEFT JOIN (
-        SELECT
-            tenant_id,
-            source_id,
-            max(_airbyte_extracted_at) AS watermark
-        FROM {{ this }}
-        GROUP BY tenant_id, source_id
-    ) AS w
-        ON w.tenant_id = e.tenant_id AND w.source_id = e.source_id
-    WHERE e._airbyte_extracted_at > coalesce(w.watermark, toDateTime64(0, 3))
+    WHERE _airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at') }}
     {% endif %}
 ),
 events AS (

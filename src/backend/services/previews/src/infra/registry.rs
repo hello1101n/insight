@@ -1,5 +1,3 @@
-//! OCI registry read access: list the tags of the FE image repository.
-
 use std::time::Duration;
 
 use anyhow::{Context, anyhow};
@@ -25,7 +23,7 @@ impl Registry {
         } else {
             Some(bearer(token)?)
         };
-        let http = reqwest::Client::builder()
+        let http = insight_http_client::client_builder()?
             .timeout(REGISTRY_TIMEOUT)
             .build()
             .context("registry http client")?;
@@ -37,8 +35,6 @@ impl Registry {
         })
     }
 
-    /// All tags, following `Link` pagination; past [`MAX_PAGES`] the rest is
-    /// dropped and logged.
     pub async fn list_tags(&self) -> anyhow::Result<Vec<String>> {
         let mut url = format!(
             "{}/v2/{}/tags/list?n={PAGE_SIZE}",
@@ -130,8 +126,6 @@ struct MintedToken {
     token: String,
 }
 
-/// `Bearer realm="…",service="…"` →
-/// `{realm}?service={service}&scope=repository:{repo}:pull`.
 fn token_url(challenge: &str, repo: &str) -> Option<String> {
     let params = challenge.strip_prefix("Bearer ")?;
     let realm = challenge_field(params, "realm")?;
@@ -182,7 +176,7 @@ mod tests {
 
     #[test]
     fn the_repository_path_drops_the_registry_host() {
-        assert_eq!(repository_path(), "constructorfabric/insight-frontend");
+        assert_eq!(repository_path(), "hello1101n/insight-frontend");
     }
 
     #[test]

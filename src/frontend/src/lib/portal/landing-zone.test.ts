@@ -1,8 +1,3 @@
-/**
- * The landing rules, as a table. The case that motivated the module: an
- * admin who manages nobody must keep `?zone=manage`, and must not be reset
- * while the role check is still in flight.
- */
 import { describe, expect, it } from "vitest";
 
 import { landingDecision, type LandingDecision } from "./landing-zone";
@@ -39,6 +34,11 @@ describe("landingDecision", () => {
     [
       "the viewer's own page stands without waiting",
       { zone: "person", ...unresolved, canSeeOthers: false, isAdmin: false },
+      "keep",
+    ],
+    [
+      "Reports stands without waiting, since a viewer may report on themself",
+      { zone: "reports", ...unresolved, canSeeOthers: false, isAdmin: false },
       "keep",
     ],
     [

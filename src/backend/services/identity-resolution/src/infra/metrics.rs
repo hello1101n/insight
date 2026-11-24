@@ -1,7 +1,5 @@
-//! Domain instruments for the persons-seed pipeline. The `opentelemetry` major
-//! here must match the toolkit's (the workspace pin), or these instruments
-//! record into a no-op global. The seed/sync CLI installs the provider via
-//! [`crate::infra::telemetry`].
+//! The `opentelemetry` major here must match the toolkit's (the workspace pin), or
+//! these instruments record into a no-op global.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -45,12 +43,11 @@ impl RunOutcome {
     }
 }
 
-// INVARIANT: one variant per SeedStore method — a closed set, so the `query`
-// label on `identity_resolution.db.query.duration` stays bounded.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum DbQuery {
     KnownAccountBindings,
     LatestEmailToPerson,
+    RosterEmployeeIds,
     Apply,
 }
 
@@ -59,6 +56,7 @@ impl DbQuery {
         match self {
             Self::KnownAccountBindings => "known_account_bindings",
             Self::LatestEmailToPerson => "latest_email_to_person",
+            Self::RosterEmployeeIds => "roster_employee_ids",
             Self::Apply => "apply",
         }
     }
@@ -97,12 +95,10 @@ fn instruments() -> &'static Instruments {
     })
 }
 
-// Partition the per-account dispositions into the three outcome labels:
-// resolved bound a person; ambiguous hit a contested address; unmatched was
-// left unbound for a structural reason.
 pub(crate) fn record_seed_outcomes(summary: &SeedSummary) {
     let resolved = summary.reused_known
         + summary.linked_by_email
+        + summary.linked_by_employee_id
         + summary.minted
         + summary.minted_from_roster;
     let ambiguous = summary.skipped_contested_email;
@@ -156,6 +152,7 @@ mod tests {
             DbQuery::LatestEmailToPerson.as_str(),
             "latest_email_to_person"
         );
+        assert_eq!(DbQuery::RosterEmployeeIds.as_str(), "roster_employee_ids");
         assert_eq!(DbQuery::Apply.as_str(), "apply");
     }
 

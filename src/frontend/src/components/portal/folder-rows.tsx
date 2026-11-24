@@ -28,16 +28,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
-} from "@gears-frontx/ui-kit";
-import { PaneGroupLabel } from "@/components/portal/pane-group-label";
-import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
+import { PaneGroupLabel } from "@/components/portal/pane-group-label";
 import { folderAllows, type FolderAllows } from "@/lib/custom/dashboard-access";
 import { usePortalSearch } from "@/lib/portal/portal-search";
 import { useIsAdmin } from "@/queries/identity-me";
@@ -48,10 +46,9 @@ import {
   useRenameFolder,
 } from "@/queries/custom";
 
-const LIST_PATH = /^\/portal\/custom\/?$/;
+const LIST_PATH = /^\/dashboards\/?$/;
 
-/** Folder counts keep clear of the row's `···`, so the count reads before it. */
-const FOLDER_COUNT = "end-8";
+const FOLDER_ACTION = "end-10";
 
 export function FoldersGroup() {
   const { data } = useQuery(foldersQuery());
@@ -90,10 +87,9 @@ export function FoldersGroup() {
               <SidebarMenuItem key={folder.id}>
                 <SidebarMenuButton
                   isActive={isShown(folder.id)}
-                  className="pe-16"
                   render={
                     <Link
-                      to="/portal/custom"
+                      to="/dashboards"
                       search={{ folder: folder.id, tag }}
                     />
                   }
@@ -101,9 +97,6 @@ export function FoldersGroup() {
                   <Folder />
                   <span>{folder.name}</span>
                 </SidebarMenuButton>
-                <CountBadge className={FOLDER_COUNT}>
-                  {folder.dashboards}
-                </CountBadge>
                 <FolderMenu
                   name={folder.name}
                   allows={folderAllows(folder.access, isAdmin)}
@@ -114,6 +107,7 @@ export function FoldersGroup() {
                     setConfirming(true);
                   }}
                 />
+                <CountBadge>{folder.dashboards}</CountBadge>
               </SidebarMenuItem>
             )
           )}
@@ -124,7 +118,7 @@ export function FoldersGroup() {
                 isActive={isShown("unfiled")}
                 render={
                   <Link
-                    to="/portal/custom"
+                    to="/dashboards"
                     search={{ folder: "unfiled", tag }}
                   />
                 }
@@ -132,7 +126,7 @@ export function FoldersGroup() {
                 <Folder />
                 <span>Unfiled</span>
               </SidebarMenuButton>
-              <CountBadge className={FOLDER_COUNT}>{data.unfiled}</CountBadge>
+              <CountBadge>{data.unfiled}</CountBadge>
             </SidebarMenuItem>
           ) : null}
           <SidebarMenuItem>
@@ -162,7 +156,6 @@ export function FoldersGroup() {
   );
 }
 
-/** Administrators only: the orphaned list is refused to anyone else. */
 function OrphanedFolderRows() {
   const pages = useInfiniteQuery(orphanedPagesQuery("folders"));
   const [moving, setMoving] = useState<Orphan | null>(null);
@@ -174,7 +167,6 @@ function OrphanedFolderRows() {
         <SidebarMenuItem key={folder.id}>
           <SidebarMenuButton
             aria-haspopup="dialog"
-            className="text-muted-foreground"
             onClick={() =>
               setMoving({
                 kind: "folders",
@@ -193,7 +185,6 @@ function OrphanedFolderRows() {
       {pages.hasNextPage ? (
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="text-muted-foreground"
             disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
@@ -226,7 +217,11 @@ function FolderMenu({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <SidebarMenuAction showOnHover aria-label={`More for ${name}`} />
+          <SidebarMenuAction
+            showOnHover
+            className={FOLDER_ACTION}
+            aria-label={`More for ${name}`}
+          />
         }
       >
         <Ellipsis />
@@ -294,7 +289,6 @@ function FolderNameField({
           aria-label="Folder name"
           aria-invalid={error != null}
           aria-describedby={error ? errorId : undefined}
-          className="h-8"
           maxLength={FOLDER_NAME_MAX}
           readOnly={saving}
           value={value}

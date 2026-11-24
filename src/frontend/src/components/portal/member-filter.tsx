@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ListFilter, Search } from "lucide-react";
 
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
@@ -6,14 +7,16 @@ import {
   selectedMembers,
   type MemberSelection,
 } from "@/components/portal/member-selection";
-import { Button, Checkbox, Input } from "@gears-frontx/ui-kit";
 import {
+  Button,
+  Checkbox,
+  Input,
   Popover,
   PopoverContent,
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@gears-frontx/ui-kit";
 
 interface MemberFilterProps {
   members: readonly MembersGridMember[];
@@ -26,6 +29,7 @@ export function MemberFilter({
   selection,
   onChange,
 }: MemberFilterProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const selected = selectedMembers(members, selection);
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -40,11 +44,17 @@ export function MemberFilter({
   );
   const allSelected = selection.kind === "all";
   const label = allSelected
-    ? "All people"
-    : `${selected.length} of ${members.length} people`;
+    ? t("people.all_people")
+    : t("people.people_count", {
+        selected: selected.length,
+        total: members.length,
+      });
   const accessibleLabel = allSelected
-    ? `Filter people, all ${members.length} shown`
-    : `Filter people, ${selected.length} of ${members.length} shown`;
+    ? t("people.filter_all", { count: members.length })
+    : t("people.filter_some", {
+        selected: selected.length,
+        total: members.length,
+      });
 
   const toggle = (entityId: string) => {
     const ids = new Set(
@@ -71,9 +81,9 @@ export function MemberFilter({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-72 gap-3 p-3">
-        <PopoverHeader className="flex-row items-center justify-between gap-2">
-          <PopoverTitle>People</PopoverTitle>
+      <PopoverContent align="end" className="w-72">
+        <PopoverHeader className="flex-row items-center justify-between">
+          <PopoverTitle>{t("people.filter_title")}</PopoverTitle>
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -81,7 +91,7 @@ export function MemberFilter({
               size="sm"
               onClick={() => onChange({ kind: "all" })}
             >
-              All
+              {t("people.all")}
             </Button>
             <Button
               type="button"
@@ -91,25 +101,19 @@ export function MemberFilter({
                 onChange({ kind: "selected", ids: new Set<string>() })
               }
             >
-              None
+              {t("people.none")}
             </Button>
           </div>
         </PopoverHeader>
 
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find someone"
-            aria-label="Find someone"
-            className="ps-8"
-          />
-        </div>
+        <Input
+          type="search"
+          icon={<Search />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("nav.find_someone")}
+          aria-label={t("nav.find_someone")}
+        />
 
         <div className="max-h-64 space-y-1 overflow-y-auto">
           {options.map((member, index) => {
@@ -134,7 +138,7 @@ export function MemberFilter({
           })}
           {options.length === 0 ? (
             <p className="px-1 py-4 text-center text-sm text-muted-foreground">
-              No people found.
+              {t("people.no_people_found")}
             </p>
           ) : null}
         </div>

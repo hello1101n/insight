@@ -10,10 +10,6 @@ interface PreconditionViolation {
   description?: string;
 }
 
-/**
- * The two refusal bodies the service sends: a 400 names places in the
- * document, a 409 names things outside it.
- */
 interface Refusal {
   detail?: string;
   context?: {
@@ -26,14 +22,6 @@ function named(about: string, said: string): string {
   return about === "" ? said : `${about}: ${said}`;
 }
 
-/**
- * What the service said about a failed save, one line per complaint, each
- * prefixed by the path or subject it names.
- *
- * Nothing readable in the error — no service body at all — still says
- * something, since an editor that stays silent after a failed save reads as
- * one that saved.
- */
 export function refusals(error: unknown, fallback: string): string[] {
   if (error === undefined || error === null) return [];
   if (!(error instanceof CustomApiError)) return [fallback];

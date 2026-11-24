@@ -1,0 +1,41 @@
+spec_version: 1
+description: >
+  Metric: collab.messages_sent — a Slack member stays one person when the email
+  changes, because chat rows resolve by the Slack account, not by the email of the day.
+
+  How it's computed (bronze → silver → gold):
+    • bronze: Slack member analytics, one row per account per day with that day's
+      email; the members list gives the name of an account without an email.
+    • silver: Slack sends one identity input per account (slack, source, user_id)
+      with the newest email; each chat row carries the same account.
+    • gold:   the row carries the account triple, so the analytics runtime
+      attributes it through the account binding: the email binds the account
+      once, and an operator binds an account with no email.
+
+  Cast (Engineering), Slack rows on 2026-12-10 and 2026-12-11:
+    alice — U001, alice.previous@example.com on Dec 10 (3 messages), then
+            alice@example.com on Dec 11 (4 messages) → 7.
+    bob   — U002, no email; the operator binds the account to bob → 5.
+    carol — U003, no email, never bound → nobody.
+  Cases: an email change keeps the history under one person · an operator binds
+  an account without an email · an unbound account attributes nobody.
+
+identity_accounts:
+  - {source_type: slack, source_id: slack-test, account_id: U002, person: bob@example.com}
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/bob
+    - $ref: ../templates/people.yaml#/templates/carol
+
+  bronze_slack.users:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U001, unique_key: slm-alice, real_name: Alice Alpha, email: alice@example.com}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U002, unique_key: slm-bob,   real_name: Bobby B}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_member, user_id: U003, unique_key: slm-carol, real_name: Caro}
+
+  bronze_slack.users_details:
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U001, email_address: alice.previous@example.com, date: "2026-12-10", unique_key: sla-alice-20261210, messages_posted_count: 3, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U001, email_address: alice@example.com,          date: "2026-12-11", unique_key: sla-alice-20261211, messages_posted_count: 4, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U002, date: "2026-12-10", unique_key: sla-bob-20261210,   messages_posted_count: 5, channel_messages_posted_count: 0}
+    - {$ref: ../templates/slack_chat.yaml#/templates/slack_user_day, user_id: U003, date: "2026-12-10", unique_key: sla-carol-20261210, messages_posted_count: 6, channel_messages_posted_count: 0}

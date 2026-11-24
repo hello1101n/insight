@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ChartColumn,
   Download,
@@ -14,9 +15,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Spinner,
+  ToggleGroup,
+  ToggleGroupItem,
 } from "@gears-frontx/ui-kit";
-import { Spinner } from "@/components/ui/spinner";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ChartEmpty } from "@/components/widgets/metric-views/chart-empty";
 import { MetricTimeseriesChart } from "@/components/widgets/metric-views/metric-timeseries-chart";
@@ -36,8 +38,10 @@ export function TimeseriesPresentationToggle({
   presentation: TimeseriesPresentation;
   onChange: (presentation: TimeseriesPresentation) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <ToggleGroup
+      spacing={0}
       value={[presentation]}
       onValueChange={(values) => {
         const next = Array.isArray(values) ? values[0] : values;
@@ -46,13 +50,13 @@ export function TimeseriesPresentationToggle({
       variant="outline"
       size="sm"
     >
-      <ToggleGroupItem value="chart" aria-label="Chart view" title="Chart view">
+      <ToggleGroupItem value="chart" aria-label={t("common.chart.chart_view")} title={t("common.chart.chart_view")}>
         <ChartColumn className="size-4" />
-        Chart
+        {t("common.chart.chart")}
       </ToggleGroupItem>
-      <ToggleGroupItem value="table" aria-label="Table view" title="Table view">
+      <ToggleGroupItem value="table" aria-label={t("common.chart.table_view")} title={t("common.chart.table_view")}>
         <Table2 className="size-4" />
-        Table
+        {t("common.chart.table")}
       </ToggleGroupItem>
     </ToggleGroup>
   );
@@ -69,6 +73,7 @@ export function TimeseriesExportMenu({
   range: DateRange;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
 
   async function exportXlsx(): Promise<void> {
@@ -90,8 +95,8 @@ export function TimeseriesExportMenu({
             type="button"
             variant="outline"
             size="sm"
-            aria-label="Export"
-            title="Export"
+            aria-label={t("common.chart.export")}
+            title={t("common.chart.export")}
             icon={<Download className="size-4" />}
             loading={isExporting}
           />
@@ -100,7 +105,7 @@ export function TimeseriesExportMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => void exportXlsx()}>
           <FileSpreadsheet className="size-4" />
-          Excel (.xlsx)
+          {t("common.chart.excel")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => {
@@ -109,7 +114,7 @@ export function TimeseriesExportMenu({
           }}
         >
           <FileText className="size-4" />
-          CSV (.csv)
+          {t("common.chart.csv")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -147,27 +152,28 @@ export function TimeseriesBody({
     bucketStart: string | null
   ) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative min-h-0 flex-1">
       {isFetching && !isPending ? (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-          <Spinner className="size-8 text-muted-foreground" />
+          <Spinner size="lg" />
         </div>
       ) : null}
       {isPending ? (
         <div className="flex h-full items-center justify-center">
-          <Spinner className="size-10 text-muted-foreground" />
+          <Spinner size="lg" />
         </div>
       ) : isError ? (
         <div className="flex h-full items-center justify-center">
           <ComingSoon
             state="error"
-            label="Unable to load timeseries"
+            label={t("common.chart.unable_to_load_timeseries")}
             onRetry={onRetry}
           />
         </div>
       ) : empty ? (
-        <ChartEmpty message="No data in this period" className="h-full" />
+        <ChartEmpty message={t("common.chart.no_data_period")} className="h-full" />
       ) : presentation === "table" ? (
         <MetricTimeseriesTable
           model={model}

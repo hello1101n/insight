@@ -1,7 +1,9 @@
 """The portal shell — the lens rail a signed-in reader lands on.
 
-Rail zones and pane items are the same shadcn `Sidebar` button, separable only
-by container, so the rail is addressed through `[data-testid="lens-rail"]`.
+The rail and the pane are two columns of one kit sidebar. Their items are the
+same `SidebarMenuButton`, separable only by column: the rail through `[data-testid="lens-rail"]`, the pane through its
+"Section navigation" landmark. A pane entry is the control directly inside an
+item of a top-level list; a sub-entry sits in a list nested under one.
 """
 
 from __future__ import annotations
@@ -9,23 +11,19 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
-from playwright.sync_api import Locator, Page
+from playwright.sync_api import Locator, Page, Request, expect
 
 from ..steps import step
 
 RAIL = '[data-testid="lens-rail"]'
 
-MENU_BUTTON = '[data-slot="sidebar-menu-button"]'
-PANE_BUTTONS = (
-    '[data-slot="sidebar-wrapper"] > [data-slot="sidebar"] [data-slot="sidebar-menu-button"]'
-)
-SAFE_NAV = (
-    ':not([data-testid="org-tree"] *)'
-    ':not([data-slot="sidebar-group"]:has('
-    '[data-slot="sidebar-group-label"]:text-is("WorkChart")) *)'
-    ":not([data-planned])"
-)
+PANE = '[role="navigation"][aria-label="Section navigation"]'
+ENTRY = "ul:not(ul ul) > li > :is(button, a):first-child"
+SUB_ENTRY = "li > :is(button, a):first-child"
+PANE_BUTTONS = f"{PANE} {ENTRY}"
+SAFE_NAV = ":not([data-planned])"
 
 
 @dataclass(frozen=True)
@@ -55,17 +53,17 @@ class LensRail:
         self.rail = page.locator(RAIL)
 
     def zones(self) -> Locator:
-        return self.rail.locator(MENU_BUTTON)
+        return self.rail.locator(ENTRY)
 
 
 class PortalShell:
-    PATH = "/portal"
+    PATH = "/"
 
     def __init__(self, page: Page) -> None:
         self.page = page
         self.rail = LensRail(page)
         self.pane_buttons = self.safe_navigation(page.locator(PANE_BUTTONS))
-        self.main = page.locator('main[data-slot="sidebar-inset"]')
+        self.main = page.locator("main:not(main main)")
         self.page_views = self.main.locator('[data-testid^="page-"]').filter(visible=True)
         self.loading_markers = self.main.locator(
             '[class*="skeleton"], .animate-pulse, [aria-busy="true"]'
@@ -76,7 +74,33 @@ class PortalShell:
 
     def go(self) -> None:
         with step("Open Insight"):
-            self.page.goto(self.PATH, wait_until="domcontentloaded")
+            failed: list[str] = []
+
+            def record(request: Request) -> None:
+                if (
+                    request.resource_type in ("script", "stylesheet")
+                    and request.failure != "net::ERR_ABORTED"
+                    and urlsplit(request.url).netloc == urlsplit(self.page.url).netloc
+                ):
+                    failed.append(f"{urlsplit(request.url).path} {request.failure}")
+
+            self.page.on("requestfailed", record)
+            try:
+                self.page.goto(self.PATH, wait_until="load")
+                if failed:
+                    # A connection reset between the runner and the CDN leaves the
+                    # shell blank for good; a person would reload, and so do we, once.
+                    first_load = len(failed)
+                    self.page.reload(wait_until="load")
+                    assert len(failed) == first_load, (
+                        f"The portal shell failed to load twice: {failed}"
+                    )
+                expect(
+                    self.rail.zones().first,
+                    f"The portal shell did not render; failed loads: {failed}",
+                ).to_be_visible(timeout=30_000)
+            finally:
+                self.page.remove_listener("requestfailed", record)
 
     def safe_navigation(self, buttons: Locator) -> Locator:
         return buttons.and_(self.page.locator(SAFE_NAV)).filter(
@@ -91,10 +115,9 @@ class PortalShell:
     def sub_buttons(self, parent: str) -> Locator:
         entry = self.entry(self.pane_buttons, parent)
         submenu = entry.locator("xpath=ancestor::li[1]").locator(
-            'xpath=./ul[@data-slot="sidebar-menu-sub"] | '
-            './following-sibling::*[1][self::ul and @data-slot="sidebar-menu-sub"]'
+            "xpath=./ul | ./following-sibling::*[1][self::ul]"
         )
-        return self.safe_navigation(submenu.locator('[data-slot="sidebar-menu-sub-button"]'))
+        return self.safe_navigation(submenu.locator(SUB_ENTRY))
 
     def page_view(self, test_id: str) -> Locator:
         return self.page.get_by_test_id(test_id)
@@ -110,30 +133,6 @@ class PortalShell:
         with step(f"Open the {zone} zone"):
             entry = self.entry(self.safe_navigation(self.rail.zones()), zone)
             entry.click()
-            with step("Move away from the rail and wait for the pane to be uncovered"):
-                entry.blur()
-                self.main.hover()
-                self.page.wait_for_function(
-                    """({railSelector, paneSelector}) => {
-                        const rail = document.querySelector(railSelector);
-                        const buttons = [...document.querySelectorAll(paneSelector)]
-                            .filter(button => button.checkVisibility({visibilityProperty: true}));
-                        return rail && buttons.length > 0 && buttons.every(button => {
-                            const rect = button.getBoundingClientRect();
-                            const left = Math.max(0, rect.left);
-                            const right = Math.min(innerWidth, rect.right);
-                            const top = Math.max(0, rect.top);
-                            const bottom = Math.min(innerHeight, rect.bottom);
-                            if (right <= left || bottom <= top) return true;
-                            const inset = Math.min(1, (right - left) / 2);
-                            const y = (top + bottom) / 2;
-                            return [left + inset, (left + right) / 2, right - inset]
-                                .every(x => !rail.contains(document.elementFromPoint(x, y)));
-                        });
-                    }""",
-                    arg={"railSelector": RAIL, "paneSelector": PANE_BUTTONS},
-                    timeout=30_000,
-                )
 
     def open_pane_entry(self, label: str) -> None:
         with step(f'Open "{label}" in the pane'):
@@ -150,7 +149,7 @@ class PortalShell:
     def first_list_href(self, prefix: str) -> str:
         handle = self.page.wait_for_function(
             r"""({prefix}) => {
-                const main = document.querySelector('main[data-slot="sidebar-inset"]');
+                const main = document.querySelector('main:not(main main)');
                 for (const link of main?.querySelectorAll('a[href]') ?? []) {
                     const target = new URL(link.href, location.href);
                     if (link.checkVisibility({visibilityProperty: true}) &&

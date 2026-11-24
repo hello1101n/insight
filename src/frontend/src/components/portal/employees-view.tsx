@@ -1,27 +1,24 @@
 import { Link } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { PeopleListItem } from "@/api/identity-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { Badge, Input } from "@gears-frontx/ui-kit";
 import {
+  Badge,
+  Input,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@gears-frontx/ui-kit";
 import { personName } from "@/lib/identities/person-display";
-import { usePortalNavActions } from "@/lib/portal/portal-nav";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
-import { cn } from "@/lib/utils";
-
-// Mirrors the rail: a person with neither display name nor email is still a row.
-const UNNAMED_PERSON = "Unnamed person";
 
 interface EmployeeRow {
   personId: string;
@@ -33,38 +30,33 @@ interface EmployeeRow {
   status: string;
 }
 
-function rosterEmployees(roster: readonly PeopleListItem[]): EmployeeRow[] {
-  const byId = new Map(
-    roster.map((person) => [person.person_id.toLowerCase(), person]),
-  );
+function rosterEmployees(
+  roster: readonly PeopleListItem[],
+  unnamed: string,
+): EmployeeRow[] {
   return roster
     .map((person) => ({
       personId: person.person_id,
-      displayName: personName(person) ?? UNNAMED_PERSON,
+      displayName: personName(person) ?? unnamed,
       jobTitle: person.attributes.job_title ?? "",
       department: person.attributes.department ?? "",
       division: person.attributes.division ?? "",
-      supervisorName: person.manager_person_id
-        ? personName(byId.get(person.manager_person_id.toLowerCase()) ?? {}) ?? ""
-        : "",
+      supervisorName: person.manager_name ?? "",
       status: person.attributes.status ?? "",
     }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-/**
- * Employees directory — every canonical person visible to the viewer,
- * searchable and linked to their Person view.
- */
 export function EmployeesView() {
-  const { setZone } = usePortalNavActions();
+  const { t } = useTranslation();
   const { isFlat } = useVisibilityPolicy();
   const visibleRoster = useVisibleRoster(true);
   const [query, setQuery] = useState("");
 
+  const unnamed = t("identities.person.unnamed");
   const employees = useMemo(
-    () => rosterEmployees(visibleRoster.roster),
-    [visibleRoster.roster],
+    () => rosterEmployees(visibleRoster.roster, unnamed),
+    [visibleRoster.roster, unnamed],
   );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -96,21 +88,23 @@ export function EmployeesView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">
-            {isFlat ? "Roster" : "Employees"}
+            {isFlat ? t("people.roster") : t("people.employees")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {filtered.length}
-            {filtered.length !== employees.length ? ` of ${employees.length}` : ""}{" "}
-            people · live from the identity directory
+            {filtered.length === employees.length
+              ? t("people.people_live", { count: filtered.length })
+              : t("people.people_filtered", {
+                  shown: filtered.length,
+                  total: employees.length,
+                })}
           </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="w-full max-w-xs">
           <Input
+            icon={<Search />}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, title, department…"
-            className="pl-8"
+            placeholder={t("people.search_placeholder")}
           />
         </div>
       </div>
@@ -119,18 +113,16 @@ export function EmployeesView() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Title</TableHead>
-              {/* A flat organisation fills none of these: no reporting line,
-                  and the roster carries no org attributes. */}
+              <TableHead>{t("people.name")}</TableHead>
+              <TableHead>{t("people.title")}</TableHead>
               {isFlat ? null : (
                 <>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Division</TableHead>
-                  <TableHead>Manager</TableHead>
+                  <TableHead>{t("people.department")}</TableHead>
+                  <TableHead>{t("people.division")}</TableHead>
+                  <TableHead>{t("people.manager")}</TableHead>
                 </>
               )}
-              <TableHead>Status</TableHead>
+              <TableHead>{t("common.table.status")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,28 +130,25 @@ export function EmployeesView() {
               <TableRow key={e.personId}>
                 <TableCell>
                   <Link
-                    to="/ic/$person/personal"
+                    to="/people/$person"
                     params={{ person: e.personId }}
-                    // Clear the pinned Manage zone so the route-driven Person
-                    // zone takes over (same pattern as the rail).
-                    onClick={() => setZone(null)}
                     className="font-medium hover:underline"
                   >
                     {e.displayName}
                   </Link>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {e.jobTitle || "—"}
                 </TableCell>
                 {isFlat ? null : (
                   <>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.department || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.division || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.supervisorName || "—"}
                     </TableCell>
                   </>
@@ -167,13 +156,11 @@ export function EmployeesView() {
                 <TableCell>
                   {e.status ? (
                     <Badge
-                      variant="secondary"
-                      className={cn(
-                        "font-medium",
+                      variant={
                         e.status.toLowerCase() === "active"
-                          ? "bg-success/15 text-success"
-                          : "bg-muted text-muted-foreground",
-                      )}
+                          ? "success"
+                          : "secondary"
+                      }
                     >
                       {e.status}
                     </Badge>

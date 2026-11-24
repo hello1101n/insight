@@ -8,7 +8,6 @@ import {
 } from "@/api/metric-definitions-client";
 
 export interface MetricDefinitionGroup {
-  /** `metric_key` prefix before the first dot (e.g. "git" for "git.commits"). */
   prefix: string;
   metrics: MetricDefinition[];
 }
@@ -45,12 +44,6 @@ export function useMetricDefinitions(): UseQueryResult<
   });
 }
 
-/**
- * The whole catalog response, not just its metrics.
- *
- * Shares the one cached query the availability gate and the definitions list
- * already use, so reading a second field off it costs no extra request.
- */
 export function useMetricDefinitionsResponse(): UseQueryResult<MetricDefinitionListResponse> {
   return useQuery({
     queryKey: ["metric-definitions"],
@@ -59,19 +52,8 @@ export function useMetricDefinitionsResponse(): UseQueryResult<MetricDefinitionL
   });
 }
 
-/**
- * What the catalogue can say about this metric's coverage, or nulls where it
- * cannot — an unread catalogue, or a custom metric, whose observation dates
- * the validator leaves absent however much it serves. Callers read null as
- * "no boundary known", never as "nothing collected".
- *
- * Rides the one cached catalogue query, so it costs no extra request.
- */
 export function useCollectionBoundary(metricKey: string): CollectionBoundary {
-  const { data } = useMetricDefinitionsResponse();
-  const definition = data?.metrics.find(
-    (metric) => metric.metric_key === metricKey
-  );
+  const definition = useMetricDefinition(metricKey);
   return {
     collectedFrom: definition?.first_observed_date ?? null,
     collectedThrough: definition?.last_observed_date ?? null,
@@ -79,31 +61,26 @@ export function useCollectionBoundary(metricKey: string): CollectionBoundary {
   };
 }
 
+export function useMetricDefinition(
+  metricKey: string | null
+): MetricDefinition | null {
+  const { data } = useMetricDefinitionsResponse();
+  return (
+    data?.metrics.find((metric) => metric.metric_key === metricKey) ?? null
+  );
+}
+
 export interface CollectionBoundary {
-  /** Oldest date the metric has an observation for; null = no boundary known. */
   collectedFrom: string | null;
-  /** Newest date the metric has an observation for; null = no boundary known. */
   collectedThrough: string | null;
-  /** Newest delivered date reported settled; null = no rule declared. */
   settledThrough: string | null;
 }
 
 export interface DeclaredMetricDimensions {
-  /**
-   * Dimensions each metric declares, or null when the catalog could not be
-   * read. Asking for one a metric does not declare is rejected outright, so a
-   * caller with no catalog asks for none.
-   */
   byMetricKey: ReadonlyMap<string, ReadonlySet<string>> | null;
   isPending: boolean;
 }
 
-/**
- * The dimensions each metric will accept as a display dimension.
- *
- * Same gate as `useAvailableMetricKeys`, one level down: a drilldown that asks
- * for an undeclared dimension is a 400, not a request served without it.
- */
 export function useDeclaredMetricDimensions(): DeclaredMetricDimensions {
   const { data, isPending } = useQuery({
     queryKey: ["metric-definitions"],
@@ -126,30 +103,10 @@ export function useDeclaredMetricDimensions(): DeclaredMetricDimensions {
 }
 
 export interface AvailableMetricKeys {
-  /**
-   * What this installation can serve, or null when the catalog could not be
-   * read at all — callers then fall back to asking for everything rather than
-   * silently showing nothing.
-   */
   keys: ReadonlySet<string> | null;
-  /** True while the catalog is still loading; callers HOLD their requests. */
   isPending: boolean;
 }
 
-/**
- * The metric keys this installation can actually serve.
- *
- * Callers use it to ask only for what exists — see
- * `filterCollectionToAvailable`. Disabled definitions and definitions the
- * validator put in schema error are excluded: the backend rejects both the same
- * way it rejects an unknown key, and one rejected key fails the whole request.
- *
- * `isPending` exists because firing an unfiltered request "just for now" is not
- * free: it is exactly the 400 this gate removes, so a caller waits for the
- * catalog instead of flashing an error and recovering on a second round-trip.
- * The catalog is one shared, five-minute-cached query, so the wait is once per
- * session, not per screen.
- */
 export function useAvailableMetricKeys(): AvailableMetricKeys {
   const { data, isPending } = useQuery({
     queryKey: ["metric-definitions"],

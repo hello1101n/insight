@@ -1,9 +1,3 @@
-/**
- * A conflict flags every account sharing the disputed value, each row
- * carrying the same candidates — so the queue showed one split person as five
- * problems, and ordering by source scattered them among the others. Grouping
- * by "who is being argued over" is what puts one case back together.
- */
 import { describe, expect, it } from "vitest";
 
 import type { AttentionItem } from "@/api/identity-client";
@@ -39,8 +33,6 @@ describe("groupIntoCases", () => {
     expect(cases[0]?.candidates).toEqual([ANN, BOB]);
   });
 
-  // The server sorts candidates, but a case must not split because a future
-  // read hands the same two people back in the other order.
   it("is blind to the order the candidates arrive in", () => {
     const cases = groupIntoCases([
       item({ account_id: "a1", candidates: [ANN, BOB] }),
@@ -59,8 +51,6 @@ describe("groupIntoCases", () => {
     expect(cases).toHaveLength(2);
   });
 
-  // Nothing to match on means nothing to join them by: collapsing these would
-  // claim an argument that does not exist.
   it("leaves candidate-less accounts as cases of their own", () => {
     const cases = groupIntoCases([
       item({ account_id: "a1", kind: "no_evidence", candidates: [] }),
@@ -92,8 +82,6 @@ describe("dropDecided", () => {
     ).toHaveLength(0);
   });
 
-  // A refusal changed nothing, so the row must stay: removing it would show a
-  // queue that dealt with something the server declined.
   it("keeps a refused account in the queue", () => {
     const items = [item({ account_id: "a1" })];
 

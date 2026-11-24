@@ -1,6 +1,3 @@
-/**
- * Two colleagues can carry the same display name, so the handle disambiguates.
- */
 import { describe, expect, it } from "vitest";
 
 import { visitorLabel } from "./visitor-label";
@@ -22,6 +19,17 @@ describe("visitorLabel", () => {
     expect(
       visitorLabel({ person_id: PERSON_ID, display_name: "", username: "ada" })
     ).toEqual({ label: "ada", detail: "username: ada" });
+  });
+
+  it("falls back to the address the way People does when no name or handle is known", () => {
+    expect(
+      visitorLabel({
+        person_id: PERSON_ID,
+        display_name: "",
+        username: "",
+        email: "ada@example.com",
+      })
+    ).toEqual({ label: "ada@example.com", detail: PERSON_ID });
   });
 
   it("falls back to the id when neither a name nor a handle is known", () => {

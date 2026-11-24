@@ -4,7 +4,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
 import { ChartEmpty } from "@/components/widgets/metric-views/chart-empty";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";
 import {
@@ -30,7 +30,6 @@ function num(value: number | null | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-/** Proportional composition strip over the breakdown view's dimension groups. */
 export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
   const evidence = metric.drilldown
     ? evidenceSelection(
@@ -55,8 +54,8 @@ export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
     return (
       <Card className="relative shrink-0">
         <MetricCardActions evidence={evidence} label={metric.label} />
-        <CardHeader className="pr-12 pb-2">
-          <CardTitle className="text-sm font-semibold">
+        <CardHeader>
+          <CardTitle>
             {metric.label}
           </CardTitle>
         </CardHeader>
@@ -70,9 +69,6 @@ export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
   const dimensions = metric.breakdown?.dimensions ?? [];
   const colorsBySeed = seriesColors(rows.map((row) => row.colorSeed));
   const total = rows.reduce((sum, row) => sum + row.value, 0);
-  // Ribbon widths use the exact fraction; displayed percents use share
-  // labels that sum to exactly 100 (no 99%/101% in the legend, and a
-  // nonzero part never reads 0%).
   const shares = percentShareLabels(rows.map((row) => row.value));
   const items = rows.map((row, index) => ({
     ...row,
@@ -85,17 +81,15 @@ export function MetricBreakdown({ metric, entityId }: MetricBreakdownProps) {
   return (
     <Card className="relative shrink-0">
       <MetricCardActions evidence={evidence} label={metric.label} />
-      <CardHeader className="pr-12 pb-2">
-        <CardTitle className="text-sm font-semibold">{metric.label}</CardTitle>
-        <CardDescription className="text-xs">
+      <CardHeader>
+        <CardTitle>{metric.label}</CardTitle>
+        <CardDescription>
           {dimensions.length > 0
             ? `Period total by ${dimensions.join(" / ")}`
             : "Period total"}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Proportional ribbon carries color only; every label/value/percent
-            lives in the legend below, so a narrow slice never clips its text. */}
         <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted">
           {items.map((item) => (
             <div

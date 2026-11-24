@@ -15,7 +15,6 @@ import {
   topDecile,
 } from "./metric-stats";
 
-/** Minimal NormalizedMetricResult fixture: period values + peer target_values. */
 function fixture(opts: {
   computation?: NormalizedMetricResult["computation"];
   period: Array<[string, number | null]>;
@@ -50,7 +49,6 @@ describe("chooseStep", () => {
   it("scales into hundreds", () => expect(chooseStep(4500, 14)).toBe(500));
 });
 
-/** Per-person values as the sections build them, ids legible in assertions. */
 function people(...values: number[]) {
   return values.map((value, i) => ({ id: `p${i}`, value }));
 }
@@ -77,7 +75,6 @@ describe("distribution", () => {
   });
   it("names the people of each band, so a band can be read on its own", () => {
     const rows = distribution(people(1, 2, 3, 9), String);
-    // Every person lands in exactly one band, and the count IS that band's set.
     expect(rows.flatMap((r) => r.ids).sort()).toEqual(["p0", "p1", "p2", "p3"]);
     expect(rows.every((r) => r.count === r.ids.length)).toBe(true);
     expect(rows.at(-1)?.ids).toEqual(["p3"]);
@@ -88,9 +85,6 @@ describe("bandAtClick", () => {
   const rows = [{ range: "0–5" }, { range: "5–10" }];
 
   it("has no band when nothing was pointed at", () => {
-    // A click in the axis gutter: recharts snaps the index to the nearest
-    // category (0) with no tooltip showing, so the index alone would open the
-    // first band for a click that pointed at nothing.
     expect(bandAtClick(rows, { activeIndex: 0, isTooltipActive: false })).toBeNull();
     expect(bandAtClick(rows, { isTooltipActive: true })).toBeNull();
     expect(
@@ -122,8 +116,6 @@ describe("topDecile", () => {
     expect(top?.ids).toEqual(["p0"]);
   });
   it("names the same person on every render when the boundary is tied", () => {
-    // Four equal contributors: the tenth is one of them, and which one must not
-    // depend on the order the roster happened to arrive in.
     const ids = topDecile([
       { id: "p2", value: 5 },
       { id: "p0", value: 5 },
@@ -203,8 +195,6 @@ describe("medianAcross", () => {
 describe("fmtCompact", () => {
   it("abbreviates thousands", () => expect(fmtCompact(1500)).toBe("1.5k"));
   it("keeps small integers", () => expect(fmtCompact(10)).toBe("10"));
-  // Without the million step a large bin edge read "1000k", which names a
-  // magnitude the reader has to decode.
   it("abbreviates millions", () => {
     expect(fmtCompact(1_500_000)).toBe("1.5M");
     expect(fmtCompact(2_000_000)).toBe("2M");

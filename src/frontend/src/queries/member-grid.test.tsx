@@ -18,8 +18,6 @@ vi.mock("@/api/metric-results-client", async (orig) => ({
 
 const mock = vi.mocked(queryMetricResults);
 
-// Every requested view echoed back, with a comparison reading so the trend
-// arrows have real data.
 function respond(req: MetricResultsRequest): MetricResultsResponse {
   if (req.entity.type !== "person") throw new Error("person request expected");
   const ids = req.entity.ids;
@@ -97,9 +95,6 @@ describe("useMemberGridData", () => {
       expect(result.current.previousByKey.has("git.commits")).toBe(true);
     });
 
-    // One request, carrying period + peer over the range and the previous
-    // period as its comparison window — not a second fetch over a shifted
-    // range.
     expect(mock).toHaveBeenCalledTimes(1);
     const req = mock.mock.calls[0]![0];
     expect(req.period.from).toBe(RANGE.from);

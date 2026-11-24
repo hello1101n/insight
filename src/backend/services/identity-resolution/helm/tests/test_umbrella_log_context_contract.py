@@ -17,6 +17,11 @@ def rendered_per_service(stdout: str, template: str, pattern: re.Pattern) -> dic
         source = re.search(rf"# Source: insight/charts/([^/]+)/templates/{template}", doc)
         if source:
             per_service.setdefault(source.group(1), []).extend(pattern.findall(doc))
+        if "# Source: insight/templates/connectors.yaml" in doc and (
+            (template == r"deployment\.yaml" and "kind: Deployment" in doc)
+            or (template == r"configmap\.yaml" and "kind: ConfigMap" in doc)
+        ):
+            per_service.setdefault("connectors", []).extend(pattern.findall(doc))
     return per_service
 
 

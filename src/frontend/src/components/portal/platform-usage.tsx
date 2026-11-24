@@ -7,7 +7,9 @@ import {
   eachDayOfInterval,
   parseISO,
 } from "date-fns";
+import { BarChart, CartesianGrid, XAxis } from "recharts";
 
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type {
   UsageActionsSort,
   UsageDay,
@@ -16,7 +18,13 @@ import type {
   UsagePeopleSort,
   UsageRange,
 } from "@/api/usage-client";
-import { Input } from "@gears-frontx/ui-kit";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Input,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
@@ -25,17 +33,6 @@ import {
   toISODate,
 } from "@/api/period-to-date-range";
 import { PeriodSelectorBar } from "@/components/widgets/period-selector-bar";
-import {
-  BarChart,
-  CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
 import { FeedbackTable } from "@/components/portal/platform-usage-feedback";
 import {
   PersonName,
@@ -55,6 +52,7 @@ import { formatDate, formatMetricNumber, formatUtcClock } from "@/lib/format";
 import { screenLabel } from "@/lib/portal/screen-label";
 import { TEXT_FIGURE, TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";
 import type { CustomRange, PeriodValue } from "@/types/insight";
+import { chartColor } from "@/lib/chart-palette";
 
 function daysBetween(from: string, to: string): number {
   return differenceInCalendarDays(parseISO(to), parseISO(from));
@@ -88,21 +86,15 @@ export function PlatformUsage() {
   const range = useMemo(() => {
     const resolved = resolveDateRange(period, customRange);
     if (customRange) return { since: resolved.from, until: resolved.to };
-    // Slid whole, not stretched, or a 30-day month covers 31. To the UTC day:
-    // the reader's own date names a day the server has no rows for yet.
     const shift = daysBetween(resolved.to, utcToday());
     return { since: addDays(resolved.from, shift), until: addDays(resolved.to, shift) };
   }, [period, customRange]);
   const plottedRange = useMemo(() => ({ from: range.since, to: range.until }), [range]);
-  // A custom range outranks the period in `resolveDateRange`, so leaving it set
-  // makes every preset inert.
   const choosePeriod = (next: PeriodValue) => {
     setPeriod(next);
     setCustomRange(null);
   };
 
-  // The reads are siblings, not a sequence: a section nested under the
-  // summary's pending branch waits for the summary and vanishes when it fails.
   return (
     <div data-testid="page-manage-platform-usage" className="flex w-full flex-col gap-6 p-6">
       <PeriodSelectorBar
@@ -157,7 +149,7 @@ function UsageSummary({ range }: { range: UsageRange }) {
 }
 
 const CHART_CONFIG = {
-  visits: { label: "Visits", color: "var(--chart-1)" },
+  visits: { label: "Visits", color: chartColor(0) },
 } satisfies ChartConfig;
 
 function dayTick(day: string): string {
@@ -247,15 +239,14 @@ function VisitorSearch({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative w-full sm:w-56">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+    <div className="w-full sm:w-56">
       <Input
         type="search"
+        icon={<Search />}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Search visitors"
         aria-label="Search visitors"
-        className="h-8 ps-8"
       />
     </div>
   );

@@ -1,18 +1,17 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
-import { TooltipProvider } from "@gears-frontx/ui-kit";
+import { Toaster, TooltipProvider } from "@gears-frontx/ui-kit";
 import { getPerson } from "@/api/identity-client";
 import { authStore, getViewerPersonId, signIn } from "@/auth";
 import { AuthGate } from "@/components/auth-gate";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
-import { Toaster } from "@/components/ui/toaster";
 import { normalizePersonId } from "@/lib/metrics/entity";
+import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 import { queryClient } from "@/query-client";
 import { FeedbackDialogProvider } from "@/components/feedback-dialog-provider";
 import { MetricEvidenceDialogProvider } from "@/components/metric-evidence-dialog-provider";
 
-// Warms the exact key `useIcPerson` reads, so the shell mounts with the
-// viewer's canonical person already cached.
 export async function prefetchViewerIdentity(): Promise<void> {
   const personId = getViewerPersonId();
   if (!personId) return;
@@ -24,9 +23,6 @@ export async function prefetchViewerIdentity(): Promise<void> {
 
 export const Route = createRootRoute({
   beforeLoad: async () => {
-    // The session was probed once at boot (main.tsx → loadSession), so the
-    // store is already resolved here. No client-side token dance — an absent
-    // session means a full-page bounce to the gateway's login flow.
     const { status } = authStore.getSnapshot();
     if (status === "authenticated") {
       await prefetchViewerIdentity();
@@ -35,10 +31,6 @@ export const Route = createRootRoute({
     signIn(window.location.pathname + window.location.search);
   },
   component: RootLayout,
-  // Shown while beforeLoad resolves auth + the viewer identity — the app
-  // shell (sidebar, headers) mounts only once identity is cached, so no
-  // surface ever renders a raw email or an empty org tree. `pendingMs: 0`
-  // spins immediately instead of a blank first second.
   pendingComponent: RootPending,
   pendingMs: 0,
 });
@@ -47,10 +39,9 @@ function RootPending() {
   return <CenteredSpinner className="min-h-screen w-full" />;
 }
 
-// Long enough that a pointer passing over a row of triggers opens none of them.
-const TOOLTIP_DELAY_MS = 400;
-
 function RootLayout() {
+  const { t } = useTranslation();
+
   return (
     <TooltipProvider delay={TOOLTIP_DELAY_MS}>
       <MetricEvidenceDialogProvider>
@@ -58,11 +49,10 @@ function RootLayout() {
           <AuthGate>
             <Outlet />
           </AuthGate>
-          {/* Outside AuthGate: a toast must survive the surface that raised it
-              closing, and the identity verbs report their result by closing the
-              case window and toasting. Without this mount every `toast()` call
-              in the app is silently dropped. */}
-          <Toaster />
+          <Toaster
+            label={t("common.a11y.notifications")}
+            closeLabel={t("common.actions.close")}
+          />
         </FeedbackDialogProvider>
       </MetricEvidenceDialogProvider>
     </TooltipProvider>

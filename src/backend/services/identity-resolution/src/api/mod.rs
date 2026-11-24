@@ -1,6 +1,5 @@
-//! HTTP API layer — shared state, route table, extractors.
-
 pub(crate) mod canonical_json;
+pub(crate) mod comma_list;
 pub(crate) mod datetime;
 pub mod error;
 mod gate;
@@ -15,6 +14,7 @@ pub mod persons;
 pub mod resolution;
 pub mod roles;
 pub mod seed;
+pub(crate) mod source_set;
 pub mod subchart;
 pub mod sync;
 pub mod visibility;
@@ -31,23 +31,12 @@ use toolkit::api::{OpenApiInfo, OpenApiRegistry, OpenApiRegistryImpl, OperationB
 use crate::config::GearConfig;
 use crate::domain::profile;
 
-/// Shared application state, injected into handlers via `Extension`.
 #[derive(Clone)]
 pub struct AppState {
-    /// MariaDB connection pool (SeaORM) — reads the `persons` journal.
     pub db: DatabaseConnection,
-    /// Gear config (`org_chart_source_type`, `clickhouse_*`, …).
     pub config: GearConfig,
 }
 
-/// Mount the identity-resolution routes onto the host's router.
-///
-/// Builds our endpoints on a fresh sub-router (so the `AppState` extension
-/// scopes to our routes, not the host's `/health`/`/docs`), then merges it into
-/// the host router. Gateway-JWT identity is enforced entirely by the host authn
-/// pipeline: the `oidc-authn-plugin` verifies the ES256 gateway JWT and maps its
-/// claims — including the single signed `tenant_id` -> `subject_tenant_id` — into
-/// the request `SecurityContext` (`NGINX_BFF` R1). No bespoke tenant layer.
 pub fn register_routes(
     host_router: Router,
     openapi: &dyn OpenApiRegistry,
@@ -68,9 +57,6 @@ mod log_context_tests;
 #[cfg(test)]
 mod log_leak_tests;
 
-/// Title/version/description of the emitted document. Kept in step with the
-/// `openapi` block of `config/insight.yaml`, which the live gear reads: the two
-/// describe the same surface and should not disagree.
 fn openapi_info() -> OpenApiInfo {
     OpenApiInfo {
         title: "Insight Identity Resolution API".to_owned(),
@@ -87,15 +73,6 @@ fn openapi_info() -> OpenApiInfo {
     }
 }
 
-/// Build the identity-resolution `OpenAPI` document **offline** — no
-/// `AppState`, DB or HTTP listener. Backs the `identity-resolution openapi`
-/// subcommand (committed-doc regeneration + drift gate), reusing the exact
-/// `build_operations` route table the live gear serves, so the two cannot
-/// diverge.
-///
-/// # Errors
-///
-/// Returns an error if the registry cannot assemble the document.
 pub fn openapi_document() -> anyhow::Result<utoipa::openapi::OpenApi> {
     let openapi = OpenApiRegistryImpl::new();
     let _ = build_operations(Router::new(), &openapi);
@@ -105,18 +82,8 @@ pub fn openapi_document() -> anyhow::Result<utoipa::openapi::OpenApi> {
         .map_err(|e| anyhow::anyhow!("failed to build identity-resolution OpenAPI document: {e}"))
 }
 
-/// Declare each operation via the toolkit `OperationBuilder` (records the route
-/// + its OpenAPI spec + auth/error metadata).
 #[expect(clippy::too_many_lines)] // one flat block per route — readability over splitting
 fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
-    // Internal, SERVICE-ONLY S2S resolvers — SEPARATE routes, one per question,
-    // so the login bootstrap (by external id, or by roster address where the
-    // IdP has no directory connector of its own) and the authenticator's admin
-    // `__override` view-as feature can never be confused for one another via a
-    // shared dispatch parameter. Registered as raw routes so they stay out of
-    // the generated OpenAPI; auth is still enforced by the host gateway and `SecurityContext` is
-    // injected by the host authn pipeline, same as every other route. Each
-    // handler itself gates on `subject_type == "service"`.
     let router = router.route(
         "/internal/persons/by-external-id",
         axum::routing::get(handlers::internal_person_by_external_id),
@@ -189,7 +156,7 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .query_param(
             "visibility",
             false,
-            "`caller` (default) returns people visible to the caller; `tenant` returns the entire tenant roster to any member: names and contact for everyone, attributes and managers for administrators only",
+            "`caller` (default) returns people visible to the caller, each with a manager only when that manager is visible too or the row is the caller's own; `tenant` returns the entire tenant roster to any member: names and contact for everyone, attributes and managers for administrators only",
         )
         .query_param(
             "q",
@@ -275,9 +242,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(persons::search_persons)
         .register(router, openapi);
 
-    // Operator identity corrections (ADR-0003): each verb appends binding
-    // observations authored by the caller. Admin-gated like the rest of the
-    // operator surface; the handlers journal every call in `operations`.
     let router = OperationBuilder::post("/v1/resolution/bind")
         .operation_id("identity_resolution.resolution.bind")
         .summary("Bind accounts to persons (single or bulk; also confirms an automatic binding)")
@@ -344,6 +308,29 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .authenticated()
         .no_license_required()
         .query_param_typed(
+            "source",
+            false,
+            "Comma-separated source types; keeps only queue items of exactly \
+             those sources (`gitlab` does not match `gitlab-commit-email`). \
+             At most 20 entries of at most 30 characters each. Absent or \
+             blank keeps every source; an unknown source matches nothing. \
+             Applied before `limit`, so `items_truncated` describes the \
+             filtered list; the rates stay whole-tenant.",
+            "string",
+        )
+        .query_param_typed(
+            "kind",
+            false,
+            "Comma-separated queue kinds (`contested`, `no_source_id`, \
+             `no_evidence`, ...); keeps only items of exactly those kinds. \
+             At most 20 entries of at most 40 characters each. Absent or \
+             blank keeps every kind; an unknown kind matches nothing. \
+             Applied before `limit`, together with `source`, so \
+             `items_truncated` describes the filtered list; the rates stay \
+             whole-tenant.",
+            "string",
+        )
+        .query_param_typed(
             "limit",
             false,
             "Cap on returned items (1..=1000, default 100); `items_truncated` \
@@ -380,6 +367,16 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
             "string",
         )
         .query_param_typed(
+            "source",
+            false,
+            "Comma-separated source types; keeps only accounts of exactly \
+             those sources (`gitlab` does not match `gitlab-commit-email`). \
+             At most 20 entries of at most 30 characters each. Absent or \
+             blank lists every source; an unknown source matches nothing. A \
+             `cursor` is valid only with the `source` set it was issued for.",
+            "string",
+        )
+        .query_param_typed(
             "limit",
             false,
             "Cap on returned accounts (1..=100, default 20)",
@@ -398,6 +395,20 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         )
         .standard_errors(openapi)
         .handler(resolution::search_accounts)
+        .register(router, openapi);
+
+    let router = OperationBuilder::get("/v1/resolution/sources")
+        .operation_id("identity_resolution.resolution.sources")
+        .summary("The source types that have reported an account")
+        .authenticated()
+        .no_license_required()
+        .json_response_with_schema::<resolution::SourcesResponse>(
+            openapi,
+            StatusCode::OK,
+            "Source types, sorted",
+        )
+        .standard_errors(openapi)
+        .handler(resolution::sources)
         .register(router, openapi);
 
     let router = OperationBuilder::get("/v1/resolution/accounts/{source}/{source_id}/{account_id}")
@@ -432,10 +443,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(resolution::person_accounts)
         .register(router, openapi);
 
-    // Persons-seed operations journal (read-only; the seed itself runs via the
-    // `seed` CLI subcommand — CronJob / manual Job, see `crate::seed_runner`).
-    // Admin-gated: caller = gateway-JWT subject, must hold the `admin` role in
-    // the tenant.
     let router = OperationBuilder::get("/v1/persons-seed/{id}")
         .operation_id("identity_resolution.persons_seed.get")
         .summary("Get a persons-seed operation")
@@ -472,9 +479,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(seed::list_persons_seed)
         .register(router, openapi);
 
-    // Persons-sync journal (read-only, admin-gated): the sync itself is
-    // CLI-only (`identity-resolution sync` — see crate::sync_runner), same
-    // trigger model as the seed after #1690.
     let router = OperationBuilder::get("/v1/persons-sync/{id}")
         .operation_id("identity_resolution.persons_sync.get")
         .summary("Get a persons-sync operation")
@@ -511,7 +515,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(sync::list_persons_sync)
         .register(router, openapi);
 
-    // Roles catalogue (admin-gated CRUD over the global `roles` table).
     let router = OperationBuilder::post("/v1/roles")
         .operation_id("identity_resolution.roles.create")
         .summary("Create a role (admin)")
@@ -548,7 +551,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(roles::delete_role)
         .register(router, openapi);
 
-    // Person-roles junction (admin-gated grant / list / revoke assignments).
     let router = OperationBuilder::post("/v1/person-roles")
         .operation_id("identity_resolution.person_roles.create")
         .summary("Grant a role to a person (admin)")
@@ -605,7 +607,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(person_roles::delete_person_role)
         .register(router, openapi);
 
-    // Visibility grants (admin-gated create / list / revoke).
     let router = OperationBuilder::post("/v1/visibility")
         .operation_id("identity_resolution.visibility.create")
         .summary("Create a visibility grant (admin)")
@@ -657,7 +658,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
         .handler(visibility::delete_visibility)
         .register(router, openapi);
 
-    // Org subchart (authenticated; visibility shapes what each caller sees).
     let router = OperationBuilder::get("/v1/subchart")
         .operation_id("identity_resolution.subchart.forest")
         .summary("Org forest the caller can see")
@@ -733,9 +733,6 @@ fn build_operations(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
             StatusCode::OK,
             "One page of visible persons",
         )
-        // Only what this operation can answer: a rejected `q`/`cursor` or an
-        // unresolved tenant (400), no identified caller (401), a failed read
-        // (500). It has no body to refuse, no resource to miss and no conflict.
         .error_400(openapi)
         .error_401(openapi)
         .error_500(openapi)
@@ -799,8 +796,6 @@ mod openapi_tests {
         Ok(())
     }
 
-    /// A templated path whose parameters are undeclared is not a valid OpenAPI
-    /// document: a generated client has nothing to fill `{source_id}` from.
     #[test]
     fn every_templated_path_declares_its_parameters() -> anyhow::Result<()> {
         let document = openapi_document()?;

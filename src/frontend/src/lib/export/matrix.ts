@@ -7,14 +7,7 @@ export interface Matrix {
   rows: MatrixCell[][];
 }
 
-/**
- * Escape one cell for CSV.
- *
- * The leading-symbol guard is the load-bearing part: a spreadsheet treats a
- * cell opening with `=`, `+`, `-` or `@` as a formula, so a value that looks
- * like one is prefixed with an apostrophe. Shared so there is a single
- * escaping rule across every export this app writes.
- */
+// SAFETY: a spreadsheet runs a cell opening with =, +, - or @ as a formula, so such a value gets an apostrophe.
 export function csvCell(value: MatrixCell): string {
   if (value == null) return "";
   const raw =
@@ -35,8 +28,7 @@ export function matrixToCsv(matrix: Matrix): string {
 }
 
 export function downloadMatrixCsv(filename: string, matrix: Matrix): void {
-  // The BOM is what makes Excel read it as UTF-8 rather than the local
-  // codepage, which otherwise mangles every non-ASCII name in the file.
+  // WORKAROUND: Excel reads a CSV as UTF-8 only when it opens with a BOM.
   const blob = new Blob(["﻿", matrixToCsv(matrix), "\r\n"], {
     type: "text/csv;charset=utf-8",
   });
@@ -55,9 +47,7 @@ export async function downloadMatrixXlsx(
 
   sheet.addRow(matrix.columns);
   for (const row of matrix.rows) {
-    // A non-finite number reaches the sheet as a raw value and can make the
-    // workbook unreadable, so it is dropped — the same answer the CSV writer
-    // already gives it.
+    // WORKAROUND: a non-finite number written raw makes the workbook unreadable.
     sheet.addRow(
       row.map((cell) =>
         typeof cell === "number" && !Number.isFinite(cell) ? null : cell ?? null,

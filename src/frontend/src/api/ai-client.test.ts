@@ -1,9 +1,3 @@
-/**
- * The wire contract of the AI assistant client.
- *
- * The key deserves its own assertions: it may travel out in a request body and
- * must never come back in a response the client would then hold.
- */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({

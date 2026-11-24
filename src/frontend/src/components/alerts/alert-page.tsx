@@ -8,8 +8,14 @@ import { AlertSwitch } from "@/components/alerts/alert-switch";
 import { NotificationsTable } from "@/components/alerts/notifications-table";
 import { ConfirmRemove } from "@/components/custom/confirm-remove";
 import { refusal } from "@/components/custom/refusal";
-import { Badge, Button } from "@gears-frontx/ui-kit";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { WitnessTable } from "@/components/alerts/witness";
 import { conditionText, reasonText } from "@/lib/alerts/describe";
@@ -18,7 +24,6 @@ import { rangeLabel } from "@/lib/custom/time-range";
 import { formatUtcAge, formatUtcInstant } from "@/lib/format";
 import {
   TEXT_BODY,
-  TEXT_HEADING,
   TEXT_LABEL,
   TEXT_TITLE,
 } from "@/lib/type-scale";
@@ -32,7 +37,7 @@ const OFF_HINT = "Turning it off withdraws notifications not yet sent.";
 function BackToAlerts() {
   return (
     <Link
-      to="/portal/custom/alerts"
+      to="/dashboards/alerts"
       className={cn(
         TEXT_BODY,
         "self-start underline decoration-dotted underline-offset-4"
@@ -71,7 +76,7 @@ export function AlertPage({ id }: { id: string }) {
       </div>
       <Card>
         <CardHeader>
-          <CardTitle className={TEXT_HEADING}>Notifications</CardTitle>
+          <CardTitle>Notifications</CardTitle>
         </CardHeader>
         <CardContent>
           <NotificationsTable alert={alert.data} />
@@ -107,7 +112,7 @@ function Header({ alert }: { alert: Alert }) {
             nativeButton={false}
             render={
               <Link
-                to="/portal/custom/alerts/$id/edit"
+                to="/dashboards/alerts/$id/edit"
                 params={{ id: alert.id }}
               />
             }
@@ -125,7 +130,7 @@ function Header({ alert }: { alert: Alert }) {
             error={remove.error}
             onRemove={() =>
               remove.mutate(alert.id, {
-                onSuccess: () => void navigate({ to: "/portal/custom/alerts" }),
+                onSuccess: () => void navigate({ to: "/dashboards/alerts" }),
               })
             }
             onKeep={() => remove.reset()}
@@ -147,7 +152,6 @@ function Fact({
   children,
 }: {
   term: string;
-  /** Spans the whole card rather than one column of it. */
   wide?: boolean;
   children: ReactNode;
 }) {
@@ -165,13 +169,13 @@ function Rule({ alert }: { alert: Alert }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Rule</CardTitle>
+        <CardTitle>Rule</CardTitle>
       </CardHeader>
       <CardContent>
         <dl className="grid gap-3 sm:grid-cols-2">
           <Fact term="Metric">
             <Link
-              to="/portal/custom/metrics/$name"
+              to="/dashboards/metrics/$name"
               params={{ name: alert.metric }}
               className="underline-offset-4 hover:underline"
             >
@@ -209,7 +213,7 @@ function LatestCheck({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Latest check</CardTitle>
+        <CardTitle>Latest check</CardTitle>
       </CardHeader>
       <CardContent>
         {!state.last_evaluated_at ? (

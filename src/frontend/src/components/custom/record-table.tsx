@@ -2,26 +2,24 @@ import { useId, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react";
 
 import type { DatasetRecord, DeclaredField } from "@/api/custom-client";
-import { Button, Checkbox } from "@gears-frontx/ui-kit";
 import {
+  Button,
+  Checkbox,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@gears-frontx/ui-kit";
 import { pathSegments } from "@/lib/custom/dataset-path";
 import { read } from "@/lib/custom/editor/document";
 import { TEXT_BODY, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
-/** The column every record carries, whatever the dataset declares. */
 export const ARRIVED = "received_at";
 
 export interface Ordering {
@@ -29,14 +27,6 @@ export interface Ordering {
   descending: boolean;
 }
 
-/**
- * A dataset's records as a table of its declared fields.
- *
- * INVARIANT: the columns come from the declaration, not from the keys a
- * record happens to carry. A record missing a declared value shows an empty
- * cell, and a key nothing declares is in the record a row opens, not in a
- * column of its own.
- */
 export function RecordTable({
   fields,
   records,
@@ -47,7 +37,6 @@ export function RecordTable({
 }: {
   fields: readonly DeclaredField[];
   records: readonly DatasetRecord[];
-  /** The declared fields to draw, in declaration order. */
   shown: readonly string[];
   ordering: Ordering;
   onShow: (names: string[]) => void;
@@ -90,7 +79,6 @@ export function RecordTable({
   );
 }
 
-/** Which of the declared fields the table draws. */
 function Columns({
   fields,
   shown,
@@ -99,7 +87,6 @@ function Columns({
 }: {
   fields: readonly DeclaredField[];
   shown: readonly string[];
-  /** What is actually drawn: a held name the declaration dropped is not. */
   drawn: readonly DeclaredField[];
   onShow: (names: string[]) => void;
 }) {
@@ -184,7 +171,6 @@ function Sortable({
   );
 }
 
-/** One record, with the whole of it a click away. */
 function Row({
   record,
   fields,
@@ -201,7 +187,7 @@ function Row({
         className="cursor-pointer"
         onClick={() => setOpen((was) => !was)}
       >
-        <TableCell className="w-0 pr-0">
+        <TableCell className="w-0">
           <button
             type="button"
             id={`${whole}-trigger`}
@@ -254,13 +240,6 @@ function Row({
   );
 }
 
-/**
- * What a declared field holds in this record, as a cell shows it.
- *
- * INVARIANT: the path is split the way the service splits it, and an absent
- * value stands in the way the service stands it in. A table that reads a
- * declaration differently from the metrics over it is worse than no table.
- */
 function cell(payload: unknown, field: DeclaredField): string {
   const value = read(payload, pathSegments(field.path));
   if (value === undefined || value === null || value === "") {

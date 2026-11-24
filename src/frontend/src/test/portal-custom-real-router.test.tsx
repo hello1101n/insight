@@ -1,26 +1,10 @@
-/**
- * `/portal/custom` and `/portal/custom/$name` are file routes nested under
- * `/portal`, and `PortalLayout` renders them through its `<Outlet/>` — so the
- * rail, the topbar and the context pane are around them, and the pane lists
- * the dashboards.
- *
- * Every other test for these two routes renders the route's `component`
- * directly with `@tanstack/react-router` mocked out (see
- * `src/test/portal-router.tsx`), so none of them would catch a page that
- * escaped the shell: the route matches, the component renders, and the shell
- * is never in the picture. This one builds a router from the real generated
- * `routeTree` and drives it with a memory history, so actual route matching
- * and parenting decide what renders — the same tree `router.ts` hands to
- * `RouterProvider` in the app.
- */
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   RouterProvider,
   createMemoryHistory,
   createRouter,
 } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,7 +44,6 @@ const READ = {
   carries: true,
 };
 
-/** The caller `GET /v1/me` describes, which is what the zone gates on. */
 function signedInAs({ admin }: { admin: boolean }) {
   vi.mocked(identityClient.getMe).mockResolvedValue({
     person_id: "00000000-0000-4000-8000-000000000001",
@@ -70,10 +53,6 @@ function signedInAs({ admin }: { admin: boolean }) {
   });
 }
 
-/**
- * The assistant starts collapsed to a strip, and its composer is inside the
- * hidden panel until the reader opens it.
- */
 async function openAssistant() {
   await userEvent.click(screen.getByRole("button", { name: "Open assistant" }));
 }
@@ -86,11 +65,12 @@ function renderAt(path: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
+  return { ...view, router };
 }
 
 beforeEach(() => {
@@ -103,12 +83,9 @@ beforeEach(() => {
     items: [],
     total: 0,
   });
-  // Opening the assistant is remembered per browser, and jsdom's storage
-  // outlives a test.
   window.localStorage.clear();
   setPortalShowPlanned(true);
-  // The shell measures the viewport to decide whether the context pane is in
-  // flow or off-canvas; jsdom implements no media queries.
+  // WORKAROUND: jsdom implements no media queries.
   vi.stubGlobal(
     "matchMedia",
     (query: string) =>
@@ -124,7 +101,6 @@ beforeEach(() => {
       }) as unknown as MediaQueryList
   );
   signedInAs({ admin: true });
-  // Empty personId skips the root's viewer-identity prefetch.
   authStore.setAuthenticated(makeSession({ personId: "" }));
 });
 
@@ -134,28 +110,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("the /portal/custom routes, through the real router", { timeout: 20_000 }, () => {
-  it("renders the dashboard list at /portal/custom, inside the portal shell", async () => {
+describe("the /dashboards routes, through the real router", { timeout: 20_000 }, () => {
+  it("renders the dashboard list at /dashboards, inside the portal shell", async () => {
     vi.mocked(customClient.fetchDashboards).mockResolvedValue(LISTING);
 
-    renderAt("/portal/custom");
+    renderAt("/dashboards");
 
     const card = await screen.findByRole(
       "link",
       { name: "engineering" },
       { timeout: 10000 },
     );
-    expect(card).toHaveAttribute("href", "/portal/custom/engineering");
+    expect(card).toHaveAttribute("href", "/dashboards/engineering");
     expect(screen.getByRole("link", { name: /All dashboards/ })).toHaveAttribute(
       "href",
-      "/portal/custom",
+      "/dashboards",
     );
-    expect(
-      document.querySelector('[data-slot="sidebar-wrapper"]')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("lens-rail")).toBeInTheDocument();
   });
 
-  it("renders a dashboard at /portal/custom/$name, inside the portal shell", async () => {
+  it("renders a dashboard at /dashboards/$name, inside the portal shell", async () => {
     vi.mocked(customClient.fetchDashboards).mockResolvedValue(LISTING);
     vi.mocked(customClient.fetchDashboardRead).mockResolvedValue({
       ...READ,
@@ -163,14 +137,12 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
       tags: [],
     });
 
-    renderAt("/portal/custom/engineering");
+    renderAt("/dashboards/engineering");
 
     expect(
       await screen.findByRole("heading", { name: "Engineering" }, { timeout: 10000 })
     ).toBeInTheDocument();
-    expect(
-      document.querySelector('[data-slot="sidebar-wrapper"]')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("lens-rail")).toBeInTheDocument();
   });
 
   it("keeps the thread when creating a dashboard navigates to it", async () => {
@@ -189,7 +161,7 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
       },
     });
 
-    renderAt("/portal/custom");
+    renderAt("/dashboards");
     await screen.findByRole("heading", { name: "Dashboards" }, { timeout: 10000 });
     await openAssistant();
 
@@ -199,14 +171,9 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
     );
     await userEvent.click(screen.getByTestId("chat-send"));
 
-    // The new dashboard opens (its title is in the pane too, so the heading
-    // is what says the page changed)...
     expect(
       await screen.findByRole("heading", { name: "Delivery" }, { timeout: 10000 })
     ).toBeInTheDocument();
-    // ...and the conversation is still there. The chat used to be mounted per
-    // page, so this navigation unmounted it and the reader lost what they had
-    // just asked.
     expect(
       screen.getByText("a dashboard about delivery")
     ).toBeInTheDocument();
@@ -250,7 +217,7 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
       },
     });
 
-    renderAt("/portal/custom/engineering");
+    renderAt("/dashboards/engineering");
     await screen.findByRole("heading", { name: "Engineering" }, { timeout: 10000 });
     await openAssistant();
 
@@ -290,7 +257,7 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
       total: 1,
     });
 
-    renderAt("/portal/custom");
+    renderAt("/dashboards");
 
     expect(
       await screen.findByRole(
@@ -320,11 +287,11 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
     vi.mocked(customClient.fetchPins).mockResolvedValue([]);
     vi.mocked(customClient.fetchTags).mockResolvedValue({ tags: [] });
 
-    renderAt("/portal/custom");
+    renderAt("/dashboards");
 
     expect(
       await screen.findByRole("link", { name: "engineering" }, { timeout: 10000 })
-    ).toHaveAttribute("href", "/portal/custom/engineering");
+    ).toHaveAttribute("href", "/dashboards/engineering");
     expect(
       within(screen.getByRole("navigation", { name: "Browse dashboards" })).getByRole(
         "link",
@@ -362,7 +329,7 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
     });
     vi.mocked(customClient.fetchDashboardWidgets).mockResolvedValue([]);
 
-    renderAt("/portal/custom/engineering");
+    renderAt("/dashboards/engineering");
 
     expect(
       await screen.findByRole("heading", { name: "Engineering" }, { timeout: 10000 })
@@ -371,12 +338,12 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
   });
 
   it.each([
-    "/portal/custom/metrics",
-    "/portal/custom/widgets",
-    "/portal/custom/datasets",
-    "/portal/custom/alerts",
-    "/portal/custom/new/dashboards",
-    "/portal/custom/edit/dashboards/engineering",
+    "/dashboards/metrics",
+    "/dashboards/widgets",
+    "/dashboards/datasets",
+    "/dashboards/alerts",
+    "/dashboards/new/dashboards",
+    "/dashboards/edit/dashboards/engineering",
   ])("refuses %s to a member", async (path) => {
     signedInAs({ admin: false });
     vi.mocked(customClient.fetchDashboards).mockResolvedValue(LISTING);
@@ -393,5 +360,55 @@ describe("the /portal/custom routes, through the real router", { timeout: 20_000
     expect(customClient.fetchMetrics).not.toHaveBeenCalled();
     expect(customClient.fetchOrphanedDashboards).not.toHaveBeenCalled();
     expect(customClient.fetchDefinition).not.toHaveBeenCalled();
+  });
+});
+
+describe("the portal shell, through the real router", { timeout: 20_000 }, () => {
+  const PERSON = "aaaaaaaa-1111-4111-8111-111111111111";
+
+  function withDashboards() {
+    vi.mocked(customClient.fetchDashboards).mockResolvedValue(LISTING);
+    vi.mocked(customClient.fetchFolders).mockResolvedValue({ folders: [], unfiled: 1 });
+    vi.mocked(customClient.fetchPins).mockResolvedValue([]);
+    vi.mocked(customClient.fetchTags).mockResolvedValue({ tags: [] });
+  }
+
+  it("stays mounted while the reader moves between zones", async () => {
+    withDashboards();
+    const { router } = renderAt("/dashboards");
+    const rail = await screen.findByTestId("lens-rail", {}, { timeout: 10000 });
+
+    await act(() =>
+      router.navigate({ to: "/people/$person/team/$view", params: { person: PERSON, view: "metrics" } }),
+    );
+    expect(router.state.location.pathname).toBe(`/people/${PERSON}/team/metrics`);
+    await act(() => router.navigate({ to: "/manage/$surface", params: { surface: "news" } }));
+    expect(router.state.location.pathname).toBe("/manage/news");
+
+    expect(screen.getByTestId("lens-rail")).toBe(rail);
+  });
+
+  it("carries scope and period to the next page, and nothing else", async () => {
+    withDashboards();
+    const { router } = renderAt(`/dashboards?period=quarter&scope=${PERSON}&owned=me`);
+    await screen.findByTestId("lens-rail", {}, { timeout: 10000 });
+
+    await act(() => router.navigate({ to: "/manage/$surface", params: { surface: "news" } }));
+
+    expect(router.state.location.search).toEqual({ period: "quarter", scope: PERSON });
+  });
+
+  it.each([
+    ["/explore/ai/nonsense", "/explore/ai"],
+    ["/home/nonsense", "/home"],
+    ["/manage/identities/nonsense", "/manage/identities"],
+    [`/people/${PERSON.toUpperCase()}/team`, `/people/${PERSON}/team`],
+  ])("sends %s to %s", async (from, to) => {
+    withDashboards();
+    const { router } = renderAt(from);
+
+    await screen.findByTestId("lens-rail", {}, { timeout: 10000 });
+
+    expect(router.state.location.pathname).toBe(to);
   });
 });

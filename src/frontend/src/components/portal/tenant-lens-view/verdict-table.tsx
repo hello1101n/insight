@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
@@ -16,7 +16,6 @@ const VERDICT_STYLE: Record<StabilityVerdict, { label: string; className: string
   struggling: { label: "struggling", className: "text-[var(--destructive)]" },
 };
 
-/** Mean weekly rate and its volatility per value, resolved to a verdict. */
 export function VerdictTableSection({
   section,
   resolve,
@@ -24,7 +23,6 @@ export function VerdictTableSection({
   section: Extract<TenantSectionSpec, { kind: "verdict-table" }>;
   resolve: ResolveView;
 }) {
-  // The need is week-bucketed by construction (`sectionNeeds`).
   const r = resolve(sectionNeeds(section, "week")[0]);
   if (!r) return null;
   const { verdicts, thin } = weeklyVerdicts(
@@ -40,7 +38,7 @@ export function VerdictTableSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}

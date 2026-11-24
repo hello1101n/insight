@@ -1,4 +1,3 @@
-/** The previews gate fails closed, and mutations invalidate the listing. */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";

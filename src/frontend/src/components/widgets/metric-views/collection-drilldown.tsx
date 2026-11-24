@@ -1,5 +1,5 @@
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@gears-frontx/ui-kit";
 import { MetricBreakdown } from "@/components/widgets/metric-views/metric-breakdown";
 import { MetricHistogram } from "@/components/widgets/metric-views/metric-histogram";
 import { MetricSummaryCard } from "@/components/widgets/metric-views/metric-summary-card";
@@ -22,7 +22,6 @@ export interface CollectionDrilldownProps {
   data: MetricCollectionResult;
   entityId: string;
   range?: DateRange;
-  /** Rendered after the composition blocks — the caller's own answer. */
   children?: ReactNode;
   className?: string;
 }
@@ -49,7 +48,6 @@ function Block({
 }) {
   const metrics = blockMetrics(block, byKey);
   if (metrics.length === 0) return null;
-  // Histogram blocks render in the Distributions card, not here.
   if (block.view !== "breakdown") return null;
   return (
     <>
@@ -64,16 +62,6 @@ function Block({
   );
 }
 
-/**
- * What a group is made of: the def's declared chart, summary, and
- * distribution blocks for one entity.
- *
- * Composition only. What is said ABOUT the numbers — where they stand against
- * a cohort, what a person actually did — belongs to whoever is rendering the
- * group, because the answer differs by surface: a drilldown opened from a
- * card is answering "how do I compare", a section reached from the navigation
- * is answering "what is this made of".
- */
 export function CollectionDrilldown({
   def,
   data,
@@ -90,7 +78,7 @@ export function CollectionDrilldown({
           className
         )}
       >
-        <Spinner className="size-12 text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -112,11 +100,6 @@ export function CollectionDrilldown({
     );
   }
 
-  // Summary cards get their own wider grid row above the charts;
-  // distribution (histogram) charts get their own labeled card below the
-  // peer story; everything else pairs into the top chart grid. Filter to
-  // blocks that actually have data so column counts (and
-  // full-width-when-alone) key off what renders, not what's declared.
   const isSummaryBlock = (block: DrilldownBlock) =>
     block.view === "breakdown" && block.chart === "summary-card";
   const summaryMetrics = def.drilldown
@@ -134,9 +117,6 @@ export function CollectionDrilldown({
       !isSummaryBlock(block) &&
       blockMetrics(block, data.byKey).length > 0
   );
-  // Populated distributions lead; those with no events for this entity in the
-  // period sort to the end so the section doesn't open on an empty placeholder.
-  // Stable partition keeps declared order within each group.
   const declaredDistributions = def.drilldown
     .filter((block) => block.view === "histogram")
     .flatMap((block) => blockMetrics(block, data.byKey));
@@ -200,9 +180,6 @@ export function CollectionDrilldown({
           </div>
         ) : null}
         {chartBlocks.length > 0 ? (
-          // Pair charts into two columns; a lone chart spans the full width
-          // rather than leaving an empty column. Blocks return fragments, so
-          // each card is a direct grid item.
           <div
             className={cn(
               "grid grid-cols-1 gap-4",
@@ -221,8 +198,6 @@ export function CollectionDrilldown({
         ) : null}
         {children}
         {distributionMetrics.length > 0 ? (
-          // Each histogram is its own card, dropped straight into the grid like
-          // the chart blocks above — no wrapping "Distributions" card.
           <div
             className={cn(
               "grid grid-cols-1 gap-4",

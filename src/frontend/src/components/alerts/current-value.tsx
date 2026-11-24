@@ -1,6 +1,6 @@
 import type { AlertPreview } from "@/api/alerts-types";
 import { refusal } from "@/components/custom/refusal";
-import { Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@gears-frontx/ui-kit";
 import { reasonText } from "@/lib/alerts/describe";
 import { TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,7 @@ export function CurrentValue({
     if (!settled || query.isPending) {
       return (
         <span className="flex items-center gap-2">
-          <Spinner className="size-3" /> Checking…
+          <Spinner compact /> Checking…
         </span>
       );
     }

@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
 
 export interface SparklineProps {
-  /** Readings oldest first; null is a gap, never a zero. */
   points: (number | null)[];
   className?: string;
 }
@@ -9,18 +8,7 @@ export interface SparklineProps {
 const W = 72;
 const H = 16;
 
-/**
- * Where a number has been, drawn beside where it is now.
- *
- * Scaled to its own range rather than to zero or to any shared axis: the tile
- * already carries the magnitude in figures, so the only thing left for the
- * line to say is which way and how steadily. A missing reading breaks the line
- * instead of dropping it to the floor — a month with no data must not be
- * readable as a month with none of the thing.
- */
 export function Sparkline({ points, className }: SparklineProps) {
-  // What is worth drawing is the caller's call (`personTrendPoints`); this
-  // guard only keeps the maths safe for a series that cannot be scaled.
   const values = points.filter((v) => v != null);
   if (values.length < 2) return null;
 
@@ -54,12 +42,6 @@ export function Sparkline({ points, className }: SparklineProps) {
       className={cn("overflow-visible text-muted-foreground", className)}
       aria-hidden
     >
-      {/* A rule under the line, spanning the whole window.
-          Without it the line floats: nothing says where the span starts or
-          ends, so a reader cannot tell a line covering the window from one
-          that happens to sit at that angle. It claims no VALUE — the line is
-          scaled to its own range, and a baseline at zero would be a lie for a
-          percentage — only the extent of time. */}
       <line
         x1={0}
         y1={H + 2}
@@ -69,7 +51,6 @@ export function Sparkline({ points, className }: SparklineProps) {
         strokeWidth={0.75}
         className="text-muted-foreground"
       />
-      {/* Ticks at the ends, so the span reads as a span. */}
       <line
         x1={0}
         y1={H}
@@ -99,7 +80,6 @@ export function Sparkline({ points, className }: SparklineProps) {
           strokeLinejoin="round"
         />
       ))}
-      {/* The end of the line marked, so the eye knows which end is now. */}
       {lastValue != null ? (
         <circle
           cx={x(lastIndex)}

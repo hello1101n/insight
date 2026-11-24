@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import i18n from "@/i18n";
+import { resolveText } from "@/i18n/localized-text";
+
 import {
   defaultZoneItem,
   MANAGE_ITEMS,
@@ -90,11 +93,19 @@ describe("the retired zones", () => {
 
 describe("resolveZoneItem", () => {
   it("keeps an item the zone lists", () => {
-    expect(resolveZoneItem("overview", "trend")).toBe("trend");
+    expect(resolveZoneItem("overview", "by-direction")).toBe("by-direction");
+  });
+
+  it("sends a link to the dropped Overview Trend to At a glance", () => {
+    expect(resolveZoneItem("overview", "trend")).toBe("at-a-glance");
+  });
+
+  it("sends a link to the dropped Contribution breakdown to At a glance", () => {
+    expect(resolveZoneItem("overview", "contribution")).toBe("at-a-glance");
   });
 
   it("falls back for an item that belongs to another zone", () => {
-    expect(resolveZoneItem("people", "trend")).toBe("roster");
+    expect(resolveZoneItem("people", "by-direction")).toBe("roster");
   });
 
   it("falls back when the URL names none", () => {
@@ -103,7 +114,7 @@ describe("resolveZoneItem", () => {
 
   it("keeps a Manage item the URL names, and falls back for one it does not", () => {
     expect(resolveZoneItem("manage", "connector-health")).toBe("connector-health");
-    expect(resolveZoneItem("manage", "trend")).toBe("ai-assistant");
+    expect(resolveZoneItem("manage", "by-direction")).toBe("ai-assistant");
   });
 
   it("stays null for a zone with no catalog items", () => {
@@ -140,14 +151,14 @@ describe("manageGroupsFor", () => {
   const labelsOf = (isAdmin: boolean, canManagePreviews = false) =>
     Object.fromEntries(
       manageGroupsFor({ isAdmin, canManagePreviews }).map((g) => [
-        g.label,
-        g.items.map((i) => i.label),
+        resolveText(i18n.t, g.label!),
+        g.items.map((i) => resolveText(i18n.t, i.label)),
       ]),
     );
 
   it("groups an admin's pane into Data, People & access and Platform", () => {
     expect(labelsOf(true, true)).toEqual({
-      Data: ["Sources & connectors", "Data exclusions", "Org snapshots"],
+      Data: ["Connectors", "Data exclusions", "Org snapshots"],
       "People & access": [
         "Identities · roles & taxonomy",
         "Access",
@@ -199,14 +210,14 @@ describe("peopleItemsFor", () => {
   it("names the team views for an organisation with reporting lines", () => {
     const items = peopleItemsFor(false);
 
-    expect(items.map((item) => item.id)).toEqual(["roster", "employees"]);
-    expect(items.map((item) => item.label)).toEqual(["My team", "Roster · by role"]);
+    expect(items.map((item) => item.id)).toEqual(["roster", "employees", "metrics"]);
+    expect(items.map((item) => resolveText(i18n.t, item.label))).toEqual(["My team", "Roster · by role", "Metrics view"]);
   });
 
   it("names the same views for an organisation with no reporting lines", () => {
     const items = peopleItemsFor(true);
 
-    expect(items.map((item) => item.id)).toEqual(["roster", "employees"]);
-    expect(items.map((item) => item.label)).toEqual(["Overview", "Roster"]);
+    expect(items.map((item) => item.id)).toEqual(["roster", "employees", "metrics"]);
+    expect(items.map((item) => resolveText(i18n.t, item.label))).toEqual(["Overview", "Roster", "Metrics view"]);
   });
 });

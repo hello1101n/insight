@@ -1,4 +1,4 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { formatMetricValue } from "@/lib/format";
 import { TEXT_FIGURE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
@@ -8,11 +8,6 @@ import { calloutPair } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/**
- * The org headline next to the unweighted mean over a dimension: the
- * headline weighs every run, the mean weighs every group once, and the gap
- * between them is how much the busiest groups dominate the story.
- */
 export function CalloutPairSection({
   section,
   resolve,
@@ -38,7 +33,7 @@ export function CalloutPairSection({
       </p>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent>
             <p className="text-xs font-medium text-muted-foreground">
               Org-wide (every run counts)
             </p>
@@ -48,7 +43,7 @@ export function CalloutPairSection({
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent>
             <p className="text-xs font-medium text-muted-foreground">
               Typical {section.dimension} (each counts once)
             </p>

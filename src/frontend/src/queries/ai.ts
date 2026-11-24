@@ -51,17 +51,6 @@ export function useAiCredentialStatus(
   });
 }
 
-/**
- * The gates the sparkle waits on: the deployment offers the feature, a key
- * will pay for the call, and the caller is allowed to spend it.
- *
- * A stand that carries its own key answers for everybody, so no personal key
- * is read and none is asked for. Where the stand has none, it is the reader's
- * own stored key or nothing.
- *
- * `admin_only` is the server's rule, not this hook's — `/v1/ai/explain`
- * re-checks it. Hiding the sparkle only saves the reader a refusal.
- */
 export function useAiAvailable(): { featureOn: boolean; hasKey: boolean } {
   const config = useAiConfig();
   const { isAdmin } = useIsAdmin();

@@ -1,10 +1,3 @@
-/**
- * The mock has to reproduce the SHAPE the real endpoint returns, because that
- * shape is what the lens is built against. The reference numbers in the
- * assertions come from a real read of the gold ops view (see the factory's
- * header): 30d @ 15m spans 1 … ~6800 rows per bucket, a 24h window holds ~97
- * buckets, and a 30m @ 1s window holds ~1800.
- */
 import { describe, expect, it } from "vitest";
 
 import { buildIngestionIntensity } from "./ingestion-factory";
@@ -16,7 +9,6 @@ describe("the default windows match the server's", () => {
   it("gives a day of 15-minute buckets", () => {
     const body = buildIngestionIntensity({ grain: "15m", now: NOW });
     const buckets = new Set(body.points.map((p) => p.bucket));
-    // 96 slots in 24h; idle buckets are omitted, so allow for the gaps.
     expect(buckets.size).toBeGreaterThan(80);
     expect(buckets.size).toBeLessThanOrEqual(97);
     expect(body.grain).toBe("15m");
@@ -47,13 +39,10 @@ describe("the shape the charts depend on", () => {
   });
 
   it("includes buckets holding exactly one row", () => {
-    // The case a log axis floored at exactly 1 renders as nothing.
     expect(trend.points.filter((p) => p.rows === 1).length).toBeGreaterThan(0);
   });
 
   it("omits idle buckets instead of sending zeros", () => {
-    // An absent bucket is a gap on a numeric time axis; a zero would draw a
-    // bar of no height and stack an invisible segment.
     const slots = Math.floor((30 * DAY) / (15 * 60 * 1_000));
     const buckets = new Set(trend.points.map((p) => p.bucket));
     expect(buckets.size).toBeLessThan(slots);

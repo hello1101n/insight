@@ -5,7 +5,6 @@ use serde::Deserialize;
 use toolkit_canonical_errors::CanonicalError;
 
 use crate::domain::external_links::ExternalSourceRegistry;
-use crate::domain::metric_definitions::ComputationSpec;
 use crate::domain::metric_definitions::definition::MetricInputRole;
 use crate::domain::metric_definitions::{EvidenceColumnType, EvidenceDetailColumn};
 
@@ -16,7 +15,8 @@ use super::dto::{
     PersonNames, ValidatedMetricDrilldown,
 };
 use super::error::config_error;
-use super::sort::{PERSON_KEY, is_sortable};
+use super::row_shape::{RowShape, record_parts};
+use super::sort::{PARTS_KEY, PERSON_KEY, RECORDS_THAT_DAY_KEY, is_sortable};
 
 #[derive(Debug, Deserialize)]
 struct EvidenceDimension {
@@ -96,8 +96,6 @@ fn present(
     Ok((columns, projected_rows))
 }
 
-/// Whether this selection presents the `person` column — the one read that has
-/// to resolve names, and so the only one that should pay for it.
 pub(crate) fn presents_person(req: &ValidatedMetricDrilldown) -> bool {
     presentation_columns(
         &req.plan,
@@ -109,32 +107,26 @@ pub(crate) fn presents_person(req: &ValidatedMetricDrilldown) -> bool {
     .any(|column| column.key == PERSON_KEY)
 }
 
-/// INVARIANT: the query compiler builds its ORDER BY and its search from this
-/// same list, so a column the reader sees is a column the query can name.
 pub(super) fn presentation_columns(
     plan: &EvidencePlan,
     filters: &[MetricDrilldownFilter],
     display_dimensions: &[String],
     entity: &MetricDrilldownEntity,
 ) -> Vec<MetricDrilldownColumn> {
-    // A ratio row is one side of a division, so the records behind its two
-    // measures are different things and neither measure's columns describe the
-    // pair: the two numbers are what the row has to say.
-    let ratio = matches!(plan.definition.spec, ComputationSpec::Ratio { .. });
-    let declared = if ratio {
-        Vec::new()
-    } else {
-        declared_columns(plan)
+    let shape = RowShape::of(plan);
+    let (declared, ratio) = match shape {
+        RowShape::Record | RowShape::FoldedRecord => (declared_columns(plan), false),
+        RowShape::RecordRatio | RowShape::RecordsPerSubject => (declared_columns(plan), true),
+        RowShape::DailyRatio => (Vec::new(), true),
     };
-    // Both sources of dimension columns drop together for a ratio: the outer
-    // aggregate carries no cell the query can order or search, so a column
-    // rendered from it would answer neither.
-    let display_dimensions: &[String] = if ratio { &[] } else { display_dimensions };
+    let display_dimensions: &[String] = if ratio || shape == RowShape::FoldedRecord {
+        &[]
+    } else {
+        display_dimensions
+    };
     let filters: &[MetricDrilldownFilter] = if ratio { &[] } else { filters };
 
     let mut columns = Vec::new();
-    // A roster's records come from many people, and which one is the first
-    // thing the reader needs. One person's own drilldown already knows.
     if !ratio && matches!(entity, MetricDrilldownEntity::Persons { .. }) {
         columns.push(MetricDrilldownColumn {
             key: PERSON_KEY.to_owned(),
@@ -144,6 +136,14 @@ pub(super) fn presentation_columns(
         });
     }
     columns.extend(declared.iter().map(detail_column));
+    if let Some(dimension) = record_parts(plan) {
+        columns.push(MetricDrilldownColumn {
+            key: PARTS_KEY.to_owned(),
+            label: format!("By {}", humanize_field_name(dimension).to_lowercase()),
+            r#type: MetricDrilldownColumnType::String,
+            sortable: true,
+        });
+    }
     columns.extend(
         dimension_keys(filters, display_dimensions, &declared)
             .into_iter()
@@ -156,34 +156,42 @@ pub(super) fn presentation_columns(
         sortable: true,
     });
 
-    if ratio {
-        columns.push(input_column("numerator", plan, MetricInputRole::Numerator));
-        columns.push(input_column(
-            "denominator",
-            plan,
-            MetricInputRole::Denominator,
-        ));
-    } else if plan
-        .inputs
-        .iter()
-        .any(|input| input.presentation.show_value)
-    {
-        columns.push(MetricDrilldownColumn {
-            key: "value".to_owned(),
-            label: "Value".to_owned(),
+    match shape {
+        RowShape::RecordRatio | RowShape::DailyRatio => {
+            columns.push(input_column("numerator", plan, MetricInputRole::Numerator));
+            columns.push(input_column(
+                "denominator",
+                plan,
+                MetricInputRole::Denominator,
+            ));
+        }
+        RowShape::RecordsPerSubject => columns.push(MetricDrilldownColumn {
+            key: RECORDS_THAT_DAY_KEY.to_owned(),
+            label: records_that_day_label(&plan.definition.base.label),
             r#type: MetricDrilldownColumnType::Number,
             sortable: true,
-        });
+        }),
+        RowShape::Record | RowShape::FoldedRecord => {
+            if plan
+                .inputs
+                .iter()
+                .any(|input| input.presentation.show_value)
+            {
+                columns.push(MetricDrilldownColumn {
+                    key: "value".to_owned(),
+                    label: "Value".to_owned(),
+                    r#type: MetricDrilldownColumnType::Number,
+                    sortable: true,
+                });
+            }
+        }
     }
     for column in &mut columns {
-        column.sortable = column.sortable && is_sortable(&column.key, column.r#type, ratio);
+        column.sortable = column.sortable && is_sortable(&column.key, column.r#type, shape);
     }
     columns
 }
 
-/// The detail columns the plan's measures declare, in declaration order, each
-/// key kept once — a metric reading two measures of the same shape shows that
-/// shape once.
 fn declared_columns(plan: &EvidencePlan) -> Vec<EvidenceDetailColumn> {
     let mut seen = BTreeSet::new();
     plan.inputs
@@ -194,10 +202,6 @@ fn declared_columns(plan: &EvidencePlan) -> Vec<EvidenceDetailColumn> {
         .collect()
 }
 
-/// The dimensions the selection pinned to one value, plus the ones it asked to
-/// display. A dimension a measure already declares as a detail is dropped here:
-/// the declared column carries it, and the row projection falls back to the
-/// dimension when the details map has nothing under that key.
 fn dimension_keys(
     filters: &[MetricDrilldownFilter],
     display_dimensions: &[String],
@@ -262,7 +266,9 @@ fn project_row(
             "date" => row.metric_date.clone().into(),
             "value" => serde_json::to_value(row.contribution).map_err(|_| config_error())?,
             "numerator" => serde_json::to_value(row.numerator).map_err(|_| config_error())?,
-            "denominator" => serde_json::to_value(row.denominator).map_err(|_| config_error())?,
+            "denominator" | RECORDS_THAT_DAY_KEY => {
+                serde_json::to_value(row.denominator).map_err(|_| config_error())?
+            }
             key => details
                 .get(key)
                 .filter(|value| visible_value(value))
@@ -349,21 +355,29 @@ fn presentation_dimensions(
         .collect()
 }
 
+fn records_that_day_label(metric_label: &str) -> String {
+    let counted = metric_label
+        .split_once(" per ")
+        .map_or("Records", |(counted, _)| counted);
+    format!("{counted} that day")
+}
+
 fn input_label(plan: &EvidencePlan, role: MetricInputRole) -> String {
     plan.inputs
         .iter()
         .find(|input| input.role == role)
         .map_or_else(
             || humanize_field_name(role.as_db()),
-            |input| humanize_field_name(&input.measure_key),
+            |input| {
+                input
+                    .presentation
+                    .value_label
+                    .clone()
+                    .unwrap_or_else(|| humanize_field_name(&input.measure_key))
+            },
         )
 }
 
-/// Who a row belongs to, in the words the reader knows them by.
-///
-/// A person the identity map could not resolve, or could not name, leaves the
-/// cell empty: an id is not an answer to "who", and it would be exported as
-/// one.
 fn person_value(person_id: &str, names: &PersonNames) -> serde_json::Value {
     names
         .get(person_id.trim())
@@ -411,13 +425,14 @@ mod tests {
     use crate::domain::metric_definitions::definition::AliasCollapse;
 
     use crate::config::{ExternalSourceConfig, ExternalSourceProvider};
-    use crate::domain::metric_definitions::EvidencePresentation;
+    use crate::domain::metric_definitions::{ComputationSpec, EvidencePresentation};
     use crate::domain::metric_definitions::{EvidenceGranularity, RatioDenominatorAggregation};
     use crate::domain::metric_drilldown::cursor::decode_cursor;
     use crate::domain::metric_drilldown::cursor::selection_fingerprint;
     use crate::domain::metric_drilldown::dto::EvidenceInput;
     use crate::domain::metric_drilldown::test_support::{
-        TEST_TENANT, commit_input, commit_presentation, input, plan, row, validated,
+        TEST_TENANT, commit_input, commit_presentation, input, plan, ratio_over, row,
+        summary_input, validated,
     };
 
     fn one_person() -> MetricDrilldownEntity {
@@ -443,20 +458,11 @@ mod tests {
     }
 
     fn ratio_plan() -> EvidencePlan {
-        let numerator = input(MetricInputRole::Numerator, "focus_hours");
-        let denominator = input(MetricInputRole::Denominator, "work_hours");
-        plan(
-            ComputationSpec::Ratio {
-                numerator: numerator.clone(),
-                denominator: denominator.clone(),
-                scale: 100.0,
-                denominator_aggregation: RatioDenominatorAggregation::Sum,
-            },
-            vec![
-                commit_input(MetricInputRole::Numerator, &numerator.measure_key),
-                commit_input(MetricInputRole::Denominator, &denominator.measure_key),
-            ],
-        )
+        ratio_over(summary_input, RatioDenominatorAggregation::Sum)
+    }
+
+    fn record_ratio_plan() -> EvidencePlan {
+        ratio_over(commit_input, RatioDenominatorAggregation::Sum)
     }
 
     #[test]
@@ -495,9 +501,6 @@ mod tests {
         );
     }
 
-    // The ordering key's SQL is decided by a column's declared TYPE, and no
-    // snapshot pins the catalog that declares it. A cursor that survived such
-    // a change would compare against a differently-shaped key.
     #[test]
     fn the_cursor_is_bound_to_the_shape_of_the_columns_it_was_issued_over() {
         let request = validated(commit_plan());
@@ -522,7 +525,6 @@ mod tests {
         assert_ne!(before, after);
     }
 
-    // Only the read that shows the column pays for resolving names.
     #[test]
     fn a_ratio_roster_presents_no_one_and_so_names_no_one() {
         let mut roster = validated(commit_plan());
@@ -536,8 +538,6 @@ mod tests {
         assert!(!presents_person(&validated(commit_plan())));
     }
 
-    // A ratio row is two aggregates over a day; the outer query carries no cell
-    // a dimension column could be ordered or searched by, from either source.
     #[test]
     fn a_ratio_presents_no_dimension_column_from_either_source() {
         let filters = vec![MetricDrilldownFilter {
@@ -592,7 +592,6 @@ mod tests {
         );
     }
 
-    // An id is not an answer to "who", least of all in an exported file.
     #[test]
     fn who_reads_as_a_name_or_as_nothing_at_all() {
         let mut evidence = row();
@@ -825,20 +824,7 @@ mod tests {
 
     #[test]
     fn ratio_presentation_names_numerator_and_denominator() {
-        let numerator = input(MetricInputRole::Numerator, "focus_hours");
-        let denominator = input(MetricInputRole::Denominator, "work_hours");
-        let plan = plan(
-            ComputationSpec::Ratio {
-                numerator: numerator.clone(),
-                denominator: denominator.clone(),
-                scale: 100.0,
-                denominator_aggregation: RatioDenominatorAggregation::Sum,
-            },
-            vec![
-                commit_input(MetricInputRole::Numerator, &numerator.measure_key),
-                commit_input(MetricInputRole::Denominator, &denominator.measure_key),
-            ],
-        );
+        let plan = ratio_plan();
         let mut ratio_row = row();
         ratio_row.numerator = Some(6.0);
         ratio_row.denominator = Some(8.0);
@@ -864,6 +850,126 @@ mod tests {
         assert_eq!(columns[2].label, "Work hours");
         assert_eq!(rows[0].values["numerator"], 6.0);
         assert_eq!(rows[0].values["denominator"], 8.0);
+    }
+
+    #[test]
+    fn a_ratio_of_records_shows_each_record_beside_its_two_numbers() {
+        let mut ratio_row = row();
+        ratio_row.numerator = Some(1.0);
+        ratio_row.denominator = Some(1.0);
+        let (columns, rows) = presentation(
+            &[ratio_row],
+            &record_ratio_plan(),
+            &[],
+            &["category".to_owned()],
+            &a_roster(),
+            &PersonNames::new(),
+        )
+        .unwrap_or_else(|error| panic!("ratio presentation must build: {error}"));
+
+        assert_eq!(
+            columns
+                .iter()
+                .map(|column| column.key.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "ref",
+                "title",
+                "repository",
+                "author",
+                "lines_added",
+                "lines_removed",
+                "date",
+                "numerator",
+                "denominator"
+            ]
+        );
+        assert!(columns.iter().all(|column| column.sortable));
+        assert_eq!(rows[0].values["ref"], "abc123");
+        assert_eq!(rows[0].values["numerator"], 1.0);
+    }
+
+    #[test]
+    fn a_folded_record_shows_no_dimension_its_parts_may_split() {
+        let mut lines = commit_input(MetricInputRole::Value, "code_lines_added");
+        lines.presentation.record_parts = Some("file_extension".to_owned());
+        let folded = plan(
+            ComputationSpec::Sum {
+                value: input(MetricInputRole::Value, "code_lines_added"),
+            },
+            vec![lines],
+        );
+        let filters = [MetricDrilldownFilter {
+            dimension: "category".to_owned(),
+            values: vec!["code".to_owned()],
+        }];
+
+        let keys: Vec<String> = presentation_columns(
+            &folded,
+            &filters,
+            &["file_extension".to_owned(), "change_type".to_owned()],
+            &one_person(),
+        )
+        .into_iter()
+        .map(|column| column.key)
+        .collect();
+
+        assert!(
+            !keys
+                .iter()
+                .any(|key| key == "file_extension" || key == "change_type"),
+            "a dimension one part of a record holds is blank on the folded row: {keys:?}"
+        );
+        assert!(
+            keys.iter().any(|key| key == "category"),
+            "a pinned dimension is shared by every part, so it stays: {keys:?}"
+        );
+    }
+
+    #[test]
+    fn a_ratio_column_reads_the_label_its_measure_declares() {
+        let mut plan = ratio_over(commit_input, RatioDenominatorAggregation::Sum);
+        plan.inputs[1].presentation.value_label = Some("Issues closed".to_owned());
+
+        let columns = presentation_columns(&plan, &[], &[], &one_person());
+        let label = |key: &str| {
+            columns
+                .iter()
+                .find(|column| column.key == key)
+                .map(|column| column.label.clone())
+        };
+
+        assert_eq!(label("denominator").as_deref(), Some("Issues closed"));
+        assert_eq!(label("numerator").as_deref(), Some("Focus hours"));
+    }
+
+    #[test]
+    fn a_ratio_counting_distinct_days_lists_each_record_beside_how_many_share_its_day() {
+        let mut plan = ratio_over(commit_input, RatioDenominatorAggregation::DistinctCount);
+        plan.definition.base.label = "Commits per active day, any branch".to_owned();
+
+        let columns = presentation_columns(&plan, &[], &[], &one_person());
+
+        assert_eq!(
+            columns
+                .iter()
+                .map(|column| column.key.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "ref",
+                "title",
+                "repository",
+                "author",
+                "lines_added",
+                "lines_removed",
+                "date",
+                "records_that_day"
+            ]
+        );
+        assert_eq!(
+            columns.last().map(|column| column.label.as_str()),
+            Some("Commits that day")
+        );
     }
 
     #[test]

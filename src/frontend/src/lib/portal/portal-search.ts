@@ -4,89 +4,59 @@ import { useCallback } from "react";
 import type { OwnedFilter } from "@/api/custom-client";
 import { validateDateRange } from "@/api/period-to-date-range";
 import { isRangeToken } from "@/lib/custom/time-range";
+import { formatSources, parseSources } from "@/lib/identities/sources";
 import type { PeriodValue } from "@/types/insight";
 
-/**
- * The portal's navigation state, carried in the URL.
- *
- * Everything that answers "what am I looking at" lives here rather than in a
- * store: a reload restores the same screen, a link reproduces it for someone
- * else, and Back means what it says. Only true preferences — is the portal on,
- * are planned sections shown — stay in localStorage, because they describe the
- * reader, not the view.
- *
- * All fields are optional and the defaults are computed, not stored: an absent
- * `zone` means "the landing zone for this viewer", an absent `scope` means "the
- * viewer's own subtree". That keeps a shared link honest — it pins what the
- * sender actually chose and lets everything else resolve for the recipient.
- */
-export interface PortalSearch {
-  /** Theme zone (overview / directions / aicost / manage). Person and People
-   *  come from the route instead, so they are never in here. */
-  zone?: string;
-  /** Selected item within a zone (an Overview view, a Manage surface). */
-  item?: string;
-  /** Selected account inside the Identities surface (an opaque account key). */
-  acct?: string;
-  /** Which Identities mode is open (the review queue, a person). */
-  mode?: string;
-  /** Person under inspection in the Identities person mode. */
-  person?: string;
-  /**
-   * What was typed into the Identities person roster.
-   *
-   * In the URL rather than in the field's own state so the terms survive
-   * leaving the mode and coming back: an operator comparing two people should
-   * not have to find the same list twice.
-   */
-  find?: string;
-  /** Expanded direction + its active lens, within the Directions zone. */
-  dir?: string;
-  lens?: string;
-  /**
-   * Connector under inspection in the Ingestion surface, as a bronze slug
-   * without the `bronze_` prefix (e.g. `bamboohr`).
-   *
-   * In the URL because the drill-down IS the view: a reload and a shared link
-   * must both land on the same connector's streams.
-   */
-  conn?: string;
-  /**
-   * One repository under inspection, by its dimension VALUE (`<source>:<owner>/<repo>`).
-   * The value and not the label, because two repositories can share a display
-   * name and a link has to reproduce the one that was opened.
-   */
-  repo?: string;
-  /** Org-scope root: a manager's person id. Absent = the viewer's own subtree. */
+export interface GlobalSearch {
   scope?: string;
-  /** Narrow the scope to direct reports only. */
   direct?: boolean;
-  /** Person-attribute that groups rosters and defines peer cohorts. */
   slice?: string;
-  /**
-   * The window a custom dashboard is read over, as the token the server
-   * understands: a preset like `P30D` or an ISO interval. Separate from
-   * `period` on purpose — that union is shared by every other zone, and only
-   * this one speaks these tokens.
-   */
-  range?: string;
-  /** The custom dashboard widget drawn over the whole window, by its id. */
-  widget?: string;
-  folder?: string;
-  tag?: string[];
-  /** Narrows the dashboard list to those the reader owns, or those shared with them. */
-  owned?: OwnedFilter;
-  /** Period preset. A custom range rides in `from`/`to` beside it. */
   period?: PeriodValue;
   from?: string;
   to?: string;
 }
 
+export interface ExploreSearch {
+  repo?: string;
+}
+
+export interface IdentitiesSearch {
+  acct?: string;
+  src?: string;
+  person?: string;
+  find?: string;
+}
+
+export interface MetricsViewSearch {
+  metrics?: string;
+  compare?: string;
+}
+
+export interface DashboardListSearch {
+  folder?: string;
+  tag?: string[];
+  owned?: OwnedFilter;
+}
+
+export interface DashboardSearch {
+  range?: string;
+  widget?: string;
+}
+
+export type PortalSearch = GlobalSearch &
+  ExploreSearch &
+  IdentitiesSearch &
+  MetricsViewSearch &
+  DashboardListSearch &
+  DashboardSearch;
+
 const PERIODS = new Set<string>(["week", "month", "quarter", "year"]);
-/** A bronze connector slug: what the endpoint's `scope` validator accepts,
- *  minus the `bronze_` prefix the URL does not need to carry. */
-const CONNECTOR_SLUG = /^[a-z0-9_]{1,120}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const METRIC_KEY = /^(none|[a-z][a-z0-9_]*\.[a-z0-9_.]+)$/;
+const PERSON_ID = /^[0-9a-z-]+$/;
+
+const MAX_SOURCES = 20;
+const MAX_SOURCE_CHARS = 30;
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v !== "" ? v : undefined;
@@ -94,6 +64,11 @@ function str(v: unknown): string | undefined {
 
 function scalar(v: unknown): string | undefined {
   return typeof v === "number" || typeof v === "boolean" ? String(v) : str(v);
+}
+
+function list(v: unknown, part: RegExp): string | undefined {
+  const parts = (str(v) ?? "").split(",").filter((value) => part.test(value));
+  return parts.length > 0 ? parts.join(",") : undefined;
 }
 
 function strs(v: unknown): string[] | undefined {
@@ -104,109 +79,83 @@ function strs(v: unknown): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
-/**
- * Validate rather than trust: search params are user-editable text, and a
- * malformed one must not reach a metric request or a date range. Anything
- * unrecognised is dropped, which degrades to the computed default instead of
- * rendering an error for a link someone mistyped.
- */
-export function validatePortalSearch(raw: Record<string, unknown>): PortalSearch {
+// WORKAROUND: the router spreads a validator's result over the raw query, so every validator
+// returns each of its keys, `undefined` when dropped.
+
+export function validateGlobalSearch(raw: Record<string, unknown>): GlobalSearch {
   const period = str(raw.period);
   const from = str(raw.from);
   const to = str(raw.to);
-  // Format alone is not enough: `?from=2026-07-30&to=2026-01-01` is
-  // well-formed, inverted, and used to reach `assertDateRange`, which throws
-  // into the error boundary — breaking this validator's own promise to degrade
-  // rather than error. Run the real check (ordering AND maximum span) and drop
-  // the pair when it fails, falling back to the period preset.
   const custom =
-    from &&
-    to &&
-    ISO_DATE.test(from) &&
-    ISO_DATE.test(to) &&
-    validateDateRange({ from, to }).valid;
+    from && to && ISO_DATE.test(from) && ISO_DATE.test(to) && validateDateRange({ from, to }).valid;
   return {
-    zone: str(raw.zone),
-    item: str(raw.item),
-    acct: str(raw.acct),
-    mode: str(raw.mode),
-    person: str(raw.person)?.toLowerCase(),
-    find: str(raw.find),
-    dir: str(raw.dir),
-    lens: str(raw.lens),
-    // Validated to the same slug shape the endpoint accepts as a `scope`, so a
-    // hand-edited value degrades to the overview instead of a 400.
-    conn: CONNECTOR_SLUG.test(str(raw.conn) ?? "") ? str(raw.conn) : undefined,
-    repo: str(raw.repo),
-    // Lower-cased to match `normalizePersonId`: the same id reaches us from a
-    // link, an identity record or a hand-edited URL, and the resolver compares
-    // it as a string. An id outside the viewer's subtree (or a pre-cutover
-    // email) resolves to nothing and the scope falls back to the viewer.
     scope: str(raw.scope)?.toLowerCase(),
-    // Omit rather than serialise `false`: a default has no business in a URL
-    // people read and share.
-    ...(raw.direct === true || raw.direct === "true" || raw.direct === 1
-      ? { direct: true as const }
-      : {}),
+    direct: raw.direct === true || raw.direct === "true" || raw.direct === 1 ? true : undefined,
     slice: str(raw.slice),
-    // The same check the run endpoint makes, so a hand-edited token
-    // degrades to the board's default.
-    range: isRangeToken(str(raw.range) ?? "") ? str(raw.range) : undefined,
-    widget: str(raw.widget),
-    folder: str(raw.folder),
-    tag: strs(raw.tag),
-    owned: raw.owned === "me" || raw.owned === "shared" ? raw.owned : undefined,
     period: period && PERIODS.has(period) ? (period as PeriodValue) : undefined,
-    ...(custom ? { from, to } : {}),
+    from: custom ? from : undefined,
+    to: custom ? to : undefined,
   };
 }
 
-/** Keys the portal owns — used to carry state across a route change. */
-export const PORTAL_SEARCH_KEYS = [
-  "zone",
-  "item",
-  "acct",
-  "mode",
-  "person",
-  "find",
-  "dir",
-  "lens",
-  "repo",
+export const GLOBAL_SEARCH_KEYS = [
   "scope",
   "direct",
   "slice",
   "period",
   "from",
   "to",
-  "conn",
-  "range",
-] satisfies Array<keyof PortalSearch>;
+] satisfies Array<keyof GlobalSearch>;
 
-/** The validated portal params for the current route. */
+export function validateExploreSearch(raw: Record<string, unknown>): ExploreSearch {
+  return { repo: str(raw.repo) };
+}
+
+export function validateIdentitiesSearch(raw: Record<string, unknown>): IdentitiesSearch {
+  return {
+    acct: str(raw.acct),
+    src: formatSources(
+      parseSources(str(raw.src))
+        .filter((source) => source.length <= MAX_SOURCE_CHARS)
+        .slice(0, MAX_SOURCES),
+    ),
+    person: str(raw.person)?.toLowerCase(),
+    find: str(raw.find),
+  };
+}
+
+export function validateMetricsViewSearch(raw: Record<string, unknown>): MetricsViewSearch {
+  return {
+    metrics: list(raw.metrics, METRIC_KEY),
+    compare: list(str(raw.compare)?.toLowerCase(), PERSON_ID),
+  };
+}
+
+export function validateDashboardListSearch(raw: Record<string, unknown>): DashboardListSearch {
+  return {
+    folder: str(raw.folder),
+    tag: strs(raw.tag),
+    owned: raw.owned === "me" || raw.owned === "shared" ? raw.owned : undefined,
+  };
+}
+
+export function validateDashboardSearch(raw: Record<string, unknown>): DashboardSearch {
+  return {
+    range: isRangeToken(str(raw.range) ?? "") ? str(raw.range) : undefined,
+    widget: str(raw.widget),
+  };
+}
+
 export function usePortalSearch(): PortalSearch {
-  // `strict: false` so the same hook serves both portal route families
-  // (/portal and /ic/$person/*) without a per-route generic.
   return useSearch({ strict: false }) as PortalSearch;
 }
 
-/**
- * Patch the portal's search params. `undefined` in the patch CLEARS a key —
- * an explicit erase, distinct from "leave it alone" (omit it), which matters
- * for zone changes that must drop a now-meaningless item.
- */
 export type PortalSearchPatch =
   | Partial<PortalSearch>
   | ((prev: PortalSearch) => Partial<PortalSearch>);
 
-/**
- * Merge a patch into the current search, clearing a key by setting it to
- * `undefined` rather than removing it.
- *
- * The distinction is load-bearing. `retainSearchParams` restores any listed key
- * that is ABSENT from the result — its test is `key in copy` — so a deleted key
- * comes straight back with its old value. Present-but-undefined passes through
- * untouched, and both the serialiser and `validatePortalSearch` omit it.
- */
+// WORKAROUND: `retainSearchParams` restores any listed key absent from the result, so a cleared
+// key is set to `undefined`, never deleted.
 export function applySearchPatch(
   prev: Record<string, unknown>,
   patch: Partial<PortalSearch>,
@@ -218,30 +167,21 @@ export function applySearchPatch(
   return next;
 }
 
-/**
- * `replace` exists because not every write is a navigation the reader made.
- * An effect that pins the landing zone or syncs the scope from the route is
- * CORRECTING the URL, not moving through the app — pushing those makes Back
- * step into a half-built address (bare `/portal`, or a team URL with no scope).
- */
 export function useSetPortalSearch(): (
   patch: PortalSearchPatch,
   opts?: { replace?: boolean },
 ) => void {
   const navigate = useNavigate();
-  // Stable across renders — `navigate` is, and the patch may be a function of
-  // the previous search, so nothing else needs to be captured. Callers put this
-  // in effect dependency lists, where a fresh identity per render would loop.
   return useCallback(
     (patch, opts) => {
       void navigate({
         to: ".",
         search: (prev: Record<string, unknown>) => {
-          const resolved =
-            typeof patch === "function" ? patch(prev as PortalSearch) : patch;
+          const resolved = typeof patch === "function" ? patch(prev as PortalSearch) : patch;
           return applySearchPatch(prev, resolved);
         },
         replace: opts?.replace ?? false,
+        resetScroll: false,
       });
     },
     [navigate],

@@ -7,7 +7,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use redis::AsyncCommands as _;
 use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
-use sha2::{Digest as _, Sha256};
+use toolkit_security::crypto::hash::Sha256;
 
 const COOKIE: &str = "__Host-sid";
 const REDIRECT_URI: &str = "http://127.0.0.1:3210/callback";
@@ -53,9 +53,6 @@ async fn assert_metadata(http: &common::Client, auth_base: &str) {
         assert_eq!(response.status(), 200, "metadata endpoint {path}");
     }
 
-    // The two MCP servers are told apart by what their metadata claims: a
-    // client that discovered the authoring one must not be handed the
-    // read-only scope, or authoring would be granted by whichever it found.
     let custom: serde_json::Value = http
         .get(format!(
             "{auth_base}/.well-known/oauth-protected-resource/mcp/v3"

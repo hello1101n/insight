@@ -6,6 +6,11 @@ two axes — **levels** (what a test proves) and **environments** (where it runs
 Entry points: `./dev-compose.sh test-stand` (raises a compose stand and runs the suites under `tests/`),
 `scripts/ci/*` (coverage + spec gates), and the standard per-language tools (`cargo`, `pytest`).
 
+The [mock source and Airbyte API fault proxy guide](SCHEDULING-HARNESS.md)
+documents the implemented harness and planned plain pytest scenarios for the
+`connectors` service's apply-on-save, 60-second drift correction and bash reconcile
+schedule reader, plus capacity tests through Airbyte.
+
 ---
 
 ## 1. Test pyramid
@@ -58,8 +63,8 @@ A build is **promoted up** (CI → Test → Beta); a proven check is **gated dow
 - Only **changed** components are measured on a PR (`scripts/ci/changed.py`).
 - Both gates only see files present in a Cobertura report. A path excluded from a component's own coverage
   config is invisible to the new-code gate too — it is not scored zero, it is omitted. For the frontend that
-  exemption covers the vendored `src/components/ui/**` primitives, the thin `src/routes/**` wrappers,
-  generated files, and stories (`src/frontend/vitest.config.ts`).
+  exemption covers the thin `src/routes/**` wrappers, generated files, and stories
+  (`src/frontend/vitest.config.ts`).
 
 ---
 

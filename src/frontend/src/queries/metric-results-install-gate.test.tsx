@@ -1,10 +1,3 @@
-/**
- * The install's metric gate, at the layer every surface fetches through.
- *
- * Its own file because `navPolicy()` reads `/config.js` once and memoises the
- * answer — a per-test policy would have to defeat that cache, and a gate that
- * only works when the cache is cold is not the gate the app runs.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";

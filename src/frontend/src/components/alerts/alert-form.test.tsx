@@ -57,20 +57,17 @@ const ABOVE_TEN = {
   where: { column: "total", op: ">", value: 10 },
 };
 
-/** What the service answers when the one row meets the condition. */
 const MET = {
   outcome: "breach" as const,
   reason: null,
   witness: { matched: 1, answered: 1, columns: ["total"], rows: [[12]] },
 };
 
-/** The same metric with a date, so it can be read over a window. */
 const DATED_PRS_OPEN = {
   ...PRS_OPEN,
   clock: { field: "created_at", from: "metric" },
 };
 
-/** What the service says when the alert moved on since the form was opened. */
 const MOVED_ON = new CustomApiError(409, {
   context: {
     violations: [
@@ -87,7 +84,6 @@ function storedMetric(metric: unknown) {
   return metric as Awaited<ReturnType<typeof customClient.fetchMetric>>;
 }
 
-/** A client holding what the alert page cached before Edit was clicked. */
 function cachedWrapper(stale: Alert) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -107,7 +103,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  portalRouter.reset("/portal/custom/alerts/new");
+  portalRouter.reset("/dashboards/alerts/new");
   vi.mocked(alertsClient.fetchAlertDestinations).mockResolvedValue([
     { name: "ops", provider: "zulip" },
   ]);
@@ -119,7 +115,6 @@ beforeEach(() => {
   vi.mocked(alertsClient.previewAlert).mockResolvedValue(MET);
 });
 
-/** Opens a kit select by its label and picks one of its options. */
 async function pick(label: string, option: string) {
   await userEvent.click(screen.getByRole("combobox", { name: label }));
   await userEvent.click(await screen.findByRole("option", { name: option }));
@@ -142,7 +137,6 @@ function condition(number: number) {
   return within(screen.getByRole("group", { name: `Condition ${number}` }));
 }
 
-/** Picks a test's column once the metric's columns are offered. */
 async function pickColumn(number: number, column: string) {
   await userEvent.click(
     condition(number).getByRole("combobox", { name: "Column" })
@@ -150,21 +144,18 @@ async function pickColumn(number: number, column: string) {
   await userEvent.click(await screen.findByRole("option", { name: column }));
 }
 
-/** The JSON view's text, read as the document it shows. */
 function shownJson(): Record<string, unknown> {
   return JSON.parse(
     (screen.getByLabelText("Alert as JSON") as HTMLTextAreaElement).value
   ) as Record<string, unknown>;
 }
 
-/** Replaces the JSON view's text in one change, as a paste would. */
 function typeJson(text: string) {
   fireEvent.change(screen.getByLabelText("Alert as JSON"), {
     target: { value: text },
   });
 }
 
-/** An alert whose condition reads `value` against its threshold. */
 function alertAt(value: unknown, change: Partial<Alert> = {}): Alert {
   return {
     ...ALERT,
@@ -198,7 +189,7 @@ describe("NewAlertPage", { timeout: 20_000 }, () => {
       })
     );
     expect(portalRouter.navigations).toContainEqual({
-      to: "/portal/custom/alerts/$id",
+      to: "/dashboards/alerts/$id",
       params: { id: "a1" },
     });
   });
@@ -1112,7 +1103,7 @@ describe("the JSON view", { timeout: 20_000 }, () => {
 });
 
 describe("EditAlertPage", () => {
-  beforeEach(() => portalRouter.reset("/portal/custom/alerts/a1/edit"));
+  beforeEach(() => portalRouter.reset("/dashboards/alerts/a1/edit"));
 
   it("still shows the rule's condition when its metric cannot be read", async () => {
     vi.mocked(alertsClient.fetchAlert).mockResolvedValue({
@@ -1167,7 +1158,7 @@ describe("EditAlertPage", () => {
     );
     await waitFor(() =>
       expect(portalRouter.navigations).toContainEqual({
-        to: "/portal/custom/alerts/$id",
+        to: "/dashboards/alerts/$id",
         params: { id: "a1" },
       })
     );

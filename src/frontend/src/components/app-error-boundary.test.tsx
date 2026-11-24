@@ -13,7 +13,7 @@ function BrokenChild(): React.ReactElement {
 }
 
 beforeEach(() => {
-  // React logs every caught error through console.error.
+  // WORKAROUND: React logs every caught error through console.error.
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 

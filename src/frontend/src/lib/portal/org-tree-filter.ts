@@ -1,9 +1,7 @@
 import type { IdentityPerson } from "@/types/insight";
 
 export interface OrgTreeFilter {
-  /** Ids to render: every match, and the managers above it. */
   visible: ReadonlySet<string>;
-  /** Ids that matched the query themselves. */
   matched: ReadonlySet<string>;
 }
 
@@ -22,14 +20,6 @@ function haystack(person: IdentityPerson): string {
     .toLowerCase();
 }
 
-/**
- * Narrow the org tree to the people a query names and the chain of managers
- * that reaches them.
- *
- * A matched manager does not drag their reports along: a query answered with a
- * whole department buries the person who was asked for. Returns null for a
- * blank query, which leaves the tree unfiltered.
- */
 export function filterOrgTree(
   root: IdentityPerson | null,
   query: string

@@ -1,5 +1,3 @@
-//! Domain instruments for metric-query execution.
-//!
 //! Registered against the global meter provider the toolkit bootstrap
 //! installs — the `opentelemetry` major here must match the toolkit's (the
 //! workspace pin), or these instruments record into a no-op global.
@@ -11,8 +9,6 @@ use insight_clickhouse::MissingRelation;
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter};
 
-// INVARIANT: one variant per query-building site (the `log_comment` prefixes),
-// so the `kind` label on `analytics.metric_query.duration` stays bounded.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum QueryKind {
     AbsenceContext,
@@ -24,6 +20,7 @@ pub(crate) enum QueryKind {
     Rollup,
     Histogram,
     PooledHistogram,
+    Unattributed,
     DrilldownPage,
     DrilldownExport,
     Report,
@@ -41,6 +38,7 @@ impl QueryKind {
             Self::Rollup => "rollup",
             Self::Histogram => "histogram",
             Self::PooledHistogram => "pooled_histogram",
+            Self::Unattributed => "unattributed",
             Self::DrilldownPage => "drilldown_page",
             Self::DrilldownExport => "drilldown_export",
             Self::Report => "report",
@@ -210,8 +208,6 @@ mod tests {
             );
         }
 
-        // Code 47 is the relation disagreeing with the deployed code, not an
-        // absence — the one failure an empty answer would hide.
         assert_eq!(
             ErrorClass::classify(
                 "Code: 47. DB::Exception: Unknown expression identifier `commits` (UNKNOWN_IDENTIFIER)"
@@ -232,7 +228,6 @@ mod tests {
             );
         }
 
-        // A longer code that shares a prefix must not match a shorter marker.
         for message in ["Code: 600. x", "Code: 2410. y", "Code: 60 no period"] {
             assert_eq!(
                 ErrorClass::classify(message),
