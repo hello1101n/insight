@@ -17,9 +17,7 @@ ROSTER = ("--set", "identityResolution.rosterSourceType=bamboohr")
 def _authenticator_secret(manifests: str) -> dict:
     docs = [doc for doc in yaml.safe_load_all(manifests) if isinstance(doc, dict)]
     secrets = [
-        doc
-        for doc in docs
-        if doc.get("kind") == "Secret" and doc["metadata"]["name"] == "insight-authenticator-config"
+        doc for doc in docs if doc.get("kind") == "Secret" and doc["metadata"]["name"] == "insight-authenticator-config"
     ]
     assert len(secrets) == 1, f"expected one authenticator config Secret, got {len(secrets)}"
 

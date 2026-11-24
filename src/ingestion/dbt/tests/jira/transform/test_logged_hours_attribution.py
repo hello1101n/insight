@@ -43,6 +43,7 @@ def user(account: str, email: str | None) -> dict[str, Any]:
 def worklog(worklog_id: str, author: str, seconds: int) -> dict[str, Any]:
     return {
         "unique_key": f"{SOURCE}-worklog-{worklog_id}",
+        "tenant_id": TENANT,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "worklog_id": worklog_id,

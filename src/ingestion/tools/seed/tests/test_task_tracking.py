@@ -317,7 +317,9 @@ def test_every_seeded_row_belongs_to_the_install_tenant(rows: Rows, table: str) 
 
 def test_every_bronze_row_the_generator_writes_carries_the_install_tenant(rows: Rows) -> None:
     """The staging models refuse a bronze row without a tenant, so one such row fails the whole build."""
-    bronze = {table: table_rows for table, table_rows in rows.items() if table.startswith("bronze_")}
+    bronze = {
+        table: table_rows for table, table_rows in rows.items() if table.startswith("bronze_")
+    }
     assert bronze, "the generator writes no bronze"
 
     tenantless = {

@@ -25,8 +25,8 @@ DBT = INGESTION / "dbt"
 sys.path.insert(0, str(DBT / "tests"))
 sys.path.insert(0, str(INGESTION / "scripts"))
 
-from bronze import create_bronze
-from dbt_profiles import Connection, build_profile
+from bronze import create_bronze  # noqa: E402
+from dbt_profiles import Connection, build_profile  # noqa: E402
 
 SOURCE = "synthetic-github"
 TENANT = "synthetic-tenant"

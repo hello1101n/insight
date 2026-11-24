@@ -16,9 +16,7 @@ SUBCHART = HERE.parents[1]
 REPO_ROOT = HERE.parents[6]
 UMBRELLA = REPO_ROOT / "charts" / "insight"
 CANONICAL_REALMS = sorted(
-    (REPO_ROOT / "deploy" / "gitops" / "environments").glob(
-        "*/keycloak/realms/insight-broker.yaml"
-    )
+    (REPO_ROOT / "deploy" / "gitops" / "environments").glob("*/keycloak/realms/insight-broker.yaml")
 )
 
 RELEASE = "contract-test"
@@ -97,11 +95,7 @@ UMBRELLA_BASE = [
 
 def render(chart: Path, *extra: str) -> list[dict]:
     proc = subprocess.run(
-        ["helm", "template", RELEASE, str(chart), *extra],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
+        ["helm", "template", RELEASE, str(chart), *extra], capture_output=True, text=True, timeout=300, check=False
     )
     assert proc.returncode == 0, proc.stderr
     return [doc for doc in yaml.safe_load_all(proc.stdout) if doc]
@@ -109,11 +103,7 @@ def render(chart: Path, *extra: str) -> list[dict]:
 
 def render_error(chart: Path, *extra: str) -> str:
     proc = subprocess.run(
-        ["helm", "template", RELEASE, str(chart), *extra],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
+        ["helm", "template", RELEASE, str(chart), *extra], capture_output=True, text=True, timeout=300, check=False
     )
     assert proc.returncode != 0, f"expected a render failure, got:\n{proc.stdout[:400]}"
     return proc.stderr
@@ -136,9 +126,7 @@ def keycloak_pod(docs: list[dict]) -> dict:
 
 def theme_properties(docs: list[dict]) -> dict[str, str]:
     raw = theme_configmap(docs)["data"]["theme.properties"]
-    return dict(
-        line.split("=", 1) for line in raw.splitlines() if line and "=" in line
-    )
+    return dict(line.split("=", 1) for line in raw.splitlines() if line and "=" in line)
 
 
 def assert_theme_payload(docs: list[dict]) -> None:

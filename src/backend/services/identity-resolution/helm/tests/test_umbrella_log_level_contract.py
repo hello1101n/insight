@@ -159,7 +159,12 @@ def test_a_legacy_top_level_format_override_cannot_split_the_surfaces(umbrella_d
     """The gears subcharts never see the top-level observability block, so the
     platform ConfigMap must not honour it for the format either."""
     code, out, err = render(
-        UMBRELLA, *UMBRELLA_BASE, "--set", f"authenticator.oidc.defaultTenantId={TENANT}", "--set", "observability.logs.format=text"
+        UMBRELLA,
+        *UMBRELLA_BASE,
+        "--set",
+        f"authenticator.oidc.defaultTenantId={TENANT}",
+        "--set",
+        "observability.logs.format=text",
     )
     assert code == 0, err
 
