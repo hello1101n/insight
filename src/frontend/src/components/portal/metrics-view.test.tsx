@@ -229,6 +229,7 @@ beforeEach(() => {
     setMetricsViewPaneShown(false);
   });
   delete window.__INSIGHT_CONFIG__;
+  window.localStorage.clear();
 });
 
 describe("MetricsView", () => {
@@ -638,6 +639,41 @@ describe("MetricsView", () => {
       "git.default_branch_commits",
       "collab.messages_sent",
     ]);
+  });
+
+  it("opens on the pick saved in this browser when the link names no metrics", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["collab.messages_sent"]);
+  });
+
+  it("lets the link's metrics win over the pick saved in this browser", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
+  });
+
+  it("saves the link's metrics in this browser", () => {
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBe("tasks.closed");
+  });
+
+  it("saves the reader's pick in this browser", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("checkbox", { name: "Messages" }));
+
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBe(
+      "git.default_branch_commits,tasks.closed",
+    );
   });
 
   it("opens on the stand's default metrics when the deploy sets them", () => {

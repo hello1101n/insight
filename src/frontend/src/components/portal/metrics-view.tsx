@@ -1,4 +1,4 @@
-import { useMemo, useState, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
@@ -36,7 +36,9 @@ import {
   defaultMetricKeys,
   defaultMetricOrder,
   orderMetricKeys,
+  readStoredMetricsPick,
   rolesById,
+  storeMetricsPick,
   keysWithData,
   metricGroups,
   metricsRows,
@@ -100,16 +102,21 @@ export function MetricsView() {
 
   const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
   const setSearch = useSetPortalSearch();
+  const [storedPick, setStoredPick] = useState(readStoredMetricsPick);
+  const pickParam = metricsParam ?? storedPick;
   const picked = useMemo(
-    () =>
-      metricsParam == null ? null : metricsParam === "none" ? [] : metricsParam.split(","),
-    [metricsParam],
+    () => (pickParam == null ? null : pickParam === "none" ? [] : pickParam.split(",")),
+    [pickParam],
   );
-  const setPicked = (next: string[] | null) =>
-    setSearch(
-      { metrics: next == null ? undefined : next.length === 0 ? "none" : next.join(",") },
-      { replace: true },
-    );
+  useEffect(() => {
+    if (metricsParam != null) storeMetricsPick(metricsParam);
+  }, [metricsParam]);
+  const setPicked = (next: string[] | null) => {
+    const value = next == null ? null : next.length === 0 ? "none" : next.join(",");
+    setSearch({ metrics: value ?? undefined }, { replace: true });
+    storeMetricsPick(value);
+    setStoredPick(value);
+  };
   const defaultKeys = useMemo(() => defaultMetricKeys(catalogKeys), [catalogKeys]);
   const selected = picked ?? defaultKeys;
   const setSelected = (action: SetStateAction<string[]>) =>

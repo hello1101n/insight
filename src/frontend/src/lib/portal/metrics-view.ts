@@ -45,6 +45,25 @@ export const DEFAULT_METRIC_KEYS: readonly string[] = [
   "tasks.closed",
 ];
 
+const PICK_STORAGE_KEY = "insight.metricsView.metrics";
+
+export function readStoredMetricsPick(): string | null {
+  try {
+    return window.localStorage.getItem(PICK_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function storeMetricsPick(value: string | null): void {
+  try {
+    if (value == null) window.localStorage.removeItem(PICK_STORAGE_KEY);
+    else window.localStorage.setItem(PICK_STORAGE_KEY, value);
+  } catch {
+    return;
+  }
+}
+
 export const METRIC_FILTERS: Readonly<Record<string, readonly MetricDimensionFilter[]>> = {
   "git.pr_comments": [{ dimension: "comment_target", values: ["others"] }],
 };
