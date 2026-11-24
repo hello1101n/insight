@@ -15,11 +15,13 @@ function metric(
   key: string,
   label: string,
   description: string | null,
+  explanation: string | null = null,
 ): OfferedReportMetric {
   return {
     metric_key: key,
     label,
     description,
+    explanation,
     unit: null,
     format: "integer",
     reason: null,
@@ -35,6 +37,13 @@ const families = [
       metric("git.blank", "Blank metric", ""),
       metric("git.none", "Null metric", null),
       metric("git.spaces", "Spaces metric", "   "),
+      metric(
+        "git.cycle",
+        "PR cycle time",
+        "Typical hours from open to merge",
+        "Median hours from opening a pull request to merging it.",
+      ),
+      metric("git.only", "Explained metric", null, "Median count of reviews per pull request."),
     ],
   },
 ] as unknown as MetricFamily<OfferedReportMetric>[];
@@ -85,6 +94,27 @@ describe("ReportMetricPicker description button", () => {
 
     expect(screen.queryByRole("button", { name: "About Blank metric" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "About Null metric" })).not.toBeInTheDocument();
+  });
+
+  it("shows the explanation under the description", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: "About PR cycle time" }));
+
+    expect(screen.getByText("Typical hours from open to merge")).toBeInTheDocument();
+    expect(
+      screen.getByText("Median hours from opening a pull request to merging it."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the button and shows the explanation when only the explanation is set", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: "About Explained metric" }));
+
+    expect(screen.getByText("Median count of reviews per pull request.")).toBeInTheDocument();
   });
 
   it("offers no button when the description is only spaces", () => {

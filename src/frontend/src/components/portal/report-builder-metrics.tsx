@@ -257,10 +257,11 @@ function MetricFamilyGroup({
                   {metric.label}
                 </span>
               </label>
-              {metric.description?.trim() ? (
+              {metric.description?.trim() || metric.explanation?.trim() ? (
                 <MetricDescription
                   label={metric.label}
-                  description={metric.description.trim()}
+                  description={metric.description?.trim() ?? ""}
+                  explanation={metric.explanation?.trim() ?? ""}
                 />
               ) : null}
               <span
@@ -293,9 +294,11 @@ function MetricFamilyGroup({
 function MetricDescription({
   label,
   description,
+  explanation,
 }: {
   label: string;
   description: string;
+  explanation: string;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -313,7 +316,7 @@ function MetricDescription({
       >
         <Info className="size-3.5" aria-hidden="true" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 gap-2 p-3">
+      <PopoverContent align="start" className="max-h-80 w-80 gap-2 overflow-y-auto p-3">
         <div className="flex items-start justify-between gap-2">
           <PopoverTitle className={TEXT_NAME}>{label}</PopoverTitle>
           <Button
@@ -325,7 +328,12 @@ function MetricDescription({
             onClick={() => setOpen(false)}
           />
         </div>
-        <PopoverDescription className={TEXT_BODY}>{description}</PopoverDescription>
+        {description ? (
+          <PopoverDescription className={TEXT_BODY}>{description}</PopoverDescription>
+        ) : null}
+        {explanation ? (
+          <p className={cn(TEXT_BODY, "text-muted-foreground")}>{explanation}</p>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
