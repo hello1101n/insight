@@ -337,12 +337,9 @@ function MetricsBody({
       return next;
     });
 
-  const rows = metricsRows(
-    pivot,
-    people,
-    expanded,
-    sort ? { key: sort.key, direction: sort.direction, byKey } : undefined,
-  );
+  const order = sort ? { key: sort.key, direction: sort.direction, byKey } : undefined;
+  const rows = metricsRows(pivot, people, expanded, order);
+  const downloadRows = order ? metricsRows(null, people, expanded, order) : rows;
 
   return (
     <section className="flex flex-col gap-3">
@@ -381,7 +378,7 @@ function MetricsBody({
             onCompare={setComparing}
           />
           <MetricsDownloadMenu
-            view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
+            view={{ people: comparing ? compared : downloadRows, keys: columns, byKey, roles, range }}
             disabled={metricKeys.length === 0 || loading}
           />
         </div>

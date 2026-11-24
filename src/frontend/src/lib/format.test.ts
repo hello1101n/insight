@@ -11,6 +11,7 @@ import {
   formatUtcClock,
   formatUtcInstant,
   formatClockDuration,
+  isClockDuration,
   metricDisplayUnit,
   roundMetricValue,
   splitMetricValue,
@@ -119,7 +120,21 @@ describe("formatClockDuration", () => {
     [1.9999, "2 h 00 min"],
     [1234.5, "1,234 h 30 min"],
     [-1.5, "-1 h 30 min"],
+    [-0.001, "0 h 00 min"],
   ])("writes %s hours as %s", (hours, text) => {
     expect(formatClockDuration(hours)).toBe(text);
+  });
+});
+
+describe("isClockDuration", () => {
+  it.each([
+    ["decimal", "h", true],
+    ["integer", "h", true],
+    ["percent", "h", false],
+    ["currency", "h", false],
+    ["decimal", "d", false],
+    ["decimal", null, false],
+  ] as const)("is %s with unit %s: %s", (format, unit, expected) => {
+    expect(isClockDuration(format, unit)).toBe(expected);
   });
 });

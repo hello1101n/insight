@@ -58,9 +58,13 @@ export function formatHoursDuration(hours: number): string {
   return `${sign}${h} ${HOURS_UNIT} ${m} min`;
 }
 
+export function isClockDuration(fmt: MetricFormat, unit?: string | null): boolean {
+  return fmt !== "percent" && fmt !== "currency" && isDurationUnit(unit);
+}
+
 export function formatClockDuration(hours: number): string {
-  const sign = hours < 0 ? "-" : "";
   const totalMinutes = Math.round(Math.abs(hours) * 60);
+  const sign = hours < 0 && totalMinutes > 0 ? "-" : "";
   const h = Math.floor(totalMinutes / 60);
   const m = String(totalMinutes % 60).padStart(2, "0");
   return `${sign}${NF_THOUSANDS.format(h)} ${HOURS_UNIT} ${m} min`;

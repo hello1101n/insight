@@ -9,7 +9,7 @@ import {
   formatClockDuration,
   formatMetricFigure,
   formatMetricValue,
-  isDurationUnit,
+  isClockDuration,
 } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
@@ -219,10 +219,7 @@ export function MetricValue({
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const clock =
-    result.format !== "percent" &&
-    result.format !== "currency" &&
-    isDurationUnit(result.unit);
+  const clock = isClockDuration(result.format, result.unit);
   const text = clock
     ? formatClockDuration(value)
     : formatMetricFigure(value, result.format, result.unit);
