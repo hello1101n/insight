@@ -15,7 +15,7 @@ Services compute every figure and decide what each person sees. The portal shows
 
 ## Shell
 
-- **Rail** (left): Home, Dashboards, Explore, People, Reports, Manage. Only items the viewer may use. Current item marked. Planned items muted. Below: Feedback, Settings.
+- **Rail** (left): Home, Dashboards, Explore, People, Reports, Manage. Only items the viewer may use. Current item marked; picking it again keeps the open page and brings back a hidden pane. Planned items muted. Below: Feedback, Settings.
 - **Pane**: pages inside the selected rail item, in titled groups. Group labels uppercase. Count beside an item where it tells the reader what they will find. Home's pane titled with the product name; others with the rail item's name.
 - **Toolbar**: above content, stays visible on scroll. Holds the period control. Shown on Home, Explore, People, Reports and an open dashboard; not on other Dashboards pages.
 - **Phone**: no rail; one drawer holds rail items and pane; picking a page closes it. Toolbar controls on one row, scrolls sideways.

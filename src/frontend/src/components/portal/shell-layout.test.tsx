@@ -36,6 +36,10 @@ vi.mock("@/lib/portal/use-viewer-is-manager", () => ({
 }));
 
 vi.mock("@/components/org-tree", () => ({ OrgTree: () => <div /> }));
+vi.mock("@/lib/portal/use-person-sections", () => ({
+  usePersonSectionStandings: () => [],
+  useSelectedPersonSection: () => null,
+}));
 vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
@@ -88,6 +92,7 @@ vi.mock("@/components/app-sidebar-footer", () => ({
 }));
 
 import { SidebarProvider, SidebarTrigger } from "@gears-frontx/ui-kit";
+import { setMetricsViewPaneShown } from "@/lib/portal/metrics-view-pane";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { act, renderHook } from "@testing-library/react";
 
@@ -281,6 +286,54 @@ describe("shell layout: narrow (tablet)", () => {
     await user.click(screen.getByRole("button", { name: "People" }));
 
     expect(document.querySelector('[data-state="expanded"]')).not.toBeNull();
+  });
+
+  it("keeps the open page when the rail item it sits under reopens the pane", async () => {
+    const user = userEvent.setup();
+    act(() => portalRouter.reset("/people/p1/team"));
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+    await user.click(screen.getByText("Roster · by role"));
+    expect(document.querySelector('[data-state="collapsed"]')).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "People" }));
+
+    expect(location.result.current).toMatchObject({ zone: "people", item: "employees" });
+    expect(document.querySelector('[data-state="expanded"]')).not.toBeNull();
+  });
+});
+
+describe("shell layout: wide, Metrics view", () => {
+  beforeEach(() => {
+    mocks.layout = "wide";
+    act(() => {
+      setMetricsViewPaneShown(false);
+      portalRouter.reset("/people/p1/team/metrics");
+    });
+  });
+
+  const pane = () => screen.queryByRole("navigation", { name: "Section navigation" });
+
+  it("brings back the pane the view hid, without leaving the view", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+    expect(pane()).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "People" }));
+
+    expect(location.result.current).toMatchObject({ zone: "people", item: "metrics" });
+    expect(pane()).toBeInTheDocument();
+  });
+
+  it("leaves the view by another rail item", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+
+    await user.click(screen.getByRole("button", { name: "Explore" }));
+
+    expect(location.result.current.zone).toBe("directions");
   });
 });
 

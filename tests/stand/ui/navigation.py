@@ -21,7 +21,7 @@ def identify_page(portal: PortalShell, watch: PageWatch, path: tuple[str, ...]) 
 
 def discover_entry(portal: PortalShell, watch: PageWatch, path: tuple[str, ...]) -> NavigationPage:
     try:
-        portal.open_zone(path[0])
+        portal.reopen_zone(path[0])
         if len(path) == 3:
             portal.expand_pane_entry(path[1])
             portal.open_sub_entry(path[1], path[2])
@@ -59,7 +59,7 @@ def verify_entries(
     parents.update(dict.fromkeys(entry.label for entry in entries if entry.expanded is not None))
     for parent in parents:
         with checks.check(f'Open the sub-menu under "{parent}"'):
-            portal.open_zone(zone)
+            portal.reopen_zone(zone)
             portal.expand_pane_entry(parent)
         parent_page = identify_page(portal, watch, (zone, parent))
         if parent not in expected and parent not in known:
