@@ -15,6 +15,6 @@ export function ManageLanding() {
   }
 
   const item = manageLandingItem({ isAdmin, canManagePreviews });
-  if (!item) return <Navigate to="/" replace />;
+  if (!item) return <Navigate to="/" search replace />;
   return <Navigate {...linkTo({ zone: "manage", item })} replace />;
 }
