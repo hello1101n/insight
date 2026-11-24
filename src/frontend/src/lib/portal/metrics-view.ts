@@ -1,5 +1,9 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
+import type {
+  MetricDimensionFilter,
+  MetricDirection,
+  MetricFormat,
+} from "@/api/metric-results-client";
 import { metricDisplayUnit } from "@/lib/format";
 import {
   personDisplayName,
@@ -40,6 +44,10 @@ export const DEFAULT_METRIC_KEYS: readonly string[] = [
   "tasks.closed",
   "ai.active_days",
 ];
+
+export const METRIC_FILTERS: Readonly<Record<string, readonly MetricDimensionFilter[]>> = {
+  "git.pr_comments": [{ dimension: "comment_target", values: ["others"] }],
+};
 
 export function defaultMetricKeys(
   catalogKeys: readonly string[],

@@ -84,6 +84,21 @@ describe("useMetricsViewData", () => {
     expect(req.compare_to).toBeUndefined();
   });
 
+  it("asks for PR comments on other people's pull requests only", async () => {
+    const { result } = renderHook(
+      () => useMetricsViewData(["git.pr_comments", "git.commits"], ["a@x.com"], RANGE),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.has("git.pr_comments")).toBe(true));
+
+    const metrics = mock.mock.calls[0]![0].metrics;
+    expect(metrics.find((m) => m.metric_key === "git.pr_comments")?.filters).toEqual([
+      { dimension: "comment_target", values: ["others"] },
+    ]);
+    expect(metrics.find((m) => m.metric_key === "git.commits")?.filters).toBeUndefined();
+  });
+
   it("asks again for the new period when the period changes", async () => {
     const { result, rerender } = renderHook(
       ({ range }) => useMetricsViewData(["git.commits"], ["a@x.com"], range),
