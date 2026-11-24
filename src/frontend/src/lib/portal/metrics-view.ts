@@ -15,7 +15,7 @@ import {
 } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { byFamily, familyName, familyOf } from "@/lib/reports/families";
-import { LINES_KEY } from "@/lib/portal/metrics-view-combined";
+import { combinedColumn, LINES_KEY } from "@/lib/portal/metrics-view-combined";
 import { runtimeConfig } from "@/lib/runtime-config";
 import type { IdentityPerson } from "@/types/insight";
 
@@ -122,8 +122,11 @@ export function keysWithData(
   entityIds: readonly string[],
 ): string[] {
   return keys.filter((key) => {
-    const result = byKey.get(key);
-    return result != null && entityIds.some((id) => finiteValue(result, id) != null);
+    const sources = combinedColumn(key)?.parts.map((part) => part.metricKey) ?? [key];
+    return sources.some((source) => {
+      const result = byKey.get(source);
+      return result != null && entityIds.some((id) => finiteValue(result, id) != null);
+    });
   });
 }
 

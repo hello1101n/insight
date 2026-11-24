@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue } from "@/lib/portal/metrics-view";
+import { finiteValue, keysWithData } from "@/lib/portal/metrics-view";
 
 import {
   combinedColumn,
@@ -118,5 +118,18 @@ describe("combined Lines column", () => {
     expect(combinedFigure(lines, byKey, "a")).toBe("+90.4 / −5.1");
     expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / —");
     expect(combinedFigure(lines, byKey, "c")).toBeNull();
+  });
+});
+
+describe("combined column visibility", () => {
+  it("keeps Lines when the people in view have only one of its parts", () => {
+    const byKey = withCombinedResults(
+      new Map([
+        ["git.default_branch_lines_added", result("git.default_branch_lines_added", [["a", 1500]])],
+        ["git.default_branch_lines_removed", result("git.default_branch_lines_removed", [["a", null]])],
+      ]),
+    );
+
+    expect(keysWithData([LINES_KEY], byKey, ["a"])).toEqual([LINES_KEY]);
   });
 });
