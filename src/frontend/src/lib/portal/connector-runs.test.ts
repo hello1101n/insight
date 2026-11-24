@@ -126,11 +126,11 @@ describe("connector run state", () => {
   it("uses the observation clock for an open run and the measured duration for a closed one", () => {
     expect(runDuration(run, now)).toBe("3m 0s so far");
     expect(runDuration({ ...run, duration_ms: 45_000 }, now)).toBe(
-      "45.0 s so far"
+      "45s so far"
     );
     expect(
       runDuration({ ...run, status: "failed", duration_ms: 12_000 }, now)
-    ).toBe("12.0 s");
+    ).toBe("12s");
     expect(runDuration({ ...run, status: "succeeded" }, now)).toBe("—");
     expect(runDuration({ ...run, status: "unknown" }, now)).toBe("—");
     expect(runDuration({ ...run, started_at: "garbage" }, now)).toBe("—");

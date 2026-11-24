@@ -329,7 +329,7 @@ describe("an unmeasured value is not a zero", () => {
 
   it("prints a measured zero as zero", () => {
     expect(formatRecords(0)).toBe("0");
-    expect(formatDuration(0)).toBe("0 ms");
+    expect(formatDuration(0)).toBe("0s");
   });
 
   it("prints an unparseable stamp as absence rather than as an epoch", () => {
@@ -337,8 +337,9 @@ describe("an unmeasured value is not a zero", () => {
   });
 
   it("reads durations at the scale they arrive in", () => {
-    expect(formatDuration(900)).toBe("900 ms");
-    expect(formatDuration(1_500)).toBe("1.5 s");
+    expect(formatDuration(900)).toBe("<1s");
+    expect(formatDuration(1_500)).toBe("2s");
+    expect(formatDuration(22_049)).toBe("22s");
     expect(formatDuration(90_000)).toBe("1m 30s");
     expect(formatDuration(3_930_000)).toBe("1h 5m");
   });

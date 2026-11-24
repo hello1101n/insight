@@ -302,10 +302,11 @@ export function formatDuration(durationMs: number | null | undefined): string {
   if (durationMs == null || !Number.isFinite(durationMs) || durationMs < 0) {
     return UNMEASURED;
   }
-  if (durationMs < 1_000) return `${Math.round(durationMs)} ms`;
+  if (durationMs === 0) return "0s";
+  if (durationMs < 1_000) return "<1s";
 
   const totalSeconds = Math.round(durationMs / 1_000);
-  if (totalSeconds < 60) return `${(durationMs / 1_000).toFixed(1)} s`;
+  if (totalSeconds < 60) return `${totalSeconds}s`;
 
   const totalMinutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
