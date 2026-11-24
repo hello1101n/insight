@@ -708,6 +708,27 @@ describe("MetricsView", () => {
     expect(screen.getByRole("checkbox", { name: "Lines" })).not.toBeChecked();
   });
 
+  it("names AI extra cost plainly, in the table and in the picker", async () => {
+    const user = userEvent.setup();
+    const key = "ai.daily_approximate_extra_usage_cost";
+    mocks.definitions.push(
+      definition(key, "AI extra cost, spread by day", { format: "currency" }),
+    );
+    mocks.data.byKey.set(
+      key,
+      result(key, "AI extra cost, spread by day", [[pid("b"), 12]], { format: "currency" }),
+    );
+    act(() => portalRouter.set({ metrics: key }));
+    render(<MetricsView />);
+
+    expect(screen.getByRole("columnheader", { name: "AI extra cost" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 4" }));
+
+    expect(screen.getByRole("checkbox", { name: "AI extra cost" })).toBeChecked();
+    expect(screen.queryByText(/spread by day/)).not.toBeInTheDocument();
+  });
+
   it("opens on the pick saved in this browser when the link names no metrics", () => {
     window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
     act(() => portalRouter.set({ metrics: undefined }));

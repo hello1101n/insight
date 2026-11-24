@@ -125,6 +125,30 @@ export function metricsViewCatalog(
   return byFamily(offered).flatMap((family) => family.metrics);
 }
 
+const PAGE_LABELS: Readonly<Record<string, string>> = {
+  "ai.daily_approximate_extra_usage_cost": "AI extra cost",
+};
+
+export function withPageLabels<T extends { metric_key: string; label: string }>(
+  items: readonly T[],
+): T[] {
+  return items.map((item) => {
+    const label = PAGE_LABELS[item.metric_key];
+    return label ? { ...item, label, short_label: null } : item;
+  });
+}
+
+export function withPageResultLabels(
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+): Map<string, NormalizedMetricResult> {
+  return new Map(
+    [...byKey].map(([key, result]) => {
+      const label = PAGE_LABELS[key];
+      return [key, label ? { ...result, label, short_label: undefined } : result];
+    }),
+  );
+}
+
 export function withLinesColumn(catalog: readonly MetricDefinition[]): MetricDefinition[] {
   const at = catalog.findIndex((metric) => metric.metric_key === LINES_ADDED_KEY);
   const added = catalog[at];
