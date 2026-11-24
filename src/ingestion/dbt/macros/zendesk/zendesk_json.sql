@@ -15,8 +15,8 @@ parseDateTime64BestEffortOrNull(JSONExtractString({{ json }}, {{ key }}), 3, 'UT
 {%- macro zendesk_bronze(table) -%}
 (
     SELECT
-        tenant_id,
-        source_id                    AS insight_source_id,
+        coalesce(tenant_id, '')      AS tenant_id,
+        coalesce(source_id, '')      AS insight_source_id,
         coalesce(payload_json, '{}') AS payload,
         _airbyte_extracted_at        AS collected_at
     FROM {{ source('bronze_zendesk', table) }} FINAL
