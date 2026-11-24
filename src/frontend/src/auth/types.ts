@@ -8,7 +8,6 @@ export type Session = {
   csrfToken: string;
   expiresAt: number | null;
   refreshAt: number | null;
-  experimentsEnabled: boolean;
   impersonatorEmail: string | null;
 };
 

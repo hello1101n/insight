@@ -26,7 +26,6 @@ import {
 } from "@/lib/portal/home-subject";
 import { resolveText } from "@/i18n/localized-text";
 import { useIsAdmin } from "@/queries/identity-me";
-import { usePreviewsGate } from "@/queries/previews";
 
 export function ContextPane() {
   const nav = useZoneNav();
@@ -101,8 +100,5 @@ function homeGroupsFor(subject: HomeSubject) {
 
 function ManageNav({ active }: { active: string | null }) {
   const { isAdmin } = useIsAdmin();
-  const canManagePreviews = usePreviewsGate();
-  return (
-    <GroupsNav groups={manageGroupsFor({ isAdmin, canManagePreviews })} active={active} />
-  );
+  return <GroupsNav groups={manageGroupsFor({ isAdmin })} active={active} />;
 }

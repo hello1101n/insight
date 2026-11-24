@@ -12,7 +12,6 @@ import {
   Filter,
   Database,
   Fingerprint,
-  FlaskConical,
   GitPullRequest,
   LayoutGrid,
   Layers,
@@ -171,7 +170,6 @@ export interface PaneItem {
   badge?: { text: string; tone: "warn" | "new" | "error" };
   readiness?: Readiness;
   adminOnly?: boolean;
-  previewsGated?: boolean;
   unbuilt?: boolean;
 }
 
@@ -327,7 +325,6 @@ export function peopleItemsFor(
 
 export interface ManageGates {
   isAdmin: boolean;
-  canManagePreviews: boolean;
 }
 
 export function manageGroupsFor(
@@ -340,7 +337,6 @@ export function manageGroupsFor(
       .filter(
         (item) =>
           (!item.adminOnly || gates.isAdmin) &&
-          (!item.previewsGated || gates.canManagePreviews) &&
           !itemHidden("manage", item.id, policy),
       )
       .map((item) => withConfigReadiness("manage", item, policy)),
@@ -389,7 +385,6 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
     label: { key: "nav.groups.platform" },
     items: [
       { id: "ingestion", label: { key: "nav.items.ingestion" }, icon: Database, adminOnly: true },
-      { id: "previews", label: { key: "nav.items.previews" }, icon: FlaskConical, previewsGated: true },
       { id: "ai-assistant", label: { key: "nav.items.ai_assistant" }, icon: Sparkles },
       { id: "whats-new", label: { key: "whats_new.nav_label" }, icon: Megaphone },
       { id: "platform-usage", label: { key: "nav.items.platform_usage" }, icon: Activity, adminOnly: true },
@@ -423,5 +418,5 @@ export function resolveZoneItem(
   const live = (i: PaneItem) => !itemPlanned(zoneId, i.id, policy);
   const items = zoneItems(zoneId);
   if (item && items.some((i) => i.id === item && shown(i))) return item;
-  return items.find((i) => live(i) && shown(i) && !i.adminOnly && !i.previewsGated)?.id ?? null;
+  return items.find((i) => live(i) && shown(i) && !i.adminOnly)?.id ?? null;
 }
