@@ -1,11 +1,3 @@
-/**
- * The wire contract for the ingestion lens.
- *
- * The response bodies here are the shapes the endpoint really returns —
- * `series=total` bands under `all`, the 1s grain stringifies buckets WITH
- * milliseconds and the 15m grain without — so a change on either side of the
- * boundary shows up as a failure rather than an empty chart.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/api/fetch-with-auth", () => ({ fetchWithAuth: vi.fn() }));
@@ -25,7 +17,6 @@ function response(body: unknown, init?: { ok?: boolean; status?: number }): Resp
   } as unknown as Response;
 }
 
-/** A `series=connector` body in the exact shape the endpoint returns. */
 const ORG_WIDE = {
   grain: "15m",
   series: "connector",
@@ -44,9 +35,6 @@ beforeEach(() => {
 
 describe("intensityParams", () => {
   it("sends only the grain when nothing else is pinned", () => {
-    // Omitting the window is deliberate: the server's per-grain default IS the
-    // window the live charts want, and an absent bound keeps the query key
-    // stable while they refetch.
     expect(intensityParams({ grain: "1s" }, 0).toString()).toBe("grain=1s");
   });
 
@@ -55,7 +43,6 @@ describe("intensityParams", () => {
     const params = intensityParams({ grain: "15m", series: "total", lookbackDays: 30 }, at);
     expect(params.get("series")).toBe("total");
     expect(params.get("from")).toBe("2026-07-27T00:00:00.000Z");
-    // No `to`: the server's "now" is the honest upper bound, not the browser's.
     expect(params.get("to")).toBeNull();
   });
 
@@ -68,8 +55,6 @@ describe("intensityParams", () => {
   });
 
   it("omits a null scope rather than sending an empty one", () => {
-    // The overview passes scope: null; an empty `scope=` would be a malformed
-    // value the endpoint refuses with a 400.
     expect(intensityParams({ grain: "15m", scope: null }, 0).has("scope")).toBe(false);
   });
 
@@ -131,8 +116,6 @@ describe("getIngestionIntensity", () => {
   });
 
   it("raises the refusal so the surface can report it", async () => {
-    // The admin gate answers 403 to anyone without the grant, and the lens has
-    // to show that rather than an empty chart.
     mockFetch.mockResolvedValueOnce(
       response({ status: 403, detail: "admin role required" }, { ok: false, status: 403 }),
     );

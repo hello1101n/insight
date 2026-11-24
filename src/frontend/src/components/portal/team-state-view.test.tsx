@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Team-state dashboard semantics: honest KPI roll-ups (totals for counters,
- * medians for ratios), all-empty columns dropped instead of zero-painted,
- * attention wired to the roster, and the org-scope gate in front of it all.
- * Data arrives via the same stubbed query boundary as the real view.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -47,8 +41,6 @@ vi.mock("@/lib/portal/use-cohort-label", () => ({
 vi.mock("@/queries/ic-dashboard", () => ({
   useIcPerson: () => ({ data: mocks.tree, isPending: false, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
-// `useOrgScope` reads the deployment's visibility policy, and its flat branch
-// reads the roster. This suite is about the view, so both answer statically.
 vi.mock("@/queries/identity-me", () => ({
   useVisibilityPolicy: () => ({
     policy: "org_chart",
@@ -94,7 +86,6 @@ function metric(
   } as unknown as NormalizedMetricResult;
 }
 
-// Roster entity ids: person UUIDs, the same key the metric grid returns.
 const LABELS = ["d", "a", "c", "b"];
 const MEMBER_LABELS = ["boss", ...LABELS];
 const MEMBER_IDS = MEMBER_LABELS.map(pid);
@@ -107,13 +98,11 @@ beforeEach(() => {
   mocks.grid.isError = false;
   mocks.grid.byKey = new Map([
     ["git.default_branch_prs_merged", metric("git.default_branch_prs_merged", [[pid("boss"), 50], [pid("a"), 10], [pid("b"), 20], [pid("c"), 30], [pid("d"), 40]], { label: "PRs merged" })],
-    // a ratio metric: must roll up as MEDIAN, not a summed percentage
     ["collab.focus_time_pct", metric("collab.focus_time_pct", [[pid("boss"), 80], [pid("a"), 40], [pid("b"), 50], [pid("c"), 60], [pid("d"), 70]], {
       computation: "avg",
       label: "Time Outside Meetings",
       format: "percent",
     } as never)],
-    // ingested nowhere → its column must disappear, not paint zeros
     ["tasks.closed", metric("tasks.closed", MEMBER_IDS.map((id) => [id, null]), { label: "Tasks closed" })],
   ]);
   mocks.grid.previousByKey = new Map();
@@ -238,7 +227,6 @@ describe("TeamStateView", () => {
     render(<TeamStateView />);
     expect(screen.getByText("150")).toBeInTheDocument();
     expect(screen.getAllByText("team total").length).toBeGreaterThan(0);
-    // median of 40,50,60,70,80 = 60%, NOT the 300% a sum would fabricate
     expect(screen.getAllByText("60%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("team median").length).toBeGreaterThan(0);
   });

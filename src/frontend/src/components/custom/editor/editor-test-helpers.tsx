@@ -15,7 +15,6 @@ export function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
-/** Every catalogue answers empty, every dataset declares nothing, and no definition is found, unless a test says otherwise. */
 export function mockCatalogues(): void {
   const none = { items: [], total: 0 };
   vi.mocked(customClient.fetchMetrics).mockResolvedValue(none);
@@ -34,7 +33,6 @@ export function mockCatalogues(): void {
   }));
 }
 
-/** A 400 as the service sends it: places in the document, each with a reason. */
 export function invalid(
   violations: { field?: string; description: string }[]
 ): CustomApiError {
@@ -49,7 +47,6 @@ export function invalid(
   });
 }
 
-/** Replaces the document's text with what is given, as a person pasting it would. */
 export async function writeText(
   user: ReturnType<typeof userEvent.setup>,
   text: string

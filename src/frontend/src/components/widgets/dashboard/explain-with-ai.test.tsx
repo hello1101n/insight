@@ -1,7 +1,3 @@
-/**
- * The sparkle is gated twice over: the deployment must offer explanations and
- * the reader must have stored a key. It draws nothing at all otherwise.
- */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -152,7 +148,6 @@ describe("ExplainWithAi", () => {
     const view = render(<ExplainWithAi snapshot={SNAPSHOT} />);
     await user.click(screen.getByLabelText("Explain Tasks closed with AI"));
 
-    // The call is in flight only after the press the popover opened on.
     mocks.explain.isPending = true;
     view.rerender(<ExplainWithAi snapshot={SNAPSHOT} />);
 

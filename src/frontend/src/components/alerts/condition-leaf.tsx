@@ -26,8 +26,6 @@ interface Option {
   disabled?: boolean;
 }
 
-// INVARIANT: a value the list does not offer is shown as an option of its
-// own, so a draft written as JSON is drawn as it stands, never rewritten.
 export function Choice({
   id,
   label,
@@ -74,8 +72,6 @@ function shownNumber(value: unknown): string {
     : "";
 }
 
-// INVARIANT: what is typed is kept while it still means the value held, so
-// "1.50" is not rewritten to "1.5" mid-word.
 export function NumberInput({
   id,
   label,

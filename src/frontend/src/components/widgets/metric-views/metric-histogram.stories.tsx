@@ -1,12 +1,3 @@
-/**
- * Stories + browser component tests for `<MetricHistogram>`.
- *
- * These assertions read box geometry, which jsdom never lays out — they only
- * mean anything in the browser project.
- *
- * See docs/testing/storybook-component-tests.md.
- */
-
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn } from "storybook/test";
 
@@ -24,10 +15,6 @@ const BINS = [
   { lo: 30, hi: 40, count: 1 },
 ];
 
-/**
- * Narrowing the 749 value stops the headline reaching the button, and the
- * overlap these tests cover disappears.
- */
 function drilldownMetric() {
   const result: MetricResult = {
     metric_key: "git.pr_cycle_time_h",
@@ -90,10 +77,6 @@ type Story = StoryObj<typeof MetricHistogram>;
 
 export const Default: Story = {};
 
-/**
- * Queries alone cannot catch this: both nodes stay present and readable while
- * one is drawn over the other.
- */
 function expectHeadlineClearOfActions(canvasElement: HTMLElement) {
   const button = canvasElement.querySelector<HTMLElement>(
     '[aria-label^="More actions for"]',
@@ -105,8 +88,6 @@ function expectHeadlineClearOfActions(canvasElement: HTMLElement) {
   expect(button, "the card renders its actions button").not.toBeNull();
   expect(headline, "the card renders its median headline").not.toBeUndefined();
 
-  // A flex or grid headline draws no box for the whitespace between the label
-  // and the value, while textContent still reads "Median 749 hours".
   const label = document.createRange();
   label.selectNodeContents(headline!.firstChild!);
   const value = headline!.querySelector("span")!.getBoundingClientRect();
@@ -139,7 +120,6 @@ function expectHeadlineClearOfActions(canvasElement: HTMLElement) {
   ).toBeLessThanOrEqual(1);
 }
 
-/** The ⋯ column takes its width from the subtitle's line. */
 function expectSubtitleOnOneLine(canvasElement: HTMLElement) {
   const subtitle = canvasElement.querySelector<HTMLElement>(
     "span.truncate + span",
@@ -152,7 +132,6 @@ function expectSubtitleOnOneLine(canvasElement: HTMLElement) {
   ).toBe(1);
 }
 
-/** Measured card width in the three-up grid at a 1280 px viewport. */
 export const TestHeadlineClearOfActionsWide: Story = {
   tags: ["test"],
   decorators: [
@@ -168,7 +147,6 @@ export const TestHeadlineClearOfActionsWide: Story = {
   },
 };
 
-/** Measured card width in the single-column stack at a 390 px viewport. */
 export const TestHeadlineClearOfActionsNarrow: Story = {
   tags: ["test"],
   decorators: [

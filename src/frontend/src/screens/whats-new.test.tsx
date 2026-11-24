@@ -7,8 +7,6 @@ import "@/i18n";
 import { TooltipProvider } from "@gears-frontx/ui-kit";
 import { WhatsNewBody } from "@/screens/whats-new";
 
-// Section names now repeat across the release and Coming next, so assertions
-// scope themselves to the block whose header they mean.
 function sectionFor(label: string): HTMLElement {
   const section = screen.getByText(label).closest("section");
   if (!section) throw new Error(`no section headed "${label}"`);
@@ -48,8 +46,6 @@ describe("WhatsNewBody", () => {
     ]) {
       expect(release.getByRole("heading", { name: title })).toBeInTheDocument();
     }
-    // The section names the area, so entries no longer repeat it as a category
-    // label of their own.
     expect(screen.queryByText("Git output")).not.toBeInTheDocument();
   });
 

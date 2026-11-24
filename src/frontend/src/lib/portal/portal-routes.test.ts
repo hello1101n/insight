@@ -5,7 +5,6 @@ import { DIRECTIONS, MANAGE_ITEMS, PEOPLE_ITEMS, ZONE_SECTIONS, lensSlug } from 
 
 import { locationOf, pathOf, type NavTarget } from "./portal-routes";
 
-/** Where a link lands, read back the way the matched route reads it. */
 function roundTrip(target: NavTarget) {
   const { to, params } = pathOf(target);
   const zone = target.zone;

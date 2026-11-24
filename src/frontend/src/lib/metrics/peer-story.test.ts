@@ -65,8 +65,6 @@ describe("buildPeerStoryEntries", () => {
   });
 
   it("keeps unmeasured people neutral instead of bottom-branding them", () => {
-    // Period views zero-fill the own total, but a null peer target_value
-    // means the person has no observations — no standing, not "bottom 25%".
     const unmeasured = metric("m.win", 0);
     const peerView = unmeasured.views[1];
     if (peerView?.view === "peer" && peerView.values[0]) {
@@ -124,10 +122,6 @@ describe("partitionPeerStory", () => {
   });
 });
 
-// When the cohort median is 0 the percentage gap is undefined, so severity
-// falls back to gap / peerSpread. This exercises the IQR and min–max range
-// branches plus the flat-pool gate (a zero-spread cohort ranks nobody, so it
-// carries no severity at all).
 describe("peerSpread fallback (median 0)", () => {
   function metricWithStats(
     key: string,
@@ -161,9 +155,9 @@ describe("peerSpread fallback (median 0)", () => {
 
   it("scales severity by the widest available spread", () => {
     const byKey = normalizeMetricResults([
-      metricWithStats("iqr", { p25: -5, p75: 5, min: -8, max: 8 }), // spread 10
-      metricWithStats("range", { p25: 0, p75: 0, min: -10, max: 10 }), // spread 20
-      metricWithStats("constant", { p25: 0, p75: 0, min: 0, max: 0 }), // flat
+      metricWithStats("iqr", { p25: -5, p75: 5, min: -8, max: 8 }),
+      metricWithStats("range", { p25: 0, p75: 0, min: -10, max: 10 }),
+      metricWithStats("constant", { p25: 0, p75: 0, min: 0, max: 0 }),
     ]);
     const byKeyMap = new Map(
       buildPeerStoryEntries(collection, byKey, "me@x.com").map((e) => [
@@ -171,8 +165,6 @@ describe("peerSpread fallback (median 0)", () => {
         e.severity,
       ]),
     );
-    // gap is 5 for both spread pools; severity = 5 / spread. A flat pool
-    // (zero spread) is ineligible for ranking — severity 0, never an outlier.
     expect(byKeyMap.get("iqr")).toBeCloseTo(0.5);
     expect(byKeyMap.get("range")).toBeCloseTo(0.25);
     expect(byKeyMap.get("constant")).toBe(0);

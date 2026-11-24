@@ -34,7 +34,6 @@ interface PeerStoryProps {
   className?: string;
 }
 
-/** Null when the gap collapses at display precision — render "at the median". */
 function formatGap(entry: PeerStoryEntry): string | null {
   return formatGapMagnitude({
     value: entry.value,
@@ -200,10 +199,6 @@ function SideCard({
             ) : null}
           </div>
           <div>
-            {/* Mini-hero: value with the gap phrase beside it, rank as the
-                footer — the hero's facts at side-card size (minus the band,
-                which outgrows these cards), so chips are the only
-                tooltip-gated tier. */}
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className={cn(TEXT_FIGURE, PEER_TEXT[entry.status])}>
                 {formatMetricFigure(entry.value, entry.format, entry.unit)}

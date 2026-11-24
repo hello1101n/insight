@@ -240,7 +240,6 @@ describe("MetricEvidenceDialogProvider", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "open nobody" }));
-    // A dialog with nothing in it answers nothing.
     expect(screen.getByText("closed")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "open people" }));
@@ -248,7 +247,6 @@ describe("MetricEvidenceDialogProvider", () => {
       screen.getByText("people:Commits · 0–50 commits per person")
     ).toBeInTheDocument();
 
-    // A metric switch belongs to the records body; it must not disturb a list.
     await user.click(screen.getByRole("button", { name: "select wiki" }));
     expect(
       screen.getByText("people:Commits · 0–50 commits per person")

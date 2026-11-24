@@ -18,13 +18,6 @@ import { fetchWithAuth } from "@/api/fetch-with-auth";
 
 export type * from "@/api/alerts-types";
 
-/**
- * An alert's id as a path segment.
- *
- * INVARIANT: an empty id is never a request. It would address the collection
- * with a trailing slash, which no route serves, and the unrouted 401 reads as a
- * session that ended.
- */
 function alertPath(id: string): string {
   if (id === "") {
     throw new CustomApiError(400, { detail: "An alert id is required." });
@@ -67,7 +60,6 @@ export async function createAlert(draft: AlertDraft): Promise<Alert> {
   return readJson<Alert>(res);
 }
 
-/** Runs the rule's metric now and says what a check would find, saving nothing. */
 export async function previewAlert(
   request: AlertPreviewRequest
 ): Promise<AlertPreview> {
@@ -79,12 +71,6 @@ export async function previewAlert(
   return readJson<AlertPreview>(res);
 }
 
-/**
- * Replaces an alert at the revision the draft expects.
- *
- * Refused with 409 when the alert has moved on since it was read, so a
- * change made elsewhere is never silently overwritten.
- */
 export async function replaceAlert(
   id: string,
   draft: AlertDraft & { expected_revision: number }
@@ -113,7 +99,6 @@ export async function setAlertEnabled(
   return readJson<Alert>(res);
 }
 
-/** Removes an alert, with its schedule and every notification it owed. */
 export async function deleteAlert(id: string): Promise<void> {
   const res = await fetchWithAuth(alertPath(id), { method: "DELETE" });
   await ensureOk(res);

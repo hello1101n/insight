@@ -27,7 +27,6 @@ export interface CustomPieChartProps {
   onPointClick?: () => void;
 }
 
-/** A share of a total: one slice per row, painted round the kit's palette. */
 export function CustomPieChart({
   result,
   label,

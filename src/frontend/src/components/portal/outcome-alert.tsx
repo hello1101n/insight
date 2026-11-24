@@ -1,11 +1,3 @@
-/**
- * The server's answer to a correction, verbatim — three counters, never a bare
- * "done".
- *
- * Shown where a verb did NOT settle everything it named: those accounts kept
- * their bindings, so the operator still has a decision to take and needs the
- * counters to see it. The toast beside it comes from `useCorrectionReport`.
- */
 import { useTranslation } from "react-i18next";
 
 import type { CorrectionResponse } from "@/api/identity-client";

@@ -1,11 +1,3 @@
-/**
- * Vitest setup. Loaded once per test process per `vitest.config.ts`.
- *
- * Brings in `@testing-library/jest-dom` matchers so component tests can use
- * `expect(node).toBeInTheDocument()` and friends. Other global setup goes
- * here as it accrues.
- */
-
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
@@ -16,14 +8,9 @@ import {
 } from "./intersection-observer";
 
 installIntersectionObserver();
-// The stub keeps "the end is in view" across observers, so it has to be reset
-// between tests or one case that scrolled leaks into the next.
 afterEach(scrollEndOutOfView);
 
-// WORKAROUND: jsdom in vitest's worker pool can race against module init,
-// so code that reads `window.localStorage` on import (the i18n language
-// detector, `portal-store.ts`) or a test's own setup can see it undefined.
-// An in-memory Storage shim stands in before any user module loads.
+// WORKAROUND: jsdom in vitest's worker pool can leave `window.localStorage` undefined at import time.
 if (typeof window !== "undefined" && !window.localStorage) {
   const store = new Map<string, string>();
   const shim: Storage = {

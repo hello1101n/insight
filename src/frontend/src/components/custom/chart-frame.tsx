@@ -19,12 +19,6 @@ import {
 } from "@/components/custom/chart-format";
 import { cn } from "@/lib/utils";
 
-/**
- * The chrome every chart shares: the kit's container, its palette, its
- * tooltip, and axes that print what they draw rather than the raw column.
- *
- * Each kind contributes only its series.
- */
 export function ChartFrame({
   config,
   testId,
@@ -48,12 +42,6 @@ export function ChartFrame({
   );
 }
 
-/**
- * The x and y axes for a series chart, plus the grid and the tooltip.
- *
- * A day column arrives as `2024-11-23 00:00:00.000` and a sha as 40
- * characters; printed raw they crowd the axis until it is unreadable.
- */
 export function SeriesAxes({
   x,
   categories,
@@ -61,7 +49,6 @@ export function SeriesAxes({
 }: {
   x: string;
   categories: unknown[];
-  /** What the y values are counted in — `%` for a rate. */
   unit?: string;
 }) {
   const withYear = spansYears(categories);

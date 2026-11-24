@@ -3,13 +3,6 @@ import { Search } from "lucide-react";
 import { Input } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 
-/**
- * A search box over a catalogue.
- *
- * The service matches the stored body as well as the name, so a table or a
- * column finds every definition that reads it — which is the question a
- * catalogue of a few hundred is actually asked.
- */
 export function DefinitionSearch({
   label,
   value,

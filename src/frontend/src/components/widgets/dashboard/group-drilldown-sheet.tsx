@@ -30,7 +30,6 @@ import {
   useLocalStorageState,
 } from "@/hooks/use-local-storage-state";
 
-/** Data target for a metrics-backed group's drilldown body. */
 export type MetricDrilldownTarget =
   | {
       kind: "person";
@@ -141,10 +140,6 @@ function DrilldownPanel({
             entityId={metricTarget.entityId}
             range={range}
           >
-            {/* A drilldown opened from a card is answering "how do I
-                compare", so the standing follows the composition here. The
-                section screen reached from the navigation answers a different
-                question and puts the work itself in this slot. */}
             <PeerStory
               entries={buildPeerStoryEntries(
                 def.collection,

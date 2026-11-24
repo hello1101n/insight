@@ -24,7 +24,6 @@ export const Route = createFileRoute("/_shell/dashboards/metrics/$name")({
   component: MetricPage,
 });
 
-/** The windows a look may run over: the board's presets, without all time, which is the run with no window. */
 const WINDOWS = RANGE_PRESETS.filter(({ token }) => token !== "inf");
 
 function metricIdFromPath(pathname: string): string {
@@ -101,7 +100,6 @@ function MetricPage() {
   );
 }
 
-/** The metric run here and now, over a window the reader picks. */
 function Run({ id, windowed }: { id: string; windowed: boolean }) {
   const [range, setRange] = useState<string | undefined>(undefined);
   const result = useQuery(

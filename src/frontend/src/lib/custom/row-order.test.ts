@@ -43,7 +43,6 @@ describe("ordered", () => {
     expect(rows.map((row) => row[0])).toEqual(["b", "a", "c"]);
   });
 
-  // A row with nothing in the column answers no question, either way round.
   it("keeps rows with no value in that column last, whichever way it points", () => {
     const sparse = [[1], [null], [3]];
 

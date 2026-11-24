@@ -20,7 +20,6 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { TEXT_TITLE } from "@/lib/type-scale";
 
-/** A catalogue page: every definition of one kind, a card each. */
 export function DefinitionList<T extends { id: string }>({
   "data-testid": testId,
   title,
@@ -40,15 +39,12 @@ export function DefinitionList<T extends { id: string }>({
   items: T[] | undefined;
   isLoading: boolean;
   isError: boolean;
-  /** What the service said when it refused, where it said something. */
   errorLabel?: string;
   onRetry: () => void;
-  /** What an empty catalogue shows before anything is searched for. */
   empty: { icon: LucideIcon; title: string; description?: string };
   renderRow: (item: T) => ReactNode;
   search?: { label: string; value: string; onChange: (needle: string) => void };
   paging?: Paging;
-  /** What starts a new one of this kind, where one may be written by hand. */
   create?: ReactNode;
 }) {
   return (

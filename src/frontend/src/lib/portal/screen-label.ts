@@ -123,7 +123,6 @@ export function screenLabel(path: string): string {
       return under(zone("custom"), customLabel(rest) || undefined);
     case "portal":
     case "ic":
-      // INVARIANT: usage rows recorded before pages had paths of their own still name screens this way.
       return legacyScreenLabel(path);
     default:
       return path;

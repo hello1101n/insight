@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Hook-level tests for the small portal hooks that glue viewer identity,
- * router state and the portal store together: useNavLocation,
- * useViewerIsManager, usePersonCohort and the useOrgScope wrapper.
- * Identity/auth/router dependencies are stubbed at the module boundary;
- * assertions are about the derived semantics, not the wiring.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityPerson } from "@/types/insight";
 import { portalRouter } from "@/test/portal-router";
 
-// Person ids are canonical UUIDs since the identity cutover (see
-// `lib/metrics/entity.ts`); the fixtures use real UUID shapes so a test can
-// never pass on a value the route guard and the metrics API would reject.
 const BOSS = "11111111-1111-4111-8111-111111111111";
 const A = "aaaaaaaa-1111-4111-8111-111111111111";
 const B = "bbbbbbbb-1111-4111-8111-111111111111";
@@ -47,8 +37,6 @@ vi.mock("@/auth", () => ({
   useViewer: () => ({ email: "viewer@x", personId: mocks.personId }),
 }));
 vi.mock("@/queries/ic-dashboard", () => ({ useIcPerson: () => mocks.ic }));
-// `useOrgScope` reads the deployment's visibility policy, and its flat branch
-// reads the roster. This suite is about the view, so both answer statically.
 vi.mock("@/queries/identity-me", () => ({
   useVisibilityPolicy: () => ({
     policy: "org_chart",
@@ -59,8 +47,6 @@ vi.mock("@/queries/identity-me", () => ({
 vi.mock("@/queries/visible-roster", () => ({
   useVisibleRoster: () => mocks.roster,
 }));
-// Only the request is stubbed; `useMetricDefinitionsResponse` itself runs, so
-// a cohort built from an attribute the catalog does not offer fails here.
 vi.mock("@/api/metric-definitions-client", () => ({
   listMetricDefinitions: () => Promise.resolve(mocks.definitions),
 }));
@@ -206,7 +192,6 @@ describe("usePortalSlice", () => {
 });
 
 describe("usePersonCohort", () => {
-  /** A real query client, so the catalog query runs rather than being faked. */
   const cohortOf = (id: string) =>
     renderHook(() => usePersonCohort(id), {
       wrapper: ({ children }) => (
@@ -231,9 +216,6 @@ describe("usePersonCohort", () => {
   });
 
   it("drops a slice the catalog does not offer, rather than comparing by it", async () => {
-    // The control falls back to "Team (all)" when the options lose a
-    // dimension. If the cohort kept building from the stored value, the
-    // screen would show one thing and compare by another.
     mocks.definitions = {
       metrics: [],
       comparison_attributes: [{ id: "job_title", label: "Title" }],

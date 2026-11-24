@@ -15,25 +15,6 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 
-/**
- * Everything else the section measures, named and valued.
- *
- * A section shows a few metrics closely, and the rest of its collection would
- * otherwise be invisible — a person could not find out that the thing was
- * measured at all, let alone what it read. The list that used to carry them
- * was folded behind "supporting and on-par metrics", which sorted them by
- * their standing against a cohort: a reader looking for emails sent had to
- * know it was unremarkable this period in order to guess where it went.
- *
- * So: no ranking, no fold, alphabetical order, the value, and the pool's middle.
- *
- * Only rows that read. A metric holding nothing for this person in this
- * period gives the reader nothing to act on and costs them a line to discover
- * that; a column of dashes is the fastest way to teach someone to stop
- * reading a list. Why a metric is silent — a source nobody wired, or a period
- * this person did none of it — is a question about the section, and belongs
- * once at the top rather than nineteen times down its body.
- */
 export function SectionMetricIndex({
   collection,
   byKey,
@@ -43,25 +24,13 @@ export function SectionMetricIndex({
   collection: MetricCollectionConfig;
   byKey: Map<string, NormalizedMetricResult>;
   entityId: string;
-  /** Keys already given their own block above. */
   shown: ReadonlySet<string>;
 }) {
-  // Alphabetical, because the only thing a reader does with this list is look
-  // something up. Collection order is the order the metrics were declared in
-  // and means nothing on screen; ordering by value or by standing would rank
-  // them, which is the judgment this section deliberately withholds — and
-  // would also make a named metric impossible to find without reading all of
-  // them.
   const rest = collection.metrics
     .flatMap((m) => {
       if (shown.has(m.key)) return [];
       const metric = byKey.get(m.key);
       if (!metric) return [];
-      // A row that reads "—" against "median —" tells the reader nothing they
-      // can use and costs them a line to find that out. Whether the silence
-      // is a missing connector or a period this person did none of it is a
-      // question about the section, answered once at the top, not nineteen
-      // times down a list.
       return forEntity(metric, entityId).value == null ? [] : [metric];
     })
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -74,18 +43,6 @@ export function SectionMetricIndex({
         Also measured here
       </h2>
       {leaveLabel ? <p className={TEXT_LABEL}>{leaveLabel}</p> : null}
-      {/* One column, whatever the width. Side-by-side columns of aligned
-          names and numbers read as a table — the eye takes the row first — so
-          an alphabet running down each column is invisible, and the list
-          looks like a heap however carefully it was sorted. Vertical space at
-          the very bottom of a page is the cheapest thing here. */}
-      {/* The axis middle, drawn once behind every mark. Per-row ticks would
-          break at each row's padding and read as a dotted column; the whole
-          point is an unbroken line for the ordinary readings to disappear
-          into. */}
-      {/* A container query, not a viewport one: this list is as narrow as
-          whatever holds it, which on a wide screen can still be a drilldown
-          pane. */}
       <dl className="@container relative pt-2">
         <span
           aria-hidden
@@ -100,13 +57,6 @@ export function SectionMetricIndex({
             <dt className={cn("min-w-0 truncate", TEXT_NAME)}>
               <MetricName metric={metric} truncate />
             </dt>
-            {/* Layout only. Putting the label role on the container greyed
-                the person's own value along with its median, so the subject of
-                the row and the context around it read the same — which is the
-                distinction this scale exists to make. */}
-            {/* INVARIANT: 26rem is the readings' own 368px (128 + 112 + the
-                mark's 112, plus two gaps) with a name floor on top — the fixed
-                columns come back only where they fit. */}
             <dd className="ms-auto flex min-w-0 flex-wrap items-baseline justify-end gap-2 tabular-nums">
               <span className={cn("w-auto text-right @min-[26rem]:w-32", TEXT_BODY)}>
                 {formatMetricValue(
@@ -115,17 +65,9 @@ export function SectionMetricIndex({
                   metric.unit
                 )}
               </span>
-              {/* The pool's middle, so a row is readable without opening
-                  anything. Uncoloured: a list of thirty numbers lit up by
-                  quartile is a scoreboard, and the reader did not ask to be
-                  scored on every one of them. */}
               <span className={cn("w-auto text-right @min-[26rem]:w-28", TEXT_LABEL)}>
                 {metricComparisons(metric, null, entityId).median ?? ""}
               </span>
-              {/* And how far off that middle, on the axis every row shares.
-                  The number answers "what do the others have"; the mark
-                  answers "how unlike them am I", which is the question a
-                  reader cannot do in their head nineteen times. */}
               <PeerMark
                 standing={derivePeerStanding(
                   metric.direction,

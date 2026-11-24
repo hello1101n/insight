@@ -1,9 +1,3 @@
-/**
- * Component coverage for `<PeriodSelectorBar>`: period tab switching, the
- * custom-range trigger label, and the calendar popover's Apply / Cancel /
- * Clear actions. A fixed custom range keeps date labels deterministic.
- */
-
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,7 +48,6 @@ describe("<PeriodSelectorBar>", () => {
     async () => {
       const { onRangeChange } = renderBar(CUSTOM);
       await userEvent.click(screen.getByText("1 Jul – 10 Jul"));
-      // Header echoes the pre-seeded range in long form.
       expect(
         await screen.findByText(/1 Jul 2026\s*–\s*10 Jul 2026/)
       ).toBeInTheDocument();
@@ -93,7 +86,6 @@ describe("<PeriodSelectorBar>", () => {
     { timeout: 30_000 },
     async () => {
       renderBar(null);
-      // Without a custom range the trigger carries the resolved period range.
       await userEvent.click(screen.getByText("UTC").closest("button")!);
       await screen.findByRole("button", { name: "Apply" });
       expect(
@@ -150,7 +142,7 @@ describe("arrow keys inside the calendar stay inside it", () => {
 describe("the calendar offers no day that has not happened yet", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 6, 15, 10, 30)); // local 2026-07-15
+    vi.setSystemTime(new Date(2026, 6, 15, 10, 30));
   });
 
   afterEach(() => {
@@ -196,7 +188,7 @@ describe("west of UTC in the evening, the calendar offers the UTC day the page r
   beforeEach(() => {
     process.env.TZ = "America/New_York";
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-06-16T00:00:00Z")); // local 2026-06-15 20:00
+    vi.setSystemTime(new Date("2026-06-16T00:00:00Z"));
   });
 
   afterEach(() => {
@@ -305,8 +297,6 @@ describe("the range label says which year", () => {
   });
 
   it("names the year when the range crosses one", () => {
-    // "31 Jul – 30 Jul" for a whole year read as a typo, or as a week: the
-    // reader had to already know the answer to decode the label.
     renderBar({ from: "2025-07-31", to: "2026-07-30" });
     expect(screen.getByText("31 Jul 2025 – 30 Jul 2026")).toBeInTheDocument();
   });

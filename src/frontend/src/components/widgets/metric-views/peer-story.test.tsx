@@ -14,8 +14,6 @@ import {
 } from "@/lib/metrics/collection";
 import type { MetricResult } from "@/api/metric-results-client";
 
-// value relative to a fixed cohort (p25 5, median 10, p75 15) decides status:
-// >=15 top, <=5 bottom, else in_pack.
 function metric(key: string, value: number): MetricResult {
   return {
     metric_key: key,
@@ -80,7 +78,6 @@ describe("PeerStory", () => {
       />
     );
     expect(screen.getByText("Furthest behind")).toBeInTheDocument();
-    // The in-pack metric lands in the supporting fold toggle.
     expect(screen.getByText(/near the median/i)).toBeInTheDocument();
   });
 
@@ -151,14 +148,12 @@ describe("PeerStory", () => {
   });
 
   it("shows a multiple for a gap at/above 2× the median", () => {
-    // 30 vs median 10 = 3× → "3×", not the exploding "+200%".
     render(<PeerStory entries={entriesFrom([["win", 30]])} />);
     expect(screen.getByText("3×")).toBeInTheDocument();
     expect(screen.queryByText("+200%")).not.toBeInTheDocument();
   });
 
   it("keeps a signed percent for a gap under 2× the median", () => {
-    // 15 vs median 10 = 1.5× (< 2×) → "+50%".
     render(<PeerStory entries={entriesFrom([["win", 15]])} />);
     expect(screen.getByText("+50%")).toBeInTheDocument();
   });
@@ -176,7 +171,6 @@ describe("PeerStory", () => {
         ])}
       />
     );
-    // hero (1) + side cards (3) leaves 2 as chips; the 6th label renders once.
     expect(screen.getByText("i6")).toBeInTheDocument();
   });
 });

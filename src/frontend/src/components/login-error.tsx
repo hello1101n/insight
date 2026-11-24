@@ -4,15 +4,9 @@ import { clearAuthErrorAttempts, signIn } from "@/auth";
 import { Button, Card, CardContent } from "@gears-frontx/ui-kit";
 
 type LoginErrorProps = {
-  /** The authenticator's `auth_error` reason code (insight#2032). */
   code: string;
 };
 
-/**
- * Full-page stop after a failed login that auto-retry did not fix (or must
- * not attempt — `access_denied`). Rendered by the boot sequence instead of
- * the router, so it depends on nothing but the auth module and i18n.
- */
 export function LoginError({ code }: LoginErrorProps): React.ReactElement {
   const { t } = useTranslation();
   return (

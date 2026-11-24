@@ -1,4 +1,3 @@
-/** How many holders the caller cannot see, as one line under the ones they can. */
 export function hiddenHolders(hidden: number, visible: number): string | null {
   if (hidden <= 0) return null;
 

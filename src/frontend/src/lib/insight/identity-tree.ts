@@ -70,22 +70,14 @@ export function findIdentityNode(
 }
 
 export interface RosterEntry {
-  /** Canonical person id — the key for links, metric ids and React keys. */
   person_id: string;
   email: string;
   display_name: string;
   username: string;
   supervisor_person_id: string | null;
-  /** True when the person is a direct report of the pivot (depth 1). */
   is_direct: boolean;
 }
 
-/**
- * Flatten a pivot's transitive subordinates into a roster.
- *
- * The pivot itself is excluded — Team Lead and exec drill targets read their
- * own metrics on their personal dashboard, not in the team table.
- */
 export function flattenSubordinates(pivot: IdentityPerson): RosterEntry[] {
   const out: RosterEntry[] = [];
   const walk = (
@@ -109,12 +101,6 @@ export function flattenSubordinates(pivot: IdentityPerson): RosterEntry[] {
   return out;
 }
 
-/**
- * Narrow a roster to the pivot's direct reports when `directOnly` is set.
- *
- * `null` passes through unchanged so callers keep their "roster not loaded
- * yet" gate regardless of the toggle state.
- */
 export function scopeRosterToDirectReports(
   roster: RosterEntry[] | null,
   directOnly: boolean,
@@ -123,11 +109,6 @@ export function scopeRosterToDirectReports(
   return roster.filter((r) => r.is_direct);
 }
 
-/**
- * True when the roster has at least one indirect report. When every entry is
- * direct, scoping to direct reports cannot change the roster, so the
- * "Direct reports only" toggle would be a no-op and should be hidden.
- */
 export function hasIndirectReports(roster: RosterEntry[] | null): boolean {
   return roster?.some((r) => !r.is_direct) ?? false;
 }

@@ -1,9 +1,3 @@
-/**
- * An install that marks a catalogue planned, through the real router.
- *
- * Its own file because `navPolicy()` reads `/config.js` once and memoises the
- * answer, so the policy has to be in place before anything renders.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   RouterProvider,

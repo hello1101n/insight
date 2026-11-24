@@ -1,7 +1,3 @@
-/**
- * The screen rides along as the redacted `lastPath` the usage rows carry, so a
- * report is placed without the sender having to describe where they were.
- */
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 

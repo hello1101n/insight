@@ -1,24 +1,14 @@
 import { authStore } from "./auth-store";
 import type { AuthStatus } from "./types";
 
-/** A server unix-seconds timestamp: finite positive number, else 0 (absent). */
 function unixSeconds(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : 0;
 }
 
-/** Abort a hung probe: an unsettled promise leaves every caller waiting on a
- *  answer that never comes, with no redirect in flight. */
 const REQUEST_TIMEOUT_MS = 10_000;
 
-/**
- * Probe `GET /auth/me` once and populate the store. The browser sends the
- * `__Host-sid` cookie (same-origin, credentials included); the authenticator
- * returns the session summary or 401. Any non-200 fails closed to
- * `unauthenticated` so the app redirects to login rather than rendering
- * half-authenticated. Called once at boot (main.tsx) before the router mounts.
- */
 export async function loadSession(): Promise<AuthStatus> {
   try {
     const res = await fetch("/auth/me", {
@@ -41,13 +31,6 @@ export async function loadSession(): Promise<AuthStatus> {
       experiments_enabled?: boolean;
       impersonator_email?: string;
     };
-    // Fail closed on a missing CSRF token. A live session always carries one
-    // (the authenticator echoes it on /auth/me), and it is required to send
-    // `X-CSRF-Token` on state-changing /auth/* (logout, refresh). Storing an
-    // empty token would let those calls omit the header and be rejected
-    // server-side. An absent token here means a bug or a not-yet-CSRF-aware
-    // backend — treat it as no session (redirects to login, which re-mints a
-    // session with a token). Requires the backend to be deployed first.
     if (!body.csrf_token) {
       console.warn(
         "/auth/me returned no csrf_token; treating as unauthenticated"
@@ -61,20 +44,13 @@ export async function loadSession(): Promise<AuthStatus> {
       tenantId: body.tenant_id ?? "",
       roles: body.roles ?? [],
       csrfToken: body.csrf_token,
-      // Missing or malformed timestamps become 0, which the refresh driver
-      // treats as "never schedule" — the session then just times out as it
-      // did before the driver existed. The JSON cast above is compile-time
-      // only, so guard the wire values like refresh.ts guards its inputs.
       expiresAt: unixSeconds(body.expires_at),
       refreshAt: unixSeconds(body.refresh_at),
-      // Strictly `=== true`: absent or malformed reads as off (fail closed).
       experimentsEnabled: body.experiments_enabled === true,
-      // Present only on `__override` view-as sessions (insight#1941).
       impersonatorEmail: body.impersonator_email || null,
     });
     return "authenticated";
   } catch {
-    // Network error reaching the authenticator — fail closed.
     authStore.setUnauthenticated();
     return "unauthenticated";
   }

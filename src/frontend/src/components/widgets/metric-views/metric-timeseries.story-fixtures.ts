@@ -1,14 +1,3 @@
-/**
- * Wire-level fixtures for the `<MetricTimeseriesView>` stories.
- *
- * The view owns its own data fetching, so a story drives it through MSW rather
- * than props. The handler answers `POST /metric-results` from a small fact cube
- * (repository × source × bucket), honouring the parts of the request the view
- * actually varies — dimension filters, group-by dimension, and `group_limit`
- * (top-N + remainder) — so group/filter interactions change the rendered
- * numbers instead of replaying one canned payload.
- */
-
 import { delay, http, HttpResponse } from "msw";
 
 import type {
@@ -106,7 +95,6 @@ function matchesFilters(
   );
 }
 
-/** Facts aggregated by one dimension (or into a single group when unset). */
 function groupFacts(
   dimension: string | undefined,
   filters: readonly MetricDimensionFilter[]
@@ -273,15 +261,10 @@ export function buildStoryMetricResults(
 }
 
 export type MetricResultsScenario =
-  /** Answers from the fact cube; `delayMs` keeps a refetch visibly in flight. */
   | { kind: "data"; delayMs?: number }
-  /** No metrics — the view's empty state. */
   | { kind: "empty" }
-  /** Never resolves — the view's initial loading state. */
   | { kind: "pending" }
-  /** Always fails — the view's error state. */
   | { kind: "error" }
-  /** Fails while `state.failing`, then serves data — exercises Retry. */
   | { kind: "recovering"; state: { failing: boolean } };
 
 const METRIC_RESULTS_URL = "/api/analytics/v1/metric-results";

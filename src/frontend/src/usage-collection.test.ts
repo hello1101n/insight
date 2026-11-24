@@ -8,7 +8,6 @@ import { recordScreens } from "./usage-collection";
 
 type Resolved = (event: { toLocation: { pathname: string } }) => void;
 
-/** A router that resolves the navigations a test hands it. */
 function routerStub() {
   const listeners: Resolved[] = [];
   return {

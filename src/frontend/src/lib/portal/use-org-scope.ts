@@ -17,46 +17,26 @@ import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
 import type { IdentityPerson } from "@/types/insight";
 
-/** One option in the scope picker: a manager, their depth, and their team size. */
 export interface ManagerNode {
-  /** Canonical person id — what links, `?scope=` and metric ids all carry. */
   person_id: string;
   name: string;
   depth: number;
-  /** Manager plus every descendant. */
   subtreeMemberCount: number;
-  /** Manager plus direct reports. */
   directMemberCount: number;
 }
 
-/** The scope resolved against the viewer's own subtree, or the whole roster under a flat policy. */
 export interface ResolvedScope {
-  /** The scope pivot (root manager node); null while the tree loads. */
   pivot: IdentityPerson | null;
-  /** Reports below the pivot (full subtree or direct reports). */
   roster: RosterEntry[] | null;
   label: string;
-  /** Number of reports used by report-only analytics. */
   rosterCount: number;
-  /** Number of people represented by the scope selector, pivot included. */
   scopeMemberCount: number;
-  /** All manager nodes of the viewer's tree. */
   managerNodes: ManagerNode[];
-  /** Whether directOnly can change anything at this pivot. */
   canDirectOnly: boolean;
 }
 
-/** What the scope is called when it is the organisation itself. */
 export const WHOLE_ORG_LABEL = "Whole organisation";
 
-/**
- * Scope resolution for an organisation with no reporting lines.
- *
- * There is one cohort — everyone the viewer may see — so there is no pivot to
- * pick and nothing for `directOnly` to narrow. The viewer stays in: this scope
- * counts the organisation, and an org-level head-count that changes with who
- * is looking disagrees with the roster listed right beside it (#2724).
- */
 export function flatOrgScope(
   roster: readonly PeopleListItem[] | null,
 ): ResolvedScope {
@@ -77,7 +57,6 @@ export function flatOrgScope(
     email: person.email ?? "",
     display_name: person.display_name ?? "",
     username: person.username ?? "",
-    // No reporting lines to name, and no depth to be at.
     supervisor_person_id: null,
     is_direct: false,
   }));
@@ -93,11 +72,6 @@ export function flatOrgScope(
   };
 }
 
-/**
- * Pure scope resolution (design §6): pivot = scope.root within the viewer's
- * tree (permission boundary — identity only serves the viewer their subtree),
- * falling back to the viewer; roster = subtree, optionally direct-only.
- */
 export function resolveScopeRoster(
   tree: IdentityPerson | null,
   viewerPersonId: string | null,
@@ -114,8 +88,6 @@ export function resolveScopeRoster(
       canDirectOnly: false,
     };
   }
-  // Person id, not email: since the identity cutover that is the only key the
-  // tree, the routes and the metric entity ids agree on.
   const viewerNode =
     (viewerPersonId ? findIdentityNode(tree, viewerPersonId) : null) ?? tree;
   const pivot =
@@ -125,12 +97,6 @@ export function resolveScopeRoster(
   const roster = scopeRosterToDirectReports(full, canDirectOnly && scope.directOnly);
 
   const managerNodes: ManagerNode[] = [];
-  // One pass: each call returns its inclusive subtree member count. Flattening
-  // per manager node re-walked that manager's whole subtree — O(n · depth),
-  // which degrades on a deep reporting chain.
-  //
-  // The entry is pushed BEFORE recursing and its size filled in after, so the
-  // picker keeps its depth-first outline order (a lead, then that lead's leads).
   const walk = (node: IdentityPerson, depth: number): number => {
     const entry =
       node.subordinates.length > 0
@@ -161,12 +127,10 @@ export function resolveScopeRoster(
   };
 }
 
-/** The one hook every org zone uses to know WHO it is looking at. */
 export function useOrgScope(): ResolvedScope & {
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
-  /** The pivot's person id — the roster key every org query is built from. */
   pivotPersonId: string;
 } {
   const { personId } = useViewer();

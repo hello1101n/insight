@@ -6,22 +6,11 @@ import { useAssistantDraft } from "@/lib/custom/assistant-draft";
 
 const HIDDEN_KEY = "insight.custom.assistant-hidden";
 
-/**
- * Two columns inside the portal inset: the dashboards scroll on the left, the
- * assistant keeps a fixed column on the right. Below `lg` the panel drops under
- * the content instead of squeezing it — one chat instance either way, so the
- * thread survives the breakpoint.
- *
- * The panel can be put away, because a dashboard being shown to a room does not
- * need a chat box beside it. The chat stays mounted while hidden, so the thread
- * is still there when it comes back, and the choice is remembered per browser.
- */
 export function CustomPageShell({
   children,
   chat,
 }: {
   children: ReactNode;
-  /** Absent for a caller the assistant is not open to. */
   chat?: ReactNode;
 }) {
   const asked = useAssistantDraft();
@@ -49,7 +38,7 @@ export function CustomPageShell({
       try {
         window.localStorage.setItem(HIDDEN_KEY, next ? "1" : "0");
       } catch {
-        // Storage blocked: the toggle still works, it just is not remembered.
+        // WORKAROUND: blocked storage leaves the toggle working, just unremembered.
       }
       return next;
     });
@@ -76,7 +65,6 @@ export function CustomPageShell({
         hidden={hidden}
         className="relative flex min-h-96 shrink-0 flex-col lg:min-h-0 lg:w-80"
       >
-        {/* Open, it belongs in the panel's own header, beside its title. */}
         <Button
           variant="ghost"
           size="sm"

@@ -13,9 +13,7 @@ spec:
     metadata:
       labels:
         {{- include "insight-frontend.selectorLabels" . | nindent 8 }}
-      # `subPath` mounts never refresh in place, so the pod must roll when the
-      # rendered config changes. Merged rather than listed alongside
-      # podAnnotations, which would emit the key twice if an operator set it.
+      # WORKAROUND: `subPath` mounts never refresh in place, so a config change must roll the pod.
       {{- $checksum := dict "checksum/runtime-config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) }}
       annotations:
         {{- toYaml (merge $checksum (default dict .Values.podAnnotations)) | nindent 8 }}
@@ -26,9 +24,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- end }}
-      # Suppress the legacy `<SVC>_SERVICE_HOST/PORT/…` Docker-link env-vars
-      # kubelet auto-injects for every Service in the namespace at pod-start
-      # (see api-gateway deployment for the longer explanation).
+      # WORKAROUND: kubelet otherwise injects Docker-link env vars for every Service in the namespace.
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
@@ -52,8 +48,7 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # The only writes the image makes: nginx-unprivileged puts its pid and
-            # every *_temp_path in /tmp, the entrypoint writes the config to conf.d.
+            # WORKAROUND: nginx-unprivileged writes its pid and temp paths under /tmp.
             - name: tmp
               mountPath: /tmp
             - name: nginx-conf

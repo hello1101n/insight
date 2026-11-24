@@ -1,9 +1,3 @@
-/**
- * Component coverage for `<ComingSoon>`: all three variants (card / chip /
- * row) x states (empty / error / loading), custom labels, and the retry
- * button that only appears for `state="error"` with an `onRetry` handler.
- */
-
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";

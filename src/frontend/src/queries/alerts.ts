@@ -29,28 +29,14 @@ import { isRevisionConflict } from "@/lib/alerts/conflict";
 
 const ALERTS_PREFIX = ["alerts"] as const;
 
-/** How many alerts the list asks for at a time. */
 const PAGE_SIZE = 50;
 
-/** How many notifications the history asks for at a time. */
 const NOTIFICATION_PAGE_SIZE = 20;
 
-/**
- * How often an open alert re-reads what its checks found. Checks run at most
- * once a minute, so this keeps the page within one check of the truth.
- */
 const LIVE_REFRESH_MS = 30_000;
 
-// INVARIANT: alert reads are live state, not the hour-fresh analytics the
-// app's client defaults are tuned for.
 const LIVE = { staleTime: 0, refetchOnWindowFocus: true } as const;
 
-/**
- * The alerts, a page at a time.
- *
- * The needle is part of the key, so a search is its own cached answer rather
- * than overwriting the list.
- */
 export function alertPagesQuery(search = "") {
   return infiniteQueryOptions({
     ...LIVE,
@@ -74,18 +60,10 @@ export function alertQuery(id: string) {
   });
 }
 
-/**
- * An alert's notifications, newest first.
- *
- * The service reports no total, so a page shorter than asked for is the end.
- */
 export function alertNotificationsQuery(id: string) {
   return infiniteQueryOptions({
     ...LIVE,
     // WORKAROUND: TanStack Query refreshes an infinite query by re-reading
-    // every page shown, one request after another, and cannot re-read the
-    // first page alone; growing the interval with the pages keeps the clock at
-    // one page a refresh however far back the history is read.
     refetchInterval: (query) =>
       LIVE_REFRESH_MS * (query.state.data?.pages.length ?? 1),
     queryKey: [...ALERTS_PREFIX, "notifications", id],
@@ -109,8 +87,6 @@ export function alertDestinationsQuery() {
   });
 }
 
-// INVARIANT: a preview answers for now, so it is never served from cache, and
-// a refusal is shown rather than retried.
 export function alertPreviewQuery(request: AlertPreviewRequest) {
   return queryOptions({
     queryKey: ["alert-preview", request],
@@ -121,16 +97,10 @@ export function alertPreviewQuery(request: AlertPreviewRequest) {
   });
 }
 
-/** Every cached read about alerts: the list, each alert and its history. */
 function invalidateAlerts(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: ALERTS_PREFIX });
 }
 
-/**
- * What a write answered, put where it is read: the alert itself, and its row
- * in every list page cached, so a toggle does not flick back while the list is
- * read again.
- */
 function remember(queryClient: QueryClient, alert: Alert) {
   queryClient.setQueryData(alertQuery(alert.id).queryKey, alert);
   queryClient.setQueriesData<InfiniteData<AlertPage>>(
@@ -185,11 +155,6 @@ export function useReplaceAlert() {
   });
 }
 
-/**
- * Reads an alert again on request, as its own action rather than through the
- * cached read the pages are gated on: a refusal here is answered to the caller
- * and does not take a form it was asked from down with it.
- */
 export function useReadAlert() {
   const queryClient = useQueryClient();
 
@@ -199,13 +164,6 @@ export function useReadAlert() {
   });
 }
 
-/**
- * Turns an alert's checks on or off.
- *
- * A caller that holds the alert passes its revision. One that holds only the
- * list's summary, which carries none, leaves it out and the alert is read
- * first; a change made in between is refused with 409 rather than overwritten.
- */
 export function useSetAlertEnabled() {
   const queryClient = useQueryClient();
 
@@ -226,8 +184,6 @@ export function useSetAlertEnabled() {
       remember(queryClient, alert);
       void invalidateAlerts(queryClient);
     },
-    // INVARIANT: after a conflict the cached revision is stale; re-read it so a
-    // retry sends the current one.
     onError: (error, { id }) =>
       isRevisionConflict(error)
         ? queryClient.invalidateQueries({ queryKey: alertQuery(id).queryKey })

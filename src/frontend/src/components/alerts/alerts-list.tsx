@@ -21,7 +21,6 @@ import {
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { alertPagesQuery, useDeleteAlert } from "@/queries/alerts";
 
-/** Long enough that a word is typed before the service hears about it. */
 const SEARCH_DEBOUNCE_MS = 400;
 
 export function AlertsList() {

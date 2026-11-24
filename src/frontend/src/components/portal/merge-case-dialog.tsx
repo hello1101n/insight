@@ -1,30 +1,3 @@
-/**
- * Merging a case: the operator names the person who STAYS, and picks which of
- * the others are merged into them.
- *
- * Why here and not in the account window: a merge is a claim about people ("all
- * of these are one human"), and the case is where the people are listed. In the
- * account window the button sat in the row of the person who would SURVIVE while
- * the one being absorbed was named in a different section above it — nothing on
- * screen said which way round it went.
- *
- * Choosing only the survivor is what makes the direction unambiguous: there is
- * no "from", because everyone else is the from. The row's button says the same
- * thing in words — it merges INTO the person whose row it sits in.
- *
- * A case can argue over more than two people, and then all-or-nothing is the
- * wrong offer: two of them may be one human while the third is a different one
- * who happens to share an address. So the absorbed set is CHOSEN here, and only
- * what is ticked moves. With one other person there is nothing to choose and the
- * list is just shown.
- *
- * The endpoint joins exactly two persons, so a case of three or more is a short
- * SEQUENCE of calls. Whatever the sequence does is reported by TOAST, never by
- * this dialog's own error slot alone: the first successful merge prunes the rows
- * it decided, which changes the case's identity and remounts the block that owns
- * this dialog — so a message left in component state would be unmounted before
- * it could be read.
- */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast, Button, Checkbox } from "@gears-frontx/ui-kit";
@@ -44,7 +17,6 @@ import {
   usePersonAccountsMany,
 } from "@/queries/identity-resolution";
 
-/** Accounts named in the preview before it says "…and N more". */
 const PREVIEW_ROWS = 5;
 
 export function MergeCaseDialog({
@@ -52,17 +24,12 @@ export function MergeCaseDialog({
   absorbed,
   onClose,
 }: {
-  /** The person the operator pressed: they keep their id and gain the rest. */
   survivor: PersonSummary;
-  /** Everyone else in the case, offered for absorption. Never empty — the caller
-   *  offers no merge for a case with a single person. */
   absorbed: PersonSummary[];
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const merge = useMergePersons();
-  // Own state, not the mutation's: one decision spans several calls, and the
-  // hook's flags describe only the last of them.
   const [running, setRunning] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(
@@ -103,8 +70,6 @@ export function MergeCaseDialog({
     setRunning(false);
 
     const result = combineOutcomes(landed);
-    // Not "no refusals": the outcome vocabulary is open by contract, and a value
-    // this build has never heard of must not pass for success.
     if (!fullyDecided(result)) {
       const refused = refusedCount(result);
       report(
@@ -137,10 +102,6 @@ export function MergeCaseDialog({
       confirmLabel={t("identities.actions.merge_confirm")}
       destructive
       isPending={running}
-      // The preview IS the consent: confirmed before the reads land, this would
-      // move accounts the operator never saw named. And a merge that moves
-      // nothing is not a decision — it answers "already decided, nothing
-      // changed" while the case comes straight back on the next read.
       confirmDisabled={
         nothingChosen || !moving.ready || moving.accounts.length === 0
       }
@@ -163,8 +124,6 @@ export function MergeCaseDialog({
             absorbed.length === 1 ? (
               <PersonCell key={person.person_id} person={person} />
             ) : (
-              // Ticked by default: the common case is that the whole case is one
-              // human. Unticking is for the case that is not.
               <label
                 key={person.person_id}
                 htmlFor={`absorb-${person.person_id}`}
@@ -234,15 +193,6 @@ export function MergeCaseDialog({
   );
 }
 
-/**
- * Say what went wrong through BOTH channels.
- *
- * The dialog's own slot is the one an operator is looking at, but it may be gone:
- * a merge that already succeeded prunes the rows it decided, which re-keys the
- * case and remounts the block holding this dialog. The toast outlives that. And
- * whatever DID land is named, or the operator is left unable to tell a sequence
- * that failed at the first call from one that failed at the last.
- */
 function report(
   t: (key: string, vars?: Record<string, unknown>) => string,
   setFailure: (message: string) => void,

@@ -80,8 +80,6 @@ describe("peopleEvidenceView", () => {
       ROSTER
     );
 
-    // Two maps of the same shape: this is the assertion that would fail if the
-    // roster's lookups were ever passed the wrong way round.
     expect(view.rows[0]?.name).toBe("Ada Lovelace");
     expect(view.rows[0]?.personId).toBe("p-ada");
   });
@@ -118,7 +116,6 @@ describe("peopleEvidenceView", () => {
     expect(counted.rows[0]?.valueText).toBe("1,234");
     expect(counted.valueLabel).toBe("Commits");
 
-    // A percent keeps its sign: the sign is the unit, not a suffix beside it.
     const share = peopleEvidenceView(
       metric([["e-ada", 42]], {
         ...DRILLABLE,
@@ -165,8 +162,6 @@ describe("peopleEvidenceView", () => {
       ROSTER
     );
 
-    // The person the metric has no value for is in neither the rows nor the
-    // records behind them.
     expect(view.rows.map((row) => row.entityId)).toEqual(["e-ada"]);
     expect(view.allRecords?.selection.entity).toEqual({
       type: "persons",

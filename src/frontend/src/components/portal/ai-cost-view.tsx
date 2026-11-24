@@ -46,12 +46,9 @@ import { cn } from "@/lib/utils";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const COST_KEY = "ai.cost";
-// INVARIANT: the per-day metric. The cumulative one is anchored to the first day
-// of its billing month and returns nothing for a window inside a month.
 const ACTUAL_COST_KEY = "ai.daily_approximate_extra_usage_cost";
 const LINES_KEY = "ai.accepted_lines";
 const DAYS_KEY = "ai.active_days";
-/** Grid columns for the cost-leaders scan. */
 const GRID_KEYS = [
   COST_KEY,
   ACTUAL_COST_KEY,
@@ -66,7 +63,6 @@ const TOOL_LABEL: Record<string, string> = {
   chatgpt: "ChatGPT",
 };
 
-/** One "By unit" row. `*Seen` says a reading existed, so a 0 is a measurement. */
 interface UnitRow {
   unit: string;
   people: number;
@@ -88,7 +84,6 @@ interface ToolRow {
   actualTracked: boolean;
 }
 
-/** A person's reading of a metric, or null where they have none. */
 function reading(
   r: NormalizedMetricResult | undefined,
   id: string,
@@ -97,7 +92,6 @@ function reading(
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-/** Sum a breakdown metric across members, grouped by the `tool` dimension. */
 function aggregateByTool(
   result: NormalizedMetricResult | undefined,
   memberIds: readonly string[],
@@ -119,18 +113,6 @@ function aggregateByTool(
 
 const PLANNED_KEYS = new Set(PLANNED_SLICES.map((d) => d.key));
 
-/**
- * AI & Cost — org-level adoption + spend across the active org scope (set in
- * the topbar). Shows what's actually ingested; everything unavailable is an
- * explicit ComingSoon rather than a fabricated or zero-filled panel.
- *
- * Honest data caveats surfaced in the UI:
- *  - only Claude Code is usage-metered → the cost total is Claude-only;
- *  - ChatGPT/Codex report usage but no per-user cost (subscription / token
- *    billing isn't ingested), so their cost reads "not tracked", never $0;
- *  - actual cost is the vendor's monthly bill spread over the days it was
- *    spent, so it is exact in sum over a month and approximate within it.
- */
 export function AiCostView({ item }: { item: string | null }) {
   const cohortLabel = useCohortLabel();
   const { dateRange, compareTo } = usePortalPeriod();
@@ -138,10 +120,6 @@ export function AiCostView({ item }: { item: string | null }) {
   const orgScope = useOrgScope();
   const { pivot, roster } = orgScope;
 
-  // The scope IS the member list — pivot included: identity owns who is on the team and
-  // every metric for them comes from `/v1/metric-results`. There is no second
-  // source to reconcile — the legacy per-member batch this used to call was
-  // removed upstream with the rest of the old metric UI.
   const members = useMemo<TeamMember[]>(
     () => [
       ...(pivot
@@ -200,8 +178,6 @@ export function AiCostView({ item }: { item: string | null }) {
     if (!r) return 0;
     return memberIds.reduce((acc, id) => acc + (reading(r, id) ?? 0), 0);
   };
-  // A metric can be served and still hold no reading for these people. A sum
-  // folds that to 0, and a printed $0 claims a measurement nobody made.
   const observed = (key: string) => {
     const r = grid.byKey.get(key);
     return !!r && memberIds.some((id) => reading(r, id) != null);
@@ -214,8 +190,6 @@ export function AiCostView({ item }: { item: string | null }) {
 
   const toolRows = useMemo<ToolRow[]>(() => {
     const cost = aggregateByTool(toolData.byKey.get(COST_KEY), memberIds);
-    // Claude Team bills the seat under `claude`; the coding usage that seat
-    // paid for arrives as `claude_code`. One card, not two.
     const actual = new Map(
       [...aggregateByTool(toolData.byKey.get(ACTUAL_COST_KEY), memberIds)].map(
         ([tool, sums]) => [tool === "claude" ? "claude_code" : tool, sums] as const,
@@ -233,8 +207,6 @@ export function AiCostView({ item }: { item: string | null }) {
           users: (l?.users.size ?? 0) || (c?.users.size ?? 0),
           lines: l?.sum ?? 0,
           cost: c?.sum ?? 0,
-          // A bucket exists only where a reading did, so its absence is what
-          // "not tracked" means — a measured $0 stays $0.
           costTracked: c != null,
           actual: a?.sum ?? 0,
           actualTracked: a != null,
@@ -243,8 +215,6 @@ export function AiCostView({ item }: { item: string | null }) {
       .sort((a, b) => b.lines - a.lines);
   }, [toolData.byKey, memberIds]);
 
-  // Data-driven slice options + the active slice's cohort accessor. The slice
-  // is global (portal-store) so it re-cohorts every view at once.
   const attrByEntity = useMemo(
     () => collectRosterAttrs(pivot, normalizePersonId),
     [pivot],
@@ -259,8 +229,6 @@ export function AiCostView({ item }: { item: string | null }) {
     [attrByEntity, slice],
   );
 
-  // Grid heat / attention rank each person within their active-slice cohort
-  // (whole roster when no slice is set).
   const heatByKey = useMemo(() => {
     const m = new Map<string, NormalizedMetricResult>();
     for (const k of GRID_KEYS) {
@@ -270,7 +238,6 @@ export function AiCostView({ item }: { item: string | null }) {
     return m;
   }, [grid.byKey, memberIds, cohortOf]);
 
-  // "By unit" groups the roster by the active slice attribute.
   const unitRows = useMemo(() => {
     if (!slice || PLANNED_KEYS.has(slice)) return [];
     const costR = grid.byKey.get(COST_KEY);
@@ -296,7 +263,6 @@ export function AiCostView({ item }: { item: string | null }) {
         };
       b.people += 1;
       if (val(daysR, id) > 0) b.active += 1;
-      // A unit whose members have no reading is not a unit that spent nothing.
       const cost = reading(costR, id);
       if (cost != null) {
         b.cost += cost;
@@ -313,15 +279,10 @@ export function AiCostView({ item }: { item: string | null }) {
     return [...map.values()].sort((a, b) => b.cost - a.cost || b.lines - a.lines);
   }, [grid.byKey, memberIds, attrByEntity, slice]);
 
-  // Adoption funnel from active-days: org → any use → active → heavy. Stage
-  // cuts are data-relative (median / top-quartile among AI users), so they hold
-  // regardless of the selected period length.
   const funnel = useMemo(() => {
     const daysR = grid.byKey.get(DAYS_KEY);
     const days = memberIds.map((id) => (daysR ? (forEntity(daysR, id).value ?? 0) : 0));
     const users = days.filter((d) => d > 0).sort((a, b) => a - b);
-    // Rounded ONCE and reused for both the label and the comparison, so the
-    // stage count always matches the threshold the label promises.
     const med = users.length ? Math.round(quantile(users, 0.5)) : 0;
     const p75 = users.length ? Math.round(quantile(users, 0.75)) : 0;
     return [
@@ -373,7 +334,6 @@ export function AiCostView({ item }: { item: string | null }) {
       actualR?.format ?? "currency",
       actualR?.unit ?? "USD",
     );
-  // Absent, not zero: a measured $0 is a reading and prints as one.
   const hasActual = observed(ACTUAL_COST_KEY);
   const hasCost = observed(COST_KEY);
   const costMoney = (value: number) =>
@@ -399,7 +359,6 @@ export function AiCostView({ item }: { item: string | null }) {
         </p>
       </div>
 
-      {/* Headline */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         <Tile
           label={costR?.label ?? "AI potential cost"}
@@ -437,16 +396,11 @@ export function AiCostView({ item }: { item: string | null }) {
         />
       ) : (
         <>
-      {/* By tool */}
       <section className="flex flex-col gap-3">
         <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
           By tool
         </p>
         {toolData.isError ? (
-          // A failed breakdown is not an empty one: reporting "nothing for this
-          // period" would hide exactly the failure the scope gate exists to
-          // surface, and the reader would take a broken request for a fact
-          // about their org.
           <ComingSoon state="error" label="Unable to load the per-tool breakdown" />
         ) : toolData.isPending ? (
           <CenteredSpinner className="min-h-32" />
@@ -487,7 +441,6 @@ export function AiCostView({ item }: { item: string | null }) {
         </p>
       </section>
 
-      {/* Cost leaders */}
       <section className="flex flex-col gap-3">
         <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
           Cost &amp; usage by person
@@ -515,7 +468,6 @@ export function AiCostView({ item }: { item: string | null }) {
   );
 }
 
-/** Adoption funnel — successive stages as proportional bars. */
 function FunnelSection({ funnel }: { funnel: { label: string; n: number }[] }) {
   const top = funnel[0]?.n || 1;
   return (
@@ -552,7 +504,6 @@ function FunnelSection({ funnel }: { funnel: { label: string; n: number }[] }) {
   );
 }
 
-/** AI cost + adoption grouped by the active slice (driven by the header SliceSelect). */
 function UnitSection({
   rows,
   costR,
@@ -652,7 +603,6 @@ function Tile({
 }: {
   label: string;
   value: string;
-  /** A second figure held beside `value`, never added to it. */
   note?: string | null;
   sub: string;
 }) {

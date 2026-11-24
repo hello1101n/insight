@@ -18,7 +18,6 @@ import { chartColor } from "@/lib/chart-palette";
 
 const HISTOGRAM_CONFIG: ChartConfig = { count: { label: "Runs" } };
 
-/** Per-run distribution served by the backend. */
 export function HistogramSection({
   section,
   resolve,

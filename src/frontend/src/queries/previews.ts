@@ -1,9 +1,3 @@
-/**
- * Preview-experiment hooks and the session-derived gate for the `/previews`
- * surface: the stand's `experiments_enabled` AND a managing session role.
- * The previews service enforces the same roles — the UI check is a courtesy,
- * never the boundary (same doctrine as `queries/identity-me.ts`).
- */
 import {
   useMutation,
   useQuery,
@@ -26,13 +20,10 @@ import { useAuth } from "@/auth/use-auth";
 import { sessionAuthorizationScope } from "@/auth/session-scope";
 import type { Session } from "@/auth/types";
 
-/** Mirrors the previews service's scope gate; the session carries NAMES. */
 export const PREVIEWS_MANAGE_ROLES = ["previews-admin", "admin"] as const;
 
-/** Cluster state changes under other operators' hands; half a minute is fine. */
 const EXPERIMENTS_STALE_TIME = 30 * 1000;
 
-/** Both layers at once; an absent session reads as "no" (fail closed). */
 export function canManagePreviews(session: Session | null): boolean {
   if (!session?.experimentsEnabled) return false;
   return session.roles.some((role) =>
@@ -49,7 +40,6 @@ export function useExperiments(): UseQueryResult<ExperimentListResponse> {
   const { session } = useAuth();
   const sessionScope = sessionAuthorizationScope(session);
   return useQuery({
-    // Session-scoped key: a sign-in never serves another caller's cache.
     queryKey: ["previews", "experiments", sessionScope],
     queryFn: listExperiments,
     staleTime: EXPERIMENTS_STALE_TIME,
@@ -57,7 +47,6 @@ export function useExperiments(): UseQueryResult<ExperimentListResponse> {
   });
 }
 
-/** The registry's tags barely move; a listing failure is not worth retrying. */
 const IMAGES_STALE_TIME = 5 * 60 * 1000;
 
 export function useImages(): UseQueryResult<ImageListResponse> {
@@ -72,7 +61,6 @@ export function useImages(): UseQueryResult<ImageListResponse> {
   });
 }
 
-/** One invalidation after any mutation refreshes everything previews reads. */
 const PREVIEWS_KEY = ["previews"] as const;
 
 export function useCreateExperiment(): UseMutationResult<

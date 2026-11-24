@@ -8,11 +8,6 @@ import { calloutPair } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/**
- * The org headline next to the unweighted mean over a dimension: the
- * headline weighs every run, the mean weighs every group once, and the gap
- * between them is how much the busiest groups dominate the story.
- */
 export function CalloutPairSection({
   section,
   resolve,

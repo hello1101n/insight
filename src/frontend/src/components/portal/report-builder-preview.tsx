@@ -53,9 +53,6 @@ export function ReportPreviewDialog({
             {granularity} · {period.from} to {period.to}
           </p>
         </DialogHeader>
-        {/* A report whose metrics read a relation nothing has built yet has no
-            table to show and nothing worth exporting — "0 rows" over the
-            export buttons would read as a measured answer. */}
         {response?.not_ready ? (
           <p className="text-sm text-muted-foreground">
             One of these metrics is not collected yet. The report fills in once

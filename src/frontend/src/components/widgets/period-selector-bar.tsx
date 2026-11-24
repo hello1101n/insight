@@ -131,13 +131,9 @@ export function PeriodSelectorBar({
               <ToggleGroupItem
                 value="custom"
                 className="aria-pressed:bg-selection-subtle"
-                // Below `sm` the label is hidden and only the icon remains, so
-                // without this the control has no accessible name at all.
                 aria-label={t("common.period.custom_range", { range: activeRangeLabel })}
               >
                 <CalendarIcon className="size-3.5" />
-                {/* The range spells out to ~140px; below `sm` the calendar icon
-                    stands in for it and the popover shows the actual dates. */}
                 <span className="hidden sm:inline">{activeRangeLabel}</span>
                 <Tooltip>
                   <TooltipTrigger

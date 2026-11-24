@@ -8,7 +8,6 @@ import { decomposeBy } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** One 100% bar of a summable metric split by a dimension. */
 export function DecompositionSection({
   section,
   resolve,

@@ -2,13 +2,11 @@ import type { EditableKind } from "@/api/custom-client";
 
 import { NOUNS } from "./kinds";
 
-/** One literal pattern per editor path, rather than one built per call. */
 const KIND_PATTERNS = {
   new: /^\/dashboards\/new\/([^/]+)/,
   edit: /^\/dashboards\/edit\/([^/]+)/,
 } as const;
 
-/** What an editor's path names, checked against the kinds that exist. */
 export function kindFromPath(
   pathname: string,
   under: "new" | "edit"

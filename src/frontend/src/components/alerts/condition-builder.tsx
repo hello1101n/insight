@@ -271,7 +271,6 @@ function Messages({ id, said }: { id: string; said: readonly string[] }) {
   );
 }
 
-/** A node of the tree; `undefined` from `onChange` removes it. */
 function NodeEditor({
   path,
   node,

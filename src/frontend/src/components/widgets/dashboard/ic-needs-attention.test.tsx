@@ -43,9 +43,6 @@ describe("IcNeedsAttention", () => {
   });
 
   it("renders items in the order it is given", () => {
-    // Ranking moved to `orderAttentionItems`, next to the rule that produced
-    // the items: which of two findings is the stronger is a question about
-    // the findings, and the thinning that follows depends on the answer.
     render(
       <IcNeedsAttention
         items={[

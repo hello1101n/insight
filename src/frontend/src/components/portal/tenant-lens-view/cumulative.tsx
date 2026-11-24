@@ -10,7 +10,6 @@ import { chartColor } from "@/lib/chart-palette";
 
 const CUMULATIVE_LIMIT = 12;
 
-/** Cumulative share of a summable metric across a ranked dimension. */
 export function CumulativeSection({
   section,
   resolve,
@@ -49,7 +48,6 @@ export function CumulativeSection({
                 {row.label}
               </span>
               <div className="relative h-3 flex-1 overflow-hidden rounded-[2px] bg-muted">
-                {/* Running total behind, this row's own share in front. */}
                 <div
                   className="absolute inset-y-0 left-0 opacity-30"
                   style={{

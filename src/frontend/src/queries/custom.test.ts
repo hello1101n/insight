@@ -65,7 +65,6 @@ describe("definitionPagesQuery", () => {
       offset: 0,
     });
 
-    // Two of three read, so the next page starts at the third.
     expect(options.getNextPageParam(first, [first], 0, [0])).toBe(2);
     expect(
       options.getNextPageParam(second, [first, second], 2, [0, 2]),

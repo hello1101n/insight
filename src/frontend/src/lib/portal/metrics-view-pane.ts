@@ -29,10 +29,6 @@ export function useMetricsViewPaneShown(): boolean {
   );
 }
 
-/**
- * The Metrics view can hand the pane's width to its table on a wide screen; the
- * shell then narrows its sidebar to the rail.
- */
 export function useMetricsViewHidesPane(): boolean {
   const { activeZone } = useZoneNav();
   const { item } = useNavLocation();

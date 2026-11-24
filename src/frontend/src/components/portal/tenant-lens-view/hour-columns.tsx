@@ -24,7 +24,6 @@ import { chartColor } from "@/lib/chart-palette";
 
 const COLUMNS_CONFIG: ChartConfig = { value: { label: "Value" } };
 
-/** A rate per two-hour block, with a ±1σ band around the blocks' mean. */
 export function HourColumnsSection({
   section,
   resolve,
@@ -32,11 +31,9 @@ export function HourColumnsSection({
   section: Extract<TenantSectionSpec, { kind: "hour-columns" }>;
   resolve: ResolveView;
 }) {
-  // Breakdown needs carry no bucket, so any bucket resolves identically.
   const r = resolve(sectionNeeds(section, "day")[0]);
   if (!r) return null;
   const { columns, mean, stddev } = hourColumns(tenantData(r).breakdown);
-  // A band around three columns is a shrug; ask for a real day's spread.
   if (columns.length < 4) return null;
 
   return (

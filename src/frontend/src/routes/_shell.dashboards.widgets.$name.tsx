@@ -26,7 +26,6 @@ export const Route = createFileRoute("/_shell/dashboards/widgets/$name")({
   component: WidgetPage,
 });
 
-/** The windows a card may be drawn over: the board's presets, without all time, which is the run with no window. */
 const WINDOWS = RANGE_PRESETS.filter(({ token }) => token !== "inf");
 
 function widgetIdFromPath(pathname: string): string {
@@ -101,13 +100,10 @@ function WidgetPage() {
   );
 }
 
-/** The card as a board would draw it, over a window the reader picks. */
 function Drawn({ name, widget }: { name: string; widget: Widget }) {
   const [range, setRange] = useState<string | undefined>(undefined);
   const metric = useQuery(metricQuery(widget.metric));
   const clocked = metric.data?.clock !== undefined;
-  // As on a board: a window only when the metric has a date to select by,
-  // sliced into buckets when the chart draws them.
   const options: RunOptions | undefined =
     range && clocked ? { range, bucket: drawsBucket(widget) } : undefined;
   const result = useQuery({

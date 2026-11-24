@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-/**
- * A cell's detail can be a whole feedback submission: what does not fit in the
- * window is unreachable unless the tooltip is bounded and scrolls.
- */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
