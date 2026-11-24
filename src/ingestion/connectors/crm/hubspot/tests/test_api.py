@@ -124,11 +124,46 @@ class TestPropertiesFor:
         assert_no_leak(error, PERSONAL)
 
 
+def described(name, **flags):
+    return PropertyDescriptor(name=name, **flags)
+
+
+def descriptors_page(*descriptors):
+    return FakeResponse(PropertiesPage(results=list(descriptors)).model_dump(mode="json"))
+
+
 class TestPropertySelection:
     def test_every_named_portal_property_is_requested(self):
-        names = ("amount", "uncurated_std", "my_custom", None)
+        names = ("dealname", "uncurated_std", "my_custom", None)
         hs = make_client([properties_page(*names)])
-        assert hs.property_names("deals") == ("amount", "uncurated_std", "my_custom")
+        assert hs.property_names("deals") == ("dealname", "uncurated_std", "my_custom")
+
+    @pytest.mark.parametrize(
+        "money",
+        [
+            described("amount"),
+            described("deal_currency_code"),
+            described("hs_exchange_rate"),
+            described("my_invoice_total", showCurrencySymbol=True),
+            described("my_plan_value", numberDisplayHint="currency"),
+        ],
+    )
+    def test_money_property_is_never_requested(self, money):
+        hs = make_client([descriptors_page(described("dealname"), money)])
+        assert hs.property_names("deals") == ("dealname",), f"should not request: {money!r}"
+
+    def test_property_without_a_currency_flag_is_requested(self):
+        plain = described("seats", showCurrencySymbol=False, numberDisplayHint="unformatted")
+        hs = make_client([descriptors_page(plain)])
+        assert hs.property_names("deals") == ("seats",)
+
+    def test_money_names_cover_standard_and_portal_flagged_properties(self):
+        hs = make_client(
+            [descriptors_page(described("my_invoice_total", showCurrencySymbol=True), described("dealname"))]
+        )
+        money = hs.money_property_names("deals")
+        assert {"amount", "annualrevenue", "my_invoice_total"} <= money
+        assert "dealname" not in money
 
     def test_property_names_independent_of_allowlist(self):
         hs = make_client([properties_page("anything")])

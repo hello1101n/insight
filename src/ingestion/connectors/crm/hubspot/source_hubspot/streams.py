@@ -248,14 +248,21 @@ class HubspotStream(Stream, ABC):
     def _finalize_batch(self, batch: list[MutableMapping[str, Any]]) -> Iterable[MutableMapping[str, Any]]:
         if self._associations is not None:
             self._associations.enrich(batch)
+        money_property_names = self._money_property_names()
         for record in batch:
             yield envelope(
                 record,
                 tenant_id=self._tenant_id,
                 source_id=self._source_id,
                 allowed_property_names=self._allowed_property_names,
+                excluded_property_names=money_property_names,
                 collision_seen=self._envelope_collisions_seen,
             )
+
+    def _money_property_names(self) -> frozenset[str]:
+        if self._registry["kind"] != "crm_object":
+            return frozenset()
+        return self._hubspot.money_property_names(self._object_type)
 
     # ------- Subclass contract ----------------------------------------------
 

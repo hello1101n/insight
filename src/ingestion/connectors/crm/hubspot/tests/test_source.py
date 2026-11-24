@@ -55,6 +55,9 @@ class FakeHubspotApi:
     def property_names(self, object_type):
         return ()
 
+    def money_property_names(self, object_type):
+        return frozenset()
+
     def generate_schema(self, object_type):
         return {"type": "object", "properties": {}}
 

@@ -7,6 +7,11 @@ name: hubspot
 # 3.11.0: the support models move to the class_support_* contract. MINOR:
 #   new staging tables that each run rebuilds whole; the old support classes
 #   and their models are dropped by the deploy hook.
+# Money: the connector requests no property that holds money. A property with
+#   a currency flag or a standard money name (source_hubspot/money.py) is not
+#   requested and not stored, and the deal history no longer tracks amount and
+#   currency. The money columns stay in the schema and are NULL; nothing is
+#   backfilled, so no full refresh is needed.
 version: "3.12.0"
 type: cdk
 schedule: "0 6 * * *"

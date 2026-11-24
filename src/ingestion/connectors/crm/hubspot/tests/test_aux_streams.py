@@ -13,8 +13,10 @@ from source_hubspot.constants import (
     HISTORY_BATCH_READ_LIMIT,
     MISSING_CURSOR_TIMESTAMP,
     PROPERTY_DEFINITION_OBJECT_TYPES,
+    STREAM_REGISTRY,
 )
 from source_hubspot.models import HistoryObject, HistoryPage, PropertyChange, RecordPage
+from source_hubspot.money import MONEY_PROPERTY_NAMES
 from source_hubspot.streams import PipelinesStream, PropertyDefinitionsStream, PropertyHistoryStream
 from tests.conftest import SOURCE, TENANT, FakeResponse, assert_no_leak, make_stream, wire
 
@@ -251,3 +253,9 @@ class TestPropertyHistory:
         error = exc_info.value
         assert error.failure_type == FailureType.system_error, f"should reject: {result!r}"
         assert_no_leak(error, PERSONAL)
+
+
+@pytest.mark.parametrize("stream_name", [n for n, e in STREAM_REGISTRY.items() if e.get("history_properties")])
+def test_no_history_stream_requests_a_money_property(stream_name):
+    requested = set(STREAM_REGISTRY[stream_name]["history_properties"])
+    assert not requested & MONEY_PROPERTY_NAMES, f"should not request: {sorted(requested & MONEY_PROPERTY_NAMES)}"

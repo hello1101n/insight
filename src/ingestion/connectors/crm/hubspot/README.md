@@ -120,7 +120,7 @@ The history streams search for objects modified since the cursor, requesting onl
 
 | History stream | Properties |
 |---|---|
-| `deals_property_history` | `dealstage`, `pipeline`, `amount`, `amount_in_home_currency`, `deal_currency_code`, `closedate`, `hubspot_owner_id`, `hs_manual_forecast_category` |
+| `deals_property_history` | `dealstage`, `pipeline`, `closedate`, `hubspot_owner_id`, `hs_manual_forecast_category` |
 | `tickets_property_history` | `hs_pipeline_stage`, `hs_pipeline`, `hubspot_owner_id`, `hs_ticket_priority` |
 
 Teams come from the `teams` array on `owners` (`id`, `name`, `primary`): `/settings/v3/users/teams` needs a settings scope a CRM-only Private App does not carry.
@@ -146,7 +146,15 @@ Bronze advertises **exactly the `ALLOWED_PROPERTIES_BY_OBJECT` allowlist** as `p
 
 Free-text bodies (`hs_call_body`, `hs_email_text`, `hs_meeting_body`, `hs_internal_meeting_notes`, `hs_task_body`, `hs_note_body`, `hs_communication_body`, ticket `content`, deal `description`) keep up to 64 KiB in their `properties_*` column; every other value is capped at 2 KiB.
 
-Syncs still request **every** property the portal defines. Nothing is discarded: the full record — nested `properties` object plus association ids — is serialized into the `raw_data` JSON column, so a property with no dedicated column stays recoverable downstream. The per-value byte cap (see envelope) applies before serializing, so the blob itself stays parseable. This keeps the typed width bounded regardless of portal customization depth.
+Syncs request every property the portal defines, except money (see below). Nothing else is discarded: the full record — nested `properties` object plus association ids — is serialized into the `raw_data` JSON column, so a property with no dedicated column stays recoverable downstream. The per-value byte cap (see envelope) applies before serializing, so the blob itself stays parseable. This keeps the typed width bounded regardless of portal customization depth.
+
+### Money is not collected
+The connector does not request a property that holds money, and does not store one that HubSpot sends without a request. `source_hubspot/money.py` decides:
+
+- a property that the portal displays as currency (`showCurrencySymbol`, or `numberDisplayHint = currency`) is money;
+- a standard property that holds an amount, a currency or an exchange rate (`amount`, `deal_currency_code`, `hs_exchange_rate`, `annualrevenue`, …) is money.
+
+The money columns (`properties_amount`, `properties_annualrevenue`, …) stay in the advertised schema, so the bronze tables keep their shape. They are always NULL, and so are `amount`, `amount_home`, `acv`, `tcv`, `arr`, `currency` and `exchange_rate` in `class_crm_deals`. Free text (deal names, descriptions, notes, email bodies) can still contain an amount: this filter reads property types, not text.
 
 ### Deleted / archived records
 Each archived stream runs as **client-side incremental on `archivedAt`** — page the full archived set, drop records at-or-below the prior cursor state, batch_read full properties for the survivors. After the first sync, only newly-archived rows write to Bronze. Silver UNIONs the live and archived sources and ranks rows by `greatest(updatedAt, archivedAt)` so an archive event outranks the prior live update. Silver rows carry it as `is_deleted` / `deleted_at`.
@@ -173,7 +181,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 |---|---|---|---|
 | `class_crm_accounts` | company | `companies` (+archived) | `account_id`, `name`, `domain`, `owner_id` |
 | `class_crm_contacts` | contact | `contacts` (+archived) | `contact_id`, `email`, `owner_id`, `lifecycle_stage`, `account_id` (primary company) |
-| `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `amount`, `amount_home`, `currency`, `close_date`, `is_closed`, `is_won`, `owner_id` |
+| `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `close_date`, `is_closed`, `is_won`, `owner_id`; the money columns are NULL |
 | `class_crm_activities` | engagement | `engagements_{calls,emails,meetings,tasks,notes,communications}` (+archived) | `activity_type`, `timestamp`, `owner_id`, `created_by_user_id`, `subject`, `body`, `direction`, `status`, `channel`, `duration_seconds`, `ended_at` |
 | `class_crm_leads` | lead | `leads` (+archived) | `lead_id`, `pipeline_id`, `stage_id`, `owner_id`, `contact_id`, `account_id` |
 | `class_crm_tickets` | ticket | `tickets` (+archived) | ticket attributes, then `pipeline_id`, `stage_id`, `content`, `deal_id` |

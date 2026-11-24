@@ -107,6 +107,9 @@ class FakeHubspot:
     def property_names(self, object_type: str) -> tuple:
         return self._names
 
+    def money_property_names(self, object_type: str) -> frozenset:
+        return frozenset()
+
     def generate_schema(self, object_type: str) -> Mapping[str, Any]:
         return {
             "$schema": "http://json-schema.org/draft-07/schema#",

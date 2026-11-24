@@ -204,16 +204,7 @@ _AUX_STREAM_REGISTRY: Mapping[str, Mapping] = {
         "associations": [],
         "silver_tag": "silver:class_crm_field_history",
         "archived_supported": False,
-        "history_properties": (
-            "dealstage",
-            "pipeline",
-            "amount",
-            "amount_in_home_currency",
-            "deal_currency_code",
-            "closedate",
-            "hubspot_owner_id",
-            "hs_manual_forecast_category",
-        ),
+        "history_properties": ("dealstage", "pipeline", "closedate", "hubspot_owner_id", "hs_manual_forecast_category"),
     },
     "tickets_property_history": {
         "kind": "property_history",
@@ -292,6 +283,7 @@ ARCHIVED_STREAM_SUFFIX = _ARCHIVED_STREAM_SUFFIX
 # it is identical for every portal, and a property the portal doesn't define
 # stays NULL. Every other property the portal returns still ships, inside
 # ``raw_data``.
+# INVARIANT: money properties keep their column so the bronze schema stays; property_names never requests them, so the column stays NULL.
 ALLOWED_PROPERTIES_BY_OBJECT: Mapping[str, frozenset[str]] = {
     "contacts": frozenset(
         {

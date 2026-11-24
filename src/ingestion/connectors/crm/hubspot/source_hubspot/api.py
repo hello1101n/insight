@@ -23,6 +23,7 @@ from requests import adapters as request_adapters
 
 from source_hubspot.constants import ALLOWED_PROPERTIES_BY_OBJECT, BASE_URL
 from source_hubspot.models import PropertiesPage, PropertyDescriptor, unexpected_payload
+from source_hubspot.money import MONEY_PROPERTY_NAMES, is_money_property
 from source_hubspot.rate_limiting import HubspotErrorHandler
 
 logger = logging.getLogger("airbyte")
@@ -132,13 +133,18 @@ class Hubspot:
         return payload
 
     def property_names(self, object_type: str) -> tuple[str, ...]:
-        """Every property the portal defines for ``object_type``.
+        """Every property the portal defines for ``object_type``, except money.
 
         Both consumers send this list in a JSON request body (search, archived
         batch_read), so there's no URL-length ceiling to ration against.
         """
         props = self.properties_for(object_type)
-        return tuple(p.name for p in props if p.name)
+        return tuple(p.name for p in props if p.name and not is_money_property(p))
+
+    def money_property_names(self, object_type: str) -> frozenset[str]:
+        """The properties of ``object_type`` that hold money, standard and portal-defined."""
+        props = self.properties_for(object_type)
+        return MONEY_PROPERTY_NAMES | {p.name for p in props if p.name and is_money_property(p)}
 
     def probe_association_scope(self) -> str | None:
         """Verify the token has association read scope.

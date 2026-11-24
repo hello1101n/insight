@@ -139,8 +139,6 @@ def seed_deals(
         "archived",
         "properties_dealname",
         "properties_dealstage",
-        "properties_amount",
-        "properties_amount_in_home_currency",
         "properties_closedate",
         "properties_hubspot_owner_id",
         "properties_hs_created_by_user_id",
@@ -163,7 +161,8 @@ def seed_deals(
                 close = day + _dt.timedelta(days=rng.randint(7, 60))
                 is_closed = close < anchor_date()
                 is_won = is_closed and rng.random() < 0.35
-                amount = round(rng.uniform(500, 50000), 2)
+                # INVARIANT: the draw stays so later deals keep their values; the connector collects no money, so no amount is written.
+                rng.uniform(500, 50000)
                 rows.append(
                     _positioned(
                         cols,
@@ -177,8 +176,6 @@ def seed_deals(
                             "archived": False,
                             "properties_dealname": f"Deal {deal_id[:8]}",
                             "properties_dealstage": "closedwon" if is_won else "qualifiedtobuy",
-                            "properties_amount": f"{amount}",
-                            "properties_amount_in_home_currency": f"{amount}",
                             "properties_closedate": close.isoformat(),
                             "properties_hubspot_owner_id": owner,
                             "properties_hs_created_by_user_id": owner,
