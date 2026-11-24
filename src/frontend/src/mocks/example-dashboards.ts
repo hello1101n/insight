@@ -63,6 +63,41 @@ const SERVICES = [
 ];
 const PIPELINES = ["build", "unit", "e2e", "lint", "deploy", "docs"];
 const OUTCOMES = ["passed", "failed", "cancelled"];
+const TEST_CASES = [
+  "checkout applies a discount code to a cart with mixed currencies",
+  "search returns results for a query with diacritics in the title",
+  "profile page saves the avatar after a slow upload",
+  "invoice export writes every line of a multi-page invoice",
+  "login keeps the session after the token refresh fails once",
+  "report builder keeps the filters after a page reload",
+  "notifications mark a thread as read on the second device",
+  "cart merges items after a guest signs in",
+  "admin can revoke a role while the user is online",
+  "calendar shows events that cross the daylight saving change",
+  "upload resumes after the network drops at ninety percent",
+  "dashboard keeps the period after the browser goes back",
+];
+const AUTHORS = [
+  "Avery Lee",
+  "Blake Kim",
+  "Casey Moreno",
+  "Devon Patel",
+  "Emery Novak",
+  "Finley Ortiz",
+  "Gray Tanaka",
+  "Harper Ivanova",
+  "Indigo Silva",
+  "Jordan Okafor",
+];
+const TICKET_CATEGORIES = [
+  "billing",
+  "sign-in",
+  "performance",
+  "data export",
+  "notifications",
+  "mobile app",
+  "other",
+];
 
 const widget = (
   id: string,
@@ -331,6 +366,65 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     label: "cause",
     value: "count",
   }),
+
+  // chart-shapes
+  widget("cs-builds-per-day", "Builds by result per day", {
+    type: "bar",
+    metric: "cs",
+    x: "bucket",
+    y: "builds",
+    series: "result",
+    labels: true,
+  }),
+  widget(
+    "cs-severity-by-repository",
+    "Open issues by repository and severity",
+    {
+      type: "bar",
+      metric: "cs",
+      x: "repository",
+      y: "open",
+      series: "severity",
+      labels: true,
+    }
+  ),
+  widget(
+    "cs-failure-rate",
+    "Failure rate per test",
+    { type: "bar", metric: "cs", x: "test_case", y: "failure_rate" },
+    { clock, percents: ["failure_rate"] }
+  ),
+  widget("cs-cost-per-day", "Cost per day, USD", {
+    type: "bar",
+    metric: "cs",
+    x: "bucket",
+    y: "cost_usd",
+    labels: true,
+  }),
+  widget("cs-signups-per-day", "Sign-ups per day", {
+    type: "bar",
+    metric: "cs",
+    x: "date",
+    y: "signups",
+  }),
+  widget("cs-top-authors", "Merged pull requests per author, top 10", {
+    type: "bar",
+    metric: "cs",
+    x: "author",
+    y: "merged",
+  }),
+  widget(
+    "cs-pass-rate",
+    "Pass rate per day",
+    { type: "line", metric: "cs", x: "bucket", y: "pass_rate" },
+    { clock, percents: ["pass_rate"] }
+  ),
+  widget("cs-ticket-categories", "Support tickets by category", {
+    type: "pie",
+    metric: "cs",
+    label: "category",
+    value: "tickets",
+  }),
 ];
 
 export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
@@ -460,6 +554,24 @@ export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
         },
         { heading: "What to do next" },
         { text: "Open a board and change the window to see what moves." },
+      ],
+    },
+  },
+  "chart-shapes": {
+    name: "Chart shapes",
+    body: {
+      title: "Chart shapes",
+      time_ranges: ["P7D", "P30D", "PQC"],
+      default_range: "P30D",
+      items: [
+        { widget: "cs-builds-per-day" },
+        { widget: "cs-severity-by-repository" },
+        { widget: "cs-failure-rate" },
+        { widget: "cs-cost-per-day" },
+        { widget: "cs-signups-per-day" },
+        { widget: "cs-top-authors" },
+        { widget: "cs-pass-rate" },
+        { widget: "cs-ticket-categories" },
       ],
     },
   },
@@ -724,6 +836,58 @@ export function exampleRun(
           ["dependency", 3],
           ["capacity", 2],
         ]
+      );
+    case "cs-builds-per-day":
+      return result(
+        ["bucket", "result", "builds"],
+        span.flatMap((day, i) =>
+          OUTCOMES.map((outcome, j) => [
+            day,
+            outcome,
+            j === 0 ? wave(i) : (i * (j + 3)) % (j + 4),
+          ])
+        )
+      );
+    case "cs-severity-by-repository":
+      return result(
+        ["repository", "severity", "open"],
+        REPOSITORIES.slice(0, 8).flatMap((repository, i) =>
+          SEVERITIES.map((severity, j) => [
+            repository,
+            severity,
+            (i * 7 + j * 5) % (j + 6),
+          ])
+        )
+      );
+    case "cs-failure-rate":
+      return result(
+        ["test_case", "failure_rate"],
+        TEST_CASES.map((name, i) => [name, round1(48 - i * 3.4)])
+      );
+    case "cs-cost-per-day":
+      return result(
+        ["bucket", "cost_usd"],
+        span.map((day, i) => [day, Math.round((8 + wave(i) * 1.7) * 100) / 100])
+      );
+    case "cs-signups-per-day":
+      return result(
+        ["date", "signups"],
+        span.map((day, i) => [day, Math.round(40 + wave(i) * 6)])
+      );
+    case "cs-top-authors":
+      return result(
+        ["author", "merged"],
+        AUTHORS.map((author, i) => [author, Math.round(total / (i + 1.5))])
+      );
+    case "cs-pass-rate":
+      return result(
+        ["bucket", "pass_rate"],
+        span.map((day, i) => [day, round1(84 + 9 * Math.sin(i / 5))])
+      );
+    case "cs-ticket-categories":
+      return result(
+        ["category", "tickets"],
+        TICKET_CATEGORIES.map((category, i) => [category, 40 - i * 5])
       );
     default:
       return undefined;
