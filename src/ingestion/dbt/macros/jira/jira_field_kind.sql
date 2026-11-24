@@ -43,7 +43,7 @@ multiIf(
     {{ fid }} IN ('issuekey', 'thumbnail'),                                  'ignored',
     {{ styp }} IN ('option-with-child', 'option2', 'team', 'atlas-project',
                    'sd-request-lang', 'sd-approvals', 'sd-feedback',
-                   'sd-customerrequesttype'),                                'ignored',
+                   'sd-customerrequesttype', 'sd-servicelevelagreement'),    'ignored',
 
     {{ styp }} = 'array' AND {{ sitm }} = 'string',                          'string_array',
     {#- Issue links are element-wise like a component, but the two sides of the
