@@ -1,6 +1,6 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
-import { metricDisplayUnit } from "@/lib/format";
+import { isDurationUnit, metricDisplayUnit } from "@/lib/format";
 import {
   personDisplayName,
   type PersonNaming,
@@ -226,4 +226,28 @@ export function rolesById(root: IdentityPerson | null): Map<string, string> {
   };
   if (root) walk(root);
   return roles;
+}
+
+const COMPUTATION_LABEL: Record<NormalizedMetricResult["computation"], string> = {
+  sum: "Total",
+  ratio: "Ratio",
+  median: "Median",
+  percentile: "Percentile",
+  stddev: "Std dev",
+  distinct_count: "Total",
+};
+
+export function columnFormula(
+  result: Pick<NormalizedMetricResult, "computation" | "format" | "unit">,
+): string {
+  const unit =
+    result.format === "percent"
+      ? "%"
+      : result.format === "currency"
+        ? "USD"
+        : isDurationUnit(result.unit)
+          ? "h min"
+          : (result.unit ?? "count");
+
+  return `${COMPUTATION_LABEL[result.computation]} · ${unit}`;
 }

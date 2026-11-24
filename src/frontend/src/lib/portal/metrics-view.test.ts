@@ -7,6 +7,7 @@ import { identityPerson, pid } from "@/test/identity";
 
 import {
   chunkKeys,
+  columnFormula,
   compareGaps,
   formatGap,
   headerUnit,
@@ -292,5 +293,21 @@ describe("rolesById", () => {
         [pid("b"), "Software Engineer"],
       ]),
     );
+  });
+});
+
+describe("columnFormula", () => {
+  it.each([
+    ["a sum with a unit", "sum", "integer", "days", "Total · days"],
+    ["a percent ratio", "ratio", "percent", null, "Ratio · %"],
+    ["a sum of hours", "sum", "decimal", "h", "Total · h min"],
+    ["a unitless sum", "sum", "integer", null, "Total · count"],
+    ["a median", "median", "decimal", "h", "Median · h min"],
+    ["a percentile", "percentile", "decimal", "min", "Percentile · min"],
+    ["a standard deviation", "stddev", "decimal", "min", "Std dev · min"],
+    ["a distinct count", "distinct_count", "integer", null, "Total · count"],
+    ["a unit the label also names", "sum", "integer", "emails", "Total · emails"],
+  ] as const)("writes %s", (_case, computation, format, unit, text) => {
+    expect(columnFormula({ computation, format, unit })).toBe(text);
   });
 });

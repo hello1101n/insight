@@ -270,9 +270,9 @@ describe("MetricsView", () => {
   it("names every metric column in full, under its family", () => {
     render(<MetricsView />);
 
-    expect(screen.getByRole("columnheader", { name: "Default branch commits" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^Default branch commits/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Development · Git" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^Messages/ })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /Tasks closed/ })).not.toBeInTheDocument();
   });
 
@@ -305,7 +305,7 @@ describe("MetricsView", () => {
       .find((cell) => cell.textContent === "b")!
       .closest("tr")!;
 
-    expect(header).toHaveTextContent("PR sizelines");
+    expect(header).toHaveTextContent("PR sizeTotal · lines");
     expect(within(rowOfB).getAllByRole("cell").map((cell) => cell.textContent)).toContain("237");
   });
 

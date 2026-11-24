@@ -8,6 +8,7 @@ import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, formatMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
+  columnFormula,
   finiteValue,
   headerUnit,
   type MetricGroup,
@@ -105,7 +106,11 @@ export function MetricsTable({
                   >
                     <span className="whitespace-normal">
                       {label}
-                      <UnitNote result={result} className="block" />
+                      {result ? (
+                        <span className="block font-normal text-muted-foreground">
+                          {columnFormula(result)}
+                        </span>
+                      ) : null}
                     </span>
                     {direction === "descending" ? (
                       <ArrowDown className="size-3 shrink-0" aria-hidden />
