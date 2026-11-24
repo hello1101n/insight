@@ -469,6 +469,26 @@ mod tests {
         id: u64,
     }
 
+    #[tokio::test]
+    async fn with_log_comment_tags_every_query() -> Result<(), Box<dyn std::error::Error>> {
+        let capture = test_support::Capture::start().await?;
+        let client = Client::new(Config::new(capture.url(), "identity"))
+            .with_log_comment("insight:sync=example:stage=example".to_owned());
+
+        client
+            .query("SELECT id FROM t")
+            .fetch_all::<IdRow>()
+            .await?;
+
+        let received = capture.received();
+        assert_eq!(received.len(), 1);
+        assert_eq!(
+            received[0].pair("log_comment"),
+            Some("insight:sync=example:stage=example")
+        );
+        Ok(())
+    }
+
     async fn recorded(
         topology: Topology,
     ) -> Result<Vec<test_support::Received>, Box<dyn std::error::Error>> {
