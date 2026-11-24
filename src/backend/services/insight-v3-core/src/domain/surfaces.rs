@@ -17,6 +17,7 @@ use crate::domain::kinds::metric::CompileAgainst;
 use crate::domain::kinds::metric::answerable::EffectiveClock;
 use crate::domain::kinds::widget::WidgetError;
 use crate::domain::kinds::{self, KindError};
+use crate::domain::personal::MarkError;
 use crate::domain::query::metric_query::{MetricQuery, MetricQueryError, MetricRunError, People};
 use crate::domain::query::time_window::WindowError;
 use crate::domain::violation::Violation;
@@ -58,6 +59,8 @@ pub(crate) enum CustomError {
     Datasets(crate::domain::datasets::DatasetStoreError),
     #[error("this dataset cannot answer that metric - {}", crate::domain::violation::said(.0))]
     Unanswerable(Vec<Violation>),
+    #[error(transparent)]
+    Mark(MarkError),
 }
 
 impl From<KindError> for CustomError {
@@ -87,6 +90,7 @@ impl CustomError {
             | Self::Range(_)
             | Self::DatasetNotReady(_)
             | Self::Unanswerable(_)
+            | Self::Mark(_)
             | Self::Compile(_) => true,
             Self::Run(_) | Self::Store(_) | Self::Datasets(_) => false,
         }
@@ -312,8 +316,42 @@ impl<'a> Surfaces<'a> {
     ) -> Result<(), CustomError> {
         self.writable(kind, id).await?;
         kinds::check(kind, body, self.definitions, self.datasets, self.over).await?;
+        self.keeps_its_mark(kind, id, body).await?;
 
         self.store_replacing(kind, id, name, body).await
+    }
+
+    async fn keeps_its_mark(
+        &self,
+        kind: DefinitionKind,
+        id: &DefinitionId,
+        body: &Value,
+    ) -> Result<(), CustomError> {
+        if kind != DefinitionKind::Metric {
+            return Ok(());
+        }
+        let Some(mark) = self
+            .definitions
+            .mark_of(id)
+            .await
+            .map_err(CustomError::Store)?
+        else {
+            return Ok(());
+        };
+
+        let metric: MetricQuery =
+            serde_json::from_value(body.clone()).map_err(CustomError::Body)?;
+        let declaration = match metric.dataset() {
+            Some(named) => datasets::ready(self.datasets, named)
+                .await
+                .map_err(CustomError::Datasets)?
+                .map(|ready| ready.declaration),
+            None => None,
+        };
+        mark.check(&metric, declaration.as_ref())
+            .map_err(CustomError::Mark)?;
+
+        Ok(())
     }
 
     async fn store_replacing(

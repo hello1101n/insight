@@ -362,7 +362,7 @@ impl FieldType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Agg {
+pub(crate) enum Agg {
     Count,
     Sum,
     Avg,

@@ -16,6 +16,7 @@ use crate::domain::folders::{
     Folder, FolderError, FolderFilter, FolderId, FolderList, FolderName, FolderSummary, Folders,
     HeldFolder, MAX_FOLDERS, SeenFolder,
 };
+use crate::domain::personal::{Marked, Marks, PersonalMark};
 use crate::domain::sharing::Grant;
 use crate::domain::tags::TagName;
 
@@ -52,6 +53,7 @@ struct Stored {
     entries: BTreeMap<(FolderId, String), KeptEntry>,
     tagged: BTreeMap<String, Tagged>,
     pinned: BTreeMap<PersonId, Vec<String>>,
+    marks: BTreeMap<String, PersonalMark>,
 }
 
 fn reaching<'g>(
@@ -231,6 +233,9 @@ impl Stored {
             self.entries.retain(|(_, held), _| held != dashboard);
             self.tagged.remove(dashboard);
             self.drop_pins(dashboard);
+        }
+        if kind == DefinitionKind::Metric {
+            self.marks.remove(id.as_str());
         }
         let key = MemoryDefinitions::key(kind, id);
         self.definitions.remove(&key).is_some()
@@ -593,6 +598,67 @@ impl Definitions for MemoryDefinitions {
         *stored = applied;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Marks for MemoryDefinitions {
+    async fn mark(
+        &self,
+        metric: &DefinitionId,
+        mark: Option<&PersonalMark>,
+    ) -> Result<bool, DefinitionStoreError> {
+        self.writable()?;
+        let mut stored = self.lock();
+        if !stored
+            .definitions
+            .contains_key(&Self::key(DefinitionKind::Metric, metric))
+        {
+            return Ok(false);
+        }
+
+        match mark {
+            Some(mark) => {
+                stored
+                    .marks
+                    .insert(metric.as_str().to_owned(), mark.clone());
+            }
+            None => {
+                stored.marks.remove(metric.as_str());
+            }
+        }
+
+        Ok(true)
+    }
+
+    async fn mark_of(
+        &self,
+        metric: &DefinitionId,
+    ) -> Result<Option<PersonalMark>, DefinitionStoreError> {
+        Ok(self.lock().marks.get(metric.as_str()).cloned())
+    }
+
+    async fn marked(&self) -> Result<Vec<Marked>, DefinitionStoreError> {
+        let stored = self.lock();
+        let mut marked: Vec<Marked> = stored
+            .marks
+            .iter()
+            .filter_map(|(id, mark)| {
+                let held = stored
+                    .definitions
+                    .get(&(DefinitionKind::Metric.table(), id.clone()))?;
+
+                Some(Marked {
+                    id: id.clone(),
+                    name: held.name.clone(),
+                    mark: mark.clone(),
+                    body: held.body.clone(),
+                })
+            })
+            .collect();
+        marked.sort_by(|left, right| (&left.name, &left.id).cmp(&(&right.name, &right.id)));
+
+        Ok(marked)
     }
 }
 

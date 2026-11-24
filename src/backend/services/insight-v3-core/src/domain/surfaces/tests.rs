@@ -1331,3 +1331,180 @@ async fn running_a_metric_over_a_dataset_still_being_made_says_so() -> R {
 
     Ok(())
 }
+
+mod a_personal_mark {
+    use super::*;
+    use crate::chat::Proposed;
+    use crate::domain::personal::{Direction, MarkError, Marks as _, MetricFormat, PersonalMark};
+
+    fn label() -> DefinitionLabel {
+        DefinitionLabel::parse("Comments").unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    fn reviews() -> serde_json::Value {
+        json!({
+            "title": "Reviews",
+            "fields": [
+                { "name": "reviewer", "path": "reviewer", "type": "string", "person": "email" },
+                { "name": "repository", "path": "repository", "type": "string" },
+                { "name": "comments", "path": "comments", "type": "int" }
+            ]
+        })
+    }
+
+    fn per_reviewer() -> serde_json::Value {
+        json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+            ],
+            "group_by": ["reviewer"]
+        })
+    }
+
+    fn per_repository() -> serde_json::Value {
+        json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "repository", "type": "string", "as_name": "repository" },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+            ],
+            "group_by": ["repository"]
+        })
+    }
+
+    fn the_mark() -> PersonalMark {
+        PersonalMark {
+            person_field: "reviewer".to_owned(),
+            value_field: "comments".to_owned(),
+            unit: None,
+            format: MetricFormat::Number,
+            direction: Direction::HigherIsBetter,
+            description: "Review comments left in the period".to_owned(),
+        }
+    }
+
+    async fn marked(fixture: &Fixture) -> Result<DefinitionId, Box<dyn Error>> {
+        fixture.a_ready_dataset("reviews", &reviews()).await?;
+        let id = fixture
+            .surfaces()
+            .create(DefinitionKind::Metric, &label(), &per_reviewer())
+            .await?;
+        assert!(fixture.definitions.mark(&id, Some(&the_mark())).await?);
+
+        Ok(id)
+    }
+
+    async fn untouched(fixture: &Fixture, id: &DefinitionId) -> R {
+        let stored = fixture.surfaces().read(DefinitionKind::Metric, id).await?;
+        assert_eq!(stored.body, per_reviewer());
+        assert_eq!(fixture.definitions.mark_of(id).await?, Some(the_mark()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_replace_that_drops_the_person_field_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = marked(&fixture).await?;
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &per_repository())
+            .await;
+
+        let Err(error) = refused else {
+            panic!("a replace that drops the person field must be refused");
+        };
+        assert!(
+            matches!(&error, CustomError::Mark(MarkError::NoPersonField(field)) if field == "reviewer"),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            MarkError::NoPersonField("reviewer".to_owned()).to_string()
+        );
+        assert!(error.is_about_the_caller());
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
+    async fn a_replace_that_leaves_the_value_unaggregated_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = marked(&fixture).await?;
+        let rows = json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "as_name": "comments" }
+            ]
+        });
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &rows)
+            .await;
+
+        assert!(
+            matches!(&refused, Err(CustomError::Mark(MarkError::NotAggregated(field))) if field == "comments"),
+            "{refused:?}"
+        );
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
+    async fn a_replace_keeps_the_mark() -> R {
+        let fixture = Fixture::new().await;
+        let id = marked(&fixture).await?;
+        let wider = json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "agg": "avg", "as_name": "comments" },
+                { "type": "int", "agg": "count", "as_name": "reviews" }
+            ],
+            "group_by": ["reviewer"]
+        });
+
+        fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &wider)
+            .await?;
+
+        let stored = fixture.surfaces().read(DefinitionKind::Metric, &id).await?;
+        assert_eq!(stored.body, wider);
+        assert_eq!(fixture.definitions.mark_of(&id).await?, Some(the_mark()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_proposal_that_drops_the_person_field_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = marked(&fixture).await?;
+
+        let refused = fixture
+            .surfaces()
+            .store_proposal(
+                Some(Proposed {
+                    id: Some(id.as_str().to_owned()),
+                    name: "Comments".to_owned(),
+                    body: per_repository(),
+                }),
+                Vec::new(),
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &refused,
+                Err(ProposalError::Refused(CustomError::Mark(MarkError::NoPersonField(field))))
+                    if field == "reviewer"
+            ),
+            "{refused:?}"
+        );
+        untouched(&fixture, &id).await
+    }
+}

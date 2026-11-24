@@ -396,6 +396,7 @@ pub(super) fn custom_error(error: CustomError) -> CanonicalError {
             DefinitionApiError::invalid_field("body", source.to_string())
         }
         CustomError::Unanswerable(violations) => unanswerable(&violations),
+        CustomError::Mark(source) => DefinitionApiError::invalid_field("body", source.to_string()),
         CustomError::Store(source) => DefinitionApiError::definition_store_error(source),
         CustomError::Datasets(source) => DefinitionApiError::dataset_store_error(source),
         CustomError::Run(source) => {

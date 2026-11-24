@@ -18,6 +18,7 @@ use crate::domain::kinds::dataset::declaration::{
 use crate::domain::query::time_window::MaximumRange;
 
 pub(crate) use engine::TableEngine;
+pub(crate) use field::Agg;
 use field::FieldType;
 pub(crate) use filter::FilterBind;
 pub(crate) use people::People;
@@ -238,30 +239,21 @@ impl MetricQuery {
         }
 
         for field in &self.fields {
-            let counted = field.agg == Some(field::Agg::Count)
-                || field.agg.is_some_and(field::Agg::arithmetic)
-                || field.divide.is_some();
-            let kind = if counted {
-                ColumnKind::Number
-            } else {
-                let declared = declaration
-                    .zip(field.reads())
-                    .and_then(|(declaration, named)| declaration.field(named))
-                    .map(|declared| declared.r#type);
-                match declared {
-                    Some(DeclaredType::Int | DeclaredType::Float) => ColumnKind::Number,
-                    Some(DeclaredType::Datetime) => ColumnKind::Date,
-                    Some(DeclaredType::String | DeclaredType::Bool) => ColumnKind::Text,
-                    None => match field.r#type {
-                        FieldType::Int | FieldType::Float => ColumnKind::Number,
-                        FieldType::String => ColumnKind::Text,
-                    },
-                }
-            };
-            kinds.push((field.as_name.clone(), kind));
+            kinds.push((field.as_name.clone(), column_kind(field, declaration)));
         }
 
         kinds
+    }
+
+    pub(crate) fn output<'a>(
+        &'a self,
+        as_name: &str,
+        declaration: Option<&'a Declaration>,
+    ) -> Option<Output<'a>> {
+        self.fields
+            .iter()
+            .find(|field| field.as_name == as_name)
+            .map(|field| Output { field, declaration })
     }
 
     pub(crate) fn column_names(&self, clocked: bool) -> Vec<String> {
@@ -297,6 +289,64 @@ impl MetricQuery {
             .map(TimeField::source)
             .transpose()?
             .is_some())
+    }
+}
+
+fn column_kind(field: &Field, declaration: Option<&Declaration>) -> ColumnKind {
+    let counted = field.agg == Some(Agg::Count)
+        || field.agg.is_some_and(Agg::arithmetic)
+        || field.divide.is_some();
+    if counted {
+        return ColumnKind::Number;
+    }
+
+    let declared = declaration
+        .zip(field.reads())
+        .and_then(|(declaration, named)| declaration.field(named))
+        .map(|declared| declared.r#type);
+    match declared {
+        Some(DeclaredType::Int | DeclaredType::Float) => ColumnKind::Number,
+        Some(DeclaredType::Datetime) => ColumnKind::Date,
+        Some(DeclaredType::String | DeclaredType::Bool) => ColumnKind::Text,
+        None => match field.r#type {
+            FieldType::Int | FieldType::Float => ColumnKind::Number,
+            FieldType::String => ColumnKind::Text,
+        },
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Output<'a> {
+    field: &'a Field,
+    declaration: Option<&'a Declaration>,
+}
+
+impl Output<'_> {
+    pub(crate) fn carries_a_person(self) -> bool {
+        match self.declaration {
+            Some(declaration) => self
+                .field
+                .reads()
+                .and_then(|named| declaration.field(named))
+                .is_some_and(|declared| declared.person.is_some()),
+            None => self.field.person.is_some(),
+        }
+    }
+
+    pub(crate) fn kind(self) -> ColumnKind {
+        column_kind(self.field, self.declaration)
+    }
+
+    pub(crate) fn agg(self) -> Option<Agg> {
+        self.field.agg
+    }
+
+    pub(crate) fn divides(self) -> bool {
+        self.field.divide.is_some()
+    }
+
+    pub(crate) fn percent(self) -> bool {
+        self.field.percent
     }
 }
 

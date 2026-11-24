@@ -1898,3 +1898,71 @@ async fn a_viewer_reads_a_shared_dashboard_but_may_not_change_it() {
     );
     assert_refused(&removed, "only the owner can delete this dashboard");
 }
+
+#[tokio::test]
+async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -> R {
+    use crate::domain::personal::{Direction, MarkError, MetricFormat, PersonalMark};
+
+    let surfaces = surfaces();
+    let per_reviewer = json!({
+        "table": "reviews",
+        "fields": [
+            { "column": "reviewer_email", "type": "string", "person": "email", "as_name": "reviewer" },
+            { "type": "int", "agg": "count", "as_name": "reviews" }
+        ],
+        "group_by": ["reviewer"]
+    });
+    let id = created(
+        &surfaces
+            .put_metric(administrator(), put("Reviews", per_reviewer.clone()))
+            .await,
+    );
+    assert!(
+        surfaces
+            .state
+            .store()
+            .mark(
+                &DefinitionId::parse(&id)?,
+                Some(&PersonalMark {
+                    person_field: "reviewer".to_owned(),
+                    value_field: "reviews".to_owned(),
+                    unit: None,
+                    format: MetricFormat::Number,
+                    direction: Direction::HigherIsBetter,
+                    description: "Reviews left in the period".to_owned(),
+                }),
+            )
+            .await?
+    );
+
+    let refused = surfaces
+        .put_metric(
+            administrator(),
+            replacing(
+                &id,
+                "Reviews",
+                json!({
+                    "table": "reviews",
+                    "fields": [
+                        { "column": "repository", "type": "string", "as_name": "repository" },
+                        { "type": "int", "agg": "count", "as_name": "reviews" }
+                    ],
+                    "group_by": ["repository"]
+                }),
+            ),
+        )
+        .await;
+
+    assert_refused(
+        &refused,
+        &MarkError::NoPersonField("reviewer".to_owned()).to_string(),
+    );
+    let read = assert_accepted(
+        &surfaces
+            .get_definition(administrator(), named(DefinitionKind::Metric, &id))
+            .await,
+    );
+    assert_eq!(read["body"], per_reviewer);
+
+    Ok(())
+}

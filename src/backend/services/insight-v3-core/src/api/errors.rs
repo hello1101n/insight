@@ -63,7 +63,8 @@ pub(crate) trait ApiErrors {
             | CustomError::NotOwner
             | CustomError::Widget(_)
             | CustomError::Range(_)
-            | CustomError::Unanswerable(_) => {
+            | CustomError::Unanswerable(_)
+            | CustomError::Mark(_) => {
                 tracing::error!(%error, "reading a metric produced an unrelated failure");
                 CanonicalError::internal("metric query execution failed").create()
             }

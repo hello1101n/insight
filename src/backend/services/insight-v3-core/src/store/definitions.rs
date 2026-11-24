@@ -24,6 +24,7 @@ use crate::domain::definition::{
     Change, DefinitionId, DefinitionKind, DefinitionLabel, DefinitionStoreError, Definitions,
     LibraryEntry, LibraryKind, LibraryPage, Listed, ListedPage, Lookup, Page, StoredDefinition,
 };
+use crate::domain::personal::{Marked, Marks, PersonalMark};
 use crate::store::like_escaped;
 
 const INSERT_NEW: &str = "INSERT INTO {table} (id, name, body, updated_at)
@@ -64,6 +65,12 @@ const NAMES_OF: &str = "SELECT id, name FROM {table} WHERE id IN ({ids})";
 
 const COUNT_MATCHES: &str = "SELECT COUNT(*) AS total FROM {table}
 WHERE name LIKE ? OR body LIKE ?";
+
+const MARK_ONE: &str = "UPDATE metrics SET personal = ? WHERE id = ?";
+const MARK_OF: &str = "SELECT personal FROM metrics WHERE id = ?";
+const MARKED: &str = "SELECT id, name, personal, body FROM metrics
+WHERE personal IS NOT NULL
+ORDER BY name, id";
 
 fn sql(template: &str, kind: DefinitionKind) -> String {
     template.replace("{table}", kind.table())
@@ -152,6 +159,34 @@ impl EntryRow {
 #[derive(Debug, FromQueryResult)]
 struct TotalRow {
     total: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct MarkRow {
+    personal: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct MarkedRow {
+    id: String,
+    name: String,
+    personal: String,
+    body: String,
+}
+
+impl MarkedRow {
+    fn into_marked(self) -> Result<Marked, DefinitionStoreError> {
+        Ok(Marked {
+            mark: read_mark(&self.personal)?,
+            body: serde_json::from_str(&self.body)?,
+            id: self.id,
+            name: self.name,
+        })
+    }
+}
+
+fn read_mark(personal: &str) -> Result<PersonalMark, DefinitionStoreError> {
+    serde_json::from_str(personal).map_err(|_| DefinitionStoreError::UnreadableRow("personal mark"))
 }
 
 pub(crate) struct MariaDefinitions {
@@ -414,6 +449,53 @@ impl Definitions for MariaDefinitions {
         transaction.commit().await?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Marks for MariaDefinitions {
+    async fn mark(
+        &self,
+        metric: &DefinitionId,
+        mark: Option<&PersonalMark>,
+    ) -> Result<bool, DefinitionStoreError> {
+        let personal = mark.map(serde_json::to_string).transpose()?;
+        let result = self
+            .db
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::MySql,
+                MARK_ONE,
+                [personal.into(), metric.as_str().into()],
+            ))
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn mark_of(
+        &self,
+        metric: &DefinitionId,
+    ) -> Result<Option<PersonalMark>, DefinitionStoreError> {
+        let row = MarkRow::find_by_statement(Statement::from_sql_and_values(
+            DbBackend::MySql,
+            MARK_OF,
+            [metric.as_str().into()],
+        ))
+        .one(&self.db)
+        .await?;
+
+        row.and_then(|row| row.personal)
+            .as_deref()
+            .map(read_mark)
+            .transpose()
+    }
+
+    async fn marked(&self) -> Result<Vec<Marked>, DefinitionStoreError> {
+        let rows = MarkedRow::find_by_statement(Statement::from_string(DbBackend::MySql, MARKED))
+            .all(&self.db)
+            .await?;
+
+        rows.into_iter().map(MarkedRow::into_marked).collect()
     }
 }
 

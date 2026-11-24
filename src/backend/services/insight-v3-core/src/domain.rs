@@ -11,6 +11,7 @@ pub(crate) mod drilldown;
 pub(crate) mod folders;
 pub(crate) mod kinds;
 pub(crate) mod metric_run;
+pub(crate) mod personal;
 pub(crate) mod pins;
 pub(crate) mod query;
 pub(crate) mod sharing;
