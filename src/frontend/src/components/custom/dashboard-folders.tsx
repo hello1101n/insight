@@ -31,9 +31,7 @@ export function FolderSubmenu({
 }: {
   id: string;
   access: DashboardAccess;
-  /** Absent where a dashboard cannot go in a folder it creates. */
   onNewFolder?: () => void;
-  /** Asked instead of filing when filing would show the dashboard to the folder's people. */
   onShareInto: (folder: FolderSummary) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -60,7 +58,6 @@ export function FolderSubmenu({
   async function widensAudience(folder: FolderSummary): Promise<boolean> {
     if (folder.access === "ownerless" || !read.data?.carries) return false;
 
-    // SAFETY: a folder whose people cannot be read is treated as if it had some.
     return queryClient
       .fetchQuery(grantsQuery({ kind: "folders", id: folder.id }))
       .then((grants) => grants.length > 0)
@@ -94,7 +91,6 @@ export function FolderSubmenu({
       } else {
         await add.mutateAsync(entry);
       }
-      // INVARIANT: the read is patched before the tick is let go, so a refetch another toggle cancelled cannot flip it back.
       queryClient.setQueryData(dashboardReadQuery(id).queryKey, (now) =>
         now
           ? {

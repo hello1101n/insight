@@ -44,7 +44,6 @@ describe("orgScopeGate", () => {
   });
 
   it("prioritises the error state over the empty state", () => {
-    // A 500 must never masquerade as "this manager has no team".
     render(<>{orgScopeGate(args({ viewerError: true, memberCount: 0 }))}</>);
     expect(screen.queryByText("No team here.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();

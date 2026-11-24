@@ -37,7 +37,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
-/** A metric a window can select by, and the date it would use. */
 const CLOCKED = {
   name: "Merged pull requests",
   definition: {
@@ -48,7 +47,6 @@ const CLOCKED = {
   clock: { field: "merged_at", from: "metric" as const },
 };
 
-/** The same metric over a dataset that marks no date: nothing windows it. */
 const CLOCKLESS = {
   name: "Pull requests",
   definition: {
@@ -96,7 +94,6 @@ function renderDrilldown(
   );
 }
 
-/** A page whose answer the test releases when it is ready. */
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
   const promise = new Promise<T>((settle) => {
@@ -188,9 +185,6 @@ describe("<WidgetDrilldown>", () => {
     expect(screen.getByText("83.91%")).toBeInTheDocument();
   });
 
-  // A header click is a question to the service; the answer is the next
-  // page it sends. The window travels with it, or the rows would be the
-  // right order of the wrong period.
   it("asks the service for the order a header click chooses, over the same window", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKED);
@@ -222,8 +216,6 @@ describe("<WidgetDrilldown>", () => {
     }, { timeout: 5000 });
   });
 
-  // The service picked `service ↑` itself. The first click on that header
-  // has to flip it, not ask for what is already on screen.
   it("flips the column the service chose on the first click", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
@@ -376,8 +368,6 @@ describe("<WidgetDrilldown>", () => {
     );
   });
 
-  // The dialog is sized for a result of a few columns. A wider one is read by
-  // filling the window rather than by scrolling a small frame.
   it("fills the window when asked, and gives the room back", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);

@@ -140,7 +140,6 @@ describe("bucketRange", () => {
   });
 
   it("closes a month bucket on the month's own last day", () => {
-    // February, and a leap year, because a fixed 30 or 31 would pass the rest.
     expect(bucketRange("2026-02-01", "month")).toEqual({
       from: "2026-02-01",
       to: "2026-02-28",

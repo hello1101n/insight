@@ -28,7 +28,6 @@ export interface CustomBarChartProps {
   onPointClick?: () => void;
 }
 
-/** A count per category — the shape most questions about "per" answer with. */
 export function CustomBarChart({
   result,
   x,

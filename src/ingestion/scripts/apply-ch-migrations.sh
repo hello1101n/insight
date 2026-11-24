@@ -935,6 +935,22 @@ heal_collab_document_visited_page_count() {
 heal_collab_document_visited_page_count staging m365__collab_document_activity_sharepoint
 heal_collab_document_visited_page_count silver class_collab_document_activity
 
+# The HubSpot arm of the support class writes NULL where it measures no
+# comments and no CSAT, so the class union declares those counters Nullable.
+# A relation that only the Zendesk arm built keeps the plain UInt64. Widening,
+# no value moves.
+# INVARIANT: repairs releases without #112 (main before <first umbrella release carrying it>); delete once every CH_FLOOR_RELEASES release runs it.
+heal_support_activity_counters() {
+  local db="$1" table="$2" column
+  ch_table_exists "${db}" "${table}" || return 0
+  for column in public_comments private_comments csat_good csat_total; do
+    retype_column "${db}" "${table}" "${column}" 'Nullable(UInt64)'
+  done
+}
+
+heal_support_activity_counters staging zendesk__support_activity
+heal_support_activity_counters silver class_support_activity
+
 # The compose seed once pre-created silver.class_ai_overage from placeholder
 # DDL: String identity columns and a UInt64 version, where the model creates
 # Nullable(String) and Int64. A ReplacingMergeTree version column cannot

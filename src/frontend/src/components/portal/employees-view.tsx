@@ -19,7 +19,6 @@ import {
 import { personName } from "@/lib/identities/person-display";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
-import { cn } from "@/lib/utils";
 
 interface EmployeeRow {
   personId: string;
@@ -48,10 +47,6 @@ function rosterEmployees(
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-/**
- * Employees directory — every canonical person visible to the viewer,
- * searchable and linked to their Person view.
- */
 export function EmployeesView() {
   const { t } = useTranslation();
   const { isFlat } = useVisibilityPolicy();
@@ -104,13 +99,12 @@ export function EmployeesView() {
                 })}
           </p>
         </div>
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="w-full max-w-xs">
           <Input
+            icon={<Search />}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("people.search_placeholder")}
-            className="pl-8"
           />
         </div>
       </div>
@@ -121,8 +115,6 @@ export function EmployeesView() {
             <TableRow>
               <TableHead>{t("people.name")}</TableHead>
               <TableHead>{t("people.title")}</TableHead>
-              {/* A flat organisation fills none of these: no reporting line,
-                  and the roster carries no org attributes. */}
               {isFlat ? null : (
                 <>
                   <TableHead>{t("people.department")}</TableHead>
@@ -145,18 +137,18 @@ export function EmployeesView() {
                     {e.displayName}
                   </Link>
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {e.jobTitle || "—"}
                 </TableCell>
                 {isFlat ? null : (
                   <>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.department || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.division || "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell>
                       {e.supervisorName || "—"}
                     </TableCell>
                   </>
@@ -164,13 +156,11 @@ export function EmployeesView() {
                 <TableCell>
                   {e.status ? (
                     <Badge
-                      variant="secondary"
-                      className={cn(
-                        "font-medium",
+                      variant={
                         e.status.toLowerCase() === "active"
-                          ? "bg-success/15 text-success"
-                          : "bg-muted text-muted-foreground",
-                      )}
+                          ? "success"
+                          : "secondary"
+                      }
                     >
                       {e.status}
                     </Badge>

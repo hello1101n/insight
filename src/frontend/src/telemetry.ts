@@ -39,8 +39,7 @@ export async function startUsageTelemetry(session: Session): Promise<void> {
     url: `${BASE}/usage/events`,
     apiVersion: 2,
     autocapture: false,
-    // The SDK keeps its session in origin-wide storage, so two people signing
-    // in on one browser would share a session id and merge into one visit.
+    // WORKAROUND: the SDK keeps one session per origin, so two people on one browser would merge.
     storagePrefix: `insight-usage:${session.personId}`,
   })
     .identify(session.personId)
@@ -61,13 +60,10 @@ const CUSTOM_PAGES = new Set([
   "new",
 ]);
 
-/** Adoption counting must not become a record of who read whose profile. */
 export function screenPath(path: string): string {
   const segments = path.split("/");
   return segments
     .map((segment, i) =>
-      // The segment after `/people` is a person key whatever shape it arrives
-      // in; matching on shape alone lets an email through.
       segments[i - 1] === "people" ||
       isDashboardId(segments, i) ||
       isIdentifier(segment)
@@ -104,7 +100,6 @@ export function recordPageView(path: string): void {
   emit("page_view", { path: lastPath });
 }
 
-/** The shape of a scope, never the person it is rooted at. */
 export function scopeLabel(scope: {
   root: string | null;
   directOnly: boolean;
@@ -119,7 +114,6 @@ export function recordUsageEvent(name: string, target: string): void {
   emit(name, { target, path: lastPath });
 }
 
-/** The screen the reader is on, named as the usage rows name it. */
 export function currentScreen(): string {
   return lastPath;
 }

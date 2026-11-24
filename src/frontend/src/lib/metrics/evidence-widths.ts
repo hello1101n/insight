@@ -1,17 +1,8 @@
-/** How wide a column would like to be, in px, and whether it takes spare room. */
 export interface ColumnNeed {
   natural: number;
   stretches: boolean;
 }
 
-/**
- * Lays columns out at their natural widths, never narrower.
- *
- * A row that fits leaves spare room, which goes to the stretching columns in
- * proportion to their widths, or to every column when none stretches. A row
- * that does not fit keeps every width, so the table scrolls sideways instead
- * of cutting one column to make room for another.
- */
 export function fitWidths(
   needs: readonly ColumnNeed[],
   available: number

@@ -1,30 +1,14 @@
 import type { DayReading } from "@/lib/insight/metric-grain";
 import type { CollectionBoundary } from "@/queries/metric-definitions";
 
-/**
- * Why a day holds no reading, where it holds none.
- *
- * The three are separate findings and a boolean cannot hold them apart: one
- * day is older than the oldest observation the metric still holds, one is
- * ahead of the newest, and one sits between the two and is genuinely a day on
- * which nothing happened.
- *
- * `before_available_data` says what it says and no more. The lower bound moves
- * forward when retention drops old rows, so a day behind it is one we cannot
- * show a reading for — not necessarily one the connector was not yet running
- * on.
- */
 export type DayCoverage =
   "covered" | "before_available_data" | "not_yet_collected";
 
 export interface StripDay {
   date: string;
-  /** Null where the day has no reading at all — never a stand-in zero. */
   value: number | null;
   coverage: DayCoverage;
-  /** True where the day is delivered but its suppliers may still revise it. */
   provisional: boolean;
-  /** Share of the tallest reading, 0..1; null follows `value`. */
   height: number | null;
   numerator: number | null;
   denominator: number | null;
@@ -32,7 +16,6 @@ export interface StripDay {
 
 const DAY_MS = 86_400_000;
 
-/** Every date from `from` to `to`, inclusive. */
 function calendar(from: string, to: string): string[] {
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);
@@ -45,29 +28,6 @@ function calendar(from: string, to: string): string[] {
   return days;
 }
 
-/**
- * The period's days in order, each carrying its reading or nothing.
- *
- * Built from the calendar rather than from the rows, because the rows only
- * cover days something happened on. A strip drawn from rows alone packs the
- * active days together and hides every quiet one — the shape of a month with
- * four busy days would be indistinguishable from a month that was busy
- * throughout.
- *
- * A day with no reading stays null and a measured zero stays zero. They look
- * the same on a bar chart and mean opposite things: one is silence from the
- * source, the other is a day this person did none of it.
- *
- * `collectedFrom` and `collectedThrough` split that silence again. Outside them
- * the metric has no reading to show for the day, so nothing can be said about
- * it — between them, silence is the answer. A missing bound leaves that side
- * open, which is what the catalogue reports for a metric it cannot date rather
- * than one nobody has collected.
- *
- * `settledThrough` is the newest day reported settled; delivered days after it
- * are marked. Their readings are real and are drawn as such — the mark says the
- * figure is not yet settled, not that it is absent.
- */
 export function stripDays(
   readings: DayReading[],
   from: string,
@@ -76,9 +36,6 @@ export function stripDays(
 ): StripDay[] {
   const byDate = new Map(readings.map((r) => [r.date, r]));
   const days = calendar(from, to);
-  // Scaled to the tallest day ON THE STRIP, not the tallest reading handed in.
-  // A reading outside the window would otherwise set the height of bars it is
-  // not drawn beside, and every one of them would read as smaller than it is.
   const peak = days.reduce(
     (max, date) => Math.max(max, byDate.get(date)?.value ?? 0),
     0
@@ -119,27 +76,22 @@ export function stripDays(
   });
 }
 
-/** Whether the metric holds anything for this day at all. */
 export function isCovered(day: StripDay): boolean {
   return day.coverage === "covered";
 }
 
-/** How many covered days of the period carry no reading. */
 export function silentDays(days: StripDay[]): number {
   return days.filter((d) => isCovered(d) && d.value == null).length;
 }
 
-/** How many days are older than the oldest observation still held. */
 export function beforeAvailableDataDays(days: StripDay[]): number {
   return days.filter((d) => d.coverage === "before_available_data").length;
 }
 
-/** How many days the source has not delivered yet. */
 export function notYetCollectedDays(days: StripDay[]): number {
   return days.filter((d) => d.coverage === "not_yet_collected").length;
 }
 
-/** How many delivered days may still be revised. */
 export function provisionalDays(days: StripDay[]): number {
   return days.filter((d) => d.provisional).length;
 }

@@ -1,6 +1,3 @@
-/**
- * The canonical people roster the caller is authorized to see.
- */
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -12,11 +9,9 @@ import { sessionAuthorizationScope } from "@/auth/session-scope";
 
 const ROSTER_PAGE_SIZE = 500;
 
-/** Grants and roster changes land on a seed cadence, not per interaction. */
 const ROSTER_STALE_TIME = 60 * 1000;
 
 export interface VisibleRoster {
-  /** Every person the caller may see, the viewer included. */
   roster: PeopleListItem[];
   isPending: boolean;
   isError: boolean;
@@ -49,9 +44,6 @@ async function collectRoster(signal: AbortSignal): Promise<PeopleListItem[]> {
   }
 }
 
-/**
- * The caller's whole visible roster.
- */
 export function useVisibleRoster(enabled: boolean): VisibleRoster {
   const { session } = useAuth();
   const sessionScope = sessionAuthorizationScope(session);

@@ -6,12 +6,6 @@ import { usePortalSlice } from "@/lib/portal/portal-nav";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 import { useVisibleRoster } from "@/queries/visible-roster";
 
-/**
- * The label reads mid-sentence ("above the division median"), so a plain
- * capitalised word is lowered. Anything else is left as authored: identity
- * attribute labels are becoming generic (constructorfabric/insight#1881), and
- * lowering them blindly turns "R&D area" into "r&d area".
- */
 function midSentence(label: string): string {
   return /^[A-Z][a-z]*$/.test(label) ? label.toLowerCase() : label;
 }

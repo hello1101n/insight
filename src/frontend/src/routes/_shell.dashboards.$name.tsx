@@ -49,7 +49,7 @@ import {
 import { useIsAdmin } from "@/queries/identity-me";
 import { dashboardSubject } from "@/lib/portal/document-title";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
-import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
+import { TEXT_BODY, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_shell/dashboards/$name")({
@@ -241,9 +241,6 @@ function DashboardItems({
               onExpand={() => setSearch({ widget: item.widget })}
             />
           ) : "heading" in item ? (
-            // The eyebrow label the portal's own sections use, and the whole
-            // row: it introduces the widgets under it rather than sitting
-            // beside one.
             <h2
               key={`${index}-heading`}
               className="col-span-full mt-2 text-xs font-medium tracking-wider text-muted-foreground uppercase first:mt-0"
@@ -277,9 +274,6 @@ function DashboardItems({
   );
 }
 
-// Whether a window has a date to select by decides the request. The metric's
-// body cannot answer it - the date may be the dataset's - so the service
-// reports the one in force with the widget.
 function runOptions(
   widget: DashboardWidget,
   range: string | undefined
@@ -296,7 +290,6 @@ function drawnOverAllTime(
   return Boolean(range) && !widget.clock;
 }
 
-// A stat is one number: drawn bigger, it says nothing more.
 function expands(widget: DashboardWidget): boolean {
   return widget.body.type !== "stat";
 }
@@ -315,7 +308,6 @@ function DashboardWidgetSlot({
 }: {
   dashboard: string;
   id: string;
-  /** Absent once the widgets are read means the dashboard no longer draws it. */
   widget: DashboardWidget | undefined;
   pending: boolean;
   range: string | undefined;
@@ -369,7 +361,7 @@ function DashboardWidgetSlot({
   return (
     <Card>
       <CardHeader className="flex flex-row items-start gap-2">
-        <CardTitle className={cn(TEXT_HEADING, "min-w-0 flex-1")}>
+        <CardTitle className="min-w-0 flex-1">
           {heading}
         </CardTitle>
         {drawnOverAllTime(widget, range) ? (
@@ -382,7 +374,7 @@ function DashboardWidgetSlot({
             variant="ghost"
             size="sm"
             aria-label={`Expand ${heading}`}
-            className="-my-1 text-muted-foreground"
+            className="-my-1"
             icon={<Maximize2 />}
             onClick={onExpand}
           />
@@ -395,7 +387,7 @@ function DashboardWidgetSlot({
                   variant="ghost"
                   size="sm"
                   aria-label={`More for ${heading}`}
-                  className="-my-1 text-muted-foreground"
+                  className="-my-1"
                   icon={<Ellipsis />}
                 />
               }

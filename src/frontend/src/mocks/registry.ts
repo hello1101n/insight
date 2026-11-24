@@ -1,21 +1,5 @@
-/**
- * Mock Data Registry — Single Source of Truth
- *
- * All mock data derives from these definitions. Every handler, factory,
- * and identity service must reference this registry instead of having
- * its own hardcoded lists.
- *
- * Org structure follows the real backend shape: supervisor_person_id forms a
- * recursive identity tree, no slug-based "team" grouping. A "team" is the
- * set of direct (or transitive) reports of a given supervisor. Person ids are
- * UUIDs (the identity-cutover key), derived from the email so fixtures stay
- * readable; emails ride along for display and legacy-URL tests.
- */
-
 export type MockPerson = {
-  /** Canonical person id (UUID) — the key routes, metric ids and lookups use. */
   person_id: string;
-  /** Display + legacy-URL identity; no longer a key. */
   email: string;
   name: string;
   department: string;
@@ -57,8 +41,6 @@ function directReports(supervisorPersonId: string): MockPerson[] {
   return PEOPLE.filter((p) => p.supervisor_person_id === supervisorPersonId);
 }
 
-// Keyed by the lowercased email: identity compares case-insensitively, so an
-// exact-case mock would refuse spellings the real service resolves.
 export const PEOPLE_BY_EMAIL: Record<string, MockPerson> = Object.fromEntries(
   PEOPLE.map((p) => [p.email.toLowerCase(), p]),
 );

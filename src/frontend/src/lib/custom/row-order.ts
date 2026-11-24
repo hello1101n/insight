@@ -1,13 +1,8 @@
-/** Which column a table is ordered by, and which way. */
 export interface RowOrder {
   column: number;
   direction: "ascending" | "descending";
 }
 
-/**
- * The next state of a header clicked three times: up, down, back to the order
- * the metric returned.
- */
 export function nextOrder(
   held: RowOrder | undefined,
   column: number
@@ -18,12 +13,6 @@ export function nextOrder(
   return undefined;
 }
 
-/**
- * The rows in the asked-for order, leaving the given array alone.
- *
- * INVARIANT: ordering happens before any row cap, so a sorted table shows the
- * top of the whole result and not the top of the first page of it.
- */
 export function ordered(
   rows: readonly unknown[][],
   order: RowOrder | undefined
@@ -37,7 +26,6 @@ export function ordered(
   );
 }
 
-/** Nothing to compare sorts last, whichever way the column is pointing. */
 function absent(value: unknown): boolean {
   return value === undefined || value === null || value === "";
 }

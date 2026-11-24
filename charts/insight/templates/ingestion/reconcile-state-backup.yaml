@@ -1,0 +1,16 @@
+{{- if .Values.ingestion.templates.enabled }}
+# Sync state of a connection that a definition migration deletes. Reconcile
+# writes one key per source and removes it after the restore. Helm owns only
+# the empty object, so an upgrade keeps the keys.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "insight.fullname" . }}-reconcile-state
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/component: reconcile-loop
+    {{- include "insight.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+{{- end }}

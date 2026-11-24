@@ -22,14 +22,6 @@ import {
   invalidateDashboardPage,
 } from "@/queries/custom";
 
-/**
- * The custom zone's layout: one assistant for the whole zone, beside whichever
- * page is open.
- *
- * The chat lives here rather than in each page because creating a dashboard
- * navigates to it — mounted per page, the panel unmounted mid-request and took
- * the conversation with it, so the reader lost what they had just asked.
- */
 export const Route = createFileRoute("/_shell/dashboards")({
   validateSearch: validateDashboardListSearch,
   staticData: { zone: "custom" },
@@ -49,8 +41,6 @@ function CustomZone() {
 
   function handleCreated(created: ChatCreated) {
     void invalidateDashboardList(queryClient);
-    // The page on screen may have just gained a widget rather than a whole
-    // dashboard, so it is refreshed either way.
     if (openDashboard) {
       void invalidateDashboardPage(queryClient, openDashboard);
     }

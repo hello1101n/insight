@@ -1,17 +1,3 @@
-/**
- * Browser component tests for the geometry of `<SectionMetricIndex>` — the
- * "Also measured here" list, one metric per row: name, value, the pool's
- * middle, and the mark on the shared axis.
- *
- * What order the rows come in and which of them are dropped is covered by the
- * jsdom tests in `section-metric-index.test.tsx`. What needs a real browser is
- * the row: the readings hold a fixed width, so a name sharing their line has
- * whatever is left — which on a phone is nothing, and a name truncated to
- * nothing leaves a column of numbers belonging to no metric.
- *
- * See docs/testing/storybook-component-tests.md.
- */
-
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
@@ -26,7 +12,6 @@ import {
 
 const ENTITY_ID = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 
-/** The row's name, long enough that a collapsed column is unmistakable. */
 const LONG_NAME = "Merges without approval rate";
 
 function metric(
@@ -80,7 +65,6 @@ export default meta;
 
 type Story = StoryObj<typeof SectionMetricIndex>;
 
-/** Demo story for the Storybook UI (untagged — not a test). */
 export const Default: Story = {
   decorators: [
     (Story) => (
@@ -91,7 +75,6 @@ export const Default: Story = {
   ],
 };
 
-/** Where a line fits both, the name and its readings share it. */
 export const TestWideRowStaysOnOneLine: Story = {
   tags: ["test"],
   decorators: [
@@ -110,12 +93,7 @@ export const TestWideRowStaysOnOneLine: Story = {
     );
     await expect(name.top).toBeLessThan(value.bottom);
 
-    // The container query is what puts the readings back into fixed columns;
-    // without it the rows still render, just unaligned, so nothing else here
-    // would notice it failing to compile.
     const readings = canvasElement.querySelectorAll("dd");
-    // The value and the median; the third child is the peer mark's own fixed
-    // 112px svg, which no breakpoint touches.
     const columns = Array.from(readings).map((dd) =>
       Array.from(dd.children)
         .slice(0, 2)
@@ -131,13 +109,6 @@ export const TestWideRowStaysOnOneLine: Story = {
   },
 };
 
-/**
- * Too narrow for both, the row stacks and the name keeps its whole width.
- *
- * The failure this pins reads as data with no labels: the readings held their
- * fixed columns, the name column collapsed to zero, and `truncate` cut the
- * name away entirely — leaving numbers belonging to no metric.
- */
 export const TestNarrowRowKeepsTheMetricName: Story = {
   tags: ["test"],
   decorators: [
@@ -148,8 +119,6 @@ export const TestNarrowRowKeepsTheMetricName: Story = {
     ),
   ],
   play: async ({ canvas, canvasElement }) => {
-    // The column, not the text inside it: the name renders as an inline span,
-    // which keeps its full width by overflowing a column collapsed to zero.
     const column = canvas.getByText(LONG_NAME).closest("dt")!;
     const value = canvas.getByText("325");
     const columnBox = column.getBoundingClientRect();
@@ -158,7 +127,6 @@ export const TestNarrowRowKeepsTheMetricName: Story = {
     await expect(list, "the index renders its list").not.toBeNull();
     const row = column.parentElement!.getBoundingClientRect();
 
-    // The readings having wrapped away, the name owns the row's whole width.
     await expect(
       columnBox.width,
       `the name column is ${columnBox.width}px of a ${row.width}px row`
@@ -168,8 +136,6 @@ export const TestNarrowRowKeepsTheMetricName: Story = {
       "the readings share the name's line"
     ).toBeGreaterThanOrEqual(columnBox.bottom);
 
-    // The readings are 368px of fixed columns at full width; hanging outside
-    // the list drops the peer marks off the card.
     expectHorizontallyContained(
       list!,
       Array.from(list!.querySelectorAll("dd")),

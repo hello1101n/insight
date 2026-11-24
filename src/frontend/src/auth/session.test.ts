@@ -60,8 +60,6 @@ describe("loadSession", () => {
 
     await loadSession();
 
-    // expiresAt/refreshAt default to 0 — the refresh driver treats that as
-    // "never schedule" (pre-timestamp backend), not as "refresh now".
     expect(authStore.getSnapshot().session).toEqual({
       personId: "",
       email: "",
@@ -115,7 +113,7 @@ describe("loadSession", () => {
       ok: true,
       json: async () => ({
         csrf_token: "csrf-1",
-        expires_at: "1770000600", // wire contract violation: string, not number
+        expires_at: "1770000600",
         refresh_at: Number.NaN,
       }),
     });
@@ -129,8 +127,6 @@ describe("loadSession", () => {
   });
 
   it("fails closed to unauthenticated when /auth/me omits csrf_token", async () => {
-    // A live session always carries a CSRF token; without it, state-changing
-    // /auth/* would be rejected server-side — so treat it as no session.
     fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => ({

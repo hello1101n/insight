@@ -248,9 +248,6 @@ describe("getMe", () => {
     });
   });
 
-  // The gate reads `role_id` off every entry, so a well-shaped list of badly
-  // shaped members has to fail here — downstream it would throw during render
-  // instead of failing closed.
   it.each([
     ["a null member", [null]],
     ["a non-object member", ["admin"]],
@@ -493,8 +490,6 @@ describe("searchPersons", () => {
     });
   });
 
-  // The caller's signal is how a superseded keystroke stops costing the service
-  // a scan of the person journal; dropped here, every one of them is answered.
   it("hands the caller's abort signal to the request", async () => {
     mockFetch.mockResolvedValueOnce(response({ items: [] }));
     const controller = new AbortController();
@@ -551,8 +546,6 @@ describe("getPersonAccounts", () => {
     });
   });
 
-  // The merge preview counts this list, so a malformed body must not read as
-  // "no accounts move" — that would understate what the merge is about to do.
   it("rejects a malformed body rather than reading it as nothing to move", async () => {
     mockFetch.mockResolvedValueOnce(response({ person_id: "p-1" } as never));
 

@@ -49,7 +49,6 @@ export function WitnessTable({ witness }: { witness: Witness }) {
   );
 }
 
-// INVARIANT: worded as the notification words its rows, "core: open 12 · infra: open 15".
 function rowLine(
   witness: Witness,
   row: readonly unknown[],
@@ -73,7 +72,6 @@ export function WitnessLines({
 }: {
   witness: Witness;
   condition: unknown;
-  /** Read as the condition's columns are, name then value. */
   contextColumns: readonly string[];
 }) {
   const tested = new Set([...conditionColumns(condition), ...contextColumns]);

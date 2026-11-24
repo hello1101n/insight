@@ -96,11 +96,6 @@ import { CustomApiError } from "@/api/custom-client";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { SidebarProvider } from "@gears-frontx/ui-kit";
 import { setMetricsViewPaneShown } from "@/lib/portal/metrics-view-pane";
-// The sections nav asks where the person stands so it can mark each section;
-// the standings come from the section screens' own queries, which this test
-// has no reason to run.
-// `useSelectedPersonSection` is left real: it reads the router mock above, and
-// it is what decides whether "At a glance" or a section row is the active one.
 vi.mock("@/lib/portal/use-person-sections", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   usePersonSectionStandings: () => mocks.standings,
@@ -121,7 +116,6 @@ const pane = () =>
 
 const buttonFor = (label: string) => screen.getByText(label).closest("button, a");
 
-/** Where each zone's tests stand: Directions opens Development on Delivery. */
 const ZONE_PATHS: Record<string, string> = {
   overview: "/home",
   directions: "/explore/dev/delivery",

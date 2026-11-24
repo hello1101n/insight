@@ -4,7 +4,8 @@ use chrono::{DateTime, Utc};
 use regex_lite::Regex;
 
 pub const RESOURCE_PREFIX: &str = "preview-";
-const MAX_NAME_LEN: usize = 55;
+const K8S_OBJECT_NAME_MAX_LEN: usize = 63;
+const MAX_NAME_LEN: usize = K8S_OBJECT_NAME_MAX_LEN - RESOURCE_PREFIX.len();
 const MAX_TAG_LEN: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

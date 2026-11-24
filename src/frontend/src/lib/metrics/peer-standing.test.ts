@@ -137,6 +137,6 @@ describe("derivePeerStanding", () => {
     });
     expect(standing.rank).toBe("top");
     expect(standing.gapPct).toBeNull();
-    expect(standing.severity).toBe(2); // gapDelta 8 / IQR 4
+    expect(standing.severity).toBe(2);
   });
 });

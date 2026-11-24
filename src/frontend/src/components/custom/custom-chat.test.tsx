@@ -1,5 +1,5 @@
-// The real error class, so `refusal` can read the body off it: an automocked
-// constructor never runs, and every refusal would read as the fallback.
+// WORKAROUND: an automocked class never runs its constructor, so the real
+// error class is kept for `refusal` to read the body off it.
 vi.mock("@/api/custom-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/custom-client")>();
   return { ...actual, sendChat: vi.fn() };
@@ -65,8 +65,6 @@ describe("<CustomChat>", () => {
     render(<CustomChat onCreated={vi.fn()} />, { wrapper });
     const box = screen.getByRole("textbox");
     await userEvent.type(box, "how many lines?{Enter}");
-    // The send button is disabled now; Enter is not, and impatience is the
-    // normal case in a chat.
     await userEvent.type(box, "and how many commits?{Enter}");
 
     expect(customClient.sendChat).toHaveBeenCalledTimes(1);
@@ -175,7 +173,6 @@ describe("<CustomChat>", () => {
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
     await screen.findByText("And by author.");
 
-    // The first call carries nothing; the second carries the turn before it.
     expect(customClient.sendChat).toHaveBeenNthCalledWith(
       1,
       "lines per day?",

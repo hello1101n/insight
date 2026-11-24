@@ -5,7 +5,6 @@ import { DIRECTIONS } from "@/lib/portal/nav-model";
 import { getPortalShowPlanned } from "@/lib/portal/portal-store";
 import { linkTo } from "@/lib/portal/portal-routes";
 
-/** A direction opens on its first lens the reader can see. */
 export const Route = createFileRoute("/_shell/explore/$dir/")({
   beforeLoad: ({ params }) => {
     const direction = DIRECTIONS.find((candidate) => candidate.id === params.dir);

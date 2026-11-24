@@ -1,4 +1,3 @@
-/** See docs/testing/storybook-component-tests.md. */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { http, HttpResponse } from "msw";
 import { expect, userEvent } from "storybook/test";
@@ -72,10 +71,6 @@ const REFUSAL = {
 
 const API = "*/api/v3/v1";
 
-/**
- * Keyed so a story replaces one group and keeps the rest: the addon merges
- * story handlers over the meta's by key.
- */
 const handlers = {
   datasets: [
     http.get(`${API}/datasets`, () =>
@@ -112,7 +107,6 @@ export default meta;
 
 type Story = StoryObj<typeof Screen>;
 
-/** The card a screen is given, which the phone story measures against. */
 function at(width: number): Story["decorators"] {
   return [
     (Story) => (
@@ -139,7 +133,6 @@ export const NewDashboard: Story = {
   decorators: wide,
 };
 
-/** A dataset keeps its name; removing it takes its records too. */
 export const EditDataset: Story = {
   args: { kind: "datasets", id: PULL_REQUESTS.name },
   decorators: wide,
@@ -179,7 +172,6 @@ export const NotFound: Story = {
   },
 };
 
-/** Save is pressed for you; each complaint is listed under the document. */
 export const TestRefusedSaveListsEachComplaint: Story = {
   args: { kind: "metrics", id: METRIC.id },
   decorators: wide,

@@ -15,9 +15,11 @@ pub struct LogoutClaims {
 
 #[derive(Debug, Deserialize)]
 struct RawClaims {
+    #[expect(
+        dead_code,
+        reason = "typed as String so an array-valued iss is refused; jsonwebtoken's issuer check alone accepts one"
+    )]
     iss: String,
-    #[serde(default)]
-    aud: serde_json::Value,
     iat: u64,
     jti: String,
     #[serde(default)]
@@ -107,9 +109,6 @@ pub fn validate_logout_token(
     if claims.sub.is_none() && claims.sid.is_none() {
         return Err("no_sub_or_sid");
     }
-
-    let _ = claims.iss;
-    let _ = claims.aud;
 
     Ok(LogoutClaims {
         sub: claims.sub,

@@ -47,7 +47,7 @@ export function ReportBuilderActions({
             </span>
           ) : running ? (
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner className="size-3" /> {t("reports.preparing")}
+              <Spinner compact /> {t("reports.preparing")}
             </span>
           ) : null}
         </div>

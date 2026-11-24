@@ -33,10 +33,6 @@ function seeded(personId: string, index: number): [string, MockPersonRole] {
   ];
 }
 
-/**
- * Two administrators, so the tenant is never admin-less and a dashboard has
- * someone to be shared with; everyone else holds no assignment.
- */
 export const ADMIN_ASSIGNMENTS = new Map<string, MockPersonRole>(
   PEOPLE.slice(0, 2).map((person, index) => seeded(person.person_id, index))
 );

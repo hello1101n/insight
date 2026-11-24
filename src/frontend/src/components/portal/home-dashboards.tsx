@@ -20,8 +20,6 @@ function DashboardSection() {
   const dashboards = useQuery(recentDashboardsQuery(RECENT_COUNT));
   const shown = dashboards.data?.items ?? [];
 
-  // A viewer with no dashboard to open has no section; while that is unknown
-  // nothing is drawn, so the section never appears only to vanish.
   if (dashboards.isPending) return null;
   if (!dashboards.isError && shown.length === 0) return null;
 

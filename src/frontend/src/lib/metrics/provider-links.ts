@@ -3,7 +3,6 @@ import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
 const TASK_METRIC_PREFIX = "tasks.";
 const GITHUB_STYLE_ISSUE_REF = /^([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)#([0-9]+)$/;
 const COMMIT_SHA = /^[0-9a-f]{32,64}$/i;
-/** As git and every forge abbreviate a commit. */
 const SHORT_SHA_LENGTH = 7;
 
 export function isTaskMetric(metricKey: string): boolean {

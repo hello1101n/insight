@@ -64,8 +64,6 @@ struct SessionItem {
     created_at: u64,
     expires_at: u64,
     user_agent: String,
-    #[allow(dead_code)]
-    ip: String,
     current: bool,
 }
 

@@ -3,11 +3,6 @@ vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
 });
-/**
- * Employees directory semantics: the org tree flattens into a de-duplicated,
- * sorted roster; search filters across name/title/department; rows link into
- * Person; identity failures surface as a retryable error.
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,7 +89,6 @@ beforeEach(() => {
   mocks.ic.data = person("boss", { display_name: "Boss", job_title: "Director" }, [
     person("zoe", { display_name: "Zoe", job_title: "QA Engineer", department: "Quality" } as never),
     person("adam", { display_name: "Adam", job_title: "Backend Dev" } as never, [
-      // the same person deeper in the tree must NOT double a row
       person("zoe", { display_name: "Zoe" } as never),
     ]),
   ]);
@@ -152,8 +146,6 @@ describe("EmployeesView", () => {
 describe("EmployeesView on an organisation with no reporting lines", () => {
   beforeEach(() => {
     mocks.isFlat = true;
-    // The tree answers with the viewer alone — the case that used to leave this
-    // directory with a single row.
     mocks.ic.data = person("boss");
     mocks.roster.roster = [
       { ...rosterPerson("boss"), display_name: "Boss Person" },

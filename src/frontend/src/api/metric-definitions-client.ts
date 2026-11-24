@@ -1,13 +1,3 @@
-/**
- * Wire types + fetch wrapper for `GET /metric-definitions`.
- *
- * Display listing of the unified metric definitions: every definition
- * visible to the tenant, including disabled or schema-broken ones — the
- * listing doubles as a health surface, so availability is reported
- * (`is_enabled`, `schema_status`) rather than filtered. All human-facing
- * copy (label, description, explanation) is server-owned.
- */
-
 import { AnalyticsApiError } from "@/api/analytics-client";
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 import type {
@@ -36,42 +26,12 @@ export interface MetricDefinition {
   direction: MetricDirection;
   dimensions: string[];
   is_enabled: boolean;
-  /**
-   * `builtin` reads managed observation relations; `custom` executes inline
-   * SQL at query time. The validator stamps `schema_status` and
-   * `last_observed_date` from materialized relations only, so for `custom`
-   * they stay "unchecked" / absent however much data the metric serves —
-   * reading their absence as "never measured" is wrong for those.
-   */
   origin: MetricDefinitionOrigin;
   schema_status: MetricDefinitionSchemaStatus;
-  /** Why schema_status is "error"; null otherwise. */
   schema_error_code: MetricSchemaErrorCode | null;
-  /**
-   * ISO date of the oldest observation the metric currently holds; null = it
-   * holds none, whether never observed or retained no longer. It moves forward
-   * as retention drops old rows, so it is not the date collection began, and it
-   * does not pair with `last_observed_date` as an interval of what is readable.
-   */
   first_observed_date: string | null;
-  /**
-   * ISO date of the newest observation ever seen; null = none ever. A
-   * high-water mark, never cleared.
-   */
   last_observed_date: string | null;
-  /**
-   * ISO date of the newest delivered day considered settled under the metric's
-   * declared revision rule. Absent where nothing revises — never read absence
-   * as "revised forever". The rule states how the supplier normally revises,
-   * so a correction outside that behaviour can still reach a settled day.
-   */
   settled_through?: string | null;
-  /**
-   * Legacy: a conservative day count standing in for `settled_through`, kept
-   * for consumers written before it existed. It cannot express a boundary that
-   * moves with the billing month, so it over-states there. New code reads
-   * `settled_through`.
-   */
   revision_window_days?: number | null;
   drilldown?: MetricDrilldownCapability;
 }

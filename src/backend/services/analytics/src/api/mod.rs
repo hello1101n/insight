@@ -44,6 +44,8 @@ use crate::domain::saved_query;
 use crate::infra::anthropic::AnthropicClient;
 use crate::infra::identity::IdentityClient;
 
+const API_CONTRACT_VERSION: &str = "1.0.0";
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
@@ -120,7 +122,7 @@ mod log_leak_tests;
 fn openapi_info() -> OpenApiInfo {
     OpenApiInfo {
         title: "Analytics API".to_owned(),
-        version: "1.0.0".to_owned(),
+        version: API_CONTRACT_VERSION.to_owned(),
         description: Some(
             "Read-only query service over ClickHouse. Serves declarative metric \
              definitions, computed metric results and their evidence, plus \

@@ -21,13 +21,8 @@ pub struct AiError;
 #[resource_error("gts.cf.insight.analytics_api.custom_metric.v1~")]
 pub struct CustomMetricError;
 
-#[allow(dead_code)]
-#[resource_error("gts.cf.insight.analytics_api.tenant.v1~")]
-pub struct TenantError;
-
 #[cfg(test)]
 mod tests {
-
     use axum::body::to_bytes;
     use axum::http::header::CONTENT_TYPE;
     use axum::response::IntoResponse;

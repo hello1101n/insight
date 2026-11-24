@@ -15,8 +15,6 @@ export function useAlertMetric(metric: string) {
     ...datasetQuery(dataset),
     enabled: dataset !== "",
   });
-  // INVARIANT: over a dataset only the declaration types a plain column, so
-  // until it is read, or when it cannot be, no column has a kind.
   const declaration = declared.data?.declaration;
   const typed =
     definition !== undefined && (dataset === "" || declaration !== undefined);
@@ -39,7 +37,6 @@ export function useAlertMetric(metric: string) {
     definition,
     kinds,
     typed,
-    /** Read as far as it will be: the parts that hang on it can be drawn. */
     settled,
     manyRows: definition ? metricShape(definition).kind !== "one" : false,
   };

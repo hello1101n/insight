@@ -1,8 +1,3 @@
-/**
- * Preview experiments — self-service list / create / delete, behind
- * {@link usePreviewsGate}. Bookmarks land here past the hidden nav entry, so
- * the screen refuses on its own; the server enforces the same roles anyway.
- */
 import { ExternalLink, Plus, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
@@ -67,7 +62,6 @@ export function PreviewsBody() {
   );
 }
 
-/** The server's problem detail when it says one, else a generic line. */
 function errorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const body = (error as { body?: { detail?: string } }).body;
@@ -83,7 +77,6 @@ function CreateExperimentForm() {
   const [ttlDays, setTtlDays] = useState("");
   const create = useCreateExperiment();
   const images = useImages();
-  // Free text stays available either way; the registry only adds suggestions.
   const suggestedTags =
     images.data?.configured && images.data.tags.length > 0
       ? images.data.tags
@@ -248,16 +241,16 @@ function ExperimentList() {
           <TableBody>
             {rows.map((experiment) => (
               <TableRow key={experiment.name}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="font-mono">
                   {experiment.name}
                 </TableCell>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="font-mono">
                   {experiment.tag}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {experiment.status}
                 </TableCell>
-                <TableCell className="text-muted-foreground">
+                <TableCell>
                   {experiment.expiresAt
                     ? new Date(experiment.expiresAt).toLocaleString()
                     : "—"}
@@ -268,7 +261,6 @@ function ExperimentList() {
                       variant="outline"
                       size="sm"
                       render={
-                        // Cross-origin (the preview host), so a plain anchor.
                         <a
                           href={experiment.url}
                           target="_blank"

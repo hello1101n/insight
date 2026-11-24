@@ -311,3 +311,31 @@ models:
         tests:
           - accepted_values: { values: ['hubspot'] }
 
+  - name: hubspot__support_ticket
+    description: "HubSpot tickets with the assignee resolved to a person → staging, feeds dim_support_ticket"
+    columns:
+      - name: unique_key
+        tests: [unique, not_null]
+      - name: source_ticket_id
+        tests: [not_null]
+      - name: data_source
+        tests:
+          - not_null
+          - accepted_values: { values: ['hubspot'] }
+
+  - name: hubspot__support_activity
+    description: >
+      Ticket edits and closes per person and day, from the ticket property
+      history → staging, feeds class_support_activity. The comment and CSAT
+      counts are NULL.
+    columns:
+      - name: unique_key
+        tests: [unique, not_null]
+      - name: person_key
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: data_source
+        tests:
+          - not_null
+          - accepted_values: { values: ['hubspot'] }

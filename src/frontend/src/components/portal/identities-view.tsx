@@ -1,23 +1,3 @@
-/**
- * The identity-resolution operator console (Manage → Identities): the review
- * queue, and the window one case is decided in.
- *
- * A triage surface, not a roster: the operator lands in what NEEDS a
- * decision, grouped by why it does, and works the backlog to zero — the
- * empty queue is the goal state and renders as one. The strip on top sizes the
- * tenant — its people, its accounts, and how many of those accounts are the
- * operator's own backlog.
- *
- * One layout for all three modes: the heading, the tabs and the mode's own
- * search stay put, and only the list under them scrolls. A reader working a
- * long list must not lose the field they are typing into, or the tabs that
- * switch what they are looking at.
- *
- * The queue picks a case; the window decides it. Selection lives in `?acct=`
- * so an operator can hand a colleague a link to the exact account under
- * discussion — and that link answers whatever the queue looks like by then,
- * an emptied backlog included.
- */
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -74,7 +54,6 @@ import { STATUS_SURFACE_CLASS, type Status } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { ChevronDown, PartyPopper, TriangleAlert } from "lucide-react";
 
-/** Queue groups in working order: conflicts first, then the unknowns. */
 const KIND_ORDER = [
   "contested",
   "binding_conflict",
@@ -102,10 +81,6 @@ export function IdentitiesView({ mode }: { mode?: string }) {
       <Tabs
         className="shrink-0"
         value={active}
-        // A mode change closes whatever was open: a case or a person picked in
-        // one mode means nothing in another, and carrying either would open a
-        // window over a list that does not contain it. The roster's terms and
-        // the source filter come along.
         onValueChange={(next) => {
           const picked = String(next);
           const search = (prev: IdentitiesSearch) => ({ find: prev.find, src: prev.src });
@@ -133,16 +108,9 @@ export function IdentitiesView({ mode }: { mode?: string }) {
 
 function ReviewQueue() {
   const { t } = useTranslation();
-  // Asking for more is a longer read, not a next page: the service derives the
-  // queue from the whole tenant, so a cursor would cost the same as this and
-  // cut cases in half — the rows of one case are spread across sources.
   const [limit, setLimit] = useState(QUEUE_FIRST_PAGE);
   const attention = useAttention(limit);
 
-  // A longer read that fails takes its own answer down with it — the rows the
-  // operator was working are still cached under the shorter one, so the way
-  // out of the error is back to it, not another attempt at the read that just
-  // failed.
   const askedForMore = limit > QUEUE_FIRST_PAGE;
 
   if (attention.isLoading) return <CenteredSpinner className="min-h-[60vh]" />;
@@ -181,10 +149,6 @@ function ReviewQueue() {
           <AlertDescription>{t("identities.queue.truncated")}</AlertDescription>
         </Alert>
       ) : null}
-      {/* The list was cut by the server's item cap while the rates stay
-          whole-tenant — a different fact from `truncated`. Said only once the
-          reader can do nothing about it: while a longer read is still allowed,
-          the button at the end of the list is the answer. */}
       {itemsTruncated && !truncated && (!loadMore || items.length === 0) ? (
         <Alert role="status">
           <TriangleAlert />
@@ -201,9 +165,6 @@ function ReviewQueue() {
       <Queue
         items={items}
         onLoadMore={loadMore}
-        // The LONGER read specifically, not any fetch: every decision
-        // invalidates this query, and a background refetch that greys the
-        // button out would read as "your press is working".
         loadingMore={attention.isFetching && attention.isPlaceholderData}
       />
     </div>
@@ -216,9 +177,7 @@ function RatesStrip({
   decisionsCapped,
 }: {
   rates: ResolutionRates;
-  /** Cases in the queue — the only figure here that is the operator's work. */
   decisions: number;
-  /** The server cut the list, so the queue size is a floor, not the total. */
   decisionsCapped: boolean;
 }) {
   const { t } = useTranslation();
@@ -229,8 +188,6 @@ function RatesStrip({
         label={t("identities.rates.observed")}
         status="neutral"
       />
-      {/* The one figure here that is the operator's own work, and the only one
-          carrying a status colour. */}
       <Tile
         figure={decisionsCapped ? `${decisions}+` : String(decisions)}
         label={t("identities.rates.decisions")}
@@ -270,7 +227,6 @@ function Tile({
   );
 }
 
-/** The goal state, celebrated rather than rendered as a blank table. */
 function AllResolved() {
   const { t } = useTranslation();
   return (
@@ -294,7 +250,6 @@ function Queue({
   loadingMore,
 }: {
   items: AttentionItem[];
-  /** Ask the service for a longer queue; absent when nothing more can come. */
   onLoadMore: (() => void) | null;
   loadingMore: boolean;
 }) {
@@ -302,14 +257,10 @@ function Queue({
   const { acct } = usePortalSearch();
   const { setAcct } = usePortalNavActions();
   const listRef = useRef<HTMLDivElement>(null);
-  // Session-scoped on purpose: "have I looked at this one" is about the sitting
-  // an operator is in, not a preference worth outliving it.
   const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
   const groups: Array<{ kind: string; items: AttentionItem[] }> = KIND_ORDER.map(
     (kind) => ({ kind, items: items.filter((i) => i.kind === kind) }),
   ).filter((g) => g.items.length > 0);
-  // An unknown kind from a newer backend still shows up rather than
-  // vanishing — the vocabulary is open by contract.
   const known = new Set<string>(KIND_ORDER);
   const other = items.filter((i) => !known.has(i.kind));
   if (other.length > 0) groups.push({ kind: "other", items: other });
@@ -319,29 +270,17 @@ function Queue({
     setAcct(key);
   };
 
-  // Closing the window puts the operator back on the row they opened, not at
-  // the top of the page — the queue is worked in one pass.
-  //
-  // INVARIANT: after a frame, never in the closing handler itself. A decision
-  // closes this window from inside the same batch that prunes its row, so the
-  // doomed row is still in the document — looking for it there finds it, focuses
-  // it, and React then unmounts it, dropping focus to `body` and killing arrow
-  // navigation. One frame later the list has settled and the fallback can fire.
   const returnFocus = (key: string) => {
     requestAnimationFrame(() => {
       const row =
         listRef.current?.querySelector<HTMLElement>(
           `[data-queue-row="${CSS.escape(key)}"]`,
         ) ??
-        // The row an operator just decided is pruned by the time the window
-        // closes — fall to the top of the list rather than to nowhere.
         listRef.current?.querySelector<HTMLElement>("[data-queue-row]");
       row?.focus();
     });
   };
 
-  // The queue is a list, so it moves like one. Enter and Space open a row;
-  // those stay on the row itself.
   const onArrow = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const rows = [
@@ -356,22 +295,14 @@ function Queue({
     next.focus();
   };
 
-  // The worked-to-zero queue is the goal state — but a shared `?acct=` link
-  // has to answer even then, and the backlog reaching zero is exactly when a
-  // colleague opens the link they were sent.
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* Blocks, not a flex column: inside a bounded scroller a flex child
-          shrinks to fit, and a group card is `overflow-hidden` — so every group
-          would render its heading over a clipped stump of its own rows. */}
+      {/* WORKAROUND: a flex child shrinks inside a bounded scroller and clips its overflow-hidden group card, so the groups are blocks. */}
       <div
         ref={listRef}
         onKeyDown={onArrow}
         className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto"
       >
-        {/* The goal state is an empty queue with nothing left to ask for. With
-            a longer read still on offer the emptiness is this page's, not the
-            tenant's, and the notice above says so instead. */}
         {items.length === 0 && !onLoadMore ? <AllResolved /> : null}
         {groups.map((group) => (
           <QueueGroup
@@ -383,9 +314,6 @@ function Queue({
             onSelect={(key) => select(key === acct ? null : key)}
           />
         ))}
-        {/* Deliberate rather than loaded on scroll, unlike the searches: every
-            press re-derives the tenant's whole queue, and the count it would
-            add is not on the wire to promise. */}
         {onLoadMore ? (
           <Button
             type="button"
@@ -430,8 +358,6 @@ function QueueGroup({
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
-  // Every case the group holds, at once: the whole queue is already on the
-  // client, and a reader who does not want this group collapses its heading.
   const cases = useMemo(() => groupIntoCases(items), [items]);
 
   return (
@@ -446,7 +372,7 @@ function QueueGroup({
           }
         >
           <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-180" />
-          <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             {t(`identities.kind.${kind}`, { defaultValue: kind })}
             <Badge variant="secondary">
               {cases.length === items.length
@@ -460,10 +386,7 @@ function QueueGroup({
           <SourceCounts items={items} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <CardContent className="flex flex-col gap-2 p-2 pt-0">
-            {/* One decision for the whole group, above the cases it covers: a
-                roster sync adds people in batches, and confirming them one
-                window at a time is the same answer given a hundred times. */}
+          <CardContent className="flex flex-col gap-2">
             {groupIsConfirmable(kind, items) ? (
               <ConfirmGroupButton items={items} className="self-start" />
             ) : null}
@@ -483,21 +406,16 @@ function QueueGroup({
   );
 }
 
-/**
- * Employment status, when the source says it is anything but active: an
- * operator asked to resolve a leaver is usually being asked for nothing.
- */
 function StatusBadge({ status }: { status?: string | null }) {
   const value = status?.trim();
   if (!value || value.toLowerCase() === "active") return null;
   return (
-    <Badge variant="secondary" className="shrink-0 font-normal">
+    <Badge variant="secondary" className="shrink-0">
       {value}
     </Badge>
   );
 }
 
-/** Which connectors this group's accounts came from, so a glance places it. */
 function SourceCounts({ items }: { items: AttentionItem[] }) {
   const counts = new Map<string, number>();
   for (const item of items) {
@@ -519,10 +437,6 @@ function SourceCounts({ items }: { items: AttentionItem[] }) {
   );
 }
 
-/**
- * One argument, however many accounts it spans: the people under discussion
- * once at the top, then the accounts each decision is taken on.
- */
 function CaseBlock({
   queueCase,
   selectedKey,
@@ -536,9 +450,6 @@ function CaseBlock({
 }) {
   const { t } = useTranslation();
   const disputed = queueCase.candidates.length > 0;
-  // Who the operator chose to keep. A merge needs somebody to absorb, so a case
-  // naming one person offers none — the evidence disagrees with a binding there,
-  // which is a question about the account, not about two people being one.
   const [survivor, setSurvivor] = useState<PersonSummary | null>(null);
   const mergeable = queueCase.candidates.length >= 2;
   return (
@@ -557,9 +468,6 @@ function CaseBlock({
           {queueCase.candidates.map((candidate) => (
             <div key={candidate.person_id} className="flex items-center gap-2">
               <PersonCell person={candidate} className="min-w-0 flex-1" />
-              {/* The row's own button, so the choice IS the direction: this
-                  person is the one that survives, and the rest of the case
-                  merges into them. */}
               {mergeable ? (
                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                   <Button
@@ -593,10 +501,6 @@ function CaseBlock({
         {queueCase.items.map((item) => {
           const key = itemKey(item);
           const selected = key === selectedKey;
-          // An account with nothing to match on has an id for a name, and an
-          // id names nobody. When the source described it, the person is the
-          // heading and the id moves beside the source, where the other rows
-          // carry theirs.
           const label =
             item.email?.trim() ||
             item.username?.trim() ||
@@ -613,20 +517,13 @@ function CaseBlock({
             .map((s) => s?.trim())
             .filter(Boolean)
             .join(" · ");
-          // Which of the case's candidates holds THIS account: the candidates
-          // are stated once for the whole case, so without this the row asks
-          // an operator to decide between two people without saying which one
-          // they would be taking it from.
           const boundTo = queueCase.candidates.find(
             (c) => c.person_id === item.bound_to,
           );
           return (
             <div
               key={key}
-              // Not a <button>: its text is what an operator copies out — an
-              // address, an account id, a person id — and a button neither
-              // lets that text be selected nor may contain the copy controls
-              // a card carries.
+              // WORKAROUND: a <button> may not nest the copy controls and blocks text selection.
               role="button"
               tabIndex={0}
               data-queue-row={key}
@@ -639,10 +536,6 @@ function CaseBlock({
                 onSelect(key);
               }}
               aria-pressed={selected}
-              // Without a label the name is computed from everything inside,
-              // which reads out before the account is even named. With one,
-              // it must still carry what a sighted operator sees at a glance:
-              // who holds it, its status, what the source says it is.
               aria-label={[
                 label,
                 item.source,
@@ -675,7 +568,7 @@ function CaseBlock({
                   {label}
                 </span>
                 {boundTo ? (
-                  <Badge variant="outline" className="shrink-0 font-normal">
+                  <Badge variant="outline" className="shrink-0">
                     {t("identities.queue.bound_to", {
                       name: personDisplayName(boundTo),
                     })}

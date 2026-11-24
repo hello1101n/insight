@@ -55,7 +55,6 @@ function WidgetsCatalogue() {
 }
 
 function WidgetCard({ item }: { item: WidgetListed }) {
-  // INVARIANT: a stored body may name a kind this build does not know; one such widget must not blank the page.
   const kind = KIND[item.body.type] ?? {
     label: String(item.body.type),
     icon: LayoutGrid,

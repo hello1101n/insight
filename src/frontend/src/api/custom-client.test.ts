@@ -184,8 +184,6 @@ describe("fetchMetric", () => {
     });
   });
 
-  // A metric nothing dates is windowed by nothing, and the absent clock is
-  // what says so - the body cannot, because the date may be the dataset's.
   it("reads a metric that nothing dates without one", async () => {
     const definition = {
       dataset: "commits",
@@ -280,9 +278,6 @@ describe("runMetric", () => {
 });
 
 describe("fetchDatasetRecords", () => {
-  // The service sizes the page: its cap is an installation's setting, and
-  // asking for a size of our own is how a reader ends up stepping over what
-  // a narrower page left behind.
   it("asks for no page size of its own", async () => {
     mockFetch.mockResolvedValueOnce(
       response({ records: [], total: 0, limit: 20 })
@@ -295,9 +290,6 @@ describe("fetchDatasetRecords", () => {
     );
   });
 
-  // With no field named the service orders by the instant a record arrived,
-  // and honours the direction there too; omitting it asks for the default,
-  // which is the opposite of ascending.
   it("sends the direction whether or not a field is named", async () => {
     mockFetch.mockResolvedValueOnce(
       response({ records: [], total: 0, limit: 20 })

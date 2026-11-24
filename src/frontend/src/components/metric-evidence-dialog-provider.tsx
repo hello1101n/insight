@@ -81,9 +81,6 @@ export function MetricEvidenceDialogProvider({
   const openEvidencePeople = useCallback(
     (view: EvidencePeopleView) => {
       if (!view.rows.length) return;
-      // Same usage event as a records drill: it counts a reader going one step
-      // down from a figure, and under the same metric key, so the series stays
-      // comparable whether or not the metric can be drilled to records.
       recordUsageEvent("drill", view.metricKey);
       setState({ kind: "people", view, sessionScope });
     },

@@ -48,7 +48,6 @@ import {
 
 const LIST_PATH = /^\/dashboards\/?$/;
 
-/** The row's `···` sits clear of its count, which stays flush right as in Browse. */
 const FOLDER_ACTION = "end-10";
 
 export function FoldersGroup() {
@@ -88,7 +87,6 @@ export function FoldersGroup() {
               <SidebarMenuItem key={folder.id}>
                 <SidebarMenuButton
                   isActive={isShown(folder.id)}
-                  className="pe-16"
                   render={
                     <Link
                       to="/dashboards"
@@ -158,7 +156,6 @@ export function FoldersGroup() {
   );
 }
 
-/** Administrators only: the orphaned list is refused to anyone else. */
 function OrphanedFolderRows() {
   const pages = useInfiniteQuery(orphanedPagesQuery("folders"));
   const [moving, setMoving] = useState<Orphan | null>(null);
@@ -170,7 +167,6 @@ function OrphanedFolderRows() {
         <SidebarMenuItem key={folder.id}>
           <SidebarMenuButton
             aria-haspopup="dialog"
-            className="text-muted-foreground"
             onClick={() =>
               setMoving({
                 kind: "folders",
@@ -189,7 +185,6 @@ function OrphanedFolderRows() {
       {pages.hasNextPage ? (
         <SidebarMenuItem>
           <SidebarMenuButton
-            className="text-muted-foreground"
             disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
@@ -294,7 +289,6 @@ function FolderNameField({
           aria-label="Folder name"
           aria-invalid={error != null}
           aria-describedby={error ? errorId : undefined}
-          className="h-8"
           maxLength={FOLDER_NAME_MAX}
           readOnly={saving}
           value={value}

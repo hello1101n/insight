@@ -1,12 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Tenant lens (issue #2803). The load-bearing parts: the request rides a
- * TENANT entity (a person id anywhere in it would be a cross-grain leak), the
- * whole tab collapses honestly when nothing is observed, conflicting views
- * spread over extra collections and half-window requests (plan.ts), and
- * vendor words the reader would misread are relabeled at the section that
- * shows them.
- */
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,9 +45,7 @@ const mocks = vi.hoisted(() => ({
     range: DateRange;
   }>,
   result: null as unknown as HookResult,
-  /** Half-window results, keyed by "<from>..<to>". */
   rangeResults: new Map<string, HookResult>(),
-  /** Extra-collection results, keyed by the collection key ("extra-1"…). */
   setResults: new Map<string, HookResult>(),
   trends: [] as Array<{
     title: string;
@@ -75,8 +65,6 @@ vi.mock("@/queries/metric-results", () => ({
   ) => {
     const compareTo = options?.compareTo;
     mocks.calls.push({ collection, entity, range, compareTo });
-    // Both halves come from one call now: the range is the second half and the
-    // comparison window the first, each answered from the same fixtures.
     if (compareTo) {
       const result = emptyResult();
       result.byKey =
@@ -284,20 +272,17 @@ describe("TenantLensView", () => {
   it("requests the lens over a tenant entity with per-section views", () => {
     render(<TenantLensView config={CONFIG} />);
 
-    // Main + the halves hook (disabled: empty collection).
     expect(mocks.calls).toHaveLength(2);
     for (const call of mocks.calls) {
       expect(call.entity).toEqual({ type: "tenant" });
     }
     expect(mocks.calls[1].collection.metrics).toHaveLength(0);
-    // No conflicting views → no extra collections.
     expect(mocks.setCalls[0].collections).toHaveLength(0);
 
     const byKey = new Map(
       mocks.calls[0].collection.metrics.map((m) => [m.key, m.views])
     );
     expect(byKey.get("ci.gate_pass_rate")).toEqual([{ view: "period" }]);
-    // One entity → the finest bucket fits; a month window charts by day.
     expect(byKey.get("ci.runs")).toEqual([
       { view: "timeseries", bucket: "day" },
     ]);
@@ -313,11 +298,6 @@ describe("TenantLensView", () => {
   });
 
   it("collapses to the not-ingested state on the views a data-less tenant gets", () => {
-    // Exactly what the backend answers for an installation with the flag ON
-    // and no CI rows at all: the period view zero-fills the requested entity
-    // with a null value, and a non-dimensioned timeseries is SEEDED with one
-    // all-null series per entity. Treating either as "observed" leaves the
-    // reader a bare title over sections that all self-suppress.
     const dataless = (key: string) =>
       metric(key, {
         period: { view: "period", values: [{ entity_id: TENANT, value: null }] },
@@ -347,8 +327,6 @@ describe("TenantLensView", () => {
   });
 
   it("counts a single non-null bucket as observed", () => {
-    // The mirror of the case above: one real reading anywhere in the lens is
-    // enough to render it, even when every other view came back empty.
     mocks.result.byKey = new Map([
       [
         "ci.runs",
@@ -395,7 +373,6 @@ describe("TenantLensView", () => {
     render(<TenantLensView config={CONFIG} />);
     expect(screen.getByText("88%")).toBeTruthy();
     expect(screen.getByText("org-wide")).toBeTruthy();
-    // The delta is relative to the previous period (88 vs 80 → +10%).
     expect(screen.getByText("+10%")).toBeTruthy();
   });
 
@@ -428,8 +405,6 @@ describe("TenantLensView", () => {
   });
 
   it("keeps a single composition row when a real split cuts it", () => {
-    // One environment with both outcomes: one bar, two meaningful segments —
-    // the degenerate-data guard must not hide it.
     mocks.result.byKey = new Map([
       [
         "ci.deployments",
@@ -656,8 +631,6 @@ describe("TenantLensView", () => {
   });
 
   it("routes a conflicting view to an extra collection and renders from it", () => {
-    // The plain trend claims ci.runs' timeseries slot in collection 0; the
-    // stacked trend's dimensioned twin must ride an extra collection.
     const config = lens([
       { kind: "trend", title: "Runs", metrics: ["ci.runs"] },
       {
@@ -818,7 +791,6 @@ describe("TenantLensView", () => {
         seriesOf("ci.runs", "day", [
           {
             dims: [{ key: "hour_block", value: "08", label: "08–10" }],
-            // 2026-03-02 is a Monday.
             points: [["2026-03-02", 7]],
           },
         ]),
@@ -925,9 +897,6 @@ describe("TenantLensView", () => {
     mocks.rangeResults.set(SECOND_HALF, secondHalf);
 
     render(<TenantLensView config={config} />);
-    // Both halves come from ONE request: the second half is its period and the
-    // first its comparison window, so nothing computes a third aggregate over
-    // the whole range that no section reads.
     expect(mocks.calls).toHaveLength(2);
     expect(mocks.calls[1].range).toEqual({ from: "2026-03-16", to: "2026-03-31" });
     expect(mocks.calls[1].compareTo).toEqual({ from: "2026-03-01", to: "2026-03-15" });
@@ -938,7 +907,6 @@ describe("TenantLensView", () => {
       },
     ]);
     expect(screen.getByText("Momentum")).toBeTruthy();
-    // org/a moved +15 pts — labelled on both the slope list and momentum bars.
     expect(screen.getAllByText(/\+15\.0 pts/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText(/−2\.0 pts/).length).toBeGreaterThanOrEqual(2);
   });

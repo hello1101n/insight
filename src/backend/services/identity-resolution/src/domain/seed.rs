@@ -9,6 +9,8 @@ use super::provenance::{Provenance, ROSTER_MINT_REASON};
 use super::resolution::{BINDING_VALUE_TYPE, EXCLUDED_PERSON};
 use super::roster::RosterSource;
 
+pub const MAX_VALUE_ID_CHARS: usize = 320;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceAccountKey {
     pub source_type: String,
@@ -482,7 +484,6 @@ pub fn route_value(
     value_type: &str,
     value: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
-    const MAX_VALUE_ID_LEN: usize = 320; // VARCHAR(320)
     const MAX_VALUE_FULL_TEXT_LEN: usize = 512;
     const VALUE_ID_TYPES: [&str; 7] = [
         "id",
@@ -506,7 +507,7 @@ pub fn route_value(
     let classified_type = value_type.strip_prefix("person_").unwrap_or(value_type);
     let len = value.chars().count();
     if VALUE_ID_TYPES.contains(&classified_type) {
-        if len > MAX_VALUE_ID_LEN {
+        if len > MAX_VALUE_ID_CHARS {
             return (None, None, None);
         }
         return (Some(value.to_owned()), None, None);

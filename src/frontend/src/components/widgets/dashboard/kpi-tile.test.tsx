@@ -38,8 +38,6 @@ describe("KpiTile", () => {
   it("renders the display-ready value, delta, median, and context", () => {
     render(<KpiTile periodNoun="month" tile={tile()} />);
     expect(screen.getByText("14")).toBeInTheDocument();
-    // The change now says what it is measured against, in the line under the
-    // value — a bare "+17%" was readable as either comparison.
     expect(screen.getByText(/\+17% since last month/)).toBeInTheDocument();
     expect(screen.getByText(/Team median 11/)).toBeInTheDocument();
   });
@@ -80,9 +78,6 @@ describe("KpiTile", () => {
   });
 
   it("shows the line only once the readings arrive, never waiting on them", () => {
-    // The request for readings sits outside every loading gate: the numbers
-    // are the page, and a tile that held them back until a second request
-    // landed would trade the first screen for a decoration.
     const { container, rerender } = render(
       <KpiTile periodNoun="month" tile={tile()} />
     );
@@ -95,8 +90,6 @@ describe("KpiTile", () => {
   });
 
   it("draws no line when there is nothing worth drawing", () => {
-    // `personTrendPoints` returns null below its minimum; the tile must take
-    // that as "no line", not fall back to something of its own.
     const { container } = render(
       <KpiTile periodNoun="month" tile={tile()} trend={null} />
     );
@@ -142,8 +135,6 @@ describe("KpiTilePlaceholder", () => {
   });
 
   it("says where the value sits when it is exactly at the median", () => {
-    // "median 22,774" alone breaks the pattern every other tile follows and
-    // reads as a stray label rather than a comparison.
     render(
       <KpiTile
         periodNoun="month"
@@ -154,8 +145,6 @@ describe("KpiTilePlaceholder", () => {
   });
 
   it("does not raise an alarm over a change of one percent", () => {
-    // Four coloured badges per row, one of them for a rounding-sized move,
-    // teach the reader that the colour means nothing.
     render(
       <KpiTile
         periodNoun="month"

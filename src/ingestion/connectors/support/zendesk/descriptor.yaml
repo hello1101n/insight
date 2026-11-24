@@ -67,12 +67,16 @@ name: zendesk
 #   distinct audits, and both staging models watermark on their own last
 #   build. MAJOR: the silver grain and keys change, so reconcile dispatches a
 #   dbt --full-refresh; bronze needs nothing.
+# 2.0.1: public_comments, private_comments, csat_good and csat_total are
+#   Nullable(UInt64), because the HubSpot arm of class_support_activity writes
+#   NULL there. The deploy hook widens the stored columns. PATCH: no value
+#   changes.
 # `nocode` = declarative-manifest connector (connector.yaml published to the
 # Airbyte builder), as opposed to `cdk` (a pre-built Python image registered
 # from images.cdk.image). MUST be `nocode`/absent for declarative connectors:
 # reconcile only branches on `nocode` vs `cdk` — any other value (e.g.
 # `declarative`) falls through to the cdk image path and fails with no image.
-version: "2.0.0"
+version: "2.0.1"
 type: nocode
 schedule: "0 5 * * *"       # 05:00 UTC daily
 workflow: sync               # Argo workflow template: ingestion-pipeline

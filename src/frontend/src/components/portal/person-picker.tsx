@@ -1,18 +1,3 @@
-/**
- * The person picker: find someone by any current identity value (name, any
- * email ever current, git handle) and hand the choice back to the caller.
- *
- * A finding tool, not a deciding one (#2424): it never fires a verb itself.
- * Composed from the house search idiom (Search icon inside an Input) over a
- * debounced live query, paged with the cursor the service returns, so a common
- * term reaches every match instead of stopping at the first page. Terminated
- * people stay visible but marked — finding a leaver is often the point.
- *
- * `browseWhenEmpty` decides what an empty field means. The console's person
- * mode wants the roster there; the assign picker inside an account dialog
- * wants matches, and listing the tenant into a dropdown would bury the one
- * name the operator came to type.
- */
 import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,18 +22,9 @@ import { cn } from "@/lib/utils";
 
 export function PersonPicker({
   onPick,
-  /** Persons already shown elsewhere in the panel — filtered out, not repeated. */
   excludeIds = [],
-  /** The only persons that may be offered, by normalized id; absent offers anyone. */
   onlyIds,
   browseWhenEmpty = false,
-  /**
-   * The picker IS the surface rather than a field inside a panel: the list gets
-   * the card the console's other listings have, fills the height it is given,
-   * and carries the jump-to-either-end control a long roster needs. In a panel
-   * it stays a short list under a field, where a full-height scroller would
-   * take the dialog over.
-   */
   asSurface = false,
   initialQuery = "",
   onSettled,
@@ -59,22 +35,13 @@ export function PersonPicker({
   onlyIds?: ReadonlySet<string>;
   browseWhenEmpty?: boolean;
   asSurface?: boolean;
-  /** What the field starts with — a caller that remembers the terms elsewhere
-   *  hands them back here on the way in. Read once, on mount: while the field
-   *  is on screen it is the only source of truth for what it holds. */
   initialQuery?: string;
-  /** The terms once the reader has stopped typing, for a caller that outlives
-   *  this field and wants them back when it returns. Fired debounced, not per
-   *  keystroke: a caller that stores them in the URL would otherwise navigate
-   *  on every letter. */
   onSettled?: (query: string) => void;
   source?: PersonListSource;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState(initialQuery);
   const debounced = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
-  // Reported from an effect, not from the change handler: `debounced` is what
-  // the search itself runs on, so the caller is told exactly what was asked.
   const settled = useRef(onSettled);
   useEffect(() => {
     settled.current = onSettled;
@@ -99,15 +66,7 @@ export function PersonPicker({
         )
     : [];
   const loading = list.isFetching && !list.isFetchingNextPage;
-  // These rows answer the term the query key carries, which is not the one in
-  // the field until the debounce fires AND the fetch lands. Kept on screen so
-  // the list does not blank between keystrokes — see `placeholderData` — and
-  // marked, or the operator reads a list that is one term behind as the answer.
-  // Marked, NOT disabled: a click lands on a row they can read, and picking is
-  // a step towards a verb rather than the verb itself.
   const behind = query !== debounced || list.isPlaceholderData;
-  // A page whose every row was excluded is not "nobody matches" while more
-  // pages are unread — the next page is the answer, not the message.
   const exhausted = !list.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
@@ -124,23 +83,18 @@ export function PersonPicker({
         asSurface && "min-h-0 flex-1",
       )}
     >
-      <div className="relative w-full shrink-0">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="w-full shrink-0">
         <Input
           type="search"
-          className={cn(
-            "ps-8",
-            loading && "pe-8 [&::-webkit-search-cancel-button]:hidden"
-          )}
+          icon={<Search />}
+          end={loading ? <Spinner /> : undefined}
+          className={cn(loading && "[&::-webkit-search-cancel-button]:hidden")}
           placeholder={t("identities.picker.placeholder")}
           aria-label={t("identities.picker.placeholder")}
           maxLength={MAX_SEARCH_CHARS}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {loading ? (
-          <Spinner className="absolute end-2.5 top-1/2 size-4 -translate-y-1/2" />
-        ) : null}
       </div>
       {asked && list.isError ? (
         <p className="text-sm text-destructive">
@@ -157,11 +111,7 @@ export function PersonPicker({
           {t("identities.picker.no_matches")}
         </p>
       ) : null}
-      {/* Rendered for an unread next page even with nothing visible: a page
-          whose every row was excluded has no rows to scroll, and the marker is
-          the only thing that can ask for the page that does. It has to live
-          INSIDE the scroller — an observer never reports a target that is not a
-          descendant of its root. */}
+      {/* WORKAROUND: an IntersectionObserver ignores targets outside its root, so the marker stays inside the scroller. */}
       {results.length > 0 || (asked && list.hasNextPage) ? (
         <ListShell asSurface={asSurface}>
           <div
@@ -177,9 +127,7 @@ export function PersonPicker({
             >
               {results.map((person) => (
                 <li key={person.person_id}>
-                  {/* Not a <button>: the card inside carries its own copy control,
-                      and a button may not nest a button — the same rule the queue
-                      rows follow. */}
+                  {/* WORKAROUND: HTML forbids a <button> inside a <button>, and the card carries its own copy button. */}
                   <div
                     role="button"
                     tabIndex={0}
@@ -199,11 +147,6 @@ export function PersonPicker({
                 </li>
               ))}
             </ul>
-            {/* The page after this one is asked for when this marker nears the
-                viewport, so the roster continues instead of ending in a button.
-                The marker is always there while a page is unread — the observer
-                needs an element — but it only SAYS anything while that page is
-                on its way. */}
             {asked && list.hasNextPage ? (
               <p
                 ref={loadMore}
@@ -225,7 +168,6 @@ export function PersonPicker({
   );
 }
 
-/** The card every listing in the console sits in — absent inside a panel. */
 function ListShell({
   asSurface,
   children,
@@ -235,7 +177,7 @@ function ListShell({
 }) {
   if (!asSurface) return children;
   return (
-    <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden py-0">
+    <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {children}
     </Card>
   );

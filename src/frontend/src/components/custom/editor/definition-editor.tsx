@@ -42,8 +42,6 @@ export function DefinitionEditor({
   const given = called.trim();
   const isDataset = kind === "datasets";
   const creating = id === undefined;
-  // SAFETY: writing a dataset replaces the one under its name, so a new one
-  // may not take a name the catalogue lists; the catalogue may lag the service.
   const taken = isDataset && creating && datasets().includes(given);
 
   const submit = () => {
@@ -61,8 +59,6 @@ export function DefinitionEditor({
         event.preventDefault();
         submit();
       }}
-      // SAFETY: storing claims a name and, for a dataset, builds what holds its
-      // records. Enter in a field is not that decision; only Save is.
       onKeyDown={(event) => {
         const inField = event.target instanceof HTMLInputElement;
         if (event.key === "Enter" && inField) event.preventDefault();
@@ -90,7 +86,7 @@ export function DefinitionEditor({
             maxLength={isDataset ? undefined : DEFINITION_NAME_MAX}
             aria-invalid={taken || undefined}
             aria-describedby={isDataset ? "definition-name-hint" : undefined}
-            className={cn("h-9 w-full max-w-72", isDataset && "font-mono")}
+            className={cn("w-full max-w-72", isDataset && "font-mono")}
             onChange={(event) => setCalled(event.target.value)}
           />
           {isDataset ? (

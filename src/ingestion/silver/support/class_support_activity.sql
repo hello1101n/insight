@@ -1,4 +1,5 @@
 -- depends_on: {{ ref('zendesk__support_activity') }}
+-- depends_on: {{ ref('hubspot__support_activity') }}
 {{ config(
     materialized='incremental',
     unique_key='unique_key',
@@ -11,7 +12,7 @@
 ) }}
 
 -- Unified person × date support activity across all support vendors
--- (Zendesk today; Freshdesk/etc. plug in by emitting a per-source staging
+-- (Zendesk and HubSpot; Freshdesk/etc. plug in by emitting a per-source staging
 -- model tagged `silver:class_support_activity`). Same grain and union
 -- mechanism as silver/collaboration/class_collab_*_activity — so a person's
 -- support activity can be compared on equal footing with their wiki / chat /

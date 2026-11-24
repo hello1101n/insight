@@ -1,9 +1,3 @@
-/**
- * Usage is written the moment someone clicks, and the app-wide default holds a
- * query fresh for an hour. Left on that default, stepping back to a period you
- * already looked at shows the snapshot from then — a month that reads smaller
- * than the week inside it.
- */
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ options: null as Record<string, unknown> | null }));

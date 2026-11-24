@@ -26,27 +26,16 @@ type DayPickerRange = NonNullable<
 >;
 
 export interface RangePickerProps {
-  /** The tokens this board offers, in the order it offers them. */
   offered: string[];
-  /** The token being read now — a preset, or an interval of its own. */
   selected: string;
   onSelect: (token: string) => void;
 }
 
-/**
- * Which window a custom dashboard is read over.
- *
- * The option list belongs to the board, so this draws what it was handed and
- * nothing else. Only a token ever leaves here: the server resolves every
- * window, including a custom one, against the clock.
- */
 export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
   const [open, setOpen] = useState(false);
   const latestEnd = addDays(latestPickableDay(), 1);
   const custom = toInterval(selected);
 
-  // Keyed on the selection: a `useState` initialiser runs once, so a picker
-  // reopened after the window moved would apply the interval it first saw.
   const [picked, setPicked] = useState<DayPickerRange | undefined>(undefined);
   const showing =
     picked ??
@@ -71,8 +60,7 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
       }}
       variant="outline"
       size="default"
-      // The group ships `w-fit`, which overflows its container rather than
-      // wrapping; capping it at the container is what lets the wrap engage.
+      // WORKAROUND: the kit's group ships `w-fit`, which overflows instead of wrapping.
       className="max-w-full min-w-0 flex-wrap"
     >
       {presets.map(({ token, label, short }) => (
@@ -84,7 +72,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
       <Popover
         open={open}
         onOpenChange={(next) => {
-          // Opening starts from what is selected now, not from the last draft.
           if (next) setPicked(undefined);
           setOpen(next);
         }}
@@ -93,7 +80,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
           render={
             <ToggleGroupItem
               value="custom"
-              className="gap-1.5"
               aria-label={custom ? rangeLabel(selected) : "Custom date range"}
             >
               <CalendarIcon className="size-3.5" />
@@ -105,7 +91,7 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
         />
         <PopoverContent
           align="end"
-          className="w-auto gap-0 p-0"
+          className="w-auto"
           onKeyDown={keepNavigationKeysInside}
         >
           <p className="border-b border-border px-4 py-3 text-xs text-muted-foreground">
@@ -119,7 +105,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
             fixedWeeks
             endMonth={latestEnd}
             disabled={{ after: latestEnd }}
-            className="p-3"
             resetOnSelect
             showOutsideDays={false}
             selected={showing}
@@ -156,10 +141,6 @@ export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
   );
 }
 
-/**
- * A span the server will accept: two days, the later one exclusive. One day
- * clicked twice is an empty window, so it is not one yet.
- */
 function isWholeSpan(
   range: DayPickerRange | undefined
 ): range is { from: Date; to: Date } {

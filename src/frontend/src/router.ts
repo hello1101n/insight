@@ -11,8 +11,6 @@ export const router = createRouter({
   defaultPreload: "intent",
   defaultPendingComponent: AppBootSpinner,
   defaultPendingMs: 200,
-  // Pages scroll inside the shell's content area, not the window: a new page
-  // starts at its top, and Back or Forward returns to where the reader was.
   scrollRestoration: true,
   scrollToTopSelectors: [`#${CONTENT_ID}`],
 });

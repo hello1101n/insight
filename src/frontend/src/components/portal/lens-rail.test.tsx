@@ -40,7 +40,6 @@ function OpenState() {
   return <output data-testid="open">{String(useSidebar().open)}</output>;
 }
 
-/** Collapsed to the rail, the way a tablet starts; open, the way wide starts. */
 const rail = (open: boolean) =>
   render(
     <SidebarProvider defaultOpen={open}>
@@ -52,7 +51,6 @@ const rail = (open: boolean) =>
   );
 const collapsedRail = () => rail(false);
 
-/** A label shown outside the button itself, i.e. in the tooltip popup. */
 const tooltipFor = (label: string) =>
   screen
     .queryAllByText(label)

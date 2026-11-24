@@ -1,11 +1,3 @@
-/**
- * What the product can see about a person, and about how many people.
- *
- * The tests that matter here are the ones about what it REFUSES to conclude:
- * that a source is missing because nobody in view uses it, that an unlinked
- * person is a person with nothing to show, or that connecting something would
- * light up a knowable number of people.
- */
 import { describe, expect, it } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
@@ -21,7 +13,6 @@ import { normalizeMetricResults } from "@/lib/metrics/collection";
 const ME = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 const SOMEONE_ELSE = "019e27bc-dec0-7626-81a9-000000000002";
 
-/** A definition as the listing delivers it; only the health fields matter. */
 function def(
   metric_key: string,
   over: Partial<MetricDefinition> = {},
@@ -37,7 +28,6 @@ function def(
   } as unknown as MetricDefinition;
 }
 
-/** One metric carrying a period value for the listed entities. */
 function metric(
   key: string,
   values: Array<[entity: string, value: number | null]>,
@@ -76,8 +66,6 @@ describe("reachableMetricKeys", () => {
   });
 
   it("drops a metric that has never observed anything", () => {
-    // `last_observed_date: null` is the listing saying no data has ever
-    // arrived — the source is declared but nothing came through it.
     expect(
       reachableMetricKeys([def("ai.accepted", { last_observed_date: null })]),
     ).toEqual(new Set());
@@ -96,11 +84,6 @@ describe("reachableMetricKeys", () => {
   });
 
   it("keeps a custom metric that has never stamped a freshness date", () => {
-    // The validator stamps last_observed_date from materialized relations
-    // only, and a custom metric runs its SQL at query time — so the field
-    // stays absent however much data it serves. Reading that as "never
-    // measured" would report a working metric as one nothing reaches, which is
-    // the one thing this function must never do.
     expect(
       reachableMetricKeys([
         def("custom.thing", { origin: "custom", last_observed_date: null }),
@@ -159,11 +142,6 @@ describe("partState", () => {
   });
 
   it("does NOT call a part unreachable because nobody in view uses it", () => {
-    // The whole point. This viewer sees two people, neither of whom has a
-    // value. The listing says the source has observed data for the tenant, so
-    // the part is reachable and these two simply did none of that work.
-    // Concluding otherwise would report a live connector as missing, and would
-    // do so more often the smaller the viewer's reach.
     const byKey = normalizeMetricResults([
       metric("collab.messages", [
         [ME, null],
@@ -176,7 +154,6 @@ describe("partState", () => {
   });
 
   it("still reads when only one of several metrics is wired", () => {
-    // A part is not unobservable because one of its metrics is missing.
     const byKey = normalizeMetricResults([metric("collab.meetings", [[ME, 3]])]);
     const reachable = reachableMetricKeys([
       def("collab.meetings"),
@@ -205,9 +182,6 @@ describe("unreachableParts", () => {
   });
 
   it("offers no estimate of who connecting one would reveal", () => {
-    // The people who do that work are invisible BECAUSE the source is missing,
-    // so any such number would be invented. The shape of the return value is
-    // the guarantee: there is nowhere to put one.
     const [only] = unreachableParts(GROUPS, new Set(["git.commits"]));
     expect(Object.keys(only)).toEqual(["id", "title"]);
   });

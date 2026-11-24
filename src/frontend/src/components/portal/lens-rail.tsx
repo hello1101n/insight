@@ -32,12 +32,6 @@ import {
 import { useRailNav } from "@/lib/portal/use-rail-nav";
 import { cn } from "@/lib/utils";
 
-/**
- * The rail: the first column of the shell sidebar (`ShellSidebar`), one row
- * per rail item (`rail-model.ts`), icons only unless the reader asks for the
- * names beside them. Collapsing the shell sidebar leaves only this column, as
- * icons; picking an item opens the pane beside it again.
- */
 export function LensRail() {
   const { t } = useTranslation();
   return (
@@ -68,14 +62,12 @@ export function LensRail() {
   );
 }
 
-/** Whether the rail's rows show their names right now: always in the phone drawer. */
 function useRailLabelsShown(): boolean {
   const labels = usePortalRailLabels();
   const { isMobile, state } = useSidebar();
   return isMobile || (labels && state === "expanded");
 }
 
-/** A row's name, faded in once the rail has finished widening. */
 function RailName({ children }: { children: string }) {
   const shown = useRailLabelsShown();
   return (
@@ -90,10 +82,6 @@ function RailName({ children }: { children: string }) {
   );
 }
 
-/**
- * Shows or hides the rail's names: an icon with a tooltip either way, at the
- * rail's end edge. Collapsed to icons, there is no room for names.
- */
 function LabelsToggle() {
   const { t } = useTranslation();
   const labels = usePortalRailLabels();
@@ -125,7 +113,6 @@ function LabelsToggle() {
   );
 }
 
-/** One row per rail item: icons in the rail, labelled rows in the phone drawer. */
 export function RailItems() {
   const { t } = useTranslation();
   const { items, activeItem, selectItem } = useRailNav();
@@ -144,7 +131,6 @@ export function RailItems() {
                   aria-label={label}
                   data-planned={item.planned || undefined}
                   isActive={activeItem === item.id}
-                  className={cn(item.planned && "text-muted-foreground")}
                   onClick={() => {
                     selectItem(item);
                     setOpen(true);
@@ -172,7 +158,6 @@ export function RailFooterItems() {
   );
 }
 
-/** Its own rail slot: inside the settings menu nobody found it. */
 function FeedbackItem() {
   const { t } = useTranslation();
   const feedback = useFeedbackDialog();
@@ -186,7 +171,6 @@ function FeedbackItem() {
       <RailTooltip label={label}>
         <SidebarMenuButton
           aria-label={label}
-          // The feedback box opens behind the phone drawer.
           onClick={() => {
             feedback.openFeedback();
             setOpenMobile(false);
@@ -222,7 +206,7 @@ function SettingsItem() {
         <PopoverContent
           side={isMobile ? "top" : "right"}
           align={isMobile ? "start" : "end"}
-          className="w-64 gap-0 p-1"
+          className="w-64"
         >
           <AppSidebarFooter
             showFeedback={false}
@@ -237,11 +221,7 @@ function SettingsItem() {
   );
 }
 
-/**
- * The rail's labels while it shows icons only, open or collapsed. The kit's own
- * `tooltip` prop shows only while the whole sidebar is collapsed. Rows that
- * carry their names, in the phone drawer or a labelled rail, get none.
- */
+// WORKAROUND: the kit's `tooltip` prop shows only while the whole sidebar is collapsed.
 function RailTooltip({
   label,
   children,
