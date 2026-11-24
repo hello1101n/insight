@@ -80,11 +80,6 @@ COPY . .
 RUN cargo build --release --locked --bin git-cli-proxy && \
     install -D "target/${CARGO_BUILD_TARGET}/release/git-cli-proxy" /build/out/git-cli-proxy
 
-FROM cooker AS build-previews
-COPY . .
-RUN cargo build --release --locked --bin previews && \
-    install -D "target/${CARGO_BUILD_TARGET}/release/previews" /build/out/previews
-
 FROM cooker AS build-connectors
 COPY . .
 RUN cargo build --release --locked --bin connectors && \
@@ -172,12 +167,6 @@ COPY --from=build-git-cli-proxy --chown=1000:1000 /build/out/git-cli-proxy /app/
 COPY --from=build-git-cli-proxy --chown=1000:1000 /build/services/git-cli-proxy/config/ /app/config/
 EXPOSE 8084
 CMD ["/app/git-cli-proxy", "--", "/app/git-cli-proxy", "-c", "/app/config/insight.yaml"]
-
-FROM runtime AS previews
-COPY --from=build-previews --chown=1000:1000 /build/out/previews /app/previews
-COPY --from=build-previews --chown=1000:1000 /build/services/previews/config/ /app/config/
-EXPOSE 8085
-CMD ["/app/previews", "--", "/app/previews", "-c", "/app/config/insight.yaml"]
 
 FROM runtime AS connectors
 COPY --from=build-connectors --chown=1000:1000 /build/out/connectors /app/connectors
