@@ -5195,7 +5195,7 @@
             "description": "Gateway Timeout"
           }
         },
-        "summary": "List the grants of a metric the caller owns or edits",
+        "summary": "List the grants of a metric; administrators only",
         "x-toolkit-visibility": "exposed"
       }
     },

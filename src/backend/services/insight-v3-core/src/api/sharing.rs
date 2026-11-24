@@ -249,6 +249,16 @@ impl Object {
             Self::Metric => "metric",
         }
     }
+
+    fn listing(self) -> String {
+        match self {
+            Self::Dashboard | Self::Folder => format!(
+                "List the grants of a {} the caller owns or edits",
+                self.noun()
+            ),
+            Self::Metric => "List the grants of a metric; administrators only".to_owned(),
+        }
+    }
 }
 
 enum Named {
@@ -283,9 +293,7 @@ fn grant_routes(openapi: &dyn OpenApiRegistry, state: &Arc<AppState>, object: Ob
 
     let list = OperationBuilder::get(format!("/v1/{segment}/{{id}}/grants"))
         .operation_id(format!("insight_v3_core.{segment}.grants.list"))
-        .summary(format!(
-            "List the grants of a {noun} the caller owns or edits"
-        ))
+        .summary(object.listing())
         .anonymous()
         .exposed()
         .param(id())
