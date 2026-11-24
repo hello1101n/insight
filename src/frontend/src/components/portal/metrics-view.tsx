@@ -49,12 +49,21 @@ import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search"
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useShellLayout } from "@/lib/portal/use-shell-layout";
+import {
+  isPersonalKey,
+  type PersonalMetricDefinition,
+} from "@/lib/portal/personal-metrics";
 import { byFamily } from "@/lib/reports/families";
 import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
-import { useMetricsViewData } from "@/queries/metrics-view";
+import {
+  useMetricsViewData,
+  usePersonalMetricDefinitions,
+} from "@/queries/metrics-view";
 import type { IdentityPerson } from "@/types/insight";
 
 const TEST_ID = "page-people-metrics";
+const NO_PERSONAL: readonly PersonalMetricDefinition[] = [];
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 function comparedNames(
   compareParam: string,
@@ -76,12 +85,20 @@ export function MetricsView() {
   const { dateRange } = usePortalPeriod();
   const orgScope = useOrgScope();
   const definitions = useMetricDefinitionsResponse();
+  const personalDefinitions = usePersonalMetricDefinitions().data ?? NO_PERSONAL;
   const showPlanned = usePortalShowPlanned();
 
   const catalog = useMemo(
     () =>
-      metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
-    [definitions.data, showPlanned],
+      metricsViewCatalog(
+        [...(definitions.data?.metrics ?? []), ...personalDefinitions],
+        offeredMetricFilter(showPlanned),
+      ),
+    [definitions.data, personalDefinitions, showPlanned],
+  );
+  const personalByKey = useMemo(
+    () => new Map(personalDefinitions.map((metric) => [metric.metric_key, metric])),
+    [personalDefinitions],
   );
   const catalogKeys = useMemo(
     () => catalog.map((metric) => metric.metric_key),
@@ -137,7 +154,7 @@ export function MetricsView() {
     : [];
   usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
-  const data = useMetricsViewData(metricKeys, memberIds, dateRange);
+  const data = useMetricsViewData(metricKeys, memberIds, dateRange, personalDefinitions);
 
   const gate = orgScopeGate({
     "data-testid": TEST_ID,
@@ -219,6 +236,8 @@ export function MetricsView() {
           members={members}
           metricKeys={metricKeys}
           byKey={data.byKey}
+          personal={personalByKey}
+          personalError={data.personalError}
           loading={data.isPending}
           range={dateRange}
         />
@@ -284,6 +303,8 @@ function MetricsBody({
   members,
   metricKeys,
   byKey,
+  personal,
+  personalError,
   loading,
   range,
 }: {
@@ -292,6 +313,8 @@ function MetricsBody({
   members: MembersGridMember[];
   metricKeys: readonly string[];
   byKey: Map<string, NormalizedMetricResult>;
+  personal: ReadonlyMap<string, PersonalMetricDefinition>;
+  personalError: boolean;
   loading: boolean;
   range: DateRange;
 }) {
@@ -318,7 +341,9 @@ function MetricsBody({
   });
   const inView = comparing ? compared : members;
   const inViewIds = inView.map((member) => member.entityId);
-  const columns = keysWithData(metricKeys, byKey, inViewIds);
+  const failed = personalError ? new Set(metricKeys.filter(isPersonalKey)) : NO_KEYS;
+  const withData = new Set(keysWithData(metricKeys, byKey, inViewIds));
+  const columns = metricKeys.filter((key) => withData.has(key) || failed.has(key));
 
   const toggle = (entityId: string) =>
     setExpanded((current) => {
@@ -391,6 +416,8 @@ function MetricsBody({
           rows={rows}
           groups={metricGroups(columns)}
           byKey={byKey}
+          personal={personal}
+          failed={failed}
           roles={roles}
           sort={sort}
           onSort={(key) => setSort((current) => nextSort(current, key))}

@@ -1144,7 +1144,10 @@
     "clear_all": "Clear all",
     "comparing": "Comparing {{count}} people",
     "people_count": "{{count}} people",
-    "exit_compare": "Exit compare"
+    "exit_compare": "Exit compare",
+    "about_metric": "About {{label}}",
+    "shared_by": "Shared by {{name}}, {{date}}",
+    "not_loaded": "Could not load"
   },
   "dashboards": {
     "no_shared": "No shared dashboards",
