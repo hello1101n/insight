@@ -1,6 +1,6 @@
 # Claude Team new streams
 
-Candidates: chat activity and Cowork activity, per member per day. Build a stream only when all its discovery questions answer yes. An Owner answers them by capturing the dashboard requests behind the Claude Chat and Cowork tabs with synthetic values. Endpoint details stay unconfirmed until captured.
+Candidates: chat activity and Cowork activity, per member per day.
 
 ## What they feed
 
