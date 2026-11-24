@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue, keysWithData } from "@/lib/portal/metrics-view";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import { keysWithData } from "@/lib/portal/metrics-view";
 
 import {
   combinedColumn,

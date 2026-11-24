@@ -10,7 +10,7 @@ import {
   type PersonNaming,
 } from "@/lib/identities/person-display";
 import {
-  forEntity,
+  finiteValue,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
@@ -106,14 +106,6 @@ export function chunkKeys(keys: readonly string[], size: number): string[][] {
     chunks.push(keys.slice(i, i + size));
   }
   return chunks;
-}
-
-export function finiteValue(
-  result: NormalizedMetricResult,
-  entityId: string,
-): number | null {
-  const { value } = forEntity(result, entityId);
-  return value != null && Number.isFinite(value) ? value : null;
 }
 
 export function keysWithData(

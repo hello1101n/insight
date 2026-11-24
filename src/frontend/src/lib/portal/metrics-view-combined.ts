@@ -1,5 +1,5 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import { forEntity, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 
 export const LINES_KEY = "git.default_branch_lines";
 
@@ -27,11 +27,6 @@ const COMBINED_COLUMNS: readonly CombinedColumn[] = [
     ],
   },
 ];
-
-function finite(result: NormalizedMetricResult, entityId: string): number | null {
-  const { value } = forEntity(result, entityId);
-  return value != null && Number.isFinite(value) ? value : null;
-}
 
 export function combinedColumn(key: string): CombinedColumn | undefined {
   return COMBINED_COLUMNS.find((column) => column.key === key);
@@ -86,7 +81,7 @@ export function withCombinedResults(
       results.flatMap((result) => result.period?.values.map((v) => v.entity_id) ?? []),
     );
     const values = [...ids].map((entity_id) => {
-      const found = results.map((result) => finite(result, entity_id));
+      const found = results.map((result) => finiteValue(result, entity_id));
       const value = found.some((v) => v == null)
         ? null
         : found.reduce<number>((sum, v) => sum + (v ?? 0), 0) / column.scale;
@@ -123,7 +118,7 @@ export function combinedParts(
 ): CombinedPart[] | null {
   const found = column.parts.map((part) => {
     const result = byKey.get(part.metricKey);
-    return { part, result, value: result ? finite(result, entityId) : null };
+    return { part, result, value: result ? finiteValue(result, entityId) : null };
   });
   if (found.every(({ value }) => value == null)) return null;
 

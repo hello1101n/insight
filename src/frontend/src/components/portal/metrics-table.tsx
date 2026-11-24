@@ -7,14 +7,13 @@ import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
 import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, formatMetricValue } from "@/lib/format";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   combinedColumn,
   combinedParts,
   type CombinedColumn,
 } from "@/lib/portal/metrics-view-combined";
 import {
-  finiteValue,
   headerUnit,
   type MetricGroup,
   type MetricsRow,

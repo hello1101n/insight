@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import { MetricCell, UnitNote } from "@/components/portal/metrics-table";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { compareGaps, finiteValue, formatGap } from "@/lib/portal/metrics-view";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import { compareGaps, formatGap } from "@/lib/portal/metrics-view";
 import { cn } from "@/lib/utils";
 
 const STICKY_START = "sticky start-0 z-10 bg-card";
