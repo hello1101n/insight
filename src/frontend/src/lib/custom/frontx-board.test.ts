@@ -323,14 +323,14 @@ describe("frontxBoard", () => {
 });
 
 describe("frontxAnswer", () => {
-  it("adds each column's position and its distinct values in the order they first come", () => {
+  it("adds each column's position and its distinct values in the order the current stacked chart uses", () => {
     const result: MetricResult = {
       columns: ["team", "outcome", "runs"],
       rows: [
-        ["Atlas", "ok", 3],
+        ["Cobalt", "ok", 3],
         ["Atlas", "failed", 1],
-        ["Borealis", "ok", 3],
-        ["Cobalt", null, null],
+        ["Borealis", "ok", 10],
+        ["Atlas", null, null],
       ],
       percents: ["runs"],
     };
@@ -340,8 +340,8 @@ describe("frontxAnswer", () => {
       at: { team: 0, outcome: 1, runs: 2 },
       distinct: {
         team: ["Atlas", "Borealis", "Cobalt"],
-        outcome: ["ok", "failed", null],
-        runs: [3, 1, null],
+        outcome: [null, "failed", "ok"],
+        runs: [null, 1, 3, 10],
       },
       tableRows: result.rows,
     });
@@ -419,7 +419,7 @@ describe("frontxBoard data", () => {
     }
   );
 
-  it("draws a bar with a series column as one series per value of that column", () => {
+  it("draws a bar with a series column as one series per value, in the current chart's stack order", () => {
     const stacked: Widget = {
       type: "bar",
       metric: "m",
@@ -441,13 +441,8 @@ describe("frontxBoard data", () => {
 
     expect(drawnData(stacked, [], answer).data).toEqual({
       series: [
-        {
-          name: "ok",
-          points: [
-            { x: "Atlas", y: 3 },
-            { x: "Borealis", y: 2 },
-          ],
-        },
+        { name: null, points: [{ x: "Delta", y: 5 }] },
+        { name: "7", points: [{ x: "Ember", y: 6 }] },
         {
           name: "failed",
           points: [
@@ -455,8 +450,13 @@ describe("frontxBoard data", () => {
             { x: "Cobalt", y: null },
           ],
         },
-        { name: null, points: [{ x: "Delta", y: 5 }] },
-        { name: "7", points: [{ x: "Ember", y: 6 }] },
+        {
+          name: "ok",
+          points: [
+            { x: "Atlas", y: 3 },
+            { x: "Borealis", y: 2 },
+          ],
+        },
       ],
     });
   });

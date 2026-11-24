@@ -315,16 +315,19 @@ export function frontxBoard(
   };
 }
 
-// WORKAROUND: CEL has no list indexOf, no group function and no slice, so the answer carries
-// each column's position, its distinct values in the order they first come, and the rows a table shows.
+// WORKAROUND: CEL has no list indexOf, no group function, no sort and no slice, so the answer carries
+// each column's position, its distinct values in the order the current stacked chart uses, and the rows a table shows.
 export function frontxAnswer(result: MetricResult): FrontxAnswer {
   const at = Object.fromEntries(
     result.columns.map((name, index) => [name, index])
   );
+  const label = (value: unknown) => String(value ?? "—");
   const distinct = Object.fromEntries(
     result.columns.map((name, index) => [
       name,
-      [...new Set(result.rows.map((row) => row[index]))],
+      [...new Set(result.rows.map((row) => row[index]))].sort((a, b) =>
+        label(a).localeCompare(label(b), "en", { numeric: true })
+      ),
     ])
   );
 
