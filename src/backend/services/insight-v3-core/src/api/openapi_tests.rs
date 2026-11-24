@@ -37,6 +37,7 @@ fn the_document_covers_every_route_this_service_serves() {
         "/v1/pins/{dashboard_id}",
         "/v1/personal-metrics",
         "/v1/personal-metrics/values",
+        "/v1/personal-metrics/{id}/records",
         "/v1/chat",
     ] {
         assert!(

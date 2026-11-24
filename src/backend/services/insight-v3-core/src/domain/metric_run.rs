@@ -53,6 +53,24 @@ pub(crate) struct Reading {
     dataset: Option<(Declaration, String)>,
 }
 
+impl Reading {
+    pub(crate) fn declaration(&self) -> Option<&Declaration> {
+        self.dataset.as_ref().map(|(declaration, _)| declaration)
+    }
+
+    pub(crate) fn source(&self, metric: &MetricQuery) -> Source {
+        match &self.dataset {
+            Some((_, table)) => Source::Dataset {
+                table: table.clone(),
+            },
+            None => Source::Table {
+                database: metric.database().map(str::to_owned),
+                table: metric.table_name().to_owned(),
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct MetricRuns<'a> {
     definitions: &'a dyn Definitions,
@@ -378,14 +396,26 @@ impl<'a> MetricRuns<'a> {
             Option<Over<'_>>,
         ) -> Result<CompiledQuery, MetricQueryError>,
     ) -> Result<RunResult, CustomError> {
+        let compiled = self.compile_read(reading, compile)?;
+
+        self.metrics.run(&compiled).await.map_err(CustomError::Run)
+    }
+
+    pub(crate) fn compile_read(
+        &self,
+        reading: &Reading,
+        compile: impl FnOnce(
+            &People,
+            TableEngine,
+            Option<Over<'_>>,
+        ) -> Result<CompiledQuery, MetricQueryError>,
+    ) -> Result<CompiledQuery, CustomError> {
         let over = reading
             .dataset
             .as_ref()
             .map(|(declaration, table)| self.over_of(declaration, table));
-        let compiled =
-            compile(self.metrics.people(), reading.engine, over).map_err(CustomError::Compile)?;
 
-        self.metrics.run(&compiled).await.map_err(CustomError::Run)
+        compile(self.metrics.people(), reading.engine, over).map_err(CustomError::Compile)
     }
 
     async fn ready_dataset(&self, named: &str) -> Result<(Declaration, String), CustomError> {

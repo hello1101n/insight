@@ -84,7 +84,54 @@ enum Upstream {
     Failing,
 }
 
-async fn clickhouse(upstream: Upstream) -> (String, tokio::task::JoinHandle<()>) {
+type Seen = Arc<std::sync::Mutex<Vec<String>>>;
+
+const FIRST_PAGE_ROWS: usize = 101;
+
+fn record_rows(count: usize) -> Vec<Value> {
+    (0..count)
+        .map(|index| {
+            let time = format!(
+                "2026-09-07 {:02}:{:02}:00",
+                23 - index / 60,
+                59 - index % 60
+            );
+            let record = format!("record-{index}");
+
+            json!({
+                "time": time,
+                "author": "Alice Example",
+                "lines": "3",
+                "__drilldown_record": record,
+                "__drilldown_flag": 1,
+                "__drilldown_key": time,
+                "__drilldown_tie0": time,
+                "__drilldown_tie1": "Alice Example",
+                "__drilldown_tie2": "3",
+                "__drilldown_tie3": record
+            })
+        })
+        .collect()
+}
+
+fn record_page(sql: &str) -> Value {
+    let count = if sql.contains(" WHERE tuple(") {
+        1
+    } else {
+        FIRST_PAGE_ROWS
+    };
+
+    json!({
+        "meta": [
+            { "name": "time", "type": "String" },
+            { "name": "author", "type": "String" },
+            { "name": "lines", "type": "Int64" }
+        ],
+        "data": record_rows(count)
+    })
+}
+
+async fn clickhouse(upstream: Upstream, seen: Seen) -> (String, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .unwrap_or_else(|error| panic!("the upstream must bind: {error}"));
@@ -94,11 +141,17 @@ async fn clickhouse(upstream: Upstream) -> (String, tokio::task::JoinHandle<()>)
     let answering = Router::new().route(
         "/",
         post(move |sql: String| async move {
+            if let Ok(mut seen) = seen.lock() {
+                seen.push(sql.clone());
+            }
             if matches!(upstream, Upstream::Failing) {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "exception": "synthetic failure" })),
                 );
+            }
+            if sql.contains("`__drilldown_flag`") {
+                return (StatusCode::OK, Json(record_page(&sql)));
             }
             if sql.contains("`__rows`") {
                 return (
@@ -133,6 +186,7 @@ struct Harness {
     router: Router,
     definitions: Arc<MemoryDefinitions>,
     state: Arc<AppState>,
+    seen: Seen,
     upstream: tokio::task::JoinHandle<()>,
 }
 
@@ -158,7 +212,8 @@ impl Harness {
     }
 
     async fn build(upstream: Upstream, identity: IdentityClient) -> Self {
-        let (url, upstream) = clickhouse(upstream).await;
+        let seen = Seen::default();
+        let (url, upstream) = clickhouse(upstream, Arc::clone(&seen)).await;
         let openapi = OpenApiRegistryImpl::new();
         let definitions = Arc::new(MemoryDefinitions::new());
         let state = Arc::new(AppState::new(
@@ -178,6 +233,7 @@ impl Harness {
             router,
             definitions,
             state,
+            seen,
             upstream,
         }
     }
@@ -268,6 +324,24 @@ impl Harness {
         self.send(caller, "POST", "/v1/personal-metrics/values", Some(body))
             .await
     }
+
+    async fn records(&self, caller: &str, metric: &str, body: Value) -> Answer {
+        self.send(
+            caller,
+            "POST",
+            &format!("/v1/personal-metrics/{metric}/records"),
+            Some(body),
+        )
+        .await
+    }
+
+    fn last_sql(&self) -> String {
+        self.seen
+            .lock()
+            .ok()
+            .and_then(|seen| seen.last().cloned())
+            .unwrap_or_default()
+    }
 }
 
 fn identity() -> IdentityClient {
@@ -287,6 +361,17 @@ fn asked(metrics: &[&str], persons: &[&str]) -> Value {
         "from": PERIOD_FROM,
         "to": PERIOD_TO
     })
+}
+
+fn records_of(person: &str) -> Value {
+    json!({ "person_id": person, "from": PERIOD_FROM, "to": PERIOD_TO })
+}
+
+fn rows_of(answer: &Answer) -> Vec<Value> {
+    answer.body["rows"]
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| panic!("the page has rows: {}", answer.body))
 }
 
 fn ids_of(listed: &[Value]) -> Vec<&str> {
@@ -839,7 +924,307 @@ async fn an_unidentified_caller_reads_nothing() {
     let values = harness
         .values(ADMIN, asked(&["lines_merged"], &[ALICE]))
         .await;
+    let records = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
 
     assert_eq!(listed.status, StatusCode::FORBIDDEN, "{}", listed.body);
     assert_eq!(values.status, StatusCode::FORBIDDEN, "{}", values.body);
+    assert_eq!(records.status, StatusCode::FORBIDDEN, "{}", records.body);
+}
+
+#[tokio::test]
+async fn records_refuse_a_person_the_caller_cannot_see() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+    harness.grant("lines_merged", MEMBER, ADMIN).await;
+
+    let shown = harness
+        .records(MEMBER, "lines_merged", records_of(ALICE))
+        .await;
+    let refused = harness
+        .records(MEMBER, "lines_merged", records_of(HIDDEN))
+        .await;
+
+    assert_eq!(shown.status, StatusCode::OK, "{}", shown.body);
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.body);
+    assert!(
+        refused
+            .body
+            .to_string()
+            .contains(super::PERSONS_NOT_VISIBLE),
+        "{}",
+        refused.body
+    );
+}
+
+#[tokio::test]
+async fn records_page_with_a_cursor() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let first = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+    assert_eq!(first.status, StatusCode::OK, "{}", first.body);
+    assert_eq!(rows_of(&first).len(), 100);
+    let cursor = first.body["next_cursor"]
+        .as_str()
+        .unwrap_or_else(|| panic!("a full page has a cursor: {}", first.body))
+        .to_owned();
+
+    let mut continued = records_of(ALICE);
+    continued["cursor"] = json!(cursor);
+    let second = harness.records(ADMIN, "lines_merged", continued).await;
+
+    assert_eq!(second.status, StatusCode::OK, "{}", second.body);
+    assert_eq!(rows_of(&second).len(), 1);
+    assert_eq!(second.body["next_cursor"], Value::Null);
+    assert!(
+        harness.last_sql().contains(") AS __m WHERE tuple("),
+        "{}",
+        harness.last_sql()
+    );
+}
+
+#[tokio::test]
+async fn records_read_the_newest_rows_first() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let answer = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    let sql = harness.last_sql();
+    assert!(
+        sql.contains("ifNull(toString(__m.`time`), '') AS `__drilldown_key`"),
+        "{sql}"
+    );
+    assert!(
+        sql.ends_with(
+            " ORDER BY `__drilldown_flag` DESC, `__drilldown_key` DESC, \
+             `__drilldown_tie0` DESC, `__drilldown_tie1` DESC, `__drilldown_tie2` DESC, \
+             `__drilldown_tie3` DESC LIMIT 101"
+        ),
+        "{sql}"
+    );
+}
+
+#[tokio::test]
+async fn records_answer_in_the_drilldown_shape() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let answer = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(
+        answer.body["columns"],
+        json!([
+            { "key": "time", "label": "time", "type": "date",
+              "sortable": false, "percent": false, "exact": false },
+            { "key": "author", "label": "author", "type": "string",
+              "sortable": false, "percent": false, "exact": false },
+            { "key": "lines", "label": "lines", "type": "number",
+              "sortable": false, "percent": false, "exact": false }
+        ])
+    );
+    assert_eq!(
+        rows_of(&answer)[0],
+        json!({ "values": { "time": "2026-09-07 23:59:00", "author": "Alice Example", "lines": 3 } })
+    );
+    let mut keys: Vec<&String> = answer
+        .body
+        .as_object()
+        .map(|answer| answer.keys().collect())
+        .unwrap_or_default();
+    keys.sort();
+    assert_eq!(keys, ["columns", "next_cursor", "rows"]);
+}
+
+#[tokio::test]
+async fn records_refuse_a_cursor_issued_for_another_person() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+    let first = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+    let cursor = first.body["next_cursor"].clone();
+
+    let mut elsewhere = records_of(BOB);
+    elsewhere["cursor"] = cursor;
+    let refused = harness.records(ADMIN, "lines_merged", elsewhere).await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("cursor"));
+}
+
+#[tokio::test]
+async fn records_refuse_a_cursor_that_does_not_decode() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let mut broken = records_of(ALICE);
+    broken["cursor"] = json!("not a cursor!");
+    let refused = harness.records(ADMIN, "lines_merged", broken).await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("cursor"));
+}
+
+#[tokio::test]
+async fn records_refuse_a_person_id_that_is_not_a_uuid() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let refused = harness
+        .records(ADMIN, "lines_merged", records_of("alice"))
+        .await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("person_id"));
+}
+
+#[tokio::test]
+async fn records_refuse_a_period_that_does_not_move_forward() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let refused = harness
+        .records(
+            ADMIN,
+            "lines_merged",
+            json!({ "person_id": ALICE, "from": PERIOD_TO, "to": PERIOD_FROM }),
+        )
+        .await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("to"));
+}
+
+#[tokio::test]
+async fn records_hide_a_metric_not_shared_with_the_caller() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+    harness.marked("lines_other", "Lines for another").await;
+    harness
+        .metric("lines_unmarked", "Lines unmarked", &lines_metric())
+        .await;
+    harness.grant("lines_merged", MEMBER, ADMIN).await;
+    harness.grant("lines_other", OTHER_MEMBER, ADMIN).await;
+    harness.grant("lines_unmarked", MEMBER, ADMIN).await;
+
+    let shown = harness
+        .records(MEMBER, "lines_merged", records_of(ALICE))
+        .await;
+    assert_eq!(shown.status, StatusCode::OK, "{}", shown.body);
+    for hidden in ["lines_other", "lines_unmarked", "no_such_metric"] {
+        let refused = harness.records(MEMBER, hidden, records_of(ALICE)).await;
+
+        assert_eq!(
+            refused.status,
+            StatusCode::NOT_FOUND,
+            "{hidden}: {}",
+            refused.body
+        );
+    }
+}
+
+#[tokio::test]
+async fn records_tell_an_admin_which_dataset_is_not_ready() {
+    let harness = Harness::new().await;
+    let mut unready = lines_metric();
+    unready["dataset"] = json!("absent");
+    harness
+        .marked_as("lines_unready", "Lines unready", &unready)
+        .await;
+
+    let refused = harness
+        .records(ADMIN, "lines_unready", records_of(ALICE))
+        .await;
+
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.body);
+    assert!(
+        refused.body.to_string().contains("absent"),
+        "{}",
+        refused.body
+    );
+}
+
+#[tokio::test]
+async fn records_hide_from_a_member_why_a_metric_cannot_be_read() {
+    let harness = Harness::new().await;
+    let mut unready = lines_metric();
+    unready["dataset"] = json!("absent");
+    harness
+        .marked_as("lines_unready", "Lines unready", &unready)
+        .await;
+    harness.grant("lines_unready", "everyone", ADMIN).await;
+
+    let failed = harness
+        .records(MEMBER, "lines_unready", records_of(ALICE))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+    assert!(
+        !failed.body.to_string().contains("absent"),
+        "{}",
+        failed.body
+    );
+}
+
+#[tokio::test]
+async fn records_fail_on_the_server_when_a_stored_body_does_not_parse() {
+    let harness = Harness::new().await;
+    harness
+        .marked_as(
+            "lines_broken",
+            "Lines broken",
+            &json!({ "dataset": "commits", "fields": "not a list" }),
+        )
+        .await;
+
+    let failed = harness
+        .records(ADMIN, "lines_broken", records_of(ALICE))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+}
+
+#[tokio::test]
+async fn records_wait_for_the_shared_run_slots() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+    let taken = Arc::clone(harness.state.widget_run_slots())
+        .acquire_many_owned(
+            u32::try_from(crate::api::dashboard_widgets::MAX_CONCURRENT_WIDGET_RUNS)
+                .unwrap_or_else(|error| panic!("the slot count fits: {error}")),
+        )
+        .await
+        .unwrap_or_else(|error| panic!("the slots are taken: {error}"));
+
+    let busy = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+    drop(taken);
+    let served = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+
+    assert_eq!(busy.status, StatusCode::TOO_MANY_REQUESTS, "{}", busy.body);
+    assert_eq!(served.status, StatusCode::OK, "{}", served.body);
 }

@@ -12,7 +12,8 @@ use crate::api::AppState;
 use crate::chat::ChatClient;
 use crate::domain::access::PersonId;
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _};
-use crate::domain::personal::{Direction, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::drilldown::{Page, Records};
+use crate::domain::personal::{Direction, Marked, Marks as _, MetricFormat, PersonalMark};
 use crate::domain::query::metric_query::{
     MetricQuery, MetricRunner, People, RunResult, TableEngine,
 };
@@ -112,7 +113,7 @@ impl Stand {
         )
         .await;
 
-        let observations: Vec<String> = [
+        self.observe(&[
             (1, "alice", "lines", 10, "main", "2026-09-02 10:00:00"),
             (1, "alice", "lines", 5, "main", "2026-09-03 10:00:00"),
             (1, "alice", "lines", 100, "dev", "2026-09-03 11:00:00"),
@@ -124,15 +125,20 @@ impl Stand {
             (2, "bob", "gate_runs", 2, "main", "2026-09-05 10:00:00"),
             (3, "carol", "lines", 50, "main", "2026-09-05 10:00:00"),
             (5, "erin", "lines", 9, "main", "2026-09-06 10:00:00"),
-        ]
-        .iter()
-        .map(|(seed, name, measure, value, branch, at)| {
-            format!(
-                "('{name}@example.com', '{}', '{measure}', {value}, '{branch}', '{at}')",
-                person(*seed)
-            )
-        })
-        .collect();
+        ])
+        .await;
+    }
+
+    async fn observe(&self, rows: &[(u128, &str, &str, i64, &str, &str)]) {
+        let observations: Vec<String> = rows
+            .iter()
+            .map(|(seed, name, measure, value, branch, at)| {
+                format!(
+                    "('{name}@example.com', '{}', '{measure}', {value}, '{branch}', '{at}')",
+                    person(*seed)
+                )
+            })
+            .collect();
         execute(
             &self.client,
             &format!(
@@ -174,6 +180,16 @@ impl Stand {
     }
 
     async fn served(&self, metric: &str, body: &Value) -> Router {
+        let state = self.state(metric, body).await;
+
+        crate::api::personal_metrics::register_routes(
+            Router::new(),
+            &toolkit::api::OpenApiRegistryImpl::new(),
+            &state,
+        )
+    }
+
+    async fn state(&self, metric: &str, body: &Value) -> Arc<AppState> {
         let definitions = Arc::new(MemoryDefinitions::new());
         let id = DefinitionId::parse(metric)
             .unwrap_or_else(|error| panic!("`{metric}` is an id: {error}"));
@@ -188,7 +204,7 @@ impl Stand {
             .await
             .unwrap_or_else(|error| panic!("the mark is stored: {error}"));
 
-        let state = Arc::new(AppState::new(
+        Arc::new(AppState::new(
             MetricRunner::new(
                 insight_clickhouse::Client::new(self.client.config().clone()),
                 People::new(self.database.clone()),
@@ -198,13 +214,7 @@ impl Stand {
             IdentityClient::fixed(true),
             crate::api::Datasets::offline("http://offline.invalid"),
             crate::store::catalog::Catalog::fixed(Vec::new()),
-        ));
-
-        crate::api::personal_metrics::register_routes(
-            Router::new(),
-            &toolkit::api::OpenApiRegistryImpl::new(),
-            &state,
-        )
+        ))
     }
 
     async fn run(&self, compiled: &crate::domain::query::metric_query::CompiledQuery) -> RunResult {
@@ -588,6 +598,115 @@ async fn the_values_route_answers_each_person_and_team_from_the_rows() {
             "teams": [{ "metric": "lines_merged", "team": "pair", "value": 22 }]
         })
     );
+
+    stand.drop_database().await;
+}
+
+fn times(page: &Page) -> Vec<&str> {
+    page.rows
+        .iter()
+        .map(|row| row.get("time").and_then(Value::as_str).unwrap_or_default())
+        .collect()
+}
+
+#[tokio::test]
+async fn the_records_of_a_person_come_newest_first_one_page_at_a_time() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    stand
+        .observe(&[(1, "alice", "lines", 20, "main", "2026-09-06 10:00:00")])
+        .await;
+    let body = stand.body_by(
+        json!({
+            "column": "author_email", "type": "string", "as_name": "author", "person": "email"
+        }),
+        &lines(),
+    );
+    let state = stand.state("lines_merged", &body).await;
+    let held = Marked {
+        id: "lines_merged".to_owned(),
+        name: "Lines merged".to_owned(),
+        mark: marked("lines"),
+        body,
+    };
+    let page = |cursor: Option<String>| Records {
+        person: person(1),
+        window: september_week(),
+        cursor,
+        limit: 2,
+    };
+
+    let first = state
+        .drilldowns()
+        .records(&held, &page(None))
+        .await
+        .unwrap_or_else(|error| panic!("the first page reads: {error}"));
+    let second = state
+        .drilldowns()
+        .records(&held, &page(first.next_cursor.clone()))
+        .await
+        .unwrap_or_else(|error| panic!("the second page reads: {error}"));
+
+    assert_eq!(
+        times(&first),
+        ["2026-09-06 10:00:00", "2026-09-03 10:00:00"]
+    );
+    assert!(first.next_cursor.is_some());
+    assert_eq!(times(&second), ["2026-09-02 10:00:00"]);
+    assert_eq!(second.next_cursor, None);
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn the_records_route_lists_a_persons_rows_newest_first() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    stand
+        .observe(&[(1, "alice", "lines", 20, "main", "2026-09-06 10:00:00")])
+        .await;
+    let body = stand.body_by(
+        json!({
+            "column": "author_email", "type": "string", "as_name": "author", "person": "email"
+        }),
+        &lines(),
+    );
+    let router = stand.served("lines_merged", &body).await;
+    let asked =
+        json!({ "person_id": person(1).to_string(), "from": "2026-09-01", "to": "2026-09-08" });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/personal-metrics/lines_merged/records")
+        .header(header::AUTHORIZATION, format!("Bearer {}", person(9)))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(asked.to_string()))
+        .unwrap_or_else(|error| panic!("the request is valid: {error}"));
+
+    let response = router
+        .oneshot(request)
+        .await
+        .unwrap_or_else(|error| panic!("the route answers: {error}"));
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap_or_else(|error| panic!("the answer is readable: {error}"));
+    let answer: Value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|error| panic!("the answer is JSON: {error}"));
+
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer["rows"],
+        json!([
+            { "values": { "time": "2026-09-06 10:00:00", "author": "Alice Example", "lines": 20 } },
+            { "values": { "time": "2026-09-03 10:00:00", "author": "Alice Example", "lines": 5 } },
+            { "values": { "time": "2026-09-02 10:00:00", "author": "Alice Example", "lines": 10 } }
+        ])
+    );
+    assert_eq!(answer["next_cursor"], Value::Null);
 
     stand.drop_database().await;
 }

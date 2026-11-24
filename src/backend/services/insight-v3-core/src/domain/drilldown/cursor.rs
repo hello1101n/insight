@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use toolkit_security::crypto::hash::Sha256;
 
-use super::{Column, Sort};
 use crate::domain::query::time_window::Window;
 
 const VERSION: u8 = 1;
@@ -68,17 +67,8 @@ pub(super) fn decode(written: &str) -> Result<Envelope, CursorError> {
     Ok(envelope)
 }
 
-pub(super) fn fingerprint(
-    name: &str,
-    body: &serde_json::Value,
-    range: Option<&str>,
-    bucket: Option<bool>,
-    window: &Window,
-    sort: &Sort,
-    columns: &[Column],
-) -> String {
-    let bytes =
-        serde_json::to_vec(&(name, body, range, bucket, window, sort, columns)).unwrap_or_default();
+pub(super) fn fingerprint(selection: &impl Serialize) -> String {
+    let bytes = serde_json::to_vec(selection).unwrap_or_default();
 
     Sha256::digest(bytes)
         .iter()

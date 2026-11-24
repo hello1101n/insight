@@ -22,6 +22,8 @@ use crate::domain::query::time_window::WindowRequest;
 
 pub(crate) const MAX_CONCURRENT_PAGES: usize = 8;
 const ACQUIRE_TIMEOUT_SECS: u64 = 2;
+pub(super) const REBUILT: &str =
+    "The table behind this metric was made again while it was being read; start again.";
 
 #[resource_error("gts.cf.insight.insight_v3_core.metric_drilldown.v1~")]
 struct DrilldownApiError;
@@ -128,7 +130,7 @@ struct Selection {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-struct ColumnOut {
+pub(super) struct ColumnOut {
     key: String,
     label: String,
     r#type: &'static str,
@@ -138,7 +140,7 @@ struct ColumnOut {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-struct RowOut {
+pub(super) struct RowOut {
     values: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -253,17 +255,21 @@ fn response(metric: &str, asked: &Asked, page: Page) -> DrilldownResponse {
                 },
             },
         },
-        columns: page.columns.iter().map(column_out).collect(),
-        rows: page
-            .rows
-            .into_iter()
-            .map(|values| RowOut { values })
+        columns: page
+            .columns
+            .iter()
+            .map(|column| column_out(column, true))
             .collect(),
+        rows: rows_out(page.rows),
         next_cursor: page.next_cursor,
     }
 }
 
-fn column_out(column: &Column) -> ColumnOut {
+pub(super) fn rows_out(rows: Vec<serde_json::Map<String, serde_json::Value>>) -> Vec<RowOut> {
+    rows.into_iter().map(|values| RowOut { values }).collect()
+}
+
+pub(super) fn column_out(column: &Column, sortable: bool) -> ColumnOut {
     ColumnOut {
         key: column.key.clone(),
         label: column.key.clone(),
@@ -272,7 +278,7 @@ fn column_out(column: &Column) -> ColumnOut {
             ColumnKind::Number => "number",
             ColumnKind::Date => "date",
         },
-        sortable: true,
+        sortable,
         percent: column.percent,
         exact: column.exact,
     }
@@ -295,11 +301,7 @@ fn drilldown_error(error: DrilldownError, name: &DefinitionId) -> CanonicalError
             CursorError::Malformed | CursorError::Version | CursorError::Selection,
         ) => DrilldownApiError::invalid_field("cursor", said),
         DrilldownError::Rebuilt => DrilldownApiError::failed_precondition()
-            .with_precondition_violation(
-                "metric source",
-                "The table behind this metric was made again while it was being read; start again.",
-                "SOURCE_REBUILT",
-            )
+            .with_precondition_violation("metric source", REBUILT, "SOURCE_REBUILT")
             .create(),
         DrilldownError::Reserved(_) => DrilldownApiError::invalid_field("body", said),
     }

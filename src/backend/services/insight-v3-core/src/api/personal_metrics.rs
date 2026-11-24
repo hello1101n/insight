@@ -2,16 +2,16 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
 
-use axum::extract::Extension;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{Extension, Path};
 use axum::http::{HeaderMap, StatusCode, header::AUTHORIZATION};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router};
 use chrono::{SecondsFormat, Utc};
 use futures::{StreamExt as _, TryStreamExt as _};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use toolkit::api::{OpenApiRegistry, OperationBuilder};
+use toolkit::api::{OpenApiRegistry, OperationBuilder, ParamSpec};
 use toolkit_canonical_errors::{CanonicalError, resource_error};
 use utoipa::ToSchema;
 
@@ -21,8 +21,10 @@ use super::dashboard_widgets::{
 };
 use super::definitions::owner_names;
 use super::errors::ApiErrors;
+use super::metric_drilldown::{ColumnOut, REBUILT, RowOut, column_out, rows_out};
 use crate::domain::access::{Caller, Owner, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
+use crate::domain::drilldown::{DEFAULT_PAGE_ROWS, DrilldownError, Records};
 use crate::domain::personal::Marked;
 use crate::domain::personal::values::{Asked, Listed, PersonalMetrics, Team, Values};
 use crate::domain::query::metric_query::MetricQueryError;
@@ -90,6 +92,26 @@ struct TeamRequest {
     person_ids: Vec<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+struct RecordsRequest {
+    person_id: String,
+    from: String,
+    /// The day after the last day of the period: the period ends before it.
+    to: String,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+impl toolkit::api::api_dto::RequestApiDto for RecordsRequest {}
+
+#[derive(Debug, Serialize)]
+struct RecordsResponse {
+    columns: Vec<ColumnOut>,
+    rows: Vec<RowOut>,
+    next_cursor: Option<String>,
+}
+
 #[derive(Debug)]
 struct Checked {
     metrics: Vec<DefinitionId>,
@@ -140,7 +162,30 @@ pub(crate) fn register_routes(
         .register(Router::new(), openapi)
         .layer(Extension(state.clone()));
 
-    router.merge(list).merge(values)
+    let records = OperationBuilder::post("/v1/personal-metrics/{id}/records")
+        .operation_id("insight_v3_core.personal_metrics.records")
+        .summary(
+            "Read the rows behind one person's value of a personal metric the caller sees, newest first, one page at a time",
+        )
+        .anonymous()
+        .exposed()
+        .param(ParamSpec::path("id").description("Metric id"))
+        .json_request::<RecordsRequest>(openapi, "The person, the period and the cursor to the next page")
+        .json_response(
+            StatusCode::OK,
+            "One page of the person's rows, its columns, and the cursor to the next",
+        )
+        .error_400(openapi)
+        .error_403(openapi)
+        .error_404(openapi)
+        .error_429(openapi)
+        .error_500(openapi)
+        .error_504(openapi)
+        .handler(read_records)
+        .register(Router::new(), openapi)
+        .layer(Extension(state.clone()));
+
+    router.merge(list).merge(values).merge(records)
 }
 
 async fn list_metrics(
@@ -191,6 +236,58 @@ async fn read_values(
     let values = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
 
     Ok(Json(answer(&metrics, &checked.asked, values)).into_response())
+}
+
+async fn read_records(
+    Extension(state): Extension<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Result<Json<RecordsRequest>, JsonRejection>,
+) -> Result<Response, CanonicalError> {
+    let caller = crate::api::caller(&state, &headers, unidentified).await?;
+    let Json(request) = body.map_err(|error| PersonalMetricApiError::unreadable_body(&error))?;
+    let person = PersonId::parse(&request.person_id).ok_or_else(|| {
+        invalid(
+            "person_id",
+            format!("`{}` is not a person id", request.person_id),
+        )
+    })?;
+    let window = window(&request.from, &request.to)?;
+    let missing = || PersonalMetricApiError::malformed_id(DefinitionKind::Metric, &id);
+    let metric = DefinitionId::parse(&id).map_err(|_| missing())?;
+
+    let marked = state
+        .personal_metrics(caller)
+        .asked(std::slice::from_ref(&metric))
+        .await
+        .map_err(PersonalMetricApiError::custom_error)?
+        .pop()
+        .ok_or_else(missing)?;
+    require_visible(&state, &headers, &[person]).await?;
+
+    let _permit = run_slot(&state).await.ok_or_else(runs_busy)?;
+    let asked = Records {
+        person,
+        window,
+        cursor: request.cursor,
+        limit: DEFAULT_PAGE_ROWS,
+    };
+    let page = state
+        .drilldowns()
+        .records(&marked, &asked)
+        .await
+        .map_err(|error| records_error(caller, &marked.id, error))?;
+
+    Ok(Json(RecordsResponse {
+        columns: page
+            .columns
+            .iter()
+            .map(|column| column_out(column, false))
+            .collect(),
+        rows: rows_out(page.rows),
+        next_cursor: page.next_cursor,
+    })
+    .into_response())
 }
 
 fn checked(request: ValuesRequest) -> Result<Checked, CanonicalError> {
@@ -388,6 +485,26 @@ fn read_error(caller: Caller, metric: &str, field: &str, error: CustomError) -> 
         error if caller.is_administrator() => PersonalMetricApiError::custom_error(error),
         error => {
             tracing::error!(%error, metric_id = metric, "a personal metric read for a member failed");
+            not_read()
+        }
+    }
+}
+
+fn records_error(caller: Caller, metric: &str, error: DrilldownError) -> CanonicalError {
+    let said = error.to_string();
+
+    match error {
+        DrilldownError::Custom(source) => read_error(caller, metric, "to", source),
+        DrilldownError::Cursor(_) => invalid("cursor", said),
+        DrilldownError::Rebuilt => PersonalMetricApiError::failed_precondition()
+            .with_precondition_violation("metric source", REBUILT, "SOURCE_REBUILT")
+            .create(),
+        DrilldownError::Sort(_) | DrilldownError::PageSize | DrilldownError::Reserved(_) => {
+            tracing::error!(
+                said,
+                metric_id = metric,
+                "the records of a personal metric cannot be paged"
+            );
             not_read()
         }
     }

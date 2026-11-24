@@ -1,17 +1,19 @@
 mod cursor;
 mod order;
 mod paged;
+mod records;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::definition::DefinitionId;
 use super::metric_run::{MetricRuns, Source};
-use super::query::metric_query::{ColumnKind, MetricRunner};
-use super::query::time_window::WindowRequest;
+use super::query::metric_query::{ColumnKind, CompiledQuery, MetricRunner};
+use super::query::time_window::{Window, WindowRequest};
 use super::surfaces::CustomError;
 
 pub(crate) use cursor::CursorError;
+pub(crate) use records::Records;
 
 pub(crate) const DEFAULT_PAGE_ROWS: usize = 100;
 pub(crate) const MAX_PAGE_ROWS: usize = 250;
@@ -80,9 +82,7 @@ impl<'a> Drilldowns<'a> {
         name: &DefinitionId,
         asked: &Asked,
     ) -> Result<Page, DrilldownError> {
-        if asked.limit == 0 || asked.limit > MAX_PAGE_ROWS {
-            return Err(DrilldownError::PageSize);
-        }
+        page_size(asked.limit)?;
 
         let resume = asked.cursor.as_deref().map(cursor::decode).transpose()?;
         let window = match &resume {
@@ -94,33 +94,13 @@ impl<'a> Drilldowns<'a> {
             .prepare(name, &window)
             .await
             .map_err(DrilldownError::Custom)?;
-        let columns: Vec<Column> = prepared
-            .kinds
-            .iter()
-            .map(|(key, kind)| Column {
-                key: key.clone(),
-                kind: *kind,
-                percent: prepared.compiled.percents().contains(key),
-                exact: prepared.compiled.exacts().contains(key),
-            })
-            .collect();
-        if let Some(taken) = columns
-            .iter()
-            .find(|column| order::is_reserved(&column.key))
-        {
-            return Err(DrilldownError::Reserved(taken.key.clone()));
-        }
+        let columns = columns_of(&prepared.kinds, &prepared.compiled);
 
         let sort = match &asked.sort {
             Some(sort) => sort.clone(),
             None => default_sort(prepared.own_order.as_ref(), &columns),
         };
-        if !columns.iter().any(|column| column.key == sort.key) {
-            return Err(DrilldownError::Sort(sort.key));
-        }
-
-        let snapshot = self.snapshot_of(&prepared.source).await?;
-        let fingerprint = cursor::fingerprint(
+        let fingerprint = cursor::fingerprint(&(
             name.as_str(),
             &prepared.body,
             asked.range.as_deref(),
@@ -128,33 +108,76 @@ impl<'a> Drilldowns<'a> {
             &window,
             &sort,
             &columns,
-        );
-        let order = order::OrderKey::build(&columns, &sort, prepared.compiled.hidden());
+        ));
+
+        self.ordered(Ordered {
+            compiled: &prepared.compiled,
+            columns,
+            sort,
+            source: &prepared.source,
+            window: &window,
+            fingerprint,
+            resume,
+            limit: asked.limit,
+        })
+        .await
+    }
+}
+
+struct Ordered<'o> {
+    compiled: &'o CompiledQuery,
+    columns: Vec<Column>,
+    sort: Sort,
+    source: &'o Source,
+    window: &'o Window,
+    fingerprint: String,
+    resume: Option<cursor::Envelope>,
+    limit: usize,
+}
+
+impl Drilldowns<'_> {
+    async fn ordered(&self, read: Ordered<'_>) -> Result<Page, DrilldownError> {
+        let Ordered {
+            compiled,
+            columns,
+            sort,
+            source,
+            window,
+            fingerprint,
+            resume,
+            limit,
+        } = read;
+        if let Some(taken) = columns
+            .iter()
+            .find(|column| order::is_reserved(&column.key))
+        {
+            return Err(DrilldownError::Reserved(taken.key.clone()));
+        }
+        if !columns.iter().any(|column| column.key == sort.key) {
+            return Err(DrilldownError::Sort(sort.key));
+        }
+
+        let snapshot = self.snapshot_of(source).await?;
+        let order = order::OrderKey::build(&columns, &sort, compiled.hidden());
 
         let resume = resume
             .map(|envelope| resumed(envelope, &fingerprint, &snapshot, &order))
             .transpose()?;
 
-        let (sql, binds) = paged::wrap(
-            &prepared.compiled,
-            &order,
-            resume.as_ref(),
-            asked.limit,
-            &columns,
-        );
+        let (sql, binds) = paged::wrap(compiled, &order, resume.as_ref(), limit, &columns);
         let mut rows = self
             .runner
             .page(&sql, &binds)
             .await
             .map_err(|error| DrilldownError::Custom(CustomError::Run(error)))?;
 
-        let next_cursor = if rows.len() > asked.limit {
-            rows.truncate(asked.limit);
+        let next_cursor = if rows.len() > limit {
+            rows.truncate(limit);
             match rows.last() {
                 Some(last) => Some(cursor::encode(
                     &fingerprint,
                     &snapshot,
-                    &window,
+                    window,
                     order.key_of(last)?,
                 )),
                 None => None,
@@ -164,7 +187,7 @@ impl<'a> Drilldowns<'a> {
         };
         let rows = rows
             .into_iter()
-            .map(|row| order::presented(row, &columns, prepared.compiled.hidden()))
+            .map(|row| order::presented(row, &columns, compiled.hidden()))
             .collect();
 
         Ok(Page {
@@ -174,9 +197,7 @@ impl<'a> Drilldowns<'a> {
             next_cursor,
         })
     }
-}
 
-impl Drilldowns<'_> {
     async fn snapshot_of(&self, source: &Source) -> Result<String, DrilldownError> {
         match source {
             Source::Table { database, table } => Ok(self
@@ -205,6 +226,26 @@ fn resumed(
     order.check(&envelope.key)?;
 
     Ok(envelope.key)
+}
+
+fn page_size(limit: usize) -> Result<(), DrilldownError> {
+    if limit == 0 || limit > MAX_PAGE_ROWS {
+        return Err(DrilldownError::PageSize);
+    }
+
+    Ok(())
+}
+
+fn columns_of(kinds: &[(String, ColumnKind)], compiled: &CompiledQuery) -> Vec<Column> {
+    kinds
+        .iter()
+        .map(|(key, kind)| Column {
+            key: key.clone(),
+            kind: *kind,
+            percent: compiled.percents().contains(key),
+            exact: compiled.exacts().contains(key),
+        })
+        .collect()
 }
 
 fn default_sort(own: Option<&(String, bool)>, columns: &[Column]) -> Sort {

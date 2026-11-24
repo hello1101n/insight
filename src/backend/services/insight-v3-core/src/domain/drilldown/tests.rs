@@ -303,7 +303,7 @@ struct Bound {
 
 impl Bound {
     fn digest(&self) -> String {
-        fingerprint(
+        fingerprint(&(
             self.name,
             &self.body,
             Some(self.range),
@@ -311,7 +311,7 @@ impl Bound {
             &self.window,
             &self.sort,
             &self.columns,
-        )
+        ))
     }
 }
 
@@ -401,6 +401,17 @@ fn a_page_asked_for_in_no_order_takes_the_metrics_own_or_the_first_column() {
 
     let gone = ("elsewhere".to_owned(), true);
     assert_eq!(default_sort(Some(&gone), &columns()), sort("day", false));
+}
+
+#[test]
+fn a_record_page_runs_newest_first_else_in_the_drilldown_order() {
+    let mut clocked = columns();
+    clocked.insert(0, column("time", ColumnKind::Date));
+    let own = Some(("total", false));
+
+    assert_eq!(records::newest_first(own, &clocked), sort("time", true));
+    assert_eq!(records::newest_first(own, &columns()), sort("total", false));
+    assert_eq!(records::newest_first(None, &columns()), sort("day", false));
 }
 
 fn compiled(value: serde_json::Value) -> crate::domain::query::metric_query::CompiledQuery {

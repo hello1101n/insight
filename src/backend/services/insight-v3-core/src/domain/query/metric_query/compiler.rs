@@ -577,10 +577,6 @@ impl MetricQuery {
         )
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric records read pages it")
-    )]
     pub(crate) fn personal_records(
         &self,
         mark: &PersonalMark,
@@ -687,10 +683,6 @@ impl MetricQuery {
         })
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric records read pages it")
-    )]
     pub(crate) fn personal_record_kinds(
         &self,
         declaration: Option<&Declaration>,
