@@ -1595,8 +1595,8 @@ describe("connector workflow runs", () => {
         );
         await userEvent.unhover(state);
       }
-      const band = runBand().getByLabelText(
-        new RegExp(`Queued · ${queuedDuration}$`)
+      const band = runBand().getByLabelText((label) =>
+        label.endsWith(`Queued · ${queuedDuration}`)
       );
       expect(band).toHaveClass("bg-muted-foreground/45");
       expect(currentRun().getByText(queuedDuration)).toBeVisible();

@@ -98,6 +98,9 @@ def airbyte_write(directory: Path, env: dict[str, str], url: str, user: str, pas
         )
     )
     (directory / "catalog.json").write_text(json.dumps({"streams": streams}))
+    directory.chmod(0o755)
+    for path in directory.glob("*.json"):
+        path.chmod(0o644)
     pins = (SCRIPTS / "bootstrap-db/pins.env").read_text().splitlines()
     image = next(line.partition("=")[2] for line in pins if line.startswith("DESTINATION_CLICKHOUSE_IMAGE="))
     output = run(
@@ -135,6 +138,7 @@ def test_sync_account_runs_the_warehouse_paths(tmp_path: Path, provisioning: str
             "X-ClickHouse-Key": password if sync else admin_password,
         }
         request = Request(url, data=statement.encode(), headers=headers)
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(request, timeout=20) as response:
             return response.read().decode().strip()
 

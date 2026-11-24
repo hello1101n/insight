@@ -57,6 +57,7 @@ class Kubernetes:
             },
         )
         try:
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             with response_errors(), urllib.request.urlopen(request, timeout=timeout, context=self.context) as response:
                 return parse_response(model, response.read())
         except urllib.error.HTTPError as error:

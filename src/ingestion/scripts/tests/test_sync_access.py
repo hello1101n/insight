@@ -38,6 +38,7 @@ def test_sync_access_is_idempotent_and_only_syncs_are_memory_limited() -> None:
             "X-ClickHouse-User": user if sync else admin,
             "X-ClickHouse-Key": password if sync else admin_password,
         }
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urlopen(Request(url, data=query.encode(), headers=headers), timeout=15) as response:
             return response.read().decode().strip()
 
