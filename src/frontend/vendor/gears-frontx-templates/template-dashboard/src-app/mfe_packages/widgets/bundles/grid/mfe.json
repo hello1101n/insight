@@ -38,7 +38,7 @@
             "rows": {
               "type": "array",
               "maxItems": 500,
-              "description": "One positional array per row, in the order of render.columns. A position that holds no value holds null. Capped at 500 rows; an over-cap result fails data validation.",
+              "description": "One positional array per row, in the order of render.columns. A position that holds no value holds null. Capped at 500 rows; an over-cap result fails data validation. Data that holds only the first rows of a larger result gives the full row count in total_rows.",
               "items": {
                 "type": "array",
                 "items": {
@@ -81,6 +81,13 @@
                   ]
                 }
               }
+            },
+            "total_rows": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Optional row count of the full result, when rows holds only its first rows. A count below the number of rows fails the grid's own check. A count above it adds a note with both counts above the table, and the search box then says that it searches only the rows shown. Absent, null or equal to the number of rows, it shows no note. The grid never cuts rows itself, and the 500-row cap stays."
             }
           }
         }

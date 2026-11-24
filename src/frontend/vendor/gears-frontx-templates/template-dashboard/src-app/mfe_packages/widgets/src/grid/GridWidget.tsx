@@ -10,6 +10,7 @@ import {
   EmptyTitle,
   Input,
   Progress,
+  Text,
   VisuallyHidden,
   createDataGridPlugin,
   useDataGrid,
@@ -61,6 +62,9 @@ const rowColorOf = (value: GridValue): RowColor | null => (typeof value === 'str
 /** The texts of the widget, for the search box and the empty search result the kit draws inside the grid. */
 const GridTexts = createContext<WidgetTexts>(DEFAULT_WIDGET_TEXTS);
 
+/** The note that the rows are only part of the full result, or null when they are all of it. */
+const GridNote = createContext<string | null>(null);
+
 // The load context key the search box writes its query under.
 const SEARCH_KEY = 'gridSearch';
 
@@ -72,13 +76,14 @@ interface SearchApi extends DataGridPluginApi {
 /** The search box: a named search field in the grid's toolbar, its query applied as it is typed. */
 function SearchBox() {
   const texts = useContext(GridTexts);
+  const name = useContext(GridNote) === null ? texts.grid.search : texts.grid.searchPartial;
   const search = useDataGrid().getPlugin<SearchApi>('gridSearch')!;
   const [value, setValue] = useState(search.query);
   return (
     <Input
       type="search"
-      aria-label={texts.grid.search}
-      placeholder={texts.grid.search}
+      aria-label={name}
+      placeholder={name}
       icon={<SearchIcon />}
       value={value}
       className={styles.gridSearch}
@@ -105,6 +110,18 @@ const GridSearchPlugin = createDataGridPlugin<RowItem, 'gridSearch', Record<stri
       void context.refresh({ resetFilters: false });
     },
   };
+});
+
+/** The note that the rows are only part of the full result, in the kit's muted text; none once the rows are the whole result again, as a kit plugin stays registered. */
+function PartialNote() {
+  const note = useContext(GridNote);
+  return note === null ? null : <Text tone="muted">{note}</Text>;
+}
+
+/** The note, a kit plugin: in the grid's toolbar, after the search box, so it stays in view through a search. */
+const GridNotePlugin = createDataGridPlugin<RowItem, 'gridNote'>('gridNote', (context) => {
+  context.registerSlot('top-start', { id: 'gridNote', component: PartialNote });
+  return {};
 });
 
 /** What the grid shows when a search keeps no row; the grid itself never reaches it without a search, as no rows draw the widget's empty state. */
@@ -324,16 +341,21 @@ export function GridWidget({
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   if (rows.length === 0) return <WidgetEmpty texts={texts} />;
   const excluded = render.columns.flatMap((column, index) => (isSortable(column) ? [] : [columnId(index)]));
+  const total = data?.total_rows ?? 0;
+  const note = total > rows.length ? texts.grid.partial({ shown: formatValue(rows.length, undefined, locale), total: formatValue(total, undefined, locale) }) : null;
   return (
     <div ref={setRoot} className={styles.grid} style={{ '--data-grid-table-min-inline-size': `${tableFloorOf(render.columns)}px` } as CSSProperties}>
       {/* The kit keeps loaded records and its pager size, and reloads on neither a new load nor new limits: new rows or new page sizes remount the grid, which starts it again unsorted on page 1. A new language does not: the columns render it, and the sort and page stay; text already on the page keeps the old language's collation until the next sort or page. */}
       <GridTexts.Provider value={texts}>
-        <DataGrid<RowItem> key={`${dataVersion}:${sizes.join(',')}:${render.search ? 'search' : ''}`} name={name} label={label} load={load} columns={columns} persistent="memory" stickyHeader portalContainer={container ?? undefined}>
-          {render.search ? <GridSearchPlugin /> : null}
-          <DataGridPaginationPlugin defaultLimit={sizes[0]} limits={sizes} />
-          <DataGridOrderPlugin excludedColumns={excluded} />
-          <DataGridEmptyStatePlugin component={NoMatch} />
-        </DataGrid>
+        <GridNote.Provider value={note}>
+          <DataGrid<RowItem> key={`${dataVersion}:${sizes.join(',')}:${render.search ? 'search' : ''}`} name={name} label={label} load={load} columns={columns} persistent="memory" stickyHeader portalContainer={container ?? undefined}>
+            {render.search ? <GridSearchPlugin /> : null}
+            {note === null ? null : <GridNotePlugin />}
+            <DataGridPaginationPlugin defaultLimit={sizes[0]} limits={sizes} />
+            <DataGridOrderPlugin excludedColumns={excluded} />
+            <DataGridEmptyStatePlugin component={NoMatch} />
+          </DataGrid>
+        </GridNote.Provider>
       </GridTexts.Provider>
     </div>
   );

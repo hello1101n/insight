@@ -67,10 +67,18 @@ export interface WidgetTexts {
   /** The accessible note of a link that opens in a new tab. */
   link: { newTab: string };
   /**
-   * The grid: the name of its search box, the text shown when a search keeps no row, and the text alternative of a
-   * sparkline cell, which names its first, last, lowest and highest values, each already formatted.
+   * The grid: the name of its search box, and its name when the rows are only part of the full result; the text shown
+   * when a search keeps no row; the note that the rows are only part of the full result, with the row count shown and
+   * the full one; and the text alternative of a sparkline cell, which names its first, last, lowest and highest values.
+   * Every number comes already formatted.
    */
-  grid: { search: string; noMatch: string; sparkline: (values: { first: string; last: string; min: string; max: string }) => string };
+  grid: {
+    search: string;
+    searchPartial: string;
+    noMatch: string;
+    partial: (counts: { shown: string; total: string }) => string;
+    sparkline: (values: { first: string; last: string; min: string; max: string }) => string;
+  };
 }
 
 export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
@@ -97,7 +105,9 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   link: { newTab: 'opens in a new tab' },
   grid: {
     search: 'Search the table',
+    searchPartial: 'Search only the rows shown',
     noMatch: 'No rows match the search',
+    partial: ({ shown, total }) => `Showing ${shown} of ${total} rows`,
     sparkline: ({ first, last, min, max }) => `First ${first}, last ${last}, lowest ${min}, highest ${max}`,
   },
 };

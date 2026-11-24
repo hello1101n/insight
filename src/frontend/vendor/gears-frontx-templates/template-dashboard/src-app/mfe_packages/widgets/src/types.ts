@@ -127,6 +127,8 @@ export type GridValue = string | number | null | GridLink | (number | null)[];
 
 export interface GridData {
   rows: GridValue[][];
+  /** The row count of the full result when `rows` holds only its first rows; not below the number of rows. */
+  total_rows?: number | null;
 }
 
 /** A link a card draws: its text, and its target, which the shared link helper checks before it links. */

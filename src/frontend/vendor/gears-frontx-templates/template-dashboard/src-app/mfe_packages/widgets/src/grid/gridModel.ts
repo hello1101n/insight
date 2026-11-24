@@ -47,6 +47,10 @@ export function checkGrid(render: GridRender, data: GridData): string | null {
   if (short >= 0) return `grid: row ${short} does not have one value per column`;
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-grid-checks:p2:inst-wc-grid-positions
 
+  // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-grid-checks:p2:inst-wc-grid-total-rows
+  if (typeof data.total_rows === 'number' && data.total_rows < data.rows.length) return 'grid: total_rows is below the number of rows';
+  // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-grid-checks:p2:inst-wc-grid-total-rows
+
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-grid-checks:p2:inst-wc-grid-values
   for (let row = 0; row < data.rows.length; row++) {
     for (let index = 0; index < keys.length; index++) {
