@@ -7,6 +7,7 @@ import path from "path";
 import { defineConfig, loadEnv } from "vite";
 
 import { backendProxy } from "./vite.backend-proxy";
+import { frontxWidgets } from "./vite.frontx-widgets";
 import { uiKitLayer } from "./vite.ui-kit-layer";
 
 function localRelease(): string | undefined {
@@ -35,8 +36,11 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       uiKitLayer(),
       backendProxy(env),
+      frontxWidgets(),
     ],
     resolve: {
+      // WORKAROUND: the FrontX template keeps its own React in its node_modules; the page must run one.
+      dedupe: ["react", "react-dom"],
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },

@@ -5,6 +5,8 @@ node_modules/
 # Build output
 dist
 dist-ssr
+# WORKAROUND: the repository-wide `build/` rule would drop this copied FrontX source folder.
+!/vendor/gears-frontx-templates/template-shell/src/build/
 
 # Storybook
 storybook-static

@@ -1,0 +1,270 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.grid.v1",
+    "remoteEntry": "/widgets/grid/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.grid.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.grid.v1",
+      "exposedModule": "./grid"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.grid.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GridData",
+      "description": "Data of a grid widget. One positional array per row, in display order. A position that holds no value holds null.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "rows"
+          ],
+          "properties": {
+            "rows": {
+              "type": "array",
+              "maxItems": 500,
+              "description": "One positional array per row, in the order of render.columns. A position that holds no value holds null. Capped at 500 rows; an over-cap result fails data validation.",
+              "items": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": [
+                        "string",
+                        "number",
+                        "null"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "text",
+                        "href"
+                      ],
+                      "additionalProperties": false,
+                      "description": "A link: its text, and its target, checked by the shared link rule of the widgets: https, http, mailto, or a path from the site root (/x, not //x). Any other target shows the text alone. A link to another origin opens in a new tab; any other link opens in the same tab.",
+                      "properties": {
+                        "text": {
+                          "type": "string"
+                        },
+                        "href": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "maxItems": 60,
+                      "description": "A sparkline: one point per step, a null point being a gap. Allowed in a sparkline column only: in any other column it fails the grid's own check.",
+                      "items": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.grid_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "GridRender",
+      "description": "Render of a grid widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "columns"
+          ],
+          "properties": {
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Displayed columns, in display order. Each describes one data position. The consistency checks are validated by cpt-frontx-dashboard-algo-widget-catalog-grid-checks.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "key"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                    "description": "Unique column key. column_groups[].members and row_color refer to this key."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Optional heading."
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Optional width in pixels. The table is at least as wide as the sum of its column widths, counting 160 pixels for a column without one; a grid wider than its cell scrolls sideways inside it."
+                  },
+                  "format": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Optional number format. notation applies to number-valued cells of a text or badge column only: standard shows the full number and compact shows the abbreviated number of the host language. A progress column shows a percent and takes no format.",
+                    "properties": {
+                      "notation": {
+                        "enum": [
+                          "standard",
+                          "compact"
+                        ]
+                      }
+                    }
+                  },
+                  "align": {
+                    "enum": [
+                      "start",
+                      "end",
+                      "center"
+                    ],
+                    "default": "start",
+                    "description": "Optional alignment of the column body, in logical terms: start and end follow the writing direction of the host language."
+                  },
+                  "sortable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether a click on the header sorts by this column. Without it, true, except in a sparkline column, which never sorts: there it is false, and true fails the grid's own check. A badge column sorts by its text, a progress column by its number."
+                  },
+                  "overflow": {
+                    "enum": [
+                      "wrap",
+                      "truncate"
+                    ],
+                    "default": "wrap",
+                    "description": "wrap shows the whole value on as many lines as it needs; truncate keeps one line per cell, ends a long value in an ellipsis and keeps its full text as the cell's title. Without it, wrap."
+                  },
+                  "kind": {
+                    "enum": [
+                      "text",
+                      "badge",
+                      "progress",
+                      "sparkline"
+                    ],
+                    "default": "text",
+                    "description": "Optional way a cell draws its value. text (the default) shows it as text. badge shows a string as a badge toned by tones (null or a blank string is an empty cell). progress shows a number from 0 to 1 as a bar with its percent as text (null is an empty cell; a value that is not a number or lies outside 0 to 1 fails the grid's own check). sparkline shows a list of numbers or nulls as a small line in the theme's chart colour, with no axes, its text alternative naming the first, last, lowest and highest values (null is an empty cell; a value that is not a list fails the grid's own check). Without it, text."
+                  },
+                  "tones": {
+                    "$ref": "gts://gts.frontx.dashboard.widget.tones.v1~",
+                    "description": "Optional tone of each value of a badge column; a value with no tone draws neutral. Allowed with kind badge only: with any other kind it fails the grid's own check."
+                  }
+                }
+              }
+            },
+            "page_sizes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500
+              },
+              "default": [
+                10,
+                25,
+                50,
+                100,
+                500
+              ],
+              "description": "Optional page sizes offered. The first entry is the initial page size. Defaults to [10, 25, 50, 100, 500]."
+            },
+            "frozen_columns": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of leading columns that stay visible during horizontal scrolling. 0 or absent freezes no column. More than the column count freezes all."
+            },
+            "column_groups": {
+              "type": "array",
+              "description": "Grouped column headings. A heading only: it never reorders rows or collapses columns.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "members"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "members": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                      "description": "A column key."
+                    }
+                  }
+                }
+              }
+            },
+            "row_color": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "description": "Optional column key. Its value in a row names the row colour: success, warning, error, or info."
+            },
+            "search": {
+              "type": "boolean",
+              "default": false,
+              "description": "Optional search box above the grid. It keeps the rows whose shown text (formatted numbers, badge text, progress percents and link text; sparklines are not searched) contains the typed text, ignoring case, in any column, and shows the first page. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.grid.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "Grid",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.grid.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.grid.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.grid_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

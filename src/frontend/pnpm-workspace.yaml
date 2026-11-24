@@ -1,3 +1,8 @@
+packages:
+  - "."
+  # A copy of the FrontX dashboard root package: scripts/vendor-frontx.sh writes it.
+  - "vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard"
+
 # Minimum number of minutes that must pass after a version is published before pnpm will install it.
 # This applies to all dependencies, including transitive ones.
 minimumReleaseAge: 10080
