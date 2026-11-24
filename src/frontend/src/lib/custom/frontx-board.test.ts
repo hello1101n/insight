@@ -616,7 +616,7 @@ describe("frontxBoard percent columns", () => {
     }
   );
 
-  it("writes a percent table column as text with one decimal and leaves the others", () => {
+  it("gives a percent table column a percent format with one decimal and its fraction, and leaves the others", () => {
     const table: Widget = {
       type: "table",
       metric: "m",
@@ -625,18 +625,33 @@ describe("frontxBoard percent columns", () => {
     const answer = {
       columns: ["team", "runs", "rate"],
       rows: [
-        ["Atlas", 40, 97.333],
+        ["Atlas", 40, 97.5],
         ["Borealis", 12, -2.25],
         ["Cobalt", 3, null],
       ],
     };
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", table), percents: ["rate"] },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
 
+    expect(cell.widget.render).toEqual({
+      columns: [
+        { key: "c0", title: "team" },
+        {
+          key: "c1",
+          title: "rate",
+          value_format: { value_type: "percent", decimals: 1 },
+        },
+        { key: "c2", title: "runs" },
+      ],
+    });
     expect(drawnData(table, ["rate"], answer)).toEqual({
       format: undefined,
       data: {
         rows: [
-          ["Atlas", "97.3%", 40],
-          ["Borealis", "-2.3%", 12],
+          ["Atlas", 0.975, 40],
+          ["Borealis", -0.0225, 12],
           ["Cobalt", null, 3],
         ],
       },

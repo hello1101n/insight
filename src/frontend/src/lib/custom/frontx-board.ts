@@ -44,11 +44,9 @@ const column = (name: string) => `int(response.at[${cel(name)}])`;
 const number = (row: string, at: string, percent = false) =>
   `(${row}[${at}] == null ? dyn(null) : dyn(double(${row}[${at}])${percent ? " / 100.0" : ""}))`;
 
-// WORKAROUND: a grid has one value format, so a percent column becomes text. CEL has no round.
-const percentText = (cell: string) =>
-  `(${cell} == null ? dyn(null) : dyn(string(double(int(double(${cell}) * 10.0 + (double(${cell}) < 0.0 ? -0.5 : 0.5))) / 10.0) + '%'))`;
-
 const PERCENT = { value_type: "percent" } as const;
+
+const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 
 // WORKAROUND: the warehouse writes a bucket as a UTC `2026-11-03 00:00:00`, and the FrontX time
 // axis reads only ISO 8601 with a zone. CEL has no replace.
@@ -180,9 +178,10 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
           columns: widget.columns.map((name, index) => ({
             key: `c${index}`,
             title: name,
+            ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
           })),
         },
-        transform: `{'rows': response.rows.map(r, [${widget.columns.map((name) => (percent(name) ? percentText(`r[${column(name)}]`) : `r[${column(name)}]`)).join(", ")}])}`,
+        transform: `{'rows': response.rows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}])}`,
       };
     case "line":
     case "area":
