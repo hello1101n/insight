@@ -6,6 +6,7 @@ vi.mock("@tanstack/react-router", async () => {
 
 import { portalRouter } from "@/test/portal-router";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Workbook } from "exceljs";
@@ -40,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   definitionsError: false,
   refetchDefinitions: vi.fn(),
   downloadBlob: vi.fn<(blob: Blob, filename: string) => void>(),
+  fetchPersonalRecords: vi.fn(),
   policy: null as InstanceNavPolicy | null,
   data: {
     byKey: new Map<string, NormalizedMetricResult>(),
@@ -50,6 +52,18 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@/api/personal-metrics-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/personal-metrics-client")>()),
+  fetchPersonalRecords: mocks.fetchPersonalRecords,
+}));
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({ index, start: index * 44 })),
+    getTotalSize: () => count * 44,
+    measureElement: vi.fn(),
+  }),
+}));
 vi.mock("@/lib/download", () => ({ downloadBlob: mocks.downloadBlob }));
 vi.mock("@/auth", () => ({
   useViewer: () => ({ email: "boss@x", personId: mocks.personId }),
@@ -72,6 +86,7 @@ vi.mock("@/queries/visible-roster", () => ({
   }),
 }));
 vi.mock("@/queries/metric-definitions", () => ({
+  useMetricDefinition: () => null,
   useMetricDefinitionsResponse: () => ({
     data: { metrics: mocks.definitions },
     isPending: false,
@@ -931,16 +946,44 @@ describe("MetricsView personal metrics", () => {
     expect(rowHeaders()).toEqual(["b", "a", "boss", "c"]);
   });
 
-  it("does not open records for a personal value", () => {
+  it("a personal cell opens its records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue({
+      columns: [
+        { key: "author", label: "Author", type: "string", sortable: false, percent: false, exact: false },
+      ],
+      rows: [{ values: { author: "Ethan Okafor" } }],
+      next_cursor: null,
+    });
+    const user = userEvent.setup();
     render(
-      <EvidenceDialogContext.Provider
-        value={{ openEvidence: vi.fn(), openEvidenceTargets: vi.fn(), openEvidencePeople: vi.fn() }}
-      >
+      <QueryClientProvider client={new QueryClient()}>
         <MetricsView />
-      </EvidenceDialogContext.Provider>,
+      </QueryClientProvider>,
     );
 
-    expect(cellsOf("b")).toContain("5");
+    await user.click(screen.getByRole("button", { name: /^b — Support load: 5/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Support load · b" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("Ethan Okafor")).toBeInTheDocument();
+    expect(mocks.fetchPersonalRecords).toHaveBeenCalledWith("load", {
+      person_id: pid("b"),
+      from: "2026-07-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("leaves an empty personal cell and a failed personal column unclickable", () => {
+    mocks.data.byKey.set(
+      "personal.load",
+      result("personal.load", "Support load", [[pid("a"), null]], { unit: "tickets", format: "decimal" }),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetricsView />
+      </QueryClientProvider>,
+    );
+
     expect(screen.queryByRole("button", { name: /Support load:/ })).not.toBeInTheDocument();
   });
 

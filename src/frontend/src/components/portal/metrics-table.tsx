@@ -1,10 +1,16 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight, Info } from "lucide-react";
 
+import type { DateRange } from "@/api/period-to-date-range";
 import { evidenceSelection } from "@/api/metric-drilldown-client";
 import type { PersonalCalculation } from "@/api/personal-metrics-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
+import {
+  PersonalRecordsDialog,
+  type PersonalRecordsTarget,
+} from "@/components/portal/personal-records-dialog";
 import {
   Popover,
   PopoverContent,
@@ -57,6 +63,7 @@ export function MetricsTable({
   roles,
   sort,
   onSort,
+  range,
   onToggle,
   onScope,
 }: {
@@ -68,10 +75,12 @@ export function MetricsTable({
   roles: ReadonlyMap<string, string>;
   sort: MetricsSort | null;
   onSort: (metricKey: string) => void;
+  range?: DateRange;
   onToggle: (entityId: string) => void;
   onScope: (entityId: string) => void;
 }) {
   const { t } = useTranslation();
+  const [records, setRecords] = useState<PersonalRecordsTarget | null>(null);
   const keys = groups.flatMap((group) => group.keys);
   const groupStarts = new Set(groups.slice(1).map((group) => group.keys[0]));
 
@@ -224,6 +233,16 @@ export function MetricsTable({
                     result={byKey.get(key)}
                     entityId={row.entityId}
                     personName={row.displayName}
+                    onOpen={
+                      personal.get(key) && range
+                        ? () =>
+                            setRecords({
+                              metric: personal.get(key)!,
+                              personId: row.entityId,
+                              personName: row.displayName,
+                            })
+                        : undefined
+                    }
                   />
                 </td>
               ))}
@@ -231,6 +250,13 @@ export function MetricsTable({
           ))}
         </tbody>
       </table>
+      {range ? (
+        <PersonalRecordsDialog
+          target={records}
+          range={range}
+          onClose={() => setRecords(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -239,10 +265,12 @@ export function MetricValue({
   result,
   entityId,
   personName,
+  onOpen,
 }: {
   result: NormalizedMetricResult | undefined;
   entityId: string;
   personName: string;
+  onOpen?: () => void;
 }) {
   const evidence = useMetricEvidenceOptional();
   const value = result ? finiteValue(result, entityId) : null;
@@ -252,6 +280,18 @@ export function MetricValue({
 
   const text = formatMetricFigure(value, result.format, result.unit);
   const fullText = formatMetricValue(value, result.format, result.unit);
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        aria-label={`${personName} — ${result.label}: ${fullText}`}
+        onClick={onOpen}
+        className="cursor-pointer hover:text-primary hover:underline"
+      >
+        {text}
+      </button>
+    );
+  }
   const selection = result.drilldown
     ? evidenceSelection(result.selection, entityId)
     : null;

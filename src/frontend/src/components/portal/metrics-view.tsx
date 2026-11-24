@@ -418,6 +418,7 @@ function MetricsBody({
           byKey={byKey}
           personal={personal}
           failed={failed}
+          range={range}
           roles={roles}
           sort={sort}
           onSort={(key) => setSort((current) => nextSort(current, key))}
