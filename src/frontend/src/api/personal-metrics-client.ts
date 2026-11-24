@@ -36,6 +36,7 @@ export interface PersonalValuesRequest {
 export interface PersonalValues {
   values: Array<{ metric: string; person_id: string; value: number | null }>;
   teams: Array<{ metric: string; team: string; value: number | null }>;
+  errors: Array<{ metric: string; detail?: string }>;
 }
 
 export interface PersonalRecordsRequest {

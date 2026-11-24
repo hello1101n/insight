@@ -49,10 +49,7 @@ import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search"
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useShellLayout } from "@/lib/portal/use-shell-layout";
-import {
-  isPersonalKey,
-  type PersonalMetricDefinition,
-} from "@/lib/portal/personal-metrics";
+import type { PersonalMetricDefinition } from "@/lib/portal/personal-metrics";
 import { byFamily } from "@/lib/reports/families";
 import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
 import {
@@ -63,7 +60,6 @@ import type { IdentityPerson } from "@/types/insight";
 
 const TEST_ID = "page-people-metrics";
 const NO_PERSONAL: readonly PersonalMetricDefinition[] = [];
-const NO_KEYS: ReadonlySet<string> = new Set();
 
 function comparedNames(
   compareParam: string,
@@ -237,7 +233,8 @@ export function MetricsView() {
           metricKeys={metricKeys}
           byKey={data.byKey}
           personal={personalByKey}
-          personalError={data.personalError}
+          personalPending={data.personalPending}
+          personalFailed={data.personalFailed}
           loading={data.isPending}
           range={dateRange}
         />
@@ -304,7 +301,8 @@ function MetricsBody({
   metricKeys,
   byKey,
   personal,
-  personalError,
+  personalPending,
+  personalFailed,
   loading,
   range,
 }: {
@@ -314,7 +312,8 @@ function MetricsBody({
   metricKeys: readonly string[];
   byKey: Map<string, NormalizedMetricResult>;
   personal: ReadonlyMap<string, PersonalMetricDefinition>;
-  personalError: boolean;
+  personalPending: ReadonlySet<string>;
+  personalFailed: ReadonlySet<string>;
   loading: boolean;
   range: DateRange;
 }) {
@@ -341,9 +340,11 @@ function MetricsBody({
   });
   const inView = comparing ? compared : members;
   const inViewIds = inView.map((member) => member.entityId);
-  const failed = personalError ? new Set(metricKeys.filter(isPersonalKey)) : NO_KEYS;
   const withData = new Set(keysWithData(metricKeys, byKey, inViewIds));
-  const columns = metricKeys.filter((key) => withData.has(key) || failed.has(key));
+  const columns = metricKeys.filter(
+    (key) => withData.has(key) || personalFailed.has(key) || personalPending.has(key),
+  );
+  const shown = columns.filter((key) => !personalPending.has(key));
 
   const toggle = (entityId: string) =>
     setExpanded((current) => {
@@ -394,7 +395,7 @@ function MetricsBody({
           />
           <MetricsDownloadMenu
             view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
-            disabled={metricKeys.length === 0 || loading}
+            disabled={metricKeys.length === 0 || loading || personalPending.size > 0}
           />
         </div>
       </div>
@@ -406,7 +407,7 @@ function MetricsBody({
         <div className="rounded-lg border bg-card">
           <MetricsCompareTable
             people={compared}
-            keys={columns}
+            keys={shown}
             byKey={byKey}
             roles={roles}
           />
@@ -417,7 +418,8 @@ function MetricsBody({
           groups={metricGroups(columns)}
           byKey={byKey}
           personal={personal}
-          failed={failed}
+          failed={personalFailed}
+          pending={personalPending}
           range={range}
           roles={roles}
           sort={sort}

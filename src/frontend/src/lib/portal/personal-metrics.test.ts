@@ -5,6 +5,7 @@ import {
   exclusiveEnd,
   isPersonalKey,
   personalDefinition,
+  failedPersonalKeys,
   personalKey,
   personalResults,
 } from "./personal-metrics";
@@ -80,6 +81,7 @@ describe("personalResults", () => {
       { metric: "b", person_id: "AAAA-1", value: 0 },
     ],
     teams: [],
+    errors: [{ metric: "c" }, { metric: "d", detail: "no dataset named `x` is ready to be read" }],
   };
 
   it("personalResults keeps null values", () => {
@@ -99,6 +101,13 @@ describe("personalResults", () => {
   it("personalResults gives a metric with no rows an empty period", () => {
     const out = personalResults(values, ["personal.c"]);
     expect(out.get("personal.c")?.period?.values).toEqual([]);
+  });
+
+  it("failedPersonalKeys names only the asked metrics insight-v3 could not read", () => {
+    expect(failedPersonalKeys(values, ["personal.a", "personal.c", "personal.d"])).toEqual([
+      "personal.c",
+      "personal.d",
+    ]);
   });
 });
 

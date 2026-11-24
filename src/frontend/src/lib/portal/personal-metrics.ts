@@ -62,6 +62,11 @@ export function personalDefinition(
   };
 }
 
+export function failedPersonalKeys(values: PersonalValues, keys: string[]): string[] {
+  const failed = new Set(values.errors.map((error) => error.metric));
+  return keys.filter((key) => failed.has(key.slice(PERSONAL_PREFIX.length)));
+}
+
 export function personalResults(
   values: PersonalValues,
   keys: string[],

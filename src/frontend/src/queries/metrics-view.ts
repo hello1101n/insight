@@ -17,6 +17,7 @@ import { normalizePersonId } from "@/lib/metrics/entity";
 import { chunkKeys } from "@/lib/portal/metrics-view";
 import {
   exclusiveEnd,
+  failedPersonalKeys,
   isPersonalKey,
   personalDefinition,
   personalResults,
@@ -37,7 +38,8 @@ export interface MetricsViewData {
   byKey: Map<string, NormalizedMetricResult>;
   isPending: boolean;
   isError: boolean;
-  personalError: boolean;
+  personalPending: ReadonlySet<string>;
+  personalFailed: ReadonlySet<string>;
   refetch: () => void;
 }
 
@@ -87,9 +89,10 @@ export function useMetricsViewData(
 
   return {
     byKey: new Map([...results.flatMap((result) => [...result.byKey]), ...own.byKey]),
-    isPending: results.some((result) => result.isPending) || own.isPending,
+    isPending: results.some((result) => result.isPending),
     isError: results.some((result) => result.isError),
-    personalError: own.isError,
+    personalPending: own.pending,
+    personalFailed: own.failed,
     refetch: () => {
       for (const result of results) result.refetch();
       own.refetch();
@@ -152,10 +155,19 @@ function usePersonalValues(
     });
   }
 
+  const pending = new Set<string>();
+  const failed = new Set<string>();
+  requests.forEach(({ keys: chunk }, index) => {
+    const query = queries[index];
+    if (query?.isPending) for (const key of chunk) pending.add(key);
+    else if (query?.isError) for (const key of chunk) failed.add(key);
+    else if (query?.data) for (const key of failedPersonalKeys(query.data, chunk)) failed.add(key);
+  });
+
   return {
     byKey,
-    isPending: queries.some((query) => query.isPending),
-    isError: queries.some((query) => query.isError),
+    pending,
+    failed,
     refetch: () => {
       for (const query of queries) void query.refetch();
     },

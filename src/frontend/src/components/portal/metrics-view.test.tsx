@@ -48,7 +48,8 @@ const mocks = vi.hoisted(() => ({
     byKey: new Map<string, NormalizedMetricResult>(),
     isPending: false,
     isError: false,
-    personalError: false,
+    personalPending: new Set<string>() as ReadonlySet<string>,
+    personalFailed: new Set<string>() as ReadonlySet<string>,
     refetch: vi.fn(),
   },
 }));
@@ -212,7 +213,8 @@ beforeEach(() => {
   ];
   mocks.data.isPending = false;
   mocks.data.isError = false;
-  mocks.data.personalError = false;
+  mocks.data.personalPending = new Set();
+  mocks.data.personalFailed = new Set();
   mocks.personal = [];
   mocks.personalCatalogError = false;
   mocks.data.byKey = new Map([
@@ -1025,7 +1027,7 @@ describe("MetricsView personal metrics", () => {
   });
 
   it("a personal failure keeps built-in values", () => {
-    mocks.data.personalError = true;
+    mocks.data.personalFailed = new Set(["personal.load"]);
     mocks.data.byKey.set(
       "personal.load",
       result("personal.load", "Support load", [], { period: undefined }),
@@ -1039,6 +1041,51 @@ describe("MetricsView personal metrics", () => {
     expect(screen.getByRole("columnheader", { name: /Default branch commits/ })).not.toHaveTextContent(
       "Could not load",
     );
+  });
+
+  it("marks as not loaded only the personal metric insight-v3 could not read", () => {
+    mocks.personal = [
+      personalDefinition(personalMetric()),
+      personalDefinition(personalMetric({ id: "focus", label: "Focus hours" })),
+    ];
+    mocks.data.personalFailed = new Set(["personal.focus"]);
+    mocks.data.byKey.set(
+      "personal.focus",
+      result("personal.focus", "Focus hours", [], { period: undefined }),
+    );
+    render(<MetricsView />);
+
+    expect(screen.getByRole("columnheader", { name: /Focus hours/ })).toHaveTextContent(
+      "Could not load",
+    );
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).not.toHaveTextContent(
+      "Could not load",
+    );
+    expect(cellsOf("b")).toEqual(["20", "6", "5", "—"]);
+  });
+
+  it("shows the built-in values while a personal column loads", () => {
+    mocks.data.personalPending = new Set(["personal.load"]);
+    mocks.data.byKey.set(
+      "personal.load",
+      result("personal.load", "Support load", [], { period: undefined }),
+    );
+    render(<MetricsView />);
+
+    expect(cellsOf("b")).toEqual(["20", "6", ""]);
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).toHaveTextContent(
+      "Loading",
+    );
+    expect(screen.getByRole("columnheader", { name: /Default branch commits/ })).not.toHaveTextContent(
+      "Loading",
+    );
+  });
+
+  it("offers no download while a personal column loads", () => {
+    mocks.data.personalPending = new Set(["personal.load"]);
+    render(<MetricsView />);
+
+    expect(screen.getByRole("button", { name: "Download" })).toBeDisabled();
   });
 
   it("keeps the built-in metrics when the personal catalog fails", () => {

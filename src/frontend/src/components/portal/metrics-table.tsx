@@ -60,6 +60,7 @@ export function MetricsTable({
   byKey,
   personal = NO_PERSONAL,
   failed = NO_KEYS,
+  pending = NO_KEYS,
   roles,
   sort,
   onSort,
@@ -72,6 +73,7 @@ export function MetricsTable({
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   personal?: ReadonlyMap<string, PersonalMetricDefinition>;
   failed?: ReadonlySet<string>;
+  pending?: ReadonlySet<string>;
   roles: ReadonlyMap<string, string>;
   sort: MetricsSort | null;
   onSort: (metricKey: string) => void;
@@ -126,6 +128,7 @@ export function MetricsTable({
                   key={key}
                   scope="col"
                   aria-sort={direction}
+                  aria-busy={pending.has(key) || undefined}
                   className={cn(
                     HEADER_CELL,
                     BELOW_GROUP_ROW,
@@ -152,6 +155,10 @@ export function MetricsTable({
                         {failed.has(key) ? (
                           <span className="block font-normal text-destructive">
                             {t("metrics_view.not_loaded")}
+                          </span>
+                        ) : pending.has(key) ? (
+                          <span className="block font-normal text-muted-foreground">
+                            {t("metrics_view.loading")}
                           </span>
                         ) : null}
                       </span>
@@ -229,21 +236,28 @@ export function MetricsTable({
                     groupStarts.has(key) && "border-s",
                   )}
                 >
-                  <MetricValue
-                    result={byKey.get(key)}
-                    entityId={row.entityId}
-                    personName={row.displayName}
-                    onOpen={
-                      personal.get(key) && range
-                        ? () =>
-                            setRecords({
-                              metric: personal.get(key)!,
-                              personId: row.entityId,
-                              personName: row.displayName,
-                            })
-                        : undefined
-                    }
-                  />
+                  {pending.has(key) ? (
+                    <span
+                      aria-hidden
+                      className="inline-block h-3 w-10 animate-pulse rounded bg-muted align-middle"
+                    />
+                  ) : (
+                    <MetricValue
+                      result={byKey.get(key)}
+                      entityId={row.entityId}
+                      personName={row.displayName}
+                      onOpen={
+                        personal.get(key) && range
+                          ? () =>
+                              setRecords({
+                                metric: personal.get(key)!,
+                                personId: row.entityId,
+                                personName: row.displayName,
+                              })
+                          : undefined
+                      }
+                    />
+                  )}
                 </td>
               ))}
             </tr>
