@@ -220,7 +220,7 @@ describe("combined Lines column", () => {
     ]);
   });
 
-  it("ranks by lines added plus removed, in KLOC", () => {
+  it("ranks by lines added plus removed, in KLOC, and leaves a person with a missing part unranked", () => {
     const byKey = new Map([
       [
         "git.default_branch_lines_added",
@@ -235,7 +235,7 @@ describe("combined Lines column", () => {
     const lines = withCombinedResults(byKey).get(LINES_KEY)!;
 
     expect(finiteValue(lines, "a")).toBe(1.7);
-    expect(finiteValue(lines, "b")).toBe(0.3);
+    expect(finiteValue(lines, "b")).toBeNull();
     expect(lines.unit).toBe("KLOC");
   });
 
@@ -253,7 +253,7 @@ describe("combined Lines column", () => {
     const lines = combinedColumn(LINES_KEY)!;
 
     expect(combinedFigure(lines, byKey, "a")).toBe("+90.4 / −5.1");
-    expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / −0.0");
+    expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / —");
     expect(combinedFigure(lines, byKey, "c")).toBeNull();
   });
 });

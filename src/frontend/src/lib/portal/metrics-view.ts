@@ -199,7 +199,7 @@ export function withCombinedResults(
     );
     const values = [...ids].map((entity_id) => {
       const found = results.map((result) => finiteValue(result, entity_id));
-      const value = found.every((v) => v == null)
+      const value = found.some((v) => v == null)
         ? null
         : found.reduce<number>((sum, v) => sum + (v ?? 0), 0) / column.scale;
       return { entity_id, value };
@@ -224,6 +224,7 @@ export function withCombinedResults(
 
 export interface CombinedPart {
   text: string;
+  value: number | null;
   result: NormalizedMetricResult | undefined;
 }
 
@@ -239,7 +240,8 @@ export function combinedParts(
   if (found.every(({ value }) => value == null)) return null;
 
   return found.map(({ part, result, value }) => ({
-    text: `${part.sign}${((value ?? 0) / column.scale).toFixed(column.digits)}`,
+    text: value == null ? "—" : `${part.sign}${(value / column.scale).toFixed(column.digits)}`,
+    value,
     result,
   }));
 }

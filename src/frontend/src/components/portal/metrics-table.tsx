@@ -295,12 +295,12 @@ function CombinedValue({
 
   return (
     <span>
-      {parts.map(({ text, result }, index) => {
+      {parts.map(({ text, value, result }, index) => {
         const target = targets.find((t) => t.selection.metric_key === result?.metric_key);
         return (
           <Fragment key={result?.metric_key ?? index}>
             {index > 0 ? " / " : null}
-            {evidence && result && target ? (
+            {evidence && result && target && value != null ? (
               <button
                 type="button"
                 aria-label={`${personName} — ${result.label}: ${text} ${column.unit}`}
