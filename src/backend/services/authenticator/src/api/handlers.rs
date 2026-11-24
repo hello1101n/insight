@@ -53,18 +53,6 @@ pub async fn login(
         ),
     };
 
-    let return_to = if state.cfg.experiments_enabled || !is_preview_return(&return_to) {
-        return_to
-    } else {
-        tracing::warn!(
-            target: "audit",
-            event = "experiment_return_ignored",
-            "return_to under the /exp/ preview prefix but experiments_enabled=false: \
-             falling back to default_return_to"
-        );
-        state.cfg.default_return_to.clone()
-    };
-
     let override_email = match params
         .override_email
         .as_deref()
@@ -741,7 +729,6 @@ pub async fn me(Extension(state): Extension<Arc<AppState>>, jar: CookieJar) -> R
         "expires_at": record.expires_at,
         "refresh_at": refresh_at,
         "csrf_token": record.csrf_token,
-        "experiments_enabled": state.cfg.experiments_enabled,
     });
     if !record.impersonator_email.is_empty() {
         body["impersonator_email"] = serde_json::Value::String(record.impersonator_email.clone());
@@ -1345,17 +1332,9 @@ fn is_mcp_oauth_return(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-const PREVIEW_RETURN_PREFIX: &str = "/exp/";
-
-fn is_preview_return(return_to: &str) -> bool {
-    return_to
-        .to_ascii_lowercase()
-        .starts_with(PREVIEW_RETURN_PREFIX)
-}
-
 /// `\`, `%5c`, `%2e`, `%2f`, and a literal `..` path segment are rejected: the
 /// WHATWG URL parser turns them into `/` or `..` *after* this check
-/// (`/\host`, `/exp/%2e%2e/admin`).
+/// (`/\host`, `/app/%2e%2e/admin`).
 fn is_safe_return_to(p: &str, prefix: &str) -> bool {
     if !p.starts_with('/') || p.starts_with("//") || p.starts_with("/\\") {
         return false;
@@ -1504,8 +1483,8 @@ mod tests {
         for (case, fetched, expected) in [
             (
                 "grants win",
-                Some(vec!["admin".to_owned(), "previews-admin".to_owned()]),
-                vec!["admin".to_owned(), "previews-admin".to_owned()],
+                Some(vec!["admin".to_owned(), "auditor".to_owned()]),
+                vec!["admin".to_owned(), "auditor".to_owned()],
             ),
             ("no grants falls back", Some(vec![]), defaults.clone()),
             ("no answer falls back", None, defaults.clone()),
@@ -1577,27 +1556,27 @@ mod tests {
     #[test]
     fn return_to_prefix_admits_only_matching_paths() {
         assert_eq!(
-            sanitize_return_to(Some("/exp/widget-1/"), "/", "/exp/"),
-            "/exp/widget-1/"
+            sanitize_return_to(Some("/app/widget-1/"), "/", "/app/"),
+            "/app/widget-1/"
         );
-        assert_eq!(sanitize_return_to(Some("/dashboard"), "/", "/exp/"), "/");
-        assert_eq!(sanitize_return_to(Some("/exp/../admin"), "/", "/exp/"), "/");
+        assert_eq!(sanitize_return_to(Some("/dashboard"), "/", "/app/"), "/");
+        assert_eq!(sanitize_return_to(Some("/app/../admin"), "/", "/app/"), "/");
         assert_eq!(
-            sanitize_return_to(Some("//evil.example"), "/", "/exp/"),
+            sanitize_return_to(Some("//evil.example"), "/", "/app/"),
             "/"
         );
-        assert_eq!(sanitize_return_to(None, "/", "/exp/"), "/");
+        assert_eq!(sanitize_return_to(None, "/", "/app/"), "/");
     }
 
     #[test]
     fn return_to_rejects_percent_encoded_traversal_out_of_prefix() {
         for encoded in [
-            "/exp/%2e%2e/admin",
-            "/exp/%2E%2E/admin",
-            "/exp/%2e%2e%2fadmin",
+            "/app/%2e%2e/admin",
+            "/app/%2E%2E/admin",
+            "/app/%2e%2e%2fadmin",
         ] {
             assert_eq!(
-                sanitize_return_to(Some(encoded), "/", "/exp/"),
+                sanitize_return_to(Some(encoded), "/", "/app/"),
                 "/",
                 "should reject: {encoded:?}"
             );
@@ -1611,22 +1590,6 @@ mod tests {
                 sanitize_return_to(Some(evil), "/", ""),
                 "/",
                 "should reject: {evil:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn is_preview_return_matches_exp_subtree_case_folded() {
-        for hit in ["/exp/widget-1/", "/exp/", "/EXP/Widget/", "/Exp/x"] {
-            assert!(
-                is_preview_return(hit),
-                "should be a preview return: {hit:?}"
-            );
-        }
-        for miss in ["/", "/dashboard", "/expunge", "/experiments"] {
-            assert!(
-                !is_preview_return(miss),
-                "should not be a preview return: {miss:?}"
             );
         }
     }

@@ -4,15 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const viewer = vi.hoisted(() => ({
   admin: { isAdmin: false, isPending: false, isError: false, retry: () => undefined },
-  canManagePreviews: false,
 }));
 
 vi.mock("@/queries/identity-me", () => ({
   useIsAdmin: () => viewer.admin,
-}));
-
-vi.mock("@/queries/previews", () => ({
-  usePreviewsGate: () => viewer.canManagePreviews,
 }));
 
 const nav = vi.hoisted(() => ({ planned: [] as string[] }));
@@ -51,7 +46,6 @@ import { ManageLanding } from "./manage-landing";
 
 beforeEach(() => {
   viewer.admin = { isAdmin: false, isPending: false, isError: false, retry: () => undefined };
-  viewer.canManagePreviews = false;
   nav.planned = [];
 });
 
