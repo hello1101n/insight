@@ -43,10 +43,17 @@ const cel = JSON.stringify;
 
 const column = (name: string) => `int(response.at[${cel(name)}])`;
 
+// WORKAROUND: a value_format fixes its decimals, and the current stat shows at most one decimal
+// from 10 up and two below. CEL has no round.
+const rounded = (value: string) =>
+  `cel.bind(n, ${value}, cel.bind(k, n >= 10.0 || n <= -10.0 ? 10.0 : 100.0, double(int(n * k + (n < 0.0 ? -0.5 : 0.5))) / k))`;
+
 // WORKAROUND: CEL types both ternary branches alike, so a nullable number goes through dyn.
 // INVARIANT: an Insight percent column holds 0 to 100, and a FrontX percent format reads a fraction.
-const number = (row: string, at: string, percent = false) =>
-  `(${row}[${at}] == null ? dyn(null) : dyn(double(${row}[${at}])${percent ? " / 100.0" : ""}))`;
+const number = (row: string, at: string, percent = false, round = false) => {
+  const value = `double(${row}[${at}])`;
+  return `(${row}[${at}] == null ? dyn(null) : dyn(${round ? rounded(value) : value}${percent ? " / 100.0" : ""}))`;
+};
 
 const PERCENT = { value_type: "percent" } as const;
 
@@ -204,8 +211,8 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
       return {
         type: "metric_card",
         ...(percent(widget.value) ? { value_format: PERCENT } : {}),
-        render: widget.label ? { value_label: widget.label } : {},
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent(widget.value))}}))`,
+        render: { value_label: widget.label ?? widget.value },
+        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent(widget.value), true)}}))`,
       };
     case "pie":
       return {

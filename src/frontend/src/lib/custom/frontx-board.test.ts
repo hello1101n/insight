@@ -8,10 +8,13 @@ import type {
   MetricResult,
   Widget,
 } from "@/api/custom-client";
+import { groupedNumber } from "@/components/custom/chart-format";
 import { frontxAnswer, frontxBoard } from "@/lib/custom/frontx-board";
 
 // WORKAROUND: the FrontX root runs transforms with this module, and the package does not export it.
 import { compileTransform } from "../../../vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard/src/runtime/cel";
+// WORKAROUND: the FrontX widgets write a number with this module, and the package does not export it.
+import { formatValue } from "../../../vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/widgets/src/format";
 
 const CLOCK = { field: "day", from: "metric" } as const;
 
@@ -267,7 +270,7 @@ describe("frontxBoard", () => {
     }
   });
 
-  it("captions a stat with its label and leaves a stat with none uncaptioned", () => {
+  it("captions a stat with its label, or with its value column when it has none", () => {
     const board = frontxBoard(
       "board",
       read([{ widget: "a" }, { widget: "b" }]),
@@ -279,7 +282,7 @@ describe("frontxBoard", () => {
     const [labelled, bare] = dashboardOf(board).layout.cells;
 
     expect(labelled.widget.render).toEqual({ value_label: "runs" });
-    expect(bare.widget.render).toEqual({});
+    expect(bare.widget.render).toEqual({ value_label: "v" });
   });
 
   it("titles the board and each widget, and falls back to their names", () => {
@@ -593,6 +596,23 @@ describe("frontxBoard percent columns", () => {
     const [cell] = dashboardOf(board).layout.cells;
 
     expect(cell.widget).not.toHaveProperty("value_format");
+  });
+
+  it.each([
+    47.25, 12.25, 10, 9.876, 0.5, 0, 1234, 1_234_567.25, -47.25, -3.125, 1e18,
+    -1e18,
+  ])("writes the stat %d as the current stat does", (value) => {
+    for (const percents of [[], ["rate"]]) {
+      const { format, data } = drawnData(STAT, percents, {
+        columns: ["rate"],
+        rows: [[value]],
+      });
+
+      expect(
+        formatValue((data as { value: number }).value, format, "en"),
+        `${value} with percents ${String(percents)}`
+      ).toBe(groupedNumber(value, percents.length > 0 ? "%" : ""));
+    }
   });
 
   it("keeps an empty or null percent stat empty", () => {
