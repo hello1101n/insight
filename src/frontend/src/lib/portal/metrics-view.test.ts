@@ -126,6 +126,7 @@ describe("DEFAULT_METRIC_KEYS", () => {
       "git.pr_cycle_time_h",
       "git.first_review_time_h",
       "git.reviews_performed",
+      "git.pr_comments",
       "tasks.closed",
       "ai.active_days",
     ]);
