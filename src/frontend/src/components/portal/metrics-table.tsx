@@ -5,7 +5,12 @@ import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
 import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
 import { formatRange } from "@/lib/date-range-label";
-import { formatMetricFigure, formatMetricValue } from "@/lib/format";
+import {
+  formatClockDuration,
+  formatMetricFigure,
+  formatMetricValue,
+  isDurationUnit,
+} from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   columnFormula,
@@ -214,8 +219,16 @@ export function MetricValue({
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const text = formatMetricFigure(value, result.format, result.unit);
-  const fullText = formatMetricValue(value, result.format, result.unit);
+  const clock =
+    result.format !== "percent" &&
+    result.format !== "currency" &&
+    isDurationUnit(result.unit);
+  const text = clock
+    ? formatClockDuration(value)
+    : formatMetricFigure(value, result.format, result.unit);
+  const fullText = clock
+    ? text
+    : formatMetricValue(value, result.format, result.unit);
   const selection = result.drilldown
     ? evidenceSelection(result.selection, entityId)
     : null;

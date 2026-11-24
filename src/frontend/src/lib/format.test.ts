@@ -10,6 +10,7 @@ import {
   formatUtcAge,
   formatUtcClock,
   formatUtcInstant,
+  formatClockDuration,
   metricDisplayUnit,
   roundMetricValue,
   splitMetricValue,
@@ -106,5 +107,19 @@ describe("small formatters", () => {
 
     expect(formatUtcAge("2026-08-01T10:15:00.000000", now)).toBe("7 days ago");
     expect(formatUtcAge("2026-08-01T10:15:00Z", now)).toBe("7 days ago");
+  });
+});
+
+describe("formatClockDuration", () => {
+  it.each([
+    [0.7833, "0 h 47 min"],
+    [46.0667, "46 h 04 min"],
+    [9.4833, "9 h 29 min"],
+    [0, "0 h 00 min"],
+    [1.9999, "2 h 00 min"],
+    [1234.5, "1,234 h 30 min"],
+    [-1.5, "-1 h 30 min"],
+  ])("writes %s hours as %s", (hours, text) => {
+    expect(formatClockDuration(hours)).toBe(text);
   });
 });

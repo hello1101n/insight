@@ -267,3 +267,24 @@ describe("MetricsTable header", () => {
     ).toHaveTextContent("Active daysTotal · days");
   });
 });
+
+describe("MetricsTable duration cell", () => {
+  it("writes a duration as hours and minutes", () => {
+    const hours = {
+      ...metaFor("collab.meeting_hours"),
+      unit: "h",
+      format: "decimal",
+      period: {
+        view: "period",
+        values: [{ entity_id: PERSON, value: 0.7833 }],
+      },
+    } as NormalizedMetricResult;
+
+    render(
+      <MetricValue result={hours} entityId={PERSON} personName="Ada Lovelace" />,
+      { wrapper: Providers }
+    );
+
+    expect(screen.getByText("0 h 47 min")).toBeInTheDocument();
+  });
+});
