@@ -297,7 +297,7 @@ fn owner_name_json(owner: Owner, names: &HashMap<PersonId, String>) -> Option<St
         .and_then(|person| names.get(&person).cloned())
 }
 
-async fn owner_names(
+pub(crate) async fn owner_names(
     state: &AppState,
     authorization: Option<&str>,
     owners: impl Iterator<Item = Owner>,

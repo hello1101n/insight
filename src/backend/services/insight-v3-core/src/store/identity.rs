@@ -360,10 +360,6 @@ impl IdentityClient {
             .collect())
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric reads filter by visibility")
-    )]
     pub(crate) async fn visible(
         &self,
         authorization: &HeaderValue,

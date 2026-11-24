@@ -1,13 +1,24 @@
+use std::sync::Arc;
+
+use axum::Router;
+use axum::body::{Body, to_bytes};
+use axum::http::{Request, StatusCode, header};
 use chrono::Utc;
 use serde_json::{Value, json};
+use tower::ServiceExt as _;
 use uuid::Uuid;
 
+use crate::api::AppState;
+use crate::chat::ChatClient;
 use crate::domain::access::PersonId;
-use crate::domain::personal::{Direction, MetricFormat, PersonalMark};
+use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _};
+use crate::domain::personal::{Direction, Marks as _, MetricFormat, PersonalMark};
 use crate::domain::query::metric_query::{
     MetricQuery, MetricRunner, People, RunResult, TableEngine,
 };
 use crate::domain::query::time_window::{RequestedRange, Window};
+use crate::store::definitions::memory::MemoryDefinitions;
+use crate::store::identity::IdentityClient;
 
 const URL_VAR: &str = "INTEGRATION_TESTS_CLICKHOUSE_URL";
 
@@ -144,18 +155,56 @@ impl Stand {
     }
 
     fn metric_by(&self, person_field: Value, value_fields: &Value) -> MetricQuery {
+        serde_json::from_value(self.body_by(person_field, value_fields))
+            .unwrap_or_else(|error| panic!("the fixture metric parses: {error}"))
+    }
+
+    fn body_by(&self, person_field: Value, value_fields: &Value) -> Value {
         let mut fields = vec![person_field];
         fields.extend(value_fields.as_array().cloned().unwrap_or_default());
 
-        serde_json::from_value(json!({
+        json!({
             "database": self.database,
             "table": "observations",
             "time": { "column": "observed_at", "type": "datetime" },
             "fields": fields,
             "group_by": ["author"],
             "filters": [{ "column": "branch", "type": "string", "op": "eq", "value": "main" }]
-        }))
-        .unwrap_or_else(|error| panic!("the fixture metric parses: {error}"))
+        })
+    }
+
+    async fn served(&self, metric: &str, body: &Value) -> Router {
+        let definitions = Arc::new(MemoryDefinitions::new());
+        let id = DefinitionId::parse(metric)
+            .unwrap_or_else(|error| panic!("`{metric}` is an id: {error}"));
+        let label = DefinitionLabel::parse("Lines merged")
+            .unwrap_or_else(|error| panic!("the label parses: {error}"));
+        definitions
+            .create(DefinitionKind::Metric, &id, &label, body)
+            .await
+            .unwrap_or_else(|error| panic!("the metric is stored: {error}"));
+        definitions
+            .mark(&id, Some(&marked("lines")))
+            .await
+            .unwrap_or_else(|error| panic!("the mark is stored: {error}"));
+
+        let state = Arc::new(AppState::new(
+            MetricRunner::new(
+                insight_clickhouse::Client::new(self.client.config().clone()),
+                People::new(self.database.clone()),
+            ),
+            definitions,
+            ChatClient::keyless(),
+            IdentityClient::fixed(true),
+            crate::api::Datasets::offline("http://offline.invalid"),
+            crate::store::catalog::Catalog::fixed(Vec::new()),
+        ));
+
+        crate::api::personal_metrics::register_routes(
+            Router::new(),
+            &toolkit::api::OpenApiRegistryImpl::new(),
+            &state,
+        )
     }
 
     async fn run(&self, compiled: &crate::domain::query::metric_query::CompiledQuery) -> RunResult {
@@ -484,6 +533,61 @@ async fn a_team_with_no_rows_answers_null_for_every_aggregate() {
             "{value_field}"
         );
     }
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn the_values_route_answers_each_person_and_team_from_the_rows() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    let body = stand.body_by(
+        json!({
+            "column": "author_email", "type": "string", "as_name": "author", "person": "email"
+        }),
+        &lines(),
+    );
+    let router = stand.served("lines_merged", &body).await;
+    let asked = json!({
+        "metrics": ["lines_merged"],
+        "person_ids": [person(1).to_string(), person(2).to_string(), person(4).to_string()],
+        "teams": [{ "id": "pair", "person_ids": [person(1).to_string(), person(2).to_string()] }],
+        "from": "2026-09-01",
+        "to": "2026-09-08"
+    });
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/personal-metrics/values")
+        .header(header::AUTHORIZATION, format!("Bearer {}", person(9)))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(asked.to_string()))
+        .unwrap_or_else(|error| panic!("the request is valid: {error}"));
+
+    let response = router
+        .oneshot(request)
+        .await
+        .unwrap_or_else(|error| panic!("the route answers: {error}"));
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .unwrap_or_else(|error| panic!("the answer is readable: {error}"));
+    let answer: Value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|error| panic!("the answer is JSON: {error}"));
+
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer,
+        json!({
+            "values": [
+                { "metric": "lines_merged", "person_id": person(1).to_string(), "value": 15 },
+                { "metric": "lines_merged", "person_id": person(2).to_string(), "value": 7 },
+                { "metric": "lines_merged", "person_id": person(4).to_string(), "value": null }
+            ],
+            "teams": [{ "metric": "lines_merged", "team": "pair", "value": 22 }]
+        })
+    );
 
     stand.drop_database().await;
 }

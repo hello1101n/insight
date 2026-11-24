@@ -8,6 +8,8 @@ use crate::domain::definition::{DefinitionId, DefinitionStoreError};
 use crate::domain::kinds::dataset::declaration::Declaration;
 use crate::domain::query::metric_query::{Agg, ColumnKind, MetricQuery, Output};
 
+pub(crate) mod values;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PersonalMark {
@@ -133,10 +135,6 @@ fn calculation(output: Output<'_>) -> Option<Calculation> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the personal metric reads list what is marked")
-)]
 pub(crate) struct Marked {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -161,10 +159,6 @@ pub(crate) trait Marks: Send + Sync + fmt::Debug {
         metric: &DefinitionId,
     ) -> Result<Option<PersonalMark>, DefinitionStoreError>;
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric reads list what is marked")
-    )]
     async fn marked(&self) -> Result<Vec<Marked>, DefinitionStoreError>;
 }
 

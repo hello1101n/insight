@@ -5,7 +5,9 @@ use super::definition::{DefinitionId, DefinitionKind, Definitions, StoredDefinit
 use super::kinds::dataset::declaration::Declaration;
 use super::kinds::metric::answerable::{self, EffectiveClock};
 use super::query::metric_query::over::Over;
-use super::query::metric_query::{ColumnKind, CompiledQuery, MetricQuery, MetricRunner, RunResult};
+use super::query::metric_query::{
+    ColumnKind, CompiledQuery, MetricQuery, MetricQueryError, MetricRunner, People, RunResult,
+};
 use super::query::time_window::{Window, WindowRequest};
 use super::query::undated::UndatedCount;
 use super::surfaces::CustomError;
@@ -43,6 +45,12 @@ pub(crate) enum Source {
     Dataset {
         table: String,
     },
+}
+
+#[derive(Debug)]
+pub(crate) struct Reading {
+    engine: TableEngine,
+    dataset: Option<(Declaration, String)>,
 }
 
 #[derive(Debug)]
@@ -325,6 +333,59 @@ impl<'a> MetricRuns<'a> {
         result.clock = EffectiveClock::of(metric, &declaration);
 
         Ok(result)
+    }
+
+    pub(crate) async fn declaration_of(
+        &self,
+        metric: &MetricQuery,
+    ) -> Result<Option<Declaration>, CustomError> {
+        let Some(named) = metric.dataset() else {
+            return Ok(None);
+        };
+        let (declaration, _) = self.ready_dataset(named).await?;
+
+        Ok(Some(declaration))
+    }
+
+    pub(crate) async fn reading(&self, metric: &MetricQuery) -> Result<Reading, CustomError> {
+        let Some(named) = metric.dataset() else {
+            metric.check_table().map_err(CustomError::Compile)?;
+            let engine = self
+                .metrics
+                .engine_of(metric.database(), metric.table_name())
+                .await
+                .map_err(CustomError::Run)?;
+
+            return Ok(Reading {
+                engine,
+                dataset: None,
+            });
+        };
+        let dataset = self.ready_dataset(named).await?;
+
+        Ok(Reading {
+            engine: TableEngine::Other,
+            dataset: Some(dataset),
+        })
+    }
+
+    pub(crate) async fn run_read(
+        &self,
+        reading: &Reading,
+        compile: impl FnOnce(
+            &People,
+            TableEngine,
+            Option<Over<'_>>,
+        ) -> Result<CompiledQuery, MetricQueryError>,
+    ) -> Result<RunResult, CustomError> {
+        let over = reading
+            .dataset
+            .as_ref()
+            .map(|(declaration, table)| self.over_of(declaration, table));
+        let compiled =
+            compile(self.metrics.people(), reading.engine, over).map_err(CustomError::Compile)?;
+
+        self.metrics.run(&compiled).await.map_err(CustomError::Run)
     }
 
     async fn ready_dataset(&self, named: &str) -> Result<(Declaration, String), CustomError> {

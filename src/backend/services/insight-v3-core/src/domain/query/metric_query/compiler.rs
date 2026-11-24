@@ -537,10 +537,6 @@ enum Spread {
 }
 
 impl MetricQuery {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric values read runs it")
-    )]
     pub(crate) fn personal_values(
         &self,
         mark: &PersonalMark,
@@ -561,10 +557,6 @@ impl MetricQuery {
         )
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the personal metric values read runs it")
-    )]
     pub(crate) fn team_value(
         &self,
         mark: &PersonalMark,
