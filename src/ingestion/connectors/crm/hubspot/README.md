@@ -194,6 +194,21 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 - **Field history.** One row per value change of the tracked properties, with `change_source_type` (`CRM_UI`, `IMPORT`, `API`, `CALCULATED`, …). Deal stage transitions are `field = 'dealstage'`; time in stage is the gap to the next change of the same object and field.
 - **Teams.** Known only through owner memberships, so a team without members is absent.
 
+### Support classes
+
+HubSpot tickets also feed the cross-vendor support classes that the Zendesk connector feeds.
+
+| Model | Feeds | Content |
+|---|---|---|
+| `hubspot__support_ticket` | `silver.dim_support_ticket` | The ticket columns of `class_crm_tickets`, with `assignee_person_key` from the ticket owner's email |
+| `hubspot__support_activity` | `silver.class_support_activity` | Ticket edits and closes per person and day, from `tickets_property_history` |
+
+- **Actor.** Each change goes to the user in `updatedByUserId`, through the owner that carries that `userId`. A change without a user, or with `change_source_type = 'IMPORT'`, counts for nobody.
+- **Updates.** One update is all the tracked properties one user changes on one ticket at one instant. The first value of each property is the creation value and is not an update. Only the properties in `tickets_property_history` count: stage, pipeline, owner and priority.
+- **Solved.** A change of `hs_pipeline_stage` to a closed stage (`isClosed` or `ticketState = CLOSED`). Each ticket counts once per person and day. HubSpot has no difference between solved and closed.
+- **Not measured.** `public_comments`, `private_comments`, `csat_good` and `csat_total` are NULL. The engagement streams have no association to tickets, and no stream reads feedback submissions.
+- **Status.** `status_canonical` is `open` or `closed`. HubSpot has no `pending` or `on_hold` state outside the custom stage labels.
+
 ### Identity
 
 HubSpot owners feed `identity.identity_inputs` with `insight_source_type = 'hubspot'`, so deals and engagements resolve to the same `person_id` as the person's accounts in other sources.

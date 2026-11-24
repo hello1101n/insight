@@ -4,7 +4,7 @@ models:
   - name: class_support_activity
     description: >
       Unified daily support activity per person across all support vendors
-      (Zendesk today). Grain: person_key × date. Sits next to
+      (Zendesk and HubSpot). Grain: person_key × date. Sits next to
       class_collab_*_activity for cross-system comparison.
 
       Aggregation guidance for Gold:
@@ -13,9 +13,11 @@ models:
           are live: the support_ticket_events (Ticket Audits) stream is shipped
           and feeds zendesk__support_event / zendesk__support_activity. They
           remain honest NULL only for vendors whose Ticket Audits stream is not
-          yet wired.
+          yet wired. For HubSpot, updates and solved come from the ticket
+          property history; the comment counts are NULL.
         • csat_good / csat_total are assignee-attributed QUALITY signals, not
           activity — surface as a ratio (Σgood/Σtotal), never added to counts.
+          They are NULL for HubSpot.
     columns:
       - name: unique_key
         tests: [unique, not_null]
@@ -24,7 +26,7 @@ models:
         tests: [not_null]
       - name: data_source
         tests:
-          - accepted_values: { values: ['zendesk'] }
+          - accepted_values: { values: ['zendesk', 'hubspot'] }
 
   - name: dim_support_agent
     description: Cross-vendor support-agent dimension (agent → person via lower(email)).
@@ -44,4 +46,4 @@ models:
         tests: [unique, not_null]
       - name: data_source
         tests:
-          - accepted_values: { values: ['zendesk'] }
+          - accepted_values: { values: ['zendesk', 'hubspot'] }
