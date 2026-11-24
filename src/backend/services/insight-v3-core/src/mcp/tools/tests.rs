@@ -1987,10 +1987,6 @@ async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -
 const ALICE: &str = "0192a1b2-0000-7000-8000-0000000000c1";
 const STRANGER: &str = "0192a1b2-0000-7000-8000-0000000000d1";
 
-fn uuid_of(raw: &str) -> uuid::Uuid {
-    uuid::Uuid::parse_str(raw).unwrap_or_else(|error| panic!("a uuid: {error}"))
-}
-
 fn people_commits() -> Value {
     json!({
         "title": "Commits",
@@ -2331,17 +2327,11 @@ async fn unshare_withdraws_the_grant() {
 }
 
 #[tokio::test]
-async fn share_refuses_a_person_the_directory_does_not_know() {
-    let surfaces = built_with(
-        Catalog::fixed(Vec::new()),
-        crate::api::Datasets::holding("http://offline.invalid", &[("commits", people_commits())]),
-        "http://clickhouse.invalid",
-        Some(
-            IdentityClient::fixed(true)
-                .with_members(&[uuid_of(ALICE)])
-                .with_strangers(&[uuid_of(STRANGER)]),
-        ),
-    );
+async fn share_refuses_a_person_the_warehouse_does_not_hold() {
+    let mock = Mock::new();
+    mock.add(handlers::provide(vec![1_u64]));
+    mock.add(handlers::provide(vec![0_u64]));
+    let surfaces = sharing_over(mock.url());
     let metric = created(
         &surfaces
             .put_metric(administrator(), put("Lines", lines_metric()))
@@ -2358,6 +2348,39 @@ async fn share_refuses_a_person_the_directory_does_not_know() {
         .await;
 
     assert_refused(&refused, STRANGER);
+}
+
+#[tokio::test]
+async fn share_finds_a_person_without_the_identity_service() {
+    let mock = Mock::new();
+    mock.add(handlers::provide(vec![1_u64]));
+    let surfaces = sharing_over(mock.url());
+    let metric = created(
+        &surfaces
+            .put_metric(administrator(), put("Lines", lines_metric()))
+            .await,
+    );
+
+    let shared = surfaces
+        .share_metric(administrator(), to_grantee(&metric, ALICE))
+        .await;
+
+    assert_accepted(&shared);
+    let listed = assert_accepted(
+        &surfaces
+            .list_metric_grants(administrator(), for_metric(&metric))
+            .await,
+    );
+    assert_eq!(listed["grants"][0]["grantee"], ALICE);
+}
+
+fn sharing_over(warehouse: &str) -> CustomSurfaces {
+    built_with(
+        Catalog::fixed(Vec::new()),
+        crate::api::Datasets::holding("http://offline.invalid", &[("commits", people_commits())]),
+        warehouse,
+        None,
+    )
 }
 
 #[tokio::test]

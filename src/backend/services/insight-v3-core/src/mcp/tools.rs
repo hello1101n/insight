@@ -14,7 +14,6 @@ use super::auth::McpCaller;
 use crate::api::AppState;
 use crate::api::definitions::{dashboards_json, listed_json, owner_json};
 use crate::api::folders::{folder_json, folders_json, holding_json};
-use crate::api::sharing::ForwardedDirectory;
 use crate::api::tags::{names_json, tags_json};
 use crate::domain::access::{Caller, FolderAccess, Grantee, Level, PersonId};
 use crate::domain::dashboards::DashboardQuery;
@@ -25,14 +24,18 @@ use crate::domain::kinds::dashboard::Item;
 use crate::domain::kinds::metric::answerable;
 use crate::domain::metric_run::MetricRuns;
 use crate::domain::personal::PersonalMark;
-use crate::domain::query::metric_query::{MetricQuery, RunResult};
+use crate::domain::query::metric_query::{MetricQuery, MetricRunner, RunResult};
 use crate::domain::query::time_window::WindowRequest;
-use crate::domain::sharing::{Grant, Shared, Sharing, SharingError};
+use crate::domain::sharing::{
+    AdministratorsError, Directory, Grant, Shared, Sharing, SharingError,
+};
 use crate::domain::surfaces::{CustomError, Surfaces};
 use crate::domain::tags::{self, TagError, TagSet};
 use crate::domain::violation::said;
 use crate::store::catalog::{CatalogError, TableSchema};
 
+#[cfg(test)]
+mod share_live_tests;
 #[cfg(test)]
 mod tests;
 
@@ -893,7 +896,7 @@ impl CustomSurfaces {
             Ok(found) => found,
             Err(refusal) => return refusal,
         };
-        let directory = directory_of(&self.state, &parts);
+        let directory = directory_of(&self.state);
 
         match self
             .sharing(&directory, caller)
@@ -922,7 +925,7 @@ impl CustomSurfaces {
             Ok(found) => found,
             Err(refusal) => return refusal,
         };
-        let directory = directory_of(&self.state, &parts);
+        let directory = directory_of(&self.state);
 
         match self
             .sharing(&directory, caller)
@@ -955,7 +958,7 @@ impl CustomSurfaces {
             Ok(parsed) => parsed,
             Err(refusal) => return refusal,
         };
-        let directory = directory_of(&self.state, &parts);
+        let directory = directory_of(&self.state);
 
         match self
             .sharing(&directory, caller)
@@ -971,7 +974,7 @@ impl CustomSurfaces {
 }
 
 impl CustomSurfaces {
-    fn sharing<'a>(&'a self, directory: &'a ForwardedDirectory<'a>, caller: Caller) -> Sharing<'a> {
+    fn sharing<'a>(&'a self, directory: &'a WarehousePersons<'a>, caller: Caller) -> Sharing<'a> {
         Sharing::new(self.state.store(), directory, caller)
     }
 
@@ -1024,11 +1027,32 @@ fn grant_of(
     Ok((caller, parsed, grantee))
 }
 
-fn directory_of<'a>(state: &'a AppState, parts: &'a Parts) -> ForwardedDirectory<'a> {
-    ForwardedDirectory {
-        identity: state.identity(),
-        authorization: crate::api::forwarded_authorization(&parts.headers),
+struct WarehousePersons<'a>(&'a MetricRunner);
+
+#[async_trait::async_trait]
+impl Directory for WarehousePersons<'_> {
+    async fn holds_admin(&self, _person: PersonId) -> Result<bool, AdministratorsError> {
+        Err(no_administrators())
     }
+
+    async fn current(&self) -> Result<Vec<PersonId>, AdministratorsError> {
+        Err(no_administrators())
+    }
+
+    async fn knows(&self, person: PersonId) -> Result<bool, AdministratorsError> {
+        self.0
+            .holds_person(person)
+            .await
+            .map_err(|error| AdministratorsError::Unavailable(error.to_string()))
+    }
+}
+
+fn no_administrators() -> AdministratorsError {
+    AdministratorsError::Unavailable("the MCP tools read no administrators".to_owned())
+}
+
+fn directory_of(state: &AppState) -> WarehousePersons<'_> {
+    WarehousePersons(state.metrics())
 }
 
 fn grant_json(grant: &Grant) -> Value {

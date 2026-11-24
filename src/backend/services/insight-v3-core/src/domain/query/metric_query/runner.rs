@@ -4,17 +4,21 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use clickhouse::sql::Identifier;
+
 use super::engine::TableEngine;
 use super::field::coerce_value;
 use super::filter::FilterBind;
 use super::people::People;
 use super::{CompiledQuery, UndatedQuery};
+use crate::domain::access::PersonId;
 use crate::domain::query::undated::UndatedCount;
 
 const READ_ENGINE: &str = "SELECT engine FROM system.tables
 WHERE database = if(empty(?), currentDatabase(), ?) AND name = ?";
 const READ_UUID: &str = "SELECT toString(uuid) AS uuid FROM system.tables
 WHERE database = if(empty(?), currentDatabase(), ?) AND name = ?";
+const COUNT_PERSON: &str = "SELECT count() FROM ?.? WHERE person_id = toUUID(?)";
 const FETCH_TIMEOUT_SECS: u64 = 30;
 const MAX_RESULT_BYTES: usize = 5 * 1024 * 1024;
 
@@ -67,6 +71,22 @@ impl MetricRunner {
 
     pub(crate) fn people(&self) -> &People {
         &self.people
+    }
+
+    pub(crate) async fn holds_person(&self, person: PersonId) -> Result<bool, MetricRunError> {
+        let (database, table) = self.people.persons();
+        let counted = self
+            .client
+            .query(COUNT_PERSON)
+            .bind(Identifier(database))
+            .bind(Identifier(table))
+            .bind(person.to_string())
+            .fetch_all::<u64>();
+        let found = tokio::time::timeout(self.fetch_timeout, counted)
+            .await
+            .map_err(|_| MetricRunError::Timeout)??;
+
+        Ok(found.first().is_some_and(|count| *count > 0))
     }
 
     pub(crate) async fn engine_of(

@@ -54,6 +54,10 @@ impl People {
         }
     }
 
+    pub(super) fn persons(&self) -> (&str, &'static str) {
+        (&self.database, IDENTITY_TABLE)
+    }
+
     pub(super) fn prelude(&self, handles: &[PersonHandle]) -> Result<String, MetricQueryError> {
         if !is_identifier(&self.database) {
             return Err(MetricQueryError::Identifier(self.database.clone()));
