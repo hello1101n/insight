@@ -340,6 +340,7 @@ describe("frontxAnswer", () => {
         outcome: ["ok", "failed", null],
         runs: [3, 1, null],
       },
+      tableRows: result.rows,
     });
   });
 
@@ -349,6 +350,7 @@ describe("frontxAnswer", () => {
       rows: [],
       at: { a: 0 },
       distinct: { a: [] },
+      tableRows: [],
     });
   });
 });
@@ -390,6 +392,27 @@ describe("frontxBoard data", () => {
       },
     });
   });
+
+  it.each([
+    [499, 499],
+    [500, 500],
+    [650, 500],
+  ])(
+    "passes a table of %i rows to the grid as its first %i rows",
+    (count, shown) => {
+      const table: Widget = { type: "table", metric: "m", columns: ["n"] };
+      const answer = {
+        columns: ["n"],
+        rows: Array.from({ length: count }, (_, index) => [index]),
+      };
+      const { data } = drawnData(table, [], answer) as {
+        data: { rows: unknown[][] };
+      };
+
+      expect(data.rows).toHaveLength(shown);
+      expect(data.rows.at(-1)).toEqual([shown - 1]);
+    }
+  );
 
   it("draws a bar with a series column as one series per value of that column", () => {
     const stacked: Widget = {

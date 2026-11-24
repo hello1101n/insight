@@ -99,7 +99,7 @@ describe("FrontxBoard", () => {
     );
   });
 
-  it("answers a data request through fetchWithAuth with each column's position and distinct values", async () => {
+  it("answers a data request through fetchWithAuth with each column's position, its distinct values and the rows a table shows", async () => {
     render(<FrontxBoard id="board-d" read={READ} range={undefined} />, {
       wrapper,
     });
@@ -123,6 +123,7 @@ describe("FrontxBoard", () => {
       rows: [["2026-10-01", 3]],
       at: { bucket: 0, deploys: 1 },
       distinct: { bucket: ["2026-10-01"], deploys: [3] },
+      tableRows: [["2026-10-01", 3]],
     });
 
     await host.request({ method: "POST", path: "/plain" }, signal);

@@ -31,7 +31,11 @@ export interface FrontxBoard {
 export interface FrontxAnswer extends MetricResult {
   at: Record<string, number>;
   distinct: Record<string, unknown[]>;
+  tableRows: unknown[][];
 }
+
+// INVARIANT: FrontX grid data holds at most 500 rows, and a longer list fails the cell.
+const TABLE_ROWS = 500;
 
 const NAMESPACE = uuidv5("insight.custom.dashboards");
 
@@ -181,7 +185,7 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
             ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
           })),
         },
-        transform: `{'rows': response.rows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}])}`,
+        transform: `{'rows': response.tableRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}])}`,
       };
     case "line":
     case "area":
@@ -304,8 +308,8 @@ export function frontxBoard(
   };
 }
 
-// WORKAROUND: CEL has no list indexOf and no group function, so the answer carries
-// each column's position and its distinct values in the order they first come.
+// WORKAROUND: CEL has no list indexOf, no group function and no slice, so the answer carries
+// each column's position, its distinct values in the order they first come, and the rows a table shows.
 export function frontxAnswer(result: MetricResult): FrontxAnswer {
   const at = Object.fromEntries(
     result.columns.map((name, index) => [name, index])
@@ -317,5 +321,10 @@ export function frontxAnswer(result: MetricResult): FrontxAnswer {
     ])
   );
 
-  return { ...result, at, distinct };
+  return {
+    ...result,
+    at,
+    distinct,
+    tableRows: result.rows.slice(0, TABLE_ROWS),
+  };
 }
