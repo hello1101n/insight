@@ -25,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261021_000010_alert_metric_name::Migration),
             Box::new(m20261021_000011_dashboard_ownership::Migration),
             Box::new(m20261026_000012_folders_lock::Migration),
+            Box::new(m20261124_000013_personal_metrics::Migration),
         ]
     }
 }
@@ -304,6 +305,8 @@ mod m20261021_000010_alert_metric_name;
 
 mod m20261026_000012_folders_lock;
 
+mod m20261124_000013_personal_metrics;
+
 mod m20261015_000008_alert_context_columns {
     use super::{DbErr, MigrationName, MigrationTrait, SchemaManager, apply_sql};
 
@@ -375,6 +378,7 @@ mod tests {
                 "m20261021_000010_alert_metric_name",
                 "m20261021_000011_dashboard_ownership",
                 "m20261026_000012_folders_lock",
+                "m20261124_000013_personal_metrics",
             ],
             "a migration's name is the ledger's key, so it is written down here"
         );
