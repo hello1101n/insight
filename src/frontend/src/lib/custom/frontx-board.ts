@@ -192,7 +192,7 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
             ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
           })),
         },
-        transform: `{'rows': response.tableRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}])}`,
+        transform: `{'rows': response.tableRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
       };
     case "line":
     case "area":

@@ -392,6 +392,7 @@ describe("frontxBoard data", () => {
           ["Atlas", 4],
           ["Borealis", null],
         ],
+        total_rows: 2,
       },
     });
   });
@@ -401,7 +402,7 @@ describe("frontxBoard data", () => {
     [500, 500],
     [650, 500],
   ])(
-    "passes a table of %i rows to the grid as its first %i rows",
+    "passes a table of %i rows to the grid as its first %i rows, with the count of all its rows",
     (count, shown) => {
       const table: Widget = { type: "table", metric: "m", columns: ["n"] };
       const answer = {
@@ -409,11 +410,12 @@ describe("frontxBoard data", () => {
         rows: Array.from({ length: count }, (_, index) => [index]),
       };
       const { data } = drawnData(table, [], answer) as {
-        data: { rows: unknown[][] };
+        data: { rows: unknown[][]; total_rows: number };
       };
 
       expect(data.rows).toHaveLength(shown);
       expect(data.rows.at(-1)).toEqual([shown - 1]);
+      expect(data.total_rows).toBe(count);
     }
   );
 
@@ -697,6 +699,7 @@ describe("frontxBoard percent columns", () => {
           ["Borealis", -0.0225, 12],
           ["Cobalt", null, 3],
         ],
+        total_rows: 3,
       },
     });
   });
