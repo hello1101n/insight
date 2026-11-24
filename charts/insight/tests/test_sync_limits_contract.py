@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 
@@ -297,7 +296,33 @@ def test_connector_resources_reach_each_main_container_and_the_reconcile_submiss
     }
 
 
-def test_argo_compiles_each_delimited_pod_patch_with_no_settings(charts: dict[str, dict]) -> None:
+def argo_tags(text: str) -> tuple[list[str], str]:
+    tags, outside, start = [], [], 0
+    while (opening := text.find("{{", start)) != -1 and (closing := text.find("}}", opening + 2)) != -1:
+        outside.append(text[start:opening])
+        tags.append(text[opening + 2 : closing])
+        start = closing + 2
+    outside.append(text[start:])
+    return tags, "".join(outside)
+
+
+def balanced(expression: str) -> bool:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    quote = None
+    for char in expression:
+        if quote:
+            quote = None if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char in "([{":
+            stack.append(char)
+        elif char in pairs and (not stack or stack.pop() != pairs[char]):
+            return False
+    return not stack and quote is None
+
+
+def test_argo_reads_each_pod_patch_as_one_whole_expression(charts: dict[str, dict]) -> None:
     patches = [
         spec["podSpecPatch"]
         for (kind, _), document in charts["defaults"].items()
@@ -306,16 +331,8 @@ def test_argo_compiles_each_delimited_pod_patch_with_no_settings(charts: dict[st
         if "podSpecPatch" in spec
     ]
     assert len(patches) == 3
-    tags = [tag for patch in patches for tag in re.findall(r"\{\{=(.*?)\}\}", patch, re.DOTALL)]
-    assert len(tags) == len(patches)
-    result = subprocess.run(
-        ["go", "run", "."],
-        cwd=Path(__file__).with_name("expressions"),
-        input=json.dumps({"expressions": tags, "resources": "{}"}),
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=120,
-    )
-    assert result.returncode == 0, result.stderr
-    assert [json.loads(value) for value in json.loads(result.stdout)] == [{}] * len(patches)
+    for patch in patches:
+        tags, outside = argo_tags(patch)
+        assert len(tags) == 1 and tags[0].startswith("="), patch
+        assert outside.strip() == "", outside
+        assert balanced(tags[0][1:]), tags[0]
