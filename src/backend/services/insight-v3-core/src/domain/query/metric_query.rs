@@ -188,6 +188,29 @@ impl MetricQuery {
         named
     }
 
+    pub(crate) fn aggregates(&self, as_name: &str) -> bool {
+        let mut aggregated: Vec<bool> = Vec::with_capacity(self.fields.len());
+        for (index, field) in self.fields.iter().enumerate() {
+            let this = match field.divide.as_deref() {
+                Some(names) => names.iter().all(|name| {
+                    self.fields[..index]
+                        .iter()
+                        .rposition(|earlier| &earlier.as_name == name)
+                        .and_then(|earlier| aggregated.get(earlier).copied())
+                        .unwrap_or(false)
+                }),
+                None => field.agg.is_some(),
+            };
+            aggregated.push(this);
+        }
+
+        self.fields
+            .iter()
+            .position(|field| field.as_name == as_name)
+            .and_then(|index| aggregated.get(index).copied())
+            .unwrap_or(false)
+    }
+
     pub(crate) fn own_clock(&self) -> Option<&str> {
         self.time.as_ref().and_then(TimeField::reads)
     }

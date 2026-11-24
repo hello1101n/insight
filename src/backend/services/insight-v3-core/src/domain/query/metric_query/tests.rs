@@ -770,7 +770,7 @@ fn a_person_id_is_compared_as_text() {
     assert!(
         compiled
             .sql
-            .contains("__people_by_id AS (SELECT toString(`person_id`) AS `handle`"),
+            .contains("__people_by_id AS (SELECT toString(`i`.`person_id`) AS `handle`"),
         "{}",
         compiled.sql
     );
@@ -794,7 +794,7 @@ fn two_person_columns_resolve_one_each() {
     assert!(compiled.sql.contains("AS `__p0`"), "{}", compiled.sql);
     assert!(compiled.sql.contains("AS `__p1`"), "{}", compiled.sql);
     assert_eq!(
-        compiled.sql.matches("LEFT JOIN").count(),
+        after_the_people(&compiled.sql).matches("LEFT JOIN").count(),
         2,
         "{}",
         compiled.sql
@@ -1991,13 +1991,13 @@ fn personal_values_group_by_person_id() {
 
     assert!(
         compiled.sql.contains(
-            " SELECT `__p0`.`person_id` AS `person_id`, sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `value` FROM `silver`.`class_git_pull_requests` AS `__f` LEFT JOIN __people_by_email AS `__p0` ON `__p0`.`handle` = `__f`.`author_email` WHERE "
+            " SELECT `__person_id` AS `person_id`, `lines` AS `value` FROM (SELECT `__p0`.`person_id` AS `__person_id`, sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `lines` FROM `silver`.`class_git_pull_requests` AS `__f` LEFT JOIN __people_by_email AS `__p0` ON `__p0`.`handle` = `__f`.`author_email` WHERE "
         ),
         "{}",
         compiled.sql
     );
     assert!(
-        compiled.sql.ends_with(" GROUP BY `__p0`.`person_id`"),
+        compiled.sql.ends_with(" GROUP BY `__p0`.`person_id`)"),
         "{}",
         compiled.sql
     );
@@ -2095,14 +2095,12 @@ fn team_value_has_no_group_by() {
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
-        compiled
-            .sql
-            .contains(" SELECT sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `value` FROM "),
+        !after_the_people(&compiled.sql).contains("`person_id` AS `person_id`"),
         "{}",
         compiled.sql
     );
     assert!(
-        compiled.sql.ends_with(" AND `__p0`.`person_id` IN (?, ?)"),
+        compiled.sql.ends_with(" AND `__p0`.`person_id` IN (?, ?))"),
         "{}",
         compiled.sql
     );
@@ -2115,7 +2113,7 @@ fn team_value_has_no_group_by() {
 }
 
 #[test]
-fn personal_values_inline_a_ratio_value() {
+fn personal_values_keep_the_fields_a_ratio_divides() {
     let compiled = gate_pass_rate()
         .personal_values(
             &marked("author", "pass_rate"),
@@ -2129,12 +2127,11 @@ fn personal_values_inline_a_ratio_value() {
 
     assert!(
         compiled.sql.contains(
-            "`__p0`.`person_id` AS `person_id`, (100 * (sumIf(`__f`.`value`, `__f`.`measure_key` = ?) / nullIf(sumIf(`__f`.`value`, `__f`.`measure_key` = ?), 0))) AS `value` FROM"
+            " SELECT `__person_id` AS `person_id`, `pass_rate` AS `value` FROM (SELECT `__p0`.`person_id` AS `__person_id`, sumIf(`__f`.`value`, `__f`.`measure_key` = ?) AS `passed`, sumIf(`__f`.`value`, `__f`.`measure_key` = ?) AS `runs`, (100 * (`passed` / nullIf(`runs`, 0))) AS `pass_rate` FROM"
         ),
         "{}",
         compiled.sql
     );
-    assert!(!compiled.sql.contains("AS `passed`"), "{}", compiled.sql);
     assert_eq!(
         compiled.binds[..2],
         ["gate_passed".to_owned(), "gate_runs".to_owned()]
@@ -2272,7 +2269,7 @@ fn personal_values_over_a_dataset_join_the_declared_person() {
     assert!(
         compiled
             .sql
-            .contains(" SELECT `__p0`.`person_id` AS `person_id`, sum("),
+            .contains("(SELECT `__p0`.`person_id` AS `__person_id`, sum("),
         "{}",
         compiled.sql
     );
@@ -2460,6 +2457,180 @@ fn a_record_field_named_like_the_record_time_is_refused() {
 
     assert!(
         matches!(refusal, Err(MetricQueryError::RecordTime)),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn personal_values_keep_nested_ratios_linear_in_size() {
+    let mut fields = vec![
+        json!({ "column": "author_email", "type": "string", "as_name": "author", "person": "email" }),
+        json!({ "agg": "count", "type": "int", "as_name": "total" }),
+    ];
+    let mut previous = "total".to_owned();
+    for index in 0..16 {
+        let name = format!("rate_{index}");
+        fields.push(json!({ "divide": [&previous, &previous], "type": "float", "as_name": name }));
+        previous = name;
+    }
+    let metric = query(json!({ "table": "events", "fields": fields, "group_by": ["author"] }));
+
+    let ordinary = metric
+        .compile(&people())
+        .unwrap_or_else(|error| panic!("{error}"));
+    let result = metric
+        .personal_values(
+            &marked("author", &previous),
+            &[person(1)],
+            &Window::legacy(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+
+    assert!(
+        result.sql.len() < 100_000,
+        "ordinary SQL: {} bytes; personal SQL: {} bytes",
+        ordinary.sql.len(),
+        result.sql.len()
+    );
+}
+
+#[test]
+fn a_person_without_a_name_still_maps_to_a_person_id() {
+    let by_email = merged_lines()
+        .personal_values(
+            &marked("author", "lines"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+    let by_id = query(json!({
+        "table": "events",
+        "time": { "column": "occurred_at" },
+        "fields": [
+            { "column": "author_person_id", "type": "string", "as_name": "author", "person": "id" },
+            { "agg": "count", "type": "int", "as_name": "total" }
+        ],
+        "group_by": ["author"]
+    }))
+    .personal_values(
+        &marked("author", "total"),
+        &[person(1)],
+        &september_week(),
+        &people(),
+        TableEngine::Other,
+        None,
+    )
+    .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        by_email.sql.contains(
+            "AS `h` LEFT JOIN __person_name AS `n` ON `n`.`person_id` = `h`.`person_id`)"
+        ),
+        "{}",
+        by_email.sql
+    );
+    assert!(
+        by_id.sql.contains(
+            "__people_by_id AS (SELECT toString(`i`.`person_id`) AS `handle`, toString(`i`.`person_id`) AS `person_id`, `n`.`display_name` AS `display_name` FROM (SELECT DISTINCT `person_id` FROM `identity`.`identity_persons`) AS `i` LEFT JOIN __person_name AS `n` ON `n`.`person_id` = `i`.`person_id`)"
+        ),
+        "{}",
+        by_id.sql
+    );
+}
+
+#[test]
+fn team_value_answers_null_for_a_team_with_no_rows() {
+    let compiled = merged_lines()
+        .team_value(
+            &marked("author", "lines"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled.sql.contains(
+            " SELECT if(`__rows` = 0, NULL, `lines`) AS `value` FROM (SELECT count() AS `__rows`, sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `lines` FROM "
+        ),
+        "{}",
+        compiled.sql
+    );
+}
+
+#[test]
+fn personal_values_refuse_a_ratio_of_unaggregated_fields() {
+    let listing = query(json!({
+        "table": "events",
+        "fields": [
+            { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+            { "column": "done", "type": "int", "as_name": "done",
+              "when": [{ "column": "kind", "type": "string", "op": "eq", "value": "task" }] },
+            { "column": "planned", "type": "int", "as_name": "planned" },
+            { "divide": ["done", "planned"], "type": "float", "as_name": "share" }
+        ]
+    }));
+
+    let team = listing.team_value(
+        &marked("author", "share"),
+        &[person(1)],
+        &Window::legacy(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+    let personal = listing.personal_values(
+        &marked("author", "share"),
+        &[person(1)],
+        &Window::legacy(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    for refusal in [team, personal] {
+        assert!(
+            matches!(
+                &refusal,
+                Err(MetricQueryError::Mark(crate::domain::personal::MarkError::UnaggregatedRatio(field)))
+                    if field == "share"
+            ),
+            "{refusal:?}"
+        );
+    }
+}
+
+#[test]
+fn personal_records_join_the_marked_person_itself() {
+    let metric = query(json!({
+        "table": "events",
+        "time": { "column": "occurred_at" },
+        "fields": [
+            { "type": "string", "as_name": "author", "person": "email" },
+            { "column": "lines", "type": "int", "agg": "sum", "as_name": "lines" }
+        ],
+        "group_by": ["author"]
+    }));
+
+    let refusal = metric.personal_records(
+        &marked("author", "lines"),
+        person(1),
+        &september_week(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    assert!(
+        matches!(refusal, Err(MetricQueryError::FieldSource(_))),
         "{refusal:?}"
     );
 }

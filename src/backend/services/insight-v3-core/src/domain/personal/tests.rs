@@ -183,6 +183,25 @@ fn a_ratio_field_is_calculation_ratio() {
 }
 
 #[test]
+fn a_ratio_needs_aggregated_sides() {
+    let metric = query(json!({
+        "dataset": "reviews",
+        "fields": [
+            { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+            { "field": "comments", "type": "int", "as_name": "comments" },
+            { "type": "int", "agg": "count", "as_name": "reviews" },
+            { "type": "float", "divide": ["comments", "reviews"], "as_name": "per_review" }
+        ],
+        "group_by": ["reviewer", "comments"]
+    }));
+
+    assert_eq!(
+        mark("reviewer", "per_review").check(&metric, Some(&reviews())),
+        Err(MarkError::UnaggregatedRatio("per_review".to_owned()))
+    );
+}
+
+#[test]
 fn each_aggregate_is_its_own_calculation() {
     let declaration = reviews();
 

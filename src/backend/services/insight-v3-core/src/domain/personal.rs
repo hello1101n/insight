@@ -75,6 +75,11 @@ pub(crate) enum MarkError {
     NotAggregated(String),
     #[error("the personal mark names value field `{0}`, which is not a number")]
     NotANumber(String),
+    #[error(
+        "the personal mark names value field `{0}`, which divides a field \
+         that carries no `agg`, so it gives no one value per person"
+    )]
+    UnaggregatedRatio(String),
 }
 
 impl PersonalMark {
@@ -98,6 +103,9 @@ impl PersonalMark {
             .ok_or_else(|| MarkError::NoValueField(self.value_field.clone()))?;
         let calculation =
             calculation(value).ok_or_else(|| MarkError::NotAggregated(self.value_field.clone()))?;
+        if value.divides() && !query.aggregates(&self.value_field) {
+            return Err(MarkError::UnaggregatedRatio(self.value_field.clone()));
+        }
         if value.kind() != ColumnKind::Number {
             return Err(MarkError::NotANumber(self.value_field.clone()));
         }

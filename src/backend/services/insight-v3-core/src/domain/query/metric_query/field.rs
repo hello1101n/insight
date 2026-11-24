@@ -243,10 +243,13 @@ impl Field {
             }
         }
 
-        Ok(Some(self.division(
-            &format!("`{numerator}`"),
-            &format!("`{denominator}`"),
-        )))
+        let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
+
+        Ok(Some(if self.percent {
+            format!("(100 * {division})")
+        } else {
+            division
+        }))
     }
 
     pub(super) fn divided(&self) -> Result<Option<(&str, &str)>, MetricQueryError> {
@@ -269,16 +272,6 @@ impl Field {
             "`{}` divides `{name}`, which no earlier field of this query selects",
             self.as_name
         ))
-    }
-
-    pub(super) fn division(&self, numerator: &str, denominator: &str) -> String {
-        let division = format!("({numerator} / nullIf({denominator}, 0))");
-
-        if self.percent {
-            format!("(100 * {division})")
-        } else {
-            division
-        }
     }
 
     pub(super) fn aggregated_if(&self, read: String, condition: Option<String>) -> String {

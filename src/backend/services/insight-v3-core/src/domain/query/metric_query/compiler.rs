@@ -20,6 +20,8 @@ use crate::domain::query::time_window::Window;
 
 const DEFAULT_LIMIT: u32 = 1000;
 const MAX_LIMIT: u32 = 10000;
+const PERSON_COLUMN: &str = "__person_id";
+const ROWS_COLUMN: &str = "__rows";
 
 impl super::MetricQuery {
     pub(crate) fn imposed_limit(&self) -> Option<u32> {
@@ -606,6 +608,14 @@ impl MetricQuery {
         let mut joins = String::new();
         let mut handles = vec![personal.handle];
         let mut binds = Vec::new();
+        join_person(
+            &self.fields[personal.person],
+            personal.person,
+            personal.handle,
+            over,
+            qualifier,
+            &mut joins,
+        )?;
         if let Some(clock) = time.as_deref() {
             parts.push(format!("{clock} AS `{RECORD_TIME_COLUMN}`"));
             column_types.insert(RECORD_TIME_COLUMN.to_owned(), FieldType::String);
@@ -621,10 +631,14 @@ impl MetricQuery {
 
             let (expression, read_type) = match carried(field, over) {
                 Some(handle) => {
-                    if !handles.contains(&handle) {
-                        handles.push(handle);
-                    }
-                    let alias = join_person(field, index, handle, over, qualifier, &mut joins)?;
+                    let alias = if index == personal.person {
+                        person_alias(index)
+                    } else {
+                        if !handles.contains(&handle) {
+                            handles.push(handle);
+                        }
+                        join_person(field, index, handle, over, qualifier, &mut joins)?
+                    };
 
                     (
                         shown_person(field, &alias, over, qualifier)?,
@@ -743,13 +757,26 @@ impl MetricQuery {
             &mut joins,
         )?;
 
+        let mut inner = Vec::with_capacity(self.fields.len() + 1);
+        inner.push(match spread {
+            Spread::PerPerson => format!("`{alias}`.`person_id` AS `{PERSON_COLUMN}`"),
+            Spread::Together => format!("count() AS `{ROWS_COLUMN}`"),
+        });
         let mut binds = Vec::new();
-        let value = self.value_expression(personal.value, over, qualifier, &mut binds)?;
-        let mut parts = Vec::with_capacity(2);
-        if spread == Spread::PerPerson {
-            parts.push(format!("`{alias}`.`person_id` AS `person_id`"));
+        let mut selected = HashSet::new();
+        for index in self.needed_for(personal.value)? {
+            let field = &self.fields[index];
+            if !is_identifier(&field.as_name) {
+                return Err(MetricQueryError::Identifier(field.as_name.clone()));
+            }
+
+            let expression = match field.ratio(&selected)? {
+                Some(ratio) => ratio,
+                None => field.expression(over, qualifier, &mut binds)?,
+            };
+            selected.insert(field.as_name.as_str());
+            inner.push(format!("{expression} AS `{}`", field.as_name));
         }
-        parts.push(format!("{value} AS `value`"));
 
         let time = self.time_expression(&window, over, qualifier, &HashSet::new())?;
         let mut where_parts = Vec::with_capacity(self.filters.len() + 3);
@@ -765,18 +792,32 @@ impl MetricQuery {
                 .map(|person| FilterBind::Str(person.to_string())),
         );
 
-        let mut sql = format!(
-            "{}SELECT {} FROM {}{joins} WHERE {}",
-            people.prelude(&[personal.handle])?,
-            parts.join(", "),
+        let mut counted = format!(
+            "SELECT {} FROM {}{joins} WHERE {}",
+            inner.join(", "),
             self.table_source(over, qualifier, engine),
             where_parts.join(" AND ")
         );
-        if spread == Spread::PerPerson {
-            let _ = write!(sql, " GROUP BY `{alias}`.`person_id`");
-        }
-
         let valued = &self.fields[personal.value];
+        let outer = match spread {
+            Spread::PerPerson => {
+                let _ = write!(counted, " GROUP BY `{alias}`.`person_id`");
+
+                format!(
+                    "`{PERSON_COLUMN}` AS `person_id`, `{}` AS `value`",
+                    valued.as_name
+                )
+            }
+            Spread::Together => format!(
+                "if(`{ROWS_COLUMN}` = 0, NULL, `{}`) AS `value`",
+                valued.as_name
+            ),
+        };
+        let sql = format!(
+            "{}SELECT {outer} FROM ({counted})",
+            people.prelude(&[personal.handle])?
+        );
+
         let mut column_types = HashMap::from([(
             "value".to_owned(),
             match over {
@@ -835,28 +876,37 @@ impl MetricQuery {
         })
     }
 
-    fn value_expression(
-        &self,
-        index: usize,
-        over: Option<Over<'_>>,
-        qualifier: Option<&str>,
-        binds: &mut Vec<FilterBind>,
-    ) -> Result<String, MetricQueryError> {
-        let field = &self.fields[index];
-        let Some((numerator, denominator)) = field.divided()? else {
-            return field.expression(over, qualifier, binds);
-        };
-
-        let mut divided = Vec::with_capacity(2);
-        for name in [numerator, denominator] {
-            let earlier = self.fields[..index]
-                .iter()
-                .rposition(|field| field.as_name == name)
-                .ok_or_else(|| field.divides_no_earlier(name))?;
-            divided.push(self.value_expression(earlier, over, qualifier, binds)?);
+    fn needed_for(&self, value: usize) -> Result<Vec<usize>, MetricQueryError> {
+        let mut needed = vec![false; value + 1];
+        if let Some(last) = needed.last_mut() {
+            *last = true;
         }
 
-        Ok(field.division(&divided[0], &divided[1]))
+        for index in (0..=value).rev() {
+            if !needed.get(index).copied().unwrap_or(false) {
+                continue;
+            }
+            let field = &self.fields[index];
+            let Some((numerator, denominator)) = field.divided()? else {
+                continue;
+            };
+
+            for name in [numerator, denominator] {
+                let earlier = self.fields[..index]
+                    .iter()
+                    .rposition(|field| field.as_name == name)
+                    .ok_or_else(|| field.divides_no_earlier(name))?;
+                if let Some(marked) = needed.get_mut(earlier) {
+                    *marked = true;
+                }
+            }
+        }
+
+        Ok(needed
+            .iter()
+            .enumerate()
+            .filter_map(|(index, needed)| needed.then_some(index))
+            .collect())
     }
 
     fn record_fields(&self) -> impl Iterator<Item = (usize, &Field)> {

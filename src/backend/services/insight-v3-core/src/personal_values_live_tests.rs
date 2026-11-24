@@ -52,8 +52,8 @@ async fn stand_or_skip() -> Option<Stand> {
         &client,
         &format!(
             "CREATE TABLE {database}.observations (author_email String, \
-             measure_key String, value Int64, branch String, observed_at DateTime) \
-             ENGINE = MergeTree ORDER BY observed_at"
+             author_person_id String, measure_key String, value Int64, branch String, \
+             observed_at DateTime) ENGINE = MergeTree ORDER BY observed_at"
         ),
     )
     .await;
@@ -72,13 +72,22 @@ impl Stand {
     async fn seed(&self) {
         let mut persons = Vec::new();
         for (seed, name) in [(1, "alice"), (2, "bob"), (3, "carol"), (4, "dave")] {
-            let id = person(seed);
             persons.push(format!(
-                "('display_name', '{} Example', toUUID('{id}'), now64(6))",
-                capitalized(name)
+                "('display_name', '{} Example', toUUID('{}'), now64(6))",
+                capitalized(name),
+                person(seed)
             ));
+        }
+        for (seed, name) in [
+            (1, "alice"),
+            (2, "bob"),
+            (3, "carol"),
+            (4, "dave"),
+            (5, "erin"),
+        ] {
             persons.push(format!(
-                "('email', '{name}@example.com', toUUID('{id}'), now64(6))"
+                "('email', '{name}@example.com', toUUID('{}'), now64(6))",
+                person(seed)
             ));
         }
         execute(
@@ -92,23 +101,32 @@ impl Stand {
         )
         .await;
 
-        let observations = [
-            "('alice@example.com', 'lines', 10, 'main', '2026-09-02 10:00:00')",
-            "('alice@example.com', 'lines', 5, 'main', '2026-09-03 10:00:00')",
-            "('alice@example.com', 'lines', 100, 'dev', '2026-09-03 11:00:00')",
-            "('alice@example.com', 'lines', 1000, 'main', '2026-08-01 10:00:00')",
-            "('alice@example.com', 'gate_passed', 3, 'main', '2026-09-04 10:00:00')",
-            "('alice@example.com', 'gate_runs', 4, 'main', '2026-09-04 10:00:00')",
-            "('bob@example.com', 'lines', 7, 'main', '2026-09-05 10:00:00')",
-            "('bob@example.com', 'gate_passed', 1, 'main', '2026-09-05 10:00:00')",
-            "('bob@example.com', 'gate_runs', 2, 'main', '2026-09-05 10:00:00')",
-            "('carol@example.com', 'lines', 50, 'main', '2026-09-05 10:00:00')",
-        ];
+        let observations: Vec<String> = [
+            (1, "alice", "lines", 10, "main", "2026-09-02 10:00:00"),
+            (1, "alice", "lines", 5, "main", "2026-09-03 10:00:00"),
+            (1, "alice", "lines", 100, "dev", "2026-09-03 11:00:00"),
+            (1, "alice", "lines", 1000, "main", "2026-08-01 10:00:00"),
+            (1, "alice", "gate_passed", 3, "main", "2026-09-04 10:00:00"),
+            (1, "alice", "gate_runs", 4, "main", "2026-09-04 10:00:00"),
+            (2, "bob", "lines", 7, "main", "2026-09-05 10:00:00"),
+            (2, "bob", "gate_passed", 1, "main", "2026-09-05 10:00:00"),
+            (2, "bob", "gate_runs", 2, "main", "2026-09-05 10:00:00"),
+            (3, "carol", "lines", 50, "main", "2026-09-05 10:00:00"),
+            (5, "erin", "lines", 9, "main", "2026-09-06 10:00:00"),
+        ]
+        .iter()
+        .map(|(seed, name, measure, value, branch, at)| {
+            format!(
+                "('{name}@example.com', '{}', '{measure}', {value}, '{branch}', '{at}')",
+                person(*seed)
+            )
+        })
+        .collect();
         execute(
             &self.client,
             &format!(
-                "INSERT INTO {}.observations \
-                 (author_email, measure_key, value, branch, observed_at) VALUES {}",
+                "INSERT INTO {}.observations (author_email, author_person_id, measure_key, \
+                 value, branch, observed_at) VALUES {}",
                 self.database,
                 observations.join(", ")
             ),
@@ -117,9 +135,16 @@ impl Stand {
     }
 
     fn metric(&self, value_fields: &Value) -> MetricQuery {
-        let mut fields = vec![json!({
-            "column": "author_email", "type": "string", "as_name": "author", "person": "email"
-        })];
+        self.metric_by(
+            json!({
+                "column": "author_email", "type": "string", "as_name": "author", "person": "email"
+            }),
+            value_fields,
+        )
+    }
+
+    fn metric_by(&self, person_field: Value, value_fields: &Value) -> MetricQuery {
+        let mut fields = vec![person_field];
         fields.extend(value_fields.as_array().cloned().unwrap_or_default());
 
         serde_json::from_value(json!({
@@ -370,6 +395,95 @@ async fn personal_records_list_the_rows_behind_one_persons_value() {
             ],
         ]
     );
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn a_person_without_a_display_name_still_has_a_value() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    let by_email = stand.metric(&lines());
+    let by_id = stand.metric_by(
+        json!({
+            "column": "author_person_id", "type": "string", "as_name": "author", "person": "id"
+        }),
+        &lines(),
+    );
+
+    for metric in [&by_email, &by_id] {
+        let compiled = metric
+            .personal_values(
+                &marked("lines"),
+                &[person(5)],
+                &september_week(),
+                stand.runner.people(),
+                TableEngine::MergeTree,
+                None,
+            )
+            .unwrap_or_else(|error| panic!("the personal values compile: {error}"));
+
+        assert_eq!(
+            by_person(&stand.run(&compiled).await),
+            vec![(person(5).to_string(), json!(9))]
+        );
+    }
+
+    let records = by_email
+        .personal_records(
+            &marked("lines"),
+            person(5),
+            &september_week(),
+            stand.runner.people(),
+            TableEngine::MergeTree,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("the personal records compile: {error}"));
+    assert_eq!(
+        stand.run(&records).await.rows,
+        vec![vec![
+            json!("2026-09-06 10:00:00"),
+            json!("erin@example.com"),
+            json!(9)
+        ]]
+    );
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn a_team_with_no_rows_answers_null_for_every_aggregate() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    let mut fields = vec![json!({ "agg": "count", "type": "int", "as_name": "counted" })];
+    for agg in ["sum", "min", "max", "avg"] {
+        fields.push(json!({ "column": "value", "type": "int", "agg": agg, "as_name": agg }));
+    }
+    fields.extend(pass_rate().as_array().cloned().unwrap_or_default());
+    let metric = stand.metric(&Value::Array(fields));
+
+    for value_field in ["counted", "sum", "min", "max", "avg", "pass_rate"] {
+        let compiled = metric
+            .team_value(
+                &marked(value_field),
+                &[person(4)],
+                &september_week(),
+                stand.runner.people(),
+                TableEngine::MergeTree,
+                None,
+            )
+            .unwrap_or_else(|error| panic!("the team value compiles: {error}"));
+
+        assert_eq!(
+            only_value(&stand.run(&compiled).await),
+            Value::Null,
+            "{value_field}"
+        );
+    }
 
     stand.drop_database().await;
 }
