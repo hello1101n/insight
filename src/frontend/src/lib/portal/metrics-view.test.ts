@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
+import { GROUPS } from "@/lib/insight/groups";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
 import { identityPerson, pid } from "@/test/identity";
 
 import {
+  DEFAULT_METRIC_KEYS,
   chunkKeys,
   compareGaps,
+  defaultMetricKeys,
   formatGap,
   headerUnit,
   rolesById,
@@ -111,6 +114,38 @@ describe("metricsViewCatalog", () => {
       "collab.messages",
       "ai.sessions",
     ]);
+  });
+});
+
+describe("DEFAULT_METRIC_KEYS", () => {
+  it("names the metrics competitors show most", () => {
+    expect([...DEFAULT_METRIC_KEYS]).toEqual([
+      "git.default_branch_prs_merged",
+      "git.default_branch_commits",
+      "git.pr_size",
+      "git.pr_cycle_time_h",
+      "git.first_review_time_h",
+      "git.review_coverage",
+      "git.reviews_performed",
+      "tasks.closed",
+      "ai.active_days",
+    ]);
+  });
+
+  it("names only metrics a person section offers", () => {
+    const offered = new Set(
+      GROUPS.flatMap((group) => group.collection.metrics.map((metric) => metric.key)),
+    );
+
+    expect(DEFAULT_METRIC_KEYS.filter((key) => !offered.has(key))).toEqual([]);
+  });
+});
+
+describe("defaultMetricKeys", () => {
+  it("keeps the catalog keys that are defaults, in catalog order", () => {
+    expect(
+      defaultMetricKeys(["git.pr_size", "collab.messages_sent", "tasks.closed", "custom.x"]),
+    ).toEqual(["git.pr_size", "tasks.closed"]);
   });
 });
 

@@ -33,6 +33,7 @@ import { normalizePersonId } from "@/lib/metrics/entity";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
 import {
   compareTeams,
+  defaultMetricKeys,
   rolesById,
   keysWithData,
   metricGroups,
@@ -107,7 +108,8 @@ export function MetricsView() {
       { metrics: next == null ? undefined : next.length === 0 ? "none" : next.join(",") },
       { replace: true },
     );
-  const selected = picked ?? catalogKeys;
+  const defaultKeys = useMemo(() => defaultMetricKeys(catalogKeys), [catalogKeys]);
+  const selected = picked ?? defaultKeys;
   const setSelected = (action: SetStateAction<string[]>) =>
     setPicked(typeof action === "function" ? action(selected) : action);
   const metricKeys = useMemo(() => {
@@ -189,7 +191,7 @@ export function MetricsView() {
                 variant="ghost"
                 size="sm"
                 aria-label={t("metrics_view.select_all_metrics")}
-                onClick={() => setPicked(null)}
+                onClick={() => setPicked(catalogKeys)}
               >
                 {t("metrics_view.select_all")}
               </Button>

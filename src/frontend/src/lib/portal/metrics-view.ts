@@ -29,6 +29,23 @@ export interface MetricGroup {
 
 export type SortDirection = "ascending" | "descending";
 
+export const DEFAULT_METRIC_KEYS: readonly string[] = [
+  "git.default_branch_prs_merged",
+  "git.default_branch_commits",
+  "git.pr_size",
+  "git.pr_cycle_time_h",
+  "git.first_review_time_h",
+  "git.review_coverage",
+  "git.reviews_performed",
+  "tasks.closed",
+  "ai.active_days",
+];
+
+export function defaultMetricKeys(catalogKeys: readonly string[]): string[] {
+  const defaults = new Set(DEFAULT_METRIC_KEYS);
+  return catalogKeys.filter((key) => defaults.has(key));
+}
+
 function servesData(metric: MetricDefinition): boolean {
   if (metric.schema_status === "error") return false;
   return metric.origin === "custom" || metric.last_observed_date != null;
