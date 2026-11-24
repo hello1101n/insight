@@ -112,7 +112,8 @@ Bronze checks available CPU and memory on each eligible node before it submits a
 The trigger checks the initial submission. The poll step checks a resubmission after an Argo retry.
 An unscheduled Airbyte job pod also delays submission.
 When capacity is insufficient, Bronze keeps its slot and checks again every 15 seconds.
-A continuous check outage stops the step after the period in `ingestion.airbyteSync.launchUnreadableSeconds`.
+The step stops if `ingestion.airbyteSync.launchUnreadableSeconds` elapses without a sync submission or a no-fit check with a recorded wait.
+The exit log names the operation and the last error.
 The Connectors page shows `Waiting for cluster capacity` and includes this interval in queued time.
 
 The trigger and poll steps share an account that lists pods across namespaces.

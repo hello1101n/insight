@@ -39,8 +39,8 @@ pub(super) async fn save(
     ordered.sort_unstable_by_key(|stage| (stage.stage, stage.attempt));
     for stage in ordered {
         let key = stage.key();
-        if stage.stage == "bronze" {
-            scope_bronze_attempt(&tx, run, stage, &key).await?;
+        if stage.stage == "bronze" && !prepare_bronze_attempt(&tx, run, stage, &key).await? {
+            continue;
         }
         save_stage(&tx, &run.uid, stage, &key, now).await?;
     }
@@ -61,12 +61,12 @@ pub(super) async fn save(
     tx.commit().await
 }
 
-async fn scope_bronze_attempt(
+async fn prepare_bronze_attempt(
     tx: &DatabaseTransaction,
     run: &RunSnapshot,
     stage: &StageSnapshot,
     key: &str,
-) -> Result<(), DbErr> {
+) -> Result<bool, DbErr> {
     let execution = stage.bronze_execution.unwrap_or(run.created_at);
     let previous_key = tx
         .query_one_raw(sql(
@@ -94,8 +94,19 @@ async fn scope_bronze_attempt(
             ))
             .await?;
         }
+        return Ok(true);
     }
-    Ok(())
+
+    if !stage.bronze_is_provisional {
+        return Ok(true);
+    }
+    let previous_attempt = tx
+        .query_one_raw(sql(
+            "SELECT 1 FROM ingestion_stage_attempts WHERE sync_id=? AND stage='bronze' LIMIT 1",
+            vec![run.uid.clone().into()],
+        ))
+        .await?;
+    Ok(previous_attempt.is_none())
 }
 
 fn merge_waits(waits: &mut Vec<StageWait>, stage: &StageSnapshot, now: DateTime<Utc>) {

@@ -195,7 +195,7 @@ def main() -> int:
                 return 1
             job_id = result.job_id
         except CapacityUnreadable as error:
-            log.error(str(error))
+            log.error(str(error), extra=error.log_fields)
             return UNREADABLE
         except CapacityConfigurationError as error:
             log.error("The Airbyte capacity check stopped.", extra={"detail": str(error)})

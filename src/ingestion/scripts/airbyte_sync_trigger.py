@@ -43,7 +43,7 @@ from airbyte_launch import (
     read_claim,
 )
 from airbyte_resources import AirbyteResources, Sizes, parse
-from api_response import connection_error, parse_response, transient_error
+from api_response import capacity_check_enabled, parse_response, transient_error
 from capacity_lease import CapacityConfigurationError, HeldLease, LeaseLost
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints, ValidationError
 
@@ -113,7 +113,8 @@ def jobs(url: str, connection: UUID, token: str) -> tuple[int, ...]:
     query = urllib.parse.urlencode(
         {"connectionId": str(connection), "jobType": "sync", "limit": 2, "orderBy": "createdAt|DESC"}
     )
-    return parse_response(JobList, request(f"{url}/api/public/v1/jobs?{query}", token)).ids(connection)
+    raw = request(f"{url}/api/public/v1/jobs?{query}", token)
+    return parse_response(JobList, raw, enabled=capacity_check_enabled()).ids(connection)
 
 
 def triggered_job_id(body: bytes) -> int | str | None:
@@ -167,7 +168,8 @@ def finished_job(url: str, claim: Launch, *, strict: bool) -> bool:
         return False
     body = json.dumps({"id": claim.job_id}).encode()
     try:
-        job = parse_response(JobStatusResponse, request(f"{url}/api/v1/jobs/get", oauth_token(), body)).job
+        raw = request(f"{url}/api/v1/jobs/get", oauth_token(), body)
+        job = parse_response(JobStatusResponse, raw, enabled=capacity_check_enabled()).job
     except (OSError, ValueError, KeyError):
         if strict:
             raise
@@ -281,7 +283,7 @@ def write_claim(
         else:
             store.write(metadata, claim, timeout=CLAIM_WRITE_TIMEOUT_SECONDS)
     except OSError as error:
-        if not connection_error(error):
+        if not transient_error(error):
             raise
         current = store.read()
         if current.started_at != claim.workflow_started_at or read_claim(current, claim.connection) != claim:
@@ -311,6 +313,7 @@ def launch(
     while conflicts < WRITE_ATTEMPTS:
         started = time.monotonic()
         claim_written = False
+        operation = "Read the Workflow"
         try:
             if read_deadline is not None and (initial_read or not capacity_enabled):
                 metadata = store.read_until(read_deadline)
@@ -321,6 +324,7 @@ def launch(
                 raise RuntimeError("Workflow start is unavailable")
             prior = read_claim(metadata, connection)
             previous_job = None
+            operation = "Check the previous Airbyte job"
             if prior is not None and (
                 prior.workflow_started_at == metadata.started_at
                 or (
@@ -337,23 +341,28 @@ def launch(
             attempt = next_attempt(metadata, prior, capacity=capacity_enabled)
             if capacity_enabled and capacity is None:
                 capacity = Admission(store)
+            operation = "Acquire the capacity Lease"
             lease = capacity.lease.take() if capacity is not None else None
             if capacity is not None and lease is None:
-                outage.missed(started, "Lease contention")
+                outage.missed(started, operation, LeaseLost("The capacity Lease is held."))
                 continue
 
             with lease if lease is not None else nullcontext():
+                operation = "Read Airbyte credentials"
                 token = oauth_token()
+                operation = "Prepare the Airbyte sync"
                 previous_job = prepare(url, token, connection, previous_job, sizes)
                 estimated = None
                 has_capacity = True
                 if capacity is not None:
+                    operation = "Estimate the Airbyte pod request"
                     estimated = estimate(AirbyteResources(request, url), token, connection, capacity.settings.requests)
+                    operation = "Check the capacity of the cluster"
                     has_capacity = capacity.fits(estimated)
-                    outage.checked()
                 if has_capacity:
                     wait = capacity_wait(metadata, attempt) if capacity is not None else None
                     if lease is not None:
+                        operation = "Check the Lease submission budget"
                         lease.ensure_held(CLAIM_WRITE_TIMEOUT_SECONDS + REQUEST_TIMEOUT_SECONDS)
                     now = time.time()
                     claim = Launch(
@@ -366,6 +375,7 @@ def launch(
                         read_deadline=now + unreadable_window,
                         estimated_pod_request=estimated,
                     )
+                    operation = "Write the Workflow launch claim"
                     try:
                         write_claim(store, metadata, claim, wait, lease)
                     except urllib.error.HTTPError as error:
@@ -382,6 +392,7 @@ def launch(
                         result = observe_launch(result, capacity, lease, observation_deadline)
                     return save_receipt(store, claim, result)
 
+            operation = "Record the Workflow capacity wait"
             try:
                 start_wait(store, metadata, attempt)
             except urllib.error.HTTPError as error:
@@ -389,6 +400,7 @@ def launch(
                     raise
                 conflicts += 1
                 continue
+            outage.progressed()
             if lease is not None and (error := lease.error) is not None:
                 if not (isinstance(error, LeaseLost) or transient_error(error)):
                     raise error
@@ -402,7 +414,7 @@ def launch(
                 raise
             if not capacity_enabled or not (isinstance(error, LeaseLost) or transient_error(error)):
                 raise
-            outage.missed(started, type(error).__name__)
+            outage.missed(started, operation, error)
         else:
             time.sleep(CHECK_INTERVAL_SECONDS)
 
@@ -419,7 +431,6 @@ def workflow_launch(
         raise ValueError("Airbyte launch windows must be positive")
     sizes = parse(Sizes, os.environ["SYNC_RESOURCES"]) if "SYNC_RESOURCES" in os.environ else None
     store = WorkflowLaunch()
-    capacity_enabled = os.environ.get("AIRBYTE_CAPACITY_CHECK_ENABLED") == "true"
     return launch(
         store,
         url,
@@ -429,7 +440,7 @@ def workflow_launch(
         trigger_receipt,
         workflow_read_seconds=workflow_read_seconds,
         sizes=sizes,
-        capacity_enabled=capacity_enabled,
+        capacity_enabled=capacity_check_enabled(),
     )
 
 
@@ -462,7 +473,7 @@ def main() -> int:
         result = workflow_launch(airbyte_api_url())
         exit_code = report_launch(result)
     except CapacityUnreadable as error:
-        log.error(str(error))
+        log.error(str(error), extra=error.log_fields)
         return UNREADABLE
     except CapacityConfigurationError as error:
         log.error("The Airbyte capacity check stopped.", extra={"detail": str(error)})

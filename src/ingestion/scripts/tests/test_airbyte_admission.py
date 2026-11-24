@@ -892,3 +892,131 @@ def test_no_fit_records_the_wait_even_when_the_lease_release_fails(
     assert trigger.main() == (0 if status == 503 else trigger.CAPACITY_CONFIGURATION)
     assert fixture.events.count("wait-start") == 1
     assert fixture.events.index("release") < fixture.events.index("wait-start")
+
+
+@pytest.mark.parametrize("fault", [408, 429, 500, 504, b'{"metadata":'], ids=["408", "429", "500", "504", "body"])
+def test_applied_claim_with_a_transient_patch_response_sends_once(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch, fault: int | bytes
+) -> None:
+    elapsed = 0.0
+    monkeypatch.setattr(trigger.time, "time", lambda: elapsed)
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+
+    def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        reply = fixture.urlopen(request, **kwargs)
+        if request.get_method() == "PATCH" and request.full_url.endswith("/workflows/example"):
+            saved = Launch.model_validate_json(fixture.workflow[ANNOTATION])
+            if saved.outcome == "pending":
+                if isinstance(fault, int):
+                    raise http_error(fault)
+                return io.BytesIO(fault)
+        return reply
+
+    monkeypatch.setattr(trigger.time, "sleep", sleep)
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+    assert trigger.main() == 0
+    assert fixture.events.count("pending") == fixture.events.count("sync") == 1
+    assert Launch.model_validate_json(fixture.workflow[ANNOTATION]).outcome == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("failure", "operation", "error_detail"),
+    [
+        ("wait", "Record the Workflow capacity wait", "HTTP 503"),
+        ("claim", "Write the Workflow launch claim", "HTTP 503"),
+        ("lease", "Check the Lease submission budget", "The capacity Lease cannot cover submission."),
+    ],
+)
+def test_admission_outage_limit_requires_progress(
+    fixture: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+    operation: str,
+    error_detail: str,
+) -> None:
+    elapsed = 0.0
+    monkeypatch.setenv("LAUNCH_UNREADABLE_SECONDS", "31")
+    monkeypatch.setattr(trigger.time, "monotonic", lambda: elapsed)
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+        assert elapsed <= 31, f"{failure} exceeded the outage limit"
+
+    def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.get_method() == "PATCH" and request.full_url.endswith("/workflows/example"):
+            raise http_error(500 + fixture.events.count("nodes"))
+        return fixture.urlopen(request, **kwargs)
+
+    def lose_lease(_lease: capacity_lease.HeldLease, minimum: float) -> None:
+        assert minimum == 35
+        raise capacity_lease.LeaseLost("The capacity Lease cannot cover submission.")
+
+    if failure == "wait":
+        fixture.nodes = iter(["4Gi"] * 4)
+    if failure == "lease":
+        monkeypatch.setattr(capacity_lease.HeldLease, "ensure_held", lose_lease)
+    monkeypatch.setattr(trigger.time, "sleep", sleep)
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+    assert trigger.main() == trigger.UNREADABLE
+    assert elapsed == 31 and fixture.events.count("nodes") == 3
+    assert fixture.workflow == {} and "sync" not in fixture.events
+    logs = [json.loads(line)["fields"] for line in capsys.readouterr().err.splitlines()]
+    expired = [entry for entry in logs if "outage limit" in entry["message"]]
+    assert len(expired) == 1
+    assert expired[0]["operation"] == operation and error_detail in expired[0]["detail"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        ssl.SSLCertVerificationError("example certificate error"),
+        urllib.error.URLError(ssl.SSLCertVerificationError("example certificate error")),
+        b'{"items":null}',
+    ],
+    ids=["certificate", "wrapped-certificate", "valid-json-wrong-shape"],
+)
+def test_permanent_capacity_api_errors_exit_without_retry(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch, fault: OSError | bytes
+) -> None:
+    def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if urllib.parse.urlsplit(request.full_url).path == "/api/v1/nodes":
+            if isinstance(fault, OSError):
+                raise fault
+            return io.BytesIO(fault)
+        return fixture.urlopen(request, **kwargs)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(trigger.time, "sleep", lambda _seconds: pytest.fail("a permanent API error retried"))
+
+    assert trigger.main() == 1
+    assert fixture.workflow == {} and "sync" not in fixture.events
+
+
+def test_switch_off_missing_secret_data_reports_key_error(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "token").write_text("example-token")
+    monkeypatch.setenv("AIRBYTE_CAPACITY_CHECK_ENABLED", "false")
+    monkeypatch.setenv("AIRBYTE_AUTH_SECRET_NAME", "example")
+    monkeypatch.setattr(airbyte_auth, "_SA_DIR", tmp_path)
+    context = ssl.create_default_context()
+    monkeypatch.setattr(ssl, "create_default_context", lambda **_kwargs: context)
+    monkeypatch.setattr(trigger, "oauth_token", airbyte_auth.oauth_token)
+
+    def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.full_url.endswith("/secrets/example"):
+            return io.BytesIO(b'{"metadata":{"name":"example"}}')
+        return fixture.urlopen(request, **kwargs)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+    assert trigger.main() == 1
+    assert json.loads(capsys.readouterr().err)["fields"]["error_type"] == "KeyError"
+    assert fixture.events == []

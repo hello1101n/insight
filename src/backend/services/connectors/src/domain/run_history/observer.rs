@@ -172,9 +172,10 @@ async fn record(
     };
 
     run.stages = nodes::transforms(status, &observed_pods, run.finished_at);
-    if has_bronze {
-        let (mut load, lookup) =
-            bronze::observation(workflow, run.created_at, &observed_pods, run.finished_at);
+    if has_bronze
+        && let Some((mut load, lookup)) =
+            bronze::current_observation(workflow, run.created_at, &observed_pods, run.finished_at)
+    {
         observe_bronze(state, http, &mut load, lookup).await;
         run.stages.push(load);
     }

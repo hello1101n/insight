@@ -811,3 +811,155 @@ fn bronze_attempt_one_is_scoped_to_each_workflow_execution() -> Result<()> {
     );
     Ok(())
 }
+
+fn transform_retry_workflow() -> Result<DynamicObject> {
+    let mut receipt = bronze_launch_mark(1, 1, 19);
+    let uid = uuid::Uuid::new_v4();
+    receipt["workflow_uid"] = json!(uid);
+    let evidence = json!({
+        "job_id":19, "status":"succeeded", "started_at":at(2).timestamp(),
+        "ended_at":at(3).timestamp(), "records_reported":42,
+    });
+    let mut wf = workflow(&json!({
+        "phase":"Failed", "startedAt":at(1), "finishedAt":at(5), "nodes":{
+            "sync":{"id":"sync", "type":"Steps", "phase":"Succeeded", "startedAt":at(1), "finishedAt":at(3)},
+            "trigger":{"id":"trigger", "type":"Pod", "templateName":"trigger-sync", "phase":"Succeeded",
+                "startedAt":at(1), "finishedAt":at(2),
+                "outputs":{"result":"19","parameters":[{"name":"airbyte-launch-evidence","value":receipt.to_string()}]}},
+            "poll":{"id":"poll", "type":"Pod", "templateName":"poll-job", "phase":"Succeeded",
+                "startedAt":at(2), "finishedAt":at(3),
+                "inputs":{"parameters":[{"name":"job_id","value":"19"}]},
+                "outputs":{"parameters":[{"name":"airbyte-evidence","value":evidence.to_string()}]}},
+            "transform":{"id":"transform", "type":"Pod", "displayName":"transform-jira-staging",
+                "phase":"Failed", "startedAt":at(4), "finishedAt":at(5)}
+        }
+    }))?;
+    wf.metadata.uid = Some(uid.to_string());
+    wf.metadata.annotations = Some(
+        [(
+            "insight.cyberfabric.com/airbyte-launch".into(),
+            receipt.to_string(),
+        )]
+        .into(),
+    );
+    Ok(wf)
+}
+
+fn retry_transform(wf: &mut DynamicObject, finished_at: Option<DateTime<Utc>>) {
+    let status = &mut wf.data["status"];
+    let phase = if finished_at.is_some() {
+        "Succeeded"
+    } else {
+        "Running"
+    };
+    status["phase"] = json!(phase);
+    status["startedAt"] = json!(at(6));
+    status["finishedAt"] = json!(finished_at);
+    status["nodes"]["transform"]["phase"] = json!(phase);
+    status["nodes"]["transform"]["startedAt"] = json!(at(6));
+    status["nodes"]["transform"]["finishedAt"] = json!(finished_at);
+}
+
+#[test]
+fn bronze_observation_ignores_the_retained_sync_on_a_transform_retry() -> Result<()> {
+    let mut wf = transform_retry_workflow()?;
+    let pods = HashMap::new();
+    let (first, lookup) = bronze::current_observation(&wf, at(1), &pods, Some(at(5)))
+        .context("missing the first Bronze execution")?;
+    assert_eq!(
+        (first.status, first.job, lookup),
+        ("succeeded", Some(19), false)
+    );
+
+    for end in [None, Some(at(7))] {
+        retry_transform(&mut wf, end);
+        assert!(
+            bronze::current_observation(&wf, at(1), &pods, end).is_none(),
+            "transform retry ending at {end:?}"
+        );
+    }
+
+    retry_transform(&mut wf, None);
+    for template in ["trigger-sync", "poll-job"] {
+        wf.data["status"]["nodes"]["new-bronze-step"] = json!({
+            "type":"Pod", "templateName":template, "phase":"Running", "startedAt":at(6)
+        });
+        let (retry, _) = bronze::current_observation(&wf, at(1), &pods, None)
+            .context("missing the retry Bronze execution")?;
+        assert_ne!(retry.key(), first.key(), "{template}");
+    }
+    wf.data["status"]["nodes"]["new-bronze-step"] = Value::Null;
+    let mut wait: Value = serde_json::from_str(&bronze_capacity_marker(6, 2, 7, None))?;
+    wait["workflow_uid"] = json!(wf.metadata.uid);
+    wf.metadata.annotations.get_or_insert_default().insert(
+        "insight.cyberfabric.com/airbyte-capacity-wait".into(),
+        wait.to_string(),
+    );
+    let (retry, _) = bronze::current_observation(&wf, at(1), &pods, None)
+        .context("missing the retry capacity wait")?;
+    assert_ne!(retry.key(), first.key());
+    assert_eq!(retry.status, "queued");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn history_keeps_the_succeeded_bronze_attempt_when_only_transform_retries() -> Result<()> {
+    use sea_orm::Database;
+    use sea_orm_migration::MigratorTrait;
+
+    use crate::domain::run_history::history;
+    use crate::migration::Migrator;
+
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let initial = transform_retry_workflow()?;
+    let pods = HashMap::new();
+    let mut first = None;
+    for (now, execution, end, retained) in [
+        (5, 1, Some(at(5)), true),
+        (6, 6, None, true),
+        (6, 6, None, false),
+        (7, 6, Some(at(7)), true),
+    ] {
+        let mut wf = initial.clone();
+        if execution == 6 {
+            retry_transform(&mut wf, end);
+        }
+        if !retained {
+            let transform = wf.data["status"]["nodes"]["transform"].clone();
+            wf.data["status"]["nodes"] = json!({"transform": transform});
+            wf.metadata.annotations = None;
+        }
+        let (mut run, has_bronze) = identity(&wf, at(now), false).context("missing the run")?;
+        assert!(has_bronze);
+        run.stages = nodes::transforms(&wf.data["status"], &pods, run.finished_at);
+        run.stages.extend(
+            bronze::current_observation(&wf, run.created_at, &pods, run.finished_at)
+                .map(|(stage, _)| stage),
+        );
+        store::save(&db, &stand, &run, at(now)).await?;
+
+        let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("example")).await?;
+        let run = &result[0];
+        assert_eq!(run.execution_started_at, at(execution));
+        let bronze: Vec<_> = run
+            .stages
+            .iter()
+            .filter(|stage| stage.stage == "bronze")
+            .collect();
+        assert_eq!(
+            bronze.len(),
+            1,
+            "Bronze count at execution {execution}, time {now}, retained nodes {retained}"
+        );
+        assert_eq!(bronze[0].status, "succeeded");
+        assert_eq!(bronze[0].airbyte_job_id.as_deref(), Some("19"));
+        let stored = serde_json::to_value(bronze[0])?;
+        assert_eq!(first.get_or_insert_with(|| stored.clone()), &stored);
+        assert_eq!(run.records_reported, Some(42));
+        assert_eq!(run.load_ms, Some(3_600_000));
+    }
+    Ok(())
+}

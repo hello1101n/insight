@@ -66,6 +66,24 @@ fn latest_node<'a>(
         .max_by_key(|node| nodes::time(node, "startedAt"))
 }
 
+pub(super) fn current_observation(
+    wf: &DynamicObject,
+    queued_at: DateTime<Utc>,
+    pods: &HashMap<String, PodState>,
+    workflow_end: Option<DateTime<Utc>>,
+) -> Option<(StageSnapshot, bool)> {
+    let (stage, lookup) = observation(wf, queued_at, pods, workflow_end);
+    let retained = stage.bronze_is_provisional
+        && stage.bronze_execution.is_some_and(|execution| {
+            nodes::nodes(&wf.data["status"]).any(|node| {
+                node["type"] == "Pod"
+                    && matches!(nodes::template(node), Some("trigger-sync" | "poll-job"))
+                    && nodes::time(node, "startedAt").is_some_and(|started| started < execution)
+            })
+        });
+    (!retained).then_some((stage, lookup))
+}
+
 pub(super) fn observation(
     wf: &DynamicObject,
     queued_at: DateTime<Utc>,
@@ -75,12 +93,7 @@ pub(super) fn observation(
     let status = &wf.data["status"];
     let execution = nodes::time(status, "startedAt");
     let capacity = capacity_wait(wf);
-    let launch = receipt(wf, execution).filter(|receipt| {
-        capacity.as_ref().is_none_or(|wait| {
-            receipt.workflow_started_at == wait.workflow_started_at
-                && receipt.attempt >= wait.attempt
-        })
-    });
+    let launch = receipt(wf, execution, capacity.as_ref());
     let trigger = latest_node(status, "trigger-sync", execution);
     let resolve = latest_node(status, "resolve-connection-by-name", execution);
     let poll = latest_node(status, "poll-job", execution);
@@ -109,6 +122,8 @@ pub(super) fn observation(
         },
     );
     stage.bronze_execution = execution;
+    stage.bronze_is_provisional =
+        execution.is_none() || (trigger.is_none() && poll.is_none() && capacity.is_none());
     stage.connection = launch
         .as_ref()
         .map(|receipt| receipt.connection.to_string())
@@ -298,7 +313,11 @@ fn apply_argo_phase(
     }
 }
 
-fn receipt(wf: &DynamicObject, execution: Option<DateTime<Utc>>) -> Option<LaunchReceipt> {
+fn receipt(
+    wf: &DynamicObject,
+    execution: Option<DateTime<Utc>>,
+    capacity: Option<&CapacityWait>,
+) -> Option<LaunchReceipt> {
     let uid = wf.metadata.uid.as_deref()?.parse::<uuid::Uuid>().ok()?;
     let annotation = wf
         .metadata
@@ -317,6 +336,10 @@ fn receipt(wf: &DynamicObject, execution: Option<DateTime<Utc>>) -> Option<Launc
             receipt.workflow_uid == uid
                 && receipt.attempt > 0
                 && execution.is_none_or(|execution| receipt.workflow_started_at == execution)
+                && capacity.is_none_or(|wait| {
+                    receipt.workflow_started_at == wait.workflow_started_at
+                        && receipt.attempt >= wait.attempt
+                })
         })
         .max_by_key(|receipt| {
             (

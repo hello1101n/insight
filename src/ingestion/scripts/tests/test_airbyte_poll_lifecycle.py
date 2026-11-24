@@ -406,6 +406,35 @@ def test_capacity_poll_uses_the_status_deadline_for_its_initial_workflow_read(
     assert fixture.events == []
 
 
+def test_switch_off_poll_exits_on_the_first_unparsable_workflow_read(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    elapsed = 0.0
+    reads = []
+    monkeypatch.setenv("AIRBYTE_CAPACITY_CHECK_ENABLED", "false")
+    monkeypatch.setenv("WORKFLOW_UID", str(UID))
+    monkeypatch.setenv("JOB_ID", "20")
+    monkeypatch.setenv("POLL_INTERVAL_SECONDS", "15")
+    monkeypatch.setenv("STATUS_UNREADABLE_THRESHOLD_SECONDS", "5")
+    monkeypatch.setattr(poll.time, "monotonic", lambda: elapsed)
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+
+    def urlopen(request: poll.urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.full_url.endswith("/workflows/example"):
+            reads.append(request.get_method())
+            return io.BytesIO(b'{"status":')
+        return fixture.urlopen(request, **kwargs)
+
+    monkeypatch.setattr(poll.time, "sleep", sleep)
+    monkeypatch.setattr(poll.urllib.request, "urlopen", urlopen)
+
+    assert poll.main() == 1
+    assert reads == ["GET"] and elapsed == 0
+
+
 def test_capacity_poll_uses_status_outage_handling_for_a_purged_old_job(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

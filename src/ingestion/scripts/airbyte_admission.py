@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+import urllib.error
 import urllib.parse
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -111,7 +112,10 @@ class PodObservationTimeout(TimeoutError):
 
 
 class CapacityUnreadable(TimeoutError):
-    pass
+    def __init__(self, operation: str, error: OSError) -> None:
+        super().__init__("The Airbyte capacity check reached its outage limit.")
+        detail = f"HTTP {error.code}" if isinstance(error, urllib.error.HTTPError) else str(error)
+        self.log_fields = {"operation": operation, "detail": detail or type(error).__name__}
 
 
 class CheckOutage:
@@ -119,23 +123,22 @@ class CheckOutage:
         self.seconds = seconds
         self.since: float | None = None
 
-    def missed(self, started: float, detail: str) -> None:
+    def missed(self, started: float, operation: str, error: OSError) -> None:
         if self.since is None:
             self.since = started
         deadline = self.since + self.seconds
         remaining = deadline - time.monotonic()
-        self.ensure_within_limit()
+        failure = CapacityUnreadable(operation, error)
+        if remaining <= 0:
+            raise failure
         insight_logging.configure("airbyte-sync").warning(
-            "The Airbyte capacity check did not complete.", extra={"detail": detail}
+            "The Airbyte capacity check made no progress.", extra=failure.log_fields
         )
         time.sleep(min(CHECK_INTERVAL_SECONDS, remaining))
-        self.ensure_within_limit()
+        if time.monotonic() >= deadline:
+            raise failure
 
-    def ensure_within_limit(self) -> None:
-        if self.since is not None and time.monotonic() >= self.since + self.seconds:
-            raise CapacityUnreadable("No Airbyte capacity check completed within the outage limit.")
-
-    def checked(self) -> None:
+    def progressed(self) -> None:
         self.since = None
 
 

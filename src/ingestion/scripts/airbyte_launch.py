@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal, Self
 from uuid import UUID
 
-from api_response import parse_response, response_errors
+from api_response import capacity_check_enabled, parse_response, response_errors, transient_error
 from pod_capacity import PodRequest
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
@@ -114,9 +114,11 @@ class WorkflowLaunch:
                 "Content-Type": "application/merge-patch+json",
             },
         )
+        enabled = capacity_check_enabled()
+        errors = response_errors(enabled=enabled)
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        with response_errors(), urllib.request.urlopen(request, timeout=timeout, context=self.context) as response:
-            workflow = parse_response(Workflow, response.read())
+        with errors, urllib.request.urlopen(request, timeout=timeout, context=self.context) as response:
+            workflow = parse_response(Workflow, response.read(), enabled=enabled)
         metadata = workflow.metadata.model_copy(update={"started_at": workflow.status.started_at})
         if metadata.uid != self.uid:
             raise RuntimeError("Workflow UID changed")
@@ -127,14 +129,16 @@ class WorkflowLaunch:
 
     def read_until(self, deadline: float) -> WorkflowMetadata:
         delay = 1
+        enabled = capacity_check_enabled()
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 return self._request(timeout=min(remaining, REQUEST_TIMEOUT_SECONDS))
             except urllib.error.HTTPError as error:
                 if error.code not in (408, 429) and not 500 <= error.code < 600:
                     raise
-            except OSError:
-                pass
+            except OSError as error:
+                if enabled and not transient_error(error):
+                    raise
             time.sleep(max(0, min(delay, deadline - time.monotonic())))
             delay = min(delay * 2, MAX_READ_BACKOFF_SECONDS)
         raise WorkflowReadTimeout("The Workflow read outage reached its deadline")

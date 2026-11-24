@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from api_response import parse_response
+from api_response import capacity_check_enabled, parse_response
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 CPU = Annotated[int, Field(strict=True, ge=1, le=2**32 - 1)]
@@ -101,7 +101,8 @@ class AirbyteResources:
         self.url = url
 
     def call[Model: BaseModel](self, token: str, path: str, body: dict[str, JsonValue], model: type[Model]) -> Model:
-        return parse_response(model, self.request(f"{self.url}/api/v1/{path}", token, json.dumps(body).encode()))
+        raw = self.request(f"{self.url}/api/v1/{path}", token, json.dumps(body).encode())
+        return parse_response(model, raw) if capacity_check_enabled() else parse(model, raw)
 
     def _source(self, token: str, source_id: UUID) -> Source:
         source = self.call(token, "sources/get", {"sourceId": str(source_id)}, Source)

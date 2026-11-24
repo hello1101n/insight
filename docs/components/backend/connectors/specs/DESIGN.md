@@ -475,8 +475,8 @@ The history observer reads the parameter on the submitted Workflow and stores th
 The trigger or poll step records a capacity wait when no eligible node can fit the estimated Airbyte pod request.
 The launch claim closes the wait before job submission.
 The observer closes an open wait when the Workflow ends and keeps the stage outcome.
-The observer records a separate Bronze attempt for each Workflow execution.
-It uses the Workflow start time to distinguish attempts across Argo retries.
+The observer uses the Workflow start time to distinguish Bronze attempts across Argo retries.
+A retry adds a Bronze attempt only if it runs the trigger or poll step, or records a capacity wait.
 The observer uses the actual replication pod request from the launch receipt when available.
 The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
 It reads the query log by the stage's `log_comment`.
