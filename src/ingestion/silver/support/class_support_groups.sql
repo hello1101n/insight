@@ -1,4 +1,5 @@
 -- depends_on: {{ ref('zendesk__support_groups') }}
+-- depends_on: {{ ref('hubspot__support_groups') }}
 {{ config(
     materialized='table',
     schema='silver',

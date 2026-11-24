@@ -7,3 +7,5 @@ DROP TABLE IF EXISTS staging.zendesk__support_activity;
 DROP TABLE IF EXISTS staging.zendesk__support_agent;
 DROP TABLE IF EXISTS staging.zendesk__support_ticket;
 DROP TABLE IF EXISTS staging.zendesk__support_event;
+DROP TABLE IF EXISTS staging.hubspot__support_activity;
+DROP TABLE IF EXISTS staging.hubspot__support_ticket;

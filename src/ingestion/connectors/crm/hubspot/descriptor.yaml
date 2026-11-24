@@ -4,7 +4,10 @@ name: hubspot
 # 3.9.0: tickets and their property history also feed the support classes
 #   (dim_support_ticket, class_support_activity). MINOR: new staging models
 #   build whole on their first run; nothing already stored changes meaning.
-version: "3.10.0"
+# 3.11.0: the support models move to the class_support_* contract. MINOR:
+#   new staging tables that each run rebuilds whole; the old support classes
+#   and their models are dropped by the deploy hook.
+version: "3.11.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync

@@ -1,4 +1,5 @@
 -- depends_on: {{ ref('zendesk__support_ticket_field_history') }}
+-- depends_on: {{ ref('hubspot__support_ticket_field_history') }}
 {{ config(
     materialized='table',
     schema='silver',

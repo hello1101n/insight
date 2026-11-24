@@ -1,4 +1,5 @@
 -- depends_on: {{ ref('zendesk__support_field_definitions') }}
+-- depends_on: {{ ref('hubspot__support_field_definitions') }}
 {{ config(
     materialized='table',
     schema='silver',
