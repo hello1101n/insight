@@ -7,7 +7,7 @@ name: hubspot
 # 3.11.0: the support models move to the class_support_* contract. MINOR:
 #   new staging tables that each run rebuilds whole; the old support classes
 #   and their models are dropped by the deploy hook.
-version: "3.11.0"
+version: "3.12.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync
@@ -19,7 +19,7 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.24.09.40-01eb70a"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.24.13.03-17d28da"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"
