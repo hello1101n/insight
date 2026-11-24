@@ -133,12 +133,15 @@ export class SharedRequests {
   private readonly held = new Map<string, Promise<unknown>>();
   /** The held answers that ended in a rejection: a retry drops them, so the request goes out again. */
   private readonly rejected = new Set<Promise<unknown>>();
+  private readonly requests: Record<string, DashboardRequest>;
+  private readonly host: DashboardHost;
+  private readonly origin: string;
 
-  constructor(
-    private readonly requests: Record<string, DashboardRequest>,
-    private readonly host: DashboardHost,
-    private readonly origin: string,
-  ) {}
+  constructor(requests: Record<string, DashboardRequest>, host: DashboardHost, origin: string) {
+    this.requests = requests;
+    this.host = host;
+    this.origin = origin;
+  }
 
   has(name: string): boolean {
     return Object.hasOwn(this.requests, name);
