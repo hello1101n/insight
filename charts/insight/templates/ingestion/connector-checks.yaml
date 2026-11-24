@@ -39,6 +39,7 @@ spec:
       # as "$ENV_VAR", never spliced into shell, Python or YAML source.
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: dbt_select
           - name: connector
             default: ""
@@ -61,6 +62,7 @@ spec:
             valueFrom:
               path: /tmp/dbt-exit-code
               default: ""
+      podSpecPatch: {{ include "insight.syncResources.podPatch" "dbt" | quote }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         imagePullPolicy: IfNotPresent

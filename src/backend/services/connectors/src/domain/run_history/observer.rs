@@ -21,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use super::{RunSnapshot, StageSnapshot, WaitKind, store};
 use crate::api::AppState;
 use crate::domain::connector_health::{ConnectorName, SourceId, TenantId};
+use crate::domain::connector_schedules::resources::{PARAMETER, Resources};
 
 const PERIOD: Duration = Duration::from_secs(5);
 const RELIST_SECONDS: u32 = 30;
@@ -172,10 +173,12 @@ async fn record(
 
     run.stages = nodes::transforms(status, &observed_pods, run.finished_at);
     if has_bronze {
-        let mut load = bronze::snapshot(workflow, run.created_at, &observed_pods, run.finished_at);
-        observe_bronze(state, http, &mut load).await;
+        let (mut load, lookup) =
+            bronze::observation(workflow, run.created_at, &observed_pods, run.finished_at);
+        observe_bronze(state, http, &mut load, lookup).await;
         run.stages.push(load);
     }
+    observe_resources(workflow, &mut run.stages);
     timeout::apply(workflow, &mut run);
     if let Err(error) = store::save(&state.db, namespace, &run, now).await {
         tracing::warn!(%error, "Workflow history write failed.");
@@ -207,7 +210,7 @@ async fn record_missing(
             load.connection = entry.connection_id;
             load.job = Some(job);
             load.status = "loading";
-            observe_bronze(state, http, &mut load).await;
+            observe_bronze(state, http, &mut load, true).await;
             Some(load)
         } else {
             None
@@ -240,6 +243,24 @@ fn invocation(spec: &serde_json::Value) -> Option<(&serde_json::Value, bool)> {
         .flatten()
         .find(|step| step["templateRef"]["name"] == "ingestion-pipeline")?;
     Some((step, step["templateRef"]["template"] != "transform"))
+}
+
+fn observe_resources(workflow: &DynamicObject, stages: &mut [StageSnapshot]) {
+    let Some((invocation, _)) = invocation(&workflow.data["spec"]) else {
+        return;
+    };
+    let Some(raw) = nodes::parameter(invocation, "arguments", PARAMETER) else {
+        return;
+    };
+    match Resources::parse(raw) {
+        Ok(resources) => {
+            for stage in stages {
+                let used = resources.for_stage(stage.stage);
+                stage.resources = (!used.is_empty()).then_some(used);
+            }
+        }
+        Err(error) => tracing::warn!(%error, "The Workflow resource settings are invalid."),
+    }
 }
 
 fn identity(wf: &DynamicObject, now: DateTime<Utc>, deleted: bool) -> Option<(RunSnapshot, bool)> {
@@ -298,7 +319,12 @@ fn identity(wf: &DynamicObject, now: DateTime<Utc>, deleted: bool) -> Option<(Ru
     ))
 }
 
-async fn observe_bronze(state: &AppState, http: &reqwest::Client, load: &mut StageSnapshot) {
+async fn observe_bronze(
+    state: &AppState,
+    http: &reqwest::Client,
+    load: &mut StageSnapshot,
+    lookup: bool,
+) {
     let (Some(job), Some(connection), Some(client)) = (
         load.job,
         load.connection.as_deref().and_then(|v| v.parse().ok()),
@@ -307,15 +333,16 @@ async fn observe_bronze(state: &AppState, http: &reqwest::Client, load: &mut Sta
         return;
     };
     let placement = pods::airbyte(client, &state.cluster.airbyte_namespace, connection, job);
-    let placement = if load.finished_at.is_some() {
-        placement.await
-    } else {
+    let placement = if lookup {
         let (native, placement) =
             tokio::join!(airbyte::job(state, http, job, connection), placement);
         if let Ok(evidence) = native {
-            evidence.apply(load, None);
+            let fallback_end = load.finished_at;
+            evidence.apply(load, fallback_end);
         }
         placement
+    } else {
+        placement.await
     };
 
     if let Ok(pod) = placement {

@@ -19,6 +19,7 @@ spec:
       #  bash. See ingestion-templates SECURITY notes in DESIGN.md.
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: stage_name
             default: ""
           - name: lock_group
@@ -62,6 +63,7 @@ spec:
             valueFrom:
               path: /tmp/dbt-pod-uid
               default: ""
+      podSpecPatch: {{ include "insight.syncResources.podPatch" "dbt" | quote }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         # IfNotPresent so dev clusters use the locally-built `insight-toolbox:local`

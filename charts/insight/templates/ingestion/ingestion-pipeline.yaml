@@ -23,6 +23,7 @@ spec:
       # resolves the UUID at submit time.
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_name
           - name: insight_source_id
           - name: data_source                # "jira" → enriched path; anything else → legacy single-dbt
@@ -49,6 +50,7 @@ spec:
               template: main
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: connection_name
                   value: {{ `"{{inputs.parameters.connection_name}}"` }}
                 - name: airbyte_url
@@ -59,6 +61,7 @@ spec:
             template: transform
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: insight_source_id
                   value: {{ `"{{inputs.parameters.insight_source_id}}"` }}
                 - name: data_source
@@ -85,6 +88,7 @@ spec:
     - name: transform
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: data_source
           - name: insight_source_id
             default: ""  # RULE-DEFAULTS-OK: accepted from the submitter; no step consumes it
@@ -112,6 +116,7 @@ spec:
               template: run
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: stage_name
                   value: transform-jira-staging
                 - name: lock_group
@@ -139,6 +144,7 @@ spec:
               template: run
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: stage_name
                   value: transform-staging
                 - name: lock_group
@@ -167,6 +173,9 @@ spec:
             templateRef:
               name: identity-seed-run
               template: run
+            arguments:
+              parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
 
           - name: transform-jira-silver
             depends: transform-jira-staging.Succeeded && identity-seed
@@ -176,6 +185,7 @@ spec:
               template: run
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: stage_name
                   value: transform-jira-silver
                 - name: lock_group
@@ -219,6 +229,7 @@ spec:
               template: run
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: dbt_select
                   value: {{ `"tag:connector_quality,tag:{{inputs.parameters.data_source}}"` }}
                 - name: connector
@@ -248,6 +259,7 @@ spec:
               template: run
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: stage_name
                   value: transform-legacy
                 - name: lock_group

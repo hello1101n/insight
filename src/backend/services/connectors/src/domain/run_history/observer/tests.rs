@@ -313,7 +313,8 @@ fn bronze_uses_argo_receipt_when_the_annotation_write_fails() -> Result<()> {
     assert_eq!(load.reason.as_deref(), Some("airbyte_launch_rejected"));
     wf.data["status"]["nodes"]["trigger"]["outputs"] = json!({"exitCode":"42"});
     let load = bronze::snapshot(&wf, at(1), &HashMap::new(), Some(at(2)));
-    assert_eq!(load.reason.as_deref(), Some("airbyte_launch_rejected"));
+    assert_eq!(load.reason, None);
+    assert_eq!(load.status, "unknown");
     Ok(())
 }
 
@@ -435,6 +436,59 @@ fn checks_report_dbt_errors_without_failing_the_workflow() -> Result<()> {
             nodes::transforms(&workflow.data["status"], &HashMap::new(), run.finished_at);
         assert_eq!(run.status, Some("succeeded"));
         assert_eq!(attempts[0].status, expected, "dbt exit {code}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_argo_termination_reason_records_an_oom_after_pod_deletion() {
+    let status = json!({"nodes":{"stage":{
+        "id":"stage",
+        "displayName":"identity-seed",
+        "type":"Pod",
+        "phase":"Failed",
+        "startedAt":at(1),
+        "finishedAt":at(2),
+        "message":"main: OOMKilled (exit code 137)"
+    }}});
+    let attempts = nodes::transforms(&status, &HashMap::new(), Some(at(2)));
+    assert_eq!(attempts[0].reason.as_deref(), Some("pod_oom"));
+}
+
+#[test]
+fn legacy_bronze_uses_argo_phases_and_the_job_id_passed_to_poll() -> Result<()> {
+    for (trigger, poll, expected, reason) in [
+        ("Succeeded", Some("Succeeded"), "succeeded", None),
+        (
+            "Succeeded",
+            Some("Failed"),
+            "failed",
+            Some("airbyte_job_failed"),
+        ),
+        ("Failed", None, "failed", Some("stage_failed")),
+    ] {
+        let mut status = json!({"startedAt":at(1),"finishedAt":at(3),"nodes":{
+            "trigger":{"id":"trigger","type":"Pod","templateName":"trigger-sync",
+                "phase":trigger,"startedAt":at(1),"finishedAt":at(2),
+                "inputs":{"parameters":[{"name":"connection_id","value":"11111111-1111-1111-1111-111111111111"}]},
+                "outputs": if trigger == "Succeeded" {json!({"result":"19"})} else {json!({"exitCode":"42"})}
+            }
+        }});
+        if let Some(poll) = poll {
+            status["nodes"]["poll"] = json!({"id":"poll","type":"Pod","templateName":"poll-job",
+                "phase":poll,"startedAt":at(2),"finishedAt":at(3),
+                "inputs":{"parameters":[{"name":"job_id","value":"19"}]}});
+        }
+        let wf = workflow(&status)?;
+        let (load, lookup) = bronze::observation(&wf, at(1), &HashMap::new(), Some(at(3)));
+        assert_eq!(load.status, expected, "trigger {trigger}, poll {poll:?}");
+        assert_eq!(load.reason.as_deref(), reason);
+        assert_eq!(load.job, poll.map(|_| 19));
+        assert_eq!(lookup, poll.is_some());
+        assert_eq!(
+            load.finished_at,
+            Some(if poll.is_some() { at(3) } else { at(2) })
+        );
     }
     Ok(())
 }

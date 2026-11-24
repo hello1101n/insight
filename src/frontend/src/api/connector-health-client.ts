@@ -106,7 +106,26 @@ export interface ScheduleRequestState {
   } | null;
 }
 
+export interface ConnectorResources {
+  airbyte_cpu_millis?: number;
+  airbyte_memory_bytes?: number;
+  dbt_cpu_millis?: number;
+  dbt_memory_bytes?: number;
+  identity_cpu_millis?: number;
+  identity_memory_bytes?: number;
+  dbt_query_memory_bytes?: number;
+}
+
+export interface ConnectorResourceState {
+  requested: ConnectorResources;
+  live: ConnectorResources | null;
+  inherited: ConnectorResources | null;
+  status: ScheduleStatus | null;
+  read_error: string | null;
+}
+
 export interface ConnectorSchedule {
+  resources?: ConnectorResourceState;
   connector: string;
   source_id: string;
   revision: number;

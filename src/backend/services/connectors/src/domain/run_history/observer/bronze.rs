@@ -37,12 +37,12 @@ fn latest_node<'a>(status: &'a Value, template: &str) -> Option<&'a Value> {
         .max_by_key(|node| nodes::time(node, "startedAt"))
 }
 
-pub(super) fn snapshot(
+pub(super) fn observation(
     wf: &DynamicObject,
     queued_at: DateTime<Utc>,
     pods: &HashMap<String, PodState>,
     workflow_end: Option<DateTime<Utc>>,
-) -> StageSnapshot {
+) -> (StageSnapshot, bool) {
     let status = &wf.data["status"];
     let launch = receipt(wf);
     let trigger = latest_node(status, "trigger-sync");
@@ -69,61 +69,52 @@ pub(super) fn snapshot(
         .map(|receipt| receipt.connection.to_string())
         .or_else(|| {
             trigger
-                .and_then(|node| nodes::parameter(node, "inputs", "connection_id"))
+                .into_iter()
+                .chain(poll)
+                .find_map(|node| nodes::parameter(node, "inputs", "connection_id"))
+                .or_else(|| {
+                    resolve.and_then(|node| nodes::parameter(node, "outputs", "connection_id"))
+                })
                 .map(str::to_owned)
         });
     stage.job = launch.as_ref().and_then(|receipt| receipt.job_id);
-
-    let receipt_reason = launch.as_ref().and_then(|launch| match launch.outcome {
-        LaunchOutcome::Rejected => Some("airbyte_launch_rejected"),
-        LaunchOutcome::Unconfirmed => Some("airbyte_launch_unconfirmed"),
-        LaunchOutcome::Unreadable => Some("airbyte_launch_unreadable"),
-        LaunchOutcome::Pending => {
-            stage.status = "checking_start";
-            None
-        }
-        LaunchOutcome::Accepted => None,
-    });
-    let execution = nodes::time(status, "startedAt").unwrap_or(queued_at);
-    let exited = trigger
-        .into_iter()
-        .chain(poll)
-        .filter(|node| nodes::time(node, "startedAt").is_some_and(|at| at >= execution));
-    let failure = exited
-        .filter_map(|node| {
-            let reason = match node["outputs"]["exitCode"].as_str()? {
-                "42" => "airbyte_launch_rejected",
-                "43" => "airbyte_launch_unconfirmed",
-                "44" => "airbyte_launch_unreadable",
-                _ => return None,
-            };
-            Some((reason, nodes::time(node, "finishedAt")))
-        })
-        .max_by_key(|(_, finish)| *finish);
-    let (reason, finished_at) = failure.unwrap_or_else(|| {
-        (
-            receipt_reason.unwrap_or_default(),
-            receipt_finish(launch.as_ref(), trigger, poll).or(workflow_end),
-        )
-    });
-    if !reason.is_empty() {
-        stage.status = "not_started";
-        stage.reason = Some(reason.into());
-        stage.finished_at = finished_at;
-        return stage;
+    if launch.is_none() {
+        stage.job = legacy_job(trigger, poll);
+        apply_argo_phase(&mut stage, trigger, poll, workflow_end);
     }
 
-    if let Some(evidence) = evidence.filter(|v| Some(v.job_id) == stage.job) {
+    if let Some(receipt) = &launch {
+        let reason = match receipt.outcome {
+            LaunchOutcome::Rejected => Some("airbyte_launch_rejected"),
+            LaunchOutcome::Unconfirmed => Some("airbyte_launch_unconfirmed"),
+            LaunchOutcome::Unreadable => Some("airbyte_launch_unreadable"),
+            LaunchOutcome::Pending => {
+                stage.status = if workflow_end.is_some() {
+                    "unknown"
+                } else {
+                    "checking_start"
+                };
+                stage.finished_at = workflow_end;
+                None
+            }
+            LaunchOutcome::Accepted => None,
+        };
+        if let Some(reason) = reason {
+            stage.status = "not_started";
+            stage.reason = Some(reason.into());
+            stage.finished_at = receipt_finish(receipt, trigger, poll).or(workflow_end);
+            return (stage, false);
+        }
+    }
+
+    let evidence = evidence.filter(|v| Some(v.job_id) == stage.job);
+    let lookup = evidence.is_none() && stage.job.is_some();
+    if let Some(evidence) = evidence {
         evidence.apply(
             &mut stage,
             poll.and_then(|node| nodes::time(node, "finishedAt")),
         );
-    } else if stage.job.is_none() && workflow_end.is_some() {
-        let pending = stage.status == "checking_start";
-        stage.status = if pending { "unknown" } else { "not_started" };
-        stage.reason = (!pending).then(|| "stage_failed".to_owned());
-        stage.finished_at = workflow_end;
-    } else if stage.job.is_some() {
+    } else if launch.is_some() && stage.job.is_some() {
         stage.status = "loading";
     }
 
@@ -141,7 +132,54 @@ pub(super) fn snapshot(
         stage.status = "queued";
     }
 
-    stage
+    (stage, lookup)
+}
+
+#[cfg(test)]
+pub(super) fn snapshot(
+    workflow: &DynamicObject,
+    queued_at: DateTime<Utc>,
+    pods: &HashMap<String, PodState>,
+    workflow_end: Option<DateTime<Utc>>,
+) -> StageSnapshot {
+    observation(workflow, queued_at, pods, workflow_end).0
+}
+
+fn legacy_job(trigger: Option<&Value>, poll: Option<&Value>) -> Option<u64> {
+    let parsed = |value: &str| value.trim().parse::<u64>().ok().filter(|id| *id > 0);
+    poll.and_then(|node| {
+        nodes::parameter(node, "outputs", "job_id")
+            .or_else(|| nodes::parameter(node, "inputs", "job_id"))
+            .and_then(parsed)
+    })
+    .or_else(|| {
+        let node = trigger.filter(|node| nodes::phase(node) == Some("Succeeded"))?;
+        parsed(node["outputs"]["result"].as_str()?)
+    })
+}
+
+fn apply_argo_phase(
+    stage: &mut StageSnapshot,
+    trigger: Option<&Value>,
+    poll: Option<&Value>,
+    workflow_end: Option<DateTime<Utc>>,
+) {
+    let (status, reason) = match (poll.and_then(nodes::phase), trigger.and_then(nodes::phase)) {
+        (Some("Succeeded"), _) => ("succeeded", None),
+        (Some("Failed" | "Error"), _) => ("failed", Some("airbyte_job_failed")),
+        (_, Some("Failed" | "Error")) => ("failed", Some("stage_failed")),
+        _ if workflow_end.is_some() => ("unknown", Some("stage_failed")),
+        _ if stage.job.is_some() => ("loading", None),
+        _ => ("starting", None),
+    };
+    stage.status = status;
+    stage.reason = reason.map(str::to_owned);
+    if matches!(status, "succeeded" | "failed" | "unknown") {
+        stage.finished_at = poll
+            .or(trigger)
+            .and_then(|node| nodes::time(node, "finishedAt"))
+            .or(workflow_end);
+    }
 }
 
 fn receipt(wf: &DynamicObject) -> Option<LaunchReceipt> {
@@ -153,6 +191,7 @@ fn receipt(wf: &DynamicObject) -> Option<LaunchReceipt> {
         .and_then(|a| a.get(LAUNCH_ANNOTATION))
         .map(String::as_str);
     let outputs = nodes::nodes(&wf.data["status"])
+        .filter(|node| nodes::template(node) == Some("trigger-sync"))
         .filter_map(|node| nodes::parameter(node, "outputs", "airbyte-launch-evidence"));
     annotation
         .into_iter()
@@ -169,11 +208,10 @@ fn receipt(wf: &DynamicObject) -> Option<LaunchReceipt> {
 }
 
 fn receipt_finish(
-    receipt: Option<&LaunchReceipt>,
+    receipt: &LaunchReceipt,
     trigger: Option<&Value>,
     poll: Option<&Value>,
 ) -> Option<DateTime<Utc>> {
-    let receipt = receipt?;
     trigger
         .into_iter()
         .chain(poll)

@@ -17,6 +17,7 @@
   - [3.6 Database](#36-database)
   - [3.7 Deployment Topology](#37-deployment-topology)
   - [3.8 Interactions & Sequences](#38-interactions--sequences)
+  - [3.9 Instance resource settings](#39-instance-resource-settings)
 - [4. Compose Stand and CI](#4-compose-stand-and-ci)
 - [5. Testing Strategy](#5-testing-strategy)
 - [6. Rollout and Rollback](#6-rollout-and-rollback)
@@ -25,15 +26,12 @@
 
 <!-- /toc -->
 
-A new backend service, `connectors`, owned by ingestion. Version 1 does two things:
+The ingestion team owns the `connectors` backend service. The service has two responsibilities.
 
-1. It takes over the connector routes from analytics — Connector health, a connector's syncs and
-   ingestion intensity. Sync history and intensity read ClickHouse; schedule enrichment reads the
-   live CronWorkflows and saved requests.
-2. It lets an admin change a connector instance's sync schedule from the portal. The service stores
-   the request, applies it to the instance's CronWorkflow at once, reads the CronWorkflow back and
-   says whether it took. The bash reconcile loop keeps owning everything else and honours saved
-   schedules when it re-renders CronWorkflows.
+1. It provides connector health, sync history, and ingestion intensity.
+2. It stores the schedule and resource settings of each connector instance.
+   The service applies each edit to the instance's CronWorkflow and reads it back.
+   Reconcile uses the saved settings each time it renders the CronWorkflow.
 
 Moving reconcile itself into the service is **Phase 2**, a separate plan made after schedules ship
 (Section 7). Version 1 depends on none of it.
@@ -380,8 +378,8 @@ acknowledgement write:
   is `insight_schedule_<connectors.databaseName>`; derived user and role names longer than 80 characters
   retain a readable prefix and a stable hash suffix. `global.connectorSchedules.database.username`
   overrides the default. Each installation sharing a MariaDB server uses a distinct connectors
-  database. The role holds `SELECT ON <connectors.databaseName>.connector_schedule_requests_v1`,
-  `DELETE ON <connectors.databaseName>.connector_schedules` and column-level `SELECT (connector, source_id)`
+  database. The role holds `SELECT` on both versions of the schedule request view.
+  It holds `DELETE ON <connectors.databaseName>.connector_schedules` and column-level `SELECT (connector, source_id)`
   on that table for the delete predicate. No other grants are accepted. The deploy hook adds missing
   grants to an existing compatible role.
   The hook refuses incompatible existing grants or credentials without changing them; it never
@@ -399,14 +397,15 @@ acknowledgement write:
 ### 3.6 Database
 
 Database `connectors` on the install's MariaDB, always created by `mariadb-init-svcdbs-job.yaml`.
-One migration, `m20261110_000001_connector_schedules`, arriving with the schedule API:
+The schedule and resource settings use these objects.
 
 | Object | Columns | Writer |
 |---|---|---|
-| table `connector_schedules` | `connector`, `source_id` (PK, ascii), `crons JSON` (CHECK array; empty = tombstone), `revision BIGINT UNSIGNED` (CHECK ≥ 1), `updated_by BINARY(16)`, `updated_at DATETIME(3)` | the API; legacy orphan sweep deletes removed instances |
-| view `connector_schedule_requests_v1` | `connector`, `source_id`, `revision`, `crons`; `SQL SECURITY DEFINER` | — (read by the legacy loop) |
+| table `connector_schedules` | `connector`, `source_id` (PK, ascii), `crons JSON` (CHECK array; empty = tombstone), `resources JSON` (nullable), `has_schedule_revision BOOLEAN`, `revision BIGINT UNSIGNED` (CHECK ≥ 1), `updated_by BINARY(16)`, `updated_at DATETIME(3)` | the API; legacy orphan sweep deletes removed instances |
+| view `connector_schedule_requests_v1` | `connector`, `source_id`, `revision`, `crons`; `SQL SECURITY DEFINER` | — (read for the pass schedule snapshot) |
+| view `connector_schedule_requests_v2` | Same columns and `resources`; `SQL SECURITY DEFINER` | — (read under the instance lock) |
 
-The view is a frozen contract: a change ships as `connector_schedule_requests_v2` beside it.
+Each view has a frozen contract. The migration creates each new version beside its predecessor.
 Requests and tombstones retain their revisions until an eligible live reconcile pass sweeps the removed
 instance's orphan row; a returning instance begins at revision zero. No background
 retention task runs.
@@ -453,6 +452,29 @@ sequenceDiagram
     L->>D: unlock
     Note over S,L: shared instance lock serializes save and reconcile apply
 ```
+
+### 3.9 Instance resource settings
+
+Use the admin schedule endpoint at `/v1/connectors/{connector}/{source_id}/schedule`.
+`PATCH` with `If-Match` merges resource overrides and returns the revision in `ETag`.
+Omit a field to retain its override. Send `null` for a field to inherit its chart default.
+The schedule `PUT` and `DELETE` act on the schedule.
+
+The `resources` response object has `requested`, `live`, `inherited`, `status`, and `read_error`.
+The service compares the effective request with the CronWorkflow's `sync_resources` parameter.
+It reads the chart defaults from the CronWorkflow's `insight.cyberfabric.com/deployment-resources` annotation.
+A refused patch restores the previous database row. Uncertain writes use the schedule's readback and fence rules.
+
+Reconcile reads the latest overrides under the instance lock and applies them to the CronWorkflow or one-shot Workflow.
+Argo passes the submitted values to Bronze, the dbt steps, and the identity seed.
+The Bronze trigger updates the dedicated source allocation before launch when a saved size differs.
+Reconcile removes the managed sync allocation on the next pass after both effective sizes are cleared.
+The [chart README](../../../../../charts/insight/README.md#configure-connector-instance-resources) lists the fields and their units.
+
+The history observer reads the parameter on the submitted Workflow and stores the relevant fields for each attempt.
+The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
+It reads the query log by the stage's `log_comment`.
+The observer records the largest query memory and preserves the pod memory failure reason.
 
 ## 4. Compose Stand and CI
 

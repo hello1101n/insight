@@ -7,6 +7,7 @@ use utoipa::ToSchema;
 
 use super::{StageWait, store::sql};
 use crate::domain::connector_health::{ConnectorHealth, ConnectorHealthResponse};
+use crate::domain::connector_schedules::resources::Resources;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub(crate) struct RunStage {
@@ -20,6 +21,8 @@ pub(crate) struct RunStage {
     pub finished_at: Option<DateTime<Utc>>,
     pub duration_ms: Option<u64>,
     pub reason: Option<String>,
+    pub resources: Option<Resources>,
+    pub peak_query_memory_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
@@ -58,9 +61,11 @@ struct Record {
     finished_at: Option<DateTime<Utc>>,
     reason: Option<String>,
     records_reported: Option<u64>,
+    resources: Option<String>,
+    peak_query_memory_bytes: Option<u64>,
 }
 
-const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,r.execution AS execution_started_at,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,CAST(s.waits AS CHAR) AS waits,s.airbyte_job_id,COALESCE(s.stage,'') AS stage,CAST(COALESCE(s.attempt,0) AS UNSIGNED) AS attempt,COALESCE(s.status,'') AS status,COALESCE(s.queued_at,r.started_at) AS queued_at,s.started_at,s.finished_at,s.reason,s.records_reported";
+const RUN_COLUMNS: &str = "r.sync_id,r.tenant,r.connector,r.source_id,IF(r.ready_at IS NOT NULL,'succeeded',r.status) AS run_status,r.started_at AS run_start,r.execution AS execution_started_at,COALESCE(r.ready_at,r.finished_at) AS run_end,r.finished_at AS workflow_end,CAST(s.waits AS CHAR) AS waits,s.airbyte_job_id,COALESCE(s.stage,'') AS stage,CAST(COALESCE(s.attempt,0) AS UNSIGNED) AS attempt,COALESCE(s.status,'') AS status,COALESCE(s.queued_at,r.started_at) AS queued_at,s.started_at,s.finished_at,s.reason,s.records_reported,CAST(s.resources AS CHAR) AS resources,s.peak_query_memory_bytes";
 fn ms(from: DateTime<Utc>, to: DateTime<Utc>) -> u64 {
     u64::try_from((to - from).num_milliseconds()).unwrap_or_default()
 }
@@ -152,6 +157,11 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             finished_at: r.finished_at,
             duration_ms: r.started_at.map(|start| ms(start, until)),
             reason: r.reason.clone(),
+            resources: r
+                .resources
+                .as_deref()
+                .and_then(|raw| Resources::parse(raw).ok()),
+            peak_query_memory_bytes: r.peak_query_memory_bytes,
         });
     }
     let status = first.run_status.clone().unwrap_or_else(|| {
@@ -318,6 +328,8 @@ mod tests {
             finished_at: Some(now),
             reason: None,
             records_reported: Some(120),
+            resources: None,
+            peak_query_memory_bytes: None,
         };
         let run = build(std::slice::from_ref(&record), now);
         assert_eq!(run.records_reported, Some(120));
@@ -392,6 +404,8 @@ mod tests {
             finished_at: Some(at(until)),
             reason: None,
             records_reported: None,
+            resources: None,
+            peak_query_memory_bytes: None,
         };
         let run = build(
             &[

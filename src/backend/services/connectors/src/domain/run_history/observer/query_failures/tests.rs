@@ -189,6 +189,7 @@ async fn timed_out_query_lookup_does_not_block_other_stages_in_the_pass() -> Res
             name: "fixture".into(),
             server_memory: false,
             user_memory: false,
+            peak_memory: 0,
         }))
     };
     reconcile_with(&app, end + chrono::Duration::minutes(11), timeout).await?;
@@ -197,7 +198,7 @@ async fn timed_out_query_lookup_does_not_block_other_stages_in_the_pass() -> Res
             .stages
             .iter()
             .all(|stage| stage.reason.is_none()),
-        "expired stages must not be queried"
+        "the final peak lookup must not change the expired failure reason"
     );
 
     let pass = reconcile_with(&app, end + chrono::Duration::seconds(15), timeout).await;
@@ -274,4 +275,89 @@ async fn fixture_state() -> Result<AppState> {
         identity: crate::infra::identity::IdentityClient::new("http://127.0.0.1:1")?,
         schedule_slots: tokio::sync::Semaphore::new(4),
     })
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_CLICKHOUSE_URL and INTEGRATION_TESTS_MARIADB_URL"]
+async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_queries() -> Result<()>
+{
+    async fn log_query(ch: &insight_clickhouse::Client, tag: &str, count: u64) -> Result<u64> {
+        ch.query(
+            "SELECT length(groupArray(toString(number))) FROM numbers(?) SETTINGS max_threads=1",
+        )
+        .bind(count)
+        .with_setting("log_comment", tag)
+        .execute()
+        .await?;
+        ch.query("SYSTEM FLUSH LOGS").execute().await?;
+        Ok(ch.query(
+            "SELECT max(memory_usage) FROM system.query_log WHERE log_comment=? AND type='QueryFinish'"
+        ).bind(tag).fetch_one().await?)
+    }
+
+    let app = fixture_state().await?;
+    let start = Utc::now();
+    let pod = uuid::Uuid::new_v4();
+    let uid = uuid::Uuid::new_v4().to_string();
+    let tag = format!("insight:sync={uid}:stage=transform-staging:pod={pod}");
+    let early = log_query(&app.ch, &tag, 100).await?;
+
+    let workflow: kube::api::DynamicObject = serde_json::from_value(serde_json::json!({
+        "apiVersion": "argoproj.io/v1alpha1",
+        "kind": "Workflow",
+        "spec": {
+            "workflowTemplateRef": {"name":"ingestion-pipeline"},
+            "arguments": {"parameters":[{"name":"sync_resources","value":
+                r#"{"dbt_cpu_millis":1200,"dbt_query_memory_bytes":5368709120,"airbyte_memory_bytes":1073741824}"#}]}
+        }
+    }))?;
+    let end = Utc::now() + chrono::Duration::seconds(30);
+    let mut stage = StageSnapshot::new("transform-staging", 1, start);
+    stage.query_pod = Some(pod);
+    stage.status = "failed";
+    stage.finished_at = Some(end);
+    let mut stages = vec![stage];
+    super::super::observe_resources(&workflow, &mut stages);
+    let run = RunSnapshot {
+        uid,
+        name: "example".into(),
+        connector: "example".into(),
+        source: "source".into(),
+        tenant: "tenant".into(),
+        created_at: start,
+        execution: start,
+        status: Some("succeeded"),
+        finished_at: Some(end),
+        stages,
+    };
+    store::save(&app.db, &app.cluster.namespace, &run, end).await?;
+    reconcile(&app, end + LOG_SETTLE_TIME).await?;
+    assert_eq!(
+        saved_runs(&app).await?[0].stages[0].peak_query_memory_bytes,
+        None
+    );
+
+    let actual = log_query(&app.ch, &tag, 2_000_000).await?;
+    assert!(actual > early, "late log must exceed the first sample");
+    reconcile(
+        &app,
+        end + LOOKUP_WINDOW - chrono::Duration::milliseconds(1),
+    )
+    .await?;
+    assert_eq!(
+        saved_runs(&app).await?[0].stages[0].peak_query_memory_bytes,
+        None
+    );
+    reconcile(&app, end + LOOKUP_WINDOW).await?;
+    let saved = saved_runs(&app).await?;
+    let attempt = &saved[0].stages[0];
+    assert_eq!(
+        serde_json::to_value(&attempt.resources)?,
+        serde_json::json!({
+            "dbt_cpu_millis": 1200, "dbt_query_memory_bytes": 5_368_709_120_u64,
+        })
+    );
+    assert_eq!(attempt.peak_query_memory_bytes, Some(actual));
+    assert!(attempt.reason.is_none());
+    Ok(())
 }

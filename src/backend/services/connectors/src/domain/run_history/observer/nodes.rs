@@ -143,7 +143,11 @@ fn attempt(
         _ => "starting",
     };
     if result.status == "failed" {
-        result.reason = if pod.is_some_and(|pod| pod.oom) {
+        result.reason = if pod.is_some_and(|pod| pod.oom)
+            || node["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("OOMKilled"))
+        {
             Some("pod_oom".to_owned())
         } else if check_failed {
             Some("connector_checks_failed".to_owned())

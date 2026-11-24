@@ -122,7 +122,7 @@ class Cursor:
             assert role not in roles
             roles[role] = {"grants": [f"GRANT USAGE ON *.* TO `{role}`"], "members": [], "admins": [[self.user, "%"]]}
         elif sql.startswith("GRANT SELECT"):
-            table = "connector_schedules" if "connector_schedules TO" in sql else "connector_schedule_requests_v1"
+            table = sql.split("`")[2].split()[0].lstrip(".")
             privileges = "SELECT (`connector`, `source_id`), DELETE" if table == "connector_schedules" else "SELECT"
             database, role = sql.split("`")[1::2]
             grant = f"GRANT {privileges} ON `{database}`.`{table}` TO `{role}`"

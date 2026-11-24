@@ -2,7 +2,7 @@ use kube::api::DynamicObject;
 use serde_json::{Value, json};
 
 use super::dto::{InheritedSchedule, LiveSchedule, ScheduleOrigin};
-use super::{Error, Instance, validation::Crons};
+use super::{Error, Instance, Resources, resources, validation::Crons};
 
 pub(super) const DEPLOYMENT: &str = "insight.cyberfabric.com/deployment-schedule";
 pub(super) const ORIGIN: &str = "insight.cyberfabric.com/schedule-origin";
@@ -120,5 +120,68 @@ pub(super) fn patch(object: &DynamicObject, target: &InheritedSchedule) -> Resul
     Ok(json!({
         "metadata": {"uid": uid, "resourceVersion": version, "annotations": {ORIGIN: target.origin}},
         "spec": {"schedules": target.crons, "timezone": "UTC"}
+    }))
+}
+
+pub(super) fn live_resources(object: &DynamicObject) -> Result<Resources, Error> {
+    let mut entries = parameters(object)?
+        .iter()
+        .filter(|p| p["name"] == resources::PARAMETER);
+    let Some(entry) = entries.next() else {
+        return Ok(Resources::default());
+    };
+    if entries.next().is_some() {
+        return Err(Error::ClusterIdentity);
+    }
+    Resources::parse(entry["value"].as_str().ok_or(Error::ClusterIdentity)?)
+}
+
+pub(super) fn resource_defaults(object: &DynamicObject) -> Result<Resources, Error> {
+    object
+        .metadata
+        .annotations
+        .as_ref()
+        .and_then(|a| a.get(resources::DEPLOYMENT))
+        .map_or_else(|| Ok(Resources::default()), |raw| Resources::parse(raw))
+}
+
+fn parameters(object: &DynamicObject) -> Result<&Vec<Value>, Error> {
+    object
+        .data
+        .pointer("/spec/workflowSpec/arguments/parameters")
+        .and_then(Value::as_array)
+        .ok_or(Error::ClusterIdentity)
+}
+
+pub(super) fn patch_resources(object: &DynamicObject, target: &Resources) -> Result<Value, Error> {
+    let uid = object
+        .metadata
+        .uid
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or(Error::ClusterIdentity)?;
+    let version = object
+        .metadata
+        .resource_version
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or(Error::ClusterIdentity)?;
+    let mut parameters = parameters(object)?.clone();
+    parameters.retain(|p| p["name"] != resources::PARAMETER);
+    if !target.is_empty() {
+        let value = serde_json::to_string(target).map_err(Error::StoredResources)?;
+        parameters.push(json!({"name": resources::PARAMETER, "value": value}));
+    }
+    let mut metadata = json!({"uid": uid, "resourceVersion": version});
+    let has_airbyte = |resources: &Resources| {
+        resources.airbyte_cpu_millis.is_some() || resources.airbyte_memory_bytes.is_some()
+    };
+    if has_airbyte(target) || live_resources(object).is_ok_and(|current| has_airbyte(&current)) {
+        metadata["annotations"]["insight.cyberfabric.com/airbyte-resources-managed"] =
+            json!("true");
+    }
+    Ok(json!({
+        "metadata": metadata,
+        "spec": {"workflowSpec": {"arguments": {"parameters": parameters}}}
     }))
 }

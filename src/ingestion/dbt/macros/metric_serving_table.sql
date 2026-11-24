@@ -21,7 +21,7 @@
     {% if query_settings_overrides %}
         {% do settings.update(query_settings_overrides) %}
     {% endif %}
-    {{ return(settings) }}
+    {{ return(instance_query_settings(settings)) }}
 {% endmacro %}
 
 {% macro metric_serving_table(include_record_id, join_use_nulls=none, query_settings_overrides=none) %}

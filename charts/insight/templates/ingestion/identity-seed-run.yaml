@@ -32,6 +32,7 @@ spec:
     - name: run
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: identity_image
             default: "{{ .Values.identityResolution.image.repository }}:{{ $identityTag }}"
       synchronization:
@@ -48,6 +49,7 @@ spec:
           - name: query-pod-uid
             valueFrom:
               path: /app/data/pod-uid
+      podSpecPatch: {{ include "insight.syncResources.podPatch" "identity" | quote }}
       container:
         image: {{ `"{{inputs.parameters.identity_image}}"` }}
         imagePullPolicy: IfNotPresent

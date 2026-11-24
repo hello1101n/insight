@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -20,6 +22,8 @@ def charts() -> dict[str, dict[tuple[str, str], dict]]:
             [
                 "--set",
                 "ingestion.maxConcurrentBronzeLoads=3,ingestion.maxConcurrentConnectorChecks=4,ingestion.maxConcurrentSyncs=6,ingestion.airbyteSync.launchConfirmationSeconds=901,ingestion.airbyteSync.launchUnreadableSeconds=2000",
+                "--set",
+                "ingestion.syncResourceDefaults.airbyte_cpu_millis=1000,ingestion.syncResourceDefaults.airbyte_memory_bytes=1073741824,ingestion.syncResourceDefaults.dbt_cpu_millis=2000,ingestion.syncResourceDefaults.dbt_memory_bytes=2147483648,ingestion.syncResourceDefaults.identity_cpu_millis=250,ingestion.syncResourceDefaults.identity_memory_bytes=536870912,ingestion.syncResourceDefaults.dbt_query_memory_bytes=5368709120",
             ],
         ),
     ]:
@@ -255,3 +259,63 @@ def render(*args: str) -> dict[tuple[str, str], dict]:
         text=True,
     )
     return {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(result.stdout) if doc}
+
+
+def test_connector_resources_reach_each_main_container_and_the_reconcile_submission(charts: dict[str, dict]) -> None:
+    chart = charts["overrides"]
+    pipeline = templates(chart, "ingestion-pipeline")
+    for entrypoint in pipeline.values():
+        for task in entrypoint["dag"]["tasks"]:
+            params = {p["name"]: p["value"] for p in task["arguments"]["parameters"]}
+            assert params["sync_resources"] == "{{inputs.parameters.sync_resources}}"
+    for template, prefix in [("dbt-run", "dbt"), ("connector-checks", "dbt"), ("identity-seed-run", "identity")]:
+        patch = templates(chart, template)["run"]["podSpecPatch"]
+        assert "'name': 'main'" in patch
+        assert f"r.{prefix}_cpu_millis" in patch
+        assert f"r.{prefix}_memory_bytes" in patch
+        if prefix == "dbt":
+            assert "r.dbt_query_memory_bytes" in patch
+            assert "DBT_QUERY_MEMORY_BYTES" in patch
+
+    bronze = templates(chart, "airbyte-sync")
+    trigger_env = {item["name"]: item.get("value") for item in bronze["trigger-sync"]["container"]["env"]}
+    poll_env = {item["name"] for item in bronze["poll-job"]["container"]["env"]}
+    assert trigger_env["SYNC_RESOURCES"] == "{{inputs.parameters.sync_resources}}"
+    assert "SYNC_RESOURCES" not in poll_env
+    assert "AIRBYTE_RESOURCE_JOURNAL" not in set(trigger_env) | poll_env
+    reconcile = chart["CronWorkflow", "contract-reconcile-loop"]
+    env = reconcile["spec"]["workflowSpec"]["templates"][0]["container"]["env"]
+    defaults = next(item["value"] for item in env if item["name"] == "CONNECTOR_RESOURCE_DEFAULTS")
+    assert json.loads(defaults) == {
+        "airbyte_cpu_millis": 1000,
+        "airbyte_memory_bytes": 1073741824,
+        "dbt_cpu_millis": 2000,
+        "dbt_memory_bytes": 2147483648,
+        "identity_cpu_millis": 250,
+        "identity_memory_bytes": 536870912,
+        "dbt_query_memory_bytes": 5368709120,
+    }
+
+
+def test_argo_compiles_each_delimited_pod_patch_with_no_settings(charts: dict[str, dict]) -> None:
+    patches = [
+        spec["podSpecPatch"]
+        for (kind, _), document in charts["defaults"].items()
+        if kind == "WorkflowTemplate"
+        for spec in document["spec"]["templates"]
+        if "podSpecPatch" in spec
+    ]
+    assert len(patches) == 3
+    tags = [tag for patch in patches for tag in re.findall(r"\{\{=(.*?)\}\}", patch, re.DOTALL)]
+    assert len(tags) == len(patches)
+    result = subprocess.run(
+        ["go", "run", "."],
+        cwd=Path(__file__).with_name("expressions"),
+        input=json.dumps({"expressions": tags, "resources": "{}"}),
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert [json.loads(value) for value in json.loads(result.stdout)] == [{}] * len(patches)

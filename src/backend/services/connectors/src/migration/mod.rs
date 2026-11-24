@@ -1,6 +1,9 @@
 pub(crate) mod m20261110_000001_connector_schedules;
 
 mod m20261120_000001_ingestion_runs;
+mod m20261124_000001_connector_resources;
+mod m20261124_000002_stage_resources;
+mod m20261124_000003_settle_stage_query_memory;
 
 use sea_orm_migration::prelude::*;
 
@@ -13,6 +16,9 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20261110_000001_connector_schedules::Migration),
             Box::new(m20261120_000001_ingestion_runs::Migration),
+            Box::new(m20261124_000001_connector_resources::Migration),
+            Box::new(m20261124_000002_stage_resources::Migration),
+            Box::new(m20261124_000003_settle_stage_query_memory::Migration),
         ]
     }
 }

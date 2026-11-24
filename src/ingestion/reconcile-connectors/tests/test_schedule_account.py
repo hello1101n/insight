@@ -32,6 +32,8 @@ def create_schedule_schema(cursor: SSCursor) -> None:
     source = migration.read_text().split("async fn down", 1)[0]
     statements = re.findall(r'\.execute_unprepared\(\s*"([^"]+)"\s*,?\s*\)', source)
     assert len(statements) == 2
+    resources = migration.with_name("m20261124_000001_connector_resources.rs").read_text()
+    statements.extend(re.findall(r'^            "([^"]+)",', resources, re.MULTILINE))
     for statement in statements:
         cursor.execute(statement, None)
 
@@ -66,6 +68,7 @@ def test_provisioning_grants_only_view_reads_and_schedule_deletion(database: Mag
     grants = [sql for sql, _ in calls if sql.startswith("GRANT")]
     assert grants == [
         "GRANT SELECT ON `connectors`.connector_schedule_requests_v1 TO `example_schedule_role`",
+        "GRANT SELECT ON `connectors`.connector_schedule_requests_v2 TO `example_schedule_role`",
         "GRANT SELECT (connector, source_id), DELETE ON `connectors`.connector_schedules TO `example_schedule_role`",
         "GRANT `example_schedule_role` TO %s@'%%'",
     ]
@@ -121,10 +124,10 @@ def test_live_schedule_account_can_read_the_view_and_delete_one_schedule() -> No
                 narrow.execute("SELECT connector, source_id, revision, crons FROM connector_schedule_requests_v1", None)
                 assert list(narrow) == []
             cursor.execute(
-                "INSERT INTO connector_schedules VALUES ('example', 'main', '[]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
+                "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES ('example', 'main', '[]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
             )
             cursor.execute(
-                "INSERT INTO connector_schedules VALUES ('example', 'sibling', '[]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
+                "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES ('example', 'sibling', '[]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
             )
             run(runtime, "example", "main")
             run(runtime, "example", "main")

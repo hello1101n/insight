@@ -108,19 +108,28 @@ async fn save_stage(
     };
     merge_waits(&mut waits, stage, now);
     let waits = serde_json::to_string(&waits).map_err(|error| DbErr::Json(error.to_string()))?;
+    let resources = stage
+        .resources
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| DbErr::Json(error.to_string()))?;
     tx.execute_raw(sql(
-        "INSERT INTO ingestion_stage_attempts(sync_id,stage,attempt,status,queued_at,started_at,finished_at,waits,reason,connection_id,airbyte_job_id,records_reported,execution_key,query_pod)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE
+        "INSERT INTO ingestion_stage_attempts(sync_id,stage,attempt,status,queued_at,started_at,finished_at,waits,reason,connection_id,airbyte_job_id,records_reported,execution_key,query_pod,resources)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE
          status=VALUES(status), queued_at=LEAST(queued_at,VALUES(queued_at)),
          started_at=COALESCE(started_at,VALUES(started_at)), finished_at=VALUES(finished_at),
          waits=VALUES(waits),
-         reason=CASE WHEN reason LIKE 'clickhouse_%' AND COALESCE(VALUES(reason),'') NOT LIKE 'clickhouse_%'
+         reason=CASE WHEN VALUES(reason) IN ('pod_oom','source_pod_oom') THEN VALUES(reason)
+            WHEN reason IN ('pod_oom','source_pod_oom') THEN reason
+            WHEN reason LIKE 'clickhouse_%' AND COALESCE(VALUES(reason),'') NOT LIKE 'clickhouse_%'
             THEN reason ELSE COALESCE(VALUES(reason),reason) END,
          connection_id=COALESCE(connection_id,VALUES(connection_id)),
-         airbyte_job_id=COALESCE(airbyte_job_id,VALUES(airbyte_job_id)), records_reported=COALESCE(VALUES(records_reported),records_reported),query_pod=COALESCE(query_pod,VALUES(query_pod))",
+         airbyte_job_id=COALESCE(airbyte_job_id,VALUES(airbyte_job_id)), records_reported=COALESCE(VALUES(records_reported),records_reported),query_pod=COALESCE(query_pod,VALUES(query_pod)),
+         resources=COALESCE(resources,VALUES(resources))",
         vec![uid.into(), stage.stage.into(), attempt.into(), stage.status.into(), stage.queued_at.into(),
             stage.started_at.into(), stage.finished_at.into(), waits.into(), stage.reason.clone().into(),
-            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into()],
+            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into()],
     )).await?;
     Ok(())
 }

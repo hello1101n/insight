@@ -93,12 +93,12 @@ pub(super) fn domain_error(error: Error) -> ScheduleError {
             .with_field_violation("If-Match", error.to_string(), "INVALID")
             .create(),
         Error::Invalid(problem) => invalid(&problem.field, problem.problem),
-        Error::NotChanged(_) | Error::RestoreFailed(_) => CanonicalError::service_unavailable()
+        Error::NotChanged(_) | Error::ResourcesNotChanged(_) | Error::RestoreFailed(_) | Error::ResourceRestoreFailed(_) => CanonicalError::service_unavailable()
             .with_detail(error.to_string())
             .create(),
         Error::Database(error) => unavailable(&error),
         Error::SyncHistory(error) => unavailable(&error),
-        Error::StoredCrons(error) => unavailable(&error),
+        Error::StoredCrons(error) | Error::StoredResources(error) => unavailable(&error),
         Error::Cluster(error) => unavailable(&error),
         Error::Lock(error) => unavailable(&error),
         Error::LockBusy => CanonicalError::service_unavailable()

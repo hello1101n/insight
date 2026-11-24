@@ -12,11 +12,11 @@
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
-    query_settings={
+    query_settings=instance_query_settings({
         'max_bytes_before_external_group_by': 2000000000,
         'max_bytes_before_external_sort': 2000000000,
         'query_plan_join_swap_table': 'false',
-    },
+    }),
     pre_hook=[
         "{{ jira_journal_drop_rows_bronze_cannot_account_for() }}",
         "{{ jira_journal_prepare_scope() }}",

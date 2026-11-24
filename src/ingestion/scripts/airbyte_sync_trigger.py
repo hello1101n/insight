@@ -13,15 +13,15 @@ import sys
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
 import insight_logging
-from airbyte_auth import FatalError, airbyte_api_url, oauth_token
-from airbyte_launch import REQUEST_TIMEOUT_SECONDS, Launch, WorkflowLaunch, read_claim
+from airbyte_auth import FatalError, airbyte_api_url, oauth_token, request
+from airbyte_launch import Launch, WorkflowLaunch, read_claim
+from airbyte_resources import AirbyteResources, Sizes, parse
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints, ValidationError
 
 REJECTED = 42
@@ -83,15 +83,6 @@ class JobList(BaseModel):
         ):
             raise ValueError("Unexpected Airbyte sync history")
         return ids
-
-
-def request(url: str, token: str, data: bytes | None = None) -> bytes:
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    )
-    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-        return response.read()
 
 
 def jobs(url: str, connection: UUID, token: str) -> tuple[int, ...]:
@@ -213,6 +204,7 @@ def launch(
     trigger_receipt: Launch | None = None,
     *,
     workflow_read_seconds: int = 0,
+    sizes: Sizes | None = None,
 ) -> Launch:
     read_deadline = time.monotonic() + workflow_read_seconds if workflow_read_seconds > 0 else None
     for _ in range(WRITE_ATTEMPTS):
@@ -235,6 +227,14 @@ def launch(
         if previous_job is None:
             before = jobs(url, connection, token)
             previous_job = before[0] if before else 0
+        if sizes is not None:
+            overrides = AirbyteResources(request, url).converge(token, connection, sizes)
+            if overrides:
+                insight_logging.configure("airbyte-sync").warning(
+                    "The Airbyte connection overrides the source resource settings.",
+                    extra={"connection_id": str(connection), "fields": overrides},
+                )
+
         now = time.time()
         claim = Launch(
             workflow_uid=metadata.uid,
@@ -266,6 +266,7 @@ def workflow_launch(url: str, trigger_receipt: Launch | None = None, *, workflow
     unreadable_window = int(os.environ["LAUNCH_UNREADABLE_SECONDS"])
     if min(window, unreadable_window) <= 0:
         raise ValueError("Airbyte launch windows must be positive")
+    sizes = parse(Sizes, os.environ["SYNC_RESOURCES"]) if "SYNC_RESOURCES" in os.environ else None
     return launch(
         WorkflowLaunch(),
         url,
@@ -274,6 +275,7 @@ def workflow_launch(url: str, trigger_receipt: Launch | None = None, *, workflow
         unreadable_window,
         trigger_receipt,
         workflow_read_seconds=workflow_read_seconds,
+        sizes=sizes,
     )
 
 

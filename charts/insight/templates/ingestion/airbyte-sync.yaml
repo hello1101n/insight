@@ -45,6 +45,7 @@ spec:
               key: bronze
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_name
           - name: airbyte_url
       steps:
@@ -60,6 +61,7 @@ spec:
             template: sync
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: connection_id
                   value: {{ `"{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
@@ -119,6 +121,7 @@ spec:
     - name: sync
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_id
           - name: airbyte_url
       steps:
@@ -126,6 +129,7 @@ spec:
             template: trigger-sync
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: connection_id
                   value: {{ `"{{inputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
@@ -155,6 +159,7 @@ spec:
           cap: "5m"
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_id
           - name: airbyte_url
       outputs:
@@ -170,6 +175,8 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_trigger.py]
         env:
+          - name: SYNC_RESOURCES
+            value: {{ `"{{inputs.parameters.sync_resources}}"` }}
           # OAuth client_credentials against /api/v1/applications/token. The
           # legacy self-minted HMAC JWT is rejected by Airbyte 1.7+ (the
           # request hangs ~5 min then RST). Per ADR-0013, every workflow

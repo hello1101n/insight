@@ -62,6 +62,41 @@ async fn put(
     Ok(reply(response))
 }
 
+async fn patch(
+    Extension(state): Extension<Arc<AppState>>,
+    Extension(ctx): Extension<SecurityContext>,
+    headers: HeaderMap,
+    Path((connector, source_id)): Path<(String, String)>,
+    request: Result<
+        Json<domain::resources::ResourcePatch>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Result<Response, ScheduleError> {
+    require_admin(&state, &headers, admin_only).await?;
+    let instance = Instance::parse(&connector, &source_id).map_err(domain_error)?;
+    body::require_json(&headers)?;
+    let Json(resources) = request.map_err(|error| error::invalid("body", error.body_text()))?;
+    resources
+        .validate()
+        .map_err(|error| domain_error(error.into()))?;
+    let revision = if_match(&headers).map_err(domain_error)?;
+    let response = domain::save(
+        &state,
+        &instance,
+        revision,
+        Change::Resources(resources),
+        ctx.subject_id(),
+    )
+    .await
+    .map_err(|error| match error {
+        domain::Error::LockBusy => domain_error(domain::Error::ResourcesNotChanged(
+            "the instance is busy or no save slot is free. Try again.".to_owned(),
+        )),
+        error => domain_error(error),
+    })?;
+    Ok(reply(response))
+}
+
 async fn delete(
     Extension(state): Extension<Arc<AppState>>,
     Extension(ctx): Extension<SecurityContext>,

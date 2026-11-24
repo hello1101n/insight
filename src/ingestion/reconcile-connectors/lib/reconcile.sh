@@ -1638,7 +1638,7 @@ _reconcile_one_connector() {
       else
         local apply_rc=0 apply_error
         apply_error="$(argo_apply_cronworkflow "${name}" "${conn_name}" "${schedule}" "${tenant}" \
-                                "${source_id_label}" "${dbt_select}" "${schedule_origin}" "${deployment}" 2>&1 >/dev/null)" \
+                                "${source_id_label}" "${dbt_select}" "${schedule_origin}" "${deployment}" "${conn_id}" 2>&1 >/dev/null)" \
           || apply_rc=$?
         apply_error="$(argo_error_reason "${apply_error}")"
         argo_log_schedule_release_failure "${name}" "${apply_rc}" "${apply_error}"
@@ -1668,7 +1668,7 @@ _reconcile_one_connector() {
         log_line INFO "${name}: would trigger a one-shot sync (bump_kind=${def_bump_kind})"
       fi
     elif argo_submit_sync_trigger "${name}" "${conn_name}" "${tenant}" \
-                                   "${source_id_label}" "${dbt_select}" \
+                                  "${source_id_label}" "${dbt_select}" \
                                    "${def_bump_kind}" >/dev/null 2>&1; then
       if [[ "${def_bump_kind}" == "major" ]]; then
         log_line INFO "${name}: triggered a one-shot sync with dbt --full-refresh (bump_kind=major)"

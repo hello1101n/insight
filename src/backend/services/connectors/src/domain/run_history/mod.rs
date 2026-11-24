@@ -6,6 +6,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use super::connector_schedules::resources::Resources;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum WaitKind {
@@ -70,6 +72,7 @@ struct StageSnapshot {
     job: Option<u64>,
     records: Option<u64>,
     query_pod: Option<uuid::Uuid>,
+    resources: Option<Resources>,
 }
 
 impl StageSnapshot {
@@ -95,6 +98,7 @@ impl StageSnapshot {
             job: None,
             records: None,
             query_pod: None,
+            resources: None,
         }
     }
 }

@@ -255,11 +255,20 @@ fn commit(state: &mut StateData, patch: &Value) -> bool {
     {
         return false;
     }
-    if patch.get("spec").is_some() && state.scenario != Scenario::Mismatch {
+    if state.scenario != Scenario::Mismatch
+        && let Some(parameters) = patch.pointer("/spec/workflowSpec/arguments/parameters")
+    {
+        state.object["spec"]["workflowSpec"]["arguments"]["parameters"] = parameters.clone();
+    }
+    if patch["spec"].get("schedules").is_some() && state.scenario != Scenario::Mismatch {
         state.object["spec"]["schedules"] = patch["spec"]["schedules"].clone();
         state.object["spec"]["timezone"] = patch["spec"]["timezone"].clone();
         state.object["metadata"]["annotations"]["insight.cyberfabric.com/schedule-origin"] =
             patch["metadata"]["annotations"]["insight.cyberfabric.com/schedule-origin"].clone();
+    }
+    let resource_marker = "insight.cyberfabric.com/airbyte-resources-managed";
+    if let Some(marker) = patch["metadata"]["annotations"].get(resource_marker) {
+        state.object["metadata"]["annotations"][resource_marker] = marker.clone();
     }
     if let Some(marker) =
         patch["metadata"]["annotations"].get("insight.cyberfabric.com/schedule-fence")

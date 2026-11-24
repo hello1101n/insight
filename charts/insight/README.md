@@ -92,7 +92,8 @@ The same mutex protects a writer group on both the Jira and non-Jira paths.
 | `clickhouse.serverMemoryLimitBytes` | 0 (unknown) | Effective ClickHouse memory limit per server, for chart validation |
 
 Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
-It checks the ClickHouse query log for failed dbt and identity stages for up to ten minutes.
+It checks the ClickHouse query log for failure reasons during the first ten minutes after a dbt or identity stage ends.
+It records the largest query memory for the attempt after that window.
 The lookup allows 60 seconds of clock difference at each end of the stage.
 It distinguishes the sync user's total, the query limit, server memory pressure, and a pod killed for memory.
 For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
@@ -117,6 +118,35 @@ The default is 1800 seconds. An unreadable list leaves the launch outcome unknow
 Set `ingestion.airbyteSync.statusUnreadableThresholdSeconds` to limit how long the poll step tolerates an outage.
 The poll step applies this limit when it reads the Workflow at startup and when it reads Airbyte job status.
 The default is 1800 seconds. A permanent credential error stops the poll step immediately.
+
+### Configure connector instance resources
+
+Set install-wide defaults under `ingestion.syncResourceDefaults`. The default map is empty.
+Each default uses the same field name as the connector instance API.
+
+| Field | Unit | Applies to |
+| --- | --- | --- |
+| `airbyte_cpu_millis` | Millicores | Airbyte source container |
+| `airbyte_memory_bytes` | Bytes | Airbyte source container |
+| `dbt_cpu_millis` | Millicores | Main container of dbt transforms and connector checks |
+| `dbt_memory_bytes` | Bytes | Main container of dbt transforms and connector checks |
+| `identity_cpu_millis` | Millicores | Main container of the identity seed |
+| `identity_memory_bytes` | Bytes | Main container of the identity seed |
+| `dbt_query_memory_bytes` | Bytes | Each ClickHouse query from dbt transforms and connector checks |
+
+Reconcile applies the chart defaults to connector Workflows. Admin-saved overrides take precedence.
+Use a positive integer for each pod value and at least two bytes for the query limit.
+Each pod value sets both the request and the limit for that dimension.
+An unset dimension uses the standard resources of its step.
+
+The Airbyte source must serve one connection. A connection-level resource override takes precedence in Airbyte.
+The trigger reports any connection overrides and changes the source sync allocation before launch when a size differs.
+After both effective sizes are cleared, the next reconcile pass removes the managed source sync allocation.
+A launch before that pass can still use the prior source allocation.
+
+The dbt query limit overrides the sync user's per-query default and dbt model limits.
+Each absolute spill threshold is half the limit, rounded down. Both spill ratio settings are zero.
+The sync user's total memory limit still applies. With no instance or chart query limit, the dbt model settings apply as written.
 
 ### Configure the ClickHouse sync user
 

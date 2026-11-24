@@ -344,3 +344,25 @@ def test_reconcile_writes_a_masked_password_once_per_secret_revision(tmp_path: P
             assert "POST /api/v1/destinations/get " not in log.read_text()
         revision = json.loads(json.loads((tmp_path / "state.json").read_text())["data"][DEST_ID])
         assert revision == ["example-secret-uid", recorded_version, "password", "etl"]
+
+
+@pytest.mark.parametrize("stored", [None, COMPOSED | {"cluster_name": "example_previous"}], ids=["create", "update"])
+def test_destination_password_is_only_in_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stored: dict[str, object] | None
+) -> None:
+    import os
+    import shlex
+    import sys
+
+    binary = tmp_path / "python3"
+    args = tmp_path / "argv"
+    binary.write_text(
+        f'#!/bin/bash\nprintf \'%s\\0\' "$@" >> {shlex.quote(str(args))}\nexec {shlex.quote(sys.executable)} "$@"\n'
+    )
+    binary.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    done, calls = _ensure(tmp_path, stored, COMPOSED | {"password": "fixture-password-in-stdin"})
+
+    assert done.returncode == 0, done.stderr
+    assert b"fixture-password-in-stdin" not in args.read_bytes()
+    assert calls[1][2]["connectionConfiguration"]["password"] == "fixture-password-in-stdin"

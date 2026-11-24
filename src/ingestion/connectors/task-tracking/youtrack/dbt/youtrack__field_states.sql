@@ -4,10 +4,10 @@
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     tags=['youtrack', 'staging'],
-    query_settings={
+    query_settings=instance_query_settings({
         'max_bytes_before_external_group_by': 500000000,
         'max_threads': 4,
-    },
+    }),
 ) }}
 
 WITH events AS (

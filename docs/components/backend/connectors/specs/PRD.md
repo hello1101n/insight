@@ -7,16 +7,16 @@ date: 2026-11-10
 
 ## 1. Purpose
 
-An instance admin changes how often each connector instance syncs, from the Connectors page,
-and sees whether the change is in effect. Connector health, sync history and ingestion intensity are
-served by a new `connectors` service, owned by ingestion, instead of analytics.
+An instance admin changes how often each connector instance syncs and checks the live schedule on the Connectors page.
+The admin uses the API to change the resource settings of each instance.
+The `connectors` service provides connector health, sync history, and ingestion intensity.
 
 ## 2. Users
 
 | User | What they do here |
 |---|---|
-| Instance admin | Reads connector health; sets, changes and resets an instance's sync schedule |
-| Operator | Deploys the install; sets the default schedule of an instance in the deployment configuration |
+| Instance admin | Reads connector health and manages each instance’s sync schedule and resource settings |
+| Operator | Deploys the install and sets the deployment defaults |
 
 Only users with the admin role reach these pages and APIs. Everyone else gets 403; an unauthenticated
 request gets 401.
@@ -129,6 +129,16 @@ request gets 401.
 8. The service retains the recorded run history after Argo deletes the workflow.
 9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.
    It names the shared sync memory limit when ClickHouse reports that limit.
+
+### 4.7 Resource settings
+
+1. An admin can set the CPU and memory of the Airbyte source, dbt, and identity seed per connector instance.
+2. An admin can set a ClickHouse query memory limit for that instance's dbt runs.
+3. Each unset value inherits its chart default. An unset chart default keeps the step's standard behavior.
+4. The resource settings share the schedule's save, revision, reconciliation, and removal rules.
+5. Each run uses the settings effective at submission. Run history records the settings for each stage attempt.
+6. Run history records the largest logged ClickHouse query memory for completed dbt and identity seed attempts.
+7. Run history reports a pod killed for memory as a pod memory failure.
 
 ## 5. Constraints
 

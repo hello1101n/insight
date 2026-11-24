@@ -21,6 +21,19 @@
             "enabled": { "type": "boolean" }
           }
         },
+        "syncResourceDefaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "airbyte_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "airbyte_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "dbt_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "dbt_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "identity_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "identity_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "dbt_query_memory_bytes": {"type": "integer", "minimum": 2, "maximum": 9007199254740991}
+          }
+        },
         "maxConcurrentSyncs": { "type": "integer", "minimum": 1 },
         "maxConcurrentBronzeLoads": { "type": "integer", "minimum": 1 },
         "maxConcurrentConnectorChecks": { "type": "integer", "minimum": 1 },

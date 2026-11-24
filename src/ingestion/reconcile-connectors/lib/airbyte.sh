@@ -558,15 +558,15 @@ ab_create_source() {
   local name="$3"
   local config_json="$4"
   local body
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "workspaceId": sys.argv[1],
   "sourceDefinitionId": sys.argv[2],
   "name": sys.argv[3],
-  "connectionConfiguration": json.loads(sys.argv[4]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${workspace_id}" "${definition_id}" "${name}" "${config_json}")
+' "${workspace_id}" "${definition_id}" "${name}")
   ab__curl POST /api/v1/sources/create "${body}"
 }
 
@@ -579,16 +579,16 @@ ab_update_source() {
   local config_json="$2"
   local name="${3:-}"
   local body
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 payload = {
   "sourceId": sys.argv[1],
-  "connectionConfiguration": json.loads(sys.argv[2]),
+  "connectionConfiguration": json.load(sys.stdin),
 }
-if len(sys.argv) > 3 and sys.argv[3]:
-    payload["name"] = sys.argv[3]
+if sys.argv[2]:
+    payload["name"] = sys.argv[2]
 print(json.dumps(payload))
-' "${source_id}" "${config_json}" "${name}")
+' "${source_id}" "${name}")
   ab__curl POST /api/v1/sources/update "${body}"
 }
 
@@ -780,11 +780,13 @@ ab_ensure_destination() {
   list_resp="$(ab__curl POST /api/v1/destinations/list \
     "$(printf '{"workspaceId":"%s"}' "${workspace_id}")")"
   # "<destinationId>\t<drifted keys>" for the named destination, or nothing.
-  found="$(printf '%s' "${list_resp}" | python3 -c '
+  found="$(printf '%s\0%s' "$config_json" "$list_resp" | python3 -c '
 import sys, json
-target, desired = sys.argv[1], json.loads(sys.argv[2])
+target = sys.argv[1]
+config, destinations = sys.stdin.read().split("\0", 1)
+desired = json.loads(config)
 MASK = "**********"
-for d in json.load(sys.stdin).get("destinations", []):
+for d in json.loads(destinations).get("destinations", []):
     if d.get("name") != target:
         continue
     current = d.get("connectionConfiguration") or {}
@@ -793,7 +795,7 @@ for d in json.load(sys.stdin).get("destinations", []):
              if k not in masked and current.get(k, MASK) != desired.get(k, MASK)}
     print(d["destinationId"] + "\t" + " ".join(sorted(drift)))
     break
-' "${name}" "${config_json}")"
+' "${name}")"
 
   local body resp dest_id
   if [[ -n "${found}" ]]; then
@@ -824,14 +826,14 @@ for d in json.load(sys.stdin).get("destinations", []):
       printf '%s' "${existing_id}"
       return 0
     fi
-    body=$(python3 -c '
+    body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "destinationId": sys.argv[1],
   "name": sys.argv[2],
-  "connectionConfiguration": json.loads(sys.argv[3]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${existing_id}" "${name}" "${config_json}")
+' "${existing_id}" "${name}")
     if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
       if ! ab_destination_update_once "${existing_id}" "${body}" "${credentials_changed}"; then
         printf 'Airbyte destination update or state write failed for %s.\n' "${existing_id}" >&2
@@ -848,15 +850,15 @@ print(json.dumps({
     return 0
   fi
 
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "workspaceId": sys.argv[1],
   "destinationDefinitionId": sys.argv[2],
   "name": sys.argv[3],
-  "connectionConfiguration": json.loads(sys.argv[4]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${workspace_id}" "${definition_id}" "${name}" "${config_json}")
+' "${workspace_id}" "${definition_id}" "${name}")
   # Capture the response so a non-2xx (e.g. 422 schema-validation) surfaces
   # the Airbyte error body — which names the offending config field — instead
   # of a bare `KeyError: 'destinationId'` from piping straight into the parser.

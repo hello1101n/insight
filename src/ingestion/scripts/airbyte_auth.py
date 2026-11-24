@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from airbyte_launch import REQUEST_TIMEOUT_SECONDS
+
 _SA_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
 
 
@@ -73,3 +75,12 @@ def oauth_token() -> str:
     )
     # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
     return json.load(urllib.request.urlopen(request, timeout=30))["access_token"]
+
+
+def request(url: str, token: str, data: bytes | None = None) -> bytes:
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    )
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        return response.read()

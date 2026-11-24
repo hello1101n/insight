@@ -21,6 +21,7 @@ on:
       - src/ingestion/gold/**
       - src/ingestion/connectors/**/dbt/**
       - src/ingestion/scripts/dbt_profiles.py
+      - src/ingestion/scripts/lib/ch-exec.sh
       - src/ingestion/scripts/create-databases.sh
       - src/ingestion/scripts/bootstrap-db/provision-sync-access.sh
       - src/ingestion/scripts/tests/test_sync_access.py
@@ -39,6 +40,7 @@ on:
       - src/ingestion/gold/**
       - src/ingestion/connectors/**/dbt/**
       - src/ingestion/scripts/dbt_profiles.py
+      - src/ingestion/scripts/lib/ch-exec.sh
       - src/ingestion/scripts/create-databases.sh
       - src/ingestion/scripts/bootstrap-db/provision-sync-access.sh
       - src/ingestion/scripts/tests/test_sync_access.py
@@ -116,9 +118,18 @@ jobs:
           SYNC_TEST_CLICKHOUSE_CONTAINER_HOST="$(docker inspect -f '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$CLICKHOUSE_CONTAINER")"
           : "${SYNC_TEST_CLICKHOUSE_CONTAINER_HOST:?}"
           export SYNC_TEST_CLICKHOUSE_CONTAINER_HOST
-          src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q \
+          report="$RUNNER_TEMP/sync-account-tests.xml"
+          src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q --junitxml="$report" \
             src/ingestion/scripts/tests/test_sync_access.py \
             src/ingestion/scripts/tests/test_sync_permissions.py
+          python - "$report" <<'PY'
+          import sys
+          from xml.etree import ElementTree
+
+          report = ElementTree.parse(sys.argv[1])
+          if not report.findall(".//testcase") or report.findall(".//skipped"):
+              sys.exit("All ClickHouse sync account tests must run.")
+          PY
 
       - name: Cold-start tests
         run: src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q src/ingestion/dbt/tests/cold_start
