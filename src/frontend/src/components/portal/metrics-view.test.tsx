@@ -444,6 +444,22 @@ describe("MetricsView", () => {
     expect(screen.getByText("3 selected")).toBeInTheDocument();
   });
 
+  it("keeps the picker open while a metric's description card is open", async () => {
+    mocks.definitions[0] = definition("collab.messages_sent", "Messages", {
+      description: "Messages sent in team channels.",
+    });
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("button", { name: "About Messages" }));
+    await user.click(screen.getByText("Messages sent in team channels."));
+
+    expect(screen.getByText("Messages sent in team channels.")).toBeInTheDocument();
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Messages" })).toBeChecked();
+  });
+
   it("clears the selection with Clear all and shows a zero count", async () => {
     const user = userEvent.setup();
     render(<MetricsView />);

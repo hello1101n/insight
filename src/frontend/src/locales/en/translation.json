@@ -1126,6 +1126,8 @@
       "failed": "The download failed. Try again."
     },
     "count": "Metrics: {{picked}} of {{total}}",
+    "about_metric": "About {{label}}",
+    "close_description": "Close",
     "selected_count": "{{count}} selected",
     "reset_to_defaults": "Reset to defaults",
     "select_all": "Select all",

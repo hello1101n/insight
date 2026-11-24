@@ -1,6 +1,6 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import { Search } from "lucide-react";
+import { Info, Search, X } from "lucide-react";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import {
@@ -10,6 +10,11 @@ import {
   TooltipTrigger,
   Checkbox,
   Input,
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverTitle,
+  PopoverTrigger,
   Separator,
   Tabs,
   TabsList,
@@ -17,7 +22,7 @@ import {
 } from "@gears-frontx/ui-kit";
 import type { MetricFamily } from "@/lib/reports/families";
 import { cn } from "@/lib/utils";
-import { TEXT_EYEBROW } from "@/lib/type-scale";
+import { TEXT_BODY, TEXT_EYEBROW, TEXT_NAME } from "@/lib/type-scale";
 
 
 const ALL_FAMILIES = "all";
@@ -208,39 +213,52 @@ function MetricFamilyGroup({
         {visibleMetrics.map((metric) => {
           const checked = selected.includes(metric.metric_key);
           const row = (
-            <label
+            <div
               key={metric.metric_key}
-              htmlFor={`report-${metric.metric_key}`}
               className={cn(
-                "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm",
+                "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-start text-sm",
                 metric.reason
                   ? "text-muted-foreground"
-                  : "cursor-pointer hover:bg-muted",
+                  : "hover:bg-muted",
                 checked && "bg-primary/5 font-medium"
               )}
             >
-              <Checkbox
-                id={`report-${metric.metric_key}`}
-                checked={checked}
-                disabled={metric.reason != null}
-                onCheckedChange={() =>
-                  setSelected((current) =>
-                    checked
-                      ? current.filter((key) => key !== metric.metric_key)
-                      : [...current, metric.metric_key]
-                  )
-                }
-              />
-              <span className="min-w-0 flex-1 truncate" title={metric.label}>
-                {metric.label}
-              </span>
+              <label
+                htmlFor={`report-${metric.metric_key}`}
+                className={cn(
+                  "flex min-w-0 items-center gap-2",
+                  metric.reason == null && "cursor-pointer"
+                )}
+              >
+                <Checkbox
+                  id={`report-${metric.metric_key}`}
+                  checked={checked}
+                  disabled={metric.reason != null}
+                  onCheckedChange={() =>
+                    setSelected((current) =>
+                      checked
+                        ? current.filter((key) => key !== metric.metric_key)
+                        : [...current, metric.metric_key]
+                    )
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate" title={metric.label}>
+                  {metric.label}
+                </span>
+              </label>
+              {metric.description ? (
+                <MetricDescription
+                  label={metric.label}
+                  description={metric.description}
+                />
+              ) : null}
               <span
                 aria-hidden="true"
                 className="shrink-0 text-xs text-muted-foreground uppercase"
               >
                 {metricTag(metric)}
               </span>
-            </label>
+            </div>
           );
           if (metric.reason == null) return row;
 
@@ -258,6 +276,47 @@ function MetricFamilyGroup({
         })}
       </div>
     </section>
+  );
+}
+
+function MetricDescription({
+  label,
+  description,
+}: {
+  label: string;
+  description: string;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t("metrics_view.about_metric", { label })}
+            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+          />
+        }
+      >
+        <Info className="size-3.5" aria-hidden="true" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 gap-2 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <PopoverTitle className={TEXT_NAME}>{label}</PopoverTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={t("metrics_view.close_description")}
+            icon={<X />}
+            onClick={() => setOpen(false)}
+          />
+        </div>
+        <PopoverDescription className={TEXT_BODY}>{description}</PopoverDescription>
+      </PopoverContent>
+    </Popover>
   );
 }
 
