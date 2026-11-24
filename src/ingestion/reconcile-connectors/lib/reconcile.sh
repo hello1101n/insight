@@ -147,7 +147,7 @@ reconcile_resolve_destination_id() {
       reconcile__log ERROR "${subject}" "ab_ensure_destination returned empty id for ${dest_name}"
       return 1
     fi
-  elif [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" ]]; then
+  else
     if ! ab_converge_destination_credentials "${dest_id}"; then
       reconcile__log ERROR "${subject}" "Airbyte destination credential update failed."
       return 1
@@ -1096,7 +1096,7 @@ print("\n".join(sorted(i for i in ids if i)))')"
     local connection_id existing_tags_json desired_action
     connection_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["connectionId"])')"
     existing_tags_json="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.dumps(json.load(sys.stdin).get("tags",[])))')"
-    if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" && "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+    if [[ "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
       local destination_id
       destination_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["destinationId"] or "")')"
       if [[ -z "${destination_id}" ]] || ! ab_converge_destination_credentials "${destination_id}"; then
@@ -1834,7 +1834,7 @@ reconcile_run() {
   _RECONCILE_SKIPPED=0
 
   log_init
-  if [[ "${RECONCILE_SYNC_USER_ENABLED:-false}" == "true" && "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+  if [[ "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
     if ! ab_destination_credentials_init; then
       log_line ERROR "The ClickHouse sync credentials or destination state read failed."
       log_run_summary "${_RECONCILE_CHANGED}" 1

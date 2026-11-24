@@ -129,20 +129,13 @@ spec:
               value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_USERNAME
               value: {{ include "insight.clickhouse.syncUser" . | quote }}
-            {{- if .Values.clickhouse.syncUser.username }}
             {{- $passwordRef := (include "insight.clickhouse.syncPasswordRef" . | fromYaml).valueFrom.secretKeyRef }}
-            - name: RECONCILE_SYNC_USER_ENABLED
-              value: "true"
             - name: RECONCILE_SYNC_PASSWORD_SECRET
               value: {{ $passwordRef.name | quote }}
             - name: RECONCILE_SYNC_PASSWORD_KEY
               value: {{ $passwordRef.key | quote }}
             - name: RECONCILE_DESTINATION_STATE
               value: {{ include "insight.fullname" . }}-reconcile-destinations
-            {{- else }}
-            - name: RECONCILE_DEST_CLICKHOUSE_PASSWORD
-              {{- include "insight.clickhouse.syncPasswordRef" . | nindent 14 }}
-            {{- end }}
             # Topology of the target ClickHouse (epic #2010). The Bronze
             # destination is the only creator of bronze tables, so it has to
             # know whether to emit `Replicated*` engines and `ON CLUSTER`.

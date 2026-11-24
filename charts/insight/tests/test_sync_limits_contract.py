@@ -205,22 +205,29 @@ def test_identity_tags_clickhouse_queries_and_reports_the_pod_uid(charts: dict[s
     assert container["args"][2:] == ["-c", "/app/config/insight.yaml", "seed", "--guard-ok"]
 
 
-def test_sync_credentials_are_scoped_to_syncs(charts: dict[str, dict]) -> None:
+def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     default = charts["defaults"]
     reconcile = default["CronWorkflow", "contract-reconcile-loop"]
     env = reconcile["spec"]["workflowSpec"]["templates"][0]["container"]["env"]
-    assert {
-        "name": "RECONCILE_DEST_CLICKHOUSE_PASSWORD",
-        "valueFrom": {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-password"}},
-    } in env
-    assert ("ConfigMap", "contract-reconcile-destinations") not in default
-    for name in ("dbt-run", "connector-checks"):
-        run = templates(default, name)["run"]
-        assert {"name": "clickhouse_user", "default": "test"} in run["inputs"]["parameters"]
-        assert {
-            "name": "CLICKHOUSE_PASSWORD",
-            "valueFrom": {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-password"}},
-        } in run["script"]["env"]
+    assert {"name": "RECONCILE_DEST_CLICKHOUSE_USERNAME", "value": "insight_sync"} in env
+    assert {"name": "RECONCILE_SYNC_PASSWORD_SECRET", "value": "insight-db-creds"} in env
+    assert {"name": "RECONCILE_SYNC_PASSWORD_KEY", "value": "clickhouse-sync-password"} in env
+    assert not {entry["name"] for entry in env} & {"RECONCILE_DEST_CLICKHOUSE_PASSWORD", "RECONCILE_SYNC_USER_ENABLED"}
+    assert ("ConfigMap", "contract-reconcile-destinations") in default
+    password = default["Secret", "insight-db-creds"]["stringData"]["clickhouse-sync-password"]
+    assert len(password) == 24
+    assert password != default["Secret", "insight-db-creds"]["stringData"]["clickhouse-password"]
+    jobs = {
+        name: {entry["name"]: entry for entry in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+        for (kind, name), job in default.items()
+        if kind == "Job" and name.endswith(("clickhouse-databases", "clickhouse-migrate"))
+    }
+    reference = {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-sync-password", "optional": True}}
+    for name, job in jobs.items():
+        assert job["CLICKHOUSE_SYNC_USER"]["value"] == "insight_sync"
+        assert job["CLICKHOUSE_SYNC_PASSWORD"]["valueFrom"] == reference
+        assert "CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES" not in job
+        assert ("CLICKHOUSE_SYNC_PASSWORD_DEFERRED" in job) == name.endswith("clickhouse-databases")
 
     for provision in (True, False):
         args = [
@@ -230,6 +237,7 @@ def test_sync_credentials_are_scoped_to_syncs(charts: dict[str, dict]) -> None:
             f"clickhouse.provisionAccess={str(provision).lower()}",
         ]
         chart = render(*args)
+        assert "clickhouse-sync-password" not in chart["Secret", "insight-db-creds"]["stringData"]
         credentials = {"valueFrom": {"secretKeyRef": {"name": "etl-credentials", "key": "etl-password"}}}
         for name in ("dbt-run", "connector-checks"):
             env = templates(chart, name)["run"]["script"]["env"]
@@ -244,7 +252,6 @@ def test_sync_credentials_are_scoped_to_syncs(charts: dict[str, dict]) -> None:
         assert {"name": "RECONCILE_DEST_CLICKHOUSE_USERNAME", "value": "etl"} in env
         assert {"name": "RECONCILE_SYNC_PASSWORD_SECRET", "value": "etl-credentials"} in env
         assert {"name": "RECONCILE_SYNC_PASSWORD_KEY", "value": "etl-password"} in env
-        assert all(entry["name"] != "RECONCILE_DEST_CLICKHOUSE_PASSWORD" for entry in env)
         assert {"name": "RECONCILE_DESTINATION_STATE", "value": "contract-reconcile-destinations"} in env
         assert ("ConfigMap", "contract-reconcile-destinations") in chart
         assert {
@@ -256,40 +263,24 @@ def test_sync_credentials_are_scoped_to_syncs(charts: dict[str, dict]) -> None:
         ddl = next(
             item for (kind, name), item in chart.items() if kind == "Job" and name.endswith("clickhouse-databases")
         )
-        env = ddl["spec"]["template"]["spec"]["containers"][0]["env"]
-        assert ({"name": "CLICKHOUSE_SYNC_PASSWORD", **credentials} in env) == provision
+        env = {entry["name"]: entry for entry in ddl["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert ("CLICKHOUSE_SYNC_PASSWORD" in env) == provision
+        if provision:
+            assert env["CLICKHOUSE_SYNC_PASSWORD"]["valueFrom"]["secretKeyRef"]["name"] == "etl-credentials"
+            assert env["CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES"]["value"] == "12884901888"
         for service, key in [("analytics", "analytics"), ("identity-resolution", "identity_resolution")]:
             field = f"APP__gears__{key}__config__clickhouse_user"
             assert chart["Secret", f"insight-{service}-config"]["stringData"][field] == "test"
 
-    inline = render(
-        "--set",
-        "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=example-password,clickhouse.syncUser.totalMemoryBytes=12884901888",
-    )
-    secret = inline["Secret", "contract-clickhouse-sync"]
-    assert secret["stringData"] == {"password": "example-password"}
-    assert secret["metadata"]["annotations"]["helm.sh/hook-weight"] == "-5"
+
+def test_operator_credentials_carry_the_sync_password() -> None:
+    chart = render("--set", "credentials.autoGenerate=false")
+    assert ("Secret", "insight-db-creds") not in chart
+    env = templates(chart, "dbt-run")["run"]["script"]["env"]
     assert {
         "name": "CLICKHOUSE_PASSWORD",
-        "valueFrom": {"secretKeyRef": {"name": "contract-clickhouse-sync", "key": "password"}},
-    } in templates(inline, "dbt-run")["run"]["script"]["env"]
-    reconcile = inline["CronWorkflow", "contract-reconcile-loop"]
-    env = reconcile["spec"]["workflowSpec"]["templates"][0]["container"]["env"]
-    assert {"name": "RECONCILE_SYNC_PASSWORD_SECRET", "value": "contract-clickhouse-sync"} in env
-    assert {"name": "RECONCILE_SYNC_PASSWORD_KEY", "value": "password"} in env
-
-
-def test_sync_budget_must_fit_below_the_known_clickhouse_limit() -> None:
-    with pytest.raises(subprocess.CalledProcessError) as error:
-        render(
-            "--set",
-            "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=pw,clickhouse.syncUser.totalMemoryBytes=12884901888,clickhouse.serverMemoryLimitBytes=12884901888",
-        )
-    assert "must be below clickhouse.serverMemoryLimitBytes" in error.value.stderr
-    render(
-        "--set",
-        "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=pw,clickhouse.syncUser.totalMemoryBytes=12884901888,clickhouse.serverMemoryLimitBytes=12884901889",
-    )
+        "valueFrom": {"secretKeyRef": {"name": "insight-db-creds", "key": "clickhouse-sync-password"}},
+    } in env
 
 
 @pytest.mark.parametrize("exit_code", [42, 43, 44, 45])
@@ -301,45 +292,27 @@ def test_airbyte_launch_does_not_retry_terminal_exit_codes(charts: dict[str, dic
 @pytest.mark.parametrize("username", ["test", "default", "presentation", "grafana", "insight_mcp", "insight_v3_reader"])
 def test_sync_user_must_have_a_dedicated_name(charts: dict[str, dict], username: str) -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
-        render(
-            "--set",
-            f"clickhouse.syncUser.username={username},clickhouse.syncUser.password=example,"
-            "clickhouse.syncUser.totalMemoryBytes=12884901888",
-        )
+        render("--set", f"clickhouse.syncUser.username={username}")
     assert "clickhouse.syncUser.username must name a dedicated ClickHouse user" in error.value.stderr
 
 
-@pytest.mark.parametrize(
-    "sources",
-    ["", ",clickhouse.syncUser.password=example,clickhouse.syncUser.passwordSecret.name=example-secret"],
-    ids=["neither", "both"],
-)
-def test_sync_user_requires_exactly_one_password_source(charts: dict[str, dict], sources: str) -> None:
+def test_sync_user_name_is_required(charts: dict[str, dict]) -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
-        render("--set", "clickhouse.syncUser.username=etl,clickhouse.syncUser.totalMemoryBytes=12884901888" + sources)
-    assert (
-        "Set exactly one of clickhouse.syncUser.password and clickhouse.syncUser.passwordSecret.name"
-        in error.value.stderr
-    )
+        render("--set", "clickhouse.syncUser.username=")
+    assert "syncUser" in error.value.stderr
 
 
 def test_sync_user_provisioning_requires_a_job(charts: dict[str, dict]) -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
         render(
-            "--set",
-            "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=example,"
-            "clickhouse.syncUser.totalMemoryBytes=12884901888,clickhouse.provisionAccess=true,"
-            "clickhouse.createDatabases=false,clickhouse.runMigrations=false",
+            "--set", "clickhouse.provisionAccess=true,clickhouse.createDatabases=false,clickhouse.runMigrations=false"
         )
     assert "requires ingestion.toolboxImage and a ClickHouse provisioning job" in error.value.stderr
 
 
 def test_memory_byte_values_from_a_values_file_render_as_integers(tmp_path: Path) -> None:
     values = tmp_path / "sync.yaml"
-    values.write_text(
-        "clickhouse:\n  syncUser:\n    username: etl\n    password: example\n"
-        "    totalMemoryBytes: 12884901888\n    queryMemoryBytes: 1073741824\n"
-    )
+    values.write_text("clickhouse:\n  syncUser:\n    totalMemoryBytes: 12884901888\n    queryMemoryBytes: 1073741824\n")
     chart = render("-f", str(values))
     jobs = [doc for (kind, name), doc in chart.items() if kind == "Job" and "clickhouse" in name]
     settings = [
@@ -351,19 +324,6 @@ def test_memory_byte_values_from_a_values_file_render_as_integers(tmp_path: Path
     for env in settings:
         assert env["CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES"] == "12884901888"
         assert env["CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES"] == "1073741824"
-
-
-def test_sync_user_requires_a_budget_or_derives_it_from_the_server_limit() -> None:
-    user = "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=example"
-    with pytest.raises(subprocess.CalledProcessError) as error:
-        render("--set", user)
-    assert "Set clickhouse.syncUser.totalMemoryBytes or clickhouse.serverMemoryLimitBytes" in error.value.stderr
-
-    chart = render("--set", f"{user},clickhouse.serverMemoryLimitBytes=10000000001")
-    ddl = chart["Job", "contract-clickhouse-databases"]["spec"]["template"]["spec"]["containers"][0]
-    env = {item["name"]: item.get("value") for item in ddl["env"]}
-    assert env["CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES"] == "6000000000"
-    assert "CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES" not in env
 
 
 def render(*args: str) -> dict[tuple[str, str], dict]:

@@ -13,12 +13,12 @@ Run: pytest src/ingestion/reconcile-connectors/tests
 
 from __future__ import annotations
 
-import base64
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
+from reconcile_inputs import sync_user, write_sync_secret
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,36 +53,6 @@ ab__curl() {{
 """
 
 
-def _destination_state(tmp_path: Path) -> str:
-    state = tmp_path / "state.json"
-    state.write_text("{}")
-    return f"""
-    export RECONCILE_SYNC_PASSWORD_SECRET=credentials RECONCILE_SYNC_PASSWORD_KEY=password
-    export RECONCILE_DESTINATION_STATE=destination-state TMPDIR='{tmp_path}'
-    kubectl() {{
-      case "$3 $4 $5" in
-        'get secret credentials') cat '{tmp_path / "secret.json"}' ;;
-        'get configmap destination-state') cat '{state}' ;;
-        'patch configmap destination-state')
-          jq --argjson patch "$8" '. * $patch' '{state}' > '{state}.next' || return 1
-          mv '{state}.next' '{state}' ;;
-        *) return 1 ;;
-      esac
-    }}
-    """
-
-
-def _write_secret(tmp_path: Path, version: str, password: str) -> None:
-    (tmp_path / "secret.json").write_text(
-        json.dumps(
-            {
-                "metadata": {"uid": "example-secret-uid", "resourceVersion": version},
-                "data": {"password": base64.b64encode(password.encode()).decode()},
-            }
-        )
-    )
-
-
 def _stored(config: dict[str, object] | None) -> dict[str, object]:
     """What destinations/list returns: the secret masked, nothing else touched."""
     if config is None:
@@ -110,7 +80,12 @@ def _stored(config: dict[str, object] | None) -> dict[str, object]:
 
 
 def _ensure(
-    tmp_path: Path, stored: dict[str, object] | None, composed: dict[str, object] = COMPOSED, *, update_ok: bool = True
+    tmp_path: Path,
+    stored: dict[str, object] | None,
+    composed: dict[str, object] = COMPOSED,
+    *,
+    update_ok: bool = True,
+    current: bool = True,
 ) -> tuple[subprocess.CompletedProcess[str], list[tuple[str, str, object]]]:
     answers = tmp_path / "answers"
     answers.mkdir()
@@ -122,9 +97,11 @@ def _ensure(
 
     script = f"""
     set -uo pipefail
-    export AIRBYTE_URL=http://127.0.0.1:1
+    export AIRBYTE_URL=http://127.0.0.1:1 INSIGHT_NAMESPACE=fixture
     source "{ROOT}/lib/airbyte.sh"
     {STUB.format(workspace=WORKSPACE, log=log, answers=answers)}
+    {sync_user(tmp_path / "sync-user", *([DEST_ID] if current else []))}
+    ab_destination_credentials_init || exit 1
     ab_ensure_destination clickhouse-bronze {DEF_ID} '{json.dumps(composed)}'
     """
     done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, encoding="utf-8", check=False)
@@ -170,7 +147,11 @@ def test_a_topology_flipped_after_the_first_tick_reaches_airbyte(tmp_path: Path)
     assert done.returncode == 0, done.stderr
     assert done.stdout == DEST_ID
     assert [c[1] for c in calls] == ["/api/v1/destinations/list", "/api/v1/destinations/update"]
-    assert calls[1][2] == {"destinationId": DEST_ID, "name": "clickhouse-bronze", "connectionConfiguration": COMPOSED}
+    assert calls[1][2] == {
+        "destinationId": DEST_ID,
+        "name": "clickhouse-bronze",
+        "connectionConfiguration": COMPOSED | {"password": MASK},
+    }
     assert "updated: cluster_name use_replicated_engines" in done.stderr
 
 
@@ -183,7 +164,7 @@ def test_turning_the_topology_back_off_is_also_drift(tmp_path: Path) -> None:
 
     assert done.returncode == 0, done.stderr
     assert [c[1] for c in calls] == ["/api/v1/destinations/list", "/api/v1/destinations/update"]
-    assert calls[1][2]["connectionConfiguration"] == standalone
+    assert calls[1][2]["connectionConfiguration"] == standalone | {"password": MASK}
 
 
 @pytest.mark.parametrize(("key", "value"), [("host", "clickhouse-2.example.test"), ("cluster_name", "renamed")])
@@ -211,16 +192,12 @@ def test_a_failed_update_is_a_failure_not_a_stale_id(tmp_path: Path) -> None:
 
     assert done.returncode == 1
     assert done.stdout == ""
-    assert "destinations/update failed" in done.stderr
-    assert "stub: no answer" in done.stderr
+    assert done.stderr == f"Airbyte destination update or state write failed for {DEST_ID}.\n"
 
 
-@pytest.mark.parametrize(
-    ("enabled", "dry_run", "previous_user"),
-    [(True, False, "previous"), (True, False, "etl"), (False, False, "previous"), (True, True, "previous")],
-)
+@pytest.mark.parametrize(("dry_run", "previous_user"), [(False, "previous"), (False, "etl"), (True, "previous")])
 def test_reconcile_rotates_credentials_on_the_destination_used_by_an_existing_connection(
-    tmp_path: Path, enabled: bool, dry_run: bool, previous_user: str
+    tmp_path: Path, dry_run: bool, previous_user: str
 ) -> None:
     current = COMPOSED | {"username": previous_user, "password": MASK}
     answers = tmp_path / "answers"
@@ -236,17 +213,17 @@ def test_reconcile_rotates_credentials_on_the_destination_used_by_an_existing_co
         "destinationId": DEST_ID,
         "tags": [{"name": "insight"}, {"name": "cfg-hash:abcdefabcdef"}],
     }
-    _write_secret(tmp_path, "10", "example-secret")
+    environment = sync_user(tmp_path / "sync-user", username="etl")
+    write_sync_secret(tmp_path / "sync-user", "10", "example-secret")
     script = f"""
     set -uo pipefail
     export AIRBYTE_URL=http://127.0.0.1:1 INSIGHT_NAMESPACE=fixture CONNECTORS_DIR=/nonexistent
-    export RECONCILE_SYNC_USER_ENABLED={str(enabled).lower()} RECONCILE_DRY_RUN={int(dry_run)}
-    export RECONCILE_DEST_CLICKHOUSE_USERNAME=etl
+    export RECONCILE_DRY_RUN={int(dry_run)}
     source "{ROOT}/lib/reconcile.sh"
     {STUB.format(workspace=WORKSPACE, log=log, answers=answers)}
-    {_destination_state(tmp_path)}
+    {environment}
     ab_list_connections() {{ printf '%s' '{json.dumps([connection])}'; }}
-    if [[ "$RECONCILE_SYNC_USER_ENABLED" == "true" && "$RECONCILE_DRY_RUN" == "0" ]]; then
+    if [[ "$RECONCILE_DRY_RUN" == "0" ]]; then
       ab_destination_credentials_init || exit 1
     fi
     reconcile_connections jira source-1 abcdefabcdef1234 bronze_jira
@@ -254,7 +231,7 @@ def test_reconcile_rotates_credentials_on_the_destination_used_by_an_existing_co
     done = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == "noop\tconn-1"
-    if not enabled or dry_run:
+    if dry_run:
         assert not log.exists()
         return
 
@@ -293,10 +270,9 @@ def test_reconcile_writes_a_masked_password_once_per_secret_revision(tmp_path: P
     script = f"""
     set -uo pipefail
     export AIRBYTE_URL=http://127.0.0.1:1 INSIGHT_NAMESPACE=fixture CONNECTORS_DIR=/nonexistent
-    export RECONCILE_SYNC_USER_ENABLED=true RECONCILE_DEST_CLICKHOUSE_USERNAME=etl
     source "{ROOT}/lib/reconcile.sh"
     {STUB.format(workspace=WORKSPACE, log=log, answers=answers)}
-    {_destination_state(tmp_path)}
+    {sync_user(tmp_path / "sync-user", username="etl")}
     ab_list_connections() {{ printf '%s' '{json.dumps(connections)}'; }}
     connector_schedules_read() {{ :; }}
     connector_schedules_writable() {{ :; }}
@@ -324,7 +300,7 @@ def test_reconcile_writes_a_masked_password_once_per_secret_revision(tmp_path: P
         ("12", "example-retried", True, 1, "11"),
         ("12", "example-retried", False, 1, "12"),
     ]:
-        _write_secret(tmp_path, version, password)
+        write_sync_secret(tmp_path / "sync-user", version, password)
         if rejected:
             update_answer.unlink()
         else:
@@ -342,7 +318,7 @@ def test_reconcile_writes_a_masked_password_once_per_secret_revision(tmp_path: P
             assert writes[0]["connectionConfiguration"] == current | {"password": password}
         else:
             assert "POST /api/v1/destinations/get " not in log.read_text()
-        revision = json.loads(json.loads((tmp_path / "state.json").read_text())["data"][DEST_ID])
+        revision = json.loads(json.loads((tmp_path / "sync-user" / "state.json").read_text())["data"][DEST_ID])
         assert revision == ["example-secret-uid", recorded_version, "password", "etl"]
 
 
@@ -361,7 +337,7 @@ def test_destination_password_is_only_in_stdin(
     )
     binary.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
-    done, calls = _ensure(tmp_path, stored, COMPOSED | {"password": "fixture-password-in-stdin"})
+    done, calls = _ensure(tmp_path, stored, COMPOSED | {"password": "fixture-password-in-stdin"}, current=False)
 
     assert done.returncode == 0, done.stderr
     assert b"fixture-password-in-stdin" not in args.read_bytes()

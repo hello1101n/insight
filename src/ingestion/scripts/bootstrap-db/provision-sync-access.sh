@@ -7,14 +7,33 @@ user="${CLICKHOUSE_SYNC_USER:-}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/../lib/ch-exec.sh"
 
-: "${CLICKHOUSE_SYNC_PASSWORD:?Set CLICKHOUSE_SYNC_PASSWORD}"
+if [[ -z "${CLICKHOUSE_SYNC_PASSWORD:-}" ]]; then
+  if [[ "${CLICKHOUSE_SYNC_PASSWORD_DEFERRED:-false}" == "true" ]]; then
+    echo "The ClickHouse sync password is not in its Secret yet. The post-deploy job provisions the sync user."
+    exit 0
+  fi
+  echo "The ClickHouse sync password is missing from its Secret." >&2
+  exit 1
+fi
 : "${CLICKHOUSE_DATABASE:?Set CLICKHOUSE_DATABASE}"
-total="${CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES:?Set CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES}"
+total="${CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES:-}"
 per_query="${CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES:-}"
 
 if [[ ! "$user" =~ ^[A-Za-z_][A-Za-z0-9_]*$ || "$user" == "$CLICKHOUSE_USER" ]]; then
   echo "Specify a dedicated ClickHouse sync user." >&2
   exit 1
+fi
+if [[ -z "$total" ]]; then
+  server_settings=system.server_settings
+  if ch_cluster_mode; then
+    server_settings="clusterAllReplicas('${CLICKHOUSE_CLUSTER_NAME:?Set CLICKHOUSE_CLUSTER_NAME}', system.server_settings)"
+  fi
+  if ! server="$(ch_scalar "SELECT min(toUInt64(value)) FROM $server_settings WHERE name = 'max_server_memory_usage'")" ||
+    (( server < 4 )); then
+    echo "The ClickHouse server memory limit read failed." >&2
+    exit 1
+  fi
+  total=$((server / 5 * 3 + server % 5 * 3 / 5))
 fi
 if [[ ! "$total" =~ ^[1-9][0-9]{0,17}$ ]] || (( total < 2 )) ||
   { [[ -n "$per_query" ]] && { [[ ! "$per_query" =~ ^[1-9][0-9]{0,17}$ ]] || (( per_query < 2 )); }; }; then

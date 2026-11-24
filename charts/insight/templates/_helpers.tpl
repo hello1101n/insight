@@ -153,13 +153,16 @@ default
       name: {{ default "insight-db-creds" .Values.clickhouse.passwordSecret.name | quote }}
       key:  "clickhouse-presentation-password"
       optional: true
-{{- if and .Values.clickhouse.provisionAccess .Values.clickhouse.syncUser.username }}
+{{- if .Values.clickhouse.provisionAccess }}
 - name: CLICKHOUSE_SYNC_USER
-  value: {{ .Values.clickhouse.syncUser.username | quote }}
+  value: {{ include "insight.clickhouse.syncUser" . | quote }}
 - name: CLICKHOUSE_SYNC_PASSWORD
   {{- include "insight.clickhouse.syncPasswordRef" . | nindent 2 }}
+      optional: true
+{{- with .Values.clickhouse.syncUser.totalMemoryBytes }}
 - name: CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES
-  value: {{ include "insight.clickhouse.syncMemoryTotal" . | quote }}
+  value: {{ int64 . | quote }}
+{{- end }}
 {{- with .Values.clickhouse.syncUser.queryMemoryBytes }}
 - name: CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES
   value: {{ int64 . | quote }}
@@ -239,39 +242,15 @@ redis://{{ include "insight.redis.host" . }}:{{ include "insight.redis.port" . }
 {{- required "redpanda.brokers is required" .Values.redpanda.brokers -}}
 {{- end -}}
 
-{{- define "insight.clickhouse.syncMemoryTotal" -}}
-{{- $server := int64 .Values.clickhouse.serverMemoryLimitBytes -}}
-{{- $total := int64 .Values.clickhouse.syncUser.totalMemoryBytes -}}
-{{- if eq $total 0 -}}
-  {{- if eq $server 0 -}}
-    {{- fail "Set clickhouse.syncUser.totalMemoryBytes or clickhouse.serverMemoryLimitBytes" -}}
-  {{- end -}}
-  {{- $total = add (mul (div $server 5) 3) (div (mul (mod $server 5) 3) 5) -}}
-{{- end -}}
-{{- if lt $total 2 -}}
-  {{- fail "The ClickHouse sync memory total must be at least two bytes" -}}
-{{- end -}}
-{{- if and (gt $server 0) (ge $total $server) -}}
-  {{- fail "clickhouse.syncUser.totalMemoryBytes must be below clickhouse.serverMemoryLimitBytes" -}}
-{{- end -}}
-{{- $total -}}
-{{- end -}}
-
 {{- define "insight.clickhouse.syncUser" -}}
-{{- default (required "clickhouse.username is required" .Values.clickhouse.username) .Values.clickhouse.syncUser.username -}}
+{{- required "clickhouse.syncUser.username is required" .Values.clickhouse.syncUser.username -}}
 {{- end -}}
 
 {{- define "insight.clickhouse.syncPasswordRef" -}}
-{{- $sync := .Values.clickhouse.syncUser -}}
 valueFrom:
   secretKeyRef:
-    {{- if $sync.username }}
-    name: {{ default (printf "%s-clickhouse-sync" (include "insight.fullname" .)) $sync.passwordSecret.name | quote }}
-    key: {{ ternary $sync.passwordSecret.key "password" (ne $sync.passwordSecret.name "") | quote }}
-    {{- else }}
-    name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
-    key:  {{ required "clickhouse.passwordSecret.key is required" .Values.clickhouse.passwordSecret.key | quote }}
-    {{- end }}
+    name: {{ required "clickhouse.syncUser.passwordSecret.name is required" .Values.clickhouse.syncUser.passwordSecret.name | quote }}
+    key: {{ required "clickhouse.syncUser.passwordSecret.key is required" .Values.clickhouse.syncUser.passwordSecret.key | quote }}
 {{- end -}}
 
 {{/*

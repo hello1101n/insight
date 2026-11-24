@@ -161,16 +161,14 @@
             "clusterName": { "type": "string" },
             "createDatabases": { "type": "boolean" },
             "provisionAccess": { "type": "boolean" },
-            "serverMemoryLimitBytes": { "type": "integer", "minimum": 0 },
             "syncUser": {
               "type": "object",
               "properties": {
-                "username": { "type": "string", "pattern": "^([A-Za-z_][A-Za-z0-9_]*)?$" },
-                "password": { "type": "string" },
+                "username": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
                 "passwordSecret": {
                   "type": "object",
                   "properties": {
-                    "name": { "type": "string" },
+                    "name": { "type": "string", "minLength": 1 },
                     "key": { "type": "string", "minLength": 1 }
                   }
                 },

@@ -365,13 +365,11 @@ clickhouse:
   # and this release creates, grants and revokes nothing. The topology guard
   # then only notes the missing replicated directory instead of refusing.
   provisionAccess: true
-  serverMemoryLimitBytes: 0
   syncUser:
-    username: ""
-    password: ""
+    username: insight_sync
     passwordSecret:
-      name: ""
-      key: password
+      name: insight-db-creds
+      key: clickhouse-sync-password
   # When true (default), a post-install/post-upgrade Hook Job
   # (clickhouse-migrate-job) applies the schema migrations
   # (src/ingestion/scripts/migrations/*.sql) and the guarded heals against

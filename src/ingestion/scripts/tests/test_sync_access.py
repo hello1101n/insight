@@ -112,7 +112,36 @@ def test_sync_access_is_idempotent_and_only_syncs_are_memory_limited() -> None:
         del env["CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES"]
         bootstrap()
         assert execute(settings_sql, sync=True) == execute(settings_sql)
+
+        del env["CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES"]
+        bootstrap()
+        server = int(execute("SELECT value FROM system.server_settings WHERE name = 'max_server_memory_usage'"))
+        assert execute("SELECT getSetting('max_memory_usage_for_user')", sync=True) == str(server * 3 // 5)
     finally:
         execute(f"DROP USER IF EXISTS {user}")
         execute(f"DROP DATABASE IF EXISTS {bronze}")
         execute(f"DROP DATABASE IF EXISTS {database}")
+
+
+@pytest.mark.parametrize("deferred", [True, False])
+def test_a_missing_sync_password_fails_unless_the_post_deploy_job_provisions_it(deferred: bool) -> None:
+    env = {
+        "PATH": os.environ["PATH"],
+        "CLICKHOUSE_URL": "http://127.0.0.1:9",
+        "CLICKHOUSE_USER": "admin",
+        "CLICKHOUSE_PASSWORD": "admin-fixture",
+        "CLICKHOUSE_SYNC_USER": "sync_fixture",
+        "CLICKHOUSE_SYNC_PASSWORD": "",
+    } | ({"CLICKHOUSE_SYNC_PASSWORD_DEFERRED": "true"} if deferred else {})
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "bootstrap-db/provision-sync-access.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == (0 if deferred else 1), result.stderr
+    if deferred:
+        assert "The post-deploy job provisions the sync user." in result.stdout
+    else:
+        assert "The ClickHouse sync password is missing from its Secret." in result.stderr

@@ -78,12 +78,10 @@ spec:
           - secretRef:
               name: {{ .Values.identityResolution.existingSecret | quote }}
         env:
-          {{- if .Values.clickhouse.syncUser.username }}
           - name: APP__gears__identity_resolution__config__clickhouse_user
             value: {{ include "insight.clickhouse.syncUser" . | quote }}
           - name: APP__gears__identity_resolution__config__clickhouse_password
             {{- include "insight.clickhouse.syncPasswordRef" . | nindent 12 }}
-          {{- end }}
           - name: WORKFLOW_UID
             value: {{ `"{{workflow.uid}}"` }}
           - name: POD_UID

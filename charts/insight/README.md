@@ -77,13 +77,11 @@ The same mutex protects a writer group on both the Jira and non-Jira paths.
 | Setting | Default | Applies to |
 | --- | --- | --- |
 | `ingestion.maxConcurrentConnectorChecks` | 2 | Check slots in this namespace |
-| `clickhouse.syncUser.username` | Empty | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
-| `clickhouse.syncUser.passwordSecret.name` | Empty | Existing Secret in the release namespace |
-| `clickhouse.syncUser.passwordSecret.key` | `password` | Password key in the existing Secret |
-| `clickhouse.syncUser.password` | Empty | Password for the Secret that Helm creates |
-| `clickhouse.syncUser.totalMemoryBytes` | 60% of the configured server limit | `max_memory_usage_for_user` on each ClickHouse server |
+| `clickhouse.syncUser.username` | `insight_sync` | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
+| `clickhouse.syncUser.passwordSecret.name` | `insight-db-creds` | Secret in the release namespace that holds the password |
+| `clickhouse.syncUser.passwordSecret.key` | `clickhouse-sync-password` | Password key in that Secret |
+| `clickhouse.syncUser.totalMemoryBytes` | 60% of `max_server_memory_usage` | `max_memory_usage_for_user` on each ClickHouse server |
 | `clickhouse.syncUser.queryMemoryBytes` | Unset | Optional `max_memory_usage` for each query |
-| `clickhouse.serverMemoryLimitBytes` | 0 (unknown) | Effective ClickHouse memory limit per server, for chart validation |
 
 Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
 It checks the ClickHouse query log for failure reasons during the first ten minutes after a dbt or identity stage ends.
@@ -183,11 +181,13 @@ The sync user's total memory limit still applies. With no instance or chart quer
 
 ### Configure the ClickHouse sync user
 
-Set `clickhouse.syncUser.username` to a dedicated account.
+Every installation runs Bronze loads, dbt, the identity seed, and connector checks as the sync user.
 Use a distinct username for each stand that shares a ClickHouse server.
-Set its password through `clickhouse.syncUser.passwordSecret.name` or `clickhouse.syncUser.password`.
+With `credentials.autoGenerate: true`, Helm generates the password in the `clickhouse-sync-password` key of `insight-db-creds`.
+With `credentials.autoGenerate: false`, add that key to the pre-created `insight-db-creds` before the upgrade.
+A missing key stops the post-deploy database job, and dbt pods do not start.
 With the default `clickhouse.provisionAccess: true`, the database job creates the account and applies its settings and grants.
-An empty username uses the existing credentials and skips sync user provisioning.
+On the first upgrade that adds the generated key, the pre-deploy job skips the account and the post-deploy job creates it.
 Analytics, application services, and the independent scheduled data-quality catalog use their existing accounts.
 
 The next connector reconcile pass updates the ClickHouse destination on each existing managed Airbyte connection.
@@ -202,11 +202,10 @@ A new Secret revision can cause one write even if the password stays the same.
 Apply the new password in ClickHouse before the next reconcile pass.
 The chart provisioning job does this on upgrade.
 Bronze loads can fail authentication for up to one reconcile interval, until the next successful pass updates Airbyte.
-To return an enabled installation to the shared account, restore its credentials on the Airbyte destinations and clear `clickhouse.syncUser.username`.
 
-Set `clickhouse.syncUser.totalMemoryBytes` or `clickhouse.serverMemoryLimitBytes` to enable the account.
-With only the server limit, Helm uses 60% of that limit, rounded down to whole bytes.
-If both values are set, the sync total must be below the server limit.
+Without `clickhouse.syncUser.totalMemoryBytes`, the database job reads `max_server_memory_usage` from ClickHouse.
+It sets the sync total to 60% of that value, rounded down to whole bytes.
+In cluster mode, it uses the smallest value across the replicas.
 
 Measure query peaks during a representative Jira sync while Analytics runs.
 Use the largest applicable dbt model cap for each writer group.
@@ -231,7 +230,7 @@ Leave the default unset to retain the server's per-query and spill settings.
 Set `clickhouse.provisionAccess: false` when the operator manages ClickHouse users.
 Use the same username and password in the chart and in ClickHouse.
 Replace `insight_sync`, the example password, and `insight` with your account, password, and `clickhouse.database` value.
-Replace the example limits with the effective values from the chart.
+Replace the example limits with your values. The default total is 60% of `max_server_memory_usage`.
 Remove the per-query limit and the four spill settings if `clickhouse.syncUser.queryMemoryBytes` is unset.
 Set each spill threshold to half the per-query limit in bytes, rounded down.
 
