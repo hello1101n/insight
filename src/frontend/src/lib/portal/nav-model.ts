@@ -347,6 +347,17 @@ export function manageGroupsFor(
   })).filter((group) => group.items.length > 0);
 }
 
+export function manageLandingItem(
+  gates: ManageGates,
+  policy: InstanceNavPolicy = navPolicy(),
+): string | null {
+  return (
+    manageGroupsFor(gates, policy)
+      .flatMap((group) => group.items)
+      .find((item) => !item.unbuilt && item.readiness == null)?.id ?? null
+  );
+}
+
 export const MANAGE_GROUPS: readonly PaneGroup[] = [
   {
     label: { key: "nav.groups.data" },

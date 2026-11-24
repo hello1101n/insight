@@ -7,6 +7,7 @@ import {
   defaultZoneItem,
   MANAGE_ITEMS,
   manageGroupsFor,
+  manageLandingItem,
   orderByReadiness,
   partitionByReadiness,
   peopleItemsFor,
@@ -14,6 +15,7 @@ import {
   ZONES,
   zoneItems,
 } from "./nav-model";
+import { EMPTY_NAV_PATHS, EMPTY_NAV_POLICY, parseNavPaths } from "./nav-policy";
 
 const defaults = ZONES.map((z) => [z.id, defaultZoneItem(z.id)] as const);
 
@@ -203,6 +205,43 @@ describe("manageGroupsFor", () => {
   it("marks Access as a row with nothing behind it yet", () => {
     const access = MANAGE_ITEMS.find((i) => i.id === "access");
     expect(access?.unbuilt).toBe(true);
+  });
+});
+
+describe("manageLandingItem", () => {
+  const plannedOnly = (...paths: string[]) => ({
+    hide: EMPTY_NAV_PATHS,
+    planned: parseNavPaths(paths, "planned"),
+  });
+
+  it("opens Connectors for an admin", () => {
+    expect(
+      manageLandingItem({ isAdmin: true, canManagePreviews: true }, EMPTY_NAV_POLICY),
+    ).toBe("connector-health");
+  });
+
+  it("opens the first surface a non-admin can see", () => {
+    expect(
+      manageLandingItem({ isAdmin: false, canManagePreviews: false }, EMPTY_NAV_POLICY),
+    ).toBe("ai-assistant");
+  });
+
+  it("skips a surface the instance marks planned, as the pane does", () => {
+    expect(
+      manageLandingItem(
+        { isAdmin: false, canManagePreviews: false },
+        plannedOnly("zone:manage/item:ai-assistant"),
+      ),
+    ).toBe("whats-new");
+  });
+
+  it("is null when the viewer's pane lists nothing to open", () => {
+    expect(
+      manageLandingItem(
+        { isAdmin: false, canManagePreviews: false },
+        plannedOnly("zone:manage/item:ai-assistant", "zone:manage/item:whats-new"),
+      ),
+    ).toBeNull();
   });
 });
 
