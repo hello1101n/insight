@@ -73,9 +73,16 @@ const MOCK_SESSION = {
   csrf_token: "mock-csrf-token",
 };
 
+const MOCK_SESSION_TTL_SECS = 600;
+const MOCK_REFRESH_LEAD_SECS = 90;
+
 function mockSessionTiming(): { expires_at: number; refresh_at: number } {
   const now = Math.floor(Date.now() / 1000);
-  return { expires_at: now + 600, refresh_at: now + 510 };
+  const expiresAt = now + MOCK_SESSION_TTL_SECS;
+  return {
+    expires_at: expiresAt,
+    refresh_at: expiresAt - MOCK_REFRESH_LEAD_SECS,
+  };
 }
 
 const HELD_BY = "2517cd48-4961-52b3-a401-b0e5a03858a4";
@@ -953,13 +960,13 @@ function syntheticDays(count: number) {
 }
 
 function connectorHealthHandlers() {
-  const anchor = new Date();
+  const fixturesAnchoredAt = new Date();
   const scenarios =
     import.meta.env.VITE_CONNECTOR_SCHEDULE_SCENARIOS === "true"
-      ? seedConnectorScheduleScenarios(anchor)
+      ? seedConnectorScheduleScenarios(fixturesAnchoredAt)
       : null;
   const minutesAgo = (minutes: number) =>
-    new Date(anchor.getTime() - minutes * 60_000).toISOString();
+    new Date(fixturesAnchoredAt.getTime() - minutes * 60_000).toISOString();
 
   const sync = (
     job_id: string,

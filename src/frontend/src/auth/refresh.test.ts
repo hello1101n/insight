@@ -18,11 +18,8 @@ function jsonResponse(body: unknown, status = 200, headers?: Record<string, stri
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-function session(overrides: { refreshAt?: number; expiresAt?: number } = {}) {
-  return makeSession({
-    refreshAt: overrides.refreshAt ?? T0 + 100,
-    expiresAt: overrides.expiresAt ?? T0 + 205,
-  });
+function session(overrides: { refreshAt?: number | null; expiresAt?: number | null } = {}) {
+  return makeSession({ refreshAt: T0 + 100, expiresAt: T0 + 205, ...overrides });
 }
 
 describe("session refresh driver", () => {
@@ -90,8 +87,8 @@ describe("session refresh driver", () => {
     expect(fetchMock()).toHaveBeenCalledTimes(1);
   });
 
-  it("never schedules when the backend sent no refresh_at (stored as 0)", async () => {
-    authStore.setAuthenticated(session({ refreshAt: 0 }));
+  it("never schedules when the backend sent no refresh_at", async () => {
+    authStore.setAuthenticated(session({ refreshAt: null }));
     stop = startSessionRefresh();
 
     await vi.advanceTimersByTimeAsync(3_600_000);
@@ -108,6 +105,23 @@ describe("session refresh driver", () => {
     expect(authStore.getSnapshot().status).toBe("unauthenticated");
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign.mock.calls[0][0]).toMatch(/^\/auth\/login\?return_to=/);
+    expect(localStorage.getItem(FALLBACK_MSG_KEY)).toContain('"expired"');
+  });
+
+  it("on 401 publishes the expiry through storage even when BroadcastChannel is available", async () => {
+    class FakeBroadcastChannel {
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      postMessage(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel);
+    authStore.setAuthenticated(session());
+    fetchMock().mockResolvedValueOnce(new Response(null, { status: 401 }));
+    stop = startSessionRefresh();
+
+    await vi.advanceTimersByTimeAsync(100_000);
+
+    expect(authStore.getSnapshot().status).toBe("unauthenticated");
     expect(localStorage.getItem(FALLBACK_MSG_KEY)).toContain('"expired"');
   });
 

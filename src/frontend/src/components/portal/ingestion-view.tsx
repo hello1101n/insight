@@ -20,11 +20,11 @@ import {
   ChartTooltipContent,
 } from "@gears-frontx/ui-kit";
 import {
-  LOG_FLOOR,
   bandLabel,
   connectorLabel,
   formatUtcBucket,
   formatUtcDay,
+  logDomain,
   logTicks,
   paddedDomain,
   pivotIntensity,
@@ -257,7 +257,7 @@ function IntensityChart({
           {...(logScale
             ? {
                 scale: "log" as const,
-                domain: [LOG_FLOOR, Math.max(peak, 1)],
+                domain: logDomain(peak),
                 ticks: logTicks(peak),
               }
             : { allowDecimals: false })}

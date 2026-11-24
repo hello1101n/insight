@@ -3,6 +3,7 @@ import type {
   AlertDraft,
   AlertNumber,
   Condition,
+  IntegerDigits,
 } from "@/api/alerts-types";
 import type { Held } from "@/lib/custom/editor/document";
 
@@ -82,7 +83,7 @@ export function numberOf(typed: string): AlertNumber | undefined {
   if (!Number.isFinite(value)) return undefined;
   if (Number.isSafeInteger(value) || !Number.isInteger(value)) return value;
 
-  return DIGITS.test(trimmed) ? trimmed : undefined;
+  return DIGITS.test(trimmed) ? (trimmed as IntegerDigits) : undefined;
 }
 
 function isNumber(value: unknown): boolean {

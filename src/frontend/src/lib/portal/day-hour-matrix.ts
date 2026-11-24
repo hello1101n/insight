@@ -4,6 +4,10 @@ export const HOUR_BLOCKS = Array.from({ length: 12 }, (_, i) =>
 
 export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+export function mondayFirstWeekday(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
+}
+
 export interface DayHourMatrix {
   cells: number[][];
   max: number;
@@ -29,7 +33,7 @@ export function dayHourMatrix(
       if (point.value == null || point.value <= 0) continue;
       const day = new Date(`${point.bucket_start}T00:00:00Z`);
       if (Number.isNaN(day.getTime())) continue;
-      const weekday = (day.getUTCDay() + 6) % 7;
+      const weekday = mondayFirstWeekday(day);
       cells[weekday]![blockIndex]! += point.value;
       max = Math.max(max, cells[weekday]![blockIndex]!);
       total += point.value;

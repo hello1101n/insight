@@ -31,16 +31,18 @@ function displayedIntegerGap(input: GapInput): GapInput {
   return { ...input, value, median, gapPct, gapDelta };
 }
 
+function displayedPercentGap({ value, median, gapDelta }: GapInput): number {
+  if (median == null) return Math.round(gapDelta);
+  return Math.round(value) - Math.round(median);
+}
+
 export function formatGapMagnitude(input: GapInput): string | null {
   const { value, median, gapPct, gapDelta, format, unit } =
     input.format === "integer" ? displayedIntegerGap(input) : input;
 
   if (format === "percent") {
-    const displayGap =
-      median != null
-        ? Math.round(value) - Math.round(median)
-        : Math.round(gapDelta);
-    return displayGap === 0 ? null : formatPp(displayGap, 0);
+    const points = displayedPercentGap(input);
+    return points === 0 ? null : formatPp(points, 0);
   }
   if (
     median != null &&

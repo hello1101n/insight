@@ -10,6 +10,7 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { dashboardAllows } from "@/lib/custom/dashboard-access";
 import { NOUNS } from "@/lib/custom/editor/kinds";
 import { definitionBodyQuery } from "@/queries/custom";
+import { readAfterMount } from "@/queries/read-after-mount";
 import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
@@ -39,8 +40,7 @@ export function EditorPage({ kind, id }: { kind: EditableKind; id?: string }) {
     ...definitionBodyQuery(kind, id ?? ""),
     enabled: id !== undefined,
   });
-  const fresh =
-    stored.isFetchedAfterMount && stored.isSuccess ? stored.data : undefined;
+  const fresh = readAfterMount(stored);
 
   const done = () => void navigate({ to: CATALOGUE[kind] });
   const created = (made: string) =>

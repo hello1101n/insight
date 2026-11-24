@@ -9,7 +9,11 @@ import { CollectionDrilldown } from "@/components/widgets/metric-views/collectio
 import { MetricActivity } from "@/components/widgets/metric-views/metric-activity";
 import { SectionMetricIndex } from "@/components/widgets/metric-views/section-metric-index";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
-import { partState, reachableMetricKeys } from "@/lib/insight/coverage";
+import {
+  everObservedMetricKeys,
+  partState,
+  type PartState,
+} from "@/lib/insight/coverage";
 import { GROUPS, type GroupId } from "@/lib/insight/groups";
 import { finestGrain } from "@/lib/insight/metric-grain";
 import { sectionSources } from "@/lib/insight/section-sources";
@@ -26,6 +30,14 @@ import { TEXT_TITLE } from "@/lib/type-scale";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const CLOSED_ENTITY = { type: "person" as const, ids: [] };
+
+type Emptiness = "unverified" | Exclude<PartState, "reads">;
+
+const EMPTINESS_TEXT_KEY: Record<Emptiness, string> = {
+  unverified: "people.section.nothing_for_period",
+  nothing_recorded: "people.section.nothing_recorded",
+  no_data_reaches_us: "people.section.no_source",
+};
 
 export function SingleGroupView({
   personId,
@@ -101,18 +113,15 @@ export function SingleGroupView({
     def,
     injectedData.byKey,
     entityId,
-    reachableMetricKeys(definitions.data?.metrics ?? []),
+    everObservedMetricKeys(definitions.data?.metrics ?? []),
   );
   if (state !== "reads") {
+    const emptiness: Emptiness = definitions.isError ? "unverified" : state;
     return (
       <div data-testid={testId} className="flex flex-col gap-3 p-4 md:p-6">
         <h1 className={TEXT_TITLE}>{resolveText(t, def.title)}</h1>
         <p className="text-sm text-muted-foreground">
-          {definitions.isError
-            ? t("people.section.nothing_for_period")
-            : state === "no_data_reaches_us"
-              ? t("people.section.no_source")
-              : t("people.section.nothing_recorded")}
+          {t(EMPTINESS_TEXT_KEY[emptiness])}
         </p>
       </div>
     );

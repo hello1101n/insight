@@ -51,7 +51,7 @@ export function OverviewView({ item }: { item: string | null }) {
         <HomeDashboards />
         {subject === "me" ? <OwnGlance /> : null}
         {subject === "team" && rollup ? (
-          <DomainLensView config={rollup} gridKeys={gridKeys} embedded />
+          <DomainLensView config={rollup} fetchOnlyKeys={gridKeys} embedded />
         ) : null}
       </div>
     );
@@ -65,7 +65,7 @@ export function OverviewView({ item }: { item: string | null }) {
   return (
     <DomainLensView
       config={entry}
-      gridKeys={gridKeys}
+      fetchOnlyKeys={gridKeys}
       data-testid={`page-overview-${shown}`}
     />
   );

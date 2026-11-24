@@ -1,10 +1,10 @@
 import { authStore } from "./auth-store";
 import type { AuthStatus } from "./types";
 
-function unixSeconds(value: unknown): number {
+export function unixSeconds(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
-    : 0;
+    : null;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;

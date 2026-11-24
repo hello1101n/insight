@@ -233,7 +233,7 @@ describe("AccountDetail", () => {
 
   it("offers the verbs on an empty journal when the caller vouches the account exists", () => {
     binding.q.data = bound({ person_id: null, history: [] });
-    render(<AccountDetail accountRef={REF} queueItem={undefined} observed />);
+    render(<AccountDetail accountRef={REF} queueItem={undefined} vouched />);
 
     expect(screen.queryByText(/link may be stale/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("account-actions")).toBeInTheDocument();

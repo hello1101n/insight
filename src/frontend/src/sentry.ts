@@ -5,8 +5,11 @@ import { runtimeConfig } from "@/lib/runtime-config";
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 export function initSentry(router: unknown): void {
-  const dsn = runtimeConfig().sentryDsn ?? import.meta.env.VITE_SENTRY_DSN;
-  if (!dsn) return;
+  const dsn = sentryDsn(
+    runtimeConfig().sentryDsn,
+    import.meta.env.VITE_SENTRY_DSN
+  );
+  if (dsn === null) return;
 
   try {
     Sentry.init({
@@ -19,6 +22,14 @@ export function initSentry(router: unknown): void {
   } catch (error) {
     console.error("Sentry init failed", error);
   }
+}
+
+function sentryDsn(
+  runtime: string | undefined,
+  build: string | undefined
+): string | null {
+  if (runtime != null) return runtime || null;
+  return build || null;
 }
 
 function resolveEnvironment(): string {

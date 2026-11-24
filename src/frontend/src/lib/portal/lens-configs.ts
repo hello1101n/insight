@@ -247,6 +247,10 @@ export function tenantSectionMetricKeys(config: TenantLensConfig): string[] {
 
 export type LensEntry = LensConfig | LensRoadmap | TenantLensConfig;
 
+export function isTenantLens(entry: LensEntry): entry is TenantLensConfig {
+  return "entity" in entry;
+}
+
 export function lensEntry(dir: string, lens: string): LensEntry | undefined {
   return DIRECTION_LENSES[dir]?.[lens];
 }
@@ -1192,7 +1196,7 @@ export const DIRECTION_LENSES: Record<string, Record<string, LensEntry>> = {
 export function directionMetricKeys(dir: string): string[] {
   const keys = new Set<string>();
   for (const entry of Object.values(DIRECTION_LENSES[dir] ?? {})) {
-    if ("comingSoon" in entry || "entity" in entry) continue;
+    if ("comingSoon" in entry || isTenantLens(entry)) continue;
     for (const k of sectionMetricKeys(entry)) keys.add(k);
   }
   for (const carrier of evidenceCarriers([...keys])) keys.add(carrier);

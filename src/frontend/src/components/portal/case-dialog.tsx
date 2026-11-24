@@ -42,28 +42,10 @@ export function CaseDialog({
   const ref = parseAccountKey(acct);
 
   const live = items.find((i) => itemKey(i) === acct);
+  const { item: queueItem, walk: heldWalk } = useHeldCase(acct, live, walk);
 
-  const [held, setHeld] = useState<HeldCase>({});
-
-  const heldWalk =
-    acct != null && held.acct === acct && held.walk?.includes(acct)
-      ? held.walk
-      : walk;
-  const fresh: HeldCase = {
-    acct,
-    item: live ?? (held.acct === acct ? held.item : undefined),
-    walk: heldWalk,
-  };
-  if (
-    held.acct !== fresh.acct ||
-    held.item !== fresh.item ||
-    held.walk !== fresh.walk
-  ) {
-    setHeld(fresh);
-  }
-  const queueItem = fresh.item;
-  const inWalk = acct != null && fresh.walk?.includes(acct) === true;
-  const next = acct != null && fresh.walk ? nextInWalk(fresh.walk, acct) : null;
+  const inWalk = acct != null && heldWalk?.includes(acct) === true;
+  const next = acct != null && heldWalk ? nextInWalk(heldWalk, acct) : null;
   const decided = () => {
     if (next != null && onNavigate) onNavigate(next);
     else onClose();
@@ -74,7 +56,7 @@ export function CaseDialog({
     queueItem?.username?.trim() ||
     queueItem?.display_name?.trim() ||
     ref?.account_id;
-  const observed = queueItem != null;
+  const vouched = queueItem != null;
 
   return (
     <Dialog
@@ -104,7 +86,7 @@ export function CaseDialog({
             key={acct}
             accountRef={ref}
             queueItem={queueItem}
-            observed={observed}
+            vouched={vouched}
             holder={queueItem?.holder ?? null}
             onDecided={decided}
           />
@@ -125,4 +107,30 @@ export function CaseDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function useHeldCase(
+  acct: string | undefined,
+  live: CaseRow | undefined,
+  walk: readonly string[] | undefined
+): HeldCase {
+  const [held, setHeld] = useState<HeldCase>({});
+
+  const heldWalk =
+    acct != null && held.acct === acct && held.walk?.includes(acct)
+      ? held.walk
+      : walk;
+  const fresh: HeldCase = {
+    acct,
+    item: live ?? (held.acct === acct ? held.item : undefined),
+    walk: heldWalk,
+  };
+  if (
+    held.acct !== fresh.acct ||
+    held.item !== fresh.item ||
+    held.walk !== fresh.walk
+  ) {
+    setHeld(fresh);
+  }
+  return fresh;
 }

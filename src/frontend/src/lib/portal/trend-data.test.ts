@@ -5,7 +5,9 @@ import {
   buildActiveContributorData,
   buildMedianTrendData,
   buildTrendData,
+  firstUnfinishedBucket,
   pickTrendBucket,
+  wholeBuckets,
 } from "./trend-data";
 
 const RANGE_30D = { from: "2026-06-24", to: "2026-07-23" };
@@ -53,6 +55,32 @@ describe("pickTrendBucket", () => {
         ).toBeLessThanOrEqual(4500);
       }
     }
+  });
+});
+
+describe("wholeBuckets", () => {
+  it("a bucket running past the last day is unfinished", () => {
+    expect(firstUnfinishedBucket("2026-07-23", "week")).toBe("2026-07-20");
+    expect(firstUnfinishedBucket("2026-07-26", "week")).toBe("2026-07-27");
+    expect(firstUnfinishedBucket("2026-07-30", "month")).toBe("2026-07-01");
+    expect(firstUnfinishedBucket("2026-07-31", "month")).toBe("2026-08-01");
+  });
+
+  it("a week starting before the range is dropped as partial", () => {
+    const weeks = ["2026-06-22", "2026-06-29", "2026-07-06", "2026-07-13", "2026-07-20"];
+    const rows = weeks.map((date) => ({ date }));
+
+    const whole = wholeBuckets(rows, {
+      bucket: "week",
+      startsFrom: RANGE_30D.from,
+      finishedBefore: firstUnfinishedBucket(RANGE_30D.to, "week"),
+    });
+
+    expect(whole.map((row) => row.date)).toEqual([
+      "2026-06-29",
+      "2026-07-06",
+      "2026-07-13",
+    ]);
   });
 });
 

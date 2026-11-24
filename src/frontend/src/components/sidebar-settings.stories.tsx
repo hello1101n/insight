@@ -3,6 +3,7 @@ import { expect } from "storybook/test";
 
 import { SidebarProvider } from "@gears-frontx/ui-kit";
 
+import { SETTINGS_POPOVER_CLASS } from "./portal/lens-rail";
 import { SidebarSettings } from "./sidebar-settings";
 
 const meta: Meta<typeof SidebarSettings> = {
@@ -11,7 +12,7 @@ const meta: Meta<typeof SidebarSettings> = {
   decorators: [
     (Story) => (
       <SidebarProvider>
-        <div className="w-64 p-1">
+        <div className={`${SETTINGS_POPOVER_CLASS} p-1`}>
           <Story />
         </div>
       </SidebarProvider>

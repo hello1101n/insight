@@ -40,3 +40,7 @@ export function isTime(text: string): boolean {
   const read = TIME.exec(text);
   return read !== null && Number(read[1]) < 24 && Number(read[2]) < 60;
 }
+
+export function momentToWrite(day: string, time: string): string | null {
+  return day === "" || !isTime(time) ? null : momentText(day, time);
+}

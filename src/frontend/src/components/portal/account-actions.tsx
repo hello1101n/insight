@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type {
-  AccountBinding,
-  CorrectionResponse,
-  PersonSummary,
-  WireAccountRef,
+import {
+  toWireAccountRef,
+  type AccountBinding,
+  type CorrectionResponse,
+  type PersonSummary,
 } from "@/api/identity-client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OutcomeAlert } from "@/components/portal/outcome-alert";
@@ -15,6 +15,7 @@ import { PersonPicker } from "@/components/portal/person-picker";
 import { Button } from "@gears-frontx/ui-kit";
 import { useCorrectionReport } from "@/hooks/use-correction-report";
 import type { AccountRef } from "@/lib/identities/account-key";
+import { detachOffered, holderCard } from "@/lib/identities/cases";
 import { apiErrorReason } from "@/lib/query-console/api-error";
 import {
   useBindAccount,
@@ -66,30 +67,24 @@ export function AccountActions({
   const exclude = useExcludeAccount();
   const busy = bind.isPending || detach.isPending || exclude.isPending;
 
-  const wireRef: WireAccountRef = {
-    source: accountRef.source,
-    source_id: accountRef.source_id,
-    id: accountRef.account_id,
-  };
+  const wireRef = toWireAccountRef(accountRef);
   const boundId = binding.person_id ?? null;
-  const boundCard =
-    holder?.person_id === boundId
-      ? holder
-      : candidates.find((c) => c.person_id === boundId);
+  const boundCard = holderCard(boundId, holder, candidates);
 
   const rivals = candidates.filter((c) => c.person_id !== boundId);
   const owned = usePersonAccounts(boundId);
-  const detachable =
-    boundId == null || (owned.data != null && owned.data.accounts.length > 1);
+  const detachable = detachOffered(boundId, owned.data?.accounts.length);
 
-  const confirmable =
-    boundCard != null && candidates.some((c) => c.person_id === boundId);
+  const holderIsCandidate = candidates.some((c) => c.person_id === boundId);
 
-  const close = () => {
-    setAction({ kind: "closed" });
+  const resetVerbErrors = () => {
     bind.reset();
     detach.reset();
     exclude.reset();
+  };
+  const close = () => {
+    setAction({ kind: "closed" });
+    resetVerbErrors();
   };
   const done = (result: CorrectionResponse) => {
     close();
@@ -117,7 +112,7 @@ export function AccountActions({
                 <PersonId id={boundId} />
               </div>
             )}
-            {confirmable ? (
+            {holderIsCandidate ? (
               <Button
                 type="button"
                 size="sm"
@@ -168,7 +163,6 @@ export function AccountActions({
         <PersonPicker
           excludeIds={[
             ...candidates.map((c) => c.person_id),
-            ...(boundCard ? [boundCard.person_id] : []),
             ...(boundId ? [boundId] : []),
           ]}
           onPick={(person) => setAction({ kind: "bind", person })}

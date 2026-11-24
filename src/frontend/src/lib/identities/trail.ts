@@ -14,7 +14,7 @@ export function accountTrail(
   operations: AccountOperation[] | undefined,
 ): TrailEvent[] {
   const moved = movements(history);
-  const comments = attribute(moved, operations ?? []);
+  const comments = pairCommentsWhenCallsLineUp(moved, operations ?? []);
   return moved
     .map((entry, index) => {
       const comment = comments.get(entry);
@@ -30,15 +30,17 @@ export function accountTrail(
 function movements(history: BindingHistoryEntry[]): BindingHistoryEntry[] {
   const oldestFirst = [...history].reverse();
   const kept: BindingHistoryEntry[] = [];
-  let held: string | undefined;
+  let lastSeenPersonId: string | undefined;
   for (const entry of oldestFirst) {
-    if (entry.by_operator || entry.person_id !== held) kept.push(entry);
-    held = entry.person_id;
+    if (entry.by_operator || entry.person_id !== lastSeenPersonId) {
+      kept.push(entry);
+    }
+    lastSeenPersonId = entry.person_id;
   }
   return kept;
 }
 
-function attribute(
+function pairCommentsWhenCallsLineUp(
   moved: BindingHistoryEntry[],
   operations: AccountOperation[],
 ): Map<BindingHistoryEntry, string> {
@@ -51,7 +53,7 @@ function attribute(
 
   for (const [at, rows] of decisions) {
     const made = calls.get(at);
-    if (!made || made.length !== rows.length) continue;
+    if (!made || !sameCallCount(made, rows)) continue;
     const ordered = [...made].sort((a, b) =>
       a.recorded_at.localeCompare(b.recorded_at),
     );
@@ -61,6 +63,13 @@ function attribute(
     });
   }
   return named;
+}
+
+function sameCallCount(
+  calls: readonly AccountOperation[],
+  decisions: readonly BindingHistoryEntry[]
+): boolean {
+  return calls.length === decisions.length;
 }
 
 function group(author: string, verb: string | null | undefined): string {

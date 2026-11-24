@@ -109,9 +109,10 @@ export function MetricGroupsView({
   const cohortEntity = cohortIds.length
     ? { type: "person" as const, ids: cohortIds }
     : CLOSED_ENTITY;
+  const cohortQueryEnabled = cohortIds.length > 0 && showKpis;
   const cohortKpi = useMetricCollection(
-    cohortIds.length && showKpis ? KPI_ROW_COLLECTION : EMPTY_COLLECTION,
-    cohortIds.length && showKpis ? cohortEntity : CLOSED_ENTITY,
+    cohortQueryEnabled ? KPI_ROW_COLLECTION : EMPTY_COLLECTION,
+    cohortQueryEnabled ? cohortEntity : CLOSED_ENTITY,
     dateRange
   );
   const cohortGroup = usePersonSectionCohort(personId);
@@ -165,21 +166,21 @@ export function MetricGroupsView({
   const cohortPending =
     cohortIds.length > 0 &&
     ((showKpis && cohortKpi.isPending) || collectionSetPending(cohortGroup));
-  const isLoading =
+  const picturePending =
     (showKpis && kpiData.isPending) ||
     collectionSetPending(groupData) ||
     cohortPending;
-  if (isLoading) {
+  if (picturePending) {
     return <CenteredSpinner data-testid={testId} className={embedded ? "min-h-40" : "min-h-[60vh]"} />;
   }
 
-  const isError =
+  const pictureFailed =
     (showKpis && kpiData.isError) ||
     [...groupData.values()].some((r) => r.isError) ||
     (cohortIds.length > 0 &&
       ((showKpis && cohortKpi.isError) ||
         [...cohortGroup.values()].some((r) => r.isError)));
-  if (isError)
+  if (pictureFailed)
     return (
       <div data-testid={testId} className="mx-auto w-full max-w-md p-8">
         <ComingSoon
@@ -210,7 +211,7 @@ export function MetricGroupsView({
     ? metricKpiTiles(kpiByKey, kpiData.previousByKey, entityId)
     : [];
 
-  const headlineKeys = new Set(tiles.map((t) => t.key));
+  const renderedHeadlineKeys = new Set(tiles.map((t) => t.key));
 
   const blank = showKpis
     ? sectionStandings.filter((st) => !st.isPending && !st.hasData)
@@ -226,11 +227,11 @@ export function MetricGroupsView({
             groupResult(def.id)?.byKey ?? new Map(),
             groupData.get(def.id)?.previousByKey ?? null,
             entityId,
-            headlineKeys
+            renderedHeadlineKeys
           )
         ),
-        headlineKeys,
-        isSelf
+        renderedHeadlineKeys,
+        isSelf ? "changes-first" : "standing-first"
       )
     : [];
 

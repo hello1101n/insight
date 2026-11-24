@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { claimScopeSync, resetRouteScopeSync } from "./route-scope-sync";
+import { claimScopeSync, resetRouteScopeSyncForTests } from "./route-scope-sync";
 
 const A = "aaaaaaaa-1111-4111-8111-111111111111";
 const B = "bbbbbbbb-1111-4111-8111-111111111111";
 
-beforeEach(() => resetRouteScopeSync());
+beforeEach(() => resetRouteScopeSyncForTests());
 
 describe("claimScopeSync", () => {
   it("claims a person once, so a re-render or remount does not re-sync", () => {
@@ -27,7 +27,7 @@ describe("claimScopeSync", () => {
 
   it("resets, so a test mounting the same person again is not a no-op", () => {
     expect(claimScopeSync(A)).toBe(true);
-    resetRouteScopeSync();
+    resetRouteScopeSyncForTests();
     expect(claimScopeSync(A)).toBe(true);
   });
 });

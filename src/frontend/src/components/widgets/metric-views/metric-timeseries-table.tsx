@@ -21,6 +21,9 @@ import { formatMetricNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { MetricTimeseriesModel } from "@/components/widgets/metric-views/metric-timeseries-model";
 import {
+  EDGE_SLACK_PX,
+  GUTTER_PX,
+  gutterState,
   resolveMetricTimeseriesTableColumns,
   type MetricTimeseriesTableColumn,
 } from "@/components/widgets/metric-views/metric-timeseries-table-model";
@@ -48,8 +51,6 @@ const NOTHING_MORE: Record<Side, boolean> = {
 };
 
 const NO_GUTTERS = { start: false, end: false };
-
-const EDGE_SLACK_PX = 1;
 
 const NEARLY_A_FRAME = 0.8;
 
@@ -79,12 +80,9 @@ const SIDE_CHROME: Record<
   },
 };
 
-const GUTTER_START = "ps-12";
-const GUTTER_END = "pe-12";
-const GUTTER_PX = 48;
-
-const BUCKET_COL = "w-24 max-w-24 min-w-24";
-const PAST_BUCKET_COL = "start-24";
+const BUCKET_COL_WIDTH = "[--bucket-col:6rem]";
+const BUCKET_COL = "w-(--bucket-col) max-w-(--bucket-col) min-w-(--bucket-col)";
+const PAST_BUCKET_COL = "start-(--bucket-col)";
 
 const BUCKET_LABEL = {
   day: "Day",
@@ -202,12 +200,11 @@ export function MetricTimeseriesTable({
     const rows = box.querySelector("table");
     const naturalWidth = rows?.offsetWidth ?? box.scrollWidth;
     const scrollsDown = downRoom > EDGE_SLACK_PX;
-    const roomAcross = wrap.clientWidth - (scrollsDown ? GUTTER_PX : 0);
-    const scrollsAcross = naturalWidth > roomAcross + EDGE_SLACK_PX;
+    const nextGutters = gutterState(wrap.clientWidth, naturalWidth, scrollsDown);
     setGutters((prev) =>
-      prev.start === scrollsAcross && prev.end === (scrollsAcross || scrollsDown)
+      prev.start === nextGutters.start && prev.end === nextGutters.end
         ? prev
-        : { start: scrollsAcross, end: scrollsAcross || scrollsDown }
+        : nextGutters
     );
 
     onVerticalOverflow?.(scrollsDown);
@@ -248,11 +245,11 @@ export function MetricTimeseriesTable({
   return (
     <div
       ref={wrapRef}
-      className={cn(
-        "relative h-full",
-        gutters.start && GUTTER_START,
-        gutters.end && GUTTER_END
-      )}
+      className={cn("relative h-full", BUCKET_COL_WIDTH)}
+      style={{
+        paddingInlineStart: gutters.start ? GUTTER_PX : undefined,
+        paddingInlineEnd: gutters.end ? GUTTER_PX : undefined,
+      }}
     >
       {SIDES.filter((side) => more[side]).map((side) => {
         const { icon: Icon, label, place } = SIDE_CHROME[side];

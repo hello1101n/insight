@@ -66,8 +66,8 @@ describe("loadSession", () => {
       tenantId: "",
       roles: [],
       csrfToken: "csrf-1",
-      expiresAt: 0,
-      refreshAt: 0,
+      expiresAt: null,
+      refreshAt: null,
       experimentsEnabled: false,
       impersonatorEmail: null,
     });
@@ -108,7 +108,7 @@ describe("loadSession", () => {
     });
   });
 
-  it("stores malformed timing fields as 0 (driver never schedules from them)", async () => {
+  it("stores malformed timing fields as absent (driver never schedules from them)", async () => {
     fetchMock().mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -121,8 +121,8 @@ describe("loadSession", () => {
     await loadSession();
 
     expect(authStore.getSnapshot().session).toMatchObject({
-      expiresAt: 0,
-      refreshAt: 0,
+      expiresAt: null,
+      refreshAt: null,
     });
   });
 

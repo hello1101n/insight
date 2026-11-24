@@ -4,6 +4,7 @@ import { toast, Button, Textarea } from "@gears-frontx/ui-kit";
 
 import {
   MAX_BINDINGS_PER_CALL,
+  toWireAccountRef,
   type AttentionItem,
   type CorrectionResponse,
   type WireBinding,
@@ -39,11 +40,7 @@ export function ConfirmGroupButton({
     item.bound_to
       ? [
           {
-            account: {
-              source: item.source,
-              source_id: item.source_id,
-              id: item.account_id,
-            },
+            account: toWireAccountRef(item),
             person_id: item.bound_to,
           },
         ]

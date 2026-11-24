@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { resolveText } from "@/i18n/localized-text";
 import { visibleGroups, type GroupId } from "@/lib/insight/groups";
 import { groupHasData } from "@/lib/insight/group-data";
-import { partState, reachableMetricKeys } from "@/lib/insight/coverage";
+import { partState, everObservedMetricKeys } from "@/lib/insight/coverage";
 import { injectCohortPeer } from "@/lib/insight/within-team-peer";
 import { countableSignals } from "@/lib/insight/metric-containment";
 import {
@@ -101,7 +101,7 @@ export function usePersonSectionStandings(personId: string): SectionStanding[] {
   const cohortIds = usePersonCohort(entityId);
   const cohortGroup = usePersonSectionCohort(personId);
 
-  const reachable = reachableMetricKeys(definitions.data?.metrics ?? []);
+  const reachable = everObservedMetricKeys(definitions.data?.metrics ?? []);
 
   return groups.map((def) => {
     const result = groupData.get(def.id);

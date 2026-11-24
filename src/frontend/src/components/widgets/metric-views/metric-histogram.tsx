@@ -43,6 +43,14 @@ function directionText(metric: NormalizedMetricResult): string | null {
   return null;
 }
 
+function binContains(
+  bin: { lo: number; hi: number },
+  value: number,
+  isLastBin: boolean,
+): boolean {
+  return bin.lo <= value && (isLastBin ? value <= bin.hi : value < bin.hi);
+}
+
 function buildRows(
   bins: Array<{ lo: number; hi: number; count: number }>,
   pivot: number | null,
@@ -59,10 +67,7 @@ function buildRows(
   const rows = bins.map((bin, index) => {
     const label = `${formatMetricNumber(bin.lo, metric.format)}–${formatMetricNumber(bin.hi, metric.format)}`;
     const isLastBin = index === bins.length - 1;
-    const straddlesPivot =
-      diverging &&
-      bin.lo <= pivot &&
-      (pivot < bin.hi || (isLastBin && pivot <= bin.hi));
+    const straddlesPivot = diverging && binContains(bin, pivot, isLastBin);
     if (straddlesPivot) pivotLabel = label;
     const status: Status =
       !diverging || straddlesPivot

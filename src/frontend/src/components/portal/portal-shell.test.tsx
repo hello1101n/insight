@@ -4,7 +4,7 @@ vi.mock("@tanstack/react-router", async () => {
   return portalRouterMock();
 });
 
-import { resetRouteScopeSync } from "@/lib/portal/route-scope-sync";
+import { resetRouteScopeSyncForTests } from "@/lib/portal/route-scope-sync";
 import { pid } from "@/test/identity";
 import { portalRouter } from "@/test/portal-router";
 
@@ -131,7 +131,7 @@ beforeEach(() => {
   mocks.isPending = false;
   mocks.topBar = null;
   mocks.personId = pid("boss");
-  resetRouteScopeSync();
+  resetRouteScopeSyncForTests();
   act(() => {
     portalRouter.reset("/home");
     setPortalShowPlanned(true);
