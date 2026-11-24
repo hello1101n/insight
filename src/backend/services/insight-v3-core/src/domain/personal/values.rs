@@ -247,7 +247,12 @@ fn only_value(result: &RunResult) -> Option<Number> {
 fn number(value: &Value) -> Option<Number> {
     match value {
         Value::Number(number) => Some(number.clone()),
-        Value::String(text) => text.parse::<f64>().ok().and_then(Number::from_f64),
+        Value::String(text) => text
+            .parse::<i64>()
+            .map(Number::from)
+            .or_else(|_| text.parse::<u64>().map(Number::from))
+            .ok()
+            .or_else(|| text.parse::<f64>().ok().and_then(Number::from_f64)),
         Value::Null | Value::Bool(_) | Value::Array(_) | Value::Object(_) => None,
     }
 }

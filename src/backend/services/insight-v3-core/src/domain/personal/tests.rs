@@ -225,6 +225,29 @@ fn each_aggregate_is_its_own_calculation() {
 }
 
 #[test]
+fn a_mark_refuses_a_metric_with_a_name_the_service_keeps_for_itself() {
+    let declaration = reviews();
+
+    for kept in ["__rows", "__person_id", "__p0", "__drilldown_key"] {
+        let metric = query(json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": kept },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+            ],
+            "group_by": ["reviewer"]
+        }));
+
+        assert_eq!(
+            mark("reviewer", "comments").check(&metric, Some(&declaration)),
+            Err(MarkError::ReservedName(kept.to_owned())),
+            "{kept}"
+        );
+    }
+}
+
+#[test]
 fn a_mark_reads_its_format_and_direction_in_snake_case() {
     let read: PersonalMark = serde_json::from_value(json!({
         "person_field": "reviewer",

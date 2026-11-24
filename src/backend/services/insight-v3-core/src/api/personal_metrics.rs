@@ -21,10 +21,11 @@ use super::dashboard_widgets::{
 };
 use super::definitions::owner_names;
 use super::errors::ApiErrors;
-use crate::domain::access::{Owner, PersonId};
+use crate::domain::access::{Caller, Owner, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::personal::Marked;
 use crate::domain::personal::values::{Asked, Listed, PersonalMetrics, Team, Values};
+use crate::domain::query::metric_query::MetricQueryError;
 use crate::domain::query::time_window::{RequestedRange, Window, canonical_date};
 use crate::domain::surfaces::CustomError;
 
@@ -35,6 +36,7 @@ const RUNS_AT_ONCE: usize = 4;
 
 const PERSONS_NOT_VISIBLE: &str = "the caller cannot see every person asked for";
 const RUNS_BUSY: &str = "every metric run slot is taken; try again shortly";
+const NOT_READ: &str = "this personal metric could not be read";
 
 #[resource_error("gts.cf.insight.insight_v3_core.personal_metrics.v1~")]
 struct PersonalMetricApiError;
@@ -186,7 +188,7 @@ async fn read_values(
         .map_err(PersonalMetricApiError::custom_error)?;
     require_visible(&state, &headers, &checked.everyone).await?;
 
-    let values = values_of(&state, &personal, &metrics, &checked.asked).await?;
+    let values = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
 
     Ok(Json(answer(&metrics, &checked.asked, values)).into_response())
 }
@@ -344,12 +346,13 @@ async fn require_visible(
 async fn values_of(
     state: &AppState,
     personal: &PersonalMetrics<'_>,
+    caller: Caller,
     metrics: &[Marked],
     asked: &Asked,
 ) -> Result<Vec<Values>, CanonicalError> {
     let runs: Vec<_> = metrics
         .iter()
-        .map(|marked| value_of(state, personal, marked, asked))
+        .map(|marked| value_of(state, personal, caller, marked, asked))
         .collect();
 
     futures::stream::iter(runs)
@@ -361,6 +364,7 @@ async fn values_of(
 async fn value_of(
     state: &AppState,
     personal: &PersonalMetrics<'_>,
+    caller: Caller,
     marked: &Marked,
     asked: &Asked,
 ) -> Result<Values, CanonicalError> {
@@ -369,15 +373,28 @@ async fn value_of(
     personal
         .values(marked, asked)
         .await
-        .map_err(|error| values_error(marked, error))
+        .map_err(|error| read_error(caller, &marked.id, "metrics", error))
 }
 
-fn values_error(marked: &Marked, error: CustomError) -> CanonicalError {
-    if let CustomError::Compile(source) = error {
-        return invalid("metrics", format!("metric `{}`: {source}", marked.id));
+fn read_error(caller: Caller, metric: &str, field: &str, error: CustomError) -> CanonicalError {
+    match error {
+        CustomError::Compile(source @ MetricQueryError::RangeExceedsMaximum(_)) => {
+            invalid(field, format!("metric `{metric}`: {source}"))
+        }
+        error @ (CustomError::Body(_) | CustomError::Compile(_)) => {
+            tracing::error!(%error, metric_id = metric, "a stored personal metric cannot be read");
+            not_read()
+        }
+        error if caller.is_administrator() => PersonalMetricApiError::custom_error(error),
+        error => {
+            tracing::error!(%error, metric_id = metric, "a personal metric read for a member failed");
+            not_read()
+        }
     }
+}
 
-    PersonalMetricApiError::custom_error(error)
+fn not_read() -> CanonicalError {
+    CanonicalError::internal(NOT_READ).create()
 }
 
 fn answer(metrics: &[Marked], asked: &Asked, values: Vec<Values>) -> Value {

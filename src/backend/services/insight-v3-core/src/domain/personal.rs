@@ -10,6 +10,8 @@ use crate::domain::query::metric_query::{Agg, ColumnKind, MetricQuery, Output};
 
 pub(crate) mod values;
 
+const RESERVED_PREFIX: &str = "__";
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PersonalMark {
@@ -82,6 +84,11 @@ pub(crate) enum MarkError {
          that carries no `agg`, so it gives no one value per person"
     )]
     UnaggregatedRatio(String),
+    #[error(
+        "`{0}` starts with `__`, which this service keeps for the names it writes itself; \
+         give that field another `as_name`"
+    )]
+    ReservedName(String),
 }
 
 impl PersonalMark {
@@ -90,6 +97,14 @@ impl PersonalMark {
         query: &MetricQuery,
         declaration: Option<&Declaration>,
     ) -> Result<Calculation, MarkError> {
+        if let Some(kept) = query
+            .output_names()
+            .into_iter()
+            .find(|name| name.starts_with(RESERVED_PREFIX))
+        {
+            return Err(MarkError::ReservedName(kept.to_owned()));
+        }
+
         let person = query
             .output(&self.person_field, declaration)
             .ok_or_else(|| MarkError::NoPersonField(self.person_field.clone()))?;

@@ -95,6 +95,22 @@ fn a_decimal_text_value_answers_a_number() {
 }
 
 #[test]
+fn a_whole_number_above_2_pow_53_keeps_every_digit() {
+    assert_eq!(
+        number(&json!("9007199254740993")),
+        Some(Number::from(9_007_199_254_740_993_i64))
+    );
+    assert_eq!(
+        number(&json!("-9007199254740993")),
+        Some(Number::from(-9_007_199_254_740_993_i64))
+    );
+    assert_eq!(
+        number(&json!("18446744073709551615")),
+        Some(Number::from(u64::MAX))
+    );
+}
+
+#[test]
 fn a_value_that_is_not_a_finite_number_answers_null() {
     for value in [
         json!("nan"),

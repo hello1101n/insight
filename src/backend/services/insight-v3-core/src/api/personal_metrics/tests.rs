@@ -644,6 +644,124 @@ async fn values_refuse_a_period_longer_than_the_metric_allows() {
 }
 
 #[tokio::test]
+async fn values_refuse_a_member_a_period_longer_than_the_metric_allows() {
+    let harness = Harness::new().await;
+    let mut capped = lines_metric();
+    capped["max_range"] = json!("P30D");
+    harness
+        .marked_as("lines_capped", "Lines capped", &capped)
+        .await;
+    harness.grant("lines_capped", "everyone", ADMIN).await;
+
+    let refused = harness
+        .values(
+            MEMBER,
+            json!({
+                "metrics": ["lines_capped"],
+                "person_ids": [ALICE],
+                "from": "2026-01-01",
+                "to": "2026-03-01"
+            }),
+        )
+        .await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("metrics"));
+}
+
+#[tokio::test]
+async fn values_fail_on_the_server_when_a_stored_body_does_not_parse() {
+    let harness = Harness::new().await;
+    harness
+        .marked_as(
+            "lines_broken",
+            "Lines broken",
+            &json!({ "dataset": "commits", "fields": "not a list" }),
+        )
+        .await;
+
+    let failed = harness
+        .values(ADMIN, asked(&["lines_broken"], &[ALICE]))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+}
+
+#[tokio::test]
+async fn values_fail_on_the_server_when_a_stored_metric_does_not_compile() {
+    let harness = Harness::new().await;
+    let mut broken = lines_metric();
+    broken["max_range"] = json!("P1W");
+    harness
+        .marked_as("lines_broken", "Lines broken", &broken)
+        .await;
+
+    let failed = harness
+        .values(ADMIN, asked(&["lines_broken"], &[ALICE]))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+}
+
+#[tokio::test]
+async fn values_tell_an_admin_which_dataset_is_not_ready() {
+    let harness = Harness::new().await;
+    let mut unready = lines_metric();
+    unready["dataset"] = json!("absent");
+    harness
+        .marked_as("lines_unready", "Lines unready", &unready)
+        .await;
+
+    let refused = harness
+        .values(ADMIN, asked(&["lines_unready"], &[ALICE]))
+        .await;
+
+    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.body);
+    assert!(
+        refused.body.to_string().contains("absent"),
+        "{}",
+        refused.body
+    );
+}
+
+#[tokio::test]
+async fn values_hide_from_a_member_why_a_metric_cannot_be_read() {
+    let harness = Harness::new().await;
+    let mut unready = lines_metric();
+    unready["dataset"] = json!("absent");
+    harness
+        .marked_as("lines_unready", "Lines unready", &unready)
+        .await;
+    harness.grant("lines_unready", "everyone", ADMIN).await;
+
+    let failed = harness
+        .values(MEMBER, asked(&["lines_unready"], &[ALICE]))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+    assert!(
+        !failed.body.to_string().contains("absent"),
+        "{}",
+        failed.body
+    );
+}
+
+#[tokio::test]
 async fn values_hide_a_metric_not_shared_with_the_caller() {
     let harness = Harness::new().await;
     harness.marked("lines_merged", "Lines merged").await;
