@@ -220,7 +220,7 @@ describe("frontxBoard", () => {
     });
   });
 
-  it("writes value labels only on a bar that asks for them, and a legend only on a bar with a series column", () => {
+  it("writes value labels only on a bar that asks for them, and a legend and a stack only on a bar with a series column", () => {
     const [bar, plain, stacked] = cells([
       { widget: "bar" },
       { widget: "plainBar" },
@@ -235,8 +235,13 @@ describe("frontxBoard", () => {
       value_labels: "never",
       legend_position: "none",
     });
-    expect(stacked.widget.render).toMatchObject({ legend_position: "bottom" });
+    expect(stacked.widget.render).toMatchObject({
+      legend_position: "bottom",
+      unlisted_stack_group: "outcome",
+    });
     expect(stacked.widget.render).not.toHaveProperty("series");
+    expect(bar.widget.render).not.toHaveProperty("unlisted_stack_group");
+    expect(plain.widget.render).not.toHaveProperty("unlisted_stack_group");
   });
 
   it("reads a date bucket on the x axis as time, any other column as a category, and titles no axis", () => {

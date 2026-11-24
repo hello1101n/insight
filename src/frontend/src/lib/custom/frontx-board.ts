@@ -152,8 +152,6 @@ function oneSeries(
   );
 }
 
-// WORKAROUND: the render names each stacked series before the data comes, and these names come
-// with the data. Each value draws as its own bar, side by side.
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
   percent: boolean
@@ -165,7 +163,7 @@ function seriesPerValue(
     widget.x,
     widget.y,
     percent,
-    { legend_position: "bottom" },
+    { legend_position: "bottom", unlisted_stack_group: widget.series },
     (point) =>
       `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${name}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
   );
