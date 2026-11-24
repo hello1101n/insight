@@ -13,5 +13,4 @@ pub(crate) mod person_absences;
 pub(crate) mod person_visibility;
 pub mod query_gate;
 pub mod reports;
-pub mod saved_query;
 pub(crate) mod spreadsheet;

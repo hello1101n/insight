@@ -2,6 +2,7 @@ pub(crate) mod ai_assist_schema;
 pub(crate) mod feedback_schema;
 mod m20261014_000001_drop_unread_catalog_tables;
 mod m20261030_000001_baseline;
+mod m20261124_000001_drop_saved_queries;
 
 use insight_migration::squash;
 use sea_orm_migration::prelude::*;
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
         migrations.push(Box::new(
             m20261014_000001_drop_unread_catalog_tables::Migration,
         ));
+        migrations.push(Box::new(m20261124_000001_drop_saved_queries::Migration));
         migrations
     }
 }
@@ -63,6 +65,10 @@ mod tests {
         assert_eq!(
             names.get(squashed.len() + 1),
             Some(&"m20261014_000001_drop_unread_catalog_tables")
+        );
+        assert_eq!(
+            names.get(squashed.len() + 2),
+            Some(&"m20261124_000001_drop_saved_queries")
         );
     }
 
