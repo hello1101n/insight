@@ -42,8 +42,6 @@ import {
   storeMetricsPick,
   withCombinedColumns,
   withCombinedResults,
-  withPageLabels,
-  withPageResultLabels,
   keysWithData,
   metricGroups,
   metricsRows,
@@ -90,10 +88,8 @@ export function MetricsView() {
 
   const catalog = useMemo(
     () =>
-      withPageLabels(
-        withCombinedColumns(
-          metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
-        ),
+      withCombinedColumns(
+        metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
       ),
     [definitions.data, showPlanned],
   );
@@ -162,10 +158,7 @@ export function MetricsView() {
 
   const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
   const data = useMetricsViewData(requestKeys, memberIds, dateRange);
-  const byKey = useMemo(
-    () => withPageResultLabels(withCombinedResults(data.byKey)),
-    [data.byKey],
-  );
+  const byKey = useMemo(() => withCombinedResults(data.byKey), [data.byKey]);
 
   const gate = orgScopeGate({
     "data-testid": TEST_ID,
