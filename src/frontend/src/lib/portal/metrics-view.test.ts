@@ -11,10 +11,11 @@ import {
   chunkKeys,
   compareGaps,
   LINES_KEY,
+  combinedColumn,
+  combinedFigure,
   defaultMetricKeys,
   finiteValue,
   formatGap,
-  formatLines,
   headerUnit,
   rolesById,
   keysWithData,
@@ -24,8 +25,8 @@ import {
   orderMetricKeys,
   requestedMetricKeys,
   sortRows,
-  withLinesColumn,
-  withLinesResult,
+  withCombinedColumns,
+  withCombinedResults,
   type MetricsRow,
 } from "./metrics-view";
 
@@ -185,7 +186,7 @@ describe("orderMetricKeys", () => {
   });
 });
 
-describe("Lines column", () => {
+describe("combined Lines column", () => {
   it("joins the catalog before lines added when both line metrics are in it", () => {
     const catalog = [
       definition("git.pr_size"),
@@ -193,7 +194,7 @@ describe("Lines column", () => {
       definition("git.default_branch_lines_removed"),
     ];
 
-    expect(withLinesColumn(catalog).map((m) => m.metric_key)).toEqual([
+    expect(withCombinedColumns(catalog).map((m) => m.metric_key)).toEqual([
       "git.pr_size",
       LINES_KEY,
       "git.default_branch_lines_added",
@@ -204,7 +205,7 @@ describe("Lines column", () => {
   it("stays out of the catalog when a line metric is missing", () => {
     const catalog = [definition("git.default_branch_lines_added")];
 
-    expect(withLinesColumn(catalog).map((m) => m.metric_key)).toEqual([
+    expect(withCombinedColumns(catalog).map((m) => m.metric_key)).toEqual([
       "git.default_branch_lines_added",
     ]);
   });
@@ -231,7 +232,7 @@ describe("Lines column", () => {
       ],
     ]);
 
-    const lines = withLinesResult(byKey).get(LINES_KEY)!;
+    const lines = withCombinedResults(byKey).get(LINES_KEY)!;
 
     expect(finiteValue(lines, "a")).toBe(1.7);
     expect(finiteValue(lines, "b")).toBe(0.3);
@@ -239,9 +240,21 @@ describe("Lines column", () => {
   });
 
   it("writes lines added and removed in KLOC with one decimal", () => {
-    expect(formatLines(90412, 5100)).toBe("+90.4 / −5.1");
-    expect(formatLines(1500, null)).toBe("+1.5 / −0.0");
-    expect(formatLines(null, null)).toBeNull();
+    const byKey = new Map([
+      [
+        "git.default_branch_lines_added",
+        result("git.default_branch_lines_added", [["a", 90412], ["b", 1500], ["c", null]]),
+      ],
+      [
+        "git.default_branch_lines_removed",
+        result("git.default_branch_lines_removed", [["a", 5100], ["b", null], ["c", null]]),
+      ],
+    ]);
+    const lines = combinedColumn(LINES_KEY)!;
+
+    expect(combinedFigure(lines, byKey, "a")).toBe("+90.4 / −5.1");
+    expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / −0.0");
+    expect(combinedFigure(lines, byKey, "c")).toBeNull();
   });
 });
 

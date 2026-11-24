@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
@@ -8,14 +9,11 @@ import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, formatMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
+  combinedColumn,
+  combinedParts,
   finiteValue,
   headerUnit,
-  LINES_ADDED_KEY,
-  LINES_KEY,
-  LINES_LABEL,
-  LINES_REMOVED_KEY,
-  LINES_UNIT,
-  linesParts,
+  type CombinedColumn,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,
@@ -185,19 +183,12 @@ export function MetricsTable({
                     groupStarts.has(key) && "border-s",
                   )}
                 >
-                  {key === LINES_KEY ? (
-                    <LinesValue
-                      byKey={byKey}
-                      entityId={row.entityId}
-                      personName={row.displayName}
-                    />
-                  ) : (
-                    <MetricValue
-                      result={byKey.get(key)}
-                      entityId={row.entityId}
-                      personName={row.displayName}
-                    />
-                  )}
+                  <MetricCell
+                    metricKey={key}
+                    byKey={byKey}
+                    entityId={row.entityId}
+                    personName={row.displayName}
+                  />
                 </td>
               ))}
             </tr>
@@ -252,63 +243,88 @@ export function MetricValue({
   );
 }
 
-export function LinesValue({
+export function MetricCell({
+  metricKey,
   byKey,
   entityId,
   personName,
 }: {
+  metricKey: string;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+  personName: string;
+}) {
+  const column = combinedColumn(metricKey);
+  if (column) {
+    return (
+      <CombinedValue
+        column={column}
+        byKey={byKey}
+        entityId={entityId}
+        personName={personName}
+      />
+    );
+  }
+  return (
+    <MetricValue result={byKey.get(metricKey)} entityId={entityId} personName={personName} />
+  );
+}
+
+function CombinedValue({
+  column,
+  byKey,
+  entityId,
+  personName,
+}: {
+  column: CombinedColumn;
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   entityId: string;
   personName: string;
 }) {
   const evidence = useMetricEvidenceOptional();
-  const added = byKey.get(LINES_ADDED_KEY);
-  const removed = byKey.get(LINES_REMOVED_KEY);
-  const parts = linesParts(
-    added ? finiteValue(added, entityId) : null,
-    removed ? finiteValue(removed, entityId) : null,
-  );
+  const parts = combinedParts(column, byKey, entityId);
   if (!parts) return <span className="text-muted-foreground">—</span>;
 
-  const targets = [added, removed].flatMap((result) => {
+  const targets = parts.flatMap(({ result }) => {
     const selection = result?.drilldown
       ? evidenceSelection(result.selection, entityId)
       : null;
     return result && selection ? [{ selection, label: result.label }] : [];
   });
-  const figure = `${parts.plus} / ${parts.minus} ${LINES_UNIT}`;
-
-  const part = (text: string, result: NormalizedMetricResult | undefined) => {
-    const target = targets.find((t) => t.selection.metric_key === result?.metric_key);
-    if (!evidence || !result || !target) return <span>{text}</span>;
-
-    return (
-      <button
-        type="button"
-        aria-label={`${personName} — ${result.label}: ${text} ${LINES_UNIT}`}
-        onClick={() =>
-          evidence.openEvidenceTargets(targets, {
-            activeMetricKey: target.selection.metric_key,
-            title: [
-              LINES_LABEL,
-              personName,
-              figure,
-              formatRange(target.selection.period.from, target.selection.period.to),
-            ].join(" · "),
-          })
-        }
-        className="cursor-pointer hover:text-primary hover:underline"
-      >
-        {text}
-      </button>
-    );
-  };
+  const figure = `${parts.map((part) => part.text).join(" / ")} ${column.unit}`;
 
   return (
     <span>
-      {part(parts.plus, added)}
-      {" / "}
-      {part(parts.minus, removed)}
+      {parts.map(({ text, result }, index) => {
+        const target = targets.find((t) => t.selection.metric_key === result?.metric_key);
+        return (
+          <Fragment key={result?.metric_key ?? index}>
+            {index > 0 ? " / " : null}
+            {evidence && result && target ? (
+              <button
+                type="button"
+                aria-label={`${personName} — ${result.label}: ${text} ${column.unit}`}
+                onClick={() =>
+                  evidence.openEvidenceTargets(targets, {
+                    activeMetricKey: target.selection.metric_key,
+                    title: [
+                      column.label,
+                      personName,
+                      figure,
+                      formatRange(target.selection.period.from, target.selection.period.to),
+                    ].join(" · "),
+                  })
+                }
+                className="cursor-pointer hover:text-primary hover:underline"
+              >
+                {text}
+              </button>
+            ) : (
+              <span>{text}</span>
+            )}
+          </Fragment>
+        );
+      })}
     </span>
   );
 }

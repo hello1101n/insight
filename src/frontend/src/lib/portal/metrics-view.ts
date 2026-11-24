@@ -36,10 +36,30 @@ export type SortDirection = "ascending" | "descending";
 
 export const LINES_KEY = "git.default_branch_lines";
 
-export const LINES_ADDED_KEY = "git.default_branch_lines_added";
-export const LINES_REMOVED_KEY = "git.default_branch_lines_removed";
-export const LINES_LABEL = "Lines";
-export const LINES_UNIT = "KLOC";
+export interface CombinedColumn {
+  key: string;
+  label: string;
+  description: string;
+  unit: string;
+  scale: number;
+  digits: number;
+  parts: readonly { metricKey: string; sign: string }[];
+}
+
+const COMBINED_COLUMNS: readonly CombinedColumn[] = [
+  {
+    key: LINES_KEY,
+    label: "Lines",
+    description: "Lines added and removed that reached the default branch",
+    unit: "KLOC",
+    scale: 1000,
+    digits: 1,
+    parts: [
+      { metricKey: "git.default_branch_lines_added", sign: "+" },
+      { metricKey: "git.default_branch_lines_removed", sign: "−" },
+    ],
+  },
+];
 
 export const DEFAULT_METRIC_KEYS: readonly string[] = [
   LINES_KEY,
@@ -149,93 +169,112 @@ export function withPageResultLabels(
   );
 }
 
-export function withLinesColumn(catalog: readonly MetricDefinition[]): MetricDefinition[] {
-  const at = catalog.findIndex((metric) => metric.metric_key === LINES_ADDED_KEY);
-  const added = catalog[at];
-  const hasRemoved = catalog.some((metric) => metric.metric_key === LINES_REMOVED_KEY);
-  if (!added || !hasRemoved) return [...catalog];
+export function combinedColumn(key: string): CombinedColumn | undefined {
+  return COMBINED_COLUMNS.find((column) => column.key === key);
+}
 
-  const lines: MetricDefinition = {
-    ...added,
-    metric_key: LINES_KEY,
-    label: LINES_LABEL,
-    short_label: null,
-    description: "Lines added and removed that reached the default branch",
-    explanation: null,
-    unit: LINES_UNIT,
-    format: "decimal",
-    direction: "neutral",
-    dimensions: [],
-  };
+export function withCombinedColumns(catalog: readonly MetricDefinition[]): MetricDefinition[] {
+  return COMBINED_COLUMNS.reduce<MetricDefinition[]>(
+    (list, column) => {
+      const keys = new Set(list.map((metric) => metric.metric_key));
+      if (!column.parts.every((part) => keys.has(part.metricKey))) return list;
 
-  return [...catalog.slice(0, at), lines, ...catalog.slice(at)];
+      const at = list.findIndex((metric) => metric.metric_key === column.parts[0]?.metricKey);
+      const combined: MetricDefinition = {
+        ...list[at]!,
+        metric_key: column.key,
+        label: column.label,
+        short_label: null,
+        description: column.description,
+        explanation: null,
+        unit: column.unit,
+        format: "decimal",
+        direction: "neutral",
+        dimensions: [],
+      };
+      return [...list.slice(0, at), combined, ...list.slice(at)];
+    },
+    [...catalog],
+  );
 }
 
 export function requestedMetricKeys(keys: readonly string[]): string[] {
-  const expanded = keys.flatMap((key) =>
-    key === LINES_KEY ? [LINES_ADDED_KEY, LINES_REMOVED_KEY] : [key],
+  const expanded = keys.flatMap(
+    (key) => combinedColumn(key)?.parts.map((part) => part.metricKey) ?? [key],
   );
   return [...new Set(expanded)];
 }
 
-export function withLinesResult(
+export function withCombinedResults(
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
 ): Map<string, NormalizedMetricResult> {
   const merged = new Map(byKey);
-  const added = byKey.get(LINES_ADDED_KEY);
-  const removed = byKey.get(LINES_REMOVED_KEY);
-  if (!added || !removed) return merged;
 
-  const ids = new Set(
-    [added, removed].flatMap((result) => result.period?.values.map((v) => v.entity_id) ?? []),
-  );
-  const values = [...ids].map((entity_id) => {
-    const plus = finiteValue(added, entity_id);
-    const minus = finiteValue(removed, entity_id);
-    const value = plus == null && minus == null ? null : ((plus ?? 0) + (minus ?? 0)) / 1000;
-    return { entity_id, value };
-  });
+  for (const column of COMBINED_COLUMNS) {
+    const results = column.parts.flatMap((part) => {
+      const result = byKey.get(part.metricKey);
+      return result ? [result] : [];
+    });
+    const [first] = results;
+    if (!first || results.length !== column.parts.length) continue;
 
-  merged.set(LINES_KEY, {
-    ...added,
-    metric_key: LINES_KEY,
-    label: LINES_LABEL,
-    short_label: undefined,
-    unit: LINES_UNIT,
-    format: "decimal",
-    direction: "neutral",
-    drilldown: undefined,
-    selection: undefined,
-    period: { view: "period", values },
-  });
+    const ids = new Set(
+      results.flatMap((result) => result.period?.values.map((v) => v.entity_id) ?? []),
+    );
+    const values = [...ids].map((entity_id) => {
+      const found = results.map((result) => finiteValue(result, entity_id));
+      const value = found.every((v) => v == null)
+        ? null
+        : found.reduce<number>((sum, v) => sum + (v ?? 0), 0) / column.scale;
+      return { entity_id, value };
+    });
+
+    merged.set(column.key, {
+      ...first,
+      metric_key: column.key,
+      label: column.label,
+      short_label: undefined,
+      unit: column.unit,
+      format: "decimal",
+      direction: "neutral",
+      drilldown: undefined,
+      selection: undefined,
+      period: { view: "period", values },
+    });
+  }
+
   return merged;
 }
 
-export function linesParts(
-  added: number | null,
-  removed: number | null,
-): { plus: string; minus: string } | null {
-  if (added == null && removed == null) return null;
-
-  const kloc = (lines: number | null) => ((lines ?? 0) / 1000).toFixed(1);
-  return { plus: `+${kloc(added)}`, minus: `−${kloc(removed)}` };
+export interface CombinedPart {
+  text: string;
+  result: NormalizedMetricResult | undefined;
 }
 
-export function formatLines(added: number | null, removed: number | null): string | null {
-  const parts = linesParts(added, removed);
-  return parts ? `${parts.plus} / ${parts.minus}` : null;
+export function combinedParts(
+  column: CombinedColumn,
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  entityId: string,
+): CombinedPart[] | null {
+  const found = column.parts.map((part) => {
+    const result = byKey.get(part.metricKey);
+    return { part, result, value: result ? finiteValue(result, entityId) : null };
+  });
+  if (found.every(({ value }) => value == null)) return null;
+
+  return found.map(({ part, result, value }) => ({
+    text: `${part.sign}${((value ?? 0) / column.scale).toFixed(column.digits)}`,
+    result,
+  }));
 }
 
-export function linesFigure(
+export function combinedFigure(
+  column: CombinedColumn,
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
   entityId: string,
 ): string | null {
-  const added = byKey.get(LINES_ADDED_KEY);
-  const removed = byKey.get(LINES_REMOVED_KEY);
-  return formatLines(
-    added ? finiteValue(added, entityId) : null,
-    removed ? finiteValue(removed, entityId) : null,
-  );
+  const parts = combinedParts(column, byKey, entityId);
+  return parts ? parts.map((part) => part.text).join(" / ") : null;
 }
 
 export function chunkKeys(keys: readonly string[], size: number): string[][] {

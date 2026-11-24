@@ -40,8 +40,8 @@ import {
   requestedMetricKeys,
   rolesById,
   storeMetricsPick,
-  withLinesColumn,
-  withLinesResult,
+  withCombinedColumns,
+  withCombinedResults,
   withPageLabels,
   withPageResultLabels,
   keysWithData,
@@ -91,7 +91,7 @@ export function MetricsView() {
   const catalog = useMemo(
     () =>
       withPageLabels(
-        withLinesColumn(
+        withCombinedColumns(
           metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
         ),
       ),
@@ -163,7 +163,7 @@ export function MetricsView() {
   const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
   const data = useMetricsViewData(requestKeys, memberIds, dateRange);
   const byKey = useMemo(
-    () => withPageResultLabels(withLinesResult(data.byKey)),
+    () => withPageResultLabels(withCombinedResults(data.byKey)),
     [data.byKey],
   );
 

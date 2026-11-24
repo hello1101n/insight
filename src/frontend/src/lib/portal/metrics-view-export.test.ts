@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import i18n from "@/i18n";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
-import { LINES_KEY, withLinesResult } from "@/lib/portal/metrics-view";
+import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view";
 
 import { metricsViewFilename, metricsViewMatrix } from "./metrics-view-export";
 
@@ -196,7 +196,7 @@ describe("metricsViewMatrix", () => {
 
 describe("metricsViewMatrix Lines column", () => {
   it("writes lines added and removed as one cell, in KLOC", () => {
-    const byKey = withLinesResult(
+    const byKey = withCombinedResults(
       new Map([
         [
           "git.default_branch_lines_added",
