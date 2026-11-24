@@ -32,8 +32,8 @@ def create_schedule_schema(cursor: SSCursor) -> None:
     source = migration.read_text().split("async fn down", 1)[0]
     statements = re.findall(r'\.execute_unprepared\(\s*"([^"]+)"\s*,?\s*\)', source)
     assert len(statements) == 2
-    resources = migration.with_name("m20261124_000001_connector_resources.rs").read_text()
-    statements.extend(re.findall(r'^            "([^"]+)",', resources, re.MULTILINE))
+    history = migration.with_name("m20261124_000001_ingestion_history.rs").read_text().split("async fn down", 1)[0]
+    statements.extend(re.findall(r'^            "([^"]+)",', history, re.MULTILINE))
     for statement in statements:
         cursor.execute(statement, None)
 
