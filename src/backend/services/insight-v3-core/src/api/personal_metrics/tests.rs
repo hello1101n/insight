@@ -29,6 +29,8 @@ const ALICE: &str = "0192a1b2-0000-7000-8000-0000000000c1";
 const BOB: &str = "0192a1b2-0000-7000-8000-0000000000c2";
 const HIDDEN: &str = "0192a1b2-0000-7000-8000-0000000000d1";
 
+const FAILING_TABLE: &str = "ds_outages_1";
+
 const PERIOD_FROM: &str = "2026-09-01";
 const PERIOD_TO: &str = "2026-09-08";
 
@@ -144,7 +146,7 @@ async fn clickhouse(upstream: Upstream, seen: Seen) -> (String, tokio::task::Joi
             if let Ok(mut seen) = seen.lock() {
                 seen.push(sql.clone());
             }
-            if matches!(upstream, Upstream::Failing) {
+            if matches!(upstream, Upstream::Failing) || sql.contains(FAILING_TABLE) {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({ "exception": "synthetic failure" })),
@@ -224,7 +226,7 @@ impl Harness {
             definitions.clone(),
             ChatClient::keyless(),
             identity,
-            crate::api::Datasets::holding(&url, &[("commits", commits())]),
+            crate::api::Datasets::holding(&url, &[("commits", commits()), ("outages", commits())]),
             crate::store::catalog::Catalog::fixed(Vec::new()),
         ));
         let router = super::register_routes(Router::new(), &openapi, &state);
@@ -577,7 +579,8 @@ async fn values_answer_null_for_a_person_without_rows() {
                 { "metric": "lines_merged", "person_id": ALICE, "value": 15 },
                 { "metric": "lines_merged", "person_id": BOB, "value": null }
             ],
-            "teams": []
+            "teams": [],
+            "errors": []
         })
     );
 }
@@ -611,7 +614,8 @@ async fn values_answer_one_value_per_team() {
             "teams": [
                 { "metric": "lines_merged", "team": "platform", "value": 22 },
                 { "metric": "lines_merged", "team": "nobody", "value": null }
-            ]
+            ],
+            "errors": []
         })
     );
 }
@@ -787,7 +791,7 @@ async fn values_refuse_a_member_a_period_longer_than_the_metric_allows() {
 }
 
 #[tokio::test]
-async fn values_fail_on_the_server_when_a_stored_body_does_not_parse() {
+async fn values_list_a_metric_whose_stored_body_does_not_parse_as_failed() {
     let harness = Harness::new().await;
     harness
         .marked_as(
@@ -797,20 +801,19 @@ async fn values_fail_on_the_server_when_a_stored_body_does_not_parse() {
         )
         .await;
 
-    let failed = harness
+    let answer = harness
         .values(ADMIN, asked(&["lines_broken"], &[ALICE]))
         .await;
 
-    assert_eq!(
-        failed.status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "{}",
-        failed.body
-    );
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["values"], json!([]));
+    assert_eq!(answer.body["errors"][0]["metric"], json!("lines_broken"));
+    let detail = answer.body["errors"][0]["detail"].to_string();
+    assert!(detail.contains("not a list"), "{detail}");
 }
 
 #[tokio::test]
-async fn values_fail_on_the_server_when_a_stored_metric_does_not_compile() {
+async fn values_tell_an_admin_why_a_stored_metric_does_not_compile() {
     let harness = Harness::new().await;
     let mut broken = lines_metric();
     broken["max_range"] = json!("P1W");
@@ -818,19 +821,13 @@ async fn values_fail_on_the_server_when_a_stored_metric_does_not_compile() {
         .marked_as("lines_broken", "Lines broken", &broken)
         .await;
 
-    let failed = harness
+    let answer = harness
         .values(ADMIN, asked(&["lines_broken"], &[ALICE]))
         .await;
 
-    assert_eq!(
-        failed.status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "{}",
-        failed.body
-    );
-    let said = failed.body.to_string();
-    assert!(said.contains("metric `lines_broken`"), "{said}");
-    assert!(said.contains("maximum range `P1W`"), "{said}");
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    let detail = answer.body["errors"][0]["detail"].to_string();
+    assert!(detail.contains("maximum range `P1W`"), "{detail}");
 }
 
 #[tokio::test]
@@ -843,17 +840,13 @@ async fn values_hide_from_a_member_why_a_stored_metric_does_not_compile() {
         .await;
     harness.grant("lines_broken", "everyone", ADMIN).await;
 
-    let failed = harness
+    let answer = harness
         .values(MEMBER, asked(&["lines_broken"], &[ALICE]))
         .await;
 
-    assert_eq!(
-        failed.status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "{}",
-        failed.body
-    );
-    assert!(!failed.body.to_string().contains("P1W"), "{}", failed.body);
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["errors"], json!([{ "metric": "lines_broken" }]));
+    assert!(!answer.body.to_string().contains("P1W"), "{}", answer.body);
 }
 
 #[tokio::test]
@@ -865,16 +858,14 @@ async fn values_tell_an_admin_which_dataset_is_not_ready() {
         .marked_as("lines_unready", "Lines unready", &unready)
         .await;
 
-    let refused = harness
+    let answer = harness
         .values(ADMIN, asked(&["lines_unready"], &[ALICE]))
         .await;
 
-    assert_eq!(refused.status, StatusCode::NOT_FOUND, "{}", refused.body);
-    assert!(
-        refused.body.to_string().contains("absent"),
-        "{}",
-        refused.body
-    );
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["errors"][0]["metric"], json!("lines_unready"));
+    let detail = answer.body["errors"][0]["detail"].to_string();
+    assert!(detail.contains("absent"), "{detail}");
 }
 
 #[tokio::test]
@@ -887,20 +878,19 @@ async fn values_hide_from_a_member_why_a_metric_cannot_be_read() {
         .await;
     harness.grant("lines_unready", "everyone", ADMIN).await;
 
-    let failed = harness
+    let answer = harness
         .values(MEMBER, asked(&["lines_unready"], &[ALICE]))
         .await;
 
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
     assert_eq!(
-        failed.status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "{}",
-        failed.body
+        answer.body["errors"],
+        json!([{ "metric": "lines_unready" }])
     );
     assert!(
-        !failed.body.to_string().contains("absent"),
+        !answer.body.to_string().contains("absent"),
         "{}",
-        failed.body
+        answer.body
     );
 }
 
@@ -931,24 +921,60 @@ async fn values_hide_a_metric_not_shared_with_the_caller() {
 }
 
 #[tokio::test]
-async fn values_fail_when_one_metric_run_fails() {
-    let harness = Harness::failing().await;
+async fn values_keep_the_other_metrics_when_one_run_fails() {
+    let harness = Harness::new().await;
+    let mut outage = lines_metric();
+    outage["dataset"] = json!("outages");
     harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .marked_as("lines_outage", "Lines outage", &outage)
+        .await;
+    harness.grant("lines_merged", "everyone", ADMIN).await;
+    harness.grant("lines_outage", "everyone", ADMIN).await;
 
-    let failed = harness
-        .values(ADMIN, asked(&["lines_merged"], &[ALICE]))
+    let answer = harness
+        .values(
+            MEMBER,
+            json!({
+                "metrics": ["lines_outage", "lines_merged"],
+                "person_ids": [ALICE],
+                "teams": [{ "id": "platform", "person_ids": [ALICE, BOB] }],
+                "from": PERIOD_FROM,
+                "to": PERIOD_TO
+            }),
+        )
         .await;
 
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
     assert_eq!(
-        failed.status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "{}",
-        failed.body
+        answer.body,
+        json!({
+            "values": [{ "metric": "lines_merged", "person_id": ALICE, "value": 15 }],
+            "teams": [{ "metric": "lines_merged", "team": "platform", "value": 22 }],
+            "errors": [{ "metric": "lines_outage" }]
+        })
     );
 }
 
 #[tokio::test]
-async fn values_wait_for_the_shared_run_slots() {
+async fn values_hide_the_warehouse_failure_from_an_admin() {
+    let harness = Harness::failing().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let answer = harness
+        .values(ADMIN, asked(&["lines_merged"], &[ALICE]))
+        .await;
+
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["values"], json!([]));
+    assert_eq!(
+        answer.body["errors"],
+        json!([{ "metric": "lines_merged", "detail": "metric query execution failed" }])
+    );
+}
+
+#[tokio::test]
+async fn values_list_a_metric_as_failed_while_every_run_slot_is_taken() {
     let harness = Harness::new().await;
     harness.marked("lines_merged", "Lines merged").await;
     let taken = Arc::clone(harness.state.widget_run_slots())
@@ -967,8 +993,14 @@ async fn values_wait_for_the_shared_run_slots() {
         .values(ADMIN, asked(&["lines_merged"], &[ALICE]))
         .await;
 
-    assert_eq!(busy.status, StatusCode::TOO_MANY_REQUESTS, "{}", busy.body);
+    assert_eq!(busy.status, StatusCode::OK, "{}", busy.body);
+    assert_eq!(
+        busy.body["errors"],
+        json!([{ "metric": "lines_merged", "detail": super::RUNS_BUSY }])
+    );
     assert_eq!(served.status, StatusCode::OK, "{}", served.body);
+    assert_eq!(served.body["errors"], json!([]));
+    assert_eq!(served.body["values"][0]["value"], json!(15));
 }
 
 #[tokio::test]

@@ -27,7 +27,7 @@ use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::drilldown::{DEFAULT_PAGE_ROWS, DrilldownError, Records};
 use crate::domain::personal::Marked;
 use crate::domain::personal::values::{Asked, Listed, PersonalMetrics, Team, Values};
-use crate::domain::query::metric_query::MetricQueryError;
+use crate::domain::query::metric_query::{MetricQueryError, MetricRunError};
 use crate::domain::query::time_window::{RequestedRange, Window, canonical_date};
 use crate::domain::surfaces::CustomError;
 use crate::store::identity::IdentityError;
@@ -115,6 +115,12 @@ struct RecordsResponse {
 }
 
 #[derive(Debug)]
+enum Read {
+    Values(Values),
+    Failed(Option<String>),
+}
+
+#[derive(Debug)]
 struct Checked {
     metrics: Vec<DefinitionId>,
     asked: Asked,
@@ -152,7 +158,9 @@ pub(crate) fn register_routes(
         .json_request::<ValuesRequest>(openapi, "The metrics, persons, teams and period")
         .json_response(
             StatusCode::OK,
-            "One value per metric and person, and per metric and team; null where no rows count",
+            "One value per metric and person, and per metric and team; null where no rows count. \
+             A metric that could not be read gives no values and is listed in `errors`, \
+             with a `detail` for an administrator",
         )
         .error_400(openapi)
         .error_403(openapi)
@@ -235,9 +243,9 @@ async fn read_values(
         .map_err(PersonalMetricApiError::custom_error)?;
     require_visible(&state, &headers, &checked.everyone, "person_ids").await?;
 
-    let values = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
+    let reads = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
 
-    Ok(Json(answer(&metrics, &checked.asked, values)).into_response())
+    Ok(Json(answer(&metrics, &checked.asked, reads)).into_response())
 }
 
 async fn read_records(
@@ -453,7 +461,7 @@ async fn values_of(
     caller: Caller,
     metrics: &[Marked],
     asked: &Asked,
-) -> Result<Vec<Values>, CanonicalError> {
+) -> Result<Vec<Read>, CanonicalError> {
     let runs: Vec<_> = metrics
         .iter()
         .map(|marked| value_of(state, personal, caller, marked, asked))
@@ -471,13 +479,41 @@ async fn value_of(
     caller: Caller,
     marked: &Marked,
     asked: &Asked,
-) -> Result<Values, CanonicalError> {
-    let _permit = run_slot(state).await.ok_or_else(runs_busy)?;
+) -> Result<Read, CanonicalError> {
+    let Some(_permit) = run_slot(state).await else {
+        tracing::warn!(
+            capacity = MAX_CONCURRENT_WIDGET_RUNS,
+            metric_id = marked.id,
+            "a personal metric found no run slot"
+        );
+        return Ok(failed(caller, RUNS_BUSY.to_owned()));
+    };
 
-    personal
-        .values(marked, asked)
-        .await
-        .map_err(|error| read_error(caller, &marked.id, "metrics", error))
+    match personal.values(marked, asked).await {
+        Ok(values) => Ok(Read::Values(values)),
+        Err(CustomError::Compile(source @ MetricQueryError::RangeExceedsMaximum(_))) => Err(
+            invalid("metrics", format!("metric `{}`: {source}", marked.id)),
+        ),
+        Err(error) => {
+            tracing::error!(%error, metric_id = marked.id, "a personal metric could not be read");
+            Ok(failed(caller, admin_detail(&error)))
+        }
+    }
+}
+
+fn failed(caller: Caller, detail: String) -> Read {
+    Read::Failed(caller.is_administrator().then_some(detail))
+}
+
+fn admin_detail(error: &CustomError) -> String {
+    match error {
+        CustomError::Run(MetricRunError::ClickHouse(_) | MetricRunError::InvalidResponse(_)) => {
+            "metric query execution failed".to_owned()
+        }
+        CustomError::Store(_) => "the definition store could not be read".to_owned(),
+        CustomError::Datasets(_) => "the dataset store could not be read".to_owned(),
+        error => error.to_string(),
+    }
 }
 
 fn read_error(caller: Caller, metric: &str, field: &str, error: CustomError) -> CanonicalError {
@@ -530,10 +566,22 @@ fn not_read() -> CanonicalError {
     CanonicalError::internal(NOT_READ).create()
 }
 
-fn answer(metrics: &[Marked], asked: &Asked, values: Vec<Values>) -> Value {
+fn answer(metrics: &[Marked], asked: &Asked, reads: Vec<Read>) -> Value {
     let mut persons = Vec::new();
     let mut teams = Vec::new();
-    for (marked, values) in metrics.iter().zip(values) {
+    let mut errors = Vec::new();
+    for (marked, read) in metrics.iter().zip(reads) {
+        let values = match read {
+            Read::Values(values) => values,
+            Read::Failed(Some(detail)) => {
+                errors.push(json!({ "metric": marked.id, "detail": detail }));
+                continue;
+            }
+            Read::Failed(None) => {
+                errors.push(json!({ "metric": marked.id }));
+                continue;
+            }
+        };
         persons.extend(values.persons.into_iter().map(|(person, value)| {
             json!({ "metric": marked.id, "person_id": person.to_string(), "value": value })
         }));
@@ -544,7 +592,7 @@ fn answer(metrics: &[Marked], asked: &Asked, values: Vec<Values>) -> Value {
         );
     }
 
-    json!({ "values": persons, "teams": teams })
+    json!({ "values": persons, "teams": teams, "errors": errors })
 }
 
 fn listed_json(listed: &Listed, names: &HashMap<PersonId, String>) -> Value {

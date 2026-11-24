@@ -5702,7 +5702,7 @@
                 }
               }
             },
-            "description": "One value per metric and person, and per metric and team; null where no rows count"
+            "description": "One value per metric and person, and per metric and team; null where no rows count. A metric that could not be read gives no values and is listed in `errors`, with a `detail` for an administrator"
           },
           "400": {
             "content": {

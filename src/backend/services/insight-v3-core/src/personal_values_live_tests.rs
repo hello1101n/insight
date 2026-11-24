@@ -595,7 +595,8 @@ async fn the_values_route_answers_each_person_and_team_from_the_rows() {
                 { "metric": "lines_merged", "person_id": person(2).to_string(), "value": 7 },
                 { "metric": "lines_merged", "person_id": person(4).to_string(), "value": null }
             ],
-            "teams": [{ "metric": "lines_merged", "team": "pair", "value": 22 }]
+            "teams": [{ "metric": "lines_merged", "team": "pair", "value": 22 }],
+            "errors": []
         })
     );
 
