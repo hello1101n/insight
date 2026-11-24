@@ -310,9 +310,15 @@ def balanced(expression: str) -> bool:
     pairs = {")": "(", "]": "[", "}": "{"}
     stack: list[str] = []
     quote = None
+    escaped = False
     for char in expression:
         if quote:
-            quote = None if char == quote else quote
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
         elif char in "'\"":
             quote = char
         elif char in "([{":
