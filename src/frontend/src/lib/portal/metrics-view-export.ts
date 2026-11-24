@@ -3,7 +3,7 @@ import i18n from "@/i18n";
 import type { Matrix, MatrixCell } from "@/lib/export/matrix";
 import { isDurationUnit, roundMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue } from "@/lib/portal/metrics-view";
+import { finiteValue, LINES_KEY, linesFigure } from "@/lib/portal/metrics-view";
 
 export interface MetricsViewExport {
   people: ReadonlyArray<{ entityId: string; displayName: string }>;
@@ -76,7 +76,11 @@ export function metricsViewMatrix({
     person.displayName,
     ...(withRoles ? [roles.get(person.entityId) ?? null] : []),
     period,
-    ...keys.map((key) => fileValue(byKey.get(key), person.entityId)),
+    ...keys.map((key) =>
+      key === LINES_KEY
+        ? linesFigure(byKey, person.entityId)
+        : fileValue(byKey.get(key), person.entityId),
+    ),
   ]);
 
   return { columns, rows };

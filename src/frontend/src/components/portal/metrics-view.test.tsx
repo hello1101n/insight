@@ -158,6 +158,31 @@ async function downloadCsv(user: ReturnType<typeof userEvent.setup>) {
   return { filename, lines: text.split("\r\n").map((line) => line.split(",")) };
 }
 
+function addLineMetrics(values: Array<[string, number, number]>) {
+  mocks.definitions.push(
+    definition("git.default_branch_lines_added", "Lines added", { unit: "lines" }),
+    definition("git.default_branch_lines_removed", "Lines removed", { unit: "lines" }),
+  );
+  mocks.data.byKey.set(
+    "git.default_branch_lines_added",
+    result(
+      "git.default_branch_lines_added",
+      "Lines added",
+      values.map(([id, added]) => [id, added]),
+      { unit: "lines" },
+    ),
+  );
+  mocks.data.byKey.set(
+    "git.default_branch_lines_removed",
+    result(
+      "git.default_branch_lines_removed",
+      "Lines removed",
+      values.map(([id, , removed]) => [id, removed]),
+      { unit: "lines" },
+    ),
+  );
+}
+
 const LINKED = "git.default_branch_commits,tasks.closed,collab.messages_sent";
 
 const rowHeaders = () =>
@@ -639,6 +664,48 @@ describe("MetricsView", () => {
       "git.default_branch_commits",
       "collab.messages_sent",
     ]);
+  });
+
+  it("shows lines added and removed in one Lines column, in KLOC", () => {
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "git.default_branch_lines_added",
+      "git.default_branch_lines_removed",
+    ]);
+    expect(screen.getByRole("columnheader", { name: /Lines/ })).toHaveTextContent("LinesKLOC");
+    const rowOfB = screen
+      .getAllByRole("rowheader")
+      .find((cell) => cell.textContent === "b")!
+      .closest("tr")!;
+    expect(within(rowOfB).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "+1.5 / −0.2",
+    ]);
+  });
+
+  it("ranks people by lines added plus removed when Lines is sorted", async () => {
+    addLineMetrics([
+      [pid("a"), 100, 5000],
+      [pid("b"), 1500, 200],
+    ]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Lines" }));
+
+    expect(rowHeaders()).toEqual(["a", "b", "boss", "c"]);
+  });
+
+  it("offers the Lines column in the picker", async () => {
+    const user = userEvent.setup();
+    addLineMetrics([]);
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 6" }));
+
+    expect(screen.getByRole("checkbox", { name: "Lines" })).not.toBeChecked();
   });
 
   it("opens on the pick saved in this browser when the link names no metrics", () => {

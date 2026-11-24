@@ -1,10 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { MetricValue, UnitNote } from "@/components/portal/metrics-table";
+import { LinesValue, MetricValue, UnitNote } from "@/components/portal/metrics-table";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { compareGaps, finiteValue, formatGap } from "@/lib/portal/metrics-view";
+import { compareGaps, finiteValue, formatGap, LINES_KEY } from "@/lib/portal/metrics-view";
 import { cn } from "@/lib/utils";
 
 const STICKY_START = "sticky start-0 z-10 bg-card";
@@ -86,11 +86,15 @@ export function MetricsCompareTable({
                         cell.best && "font-semibold",
                       )}
                     >
-                      <MetricValue
-                        result={result}
-                        entityId={person.entityId}
-                        personName={person.displayName}
-                      />
+                      {key === LINES_KEY ? (
+                        <LinesValue byKey={byKey} entityId={person.entityId} />
+                      ) : (
+                        <MetricValue
+                          result={result}
+                          entityId={person.entityId}
+                          personName={person.displayName}
+                        />
+                      )}
                       {cell.best ? <span className="sr-only"> (best)</span> : null}
                       <span className={GAP_SLOT}>{formatGap(cell.gap)}</span>
                     </td>

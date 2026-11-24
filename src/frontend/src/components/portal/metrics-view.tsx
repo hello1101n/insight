@@ -37,8 +37,11 @@ import {
   defaultMetricOrder,
   orderMetricKeys,
   readStoredMetricsPick,
+  requestedMetricKeys,
   rolesById,
   storeMetricsPick,
+  withLinesColumn,
+  withLinesResult,
   keysWithData,
   metricGroups,
   metricsRows,
@@ -85,7 +88,9 @@ export function MetricsView() {
 
   const catalog = useMemo(
     () =>
-      metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      withLinesColumn(
+        metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      ),
     [definitions.data, showPlanned],
   );
   const catalogKeys = useMemo(
@@ -151,7 +156,9 @@ export function MetricsView() {
     : [];
   usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
-  const data = useMetricsViewData(metricKeys, memberIds, dateRange);
+  const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
+  const data = useMetricsViewData(requestKeys, memberIds, dateRange);
+  const byKey = useMemo(() => withLinesResult(data.byKey), [data.byKey]);
 
   const gate = orgScopeGate({
     "data-testid": TEST_ID,
@@ -232,7 +239,7 @@ export function MetricsView() {
           people={people}
           members={members}
           metricKeys={metricKeys}
-          byKey={data.byKey}
+          byKey={byKey}
           loading={data.isPending}
           range={dateRange}
         />

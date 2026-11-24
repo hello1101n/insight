@@ -34,7 +34,15 @@ export interface MetricGroup {
 
 export type SortDirection = "ascending" | "descending";
 
+export const LINES_KEY = "git.default_branch_lines";
+
+const LINES_ADDED_KEY = "git.default_branch_lines_added";
+const LINES_REMOVED_KEY = "git.default_branch_lines_removed";
+const LINES_LABEL = "Lines";
+const LINES_UNIT = "KLOC";
+
 export const DEFAULT_METRIC_KEYS: readonly string[] = [
+  LINES_KEY,
   "git.pr_size",
   "git.default_branch_prs_merged",
   "git.default_branch_merge_rate",
@@ -115,6 +123,87 @@ export function metricsViewCatalog(
   );
 
   return byFamily(offered).flatMap((family) => family.metrics);
+}
+
+export function withLinesColumn(catalog: readonly MetricDefinition[]): MetricDefinition[] {
+  const at = catalog.findIndex((metric) => metric.metric_key === LINES_ADDED_KEY);
+  const added = catalog[at];
+  const hasRemoved = catalog.some((metric) => metric.metric_key === LINES_REMOVED_KEY);
+  if (!added || !hasRemoved) return [...catalog];
+
+  const lines: MetricDefinition = {
+    ...added,
+    metric_key: LINES_KEY,
+    label: LINES_LABEL,
+    short_label: null,
+    description: "Lines added and removed that reached the default branch",
+    explanation: null,
+    unit: LINES_UNIT,
+    format: "decimal",
+    direction: "neutral",
+    dimensions: [],
+  };
+
+  return [...catalog.slice(0, at), lines, ...catalog.slice(at)];
+}
+
+export function requestedMetricKeys(keys: readonly string[]): string[] {
+  const expanded = keys.flatMap((key) =>
+    key === LINES_KEY ? [LINES_ADDED_KEY, LINES_REMOVED_KEY] : [key],
+  );
+  return [...new Set(expanded)];
+}
+
+export function withLinesResult(
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+): Map<string, NormalizedMetricResult> {
+  const merged = new Map(byKey);
+  const added = byKey.get(LINES_ADDED_KEY);
+  const removed = byKey.get(LINES_REMOVED_KEY);
+  if (!added || !removed) return merged;
+
+  const ids = new Set(
+    [added, removed].flatMap((result) => result.period?.values.map((v) => v.entity_id) ?? []),
+  );
+  const values = [...ids].map((entity_id) => {
+    const plus = finiteValue(added, entity_id);
+    const minus = finiteValue(removed, entity_id);
+    const value = plus == null && minus == null ? null : ((plus ?? 0) + (minus ?? 0)) / 1000;
+    return { entity_id, value };
+  });
+
+  merged.set(LINES_KEY, {
+    ...added,
+    metric_key: LINES_KEY,
+    label: LINES_LABEL,
+    short_label: undefined,
+    unit: LINES_UNIT,
+    format: "decimal",
+    direction: "neutral",
+    drilldown: undefined,
+    selection: undefined,
+    period: { view: "period", values },
+  });
+  return merged;
+}
+
+export function formatLines(added: number | null, removed: number | null): string | null {
+  if (added == null && removed == null) return null;
+
+  const kloc = (lines: number | null) => ((lines ?? 0) / 1000).toFixed(1);
+  return `+${kloc(added)} / −${kloc(removed)}`;
+}
+
+export function linesFigure(
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  entityId: string,
+): string | null {
+  const added = byKey.get(LINES_ADDED_KEY);
+  const removed = byKey.get(LINES_REMOVED_KEY);
+  return formatLines(
+    added ? finiteValue(added, entityId) : null,
+    removed ? finiteValue(removed, entityId) : null,
+  );
 }
 
 export function chunkKeys(keys: readonly string[], size: number): string[][] {

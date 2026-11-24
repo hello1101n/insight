@@ -10,6 +10,8 @@ import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   finiteValue,
   headerUnit,
+  LINES_KEY,
+  linesFigure,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,
@@ -179,11 +181,15 @@ export function MetricsTable({
                     groupStarts.has(key) && "border-s",
                   )}
                 >
-                  <MetricValue
-                    result={byKey.get(key)}
-                    entityId={row.entityId}
-                    personName={row.displayName}
-                  />
+                  {key === LINES_KEY ? (
+                    <LinesValue byKey={byKey} entityId={row.entityId} />
+                  ) : (
+                    <MetricValue
+                      result={byKey.get(key)}
+                      entityId={row.entityId}
+                      personName={row.displayName}
+                    />
+                  )}
                 </td>
               ))}
             </tr>
@@ -236,6 +242,18 @@ export function MetricValue({
       {text}
     </button>
   );
+}
+
+export function LinesValue({
+  byKey,
+  entityId,
+}: {
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+}) {
+  const figure = linesFigure(byKey, entityId);
+  if (figure == null) return <span className="text-muted-foreground">—</span>;
+  return <span>{figure}</span>;
 }
 
 export function UnitNote({

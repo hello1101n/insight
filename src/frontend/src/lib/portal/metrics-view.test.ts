@@ -10,8 +10,11 @@ import {
   DEFAULT_METRIC_KEYS,
   chunkKeys,
   compareGaps,
+  LINES_KEY,
   defaultMetricKeys,
+  finiteValue,
   formatGap,
+  formatLines,
   headerUnit,
   rolesById,
   keysWithData,
@@ -19,7 +22,10 @@ import {
   metricsRows,
   metricsViewCatalog,
   orderMetricKeys,
+  requestedMetricKeys,
   sortRows,
+  withLinesColumn,
+  withLinesResult,
   type MetricsRow,
 } from "./metrics-view";
 
@@ -121,6 +127,7 @@ describe("metricsViewCatalog", () => {
 describe("DEFAULT_METRIC_KEYS", () => {
   it("names the built-in default metrics", () => {
     expect([...DEFAULT_METRIC_KEYS]).toEqual([
+      "git.default_branch_lines",
       "git.pr_size",
       "git.default_branch_prs_merged",
       "git.default_branch_merge_rate",
@@ -132,12 +139,14 @@ describe("DEFAULT_METRIC_KEYS", () => {
     ]);
   });
 
-  it("names only metrics a person section offers", () => {
+  it("names only metrics a person section offers, Lines through its two parts", () => {
     const offered = new Set(
       GROUPS.flatMap((group) => group.collection.metrics.map((metric) => metric.key)),
     );
 
-    expect(DEFAULT_METRIC_KEYS.filter((key) => !offered.has(key))).toEqual([]);
+    expect(requestedMetricKeys(DEFAULT_METRIC_KEYS).filter((key) => !offered.has(key))).toEqual(
+      [],
+    );
   });
 });
 
@@ -173,6 +182,66 @@ describe("orderMetricKeys", () => {
         "tasks.closed",
       ]),
     ).toEqual(["git.pr_size", "tasks.closed", "git.a", "collab.x"]);
+  });
+});
+
+describe("Lines column", () => {
+  it("joins the catalog before lines added when both line metrics are in it", () => {
+    const catalog = [
+      definition("git.pr_size"),
+      definition("git.default_branch_lines_added"),
+      definition("git.default_branch_lines_removed"),
+    ];
+
+    expect(withLinesColumn(catalog).map((m) => m.metric_key)).toEqual([
+      "git.pr_size",
+      LINES_KEY,
+      "git.default_branch_lines_added",
+      "git.default_branch_lines_removed",
+    ]);
+  });
+
+  it("stays out of the catalog when a line metric is missing", () => {
+    const catalog = [definition("git.default_branch_lines_added")];
+
+    expect(withLinesColumn(catalog).map((m) => m.metric_key)).toEqual([
+      "git.default_branch_lines_added",
+    ]);
+  });
+
+  it("asks for lines added and removed in place of the Lines column", () => {
+    expect(
+      requestedMetricKeys([LINES_KEY, "git.pr_size", "git.default_branch_lines_added"]),
+    ).toEqual([
+      "git.default_branch_lines_added",
+      "git.default_branch_lines_removed",
+      "git.pr_size",
+    ]);
+  });
+
+  it("ranks by lines added plus removed, in KLOC", () => {
+    const byKey = new Map([
+      [
+        "git.default_branch_lines_added",
+        result("git.default_branch_lines_added", [["a", 1500], ["b", null]]),
+      ],
+      [
+        "git.default_branch_lines_removed",
+        result("git.default_branch_lines_removed", [["a", 200], ["b", 300]]),
+      ],
+    ]);
+
+    const lines = withLinesResult(byKey).get(LINES_KEY)!;
+
+    expect(finiteValue(lines, "a")).toBe(1.7);
+    expect(finiteValue(lines, "b")).toBe(0.3);
+    expect(lines.unit).toBe("KLOC");
+  });
+
+  it("writes lines added and removed in KLOC with one decimal", () => {
+    expect(formatLines(90412, 5100)).toBe("+90.4 / −5.1");
+    expect(formatLines(1500, null)).toBe("+1.5 / −0.0");
+    expect(formatLines(null, null)).toBeNull();
   });
 });
 
