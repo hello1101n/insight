@@ -140,6 +140,10 @@
                       }
                     }
                   },
+                  "value_format": {
+                    "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+                    "description": "Optional format of this column's numbers, of the shared value_format type. It replaces the widget's value_format in this column: the text of its cells, which the search matches and a badge column sorts by, and the values its sparkline text alternative names. A number still sorts by its value. A column without it takes the widget's value_format. A progress column shows a percent and takes no value_format."
+                  },
                   "align": {
                     "enum": [
                       "start",

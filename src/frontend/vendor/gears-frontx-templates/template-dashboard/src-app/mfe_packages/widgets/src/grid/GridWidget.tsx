@@ -28,7 +28,7 @@ import type { GridColumn, GridData, GridRender, GridValue } from '../types';
 import styles from '../widgets.module.css';
 import { useAriaSort } from './useAriaSort';
 import { useDataVersion } from './useDataVersion';
-import { DEFAULT_PAGE_SIZES, checkGrid, isLink, isSortable, pinnedCount, searchRows, shownTextOf, sortRows } from './gridModel';
+import { DEFAULT_PAGE_SIZES, checkGrid, formatOf, isLink, isSortable, pinnedCount, searchRows, shownTextOf, sortRows } from './gridModel';
 
 type RowItem = { id: number; row: GridValue[] };
 
@@ -256,7 +256,7 @@ export function GridWidget({
             {column.kind === 'progress' ? (
               <ProgressCell value={item.row[index] ?? null} locale={locale} />
             ) : column.kind === 'sparkline' ? (
-              <SparklineCell value={item.row[index] ?? null} valueFormat={value_format} locale={locale} texts={texts} />
+              <SparklineCell value={item.row[index] ?? null} valueFormat={formatOf(column, value_format)} locale={locale} texts={texts} />
             ) : (
               <CellText value={item.row[index] ?? null} column={column} valueFormat={value_format} locale={locale} texts={texts} />
             )}

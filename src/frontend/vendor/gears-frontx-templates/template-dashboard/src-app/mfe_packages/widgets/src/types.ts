@@ -4,6 +4,8 @@
  * type schemas there are normative; these types mirror them.
  */
 
+import type { ValueFormat } from '@gears-frontx/frontx-dashboard-root/contract';
+
 export interface CartesianSeriesOption {
   name: string;
   type: 'bar' | 'line' | 'area' | 'scatter';
@@ -29,10 +31,15 @@ export type LegendPosition = 'top' | 'right' | 'bottom' | 'left' | 'none';
 
 export interface CartesianRender {
   series?: CartesianSeriesOption[];
+  /** The stack group of each data series without an entry in `series`: such a series draws as bars on the primary axis, stacked in this group. */
+  unlisted_stack_group?: string;
   x_axis?: {
     type?: 'category' | 'value' | 'time';
     label?: string;
-    /** `auto` skips labels that would collide; `every` labels every category, thinning out only when they cannot fit. */
+    /**
+     * `auto` skips labels that would collide; `every` labels every category, thinning out only when they cannot fit. On a
+     * category axis either first cuts a level label longer than its room with an ellipsis.
+     */
     tick_labels?: 'auto' | 'every';
     tick_angle?: 0 | -45 | -90;
   };
@@ -84,6 +91,8 @@ export interface GridColumn {
   /** Width in pixels; the table is at least the sum of the widths (a floor for a column without one) and scrolls sideways in a narrower cell. */
   width?: number;
   format?: { notation?: 'standard' | 'compact' };
+  /** The format of the column's numbers, in place of the widget's `value_format`; a progress column takes none. */
+  value_format?: ValueFormat;
   align?: 'start' | 'end' | 'center';
   sortable?: boolean;
   /** `truncate` keeps one line per cell; the full text stays in the cell's title. */

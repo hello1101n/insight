@@ -115,6 +115,9 @@ export class DashboardRoot {
   private readonly published: { theme?: string; language?: string } = {};
   /** The release still running for a dashboard id. */
   private readonly releasing = new Map<string, Promise<void>>();
+  /** The number of `reload` calls: a read or a load that started under an older count is superseded. */
+  private reloads = 0;
+  private readonly reloadListeners = new Set<() => void>();
 
   constructor({ host, entries = {}, origin = globalThis.location?.origin ?? '', bundleOrigins = [origin] }: DashboardRootOptions) {
     this.host = host;
@@ -164,7 +167,26 @@ export class DashboardRoot {
     }
   }
 
-  /** Loads a dashboard id: the served file once, then the dashboard's registrations. A failed load is retried on the next call. */
+  /**
+   * Reads the served file again on the next load, so an edited dashboard shows its new content and a new dashboard id
+   * loads, with no page reload. It drops every load and releases the generated extensions of every dashboard; a shown
+   * `<Dashboard>` loads its dashboard again. The root keeps its registry, so no widget bundle loads again.
+   */
+  reload(): void {
+    this.reloads += 1;
+    this.file = undefined;
+    this.loads.clear();
+    for (const listener of [...this.reloadListeners]) listener();
+    for (const dashboardId of [...this.extensions.keys()]) void this.release(dashboardId);
+  }
+
+  /** Calls `listener` on each `reload`; returns the call that stops it. */
+  onReload(listener: () => void): () => void {
+    this.reloadListeners.add(listener);
+    return () => this.reloadListeners.delete(listener);
+  }
+
+  /** Loads a dashboard id: the served file once until the next `reload`, then the dashboard's registrations. A failed load is retried on the next call. */
   load(dashboardId: string): Promise<LoadOutcome> {
     let load = this.loads.get(dashboardId);
     if (!load) {
@@ -188,8 +210,10 @@ export class DashboardRoot {
       return { ok: false };
     };
     if (!this.registry) return fail('the widgets domain was rejected at start');
+    const reloads = this.reloads;
     this.file ??= withTimeout((signal) => this.host.loadFile(signal)).then(
-      (file) => registerServedFile(this.types, file, this.bundleIds),
+      // INVARIANT: an answer to a read that a reload superseded registers nothing, so the store never mixes two files.
+      (file) => (reloads === this.reloads ? registerServedFile(this.types, file, this.bundleIds) : ({ ok: false, problem: 'a reload superseded the read' } as const)),
       (error) => ({ ok: false, problem: `the served file could not be loaded: ${String(error)}` }) as const,
     );
     let file: FileOutcome;
@@ -199,6 +223,8 @@ export class DashboardRoot {
       // An answer the registration cannot even read: the file is dropped like a failed one, so the next load retries.
       file = { ok: false, problem: `the served file cannot be registered: ${String(error).split('\n').slice(0, 2).join(' ')}` };
     }
+    // A load in flight at a reload answers from the newest file.
+    if (reloads !== this.reloads) return this.loadOnce(dashboardId);
     if (!file.ok) {
       this.file = undefined;
       return fail(file.problem);

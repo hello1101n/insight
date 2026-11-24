@@ -12,9 +12,12 @@ import { ChartShell } from './ChartShell';
 import { FILL, pickIndexOf, TICK, TICK_CHAR_WIDTH, TICK_TEXT_HEIGHT } from './chrome';
 import type { ValuesTable } from './DataView';
 import { isCompact, isLaidOut, useElementSize } from './size';
+import { cutTicks } from './ticks';
 
 // A bar gets its value written above it from this width up, in `auto` mode.
 const MIN_LABELLED_BAR = 28;
+// The gap between two level x tick labels: `every` steps its labels this far apart, `auto` keeps them this far apart (Recharts' minTickGap).
+const TICK_GAP = { every: 8, auto: 24 };
 const PRIMARY_AXIS_WIDTH = 44;
 const SECONDARY_AXIS_WIDTH = 44;
 // A rotated tick stays on one line: Recharts wraps tick text to the slot width, which breaks a rotated label into overlapping lines.
@@ -42,6 +45,16 @@ const timeOf = (x: string | number) => (typeof x === 'number' ? new Date(x).getT
 const placeOf = (x: string | number | null, axis: 'category' | 'value' | 'time') => (axis === 'time' && typeof x === 'string' ? timeOf(x) : x);
 /** The key of an x place: its kind and text, so "1" and 1 stay apart. */
 const placeKey = (x: string | number | null) => `${typeof x}:${String(x)}`;
+
+/**
+ * How a data series is drawn: its entry in `render.series`. A series without an entry draws as bars on the primary
+ * axis, in `unlisted_stack_group` when the render sets it, so every view and check takes it as a member of that group.
+ */
+function seriesOptionOf(render: CartesianRender, name: string | null): CartesianSeriesOption | undefined {
+  const option = render.series?.find((series) => series.name === name);
+  if (option || render.unlisted_stack_group === undefined) return option;
+  return { name: name ?? '', type: 'bar', stack_group: render.unlisted_stack_group };
+}
 
 // @cpt-algo:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2
 /** The chart's own check of x values against the x axis type: the first problem found, or null. */
@@ -74,7 +87,7 @@ export function checkCartesian(render: CartesianRender, data: CartesianData): st
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-orientation
   if (render.orientation === 'horizontal' && axis !== 'category') return `cartesian_chart: orientation horizontal needs a category x axis, and the x axis is ${axis}`;
   // @cpt-end:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-orientation
-  const optionOf = (name: string | null) => render.series?.find((option) => option.name === name);
+  const optionOf = (name: string | null) => seriesOptionOf(render, name);
   // @cpt-begin:cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks:p2:inst-wc-cart-extremes
   for (const [index, option] of (render.series ?? []).entries())
     if (option.mark_extremes !== undefined && option.type !== 'line' && option.type !== 'area')
@@ -403,7 +416,7 @@ export function CartesianChart({
   if (data.series.length === 0 || data.series.every((series) => series.points.length === 0)) return <WidgetEmpty texts={texts} />;
 
   const axis = render.x_axis?.type ?? 'category';
-  const optionOf = (name: string | null): CartesianSeriesOption | undefined => render.series?.find((series) => series.name === name);
+  const optionOf = (name: string | null) => seriesOptionOf(render, name);
   const typeOf = (name: string | null) => optionOf(name)?.type ?? 'bar';
   const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: PALETTE[index % PALETTE.length] }]));
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
@@ -650,7 +663,8 @@ export function CartesianChart({
   const rotatedOverhang = horizontal ? 0 : overhangOf(firstLabel);
   const longest = rows.reduce((max, row) => Math.max(max, tickText(row.x ?? null).length), 0);
   // A horizontal chart writes its categories beside the plot: the axis takes their width, up to a third of the chart.
-  const categoryWidth = Math.min(Math.ceil(longest * TICK_CHAR_WIDTH) + 12, Math.max(48, Math.round(width / 3))) + (render.x_axis?.label ? AXIS_TITLE : 0);
+  const categoryColumn = Math.max(48, Math.round(width / 3));
+  const categoryWidth = Math.min(Math.ceil(longest * TICK_CHAR_WIDTH) + 12, categoryColumn) + (render.x_axis?.label ? AXIS_TITLE : 0);
   // A value axis along a horizontal chart is as tall as its ticks, and its own title when it has one.
   const valueAxisHeight = (side: 'primary' | 'secondary') => 30 + ((side === 'primary' ? render.y_axis : render.y_axis_secondary)?.label ? AXIS_TITLE : 0);
   const plotWidth = horizontal ? width - categoryWidth - 8 : width - primaryWidth - (secondary ? secondaryWidth : 8) - rotatedOverhang;
@@ -665,7 +679,13 @@ export function CartesianChart({
   // Only a category axis has a tick per row; a value or time axis draws its own few number ticks, which minTickGap keeps apart.
   const every = axis === 'category' && render.x_axis?.tick_labels === 'every';
   const slot = rows.length > 0 ? (horizontal ? plotHeight : plotWidth) / rows.length : 0;
-  const needed = horizontal ? TICK_TEXT_HEIGHT : angle === 0 ? longest * TICK_CHAR_WIDTH + 8 : TICK_TEXT_HEIGHT / sine;
+  // A category label longer than its room is cut with an ellipsis: a horizontal chart's room is its category column, a
+  // level label's its band less the gap between labels. A turned label runs across its band and stays whole.
+  const tickRoom = horizontal ? categoryColumn - 12 : angle === 0 && slot > 0 ? slot - TICK_GAP[every ? 'every' : 'auto'] : Infinity;
+  const categoryTick = cutTicks(axis === 'category' ? rows.map((row) => tickText(row.x ?? null)) : [], tickRoom / TICK_CHAR_WIDTH);
+  const axisTick = (value: string | number | null) => categoryTick(tickText(value));
+  const longestTick = rows.reduce((max, row) => Math.max(max, axisTick(row.x ?? null).length), 0);
+  const needed = horizontal ? TICK_TEXT_HEIGHT : angle === 0 ? longestTick * TICK_CHAR_WIDTH + TICK_GAP.every : TICK_TEXT_HEIGHT / sine;
   const tickStep = slot > 0 ? Math.max(1, Math.ceil(needed / slot)) : 1;
   // The row of a series' last drawn point, where its name goes; not the last row, which may hold only other series.
   const lastDrawn = (index: number) => rows.reduce((last, row, at) => (typeof row[`v${index}`] === 'number' ? at : last), -1);
@@ -795,7 +815,7 @@ export function CartesianChart({
                   type="category"
                   width={categoryWidth}
                   tick={TICK}
-                  tickFormatter={(value: string | number) => tickText(value)}
+                  tickFormatter={(value: string | number) => axisTick(value)}
                   label={titleOf(render.x_axis?.label, 'primary')}
                   tickLine={false}
                   axisLine={false}
@@ -807,11 +827,11 @@ export function CartesianChart({
                   dataKey="x"
                   type={axis === 'category' ? 'category' : 'number'}
                   domain={axis === 'category' ? undefined : ['dataMin', 'dataMax']}
-                  tickFormatter={(value: string | number) => tickText(value)}
+                  tickFormatter={(value: string | number) => axisTick(value)}
                   label={titleOf(render.x_axis?.label, 'x')}
                   tickLine={false}
                   axisLine={false}
-                  minTickGap={every ? 0 : 24}
+                  minTickGap={every ? 0 : TICK_GAP.auto}
                   interval={every ? tickStep - 1 : undefined}
                   {...xTick}
                   height={xAxisHeight(longest)}

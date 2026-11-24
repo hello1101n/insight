@@ -110,7 +110,7 @@
           "properties": {
             "series": {
               "type": "array",
-              "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis.",
+              "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis, in the stack group of unlisted_stack_group when it is set.",
               "items": {
                 "type": "object",
                 "required": [
@@ -167,6 +167,10 @@
                 }
               }
             },
+            "unlisted_stack_group": {
+              "type": "string",
+              "description": "The stack group of each data series without an entry in series, such as a series whose name comes only with the data. Such a series draws as if it had an entry of type bar on the primary y axis with this stack_group, so it stacks by the same rules. An entry in series keeps its own stack_group or none. Without it, a series without an entry is in no stack group."
+            },
             "x_axis": {
               "type": "object",
               "additionalProperties": false,
@@ -190,7 +194,7 @@
                     "every"
                   ],
                   "default": "auto",
-                  "description": "auto skips tick labels that would collide; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. Without it, auto."
+                  "description": "auto skips tick labels that would collide; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. On a category axis, with either value, a level label longer than its room is first cut with an ellipsis: on a vertical chart to its category's band, on a horizontal chart to its category column. A cut label keeps at least 10 characters and as many more as two categories need to read apart; the tooltip, the data view and the text alternative show the whole name. Without it, auto."
                 },
                 "tick_angle": {
                   "enum": [
@@ -199,7 +203,7 @@
                     -90
                   ],
                   "default": 0,
-                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them. Without it, 0."
+                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them, so a tilted label is never cut. Without it, 0."
                 }
               }
             },

@@ -47,10 +47,13 @@ export interface DashboardProps {
 export function Dashboard({ root, dashboardId, theme, language, texts, variables, overlayContainer }: DashboardProps) {
   // Both values are on the domain before any cell mounts: a layout effect runs before the cells' own effects.
   useLayoutEffect(() => root.publish(theme, language), [root, theme, language]);
-  const [outcome, setOutcome] = useState<{ id: string; outcome: LoadOutcome }>();
+  const [outcome, setOutcome] = useState<{ id: string; reloads: number; outcome: LoadOutcome }>();
+  const [reloads, setReloads] = useState(0);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const previous = useRef<string | undefined>(undefined);
 
+  // A reload of the root drops the shown dashboard and loads it again.
+  useEffect(() => root.onReload(() => setReloads((count) => count + 1)), [root]);
   useEffect(() => {
     let current = true;
     let settled = false;
@@ -62,7 +65,7 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
         console.error(`[dashboard] ${escapeControls(`dashboard ${dashboardId} cannot be shown: ${String(error).split('\n').slice(0, 2).join(' ')}`)}`);
         return { ok: false };
       })
-      .then((result) => current && setOutcome({ id: dashboardId, outcome: result }));
+      .then((result) => current && setOutcome({ id: dashboardId, reloads, outcome: result }));
     // A new dashboard id unregisters the generated extensions of the one before; leaving keeps them for a return.
     if (previous.current !== undefined && previous.current !== dashboardId) void root.release(previous.current);
     previous.current = dashboardId;
@@ -71,9 +74,9 @@ export function Dashboard({ root, dashboardId, theme, language, texts, variables
       // Unmounting while loading discards the load: the next mount starts a new one.
       if (!settled) root.forget(dashboardId, load);
     };
-  }, [root, dashboardId]);
+  }, [root, dashboardId, reloads]);
 
-  const loaded = outcome?.id === dashboardId ? outcome.outcome : undefined;
+  const loaded = outcome?.id === dashboardId && outcome.reloads === reloads ? outcome.outcome : undefined;
   const frameTexts = texts?.frame ?? DEFAULT_FRAME_TEXTS;
   return (
     <div data-theme={kitScopeOf(theme)} lang={intlLocaleOf(language)} ref={setContainer} style={{ display: 'contents' }}>
