@@ -36,7 +36,6 @@ vi.mock("@/lib/portal/use-viewer-is-manager", () => ({
 }));
 
 vi.mock("@/components/org-tree", () => ({ OrgTree: () => <div /> }));
-vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
 }));

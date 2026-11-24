@@ -480,10 +480,6 @@
   "error_boundary": {
     "title": "Something went wrong"
   },
-  "mock_banner": {
-    "title": "Synthetic data",
-    "description_html": "UI is rendering using mock data."
-  },
   "view_as_banner": {
     "title": "Viewing as {{email}}",
     "description": "You are signed in as {{impersonator}} and seeing the portal as this person.",

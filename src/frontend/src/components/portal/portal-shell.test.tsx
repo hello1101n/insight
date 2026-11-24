@@ -100,7 +100,6 @@ vi.mock("@/components/portal/context-pane", () => ({
 vi.mock("@/components/portal/portal-topbar", () => ({
   PortalTopBar: () => <div>{mocks.topBar}</div>,
 }));
-vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
 }));
