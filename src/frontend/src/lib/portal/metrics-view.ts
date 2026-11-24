@@ -36,10 +36,10 @@ export type SortDirection = "ascending" | "descending";
 
 export const LINES_KEY = "git.default_branch_lines";
 
-const LINES_ADDED_KEY = "git.default_branch_lines_added";
-const LINES_REMOVED_KEY = "git.default_branch_lines_removed";
-const LINES_LABEL = "Lines";
-const LINES_UNIT = "KLOC";
+export const LINES_ADDED_KEY = "git.default_branch_lines_added";
+export const LINES_REMOVED_KEY = "git.default_branch_lines_removed";
+export const LINES_LABEL = "Lines";
+export const LINES_UNIT = "KLOC";
 
 export const DEFAULT_METRIC_KEYS: readonly string[] = [
   LINES_KEY,
@@ -211,11 +211,19 @@ export function withLinesResult(
   return merged;
 }
 
-export function formatLines(added: number | null, removed: number | null): string | null {
+export function linesParts(
+  added: number | null,
+  removed: number | null,
+): { plus: string; minus: string } | null {
   if (added == null && removed == null) return null;
 
   const kloc = (lines: number | null) => ((lines ?? 0) / 1000).toFixed(1);
-  return `+${kloc(added)} / −${kloc(removed)}`;
+  return { plus: `+${kloc(added)}`, minus: `−${kloc(removed)}` };
+}
+
+export function formatLines(added: number | null, removed: number | null): string | null {
+  const parts = linesParts(added, removed);
+  return parts ? `${parts.plus} / ${parts.minus}` : null;
 }
 
 export function linesFigure(

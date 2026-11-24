@@ -10,8 +10,12 @@ import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   finiteValue,
   headerUnit,
+  LINES_ADDED_KEY,
   LINES_KEY,
-  linesFigure,
+  LINES_LABEL,
+  LINES_REMOVED_KEY,
+  LINES_UNIT,
+  linesParts,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,
@@ -182,7 +186,11 @@ export function MetricsTable({
                   )}
                 >
                   {key === LINES_KEY ? (
-                    <LinesValue byKey={byKey} entityId={row.entityId} />
+                    <LinesValue
+                      byKey={byKey}
+                      entityId={row.entityId}
+                      personName={row.displayName}
+                    />
                   ) : (
                     <MetricValue
                       result={byKey.get(key)}
@@ -247,13 +255,62 @@ export function MetricValue({
 export function LinesValue({
   byKey,
   entityId,
+  personName,
 }: {
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   entityId: string;
+  personName: string;
 }) {
-  const figure = linesFigure(byKey, entityId);
-  if (figure == null) return <span className="text-muted-foreground">—</span>;
-  return <span>{figure}</span>;
+  const evidence = useMetricEvidenceOptional();
+  const added = byKey.get(LINES_ADDED_KEY);
+  const removed = byKey.get(LINES_REMOVED_KEY);
+  const parts = linesParts(
+    added ? finiteValue(added, entityId) : null,
+    removed ? finiteValue(removed, entityId) : null,
+  );
+  if (!parts) return <span className="text-muted-foreground">—</span>;
+
+  const targets = [added, removed].flatMap((result) => {
+    const selection = result?.drilldown
+      ? evidenceSelection(result.selection, entityId)
+      : null;
+    return result && selection ? [{ selection, label: result.label }] : [];
+  });
+  const figure = `${parts.plus} / ${parts.minus} ${LINES_UNIT}`;
+
+  const part = (text: string, result: NormalizedMetricResult | undefined) => {
+    const target = targets.find((t) => t.selection.metric_key === result?.metric_key);
+    if (!evidence || !result || !target) return <span>{text}</span>;
+
+    return (
+      <button
+        type="button"
+        aria-label={`${personName} — ${result.label}: ${text} ${LINES_UNIT}`}
+        onClick={() =>
+          evidence.openEvidenceTargets(targets, {
+            activeMetricKey: target.selection.metric_key,
+            title: [
+              LINES_LABEL,
+              personName,
+              figure,
+              formatRange(target.selection.period.from, target.selection.period.to),
+            ].join(" · "),
+          })
+        }
+        className="cursor-pointer hover:text-primary hover:underline"
+      >
+        {text}
+      </button>
+    );
+  };
+
+  return (
+    <span>
+      {part(parts.plus, added)}
+      {" / "}
+      {part(parts.minus, removed)}
+    </span>
+  );
 }
 
 export function UnitNote({

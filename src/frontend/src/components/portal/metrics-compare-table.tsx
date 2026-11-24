@@ -87,7 +87,11 @@ export function MetricsCompareTable({
                       )}
                     >
                       {key === LINES_KEY ? (
-                        <LinesValue byKey={byKey} entityId={person.entityId} />
+                        <LinesValue
+                          byKey={byKey}
+                          entityId={person.entityId}
+                          personName={person.displayName}
+                        />
                       ) : (
                         <MetricValue
                           result={result}

@@ -158,6 +158,19 @@ async function downloadCsv(user: ReturnType<typeof userEvent.setup>) {
   return { filename, lines: text.split("\r\n").map((line) => line.split(",")) };
 }
 
+function lineResult(key: string, label: string, values: Array<[string, number]>) {
+  return result(key, label, values, {
+    unit: "lines",
+    drilldown: { granularity: ["event"] },
+    selection: {
+      metric_key: key,
+      entity: { type: "person", ids: values.map(([id]) => id) },
+      period: { from: "2026-07-01", to: "2026-07-31" },
+      filters: [],
+    },
+  } as Partial<NormalizedMetricResult>);
+}
+
 function addLineMetrics(values: Array<[string, number, number]>) {
   mocks.definitions.push(
     definition("git.default_branch_lines_added", "Lines added", { unit: "lines" }),
@@ -165,20 +178,18 @@ function addLineMetrics(values: Array<[string, number, number]>) {
   );
   mocks.data.byKey.set(
     "git.default_branch_lines_added",
-    result(
+    lineResult(
       "git.default_branch_lines_added",
       "Lines added",
       values.map(([id, added]) => [id, added]),
-      { unit: "lines" },
     ),
   );
   mocks.data.byKey.set(
     "git.default_branch_lines_removed",
-    result(
+    lineResult(
       "git.default_branch_lines_removed",
       "Lines removed",
       values.map(([id, , removed]) => [id, removed]),
-      { unit: "lines" },
     ),
   );
 }
@@ -683,6 +694,45 @@ describe("MetricsView", () => {
     expect(within(rowOfB).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
       "+1.5 / −0.2",
     ]);
+  });
+
+  it("opens the records behind lines added and removed from the Lines column", async () => {
+    const openEvidenceTargets = vi.fn();
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(
+      <EvidenceDialogContext.Provider
+        value={{ openEvidence: vi.fn(), openEvidenceTargets, openEvidencePeople: vi.fn() }}
+      >
+        <MetricsView />
+      </EvidenceDialogContext.Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: "b — Lines added: +1.5 KLOC" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "b — Lines removed: −0.2 KLOC" }));
+
+    expect(openEvidenceTargets).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          label: "Lines added",
+          selection: expect.objectContaining({
+            metric_key: "git.default_branch_lines_added",
+            entity: { type: "person", id: pid("b") },
+          }),
+        }),
+        expect.objectContaining({
+          label: "Lines removed",
+          selection: expect.objectContaining({
+            metric_key: "git.default_branch_lines_removed",
+            entity: { type: "person", id: pid("b") },
+          }),
+        }),
+      ],
+      {
+        activeMetricKey: "git.default_branch_lines_removed",
+        title: expect.stringMatching(/^Lines · b · \+1\.5 \/ −0\.2 KLOC · 1 Jul/),
+      },
+    );
   });
 
   it("ranks people by lines added plus removed when Lines is sorted", async () => {
