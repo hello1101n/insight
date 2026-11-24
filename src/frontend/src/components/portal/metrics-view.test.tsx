@@ -22,6 +22,7 @@ import {
   useMetricsViewPaneShown,
 } from "@/lib/portal/metrics-view-pane";
 import { parseNavPolicy, type InstanceNavPolicy } from "@/lib/portal/nav-policy";
+import { validateMetricsViewSearch } from "@/lib/portal/portal-search";
 import {
   personalDefinition,
   type PersonalMetricDefinition,
@@ -905,6 +906,26 @@ describe("MetricsView personal metrics", () => {
     expect(portalRouter.search.metrics).toBe(
       "git.default_branch_commits,tasks.closed,collab.messages_sent",
     );
+  });
+
+  it("keeps a picked personal metric through the link", async () => {
+    const id = "01a20f0f-6804-7378-a097-828d2908237a";
+    mocks.personal = [personalDefinition(personalMetric({ id }))];
+    const user = userEvent.setup();
+    const first = render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 4 of 4" }));
+    await user.click(screen.getByRole("checkbox", { name: "Messages" }));
+    first.unmount();
+    act(() => portalRouter.set(validateMetricsViewSearch({ ...portalRouter.search })));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "git.default_branch_commits",
+      "tasks.closed",
+      `personal.${id}`,
+    ]);
+    expect(screen.getByRole("button", { name: "Metrics: 3 of 4" })).toBeInTheDocument();
   });
 
   it("shows a personal column under Custom metrics, with its calculation and unit", () => {

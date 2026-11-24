@@ -127,6 +127,29 @@ describe("Metrics view links", () => {
   ])("%s", (_case, raw, expected) => {
     expect(validateMetricsViewSearch(raw)).toMatchObject(expected);
   });
+
+  it("validateMetricsViewSearch keeps a personal key", () => {
+    const metrics = "ai.accepted_lines,personal.01a20f0f-6804-7378-a097-828d2908237a";
+
+    expect(validateMetricsViewSearch({ metrics }).metrics).toBe(metrics);
+  });
+
+  it("keeps a personal key in any form its id may take", () => {
+    const metrics = "personal.Focus_Hours-2,personal.x";
+
+    expect(validateMetricsViewSearch({ metrics }).metrics).toBe(metrics);
+  });
+
+  it.each([
+    ["with no id", "personal."],
+    ["with a space", "personal.a b"],
+    ["with a dot in the id", "personal.a.b-c"],
+    ["with a hyphen in a built-in key", "git.pr-size"],
+  ])("drops a metric key %s", (_case, key) => {
+    expect(validateMetricsViewSearch({ metrics: `git.commits,${key}` }).metrics).toBe(
+      "git.commits",
+    );
+  });
 });
 
 describe("applySearchPatch", () => {

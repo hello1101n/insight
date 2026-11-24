@@ -52,7 +52,7 @@ export type PortalSearch = GlobalSearch &
 
 const PERIODS = new Set<string>(["week", "month", "quarter", "year"]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const METRIC_KEY = /^(none|[a-z][a-z0-9_]*\.[a-z0-9_.]+)$/;
+const METRIC_KEY = /^(none|[a-z][a-z0-9_]*\.[a-z0-9_.]+|personal\.[A-Za-z0-9_-]{1,128})$/;
 const PERSON_ID = /^[0-9a-z-]+$/;
 
 const IDENTITY_MAX_SOURCES = 20;
