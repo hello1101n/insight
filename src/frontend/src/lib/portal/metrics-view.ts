@@ -1,6 +1,6 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
-import { isDurationUnit, metricDisplayUnit } from "@/lib/format";
+import { isClockDuration, metricDisplayUnit } from "@/lib/format";
 import {
   personDisplayName,
   type PersonNaming,
@@ -251,14 +251,13 @@ const COMPUTATION_LABEL: Record<NormalizedMetricResult["computation"], string> =
 export function columnFormula(
   result: Pick<NormalizedMetricResult, "computation" | "format" | "unit">,
 ): string {
-  const unit =
-    result.format === "percent"
+  const unit = isClockDuration(result.format, result.unit)
+    ? "h min"
+    : result.format === "percent"
       ? "%"
       : result.format === "currency"
-        ? "USD"
-        : isDurationUnit(result.unit)
-          ? "h min"
-          : (result.unit ?? "count");
+        ? (result.unit ?? "USD")
+        : (result.unit ?? "count");
 
   return `${COMPUTATION_LABEL[result.computation]} · ${unit}`;
 }

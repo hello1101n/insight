@@ -683,7 +683,7 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
     const { lines } = await downloadCsv(user);
 
-    expect(lines.slice(1).map((line) => line[0])).toEqual(["boss", "b", "a"]);
+    expect(lines.slice(1).map((line) => line[0])).toEqual(["boss", "c", "b", "a"]);
   });
 
   it("downloads only the people compared", async () => {

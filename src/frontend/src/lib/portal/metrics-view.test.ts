@@ -358,6 +358,9 @@ describe("columnFormula", () => {
     ["a percentile", "percentile", "decimal", "min", "Percentile · min"],
     ["a standard deviation", "stddev", "decimal", "min", "Std dev · min"],
     ["a distinct count", "distinct_count", "integer", null, "Total · count"],
+    ["a currency with no unit", "sum", "currency", null, "Total · USD"],
+    ["a currency with a unit", "sum", "currency", "EUR", "Total · EUR"],
+    ["a percent that carries hours", "ratio", "percent", "h", "Ratio · %"],
     ["a unit the label also names", "sum", "integer", "emails", "Total · emails"],
   ] as const)("writes %s", (_case, computation, format, unit, text) => {
     expect(columnFormula({ computation, format, unit })).toBe(text);
