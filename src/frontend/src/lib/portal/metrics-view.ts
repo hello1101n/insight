@@ -256,7 +256,7 @@ export function columnFormula(
     : result.format === "percent"
       ? "%"
       : result.format === "currency"
-        ? (result.unit ?? "USD")
+        ? "USD"
         : result.unit;
 
   const word = COMPUTATION_LABEL[result.computation];
