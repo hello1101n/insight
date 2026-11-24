@@ -30,6 +30,7 @@ use crate::domain::personal::values::{Asked, Listed, PersonalMetrics, Team, Valu
 use crate::domain::query::metric_query::MetricQueryError;
 use crate::domain::query::time_window::{RequestedRange, Window, canonical_date};
 use crate::domain::surfaces::CustomError;
+use crate::store::identity::IdentityError;
 
 const MAX_METRICS: usize = 50;
 const MAX_PERSONS: usize = 1000;
@@ -39,6 +40,7 @@ const RUNS_AT_ONCE: usize = 4;
 const PERSONS_NOT_VISIBLE: &str = "the caller cannot see every person asked for";
 const RUNS_BUSY: &str = "every metric run slot is taken; try again shortly";
 const NOT_READ: &str = "this personal metric could not be read";
+const PERSON_REFUSED: &str = "the identity service refused a person id asked for";
 
 #[resource_error("gts.cf.insight.insight_v3_core.personal_metrics.v1~")]
 struct PersonalMetricApiError;
@@ -231,7 +233,7 @@ async fn read_values(
         .asked(&checked.metrics)
         .await
         .map_err(PersonalMetricApiError::custom_error)?;
-    require_visible(&state, &headers, &checked.everyone).await?;
+    require_visible(&state, &headers, &checked.everyone, "person_ids").await?;
 
     let values = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
 
@@ -263,7 +265,7 @@ async fn read_records(
         .map_err(PersonalMetricApiError::custom_error)?
         .pop()
         .ok_or_else(missing)?;
-    require_visible(&state, &headers, &[person]).await?;
+    require_visible(&state, &headers, &[person], "person_id").await?;
 
     let _permit = run_slot(&state).await.ok_or_else(runs_busy)?;
     let asked = Records {
@@ -405,6 +407,7 @@ async fn require_visible(
     state: &AppState,
     headers: &HeaderMap,
     persons: &[PersonId],
+    field: &str,
 ) -> Result<(), CanonicalError> {
     let Some(authorization) = headers.get(AUTHORIZATION) else {
         return Err(unidentified());
@@ -415,6 +418,10 @@ async fn require_visible(
         .visible(authorization, persons)
         .await
         .map_err(|error| {
+            if matches!(error, IdentityError::Refused(400)) {
+                tracing::warn!(%error, "identity refused a person id asked for");
+                return invalid(field, PERSON_REFUSED.to_owned());
+            }
             if error.is_about_the_caller() {
                 tracing::warn!(%error, "identity refused to say which persons the caller sees");
                 return unidentified();

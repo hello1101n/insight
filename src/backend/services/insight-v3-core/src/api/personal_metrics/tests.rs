@@ -348,6 +348,7 @@ fn identity() -> IdentityClient {
     IdentityClient::fixed(true)
         .with_members(&[uuid(MEMBER), uuid(OTHER_MEMBER)])
         .with_strangers(&[uuid(HIDDEN)])
+        .refusing(&[Uuid::nil()])
         .with_names(&[
             (uuid(ADMIN), "Ada Example"),
             (uuid(LATER_ADMIN), "Lin Example"),
@@ -512,6 +513,20 @@ async fn values_refuse_a_person_the_caller_cannot_see() {
         "{}",
         refused.body
     );
+}
+
+#[tokio::test]
+async fn values_refuse_a_person_id_identity_refuses() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+    let nil = Uuid::nil().to_string();
+
+    let refused = harness
+        .values(ADMIN, asked(&["lines_merged"], &[ALICE, &nil]))
+        .await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("person_ids"));
 }
 
 #[tokio::test]
@@ -1126,6 +1141,19 @@ async fn records_refuse_a_person_id_that_is_not_a_uuid() {
 
     let refused = harness
         .records(ADMIN, "lines_merged", records_of("alice"))
+        .await;
+
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
+    assert_eq!(field_of(&refused), json!("person_id"));
+}
+
+#[tokio::test]
+async fn records_refuse_a_person_id_identity_refuses() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let refused = harness
+        .records(ADMIN, "lines_merged", records_of(&Uuid::nil().to_string()))
         .await;
 
     assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);

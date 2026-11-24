@@ -104,6 +104,7 @@ struct Fixed {
     role: Role,
     members: Vec<Uuid>,
     strangers: Vec<Uuid>,
+    refused: Vec<Uuid>,
     names: Vec<(Uuid, String)>,
     names_unreachable: bool,
     roster: Roster,
@@ -181,6 +182,7 @@ impl IdentityClient {
                 role,
                 members: Vec::new(),
                 strangers: Vec::new(),
+                refused: Vec::new(),
                 names: Vec::new(),
                 names_unreachable: false,
                 roster: Roster::Whole(vec![caller]),
@@ -232,6 +234,14 @@ impl IdentityClient {
     pub(crate) fn with_strangers(self, people: &[Uuid]) -> Self {
         self.with(|fixed| Fixed {
             strangers: people.to_vec(),
+            ..fixed
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn refusing(self, people: &[Uuid]) -> Self {
+        self.with(|fixed| Fixed {
+            refused: people.to_vec(),
             ..fixed
         })
     }
@@ -369,6 +379,12 @@ impl IdentityClient {
             Mode::Live { http, base_url } => (http, base_url),
             #[cfg(test)]
             Mode::Fixed(fixed) => {
+                if ids
+                    .iter()
+                    .any(|person| fixed.refused.contains(&person.uuid()))
+                {
+                    return Err(IdentityError::Refused(400));
+                }
                 return Ok(ids
                     .iter()
                     .copied()
