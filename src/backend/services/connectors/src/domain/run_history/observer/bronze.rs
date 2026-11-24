@@ -93,7 +93,9 @@ pub(super) fn observation(
     let status = &wf.data["status"];
     let execution = nodes::time(status, "startedAt");
     let capacity = capacity_wait(wf);
-    let launch = receipt(wf, execution, capacity.as_ref());
+    let marks = launch_marks(wf);
+    let marked = !marks.is_empty();
+    let launch = receipt(marks, execution, capacity.as_ref());
     let trigger = latest_node(status, "trigger-sync", execution);
     let resolve = latest_node(status, "resolve-connection-by-name", execution);
     let poll = latest_node(status, "poll-job", execution);
@@ -139,7 +141,7 @@ pub(super) fn observation(
         });
     stage.job = launch.as_ref().and_then(|receipt| receipt.job_id);
     if launch.is_none() {
-        if capacity.is_none() {
+        if capacity.is_none() && !marked {
             stage.job = legacy_job(trigger, poll);
         }
         apply_argo_phase(&mut stage, trigger, poll, workflow_end);
@@ -313,12 +315,15 @@ fn apply_argo_phase(
     }
 }
 
-fn receipt(
-    wf: &DynamicObject,
-    execution: Option<DateTime<Utc>>,
-    capacity: Option<&CapacityWait>,
-) -> Option<LaunchReceipt> {
-    let uid = wf.metadata.uid.as_deref()?.parse::<uuid::Uuid>().ok()?;
+fn launch_marks(wf: &DynamicObject) -> Vec<LaunchReceipt> {
+    let Some(uid) = wf
+        .metadata
+        .uid
+        .as_deref()
+        .and_then(|uid| uid.parse::<uuid::Uuid>().ok())
+    else {
+        return Vec::new();
+    };
     let annotation = wf
         .metadata
         .annotations
@@ -332,10 +337,19 @@ fn receipt(
         .into_iter()
         .chain(outputs)
         .filter_map(|value| serde_json::from_str::<LaunchReceipt>(value).ok())
+        .filter(|receipt| receipt.workflow_uid == uid && receipt.attempt > 0)
+        .collect()
+}
+
+fn receipt(
+    marks: Vec<LaunchReceipt>,
+    execution: Option<DateTime<Utc>>,
+    capacity: Option<&CapacityWait>,
+) -> Option<LaunchReceipt> {
+    marks
+        .into_iter()
         .filter(|receipt| {
-            receipt.workflow_uid == uid
-                && receipt.attempt > 0
-                && execution.is_none_or(|execution| receipt.workflow_started_at == execution)
+            execution.is_none_or(|execution| receipt.workflow_started_at == execution)
                 && capacity.is_none_or(|wait| {
                     receipt.workflow_started_at == wait.workflow_started_at
                         && receipt.attempt >= wait.attempt

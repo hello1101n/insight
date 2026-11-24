@@ -1051,4 +1051,37 @@ async fn history_keeps_the_succeeded_bronze_attempt_when_only_transform_retries(
     Ok(())
 }
 
+#[test]
+fn bronze_retry_takes_the_job_only_from_the_new_launch_mark() -> Result<()> {
+    let first = bronze_launch_mark(1, 1, 19);
+    let mut wf = workflow(&json!({
+        "phase":"Running", "startedAt":at(6), "nodes":{
+            "trigger":{"id":"trigger", "type":"Pod", "templateName":"trigger-sync", "phase":"Succeeded",
+                "startedAt":at(1), "finishedAt":at(2),
+                "outputs":{"result":"19","parameters":[{"name":"airbyte-launch-evidence","value":first.to_string()}]}},
+            "poll":{"id":"poll", "type":"Pod", "templateName":"poll-job", "phase":"Running",
+                "startedAt":at(6), "inputs":{"parameters":[{"name":"job_id","value":"19"}]}}
+        }
+    }))?;
+    wf.metadata.annotations.get_or_insert_default().insert(
+        "insight.cyberfabric.com/airbyte-launch".into(),
+        first.to_string(),
+    );
+    let pods = HashMap::new();
+    let (load, lookup) = bronze::observation(&wf, at(1), &pods, None);
+    assert_eq!((load.job, lookup, load.status), (None, false, "starting"));
+
+    let relaunch = bronze_launch_mark(6, 2, 20);
+    wf.metadata.annotations.get_or_insert_default().insert(
+        "insight.cyberfabric.com/airbyte-launch".into(),
+        relaunch.to_string(),
+    );
+    let (load, lookup) = bronze::observation(&wf, at(1), &pods, None);
+    assert_eq!(
+        (load.job, lookup, load.status, load.attempt),
+        (Some(20), true, "loading", 2)
+    );
+    Ok(())
+}
+
 mod pod_history;

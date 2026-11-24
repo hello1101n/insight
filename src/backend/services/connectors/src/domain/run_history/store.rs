@@ -159,6 +159,8 @@ fn merge_capacity_wait(waits: &mut Vec<StageWait>, capacity: &StageWait) {
     waits.insert(index, capacity.clone());
 }
 
+const RELAUNCHED: &str = "airbyte_job_id<>VALUES(airbyte_job_id)";
+
 async fn save_stage(
     tx: &DatabaseTransaction,
     uid: &str,
@@ -175,7 +177,13 @@ async fn save_stage(
     .await?;
     if stage.finished_at.is_none()
         && saved.as_ref().is_some_and(|saved| {
-            saved.finished_at.is_some() && (stage.job.is_none() || saved.airbyte_job_id.is_some())
+            saved.finished_at.is_some()
+                && (stage.job.is_none()
+                    || saved
+                        .airbyte_job_id
+                        .as_deref()
+                        .and_then(|id| id.parse().ok())
+                        == stage.job)
         })
     {
         return Ok(());
@@ -209,18 +217,22 @@ async fn save_stage(
         .map_err(|error| DbErr::Json(error.to_string()))?;
     let replace_resources = stage.stage != "bronze" || stage.actual_resources.is_some();
     tx.execute_raw(sql(
-        "INSERT INTO ingestion_stage_attempts(sync_id,stage,attempt,status,queued_at,started_at,finished_at,waits,reason,connection_id,airbyte_job_id,records_reported,execution_key,query_pod,resources)
+        format!("INSERT INTO ingestion_stage_attempts(sync_id,stage,attempt,status,queued_at,started_at,finished_at,waits,reason,connection_id,airbyte_job_id,records_reported,execution_key,query_pod,resources)
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE
          status=VALUES(status), queued_at=LEAST(queued_at,VALUES(queued_at)),
-         started_at=COALESCE(started_at,VALUES(started_at)), finished_at=VALUES(finished_at),
-         waits=VALUES(waits),
-         reason=CASE WHEN VALUES(reason) IN ('pod_oom','source_pod_oom') THEN VALUES(reason)
+         started_at=IF({RELAUNCHED},VALUES(started_at),COALESCE(started_at,VALUES(started_at))),
+         finished_at=VALUES(finished_at), waits=VALUES(waits),
+         reason=CASE WHEN VALUES(status)='succeeded' THEN NULL
+            WHEN {RELAUNCHED} THEN VALUES(reason)
+            WHEN VALUES(reason) IN ('pod_oom','source_pod_oom') THEN VALUES(reason)
             WHEN reason IN ('pod_oom','source_pod_oom') THEN reason
             WHEN reason LIKE 'clickhouse_%' AND COALESCE(VALUES(reason),'') NOT LIKE 'clickhouse_%'
             THEN reason ELSE COALESCE(VALUES(reason),reason) END,
+         records_reported=IF({RELAUNCHED},VALUES(records_reported),COALESCE(VALUES(records_reported),records_reported)),
          connection_id=COALESCE(connection_id,VALUES(connection_id)),
-         airbyte_job_id=COALESCE(airbyte_job_id,VALUES(airbyte_job_id)), records_reported=COALESCE(VALUES(records_reported),records_reported),query_pod=COALESCE(query_pod,VALUES(query_pod)),
-         resources=IF(?,VALUES(resources),COALESCE(resources,VALUES(resources)))",
+         airbyte_job_id=COALESCE(VALUES(airbyte_job_id),airbyte_job_id),
+         query_pod=COALESCE(query_pod,VALUES(query_pod)),
+         resources=IF(?,VALUES(resources),COALESCE(resources,VALUES(resources)))"),
         vec![uid.into(), stage.stage.into(), attempt.into(), stage.status.into(), queued_at.into(),
             stage.started_at.into(), stage.finished_at.into(), waits.into(), stage.reason.clone().into(),
             stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into(), replace_resources.into()],
