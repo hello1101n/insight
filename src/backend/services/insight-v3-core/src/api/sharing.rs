@@ -102,12 +102,15 @@ fn sharing_error(error: SharingError) -> CanonicalError {
     let detail = error.to_string();
 
     match error {
-        SharingError::NotFound(id) => DefinitionApiError::not_found(detail)
-            .with_resource(&id)
-            .create(),
+        SharingError::NotFound(id) | SharingError::MetricNotFound(id) => {
+            DefinitionApiError::not_found(detail)
+                .with_resource(&id)
+                .create()
+        }
         SharingError::FolderNotFound(id) => DefinitionApiError::not_found(detail)
             .with_resource(id.to_string())
             .create(),
+        SharingError::MetricViewerOnly => DefinitionApiError::invalid_field("level", detail),
         SharingError::NotEditor => DefinitionApiError::permission_denied()
             .with_reason(DASHBOARD_NOT_EDITOR)
             .create(),
@@ -142,6 +145,11 @@ fn sharing_error(error: SharingError) -> CanonicalError {
 fn dashboard_id(raw: &str) -> Result<DefinitionId, CanonicalError> {
     DefinitionId::parse(raw)
         .map_err(|_| DefinitionApiError::malformed_id(DefinitionKind::Dashboard, raw))
+}
+
+fn metric_id(raw: &str) -> Result<DefinitionId, CanonicalError> {
+    DefinitionId::parse(raw)
+        .map_err(|_| DefinitionApiError::malformed_id(DefinitionKind::Metric, raw))
 }
 
 fn folder_id(raw: &str) -> Result<FolderId, CanonicalError> {
@@ -213,6 +221,7 @@ pub(crate) fn register_routes(
     router
         .merge(grant_routes(openapi, state, Object::Dashboard))
         .merge(grant_routes(openapi, state, Object::Folder))
+        .merge(grant_routes(openapi, state, Object::Metric))
         .merge(orphan_routes(openapi, state))
         .merge(transfer_routes(openapi, state))
 }
@@ -221,6 +230,7 @@ pub(crate) fn register_routes(
 enum Object {
     Dashboard,
     Folder,
+    Metric,
 }
 
 impl Object {
@@ -228,6 +238,7 @@ impl Object {
         match self {
             Self::Dashboard => "dashboards",
             Self::Folder => "folders",
+            Self::Metric => "metrics",
         }
     }
 
@@ -235,6 +246,7 @@ impl Object {
         match self {
             Self::Dashboard => "dashboard",
             Self::Folder => "folder",
+            Self::Metric => "metric",
         }
     }
 }
@@ -242,6 +254,7 @@ impl Object {
 enum Named {
     Dashboard(DefinitionId),
     Folder(FolderId),
+    Metric(DefinitionId),
 }
 
 impl Named {
@@ -249,6 +262,7 @@ impl Named {
         match object {
             Object::Dashboard => dashboard_id(raw).map(Self::Dashboard),
             Object::Folder => folder_id(raw).map(Self::Folder),
+            Object::Metric => metric_id(raw).map(Self::Metric),
         }
     }
 
@@ -256,6 +270,7 @@ impl Named {
         match self {
             Self::Dashboard(id) => Shared::Dashboard(id),
             Self::Folder(id) => Shared::Folder(*id),
+            Self::Metric(id) => Shared::Metric(id),
         }
     }
 }
@@ -482,6 +497,7 @@ async fn list_orphaned(
     let found = match object {
         Object::Dashboard => sharing.orphaned(page).await,
         Object::Folder => sharing.orphaned_folders(page).await,
+        Object::Metric => Err(SharingError::MetricNotFound(String::new())),
     }
     .map_err(sharing_error)?;
 
@@ -505,6 +521,7 @@ async fn transfer(
     match &named {
         Named::Dashboard(dashboard) => sharing.transfer(dashboard, to).await,
         Named::Folder(folder) => sharing.transfer_folder(*folder, to).await,
+        Named::Metric(metric) => Err(SharingError::MetricNotFound(metric.as_str().to_owned())),
     }
     .map_err(sharing_error)?;
 

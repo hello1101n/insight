@@ -80,6 +80,12 @@ impl Stored {
                 .filter(|((held, _), _)| *held == id)
                 .map(|(_, grant)| grant.clone())
                 .collect(),
+            Shared::Metric(id) => self
+                .metric_grants
+                .iter()
+                .filter(|((held, _), _)| held == id.as_str())
+                .map(|(_, grant)| grant.clone())
+                .collect(),
         };
         grants.sort_by_key(|grant| (grant.created_at, grant.grantee));
 
@@ -95,6 +101,15 @@ impl Stored {
                 self.owner_of(id.as_str())
             }
             Shared::Folder(id) => self.folders.get(&id)?.owner,
+            Shared::Metric(id) => {
+                if !self
+                    .definitions
+                    .contains_key(&(DefinitionKind::Metric.table(), id.as_str().to_owned()))
+                {
+                    return None;
+                }
+                return Some((Owner::Unowned, true));
+            }
         };
         let editor = self.grants(shared).iter().any(|grant| {
             let reaches = match grant.grantee {
@@ -110,7 +125,9 @@ impl Stored {
 
 fn missing(shared: Shared<'_>) -> DefinitionStoreError {
     match shared {
-        Shared::Dashboard(id) => DefinitionStoreError::Missing(id.as_str().to_owned()),
+        Shared::Dashboard(id) | Shared::Metric(id) => {
+            DefinitionStoreError::Missing(id.as_str().to_owned())
+        }
         Shared::Folder(id) => DefinitionStoreError::Missing(id.to_string()),
     }
 }
@@ -272,6 +289,13 @@ impl Grants for MemoryDefinitions {
                     .and_modify(|held| held.level = level)
                     .or_insert(fresh);
             }
+            Shared::Metric(id) => {
+                stored
+                    .metric_grants
+                    .entry((id.as_str().to_owned(), grantee))
+                    .and_modify(|held| held.level = level)
+                    .or_insert(fresh);
+            }
         }
 
         Ok(Granting::Done)
@@ -301,6 +325,11 @@ impl Grants for MemoryDefinitions {
             }
             Shared::Folder(id) => {
                 stored.folder_grants.remove(&(id, grantee));
+            }
+            Shared::Metric(id) => {
+                stored
+                    .metric_grants
+                    .remove(&(id.as_str().to_owned(), grantee));
             }
         }
 

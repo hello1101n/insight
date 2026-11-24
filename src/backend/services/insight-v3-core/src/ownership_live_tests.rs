@@ -69,6 +69,7 @@ async fn owner_of(store: &MariaDefinitions, shared: Shared<'_>) -> PersonId {
             .await
             .unwrap_or_else(|error| panic!("{error}"))
             .map(|held| held.folder.owner),
+        Shared::Metric(_) => None,
     };
 
     owner

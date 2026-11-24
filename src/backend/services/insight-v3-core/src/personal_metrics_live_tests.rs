@@ -2,11 +2,14 @@ use std::error::Error;
 
 use sea_orm::{ConnectionTrait as _, DatabaseConnection, DbBackend, FromQueryResult, Statement};
 use serde_json::json;
+use uuid::Uuid;
 
+use crate::domain::access::{Grantee, Level, PersonId};
 use crate::domain::definition::{
-    Change, DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _,
+    Change, DefinitionId, DefinitionKind, DefinitionLabel, DefinitionStoreError, Definitions as _,
 };
 use crate::domain::personal::{Direction, Marked, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::sharing::{Granting, Grants as _, Shared, Withdrawal};
 use crate::live_mariadb::{database_or_skip, store_or_skip, unique};
 use crate::store::definitions::MariaDefinitions;
 
@@ -204,6 +207,81 @@ async fn a_replace_keeps_the_mark() -> R {
     );
 
     store.delete(DefinitionKind::Metric, &metric).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_metric_grant_round_trips_and_goes_with_its_metric() -> R {
+    let Some(store) = store_or_skip().await else {
+        return Ok(());
+    };
+    let metric = a_metric(&store, "granted").await?;
+    let nowhere = DefinitionId::parse(&unique("nowhere"))?;
+    let admin = PersonId::new(Uuid::from_u128(1));
+    let member = PersonId::new(Uuid::from_u128(2));
+
+    let to_person = store
+        .grant(
+            Shared::Metric(&metric),
+            Grantee::Person(member),
+            Level::Viewer,
+            admin,
+        )
+        .await?;
+    let to_everyone = store
+        .grant(
+            Shared::Metric(&metric),
+            Grantee::Everyone,
+            Level::Viewer,
+            admin,
+        )
+        .await?;
+    let again = store
+        .grant(
+            Shared::Metric(&metric),
+            Grantee::Person(member),
+            Level::Viewer,
+            admin,
+        )
+        .await?;
+
+    assert_eq!(
+        [to_person, to_everyone, again],
+        [Granting::Done, Granting::Done, Granting::Done]
+    );
+    let held = store.grants_of(Shared::Metric(&metric)).await?;
+    assert_eq!(held.len(), 2, "{held:?}");
+    let person = held
+        .iter()
+        .find(|grant| grant.grantee == Grantee::Person(member))
+        .ok_or("the person grant is listed")?;
+    assert_eq!(person.level, Level::Viewer);
+    assert_eq!(person.granted_by, admin);
+    assert!(held.iter().any(|grant| grant.grantee == Grantee::Everyone));
+
+    let withdrawn = store
+        .withdraw(Shared::Metric(&metric), Grantee::Everyone, admin)
+        .await?;
+    assert_eq!(withdrawn, Withdrawal::Done);
+    assert_eq!(store.grants_of(Shared::Metric(&metric)).await?.len(), 1);
+
+    let missing = store
+        .grant(
+            Shared::Metric(&nowhere),
+            Grantee::Everyone,
+            Level::Viewer,
+            admin,
+        )
+        .await;
+    assert!(
+        matches!(missing, Err(DefinitionStoreError::Missing(_))),
+        "{missing:?}"
+    );
+
+    store.delete(DefinitionKind::Metric, &metric).await?;
+
+    assert!(store.grants_of(Shared::Metric(&metric)).await?.is_empty());
 
     Ok(())
 }

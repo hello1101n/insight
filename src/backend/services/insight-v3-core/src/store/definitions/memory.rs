@@ -50,6 +50,7 @@ struct Stored {
     dashboard_grants: BTreeMap<(String, Grantee), Grant>,
     folders: BTreeMap<FolderId, KeptFolder>,
     folder_grants: BTreeMap<(FolderId, Grantee), Grant>,
+    metric_grants: BTreeMap<(String, Grantee), Grant>,
     entries: BTreeMap<(FolderId, String), KeptEntry>,
     tagged: BTreeMap<String, Tagged>,
     pinned: BTreeMap<PersonId, Vec<String>>,
@@ -236,6 +237,8 @@ impl Stored {
         }
         if kind == DefinitionKind::Metric {
             self.marks.remove(id.as_str());
+            self.metric_grants
+                .retain(|(held, _), _| held != id.as_str());
         }
         let key = MemoryDefinitions::key(kind, id);
         self.definitions.remove(&key).is_some()
