@@ -774,6 +774,16 @@ describe("MetricsView", () => {
     expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
   });
 
+  it("falls back to the pick the link saved when the link drops its metrics", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    act(() => portalRouter.set({ metrics: undefined }));
+
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
+  });
+
   it("saves the link's metrics in this browser", () => {
     act(() => portalRouter.set({ metrics: "tasks.closed" }));
     render(<MetricsView />);

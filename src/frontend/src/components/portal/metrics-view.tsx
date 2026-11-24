@@ -108,6 +108,7 @@ export function MetricsView() {
   const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
   const setSearch = useSetPortalSearch();
   const [storedPick, setStoredPick] = useState(readStoredMetricsPick);
+  if (metricsParam != null && metricsParam !== storedPick) setStoredPick(metricsParam);
   const pickParam = metricsParam ?? storedPick;
   const picked = useMemo(
     () => (pickParam == null ? null : pickParam === "none" ? [] : pickParam.split(",")),
