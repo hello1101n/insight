@@ -230,7 +230,9 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     bootstrap = default["Secret", "contract-clickhouse-sync-bootstrap"]
     assert bootstrap["stringData"] == {"password": password}
     assert bootstrap["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade"
-    assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < 5
+    databases = default["Job", "contract-clickhouse-databases"]["metadata"]["annotations"]
+    assert "pre-install" in databases["helm.sh/hook"]
+    assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < int(databases["helm.sh/hook-weight"])
     reference = {"secretKeyRef": {"name": "contract-clickhouse-sync-bootstrap", "key": "password", "optional": True}}
     assert len(jobs) == 2
     for job in jobs.values():
@@ -302,11 +304,9 @@ def test_operator_credentials_carry_the_sync_password() -> None:
 
 
 def test_a_release_that_creates_no_users_never_generates_the_sync_password() -> None:
-    with pytest.raises(subprocess.CalledProcessError) as error:
-        render("--set", "clickhouse.provisionAccess=false")
-    assert "clickhouse.provisionAccess is false, so this release does not create the ClickHouse sync user" in (
-        error.value.stderr
-    )
+    chart = render("--set", "clickhouse.provisionAccess=false")
+    assert "clickhouse-sync-password" not in chart["Secret", "insight-db-creds"]["stringData"]
+    assert ("Secret", "contract-clickhouse-sync-bootstrap") not in chart
 
 
 @pytest.mark.parametrize("exit_code", [42, 43, 44, 45])
