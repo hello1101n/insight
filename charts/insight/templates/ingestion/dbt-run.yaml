@@ -19,9 +19,9 @@ spec:
       #  bash. See ingestion-templates SECURITY notes in DESIGN.md.
       inputs:
         parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          {{- include "insight.admission.workInputs" . | nindent 10 }}
-{{- end }}
+          - name: stage_name
+            default: ""
+          - name: lock_group
           - name: dbt_select
           # Space-separated selectors to subtract from the selection (same
           # grammar as dbt_select). The pipeline uses it to keep a graph-walk
@@ -52,11 +52,16 @@ spec:
       # PR #456 / ADR-0015) can rebuild the entire staging+silver
       # layer for a connector. 30m caps were observed killing the
       # job on hubspot full-refresh.
-{{- if .Values.connectors.stageAdmission.enabled }}
-      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
-      {{- include "insight.admission.workMetadata" . | nindent 6 }}
-{{- end }}
+      synchronization:
+        mutexes:
+          - name: {{ `"ch-{{inputs.parameters.lock_group}}"` }}
       activeDeadlineSeconds: 7200
+      outputs:
+        parameters:
+          - name: dbt-pod-uid
+            valueFrom:
+              path: /tmp/dbt-pod-uid
+              default: ""
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         # IfNotPresent so dev clusters use the locally-built `insight-toolbox:local`
@@ -66,14 +71,19 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [bash]
         env:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          {{- include "insight.admission.dbtEnv" . | nindent 10 }}
-{{- end }}
           - name: CLICKHOUSE_PASSWORD
             valueFrom:
               secretKeyRef:
                 name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
                 key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+          - name: DBT_POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+          - name: DBT_WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: DBT_STAGE_NAME
+            value: {{ `"{{inputs.parameters.stage_name}}"` }}
           - name: DBT_SELECT
             value: {{ `"{{inputs.parameters.dbt_select}}"` }}
           - name: DBT_EXCLUDE
@@ -106,6 +116,7 @@ spec:
                 key: INSIGHT_LOG_LEVEL
         source: |
           set -euo pipefail
+          printf '%s' "$DBT_POD_UID" > /tmp/dbt-pod-uid
           cd /ingestion/dbt
           # Writes profiles.yml from env vars without ever interpolating user
           # input into YAML or shell text — closes the parameter-injection sink

@@ -55,6 +55,9 @@ subjects:
   - kind: ServiceAccount
     name: argo-workflow
     namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ include "insight.fullname" . }}-airbyte-trigger
+    namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

@@ -33,11 +33,6 @@ const states = {
   running: ["running", "active"],
   queued: ["queued", "idle"],
   starting: ["queued", "idle"],
-  waiting_admission: ["queued", "idle"],
-  waiting_pod: ["queued", "idle"],
-  placement_overdue: ["queued", "failing"],
-  stopping_pod_wait: ["queued", "failing"],
-  waiting_clickhouse: ["queued", "idle"],
   loading: ["running", "active"],
   transforming: ["running", "active"],
   checking_start: ["queued", "idle"],
@@ -122,8 +117,17 @@ export function projectRun(run: ConnectorRun): ConnectorRun {
     (stage) => stage.stage !== "connector-checks"
   );
   const attempts = latestStageAttempts(stages);
-  const failure = attempts.findLast((stage) => failures.has(stage.status));
-  const gold = attempts.filter((stage) => stepForStage(stage.stage) === "gold");
+  const execution = parseStamp(run.execution_started_at);
+  const executionAttempts = attempts.filter((stage) => {
+    const ended = parseStamp(stage.finished_at);
+    return execution == null || ended == null || ended >= execution;
+  });
+  const failure = executionAttempts.findLast((stage) =>
+    failures.has(stage.status)
+  );
+  const gold = (
+    run.status === "succeeded" ? attempts : executionAttempts
+  ).filter((stage) => stepForStage(stage.stage) === "gold");
 
   if (failure?.status === "not_started" || failure?.status === "wait_timeout") {
     const finished_at = failure.finished_at ?? run.finished_at;
@@ -135,7 +139,7 @@ export function projectRun(run: ConnectorRun): ConnectorRun {
   const goldCompleted =
     gold.length > 0 && gold.every((stage) => stage.status === "succeeded");
   const checksWithoutGold =
-    gold.length === 0 && stages.length < run.stages.length;
+    execution == null && gold.length === 0 && stages.length < run.stages.length;
   if (failure || (!goldCompleted && !checksWithoutGold))
     return stages.length === run.stages.length ? run : { ...run, stages };
 
@@ -158,8 +162,6 @@ export function projectRun(run: ConnectorRun): ConnectorRun {
   };
 }
 
-export type QueueReason = "memory" | "capacity";
-
 export function queueTone(
   duration: number,
   tone: ConnectorTone
@@ -170,28 +172,18 @@ export function queueTone(
 }
 
 export function queueReason(
-  status: string | null | undefined
-): QueueReason | undefined {
-  switch (status) {
-    case "waiting_clickhouse":
-      return "memory";
-    case "waiting_pod":
-    case "placement_overdue":
-    case "stopping_pod_wait":
-      return "capacity";
-  }
+  wait: NonNullable<ConnectorRunStage["waits"]>[number]
+): string {
+  if (wait.kind === "lock" && wait.holder)
+    return i18n.t("connectors.runs.queue_reason.lock_holder", {
+      holder: wait.holder,
+    });
+  return i18n.t(`connectors.runs.queue_reason.${wait.kind}`);
 }
 
-export function queueDetails(
-  reasons: QueueReason[],
-  tone: ConnectorTone
-): string[] {
-  const details = reasons.map((reason) =>
-    i18n.t(`connectors.runs.queue_reason.${reason}`)
-  );
+export function queueDetails(reasons: string[], tone: ConnectorTone): string[] {
   const severity = queueSeverity(tone);
-  if (severity) details.push(severity);
-  return details;
+  return severity ? [...reasons, severity] : reasons;
 }
 
 export function queueSeverity(tone: ConnectorTone) {

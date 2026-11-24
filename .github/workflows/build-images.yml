@@ -131,7 +131,6 @@ jobs:
       git_cli_proxy: ${{ github.event_name != 'merge_group' && steps.filter.outputs.git_cli_proxy == 'true' }}
       connectors: ${{ steps.filter.outputs.connectors == 'true' || (github.event_name == 'merge_group' && steps.filter.outputs.mq_connectors == 'true') }}
       frontend: ${{ github.event_name != 'merge_group' && steps.filter.outputs.frontend == 'true' }}
-      destination_clickhouse: ${{ steps.filter.outputs.destination_clickhouse }}
       toolbox: ${{ github.event_name != 'merge_group' && steps.filter.outputs.toolbox == 'true' }}
       seed: ${{ github.event_name != 'merge_group' && steps.filter.outputs.seed == 'true' }}
       ui_tests: ${{ github.event_name != 'merge_group' && steps.filter.outputs.ui_tests == 'true' }}
@@ -293,8 +292,6 @@ jobs:
               - 'src/backend/libs/insight-openapi/**'
             frontend:
               - 'src/frontend/!(helm)/**'
-            destination_clickhouse:
-              - 'src/ingestion/tools/destination-clickhouse/**'
             toolbox:
               - 'src/ingestion/**'
             # The sample-data seeder's own image. It COPYs a subset of the
@@ -1589,28 +1586,6 @@ jobs:
   # bump-descriptors) MUST re-trigger it. paths-filter for `toolbox` matches
   # `src/ingestion/**` (which includes descriptor.yaml).
   #
-  destination-clickhouse:
-    needs: changes
-    if: needs.changes.outputs.destination_clickhouse == 'true' || (github.event_name == 'workflow_dispatch' && !inputs.frontend_only)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        if: needs.changes.outputs.should_push == 'true' && github.ref == 'refs/heads/main'
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: src/ingestion/tools/destination-clickhouse
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ env.IMAGE_PREFIX }}/insight-destination-clickhouse:2.1.29
-          push: ${{ needs.changes.outputs.should_push == 'true' && github.ref == 'refs/heads/main' }}
-
   toolbox:
     needs: changes
     if: |
@@ -2209,7 +2184,6 @@ jobs:
       - merge-connectors
       - merge-frontend
       - merge-toolbox
-      - destination-clickhouse
       - merge-seed
       - merge-ui-tests
       - merge-image
@@ -2280,7 +2254,6 @@ jobs:
       - merge-connectors
       - merge-frontend
       - merge-toolbox
-      - destination-clickhouse
       - merge-image
       - queue-gate
     # All siblings must finish first — bump-descriptors auto-commits to main
@@ -2308,7 +2281,6 @@ jobs:
       && (needs.merge-insight-v3-core.result == 'success' || needs.merge-insight-v3-core.result == 'skipped')
       && (needs.merge-connectors.result      == 'success' || needs.merge-connectors.result      == 'skipped')
       && (needs.merge-frontend.result      == 'success' || needs.merge-frontend.result      == 'skipped')
-      && (needs.destination-clickhouse.result == 'success' || needs.destination-clickhouse.result == 'skipped')
       && (needs.merge-toolbox.result       == 'success' || needs.merge-toolbox.result       == 'skipped')
     runs-on: ${{ (vars.INSIGHT_FORCE_GITHUB_HOSTED == 'true' || github.repository != 'constructorfabric/insight' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || 'insight-small-vm' }}
     outputs:
@@ -2487,7 +2459,6 @@ jobs:
       - merge-connectors
       - merge-frontend
       - merge-toolbox
-      - destination-clickhouse
       - merge-seed
       - merge-ui-tests
       - merge-image

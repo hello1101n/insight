@@ -64,7 +64,7 @@ impl ClickHouseIdentityInputsReader {
         if !user.is_empty() {
             config = config.with_auth(user, password);
         }
-        Self::new(Client::new(config))
+        Self::new(super::tag_seed_queries(Client::new(config)))
     }
 }
 
@@ -74,11 +74,7 @@ impl IdentityInputsReader for ClickHouseIdentityInputsReader {
         // SAFETY: tenancy shortcut (#1550): reads every tenant's rows, because the producer hashes tenant
         // ids and there is nothing to filter on yet. Single-tenant deployments only.
         let _ = tenant_id;
-        let mut query = self.client.query(STREAM_SQL);
-        if let Ok(tag) = std::env::var("INSIGHT_QUERY_TAG") {
-            query = query.with_setting("log_comment", tag);
-        }
-        let rows: Vec<InputRow> = query.fetch_all().await?;
+        let rows: Vec<InputRow> = self.client.query(STREAM_SQL).fetch_all().await?;
         rows.into_iter().map(map_row).collect()
     }
 }

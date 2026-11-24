@@ -32,25 +32,35 @@ spec:
     - name: run
       inputs:
         parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          {{- include "insight.admission.workInputs" . | nindent 10 }}
-{{- end }}
           - name: identity_image
             default: "{{ .Values.identityResolution.image.repository }}:{{ $identityTag }}"
-{{- if .Values.connectors.stageAdmission.enabled }}
-      {{- include "insight.admission.workMetadata" . | nindent 6 }}
-{{- end }}
+      synchronization:
+        mutexes:
+          - name: ch-identity
       activeDeadlineSeconds: 900
       retryStrategy:
         # Safe to repeat: the advisory lock and the operations journal make a
         # second run idempotent.
         limit: "2"
         retryPolicy: OnFailure
+      outputs:
+        parameters:
+          - name: query-pod-uid
+            valueFrom:
+              path: /app/data/pod-uid
       container:
         image: {{ `"{{inputs.parameters.identity_image}}"` }}
         imagePullPolicy: IfNotPresent
-        command: ["/app/identity-resolution"]
-        args: ["-c", "/app/config/insight.yaml", "seed", "--guard-ok"]
+        command: ["/bin/sh", "-ec"]
+        args:
+          - |
+            printf '%s' "$POD_UID" > /app/data/pod-uid
+            exec /app/identity-resolution "$@"
+          - identity-seed
+          - "-c"
+          - "/app/config/insight.yaml"
+          - seed
+          - "--guard-ok"
         volumeMounts:
           - name: identity-resolution-config
             mountPath: /app/config/insight.yaml
@@ -60,14 +70,18 @@ spec:
           # this needs writable under a read-only root.
           - name: data
             mountPath: /app/data
-{{- if .Values.connectors.stageAdmission.enabled }}
-        env:
-          - name: INSIGHT_QUERY_TAG
-            value: "{{`{{=inputs.parameters.admission_stage == '' ? '' : 'insight:sync='+workflow.uid+':stage='+inputs.parameters.admission_stage+':attempt=1'}}`}}"
-{{- end }}
         envFrom:
           - secretRef:
               name: {{ .Values.identityResolution.existingSecret | quote }}
+        env:
+          - name: WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+          - name: INSIGHT_QUERY_TAG
+            value: "insight:sync=$(WORKFLOW_UID):stage=identity-seed:pod=$(POD_UID)"
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -79,9 +93,6 @@ spec:
           requests: {cpu: 50m, memory: 128Mi}
           limits: {cpu: 500m, memory: 512Mi}
       volumes:
-{{- if .Values.connectors.stageAdmission.enabled }}
-        {{- include "insight.admission.tokenVolume" . | trimPrefix "volumes:\n" | nindent 6 }}
-{{- end }}
         - name: identity-resolution-config
           configMap:
             name: {{ printf "%s-gears-config" (include "insight.identityResolution.host" .) | quote }}

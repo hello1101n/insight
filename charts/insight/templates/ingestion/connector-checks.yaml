@@ -34,9 +34,6 @@ spec:
       # as "$ENV_VAR", never spliced into shell, Python or YAML source.
       inputs:
         parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          {{- include "insight.admission.workInputs" . | nindent 10 }}
-{{- end }}
           - name: dbt_select
           - name: connector
             default: ""
@@ -48,24 +45,31 @@ spec:
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
             default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
-{{- if .Values.connectors.stageAdmission.enabled }}
-      {{- include "insight.admission.tokenVolume" . | nindent 6 }}
-      {{- include "insight.admission.workMetadata" . | nindent 6 }}
-{{- end }}
       activeDeadlineSeconds: 1800
+      outputs:
+        parameters:
+          - name: dbt-pod-uid
+            valueFrom:
+              path: /tmp/dbt-pod-uid
+              default: ""
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         imagePullPolicy: IfNotPresent
         command: [bash]
         env:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          {{- include "insight.admission.dbtEnv" . | nindent 10 }}
-{{- end }}
           - name: CLICKHOUSE_PASSWORD
             valueFrom:
               secretKeyRef:
                 name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
                 key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+          - name: DBT_POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+          - name: DBT_WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: DBT_STAGE_NAME
+            value: connector-checks
           - name: DBT_SELECT
             value: {{ `"{{inputs.parameters.dbt_select}}"` }}
           - name: DQ_CONNECTOR
@@ -95,6 +99,7 @@ spec:
                 key: INSIGHT_LOG_LEVEL
         source: |
           set -euo pipefail
+          printf '%s' "$DBT_POD_UID" > /tmp/dbt-pod-uid
           cd /ingestion/dbt
           python3 /ingestion/scripts/dbt_profiles.py
           # `dbt test --select ""` matches NOTHING rather than everything, and a

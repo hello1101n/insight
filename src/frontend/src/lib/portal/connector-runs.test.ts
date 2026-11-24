@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorRun } from "@/api/connector-health-client";
+import { describeRunState } from "./connector-run-view";
 import {
   describeRun,
   isActiveRun,
+  projectRun,
   runDuration,
   stageFailureReason,
 } from "./connector-runs";
@@ -38,9 +40,6 @@ describe("connector run state", () => {
   it.each([
     ["queued", "Queued"],
     ["starting", "Queued"],
-    ["waiting_admission", "Queued"],
-    ["waiting_pod", "Queued"],
-    ["waiting_clickhouse", "Queued"],
     ["loading", "Bronze"],
     ["transforming", "Running"],
     ["checking_start", "Queued"],
@@ -56,6 +55,69 @@ describe("connector run state", () => {
   ])("labels %s as %s", (status, label) =>
     expect(describeRun(status).label).toBe(label)
   );
+
+  it("keeps one queued label and explains the current Argo or placement wait", () => {
+    const queued_at = "2026-11-20T01:00:00Z";
+    const reasons = [
+      ["lock", "another-sync", "Waiting for a lock held by another-sync"],
+      ["lock", null, "Waiting for a lock"],
+      ["sync_slot", null, "Waiting for a free sync slot"],
+      ["placement", null, "Waiting for cluster capacity"],
+    ] as const;
+    for (const [kind, holder, reason] of reasons) {
+      const view = describeRunState(
+        {
+          ...run,
+          status: "queued",
+          stages: [
+            {
+              stage: "bronze",
+              attempt: 1,
+              status: "queued",
+              queued_at,
+              waits: [{ kind, started_at: queued_at, holder }],
+            },
+          ],
+        },
+        now
+      );
+      expect(view.label).toBe("Queued");
+      expect(view.queueReasons).toEqual([reason]);
+    }
+  });
+
+  it("keeps a retried execution active after the previous Bronze attempt failed", () => {
+    const reopened = projectRun({
+      ...run,
+      status: "starting",
+      execution_started_at: now,
+      stages: [
+        {
+          stage: "bronze",
+          attempt: 1,
+          status: "not_started",
+          reason: "airbyte_launch_rejected",
+          finished_at: run.started_at,
+        },
+      ],
+    });
+    expect(reopened.stages).toHaveLength(1);
+    expect(
+      projectRun({
+        ...reopened,
+        stages: [
+          {
+            stage: "transform-legacy",
+            attempt: 1,
+            status: "succeeded",
+            finished_at: run.started_at,
+          },
+        ],
+      }).status
+    ).toBe("starting");
+    expect(isActiveRun(reopened)).toBe(true);
+    expect(reopened.status).toBe("starting");
+  });
 
   it("treats not_started as terminal without a finish timestamp", () => {
     expect(isActiveRun({ ...run, status: "not_started" })).toBe(false);

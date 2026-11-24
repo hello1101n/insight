@@ -13,7 +13,6 @@ import {
   RUN_STEPS,
   stepFailure,
   stepForStage,
-  type QueueReason,
   type RunStep,
 } from "./connector-runs";
 
@@ -24,7 +23,7 @@ interface Range {
 
 type QueueRange = Range & {
   tone: ConnectorTone;
-  reasons: QueueReason[];
+  reasons: string[];
 };
 
 export type RunSegment =
@@ -44,7 +43,7 @@ interface QueueTiming {
   at: number;
   duration: number;
   tone: ConnectorTone;
-  reasons: QueueReason[];
+  reasons: string[];
   current: boolean;
 }
 
@@ -140,14 +139,13 @@ function stageTiming(stage: ConnectorRunStage, end: number | null) {
   const started = notStarted ? null : parseStamp(stage.started_at);
   const finished = parseStamp(stage.finished_at);
   const queued = parseStamp(stage.queued_at);
-  const granted = parseStamp(stage.granted_at);
   const state = describeRun(stage.status);
   const expectedWork =
     !notStarted &&
     (started != null ||
       (state.kind !== "queued" &&
         stage.status !== "wait_timeout" &&
-        !(state.kind === "cancelled" && granted == null)));
+        state.kind !== "cancelled"));
   const stop =
     finished ??
     (!isTerminalRunStatus(stage.status) ? end : null) ??
@@ -160,7 +158,6 @@ function stageTiming(stage: ConnectorRunStage, end: number | null) {
   return {
     started,
     queued,
-    granted,
     stop,
     finished,
     expectedWork,
@@ -189,16 +186,8 @@ export function summarizeRun(run: ConnectorRun, asOf: string): RunTiming {
   }
 
   for (const window of windows) {
-    const {
-      stage,
-      step,
-      started,
-      granted,
-      queued,
-      stop,
-      finished,
-      expectedWork,
-    } = window;
+    const { stage, step, started, queued, stop, finished, expectedWork } =
+      window;
     const state = describeRun(stage.status);
     const working = range(started, stop);
     if (step && working) {
@@ -207,36 +196,34 @@ export function summarizeRun(run: ConnectorRun, asOf: string): RunTiming {
       work.set(step, ranges);
     }
     const reserved = expectedWork
-      ? range(started ?? granted ?? queued ?? start, stop)
+      ? range(started ?? queued ?? start, stop)
       : null;
     if (reserved) occupied.push(reserved);
 
-    const reason = queueReason(stage.reason) ?? queueReason(stage.status);
     const waitEnd = started ?? finished ?? end;
     for (const wait of stage.waits ?? []) {
       const waiting = range(
         parseStamp(wait.started_at),
-        parseStamp(wait.ended_at) ?? waitEnd
+        parseStamp(wait.ended_at) ?? finished ?? end
       );
       if (!waiting) continue;
-      const cause = wait.kind === "placement" ? "capacity" : reason;
       waits.push({
         ...waiting,
         tone:
           state.kind === "queued" || state.state === "wait_timeout"
             ? state.tone
             : "idle",
-        reasons: cause ? [cause] : [],
+        reasons: [queueReason(wait)],
       });
     }
 
     if (state.kind === "queued" || state.state === "wait_timeout") {
-      const waiting = range(queued ?? granted ?? start, waitEnd);
+      const waiting = range(queued ?? start, waitEnd);
       if (waiting)
         waits.push({
           ...waiting,
           tone: state.tone,
-          reasons: reason ? [reason] : [],
+          reasons: [],
         });
     }
   }
@@ -250,8 +237,6 @@ export function summarizeRun(run: ConnectorRun, asOf: string): RunTiming {
   const liveGap = gaps.at(-1);
   if (knownQueue && liveGap?.end === end) {
     liveGap.tone = runState.tone;
-    const reason = queueReason(run.status);
-    if (reason) liveGap.reasons.push(reason);
   }
   const queue = mergeQueue([...gaps, ...waits]);
   const currentWindow = active
@@ -267,8 +252,7 @@ export function summarizeRun(run: ConnectorRun, asOf: string): RunTiming {
         window.stage.status === "not_started" ||
         window.stage.status === "wait_timeout"
           ? window.finished
-          : (window.started ??
-            (window.expectedWork ? (window.granted ?? window.queued) : null));
+          : (window.started ?? (window.expectedWork ? window.queued : null));
       return at == null ? [] : [{ at, step: window.step }];
     })
     .sort((a, b) => a.at - b.at);

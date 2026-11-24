@@ -1,0 +1,10 @@
+{{- if .Values.ingestion.templates.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insight-sync-limits
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+data:
+  syncs: {{ required "ingestion.maxConcurrentSyncs is required" .Values.ingestion.maxConcurrentSyncs | quote }}
+{{- end }}

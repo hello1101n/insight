@@ -112,6 +112,11 @@ export function ConnectorHealthPane() {
           {data.schedule_read_error}
         </p>
       )}
+      {data.history_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.history_read_error}
+        </p>
+      )}
       {data.connectors.length === 0 ? (
         <div className="rounded-lg border p-6 text-sm text-muted-foreground">
           {recording.state === "never_read"

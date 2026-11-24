@@ -76,11 +76,11 @@ def session_settings(*, correlated_subqueries: bool) -> dict[str, object]:
     table's DDL rather than the session.
     """
     settings: dict[str, object] = {}
-
-    if stage := os.environ.get("ADMISSION_STAGE"):
-        settings["log_comment"] = (
-            f"insight:sync={os.environ['SYNC_ID']}:stage={stage}:attempt={os.environ['ADMISSION_ATTEMPT']}"
-        )
+    uid = os.environ.get("DBT_WORKFLOW_UID")
+    stage = os.environ.get("DBT_STAGE_NAME")
+    pod = os.environ.get("DBT_POD_UID")
+    if uid and stage and pod:
+        settings["log_comment"] = f"insight:sync={uid}:stage={stage}:pod={pod}"
 
     if correlated_subqueries:
         # Correlated subqueries (LEFT ANTI JOIN in the identity seed models)

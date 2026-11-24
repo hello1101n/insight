@@ -145,6 +145,12 @@
             "description": "False when nothing has been recorded at all, so the page can say so\ninstead of implying health.",
             "type": "boolean"
           },
+          "history_read_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "schedule_read_error": {
             "type": [
               "string",
@@ -413,6 +419,10 @@
               "null"
             ]
           },
+          "execution_started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "finished_at": {
             "format": "date-time",
             "type": [
@@ -471,6 +481,7 @@
         },
         "required": [
           "sync_id",
+          "execution_started_at",
           "status",
           "started_at",
           "stages"
@@ -499,13 +510,6 @@
             ]
           },
           "finished_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "granted_at": {
             "format": "date-time",
             "type": [
               "string",
@@ -711,8 +715,14 @@
               "null"
             ]
           },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "kind": {
-            "type": "string"
+            "$ref": "#/components/schemas/WaitKind"
           },
           "started_at": {
             "format": "date-time",
@@ -772,6 +782,12 @@
           "connector": {
             "type": "string"
           },
+          "history_read_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "runs": {
             "items": {
               "$ref": "#/components/schemas/Run"
@@ -813,6 +829,14 @@
           "window"
         ],
         "type": "object"
+      },
+      "WaitKind": {
+        "enum": [
+          "lock",
+          "sync_slot",
+          "placement"
+        ],
+        "type": "string"
       }
     },
     "securitySchemes": {

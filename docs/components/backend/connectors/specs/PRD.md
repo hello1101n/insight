@@ -112,14 +112,18 @@ request gets 401.
      that succeeded, for example "94% succeeded";
    - a table of the latest 10 syncs with column headers (status, start in UTC, duration,
      records), which expands to show the rest.
-3. With per-stage admission enabled, the row shows the current run and the last successful
-   run. Each shows elapsed time waiting, loading and transforming. Selecting a bar opens its
-   timeline. Reports become ready when the final transformation succeeds.
+3. For workflows that connectors observes, the row shows the current run and the last successful run.
+   Each shows elapsed time waiting, loading and transforming. Select a bar to open its timeline.
+   Reports become ready when the final transformation succeeds.
 4. The strip includes older loads and multiple runs on the same day, up to 50 in total.
    A load associated with a managed run by Airbyte Job ID appears once. Selecting an older
    load shows the measurements that Airbyte recorded.
 5. For instances with only legacy loads, the heading states how many loads the table shows,
    for example "Latest 10 of 50 recorded".
+6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes waits for a writer lock,
+   a sync slot, and pod placement. A wait shows a warning after three hours.
+7. The service stops a workflow after it waits more than six hours for a writer lock or sync slot.
+8. The service retains the recorded run history after Argo deletes the workflow.
 
 ## 5. Constraints
 

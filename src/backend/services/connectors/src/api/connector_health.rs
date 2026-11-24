@@ -36,7 +36,7 @@ pub async fn get_connector_health(
 
     let (facts, ledger_error) = match read_health(&state.ch).await {
         Ok(facts) => (facts, None),
-        Err(error) if state.cluster.admission_enabled => (LedgerFacts::default(), Some(error)),
+        Err(error) if state.cluster.client.is_some() => (LedgerFacts::default(), Some(error)),
         Err(error) => return Err(read_error(error)),
     };
 
@@ -54,14 +54,8 @@ pub async fn get_connector_health(
         }
     }
 
-    if state.cluster.admission_enabled {
-        crate::domain::admission::history::enrich(
-            &state.db,
-            &state.cluster.namespace,
-            &mut response,
-        )
-        .await
-        .map_err(history_error)?;
+    if state.cluster.client.is_some() {
+        enrich_history(&state.db, &state.cluster.namespace, &mut response).await;
     }
     if let Some(error) = ledger_error {
         if response.connectors.is_empty() {
@@ -90,8 +84,8 @@ pub async fn get_connector_syncs(
         Some((tenant, source)) => (Some(tenant.into_string()), Some(source.into_string())),
         None => (None, None),
     };
-    let mut runs = if state.cluster.admission_enabled {
-        crate::domain::admission::history::runs(
+    let (runs, history_read_error) = if state.cluster.client.is_some() {
+        match crate::domain::run_history::history::runs(
             &state.db,
             &state.cluster.namespace,
             name.as_str(),
@@ -99,11 +93,13 @@ pub async fn get_connector_syncs(
             source_id.as_deref(),
         )
         .await
-        .map_err(history_error)?
+        {
+            Ok(runs) => (runs, None),
+            Err(error) => (Vec::new(), Some(history_note(&error))),
+        }
     } else {
-        Vec::new()
+        (Vec::new(), None)
     };
-    crate::domain::admission::history::fill_failure_reasons(&state, &mut runs).await;
     let syncs = match syncs {
         Ok(syncs) => syncs,
         Err(error) if !runs.is_empty() => {
@@ -120,13 +116,23 @@ pub async fn get_connector_syncs(
         HISTORY_WINDOW,
     );
     result.runs = runs;
+    result.history_read_error = history_read_error;
     Ok(Json(result))
 }
 
-#[expect(clippy::needless_pass_by_value, reason = "used directly as map_err")]
-fn history_error(error: sea_orm::DbErr) -> CanonicalError {
-    tracing::error!(%error,"could not read ingestion history");
-    CanonicalError::internal("failed to read ingestion history").create()
+async fn enrich_history(
+    db: &sea_orm::DatabaseConnection,
+    namespace: &str,
+    response: &mut ConnectorHealthResponse,
+) {
+    if let Err(error) = crate::domain::run_history::history::enrich(db, namespace, response).await {
+        response.history_read_error = Some(history_note(&error));
+    }
+}
+
+fn history_note(error: &sea_orm::DbErr) -> String {
+    tracing::error!(%error, "Sync run history read did not complete.");
+    "Sync run history is unavailable.".into()
 }
 
 fn parse_scope(scope: &SyncScopeQuery) -> Result<Option<(TenantId, SourceId)>, CanonicalError> {

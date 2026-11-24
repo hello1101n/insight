@@ -9,7 +9,6 @@ import {
   stepFailure,
   stepForStage,
   stepLabel,
-  type QueueReason,
 } from "./connector-runs";
 
 export function describeRunState(
@@ -28,15 +27,8 @@ export function describeRunState(
     view.kind === "queued"
       ? (timing ?? summarizeRun(run, asOf)).currentQueue
       : undefined;
-  const reason =
-    queueReason(current?.reason) ??
-    queueReason(current?.status) ??
-    queueReason(view.state);
-  const fallbackReasons = new Set<QueueReason>(reason ? [reason] : []);
-  if (
-    current?.waits?.some((wait) => wait.kind === "placement" && !wait.ended_at)
-  )
-    fallbackReasons.add("capacity");
+  const fallbackReasons =
+    current?.waits?.filter((wait) => !wait.ended_at).map(queueReason) ?? [];
 
   let label = view.label;
   if (failedStep)
@@ -50,6 +42,7 @@ export function describeRunState(
     label,
     tone: queue?.tone ?? view.tone,
     failure,
-    queueReasons: queue?.reasons ?? [...fallbackReasons],
+    queueReasons:
+      fallbackReasons.length > 0 ? fallbackReasons : (queue?.reasons ?? []),
   };
 }

@@ -22,7 +22,8 @@ export interface SyncFact {
 
 export interface ConnectorRunStage {
   waits?: {
-    kind: "admission" | "placement";
+    kind: "lock" | "sync_slot" | "placement";
+    holder?: string | null;
     started_at: string;
     ended_at?: string | null;
   }[];
@@ -31,7 +32,6 @@ export interface ConnectorRunStage {
   airbyte_job_id?: string | null;
   status: string;
   queued_at?: string | null;
-  granted_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   duration_ms?: number | null;
@@ -40,6 +40,7 @@ export interface ConnectorRunStage {
 
 export interface ConnectorRun {
   sync_id: string;
+  execution_started_at?: string;
   status: string;
   started_at: string;
   finished_at?: string | null;
@@ -171,6 +172,7 @@ export interface ConnectorInstanceRef extends ConnectorInstance {
 
 export interface ConnectorHealthSummary {
   schedule_read_error?: string | null;
+  history_read_error?: string | null;
   as_of: string;
   checked_at?: string | null;
   typical_read_interval_ms?: number | null;
@@ -182,6 +184,7 @@ export interface ConnectorSyncHistory extends ConnectorInstance {
   connector: string;
   syncs: SyncFact[];
   runs?: ConnectorRun[];
+  history_read_error?: string | null;
   window: number;
 }
 

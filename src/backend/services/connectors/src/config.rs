@@ -3,12 +3,6 @@ use serde::Deserialize;
 use toolkit::bootstrap::AppConfig;
 use url::Url;
 
-pub(crate) const DEFAULT_AIRBYTE_LAUNCH_CONFIRMATION_SECS: u32 = 600;
-pub(crate) const DEFAULT_ADMISSION_DASHBOARD_RESERVE_PERCENT: u8 = 10;
-pub(crate) const DEFAULT_ADMISSION_IDLE_SETTLE_SECS: u32 = 120;
-pub(crate) const DEFAULT_ADMISSION_BASELINE_WINDOW_SECS: u32 = 3600;
-pub(crate) const DEFAULT_ADMISSION_BASELINE_MAX_AGE_SECS: u32 = 86400;
-
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct AirbyteReader {
@@ -29,6 +23,7 @@ pub(crate) struct GearConfig {
     pub(crate) database_password: SecretString,
     pub(crate) clickhouse_url: String,
     pub(crate) clickhouse_database: String,
+    pub(crate) query_log_cluster: String,
     pub(crate) clickhouse_user: String,
     pub(crate) clickhouse_password: SecretString,
     pub(crate) identity_url: String,
@@ -36,18 +31,8 @@ pub(crate) struct GearConfig {
     pub(crate) namespace: String,
     pub(crate) tenant_id: String,
     pub(crate) reconcile_workflow_name: String,
-    pub(crate) admission_enabled: bool,
     pub(crate) airbyte_namespace: String,
     pub(crate) airbyte_reader: AirbyteReader,
-    pub(crate) airbyte_launch_confirmation_secs: u32,
-    pub(crate) admission_dashboard_reserve_percent: u8,
-    pub(crate) admission_budget_override_bytes: Option<u64>,
-    pub(crate) admission_idle_settle_secs: u32,
-    pub(crate) admission_baseline_window_secs: u32,
-    pub(crate) admission_baseline_max_age_secs: u32,
-    pub(crate) argo_url: String,
-    pub(crate) workflow_sa: String,
-    pub(crate) clickhouse_cluster: String,
 }
 
 impl Default for GearConfig {
@@ -61,6 +46,7 @@ impl Default for GearConfig {
             database_password: SecretString::default(),
             clickhouse_url: String::new(),
             clickhouse_database: "insight".to_owned(),
+            query_log_cluster: String::new(),
             clickhouse_user: String::new(),
             clickhouse_password: SecretString::default(),
             identity_url: String::new(),
@@ -68,18 +54,8 @@ impl Default for GearConfig {
             namespace: String::new(),
             tenant_id: String::new(),
             reconcile_workflow_name: String::new(),
-            admission_enabled: false,
             airbyte_namespace: String::new(),
             airbyte_reader: AirbyteReader::default(),
-            airbyte_launch_confirmation_secs: DEFAULT_AIRBYTE_LAUNCH_CONFIRMATION_SECS,
-            admission_dashboard_reserve_percent: DEFAULT_ADMISSION_DASHBOARD_RESERVE_PERCENT,
-            admission_budget_override_bytes: None,
-            admission_idle_settle_secs: DEFAULT_ADMISSION_IDLE_SETTLE_SECS,
-            admission_baseline_window_secs: DEFAULT_ADMISSION_BASELINE_WINDOW_SECS,
-            admission_baseline_max_age_secs: DEFAULT_ADMISSION_BASELINE_MAX_AGE_SECS,
-            argo_url: String::new(),
-            workflow_sa: String::new(),
-            clickhouse_cluster: String::new(),
         }
     }
 }
@@ -131,54 +107,6 @@ impl GearConfig {
 
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
         self.database_url()?;
-        if self.airbyte_launch_confirmation_secs == 0 {
-            return Err(config_error(
-                "airbyte_launch_confirmation_secs",
-                "must be greater than zero",
-            ));
-        }
-        if !(1..100).contains(&self.admission_dashboard_reserve_percent) {
-            return Err(config_error(
-                "admission_dashboard_reserve_percent",
-                "must be between 1 and 99",
-            ));
-        }
-        if self.admission_budget_override_bytes == Some(0) {
-            return Err(config_error(
-                "admission_budget_override_bytes",
-                "must be greater than zero",
-            ));
-        }
-        for (key, value) in [
-            (
-                "admission_idle_settle_secs",
-                self.admission_idle_settle_secs,
-            ),
-            (
-                "admission_baseline_window_secs",
-                self.admission_baseline_window_secs,
-            ),
-            (
-                "admission_baseline_max_age_secs",
-                self.admission_baseline_max_age_secs,
-            ),
-        ] {
-            if value == 0 {
-                return Err(config_error(key, "must be greater than zero"));
-            }
-        }
-        if self.admission_enabled
-            && (!self.cluster.enabled
-                || self.workflow_sa.is_empty()
-                || !Url::parse(&self.argo_url).is_ok_and(|v| {
-                    matches!(v.scheme(), "http" | "https") && v.host_str().is_some()
-                }))
-        {
-            return Err(config_error(
-                "admission_enabled",
-                "requires Kubernetes, a workflow service account and Argo URL",
-            ));
-        }
         if self.cluster.enabled {
             for (key, value) in [
                 ("namespace", &self.namespace),

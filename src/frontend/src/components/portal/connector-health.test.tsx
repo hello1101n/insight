@@ -1030,6 +1030,17 @@ describe("the pane prints what it was served", () => {
     expect(within(rowFor("alpha")).getByText("0")).toBeInTheDocument();
   });
 
+  it("keeps the connector list visible when managed history is unavailable", () => {
+    const note = "Sync run history is unavailable.";
+    mocks.summary.data = summary({
+      history_read_error: note,
+      connectors: [{ connector: "alpha", configured: true }],
+    });
+    render(<ConnectorHealthPane />);
+    expect(screen.getByText(note)).toHaveAttribute("role", "alert");
+    expect(rowFor("alpha")).toBeVisible();
+  });
+
   it("says nothing has been recorded instead of implying health", () => {
     mocks.summary.data = summary({
       connectors: [],
@@ -1429,9 +1440,8 @@ describe("connector workflow runs", () => {
         {
           ...step("transform-staging", -30, -25),
           queued_at: stamp(-48),
-          granted_at: stamp(-37),
           waits: [
-            { kind: "admission", started_at: stamp(-48), ended_at: stamp(-37) },
+            { kind: "lock", started_at: stamp(-48), ended_at: stamp(-37) },
             { kind: "placement", started_at: stamp(-40), ended_at: stamp(-32) },
           ],
         },
@@ -1448,7 +1458,7 @@ describe("connector workflow runs", () => {
     const queued = within(rows[1]).getByText("Queued");
     await userEvent.hover(queued);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      /^Waiting for cluster capacity$/
+      /Waiting for a lock.*Waiting for cluster capacity/s
     );
     const band = within(
       screen.getByRole("figure", { name: "Steps of the selected sync" })
@@ -1511,7 +1521,7 @@ describe("connector workflow runs", () => {
     async (status, bronzeMinutes, queuedDuration) => {
       await openRun({
         ...run(300),
-        status: "waiting_admission",
+        status: "queued",
         finished_at: null,
         stages: [
           {
@@ -1522,16 +1532,20 @@ describe("connector workflow runs", () => {
           {
             stage: "transform-staging",
             attempt: 1,
-            status: "waiting_admission",
+            status: "queued",
             queued_at: stamp(-600),
-            waits: [{ kind: "admission", started_at: stamp(-600) }],
+            waits: [{ kind: "lock", started_at: stamp(-600) }],
           },
         ],
       });
       for (const scope of [within(rowFor("example")), currentRun()]) {
         const state = scope.getByText("Queued");
         expect(state).toHaveClass("text-muted-foreground");
-        expect(state.closest("[aria-describedby]")).toBeNull();
+        await userEvent.hover(state);
+        expect(await screen.findByRole("tooltip")).toHaveTextContent(
+          /^Waiting for a lock$/
+        );
+        await userEvent.unhover(state);
       }
       const band = runBand().getByLabelText(
         new RegExp(`Queued · ${queuedDuration}$`)
@@ -1541,7 +1555,10 @@ describe("connector workflow runs", () => {
       const queued = runSteps().getByText("Queued");
       expect(queued.closest("li")).toHaveTextContent(queuedDuration);
       expect(queued.closest("li")).toHaveAttribute("aria-current", "step");
-      expect(queued.closest("[aria-describedby]")).toBeNull();
+      await userEvent.hover(queued);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        /^Waiting for a lock$/
+      );
       expect(
         screen.queryByText("Wait exceeded three hours")
       ).not.toBeInTheDocument();
@@ -1599,7 +1616,7 @@ describe("connector workflow runs", () => {
     expect(row).toHaveAttribute("aria-expanded", "true");
   });
 
-  it.each(["wait_warning", "waiting_admission"])(
+  it.each(["wait_warning", "queued"])(
     "announces the three-hour warning for %s",
     async (status) => {
       const started_at = stamp(-200 * 60);
@@ -1788,7 +1805,7 @@ describe("connector workflow runs", () => {
           reason: "wait_timeout",
           queued_at,
           finished_at: NOW,
-          waits: [{ kind: "admission", started_at: queued_at, ended_at: NOW }],
+          waits: [{ kind: "lock", started_at: queued_at, ended_at: NOW }],
         },
       ],
     });
@@ -1828,7 +1845,6 @@ describe("connector workflow runs", () => {
           attempt: 1,
           status: "checking_start",
           queued_at: stamp(-300),
-          granted_at: stamp(-240),
         },
       ],
     });
@@ -1910,7 +1926,16 @@ describe("connector workflow runs", () => {
 
   it.each([
     ["airbyte_launch_rejected", "Airbyte refused the sync request", "failed"],
-    ["airbyte_launch_unconfirmed", "The sync did not start", "starting"],
+    [
+      "airbyte_launch_unconfirmed",
+      "Airbyte did not confirm the sync launch",
+      "starting",
+    ],
+    [
+      "airbyte_launch_unreadable",
+      "Could not confirm the sync launch because the Airbyte job list was unavailable",
+      "starting",
+    ],
   ] as const)(
     "shows a terminal Bronze failure for %s",
     async (reason, label, status) => {
@@ -2005,7 +2030,7 @@ describe("connector workflow runs", () => {
   it("compares the active run to a success outside the window and opens distinct same-day timelines", async () => {
     const latest = {
       ...run(1),
-      status: "waiting_clickhouse",
+      status: "queued",
       finished_at: null,
       duration_ms: null,
       wait_ms: 60_000,
@@ -2016,8 +2041,11 @@ describe("connector workflow runs", () => {
         {
           stage: "bronze",
           attempt: 1,
-          status: "waiting_clickhouse",
+          status: "queued",
           queued_at: run(1).started_at,
+          waits: [
+            { kind: "sync_slot" as const, started_at: run(1).started_at },
+          ],
         },
       ],
     };

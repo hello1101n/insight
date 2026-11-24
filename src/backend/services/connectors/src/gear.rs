@@ -43,18 +43,9 @@ impl Gear for ConnectorsGear {
             crate::infra::cluster::Cluster::disabled()
         }
         .with_reconcile_workflow(config.reconcile_workflow_name);
-        cluster.admission_enabled = config.admission_enabled;
+        cluster.query_log_replicas = config.query_log_cluster;
         cluster.airbyte_namespace = config.airbyte_namespace;
         cluster.airbyte_reader = config.airbyte_reader;
-        cluster.airbyte_launch_confirmation_secs = config.airbyte_launch_confirmation_secs;
-        cluster.admission_dashboard_reserve_percent = config.admission_dashboard_reserve_percent;
-        cluster.admission_budget_override_bytes = config.admission_budget_override_bytes;
-        cluster.admission_idle_settle_secs = config.admission_idle_settle_secs;
-        cluster.admission_baseline_window_secs = config.admission_baseline_window_secs;
-        cluster.admission_baseline_max_age_secs = config.admission_baseline_max_age_secs;
-        cluster.argo_url = config.argo_url;
-        cluster.workflow_sa = config.workflow_sa;
-        cluster.clickhouse_cluster = config.clickhouse_cluster;
         let state = api::AppState {
             cluster,
             schedule_slots: tokio::sync::Semaphore::new(4),
@@ -93,19 +84,8 @@ impl RunnableCapability for ConnectorsGear {
             .get()
             .ok_or_else(|| anyhow::anyhow!("connectors has not initialized"))?
             .clone();
-        if state.cluster.admission_enabled {
-            let listener = tokio::net::TcpListener::bind("0.0.0.0:8089").await?;
-            let router = crate::domain::admission::workload::router(state.clone());
-            let stop = cancel.clone();
-            tokio::spawn(async move {
-                if let Err(error) = axum::serve(listener, router)
-                    .with_graceful_shutdown(stop.cancelled_owned())
-                    .await
-                {
-                    tracing::error!(%error,"ingestion API stopped");
-                }
-            });
-            tokio::spawn(crate::domain::admission::reconcile::run(state, cancel));
+        if state.cluster.client.is_some() {
+            tokio::spawn(crate::domain::run_history::observer::run(state, cancel));
         }
         Ok(())
     }
@@ -138,6 +118,3 @@ pub(crate) async fn run_migrate(app: &toolkit::bootstrap::AppConfig) -> anyhow::
 pub(crate) fn check_config(app: &toolkit::bootstrap::AppConfig) -> anyhow::Result<()> {
     extract_gear_config(app)?.validate()
 }
-
-#[cfg(test)]
-mod tests;

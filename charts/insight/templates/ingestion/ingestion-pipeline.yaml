@@ -11,6 +11,11 @@ spec:
   entrypoint: pipeline
   templates:
     - name: pipeline
+      synchronization:
+        semaphores:
+          - configMapKeyRef:
+              name: insight-sync-limits
+              key: syncs
       # Connection-specific inputs (connection_name, insight_source_id,
       # data_source, dbt_select, dbt_select_staging) are supplied by the
       # invoker. Image tags and infrastructure coordinates default from
@@ -49,14 +54,6 @@ spec:
               template: main
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                - name: admission_managed
-                  value: "true"
-                - name: admission_connector
-                  value: {{ `"{{inputs.parameters.data_source}}"` }}
-                - name: admission_source_id
-                  value: {{ `"{{inputs.parameters.insight_source_id}}"` }}
-{{- end }}
                 - name: connection_name
                   value: {{ `"{{inputs.parameters.connection_name}}"` }}
                 - name: airbyte_url
@@ -67,10 +64,6 @@ spec:
             template: transform
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                - name: admission_managed
-                  value: "true"
-{{- end }}
                 - name: insight_source_id
                   value: {{ `"{{inputs.parameters.insight_source_id}}"` }}
                 - name: data_source
@@ -97,10 +90,6 @@ spec:
     - name: transform
       inputs:
         parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-          - name: admission_managed
-            default: "false"
-{{- end }}
           - name: data_source
           - name: insight_source_id
             default: ""  # RULE-DEFAULTS-OK: accepted from the submitter; no step consumes it
@@ -121,22 +110,17 @@ spec:
       dag:
         tasks:
           # ------ Jira: dbt(tag:staging,tag:jira) → dbt(tag:silver,tag:jira+) ------
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "transform-jira-staging" "depends" "" "condition" " && '{{inputs.parameters.data_source}}' == 'jira'") | nindent 10 }}
-{{- end }}
           - name: transform-jira-staging
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: admit-transform-jira-staging
-{{- end }}
             when: {{ `"'{{inputs.parameters.data_source}}' == 'jira'"` }}
             templateRef:
               name: dbt-run
               template: run
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                {{- include "insight.admission.workArgs" "transform-jira-staging" | nindent 16 }}
-{{- end }}
+                - name: stage_name
+                  value: transform-jira-staging
+                - name: lock_group
+                  value: staging
                 # identity_inputs alongside the connector's own staging
                 # models: the seed step reads it.
                 - name: dbt_select
@@ -153,22 +137,17 @@ spec:
                   value: {{ `"{{inputs.parameters.clickhouse_user}}"` }}
 
           # ------ Non-Jira: connector staging + identity_inputs before the seed ------
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "transform-staging" "depends" "" "condition" " && '{{inputs.parameters.data_source}}' != 'jira'") | nindent 10 }}
-{{- end }}
           - name: transform-staging
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: admit-transform-staging
-{{- end }}
             when: {{ `"'{{inputs.parameters.data_source}}' != 'jira'"` }}
             templateRef:
               name: dbt-run
               template: run
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                {{- include "insight.admission.workArgs" "transform-staging" | nindent 16 }}
-{{- end }}
+                - name: stage_name
+                  value: transform-staging
+                - name: lock_group
+                  value: staging
                 - name: dbt_select
                   value: {{ `"tag:{{inputs.parameters.data_source}} identity_inputs"` }}
                 - name: dbt_full_refresh
@@ -188,42 +167,24 @@ spec:
           # name also satisfies on Skipped, and the staging task the `when`
           # dispatch rejects skips at DAG start — the seed would launch beside
           # the staging build instead of after it.
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "identity-seed" "depends" "transform-jira-staging.Succeeded || transform-staging.Succeeded" "condition" "") | nindent 10 }}
-{{- end }}
           - name: identity-seed
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: (transform-jira-staging.Succeeded || transform-staging.Succeeded) && admit-identity-seed
-{{- else }}
             depends: transform-jira-staging.Succeeded || transform-staging.Succeeded
-{{- end }}
             templateRef:
               name: identity-seed-run
               template: run
-{{- if .Values.connectors.stageAdmission.enabled }}
-            arguments:
-              parameters:
-                {{- include "insight.admission.workArgs" "identity-seed" | nindent 16 }}
-{{- end }}
 
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "transform-jira-silver" "depends" "transform-jira-staging.Succeeded && identity-seed" "condition" " && '{{inputs.parameters.data_source}}' == 'jira'") | nindent 10 }}
-{{- end }}
           - name: transform-jira-silver
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: (transform-jira-staging.Succeeded && identity-seed) && admit-transform-jira-silver
-{{- else }}
             depends: transform-jira-staging.Succeeded && identity-seed
-{{- end }}
             when: {{ `"'{{inputs.parameters.data_source}}' == 'jira'"` }}
             templateRef:
               name: dbt-run
               template: run
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                {{- include "insight.admission.workArgs" "transform-jira-silver" | nindent 16 }}
-{{- end }}
+                - name: stage_name
+                  value: transform-jira-silver
+                - name: lock_group
+                  value: downstream
                 - name: dbt_select
                   value: {{ `"{{inputs.parameters.dbt_select}}"` }}
                 # The staging step built the identity_inputs union already.
@@ -256,23 +217,13 @@ spec:
           # skips at DAG start.
           #
           # Never fails the sync — see connector-checks.yaml.
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "connector-checks" "depends" "transform-jira-silver.Succeeded || transform-legacy.Succeeded" "condition" "") | nindent 10 }}
-{{- end }}
           - name: connector-checks
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: (transform-jira-silver.Succeeded || transform-legacy.Succeeded) && admit-connector-checks
-{{- else }}
             depends: transform-jira-silver.Succeeded || transform-legacy.Succeeded
-{{- end }}
             templateRef:
               name: connector-checks
               template: run
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                {{- include "insight.admission.workArgs" "connector-checks" | nindent 16 }}
-{{- end }}
                 - name: dbt_select
                   value: {{ `"tag:connector_quality,tag:{{inputs.parameters.data_source}}"` }}
                 - name: connector
@@ -294,24 +245,18 @@ spec:
           # connector whose bronze sources are absent on this tenant cannot fail
           # the run. The incoming `dbt_select` param is intentionally ignored
           # here — name-derived scoping does not depend on it being populated.
-{{- if .Values.connectors.stageAdmission.enabled }}
-{{- include "insight.admission.task" (dict "stage" "transform-legacy" "depends" "identity-seed && transform-staging" "condition" " && '{{inputs.parameters.data_source}}' != 'jira'") | nindent 10 }}
-{{- end }}
           - name: transform-legacy
-{{- if .Values.connectors.stageAdmission.enabled }}
-            depends: (identity-seed && transform-staging) && admit-transform-legacy
-{{- else }}
             depends: identity-seed && transform-staging
-{{- end }}
             when: {{ `"'{{inputs.parameters.data_source}}' != 'jira'"` }}
             templateRef:
               name: dbt-run
               template: run
             arguments:
               parameters:
-{{- if .Values.connectors.stageAdmission.enabled }}
-                {{- include "insight.admission.workArgs" "transform-legacy" | nindent 16 }}
-{{- end }}
+                - name: stage_name
+                  value: transform-legacy
+                - name: lock_group
+                  value: downstream
                 - name: dbt_select
                   value: {{ `"tag:{{inputs.parameters.data_source}}+"` }}
                 # transform-staging already built these; a `+` walk would

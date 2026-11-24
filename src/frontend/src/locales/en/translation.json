@@ -924,12 +924,17 @@
       "query_error_detail": "ClickHouse reported {{name}} (code {{code}})",
       "queue_warning": "Wait exceeded three hours",
       "queue_reason": {
-        "memory": "Waiting for free ClickHouse memory",
-        "capacity": "Waiting for cluster capacity"
+        "lock": "Waiting for a lock",
+        "lock_holder": "Waiting for a lock held by {{holder}}",
+        "sync_slot": "Waiting for a free sync slot",
+        "placement": "Waiting for cluster capacity"
       },
       "reason": {
         "airbyte_launch_rejected": "Airbyte refused the sync request",
-        "airbyte_launch_unconfirmed": "The sync did not start",
+        "airbyte_launch_unconfirmed": "Airbyte did not confirm the sync launch",
+        "airbyte_launch_unreadable": "Could not confirm the sync launch because the Airbyte job list was unavailable",
+        "airbyte_job_failed": "The Airbyte job failed",
+        "airbyte_job_cancelled": "Airbyte cancelled the job",
         "clickhouse_memory_limit": "ClickHouse memory limit exceeded",
         "pod_oom": "The sync exceeded its memory limit",
         "source_pod_oom": "The source exceeded its memory limit",

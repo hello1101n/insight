@@ -741,40 +741,6 @@ ab_destination_definition_by_name() {
     | python3 "${_AIRBYTE_PY_DIR}/select_destination_definition.py" "${target}"
 }
 
-ab_managed_destination_definition() {
-  local workspace_id name repo tag body listing row def_id active_tag response
-  workspace_id="$(ab_workspace_id)" || return 1
-  repo="${INSIGHT_DESTINATION_REPOSITORY:?}"
-  tag="${INSIGHT_DESTINATION_TAG:?}"
-  name="Insight ClickHouse ${INSIGHT_DESTINATION_OWNER:?}"
-  body="$(jq -nc --arg ws "${workspace_id}" '{workspaceId:$ws}')"
-  listing="$(ab__curl POST /api/v1/destination_definitions/list_for_workspace "${body}")" || return 1
-  row="$(jq -er --arg name "${name}" --arg repo "${repo}" '
-    [.destinationDefinitions[] | select(.name == $name)] |
-    if length == 0 then ""
-    elif length == 1 and .[0].dockerRepository == $repo and (.[0].destinationDefinitionId | length > 0)
-      then .[0] | [.destinationDefinitionId,.dockerImageTag] | @tsv
-    else error("managed destination definition has conflicting ownership")
-    end' <<<"${listing}")" || return 1
-  IFS=$'\t' read -r def_id active_tag <<<"${row}"
-  if [[ -z "${def_id}" ]]; then
-    body="$(jq -nc --arg ws "${workspace_id}" --arg name "${name}" --arg repo "${repo}" --arg tag "${tag}" \
-      '{workspaceId:$ws,destinationDefinition:{name:$name,dockerRepository:$repo,dockerImageTag:$tag,
-        documentationUrl:"https://docs.airbyte.com/integrations/destinations/clickhouse"}}')"
-    response="$(ab__curl POST /api/v1/destination_definitions/create_custom "${body}")" || return 1
-  elif [[ "${active_tag}" != "${tag}" ]]; then
-    body="$(jq -nc --arg ws "${workspace_id}" --arg id "${def_id}" --arg tag "${tag}" \
-      '{workspaceId:$ws,destinationDefinitionId:$id,dockerImageTag:$tag}')"
-    response="$(ab__curl POST /api/v1/destination_definitions/update "${body}")" || return 1
-  else
-    printf '%s\t%s' "${def_id}" "${tag}"
-    return 0
-  fi
-  def_id="$(jq -er --arg repo "${repo}" --arg tag "${tag}" \
-    'select(.dockerRepository==$repo and .dockerImageTag==$tag) | .destinationDefinitionId // empty' <<<"${response}")" || return 1
-  printf '%s\t%s' "${def_id}" "${tag}"
-}
-
 # ---------------------------------------------------------------------------
 # ab_destination_version <destination_id>
 # Echoes the dockerImageTag of the definition an existing destination runs on;
@@ -818,20 +784,17 @@ ab_ensure_destination() {
   found="$(printf '%s' "${list_resp}" | python3 -c '
 import sys, json
 target, desired = sys.argv[1], json.loads(sys.argv[2])
-expected_definition = sys.argv[3]
 MASK = "**********"
 for d in json.load(sys.stdin).get("destinations", []):
     if d.get("name") != target:
         continue
-    if expected_definition and d.get("destinationDefinitionId") != expected_definition:
-        sys.exit("managed destination name already belongs to a different definition")
     current = d.get("connectionConfiguration") or {}
     masked = {k for k, v in current.items() if v == MASK}
     drift = sorted(k for k in set(current) | set(desired)
                    if k not in masked and current.get(k, MASK) != desired.get(k, MASK))
     print(d["destinationId"] + "\t" + " ".join(drift))
     break
-' "${name}" "${config_json}" "${4:-}")" || return 1
+' "${name}" "${config_json}")"
 
   local body resp dest_id
   if [[ -n "${found}" ]]; then

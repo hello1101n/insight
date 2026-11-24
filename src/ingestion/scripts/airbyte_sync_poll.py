@@ -13,6 +13,8 @@ from typing import NamedTuple
 
 import insight_logging
 from airbyte_auth import FatalError, airbyte_api_url, oauth_token
+from airbyte_launch import Launch, WorkflowReadTimeout
+from airbyte_sync_trigger import report_launch, workflow_launch
 
 Progress = tuple[str | None, int, int, int]
 
@@ -113,28 +115,6 @@ def job_status(resp: object) -> JobStatus | None:
         return None
 
 
-def native_attempt_evidence(item: object) -> dict:
-    attempt = item.get("attempt") if isinstance(item, dict) else None
-    if not isinstance(attempt, dict):
-        return {}
-    stats = attempt.get("totalStats")
-    failure = attempt.get("failureSummary")
-    result = {"status": attempt.get("status")}
-    for output, value in [
-        ("attempt_id", attempt.get("id")),
-        ("ended_at", attempt.get("endedAt")),
-        ("records_emitted", stats.get("recordsEmitted") if isinstance(stats, dict) else None),
-        ("records_committed", stats.get("recordsCommitted") if isinstance(stats, dict) else None),
-    ]:
-        if type(value) is int and value >= 0:
-            result[output] = value
-    if isinstance(failure, dict):
-        result["failure_origins"] = [f.origin for f in attempt_failures({"attempts": [item]})]
-        if isinstance(failure.get("partialSuccess"), bool):
-            result["partial_success"] = failure["partialSuccess"]
-    return result
-
-
 def save_terminal_evidence(job_id: int, resp: dict, status: str) -> None:
     path = os.environ.get("AIRBYTE_EVIDENCE_PATH")
     if not path or str(resp["job"].get("id")) != str(job_id):
@@ -142,15 +122,14 @@ def save_terminal_evidence(job_id: int, resp: dict, status: str) -> None:
     attempt = _latest_attempt(resp) or {}
     stats = attempt.get("totalStats") or {}
     evidence = {"job_id": job_id, "status": status}
-    if isinstance(resp.get("attempts"), list):
-        evidence["attempts"] = [native_attempt_evidence(item) for item in resp["attempts"]]
-    for key, total_key, legacy_key in [
-        ("records_reported", "recordsEmitted", "recordsSynced"),
-        ("volume_bytes", "bytesEmitted", "bytesSynced"),
+    records = stats.get("recordsEmitted", attempt.get("recordsSynced")) if isinstance(stats, dict) else None
+    for key, value in [
+        ("records_reported", records),
+        ("started_at", attempt.get("startedAt")),
+        ("ended_at", attempt.get("endedAt", resp["job"].get("updatedAt"))),
     ]:
-        count = stats.get(total_key, attempt.get(legacy_key)) if isinstance(stats, dict) else None
-        if type(count) is int and count >= 0:
-            evidence[key] = count
+        if type(value) is int and value >= 0:
+            evidence[key] = value
     Path(path).write_text(json.dumps(evidence))
 
 
@@ -176,12 +155,26 @@ def main() -> int:
         return 1
     poll_interval = int(os.environ["POLL_INTERVAL_SECONDS"])
     unreadable_threshold = int(os.environ["STATUS_UNREADABLE_THRESHOLD_SECONDS"])
-
+    if "WORKFLOW_UID" in os.environ:
+        try:
+            evidence = os.environ.get("TRIGGER_LAUNCH_EVIDENCE")
+            receipt = Launch.model_validate_json(evidence) if evidence else None
+            result = workflow_launch(airbyte_url, receipt, workflow_read_seconds=unreadable_threshold)
+            if code := report_launch(result):
+                return code
+            if result.job_id is None:
+                return 1
+            job_id = result.job_id
+        except WorkflowReadTimeout:
+            log.error("The Workflow read outage reached its deadline.")
+            return 2
+        except (FatalError, OSError, ValueError, RuntimeError, KeyError) as error:
+            log.error("Airbyte launch state is unavailable.", extra={"error_type": type(error).__name__})
+            return 1
     t0 = time.monotonic()
     last_progress: Progress | None = None
     last_readable_at = t0
-    unreadable_delay = min(max(poll_interval, 1), 300)
-    managed = os.environ.get("ADMISSION_MANAGED") == "true"
+    check_identity = "AIRBYTE_EVIDENCE_PATH" in os.environ
 
     def emit_completed(status: str, exit_code: int) -> None:
         progress = last_progress or (None, 0, 0, 0)
@@ -212,18 +205,7 @@ def main() -> int:
             )
 
     def retry_or_give_up(reason: str) -> bool:
-        nonlocal unreadable_delay
         unreadable_for = time.monotonic() - last_readable_at
-        if managed:
-            log.warning(
-                "cannot read existing Airbyte job; retrying in %ss: %s",
-                unreadable_delay,
-                reason,
-                extra={"event": "sync.poll_unreadable", "job_id": job_id, "unreadable_for_s": int(unreadable_for)},
-            )
-            time.sleep(unreadable_delay)
-            unreadable_delay = min(300, unreadable_delay * 2)
-            return True
         if unreadable_for >= unreadable_threshold:
             log.error(
                 "Cannot read Airbyte job status; sync outcome is unknown",
@@ -239,9 +221,6 @@ def main() -> int:
             token = oauth_token()
             resp = airbyte_job(airbyte_url, token, "get", job_id)
         except FatalError as error:
-            if managed:
-                retry_or_give_up(str(error))
-                continue
             log.error(f"FAIL: {error}", extra={"event": "sync.poll_failed", "job_id": job_id})
             return 1
         except Exception as error:  # noqa: BLE001
@@ -250,12 +229,11 @@ def main() -> int:
             continue
 
         status = job_status(resp)
-        if status is None or (managed and str(resp["job"].get("id")) != str(job_id)):
+        if status is None or (check_identity and str(resp["job"].get("id")) != str(job_id)):
             if not retry_or_give_up("unusable job status"):
                 return 2
             continue
         last_readable_at = time.monotonic()
-        unreadable_delay = min(max(poll_interval, 1), 300)
         try:
             progress = attempt_progress(resp)
         except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError):

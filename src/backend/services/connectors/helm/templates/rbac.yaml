@@ -10,27 +10,19 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [cronworkflows]
     verbs: [get, list, watch, patch]
-  {{- if .Values.stageAdmission.enabled }}
   - apiGroups: [argoproj.io]
     resources: [workflows]
-    verbs: [get, list, watch, patch, update]
+    verbs: [list, watch, patch]
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list, watch]
-  - apiGroups: [""]
-    resources: [pods/log]
-    verbs: [get]
-  {{- if eq (.Values.stageAdmission.airbyteNamespace | default .Release.Namespace) .Release.Namespace }}
-  {{- with .Values.stageAdmission.airbyteReader.secret }}
+    verbs: [list]
+  {{- if eq (.Values.runHistory.airbyteNamespace | default .Release.Namespace) .Release.Namespace }}
+  {{- with .Values.runHistory.airbyteReader.secret }}
   - apiGroups: [""]
     resources: [secrets]
     resourceNames: [{{ . | quote }}]
     verbs: [get]
   {{- end }}
-  {{- end }}
-  - apiGroups: [metrics.k8s.io]
-    resources: [pods]
-    verbs: [get, list]
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -47,30 +39,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "insight-connectors.fullname" . }}
-{{- if .Values.stageAdmission.enabled }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-admission
-rules:
-  - apiGroups: [authentication.k8s.io]
-    resources: [tokenreviews]
-    verbs: [create]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-admission
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "insight-connectors.fullname" . }}
-    namespace: {{ .Release.Namespace }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-admission
-{{- $airbyte := .Values.stageAdmission.airbyteNamespace | default .Release.Namespace }}
+{{- $airbyte := .Values.runHistory.airbyteNamespace | default .Release.Namespace }}
 {{- if ne $airbyte .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -81,16 +50,13 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list]
-  {{- with .Values.stageAdmission.airbyteReader.secret }}
+    verbs: [list]
+  {{- with .Values.runHistory.airbyteReader.secret }}
   - apiGroups: [""]
     resources: [secrets]
     resourceNames: [{{ . | quote }}]
     verbs: [get]
   {{- end }}
-  - apiGroups: [metrics.k8s.io]
-    resources: [pods]
-    verbs: [get, list]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -105,7 +71,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-observer
-{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

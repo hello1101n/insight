@@ -40,22 +40,9 @@ impl Error {
 pub(crate) struct Cluster {
     api: Option<Api<DynamicObject>>,
     pub(crate) client: Option<Client>,
-    pub(crate) admission_enabled: bool,
     pub(crate) airbyte_namespace: String,
+    pub(crate) query_log_replicas: String,
     pub(crate) airbyte_reader: crate::config::AirbyteReader,
-    pub(crate) airbyte_launch_confirmation_secs: u32,
-    pub(crate) admission_dashboard_reserve_percent: u8,
-    pub(crate) admission_budget_override_bytes: Option<u64>,
-    pub(crate) admission_idle_settle_secs: u32,
-    pub(crate) admission_baseline_window_secs: u32,
-    pub(crate) admission_baseline_max_age_secs: u32,
-    pub(crate) argo_url: String,
-    #[expect(
-        clippy::struct_field_names,
-        reason = "ClickHouse cluster name, independent of Kubernetes"
-    )]
-    pub(crate) clickhouse_cluster: String,
-    pub(crate) workflow_sa: String,
     call_timeout: Duration,
     pub(crate) namespace: String,
     pub(crate) tenant_id: String,
@@ -67,20 +54,9 @@ impl Cluster {
         Self {
             api: None,
             client: None,
-            admission_enabled: false,
             airbyte_namespace: String::new(),
+            query_log_replicas: String::new(),
             airbyte_reader: crate::config::AirbyteReader::default(),
-            airbyte_launch_confirmation_secs:
-                crate::config::DEFAULT_AIRBYTE_LAUNCH_CONFIRMATION_SECS,
-            admission_dashboard_reserve_percent:
-                crate::config::DEFAULT_ADMISSION_DASHBOARD_RESERVE_PERCENT,
-            admission_budget_override_bytes: None,
-            admission_idle_settle_secs: crate::config::DEFAULT_ADMISSION_IDLE_SETTLE_SECS,
-            admission_baseline_window_secs: crate::config::DEFAULT_ADMISSION_BASELINE_WINDOW_SECS,
-            admission_baseline_max_age_secs: crate::config::DEFAULT_ADMISSION_BASELINE_MAX_AGE_SECS,
-            argo_url: String::new(),
-            clickhouse_cluster: String::new(),
-            workflow_sa: String::new(),
             call_timeout: CALL_TIMEOUT,
             namespace: String::new(),
             tenant_id: String::new(),

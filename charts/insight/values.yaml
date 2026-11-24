@@ -231,7 +231,10 @@ ingestion:
   # (the default) means the stand cannot be seeded until an operator names an
   # image, either here or with the script's `--image` flag.
   seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.25.14.58-1d46f9f" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
+  maxConcurrentSyncs: 4
   airbyteSync:
+    launchConfirmationSeconds: 600
+    launchUnreadableSeconds: 1800
     pollIntervalSeconds: 30
     statusUnreadableThresholdSeconds: 1800
   # Data-quality checks: a CronWorkflow runs the dbt check catalog (the
@@ -934,11 +937,6 @@ frontend:
     # lists is hidden.
     planned: []
 connectors:
-  stageAdmission:
-    enabled: false
-    destinationImage:
-      repository: ghcr.io/hello1101n/insight-destination-clickhouse
-      tag: "2.1.29"
   infraFromUmbrella: true
   replicaCount: 1
   databaseName: connectors

@@ -15,31 +15,6 @@ def workload(documents: list[dict], kind: str) -> dict:
     )
 
 
-@pytest.mark.parametrize("custom", [False, True], ids=["defaults", "overrides"])
-def test_admission_budget_settings_reach_the_connectors_config(custom: bool) -> None:
-    settings = [
-        ("airbyteLaunchConfirmationSecs", "airbyte_launch_confirmation_secs", 600, 901),
-        ("dashboardReservePercent", "admission_dashboard_reserve_percent", 10, 15),
-        ("budgetOverrideBytes", "admission_budget_override_bytes", None, 2_000_000_000),
-        ("idleSettleSecs", "admission_idle_settle_secs", 120, 121),
-        ("baselineWindowSecs", "admission_baseline_window_secs", 3600, 4321),
-        ("baselineMaxAgeSecs", "admission_baseline_max_age_secs", 86400, 2592000),
-    ]
-    args = ["--set", "stageAdmission.enabled=true"]
-    if custom:
-        for value, _, _, override in settings:
-            args.extend(["--set-json", f"stageAdmission.{value}={override}"])
-    documents = connectors_documents(CONNECTORS_CHART, *args)
-    config = next(doc for doc in documents if doc["kind"] == "ConfigMap" and "insight.yaml" in doc["data"])
-    admission = yaml.safe_load(config["data"]["insight.yaml"])["gears"]["connectors"]["config"]
-    for _, key, default, override in settings:
-        expected = override if custom else default
-        assert admission[key] == expected, key
-        assert type(admission[key]) is type(expected), key
-        if expected is not None:
-            assert re.search(rf"^ +{key}: {expected}$", config["data"]["insight.yaml"], re.MULTILINE), key
-
-
 def test_single_replica_recreates_with_its_service_account() -> None:
     documents = connectors_documents(CONNECTORS_CHART)
     deployment = workload(documents, "Deployment")
@@ -259,10 +234,12 @@ def test_gears_host_verifies_gateway_identity(connectors_umbrella: Path) -> None
     assert jwt["trusted_issuers"][0]["issuer"] == "https://contract-test-authenticator.default.svc.cluster.local:8443"
 
 
-def test_role_only_patches_existing_connector_cronworkflows() -> None:
+def test_role_patches_schedules_and_stops_workflows_with_read_only_pod_access() -> None:
     documents = connectors_documents(CONNECTORS_CHART)
     assert workload(documents, "Role")["rules"] == [
-        {"apiGroups": ["argoproj.io"], "resources": ["cronworkflows"], "verbs": ["get", "list", "watch", "patch"]}
+        {"apiGroups": ["argoproj.io"], "resources": ["cronworkflows"], "verbs": ["get", "list", "watch", "patch"]},
+        {"apiGroups": ["argoproj.io"], "resources": ["workflows"], "verbs": ["list", "watch", "patch"]},
+        {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
     ]
     binding = workload(documents, "RoleBinding")
     assert binding["roleRef"] == {
@@ -307,13 +284,41 @@ def test_cluster_integration_requires_a_tenant_only_when_enabled(enabled: bool, 
 
 def test_schedule_service_has_no_background_worker_or_retry_interval() -> None:
     service = Path(__file__).resolve().parents[2]
-    gear = (service / "src/gear.rs").read_text()
-    config = (service / "src/config.rs").read_text()
+    source = service / "src"
+    gear = (source / "gear.rs").read_text()
+    config = (source / "config.rs").read_text()
     assert "drift" not in gear
-    assert "stateful" not in gear
-    assert "RunnableCapability" not in gear
     assert "drift" not in config
-    assert not (service / "src/domain/connector_schedules/drift.rs").exists()
+    schedules = source / "domain/connector_schedules"
+    task = re.compile(r"\b(?:spawn(?:_blocking|_local|_on)?|spawn_bg)(?:\s*\(|\s+as\s+)")
+    for path in schedules.rglob("*.rs"):
+        relative = path.relative_to(schedules)
+        assert "drift" not in path.stem, relative
+        body = path.read_text()
+        if path == schedules / "mod.rs":
+            body = re.sub(
+                r"tokio::spawn\(\s*async move \{ save_locked\(&state, &instance, revision, change, caller\)"
+                r"\.await \}\s*\.in_current_span\(\),\s*\)\s*\.await\?",
+                "",
+                body,
+            )
+        if path == schedules / "timing.rs":
+            body = body.replace("tokio::task::spawn_blocking(move || reconcile_times(&object, Utc::now())).await", "")
+        assert not task.search(body), relative
+        assert not re.search(r"\binterval(?:_at)?(?:\s*\(|\s+as\s+)", body), relative
+        assert "retry_interval" not in body, relative
+        if re.search(r"\b(?:loop|while|for)\b", body):
+            assert not re.search(r"\bsleep(?:_until)?\b", body), relative
+
+    for path in source.rglob("*.rs"):
+        relative = path.relative_to(source)
+        if path.is_relative_to(schedules) or any(part.endswith("tests") for part in relative.with_suffix("").parts):
+            continue
+        body = path.read_text()
+        if path == source / "gear.rs":
+            body = body.replace("tokio::spawn(crate::domain::run_history::observer::run(state, cancel));", "")
+        if re.search(r"\bconnector_schedules\b", body):
+            assert not task.search(body), relative
 
 
 def test_compose_mounts_the_authentication_ca_bundle_for_connectors() -> None:

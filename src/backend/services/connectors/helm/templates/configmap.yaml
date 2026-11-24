@@ -114,20 +114,9 @@ data:
           cluster:
             enabled: {{ .Values.cluster.enabled }}
           namespace: {{ .Release.Namespace | quote }}
-          admission_enabled: {{ .Values.stageAdmission.enabled }}
-          airbyte_launch_confirmation_secs: {{ .Values.stageAdmission.airbyteLaunchConfirmationSecs | int64 }}
-          admission_dashboard_reserve_percent: {{ .Values.stageAdmission.dashboardReservePercent | int64 }}
-          admission_budget_override_bytes: {{ .Values.stageAdmission.budgetOverrideBytes | toJson }}
-          admission_idle_settle_secs: {{ .Values.stageAdmission.idleSettleSecs | int64 }}
-          admission_baseline_window_secs: {{ .Values.stageAdmission.baselineWindowSecs | int64 }}
-          admission_baseline_max_age_secs: {{ .Values.stageAdmission.baselineMaxAgeSecs | int64 }}
-          {{- if .Values.stageAdmission.enabled }}
-          airbyte_reader: {{ .Values.stageAdmission.airbyteReader | toJson }}
-          airbyte_namespace: {{ .Values.stageAdmission.airbyteNamespace | default .Release.Namespace | quote }}
-          argo_url: {{ tpl .Values.stageAdmission.argoUrl . | quote }}
-          workflow_sa: {{ tpl .Values.stageAdmission.workflowServiceAccount . | quote }}
-          clickhouse_cluster: {{ if .Values.clickhouse.clusterMode }}{{ required "clickhouse.clusterName is required for distributed admission" .Values.clickhouse.clusterName | quote }}{{ else }}""{{ end }}
-          {{- end }}
+          query_log_cluster: {{ if .Values.clickhouse.clusterMode }}{{ .Values.clickhouse.clusterName | default "" | quote }}{{ else }}""{{ end }}
+          airbyte_reader: {{ .Values.runHistory.airbyteReader | toJson }}
+          airbyte_namespace: {{ .Values.runHistory.airbyteNamespace | default .Release.Namespace | quote }}
           {{- if .Values.cluster.enabled }}
           tenant_id: {{ required "tenantId is required" .Values.tenantId | quote }}
           {{- end }}

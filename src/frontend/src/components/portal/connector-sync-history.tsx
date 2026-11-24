@@ -81,8 +81,9 @@ export function ConnectorSyncHistory({
   }
 
   if (
-    instance.latest_run ||
-    (data.runs && (data.runs.length > 0 || data.syncs.length === 0))
+    !data.history_read_error &&
+    (instance.latest_run ||
+      (data.runs && (data.runs.length > 0 || data.syncs.length === 0)))
   ) {
     return (
       <ConnectorRunHistory
@@ -112,6 +113,11 @@ export function ConnectorSyncHistory({
       aria-labelledby={syncs.length ? undefined : `${id}-heading`}
       className="max-w-full min-w-0 space-y-3 [overflow-wrap:anywhere] whitespace-normal"
     >
+      {data.history_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.history_read_error}
+        </p>
+      )}
       <div className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <h3 id={`${id}-heading`} className="shrink-0 text-sm font-semibold">
           {t("connectors.history.heading")}

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 pytest.importorskip("yaml", reason="pyyaml rides the toolbox image via dbt-core")
 
-from dbt_profiles import Connection, build_output, build_profile, connection_from_env, on_cluster
+from dbt_profiles import Connection, build_output, build_profile, connection_from_env, on_cluster, session_settings
 
 CONNECTION = Connection(
     host="clickhouse.example.internal", port=8123, user="user-under-test", password="password-under-test"
@@ -234,12 +234,10 @@ def test_a_url_that_names_no_host_is_refused(monkeypatch) -> None:
         connection_from_env()
 
 
-def test_queries_identify_the_workflow_stage_and_attempt(monkeypatch):
-    monkeypatch.setenv("SYNC_ID", "workflow-one")
-    monkeypatch.setenv("ADMISSION_STAGE", "transform-legacy")
-    monkeypatch.setenv("ADMISSION_ATTEMPT", "2")
-    settings = _output(correlated_subqueries=True)["custom_settings"]
-    assert settings == {
-        "allow_experimental_correlated_subqueries": 1,
-        "log_comment": "insight:sync=workflow-one:stage=transform-legacy:attempt=2",
-    }
+def test_dbt_query_comment_identifies_the_workflow_stage_and_pod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DBT_WORKFLOW_UID", "workflow-uid")
+    monkeypatch.setenv("DBT_STAGE_NAME", "transform-staging")
+    monkeypatch.setenv("DBT_POD_UID", "pod-uid")
+    assert session_settings(correlated_subqueries=False)["log_comment"] == (
+        "insight:sync=workflow-uid:stage=transform-staging:pod=pod-uid"
+    )

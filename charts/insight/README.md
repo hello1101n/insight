@@ -67,17 +67,34 @@ with `statusUnreadableThresholdSeconds` if an API outage timeout override is
 needed. The old idle setting is no longer used. Deploy the chart with its matching
 toolbox image because the poller's environment variable also changed.
 
-## Connector stage admission
+## Connector sync limits and history
 
-Set `connectors.stageAdmission.enabled=true` to enable per-stage admission and run history. Set `connectors.stageAdmission.argoUrl` to the in-cluster Argo Server URL when it runs in a separate namespace. For a distributed warehouse, configure `clickhouse.clusterMode` and `clickhouse.clusterName` so the worker checks every replica. Pod CPU and memory measurements come from the Kubernetes Metrics API. When admission is enabled, the dbt, identity and checks templates start a toolbox init container. It exits immediately for an unmanaged run.
+Argo limits concurrent pipelines with the `insight-sync-limits` ConfigMap.
+Set `ingestion.maxConcurrentSyncs` to change the limit. The default is four.
+Argo uses one mutex for staging, one for Identity, and one for downstream transformations.
+The same mutex protects a writer group on both the Jira and non-Jira paths.
 
-The Connectors page shows how long each run spent waiting, loading and transforming. Without comparable history, a stage runs alone and requires at least 256 MiB of usable ClickHouse memory. Once stages have history, the worker can admit several together when their estimates fit and their dbt table writes do not overlap. Custom Jira dbt selections run alone and are excluded from the history used to size standard selections. This also applies to Jira transformations registered before selectors were recorded. A missing resource measurement keeps new work in the queue. Transformations can read the completed Airbyte job’s byte count from the Workflow while connectors is still collecting the final Bronze measurements.
+Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
+Connectors checks the ClickHouse query log for failed dbt and identity stages for up to 10 minutes.
+The Connectors page shows Bronze, Silver, Identity, and Gold.
+The queue distinguishes a writer lock, a sync slot, and Kubernetes pod placement.
+The lock reason includes the holder when Argo reports it.
+A wait shows a warning after three hours.
+Connectors stops a Workflow after six hours of waiting for a writer lock or sync slot.
+If pod placement takes longer, the Workflow continues to wait.
 
-A continuous resource wait raises a warning after three hours. After six hours the worker can stop a suspended stage or a managed transformation that has yet to pass its pod start check. If an Airbyte job already exists, the worker shows overdue placement and follows the job to its actual outcome. Airbyte's cancellation API cannot condition cancellation on the replication pod still waiting.
-
-The process starting Bronze can retrieve the same permission again if the response from connectors is lost. Once it has sent the native Airbyte sync request, it waits for the original Job ID. A replacement process cannot send the same launch again. Once the ID is recorded, the worker can confirm that exact job with Airbyte even if the Workflow disappears.
-
-The release can register a dedicated ClickHouse destination for new append and append-dedup connections. Its queries carry Airbyte Job and Attempt IDs. Existing Airbyte connections retain their destination and sync state. Stages with insufficient attributable measurements run individually.
+The trigger records its launch claim on the Workflow before it calls Airbyte.
+A replacement trigger reads the claim and checks for the same launch.
+Set `ingestion.airbyteSync.launchConfirmationSeconds` to change the confirmation window.
+The default is 600 seconds.
+A definitive client error records a rejected launch.
+A readable list with no newer job at the end of the window records an unconfirmed launch.
+A manual retry can start a new launch as soon as a readable list confirms that the prior job is absent.
+Set `ingestion.airbyteSync.launchUnreadableSeconds` to bound confirmation when the job list is unreadable.
+The default is 1800 seconds. An unreadable list leaves the launch outcome unknown.
+Set `ingestion.airbyteSync.statusUnreadableThresholdSeconds` to limit how long the poll step tolerates an outage.
+The poll step applies this limit when it reads the Workflow at startup and when it reads Airbyte job status.
+The default is 1800 seconds. A permanent credential error stops the poll step immediately.
 
 ## Release name convention
 

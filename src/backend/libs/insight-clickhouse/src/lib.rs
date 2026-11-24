@@ -43,6 +43,12 @@ impl Client {
         Self { inner, config }
     }
 
+    #[must_use]
+    pub fn with_log_comment(mut self, comment: String) -> Self {
+        self.inner = self.inner.with_setting("log_comment", comment);
+        self
+    }
+
     /// Use bind parameters (`?`) for all user-supplied values.
     /// **Never** interpolate values into the SQL string.
     pub fn query(&self, sql: &str) -> clickhouse::query::Query {

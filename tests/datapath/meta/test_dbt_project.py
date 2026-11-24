@@ -190,7 +190,7 @@ def test_the_gold_build_appends_the_always_tag_after_reading_any_override() -> N
 def test_parallel_staging_and_downstream_passes_write_distinct_tables(
     manifest: dict[str, Any],
 ) -> None:
-    """Admission can overlap staging and downstream. Table materializations cannot share backup names."""
+    """Staging and downstream mutexes permit overlap. The two groups use distinct table names."""
     models = _models(manifest)
     identity = {key for key, model in models.items() if model["name"] == "identity_inputs"}
     staging = set(identity)

@@ -133,3 +133,32 @@ fn a_read_failure_does_not_repeat_the_warehouse_to_the_caller()
     assert!(!body.contains("DB::Exception"), "{body}");
     Ok(())
 }
+
+#[tokio::test]
+async fn connector_summary_survives_a_history_read_error() {
+    let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::MySql)
+        .append_query_errors([sea_orm::DbErr::Custom("fixture query error".into())])
+        .into_connection();
+    let mut response = ConnectorHealthResponse::from_facts(LedgerFacts::default(), Utc::now());
+    response
+        .connectors
+        .push(crate::domain::connector_health::ConnectorHealth {
+            connector: "example".into(),
+            tenant_id: None,
+            source_id: None,
+            configured: true,
+            schedule: None,
+            schedule_request: None,
+            last_sync: None,
+            latest_run: None,
+            last_successful_run: None,
+        });
+    enrich_history(&db, "example", &mut response).await;
+    assert_eq!(
+        response.history_read_error.as_deref(),
+        Some("Sync run history is unavailable.")
+    );
+    assert_eq!(response.connectors[0].connector, "example");
+    assert!(response.connectors[0].configured);
+    assert!(response.schedule_read_error.is_none());
+}
