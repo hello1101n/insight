@@ -228,6 +228,7 @@ beforeEach(() => {
     portalRouter.set({ scope: undefined, direct: false, metrics: LINKED, compare: undefined });
     setMetricsViewPaneShown(false);
   });
+  delete window.__INSIGHT_CONFIG__;
 });
 
 describe("MetricsView", () => {
@@ -618,11 +619,20 @@ describe("MetricsView", () => {
   });
 
   it("opens on the built-in default metrics when the link names none", () => {
+    mocks.definitions.push(definition("git.default_branch_merge_rate", "PR merge rate"));
     act(() => portalRouter.set({ metrics: undefined }));
     render(<MetricsView />);
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed"]);
-    expect(screen.getByRole("button", { name: "Metrics: 2 of 3" })).toBeInTheDocument();
+    expect(mocks.requestedKeys).toEqual(["git.default_branch_merge_rate", "tasks.closed"]);
+    expect(screen.getByRole("button", { name: "Metrics: 2 of 4" })).toBeInTheDocument();
+  });
+
+  it("opens on the stand's default metrics when the deploy sets them", () => {
+    window.__INSIGHT_CONFIG__ = { metricsView: { defaultMetrics: ["collab.messages_sent"] } };
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["collab.messages_sent"]);
   });
 
   it("leaves a custom metric unpicked until the reader picks it", async () => {
@@ -635,7 +645,7 @@ describe("MetricsView", () => {
 
     expect(mocks.requestedKeys).not.toContain("custom.velocity");
 
-    await user.click(screen.getByRole("button", { name: "Metrics: 2 of 4" }));
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 4" }));
     await user.click(screen.getByRole("checkbox", { name: "Velocity" }));
 
     expect(mocks.requestedKeys).toContain("custom.velocity");
@@ -646,7 +656,7 @@ describe("MetricsView", () => {
     act(() => portalRouter.set({ metrics: undefined }));
     render(<MetricsView />);
 
-    await user.click(screen.getByRole("button", { name: "Metrics: 2 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
     await user.click(screen.getByRole("button", { name: "Select all metrics" }));
 
     expect(mocks.requestedKeys).toEqual([

@@ -118,14 +118,13 @@ describe("metricsViewCatalog", () => {
 });
 
 describe("DEFAULT_METRIC_KEYS", () => {
-  it("names the metrics competitors show most", () => {
+  it("names the built-in default metrics", () => {
     expect([...DEFAULT_METRIC_KEYS]).toEqual([
       "git.default_branch_prs_merged",
-      "git.default_branch_commits",
+      "git.default_branch_merge_rate",
       "git.pr_size",
       "git.pr_cycle_time_h",
       "git.first_review_time_h",
-      "git.review_coverage",
       "git.reviews_performed",
       "tasks.closed",
       "ai.active_days",
@@ -146,6 +145,22 @@ describe("defaultMetricKeys", () => {
     expect(
       defaultMetricKeys(["git.pr_size", "collab.messages_sent", "tasks.closed", "custom.x"]),
     ).toEqual(["git.pr_size", "tasks.closed"]);
+  });
+
+  it("uses the stand's list in place of the built-in one when the deploy sets it", () => {
+    expect(
+      defaultMetricKeys(["git.pr_size", "collab.messages_sent", "custom.x"], [
+        "custom.x",
+        "collab.messages_sent",
+        "git.gone",
+      ]),
+    ).toEqual(["collab.messages_sent", "custom.x"]);
+  });
+
+  it("uses the built-in list when the stand's list is empty", () => {
+    expect(defaultMetricKeys(["git.pr_size", "collab.messages_sent"], [])).toEqual([
+      "git.pr_size",
+    ]);
   });
 });
 

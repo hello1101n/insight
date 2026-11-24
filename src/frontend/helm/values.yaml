@@ -56,6 +56,12 @@ nav:
   # A path in both lists is hidden.
   planned: []
 
+metricsView:
+  # Metric keys the Metrics view opens on when the link names none, e.g.
+  # ["git.default_branch_prs_merged", "tasks.closed"]. Empty uses the list
+  # built into the SPA.
+  defaultMetrics: []
+
 resources:
   requests:
     cpu: 50m

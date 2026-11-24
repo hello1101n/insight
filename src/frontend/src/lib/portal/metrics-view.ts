@@ -11,6 +11,7 @@ import {
 } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { byFamily, familyName, familyOf } from "@/lib/reports/families";
+import { runtimeConfig } from "@/lib/runtime-config";
 import type { IdentityPerson } from "@/types/insight";
 
 export interface MetricsRow {
@@ -31,18 +32,20 @@ export type SortDirection = "ascending" | "descending";
 
 export const DEFAULT_METRIC_KEYS: readonly string[] = [
   "git.default_branch_prs_merged",
-  "git.default_branch_commits",
+  "git.default_branch_merge_rate",
   "git.pr_size",
   "git.pr_cycle_time_h",
   "git.first_review_time_h",
-  "git.review_coverage",
   "git.reviews_performed",
   "tasks.closed",
   "ai.active_days",
 ];
 
-export function defaultMetricKeys(catalogKeys: readonly string[]): string[] {
-  const defaults = new Set(DEFAULT_METRIC_KEYS);
+export function defaultMetricKeys(
+  catalogKeys: readonly string[],
+  standKeys: readonly string[] = runtimeConfig().metricsView?.defaultMetrics ?? [],
+): string[] {
+  const defaults = new Set(standKeys.length > 0 ? standKeys : DEFAULT_METRIC_KEYS);
   return catalogKeys.filter((key) => defaults.has(key));
 }
 
