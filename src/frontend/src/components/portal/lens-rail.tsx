@@ -32,6 +32,8 @@ import {
 import { useRailNav } from "@/lib/portal/use-rail-nav";
 import { cn } from "@/lib/utils";
 
+export const SETTINGS_POPOVER_CLASS = "w-64";
+
 export function LensRail() {
   const { t } = useTranslation();
   return (
@@ -166,16 +168,14 @@ function FeedbackItem() {
   if (!feedback) return null;
 
   const label = t("feedback.nav_label");
+  const openFeedbackFromDrawer = () => {
+    feedback.openFeedback();
+    setOpenMobile(false);
+  };
   return (
     <SidebarMenuItem>
       <RailTooltip label={label}>
-        <SidebarMenuButton
-          aria-label={label}
-          onClick={() => {
-            feedback.openFeedback();
-            setOpenMobile(false);
-          }}
-        >
+        <SidebarMenuButton aria-label={label} onClick={openFeedbackFromDrawer}>
           <MessageSquare />
           <RailName>{label}</RailName>
         </SidebarMenuButton>
@@ -206,7 +206,7 @@ function SettingsItem() {
         <PopoverContent
           side={isMobile ? "top" : "right"}
           align={isMobile ? "start" : "end"}
-          className="w-64"
+          className={SETTINGS_POPOVER_CLASS}
         >
           <AppSidebarFooter
             showFeedback={false}

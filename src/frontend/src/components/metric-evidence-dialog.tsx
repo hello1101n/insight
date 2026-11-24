@@ -25,8 +25,7 @@ import type {
 } from "@/components/metric-evidence-context";
 import { MetricEvidencePeople } from "@/components/metric-evidence-people";
 import { MetricEvidenceTable } from "@/components/metric-evidence-table";
-import { withTypeDimension } from "@/lib/metrics/provider-links";
-import { useDeclaredMetricDimensions } from "@/queries/metric-definitions";
+import { useTypedEvidenceSelection } from "@/queries/metric-definitions";
 import {
   Button,
   Dialog,
@@ -46,10 +45,10 @@ import {
   Spinner,
 } from "@gears-frontx/ui-kit";
 import { formatMetricNumber } from "@/lib/format";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useSearchNeedle } from "@/hooks/use-search-needle";
 import { nextSort } from "@/lib/metrics/evidence-rows";
-import { sameEvidenceSubject } from "@/lib/metrics/evidence-placeholder";
-import { SEARCH_DEBOUNCE_MS } from "@/queries/identity-resolution";
+import { keepRowsOnReorder } from "@/lib/metrics/evidence-placeholder";
+import { retryServerFailureOnce } from "@/queries/retry-server-failure-once";
 
 interface DrillStep {
   target: EvidenceDialogTarget;
@@ -92,25 +91,17 @@ export function MetricEvidenceDialog({
   const headerTitle = drilled
     ? drilled.target.label
     : (people?.title ?? records?.title ?? activeTarget?.label ?? "");
-  const declaredDimensions = useDeclaredMetricDimensions();
-  const declared = activeTarget
-    ? declaredDimensions.byMetricKey?.get(activeTarget.selection.metric_key)
-    : null;
-  const selection = activeTarget
-    ? withTypeDimension(activeTarget.selection, declared)
-    : null;
+  const selection = useTypedEvidenceSelection(activeTarget?.selection ?? null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<MetricEvidenceSort | null>(null);
-  const activeMetricKey = selection?.metric_key ?? null;
+  const activeMetricKey = activeTarget?.selection.metric_key ?? null;
   const [scopedTo, setScopedTo] = useState(activeMetricKey);
   if (scopedTo !== activeMetricKey) {
     setScopedTo(activeMetricKey);
     setSearch("");
     setSort(null);
   }
-  const typed = search.trim();
-  const debounced = useDebouncedValue(typed, SEARCH_DEBOUNCE_MS);
-  const needle = typed === "" ? "" : debounced;
+  const needle = useSearchNeedle(search);
   const view = useMemo(
     () => ({
       ...(sort ? { sort } : {}),
@@ -131,17 +122,9 @@ export function MetricEvidenceDialog({
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    placeholderData: (previous, previousQuery) =>
-      sameEvidenceSubject(previousQuery?.queryKey, queryKey)
-        ? previous
-        : undefined,
-    enabled:
-      sessionScope != null &&
-      selection != null &&
-      !declaredDimensions.isPending,
-    retry: (failureCount, error) =>
-      failureCount < 1 &&
-      (!(error instanceof AnalyticsApiError) || error.status >= 500),
+    placeholderData: keepRowsOnReorder(queryKey),
+    enabled: sessionScope != null && selection != null,
+    retry: retryServerFailureOnce,
   });
   const pages = query.data?.pages;
   const rows = useMemo(
@@ -222,17 +205,14 @@ export function MetricEvidenceDialog({
   }
 
   async function exportRows(format: "csv" | "xlsx") {
-    const exported = activeTarget
-      ? withTypeDimension(activeTarget.selection, declared)
-      : null;
-    if (!exported) return;
+    if (!selection) return;
     exportController.current?.abort();
     const controller = new AbortController();
     exportController.current = controller;
     setExporting(true);
     setExportFailure(null);
     try {
-      await downloadMetricDrilldown(exported, format, view, controller.signal);
+      await downloadMetricDrilldown(selection, format, view, controller.signal);
     } catch (error) {
       if (!controller.signal.aborted) {
         setExportFailure(

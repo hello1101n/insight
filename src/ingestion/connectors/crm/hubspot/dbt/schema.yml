@@ -310,4 +310,3 @@ models:
       - name: insight_source_type
         tests:
           - accepted_values: { values: ['hubspot'] }
-

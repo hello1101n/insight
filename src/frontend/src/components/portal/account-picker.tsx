@@ -39,11 +39,12 @@ export function AccountPicker({
         .filter((item) => !excluded.has(accountKey(item)))
     : [];
   const loading = search.isFetching && !search.isFetchingNextPage;
-  const behind = query !== debounced || search.isPlaceholderData;
+  const answersPreviousTerm = query !== debounced || search.isPlaceholderData;
   const exhausted = !search.hasNextPage;
+  const unreadPage = asked && search.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
-    hasNextPage: Boolean(asked && search.hasNextPage),
+    hasNextPage: unreadPage,
     isFetchingNextPage: search.isFetchingNextPage,
     fetchNextPage: () => void search.fetchNextPage(),
     root: scroller,
@@ -72,18 +73,21 @@ export function AccountPicker({
       search.data &&
       items.length === 0 &&
       !loading &&
-      !behind &&
+      !answersPreviousTerm &&
       exhausted ? (
         <p className="text-sm text-muted-foreground">
           {t("identities.accounts.no_matches")}
         </p>
       ) : null}
       {/* WORKAROUND: an IntersectionObserver only reports targets inside its root, so the marker stays inside the scroller. */}
-      {items.length > 0 || (asked && search.hasNextPage) ? (
+      {items.length > 0 || unreadPage ? (
         <div ref={scroller} className="min-h-0 max-h-64 overflow-y-auto">
           <ul
-            aria-busy={behind}
-            className={cn("flex flex-col gap-1", behind && "opacity-60")}
+            aria-busy={answersPreviousTerm}
+            className={cn(
+              "flex flex-col gap-1",
+              answersPreviousTerm && "opacity-60"
+            )}
           >
             {items.map((item) => (
               <li key={accountKey(item)}>
@@ -91,7 +95,7 @@ export function AccountPicker({
               </li>
             ))}
           </ul>
-          {asked && search.hasNextPage ? (
+          {unreadPage ? (
             <p
               ref={loadMore}
               aria-live="polite"

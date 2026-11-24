@@ -5,7 +5,7 @@ import type { MetricResult } from "@/api/metric-results-client";
 import type { MetricGroup } from "@/lib/insight/groups";
 import {
   partState,
-  reachableMetricKeys,
+  everObservedMetricKeys,
   unreachableParts,
 } from "@/lib/insight/coverage";
 import { normalizeMetricResults } from "@/lib/metrics/collection";
@@ -58,22 +58,22 @@ function group(id: string, keys: string[]): MetricGroup {
   } as unknown as MetricGroup;
 }
 
-describe("reachableMetricKeys", () => {
+describe("everObservedMetricKeys", () => {
   it("counts a metric that has observed something", () => {
-    expect(reachableMetricKeys([def("git.commits")])).toEqual(
+    expect(everObservedMetricKeys([def("git.commits")])).toEqual(
       new Set(["git.commits"]),
     );
   });
 
   it("drops a metric that has never observed anything", () => {
     expect(
-      reachableMetricKeys([def("ai.accepted", { last_observed_date: null })]),
+      everObservedMetricKeys([def("ai.accepted", { last_observed_date: null })]),
     ).toEqual(new Set());
   });
 
   it("drops a disabled or schema-broken metric", () => {
     expect(
-      reachableMetricKeys([
+      everObservedMetricKeys([
         def("wiki.edits", { is_enabled: false }),
         def("task.closed", {
           schema_status: "error",
@@ -85,7 +85,7 @@ describe("reachableMetricKeys", () => {
 
   it("keeps a custom metric that has never stamped a freshness date", () => {
     expect(
-      reachableMetricKeys([
+      everObservedMetricKeys([
         def("custom.thing", { origin: "custom", last_observed_date: null }),
       ]),
     ).toEqual(new Set(["custom.thing"]));
@@ -93,7 +93,7 @@ describe("reachableMetricKeys", () => {
 
   it("still drops a custom metric that is disabled or schema-broken", () => {
     expect(
-      reachableMetricKeys([
+      everObservedMetricKeys([
         def("custom.off", { origin: "custom", is_enabled: false }),
         def("custom.broken", {
           origin: "custom",
@@ -106,7 +106,7 @@ describe("reachableMetricKeys", () => {
 
   it("keeps an unchecked schema — unchecked is not broken", () => {
     expect(
-      reachableMetricKeys([def("ai.accepted", { schema_status: "unchecked" })]),
+      everObservedMetricKeys([def("ai.accepted", { schema_status: "unchecked" })]),
     ).toEqual(new Set(["ai.accepted"]));
   });
 });
@@ -117,7 +117,7 @@ describe("partState", () => {
   it("reads when any metric of the part has a value", () => {
     const byKey = normalizeMetricResults([metric("collab.messages", [[ME, 12]])]);
     expect(
-      partState(PART, byKey, ME, reachableMetricKeys([def("collab.messages")])),
+      partState(PART, byKey, ME, everObservedMetricKeys([def("collab.messages")])),
     ).toBe("reads");
   });
 
@@ -126,7 +126,7 @@ describe("partState", () => {
       metric("collab.messages", [[ME, null]]),
     ]);
     expect(
-      partState(PART, byKey, ME, reachableMetricKeys([def("collab.messages")])),
+      partState(PART, byKey, ME, everObservedMetricKeys([def("collab.messages")])),
     ).toBe("nothing_recorded");
   });
 
@@ -134,7 +134,7 @@ describe("partState", () => {
     const byKey = normalizeMetricResults([
       metric("collab.messages", [[ME, null]]),
     ]);
-    const reachable = reachableMetricKeys([
+    const reachable = everObservedMetricKeys([
       def("collab.messages", { last_observed_date: null }),
       def("collab.meetings", { last_observed_date: null }),
     ]);
@@ -149,13 +149,13 @@ describe("partState", () => {
       ]),
     ]);
     expect(
-      partState(PART, byKey, ME, reachableMetricKeys([def("collab.messages")])),
+      partState(PART, byKey, ME, everObservedMetricKeys([def("collab.messages")])),
     ).toBe("nothing_recorded");
   });
 
   it("still reads when only one of several metrics is wired", () => {
     const byKey = normalizeMetricResults([metric("collab.meetings", [[ME, 3]])]);
-    const reachable = reachableMetricKeys([
+    const reachable = everObservedMetricKeys([
       def("collab.meetings"),
       def("collab.messages", { last_observed_date: null }),
     ]);
@@ -170,14 +170,14 @@ describe("unreachableParts", () => {
   ];
 
   it("names a part no metric of which has ever observed anything", () => {
-    const reachable = reachableMetricKeys([def("git.commits")]);
+    const reachable = everObservedMetricKeys([def("git.commits")]);
     expect(unreachableParts(GROUPS, reachable)).toEqual([
       { id: "ai_adoption", title: "ai_adoption title" },
     ]);
   });
 
   it("does not name a part where one metric of several reaches us", () => {
-    const reachable = reachableMetricKeys([def("git.prs"), def("ai.accepted")]);
+    const reachable = everObservedMetricKeys([def("git.prs"), def("ai.accepted")]);
     expect(unreachableParts(GROUPS, reachable)).toEqual([]);
   });
 

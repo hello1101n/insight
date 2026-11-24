@@ -4,10 +4,10 @@ import { expect, userEvent, within } from "storybook/test";
 
 import { authStore } from "@/auth/auth-store";
 import { PersonDialog } from "@/components/portal/person-dialog";
+import { ADMIN_ROLE_ID } from "@/queries/identity-me";
 import { makeSession } from "@/test/session";
 
 const PERSON = "019e27bc-dec0-7626-81a9-c5524662a6a9";
-const ADMIN_ROLE_ID = "a4d11000-0000-4000-8000-000000000001";
 
 function assignment() {
   return {

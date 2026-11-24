@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
-  latestPickableDay,
+  laterOfLocalAndUtcDay,
   MAX_DATE_RANGE_DAYS,
   resolveDateRange,
   toISODate,
@@ -181,12 +181,12 @@ export function PeriodSelectorBar({
               weekStartsOn={1}
               captionLayout="dropdown"
               fixedWeeks
-              endMonth={latestPickableDay()}
+              endMonth={laterOfLocalAndUtcDay()}
               resetOnSelect
               showOutsideDays={false}
               selected={tempRange}
               onSelect={(r) => setTempRange(r)}
-              disabled={{ after: latestPickableDay() }}
+              disabled={{ after: laterOfLocalAndUtcDay() }}
               defaultMonth={tempRange?.from}
               numberOfMonths={
                 typeof window !== "undefined" && window.innerWidth < 640 ? 1 : 2

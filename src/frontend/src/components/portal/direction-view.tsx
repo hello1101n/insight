@@ -4,7 +4,11 @@ import { useTranslation } from "react-i18next";
 import { DomainLensView, Pending } from "@/components/portal/domain-lens-view";
 import { resolveText } from "@/i18n/localized-text";
 import { TenantLensView } from "@/components/portal/tenant-lens-view";
-import { directionMetricKeys, lensEntry } from "@/lib/portal/lens-configs";
+import {
+  directionMetricKeys,
+  isTenantLens,
+  lensEntry,
+} from "@/lib/portal/lens-configs";
 import { DIRECTIONS, lensSlug } from "@/lib/portal/nav-model";
 
 export function DirectionView({ dir, lens }: { dir: string; lens: string }) {
@@ -29,6 +33,6 @@ export function DirectionView({ dir, lens }: { dir: string; lens: string }) {
 
   const testId = `page-directions-${dir}-${lensSlug(lens)}`;
 
-  if ("entity" in entry) return <TenantLensView config={entry} data-testid={testId} />;
-  return <DomainLensView config={entry} gridKeys={gridKeys} data-testid={testId} />;
+  if (isTenantLens(entry)) return <TenantLensView config={entry} data-testid={testId} />;
+  return <DomainLensView config={entry} fetchOnlyKeys={gridKeys} data-testid={testId} />;
 }

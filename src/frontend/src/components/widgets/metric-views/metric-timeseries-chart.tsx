@@ -43,6 +43,11 @@ function dateLabel(value: string, pattern: string): string {
   return format(new Date(year, month - 1, day), pattern);
 }
 
+function landedOnSegment(event: { target: EventTarget | null }): boolean {
+  const target = event.target as Element | null;
+  return target?.closest?.(".recharts-bar-rectangle") != null;
+}
+
 function TimeseriesXAxis({
   data,
   numeric = false,
@@ -164,8 +169,7 @@ export function MetricTimeseriesChart({
     state: MouseHandlerDataParam,
     event: { target: EventTarget | null }
   ) => {
-    const target = event.target as Element | null;
-    if (target?.closest?.(".recharts-bar-rectangle")) return;
+    if (landedOnSegment(event)) return;
 
     const bucketStart = bucketAt(state.activeTooltipIndex);
     if (bucketStart) openBucketFrom(bucketStart);

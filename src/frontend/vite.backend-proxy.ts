@@ -11,7 +11,7 @@ const PROXIED_PREFIXES = ["/api", "/auth"];
 // WORKAROUND: a stand's OIDC redirect_uri is its own origin, and a browser on plain http
 // cannot store its `Secure` `__Host-sid` cookie, so the dev server holds the session.
 type DevSession = {
-  readonly enabled: boolean;
+  readonly seededAtStart: boolean;
   cookieHeader(incoming: string | number | string[] | undefined): string;
   absorbSetCookie(setCookie: string[] | undefined): string[] | undefined;
 };
@@ -28,7 +28,7 @@ function createDevSession(seed: string): DevSession {
   let token = seed;
 
   return {
-    enabled: seed !== "",
+    seededAtStart: seed !== "",
 
     cookieHeader(incoming) {
       const pairs = splitCookie(incoming).filter(
@@ -71,7 +71,7 @@ function proxyEntry(
     changeOrigin: true,
     secure,
     configure(proxy) {
-      if (!session.enabled) return;
+      if (!session.seededAtStart) return;
 
       proxy.on("proxyReq", (proxyReq: ClientRequest) => {
         const cookie = session.cookieHeader(proxyReq.getHeader("cookie"));
@@ -133,7 +133,7 @@ export function backendProxy(env: Record<string, string>): Plugin {
     }),
 
     configureServer(server) {
-      if (!session.enabled) return;
+      if (!session.seededAtStart) return;
 
       server.config.logger.warn(
         `[backend-proxy] attaching a ${SESSION_COOKIE} session to every ` +

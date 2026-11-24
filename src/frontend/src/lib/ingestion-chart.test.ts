@@ -9,6 +9,7 @@ import {
   connectorLabel,
   formatUtcBucket,
   formatUtcDay,
+  logDomain,
   logTicks,
   lookbackFrom,
   paddedDomain,
@@ -69,6 +70,11 @@ describe("the log axis leaves room for a single row", () => {
 
   it("still ticks when nothing was extracted", () => {
     expect(logTicks(0)).toEqual([1]);
+  });
+
+  it("spans from the floor to the peak, and to one when nothing was extracted", () => {
+    expect(logDomain(48_000)).toEqual([LOG_FLOOR, 48_000]);
+    expect(logDomain(0)).toEqual([LOG_FLOOR, 1]);
   });
 });
 

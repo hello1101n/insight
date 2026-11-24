@@ -5,6 +5,10 @@ import {
 } from "@/lib/metrics/collection";
 import { quantile } from "@/lib/insight/within-team-peer";
 
+export function isAdditive(r: NormalizedMetricResult | undefined): boolean {
+  return r?.computation === "sum";
+}
+
 export function medianAcross(
   r: NormalizedMetricResult | undefined,
   ids: readonly string[],
@@ -42,7 +46,7 @@ export function perPersonReading(
   const values = entityValues(r, ids).map((e) => e.value);
   if (!values.length) return null;
 
-  if (r.computation !== "sum") {
+  if (!isAdditive(r)) {
     const sorted = [...values].sort((a, b) => a - b);
     return { kind: "median", value: quantile(sorted, 0.5), people: values.length };
   }

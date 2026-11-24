@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 
 import { AnalyticsApiError } from "@/api/analytics-client";
+import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
 import type { EvidenceDialogState } from "@/components/metric-evidence-context";
 import { MetricEvidenceDialog } from "@/components/metric-evidence-dialog";
 
@@ -30,12 +31,14 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
-vi.mock("@/queries/metric-definitions", () => ({
-  useDeclaredMetricDimensions: () => ({
-    byMetricKey: mocks.declaredDimensions,
-    isPending: false,
-  }),
-}));
+vi.mock("@/queries/metric-definitions", async () => {
+  const { withTypeDimension } = await import("@/lib/metrics/provider-links");
+  return {
+    useTypedEvidenceSelection: (base: MetricEvidenceSelection | null) =>
+      base &&
+      withTypeDimension(base, mocks.declaredDimensions.get(base.metric_key)),
+  };
+});
 
 vi.mock("@/hooks/use-debounced-value", () => ({
   useDebouncedValue: <T,>(value: T) => (mocks.held as T | null) ?? value,

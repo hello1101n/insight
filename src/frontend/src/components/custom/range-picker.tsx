@@ -2,7 +2,7 @@ import { addDays } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
 
-import { latestPickableDay, toISODate } from "@/api/period-to-date-range";
+import { laterOfLocalAndUtcDay, toISODate } from "@/api/period-to-date-range";
 import {
   Button,
   Calendar,
@@ -33,7 +33,7 @@ export interface RangePickerProps {
 
 export function RangePicker({ offered, selected, onSelect }: RangePickerProps) {
   const [open, setOpen] = useState(false);
-  const latestEnd = addDays(latestPickableDay(), 1);
+  const latestEnd = addDays(laterOfLocalAndUtcDay(), 1);
   const custom = toInterval(selected);
 
   const [picked, setPicked] = useState<DayPickerRange | undefined>(undefined);

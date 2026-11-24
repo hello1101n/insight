@@ -46,16 +46,20 @@ import { cn } from "@/lib/utils";
 
 const EMPTY_COLLECTION: MetricCollectionConfig = { metrics: [] };
 const COST_KEY = "ai.cost";
-const ACTUAL_COST_KEY = "ai.daily_approximate_extra_usage_cost";
+const DAILY_ACTUAL_COST_KEY = "ai.daily_approximate_extra_usage_cost";
 const LINES_KEY = "ai.accepted_lines";
 const DAYS_KEY = "ai.active_days";
 const GRID_KEYS = [
   COST_KEY,
-  ACTUAL_COST_KEY,
+  DAILY_ACTUAL_COST_KEY,
   DAYS_KEY,
   LINES_KEY,
   "ai.dev_conversations",
 ];
+
+const BILLED_SEAT_TO_USAGE_TOOL: ReadonlyMap<string, string> = new Map([
+  ["claude", "claude_code"],
+]);
 
 const TOOL_LABEL: Record<string, string> = {
   claude_code: "Claude Code",
@@ -151,7 +155,7 @@ export function AiCostView({ item }: { item: string | null }) {
   );
   const toolCollection = useMemo<MetricCollectionConfig>(
     () => ({
-      metrics: [COST_KEY, ACTUAL_COST_KEY, LINES_KEY].map((key) => ({
+      metrics: [COST_KEY, DAILY_ACTUAL_COST_KEY, LINES_KEY].map((key) => ({
         key,
         views: [{ view: "breakdown" as const, dimensions: ["tool"] }],
       })),
@@ -173,14 +177,12 @@ export function AiCostView({ item }: { item: string | null }) {
 
   const teamName = orgScope.label;
 
-  const sum = (key: string) => {
+  const total = (key: string): number | null => {
     const r = grid.byKey.get(key);
-    if (!r) return 0;
-    return memberIds.reduce((acc, id) => acc + (reading(r, id) ?? 0), 0);
-  };
-  const observed = (key: string) => {
-    const r = grid.byKey.get(key);
-    return !!r && memberIds.some((id) => reading(r, id) != null);
+    const readings = memberIds
+      .map((id) => reading(r, id))
+      .filter((v): v is number => v != null);
+    return readings.length ? readings.reduce((acc, v) => acc + v, 0) : null;
   };
   const activeUsers = useMemo(() => {
     const r = grid.byKey.get(DAYS_KEY);
@@ -191,8 +193,8 @@ export function AiCostView({ item }: { item: string | null }) {
   const toolRows = useMemo<ToolRow[]>(() => {
     const cost = aggregateByTool(toolData.byKey.get(COST_KEY), memberIds);
     const actual = new Map(
-      [...aggregateByTool(toolData.byKey.get(ACTUAL_COST_KEY), memberIds)].map(
-        ([tool, sums]) => [tool === "claude" ? "claude_code" : tool, sums] as const,
+      [...aggregateByTool(toolData.byKey.get(DAILY_ACTUAL_COST_KEY), memberIds)].map(
+        ([tool, sums]) => [BILLED_SEAT_TO_USAGE_TOOL.get(tool) ?? tool, sums] as const,
       ),
     );
     const lines = aggregateByTool(toolData.byKey.get(LINES_KEY), memberIds);
@@ -241,7 +243,7 @@ export function AiCostView({ item }: { item: string | null }) {
   const unitRows = useMemo(() => {
     if (!slice || PLANNED_KEYS.has(slice)) return [];
     const costR = grid.byKey.get(COST_KEY);
-    const actualR = grid.byKey.get(ACTUAL_COST_KEY);
+    const actualR = grid.byKey.get(DAILY_ACTUAL_COST_KEY);
     const linesR = grid.byKey.get(LINES_KEY);
     const daysR = grid.byKey.get(DAYS_KEY);
     const val = (r: NormalizedMetricResult | undefined, id: string) =>
@@ -282,15 +284,7 @@ export function AiCostView({ item }: { item: string | null }) {
   const funnel = useMemo(() => {
     const daysR = grid.byKey.get(DAYS_KEY);
     const days = memberIds.map((id) => (daysR ? (forEntity(daysR, id).value ?? 0) : 0));
-    const users = days.filter((d) => d > 0).sort((a, b) => a - b);
-    const med = users.length ? Math.round(quantile(users, 0.5)) : 0;
-    const p75 = users.length ? Math.round(quantile(users, 0.75)) : 0;
-    return [
-      { label: "In org", n: memberIds.length },
-      { label: "Used AI (≥1 day)", n: users.length },
-      { label: `Active (≥${med} days · median)`, n: days.filter((d) => d > 0 && d >= med).length },
-      { label: `Heavy (≥${p75} days · top quartile)`, n: days.filter((d) => d > 0 && d >= p75).length },
-    ];
+    return funnelStages(days, memberIds.length);
   }, [grid.byKey, memberIds]);
 
   if (item && PANE_ITEM_COMING_SOON[item])
@@ -318,24 +312,21 @@ export function AiCostView({ item }: { item: string | null }) {
   if (gate) return gate;
 
   const costR = grid.byKey.get(COST_KEY);
-  const actualR = grid.byKey.get(ACTUAL_COST_KEY);
+  const actualR = grid.byKey.get(DAILY_ACTUAL_COST_KEY);
   const linesR = grid.byKey.get(LINES_KEY);
-  const totalCost = sum(COST_KEY);
-  const totalActual = sum(ACTUAL_COST_KEY);
-  const totalLines = sum(LINES_KEY);
+  const totalCost = total(COST_KEY);
+  const totalActual = total(DAILY_ACTUAL_COST_KEY);
+  const totalLines = total(LINES_KEY) ?? 0;
   const adoptionPct = members.length
     ? Math.round((activeUsers / members.length) * 100)
     : 0;
-  const avgCost = activeUsers ? totalCost / activeUsers : 0;
-  const avgActual = activeUsers ? totalActual / activeUsers : 0;
+  const perActiveUser = (value: number) => (activeUsers ? value / activeUsers : 0);
   const actualMoney = (value: number) =>
     formatMetricValue(
       value,
       actualR?.format ?? "currency",
       actualR?.unit ?? "USD",
     );
-  const hasActual = observed(ACTUAL_COST_KEY);
-  const hasCost = observed(COST_KEY);
   const costMoney = (value: number) =>
     formatMetricValue(value, costR?.format ?? "currency", costR?.unit ?? "USD");
 
@@ -362,8 +353,8 @@ export function AiCostView({ item }: { item: string | null }) {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-3">
         <Tile
           label={costR?.label ?? "AI potential cost"}
-          value={hasCost ? costMoney(totalCost) : "—"}
-          note={hasActual ? `actual cost ${actualMoney(totalActual)}` : null}
+          value={totalCost != null ? costMoney(totalCost) : "—"}
+          note={totalActual != null ? `actual cost ${actualMoney(totalActual)}` : null}
           sub="Claude Code only"
         />
         <Tile label="Active AI users" value={String(activeUsers)} sub={`${adoptionPct}% of ${members.length}`} />
@@ -374,10 +365,10 @@ export function AiCostView({ item }: { item: string | null }) {
         />
         <Tile
           label="Avg potential cost / active user"
-          value={hasCost ? costMoney(avgCost) : "—"}
+          value={totalCost != null ? costMoney(perActiveUser(totalCost)) : "—"}
           note={
-            hasActual
-              ? `avg actual ${actualMoney(avgActual)} / active user`
+            totalActual != null
+              ? `avg actual ${actualMoney(perActiveUser(totalActual))} / active user`
               : null
           }
           sub="Claude Code"
@@ -468,7 +459,26 @@ export function AiCostView({ item }: { item: string | null }) {
   );
 }
 
-function FunnelSection({ funnel }: { funnel: { label: string; n: number }[] }) {
+interface FunnelStage {
+  label: string;
+  n: number;
+}
+
+function funnelStages(days: readonly number[], orgSize: number): FunnelStage[] {
+  const users = days.filter((d) => d > 0).sort((a, b) => a - b);
+  const roundedCut = (q: number) => (users.length ? Math.round(quantile(users, q)) : 0);
+  const atLeast = (minDays: number) => users.filter((d) => d >= minDays).length;
+  const median = roundedCut(0.5);
+  const topQuartile = roundedCut(0.75);
+  return [
+    { label: "In org", n: orgSize },
+    { label: "Used AI (≥1 day)", n: users.length },
+    { label: `Active (≥${median} days · median)`, n: atLeast(median) },
+    { label: `Heavy (≥${topQuartile} days · top quartile)`, n: atLeast(topQuartile) },
+  ];
+}
+
+function FunnelSection({ funnel }: { funnel: FunnelStage[] }) {
   const top = funnel[0]?.n || 1;
   return (
     <section className="flex flex-col gap-3">

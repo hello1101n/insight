@@ -5,6 +5,7 @@ import {
   isTime,
   momentParts,
   momentText,
+  momentToWrite,
   pickedDay,
   pickerDate,
 } from "@/lib/alerts/moment";
@@ -44,9 +45,8 @@ export function MomentInput({
 
   function typeTime(nextTime: string) {
     setTime(nextTime);
-    if (day === "" || !isTime(nextTime)) return;
-
-    onChange(momentText(day, nextTime));
+    const moment = momentToWrite(day, nextTime);
+    if (moment !== null) onChange(moment);
   }
 
   function leaveTime() {

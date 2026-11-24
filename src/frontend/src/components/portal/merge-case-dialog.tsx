@@ -63,7 +63,7 @@ export function MergeCaseDialog({
         );
       } catch (error) {
         setRunning(false);
-        report(t, setFailure, apiErrorReason(error, t("identities.dialogs.failed")), landed);
+        reportOutlivingDialog(t, setFailure, apiErrorReason(error, t("identities.dialogs.failed")), landed);
         return;
       }
     }
@@ -72,7 +72,7 @@ export function MergeCaseDialog({
     const result = combineOutcomes(landed);
     if (!fullyDecided(result)) {
       const refused = refusedCount(result);
-      report(
+      reportOutlivingDialog(
         t,
         setFailure,
         refused > 0
@@ -91,6 +91,8 @@ export function MergeCaseDialog({
   };
 
   const nothingChosen = taking.length === 0;
+  const canConfirmMerge =
+    !nothingChosen && moving.ready && moving.accounts.length > 0;
   return (
     <ConfirmDialog
       open
@@ -102,9 +104,7 @@ export function MergeCaseDialog({
       confirmLabel={t("identities.actions.merge_confirm")}
       destructive
       isPending={running}
-      confirmDisabled={
-        nothingChosen || !moving.ready || moving.accounts.length === 0
-      }
+      confirmDisabled={!canConfirmMerge}
       error={failure}
       onConfirm={() => void run()}
     >
@@ -193,7 +193,7 @@ export function MergeCaseDialog({
   );
 }
 
-function report(
+function reportOutlivingDialog(
   t: (key: string, vars?: Record<string, unknown>) => string,
   setFailure: (message: string) => void,
   reason: string,

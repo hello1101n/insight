@@ -32,7 +32,6 @@ export interface MetricDefinition {
   first_observed_date: string | null;
   last_observed_date: string | null;
   settled_through?: string | null;
-  revision_window_days?: number | null;
   drilldown?: MetricDrilldownCapability;
 }
 

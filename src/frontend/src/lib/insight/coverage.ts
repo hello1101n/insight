@@ -8,14 +8,18 @@ import {
 
 export type PartState = "reads" | "nothing_recorded" | "no_data_reaches_us";
 
-export function reachableMetricKeys(
+function hasEverObserved(d: MetricDefinition): boolean {
+  return d.origin === "custom" || d.last_observed_date != null;
+}
+
+export function everObservedMetricKeys(
   definitions: readonly MetricDefinition[],
 ): Set<string> {
   const out = new Set<string>();
   for (const d of definitions) {
     if (!d.is_enabled) continue;
     if (d.schema_status === "error") continue;
-    if (d.origin !== "custom" && d.last_observed_date == null) continue;
+    if (!hasEverObserved(d)) continue;
     out.add(d.metric_key);
   }
   return out;

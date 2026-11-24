@@ -2,7 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Folder as FolderIcon, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { DashboardAccess, FolderSummary } from "@/api/custom-client";
+import type {
+  DashboardAccess,
+  DashboardRead,
+  Folder,
+  FolderSummary,
+} from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
 import {
   DropdownMenuCheckboxItem,
@@ -22,6 +27,23 @@ import {
   useAddToFolder,
   useRemoveFromFolder,
 } from "@/queries/custom";
+
+const ASSUME_FOLDER_HAS_PEOPLE = true;
+
+function withFolderToggled(
+  read: DashboardRead | undefined,
+  folder: Folder,
+  holds: boolean
+): DashboardRead | undefined {
+  if (!read) return read;
+
+  return {
+    ...read,
+    folders: holds
+      ? read.folders.filter((one) => one.id !== folder.id)
+      : [...read.folders, { id: folder.id, name: folder.name }],
+  };
+}
 
 export function FolderSubmenu({
   id,
@@ -61,7 +83,7 @@ export function FolderSubmenu({
     return queryClient
       .fetchQuery(grantsQuery({ kind: "folders", id: folder.id }))
       .then((grants) => grants.length > 0)
-      .catch(() => true);
+      .catch(() => ASSUME_FOLDER_HAS_PEOPLE);
   }
 
   function settle(folder: string, holds: boolean | null) {
@@ -92,14 +114,7 @@ export function FolderSubmenu({
         await add.mutateAsync(entry);
       }
       queryClient.setQueryData(dashboardReadQuery(id).queryKey, (now) =>
-        now
-          ? {
-              ...now,
-              folders: holds
-                ? now.folders.filter((one) => one.id !== folder.id)
-                : [...now.folders, { id: folder.id, name: folder.name }],
-            }
-          : now
+        withFolderToggled(now, folder, holds)
       );
     } catch (error) {
       toast.add({
