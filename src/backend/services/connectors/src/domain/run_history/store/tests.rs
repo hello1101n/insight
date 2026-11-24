@@ -152,3 +152,128 @@ async fn retry_reopens_a_finished_run_and_preserves_previous_stage_attempts() ->
     assert_eq!(outcome[0].stages[1].status, "succeeded");
     Ok(())
 }
+
+#[test]
+fn closed_capacity_wait_survives_a_missed_watch_event_and_does_not_merge_with_pod_placement() {
+    let at = |seconds| DateTime::UNIX_EPOCH + chrono::Duration::seconds(seconds);
+    let mut stage = StageSnapshot::new("bronze", 1, at(1));
+    stage.capacity_wait = Some(StageWait {
+        kind: WaitKind::Placement,
+        started_at: at(2),
+        ended_at: Some(at(3)),
+        holder: None,
+    });
+    stage.wait = Some(StageWait {
+        kind: WaitKind::Placement,
+        started_at: at(4),
+        ended_at: None,
+        holder: None,
+    });
+
+    let mut waits = Vec::new();
+    merge_waits(&mut waits, &stage, at(5));
+    merge_waits(&mut waits, &stage, at(6));
+
+    assert_eq!(waits.len(), 2);
+    assert_eq!(waits[0].started_at, at(2));
+    assert_eq!(waits[0].ended_at, Some(at(3)));
+    assert_eq!(waits[1].started_at, at(4));
+    assert!(waits[1].ended_at.is_none());
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn bronze_retry_keeps_a_distinct_wait_when_both_executions_use_attempt_one()
+-> anyhow::Result<()> {
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let epoch = DateTime::UNIX_EPOCH;
+    let first = epoch + chrono::Duration::seconds(1);
+    let stopped = epoch + chrono::Duration::seconds(2);
+    let retry = epoch + chrono::Duration::seconds(3);
+    let queued = epoch + chrono::Duration::seconds(4);
+
+    for legacy in [false, true] {
+        let stand = uuid::Uuid::new_v4().to_string();
+        let mut bronze = StageSnapshot::new("bronze", 1, epoch);
+        bronze.bronze_execution = Some(first);
+        bronze.finished_at = Some(stopped);
+        bronze.status = "failed";
+        bronze.reason = Some("stage_failed".into());
+        let mut run = RunSnapshot {
+            uid: uuid::Uuid::new_v4().to_string(),
+            name: "example".into(),
+            connector: "jira".into(),
+            tenant: "tenant".into(),
+            source: "source".into(),
+            created_at: epoch,
+            execution: first,
+            status: Some("failed"),
+            finished_at: Some(stopped),
+            stages: vec![bronze],
+        };
+        let mut pending = StageSnapshot::new("bronze", 1, epoch);
+        pending.status = "queued";
+        let initial = RunSnapshot {
+            uid: run.uid.clone(),
+            name: run.name.clone(),
+            connector: run.connector.clone(),
+            tenant: run.tenant.clone(),
+            source: run.source.clone(),
+            created_at: epoch,
+            execution: epoch,
+            status: None,
+            finished_at: None,
+            stages: vec![pending],
+        };
+        save(&db, &stand, &initial, epoch).await?;
+        save(&db, &stand, &run, stopped).await?;
+        if legacy {
+            db.execute_raw(sql(
+                "UPDATE ingestion_stage_attempts SET execution_key='1' WHERE sync_id=?",
+                vec![run.uid.clone().into()],
+            ))
+            .await?;
+            save(&db, &stand, &run, stopped).await?;
+        }
+
+        save(&db, &stand, &initial, retry).await?;
+        let mut bronze = StageSnapshot::new("bronze", 1, epoch);
+        bronze.bronze_execution = Some(retry);
+        run.execution = retry;
+        run.status = None;
+        run.finished_at = None;
+        run.stages = vec![bronze];
+        save(&db, &stand, &run, retry).await?;
+
+        let wait = StageWait {
+            kind: WaitKind::Placement,
+            started_at: queued,
+            ended_at: None,
+            holder: None,
+        };
+        run.stages[0].status = "queued";
+        run.stages[0].wait = Some(wait.clone());
+        run.stages[0].capacity_wait = Some(wait);
+        save(&db, &stand, &run, queued).await?;
+        save(&db, &stand, &run, queued).await?;
+
+        let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("source")).await?;
+        assert_eq!(result[0].stages.len(), 2, "legacy row: {legacy}");
+        let old = &result[0].stages[0];
+        let new = &result[0].stages[1];
+        assert_eq!((old.attempt, old.status.as_str()), (1, "failed"));
+        assert!(old.waits.is_empty());
+        assert_eq!((new.attempt, new.queued_at), (2, retry));
+        assert_eq!(new.waits.len(), 1);
+        assert_eq!(
+            (
+                new.waits[0].kind,
+                new.waits[0].started_at,
+                new.waits[0].ended_at
+            ),
+            (WaitKind::Placement, queued, None)
+        );
+    }
+    Ok(())
+}

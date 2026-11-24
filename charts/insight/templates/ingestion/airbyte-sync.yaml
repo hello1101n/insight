@@ -1,3 +1,15 @@
+{{- define "insight.airbyteCapacity.env" -}}
+- name: AIRBYTE_CAPACITY_CHECK_ENABLED
+  value: "true"
+- name: AIRBYTE_CAPACITY_LEASE
+  value: {{ printf "%s-airbyte-capacity" (include "insight.fullname" .) | quote }}
+- name: AIRBYTE_CAPACITY_SETTINGS
+  value: {{ omit .Values.ingestion.airbyteSync.capacityCheck "enabled" | toJson | quote }}
+- name: POD_UID
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.uid
+{{- end -}}
 {{- if .Values.ingestion.templates.enabled }}
 {{- /*
 Argo parameter references ({{inputs.parameters.foo}}, {{steps.x.outputs.result}})
@@ -138,6 +150,9 @@ spec:
             template: poll-job
             arguments:
               parameters:
+                {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
+                {{- end }}
                 - name: connection_id
                   value: {{ `"{{inputs.parameters.connection_id}}"` }}
                 - name: job_id
@@ -148,11 +163,15 @@ spec:
                   value: {{ `"{{inputs.parameters.airbyte_url}}"` }}
 
     - name: trigger-sync
+      {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-capacity
+      {{- else }}
       serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
+      {{- end }}
       retryStrategy:
         limit: 3
         retryPolicy: Always
-        expression: "lastRetry.exitCode != '42' && lastRetry.exitCode != '43' && lastRetry.exitCode != '44'"
+        expression: "lastRetry.exitCode != '42' && lastRetry.exitCode != '43' && lastRetry.exitCode != '44'{{ if .Values.ingestion.airbyteSync.capacityCheck.enabled }} && lastRetry.exitCode != '45'{{ end }}"
         backoff:
           duration: "30s"
           factor: 2
@@ -175,6 +194,9 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_trigger.py]
         env:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.airbyteCapacity.env" . | nindent 10 }}
+          {{- end }}
           - name: SYNC_RESOURCES
             value: {{ `"{{inputs.parameters.sync_resources}}"` }}
           # OAuth client_credentials against /api/v1/applications/token. The
@@ -220,7 +242,11 @@ spec:
                 key: INSIGHT_LOG_LEVEL
 
     - name: poll-job
+      {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-capacity
+      {{- else }}
       serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
+      {{- end }}
       retryStrategy:
         limit: 3
         retryPolicy: OnError
@@ -230,6 +256,9 @@ spec:
           cap: "5m"
       inputs:
         parameters:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.syncResources.input" . | nindent 10 }}
+          {{- end }}
           - name: connection_id
           - name: job_id
           - name: trigger_launch_evidence
@@ -252,6 +281,11 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_poll.py]
         env:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.airbyteCapacity.env" . | nindent 10 }}
+          - name: SYNC_RESOURCES
+            value: {{ `"{{inputs.parameters.sync_resources}}"` }}
+          {{- end }}
           # Same K8s-API credential read as trigger-sync (see the comment
           # there): the auth Secret may live in Airbyte's own namespace.
           # Read per poll iteration, so a rotated credential is picked up

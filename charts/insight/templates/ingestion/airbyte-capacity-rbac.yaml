@@ -1,0 +1,75 @@
+{{- if and .Values.ingestion.templates.enabled .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+{{- $account := printf "%s-airbyte-capacity" (include "insight.fullname" .) }}
+{{- $clusterRole := printf "%s.%s" $account .Release.Namespace }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $account }}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: {{ $account }}
+spec: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $account }}
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [{{ $account }}]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $account }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $account }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $account }}-workflow
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "insight.fullname" . }}-airbyte-trigger
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterRole }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterRole }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterRole }}
+{{- end }}

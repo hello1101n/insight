@@ -67,7 +67,7 @@ def test_pipeline_serializes_each_writer_group_without_a_gate(charts: dict[str, 
 
 def test_only_bronze_and_checks_hold_their_slots(charts: dict[str, dict]) -> None:
     for release, counts in [
-        ("defaults", {"bronze": "2", "checks": "2", "syncs": "4"}),
+        ("defaults", {"bronze": "4", "checks": "2", "syncs": "4"}),
         ("overrides", {"bronze": "3", "checks": "4", "syncs": "6"}),
     ]:
         chart = charts[release]
@@ -109,7 +109,8 @@ def test_bronze_uses_three_pods_and_passes_the_confirmation_window(charts: dict[
 
 def test_airbyte_launch_role_grants_only_claim_and_executor_access(charts: dict[str, dict]) -> None:
     chart = charts["defaults"]
-    name = templates(chart, "airbyte-sync")["trigger-sync"]["serviceAccountName"]
+    account = templates(chart, "airbyte-sync")["poll-job"]["serviceAccountName"]
+    name = chart["RoleBinding", f"{account}-workflow"]["roleRef"]["name"]
     assert chart["Role", name]["rules"] == [
         {"apiGroups": ["argoproj.io"], "resources": ["workflows"], "verbs": ["get", "patch"]},
         {"apiGroups": ["argoproj.io"], "resources": ["workflowtaskresults"], "verbs": ["create", "patch"]},
@@ -117,6 +118,78 @@ def test_airbyte_launch_role_grants_only_claim_and_executor_access(charts: dict[
     binding = chart["RoleBinding", name]
     assert binding["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": name}
     assert binding["subjects"] == [{"kind": "ServiceAccount", "name": name, "namespace": "default"}]
+
+
+def test_capacity_access_and_settings_are_scoped_to_the_enabled_launch_steps(charts: dict[str, dict]) -> None:
+    chart = charts["defaults"]
+    airbyte = templates(chart, "airbyte-sync")
+    trigger = airbyte["trigger-sync"]
+    account = trigger["serviceAccountName"]
+    cluster_role = f"{account}.default"
+    subject = [{"kind": "ServiceAccount", "name": account, "namespace": "default"}]
+    assert chart["ClusterRole", cluster_role]["rules"] == [
+        {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]},
+        {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
+    ]
+    assert chart["ClusterRoleBinding", cluster_role]["subjects"] == subject
+    assert chart["ClusterRoleBinding", cluster_role]["roleRef"]["name"] == cluster_role
+    assert chart["Role", account]["rules"] == [
+        {
+            "apiGroups": ["coordination.k8s.io"],
+            "resources": ["leases"],
+            "resourceNames": [account],
+            "verbs": ["get", "patch"],
+        }
+    ]
+    assert chart["RoleBinding", account]["subjects"] == subject
+    assert chart["RoleBinding", account]["roleRef"]["name"] == account
+    assert chart["RoleBinding", f"{account}-workflow"]["subjects"] == subject
+    assert chart["RoleBinding", f"{account}-workflow"]["roleRef"]["name"] == "contract-airbyte-trigger"
+    assert airbyte["poll-job"]["serviceAccountName"] == account
+    assert airbyte["resolve-connection-by-name"].get("serviceAccountName") != account
+    assert subject[0] in chart["RoleBinding", "contract-airbyte-auth-reader"]["subjects"]
+    assert ("ServiceAccount", account) in chart
+    assert ("Lease", account) in chart
+    assert "lastRetry.exitCode != '45'" in trigger["retryStrategy"]["expression"]
+    env = {item["name"]: item for item in trigger["container"]["env"]}
+    assert env["AIRBYTE_CAPACITY_CHECK_ENABLED"]["value"] == "true"
+    for name in ("AIRBYTE_CAPACITY_SETTINGS", "AIRBYTE_CAPACITY_LEASE", "POD_UID"):
+        poll_env = {item["name"]: item for item in airbyte["poll-job"]["container"]["env"]}
+        assert poll_env[name] == env[name]
+    assert env["AIRBYTE_CAPACITY_LEASE"]["value"] == account
+    assert env["POD_UID"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.uid"
+    assert json.loads(env["AIRBYTE_CAPACITY_SETTINGS"]["value"]) == {
+        "nodeSelector": {},
+        "requests": {
+            "orchestrator": {"cpu": "1", "memory": "2Gi"},
+            "source": {"cpu": "1", "memory": "2Gi"},
+            "destination": {"cpu": "500m", "memory": "1Gi"},
+            "init": {"cpu": "1", "memory": "2Gi"},
+        },
+    }
+
+    disabled = render("--set", "ingestion.airbyteSync.capacityCheck.enabled=false")
+    assert all("airbyte-capacity" not in name for _, name in disabled)
+    assert subject[0] not in disabled["RoleBinding", "contract-airbyte-auth-reader"]["subjects"]
+    airbyte = templates(disabled, "airbyte-sync")
+    assert airbyte["trigger-sync"]["serviceAccountName"] == airbyte["poll-job"]["serviceAccountName"]
+    for step in ("trigger-sync", "poll-job"):
+        assert all(not item["name"].startswith("AIRBYTE_CAPACITY_") for item in airbyte[step]["container"]["env"])
+    assert all(item["name"] != "SYNC_RESOURCES" for item in airbyte["poll-job"]["container"]["env"])
+
+    override = render(
+        "--set-string",
+        "ingestion.airbyteSync.capacityCheck.nodeSelector.pool=jobs",
+        "--set-string",
+        "ingestion.airbyteSync.capacityCheck.requests.source.cpu=1500m",
+    )
+    separate_release = render("--set-string", "fullnameOverride=another")
+    assert ("Lease", "another-airbyte-capacity") in separate_release and ("Lease", account) not in separate_release
+
+    trigger_env = templates(override, "airbyte-sync")["trigger-sync"]["container"]["env"]
+    settings = json.loads(next(item["value"] for item in trigger_env if item["name"] == "AIRBYTE_CAPACITY_SETTINGS"))
+    assert settings["nodeSelector"] == {"pool": "jobs"}
+    assert settings["requests"]["source"] == {"cpu": "1500m", "memory": "2Gi"}
 
 
 def test_identity_tags_clickhouse_queries_and_reports_the_pod_uid(charts: dict[str, dict]) -> None:
@@ -278,10 +351,13 @@ def test_connector_resources_reach_each_main_container_and_the_reconcile_submiss
 
     bronze = templates(chart, "airbyte-sync")
     trigger_env = {item["name"]: item.get("value") for item in bronze["trigger-sync"]["container"]["env"]}
-    poll_env = {item["name"] for item in bronze["poll-job"]["container"]["env"]}
+    poll_env = {item["name"]: item.get("value") for item in bronze["poll-job"]["container"]["env"]}
     assert trigger_env["SYNC_RESOURCES"] == "{{inputs.parameters.sync_resources}}"
-    assert "SYNC_RESOURCES" not in poll_env
-    assert "AIRBYTE_RESOURCE_JOURNAL" not in set(trigger_env) | poll_env
+    assert poll_env["SYNC_RESOURCES"] == trigger_env["SYNC_RESOURCES"]
+    poll_step = bronze["sync"]["steps"][1][0]
+    arguments = {item["name"]: item["value"] for item in poll_step["arguments"]["parameters"]}
+    assert arguments["sync_resources"] == "{{inputs.parameters.sync_resources}}"
+    assert "AIRBYTE_RESOURCE_JOURNAL" not in trigger_env.keys() | poll_env.keys()
     reconcile = chart["CronWorkflow", "contract-reconcile-loop"]
     env = reconcile["spec"]["workflowSpec"]["templates"][0]["container"]["env"]
     defaults = next(item["value"] for item in env if item["name"] == "CONNECTOR_RESOURCE_DEFAULTS")

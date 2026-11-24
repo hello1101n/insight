@@ -15,7 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import airbyte_sync_poll as poll
 import airbyte_sync_trigger as trigger
+import test_airbyte_admission as admission_tests
 from airbyte_launch import ANNOTATION, Launch, WorkflowLaunch, WorkflowMetadata
+from test_airbyte_admission import CONNECTION, UID, Fixture
+
+fixture = admission_tests.fixture
 
 PollRunner = Callable[[list[object]], tuple[int, int]]
 
@@ -205,35 +209,52 @@ def test_fatal_credentials_stop_even_with_a_zero_outage_threshold(
 
 
 def test_poll_retries_the_bronze_launch_when_argo_keeps_the_old_trigger(
-    run_poll: PollRunner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("WORKFLOW_UID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-    monkeypatch.setenv("AIRBYTE_EVIDENCE_PATH", str(tmp_path / "poll"))
-    receipt = Launch(
-        workflow_uid=UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-        workflow_started_at=datetime(2026, 1, 1, tzinfo=UTC),
-        connection=UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-        attempt=2,
-        previous_job=123,
+    old = Launch(
+        workflow_uid=UID,
+        workflow_started_at=datetime(2025, 12, 31, tzinfo=UTC),
+        connection=CONNECTION,
+        previous_job=19,
         deadline=600,
         read_deadline=1800,
         outcome="accepted",
-        job_id=124,
+        job_id=20,
     )
+    fixture.workflow[ANNOTATION] = old.model_dump_json()
+    fixture.previous_jobs = (20, 19)
+    fixture.job_id = 21
+    fixture.nodes = iter(["4Gi", "6Gi"])
+    for name, value in {
+        "WORKFLOW_UID": str(UID),
+        "JOB_ID": "20",
+        "POLL_INTERVAL_SECONDS": "15",
+        "STATUS_UNREADABLE_THRESHOLD_SECONDS": "3600",
+        "TRIGGER_LAUNCH_EVIDENCE": old.model_dump_json(),
+        "AIRBYTE_EVIDENCE_PATH": str(tmp_path / "poll"),
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(poll, "oauth_token", lambda: "example-token")
 
-    old = receipt.model_copy(update={"attempt": 1, "job_id": 123})
-    monkeypatch.setenv("TRIGGER_LAUNCH_EVIDENCE", old.model_dump_json())
+    original = fixture.urlopen
 
-    def launch(_url: str, prior: Launch | None, *, workflow_read_seconds: int = 0) -> Launch:
-        assert prior == old
-        assert workflow_read_seconds == 3600
-        return receipt
+    def urlopen(request: poll.urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.full_url == "https://example.com/api/v1/jobs/get":
+            assert json.loads(request.data or b"{}") == {"id": 21}
+            result = job("succeeded")
+            result["job"]["id"] = 21
+            return io.BytesIO(json.dumps(result).encode())
+        return original(request, **kwargs)
 
-    monkeypatch.setattr(poll, "workflow_launch", launch)
-    succeeded = {"job": {"id": 124, "status": "succeeded"}, "attempts": [{"attempt": {"streamStats": [{}]}}]}
-    result, _ = run_poll([succeeded])
-    assert result == 0
-    assert json.loads((tmp_path / "poll").read_text())["job_id"] == 124
+    monkeypatch.setattr(poll.urllib.request, "urlopen", urlopen)
+    assert poll.main() == 0
+    assert json.loads((tmp_path / "poll").read_text())["job_id"] == 21
+    result = Launch.model_validate_json(fixture.workflow[ANNOTATION])
+    assert (result.attempt, result.previous_job, result.job_id) == (2, 20, 21)
+    assert result.pod_request is not None
+    assert fixture.reads["v1/jobs/get"] == 2
+    assert fixture.events.index("wait-start") < fixture.events.index("wait-end") < fixture.events.index("sync")
+    assert fixture.events.count("sync") == 1
 
 
 @pytest.mark.parametrize("failure", ["connection", "timeout", 429, 503, 401, 403, 404, "outage"])
@@ -357,3 +378,74 @@ def test_poll_uses_the_highest_attempt_and_the_user_limit_wins(tmp_path: Path, m
     report = json.loads(evidence.read_text())
     assert report["reason"] == "clickhouse_user_memory_limit"
     assert report["records_reported"] == 5
+
+
+def test_capacity_poll_uses_the_status_deadline_for_its_initial_workflow_read(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    elapsed = 0.0
+    monkeypatch.setenv("WORKFLOW_UID", str(UID))
+    monkeypatch.setenv("JOB_ID", "20")
+    monkeypatch.setenv("POLL_INTERVAL_SECONDS", "15")
+    monkeypatch.setenv("STATUS_UNREADABLE_THRESHOLD_SECONDS", "5")
+    monkeypatch.setattr(poll.time, "monotonic", lambda: elapsed)
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+
+    def urlopen(request: poll.urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.full_url.endswith("/workflows/example"):
+            raise urllib.error.URLError("example")
+        return fixture.urlopen(request, **kwargs)
+
+    monkeypatch.setattr(poll.time, "sleep", sleep)
+    monkeypatch.setattr(poll.urllib.request, "urlopen", urlopen)
+    assert poll.main() == 2
+    assert elapsed == 5
+    assert fixture.events == []
+
+
+def test_capacity_poll_uses_status_outage_handling_for_a_purged_old_job(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    elapsed = 0.0
+    old = Launch(
+        workflow_uid=UID,
+        workflow_started_at=datetime(2025, 12, 31, tzinfo=UTC),
+        connection=CONNECTION,
+        previous_job=19,
+        deadline=600,
+        read_deadline=1800,
+        outcome="accepted",
+        job_id=20,
+    )
+    fixture.workflow[ANNOTATION] = old.mark_json()
+    monkeypatch.setenv("WORKFLOW_UID", str(UID))
+    monkeypatch.setenv("JOB_ID", "20")
+    monkeypatch.setenv("POLL_INTERVAL_SECONDS", "5")
+    monkeypatch.setenv("STATUS_UNREADABLE_THRESHOLD_SECONDS", "10")
+    monkeypatch.setattr(poll.time, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(poll, "oauth_token", lambda: "example-token")
+
+    def sleep(seconds: float) -> None:
+        nonlocal elapsed
+        elapsed += seconds
+
+    def request(url: str, token: str, body: bytes | None = None) -> bytes:
+        if url.endswith("/jobs/get"):
+            raise admission_tests.http_error(404)
+        return fixture.airbyte(url, token, body)
+
+    def urlopen(request: poll.urllib.request.Request, **kwargs: object) -> io.BytesIO:
+        if request.full_url.endswith("/jobs/get"):
+            assert json.loads(request.data or b"{}") == {"id": 20}
+            raise admission_tests.http_error(404)
+        return fixture.urlopen(request, **kwargs)
+
+    monkeypatch.setattr(poll.time, "sleep", sleep)
+    monkeypatch.setattr(trigger, "request", request)
+    monkeypatch.setattr(poll.urllib.request, "urlopen", urlopen)
+    assert poll.main() == 2
+    assert elapsed == 10
+    assert fixture.events == ["accepted"]

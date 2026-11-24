@@ -11,11 +11,15 @@ from pathlib import Path
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from api_response import parse_response, response_errors
+from pod_capacity import PodRequest
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 ANNOTATION = "insight.cyberfabric.com/airbyte-launch"
+CAPACITY_WAIT = "insight.cyberfabric.com/airbyte-capacity-wait"
 REQUEST_TIMEOUT_SECONDS = 30
 MAX_READ_BACKOFF_SECONDS = 30
+CLAIM_WRITE_TIMEOUT_SECONDS = 5
 
 
 class WorkflowReadTimeout(TimeoutError):
@@ -35,11 +39,35 @@ class Launch(BaseModel):
     outcome: Literal["pending", "accepted", "rejected", "unconfirmed", "unreadable"] = "pending"
     job_id: PositiveInt | None = None
     outcome_at: datetime | None = None
+    estimated_pod_request: PodRequest | None = None
+    pod_request: PodRequest | None = None
+
+    def mark_json(self) -> str:
+        omitted = {field for field in ("estimated_pod_request", "pod_request") if getattr(self, field) is None}
+        return self.model_dump_json(exclude=omitted)
 
     @model_validator(mode="after")
     def validate_receipt(self) -> Self:
         if (self.outcome == "accepted") != (self.job_id is not None):
             raise ValueError("Launch outcome and job identifier disagree")
+        return self
+
+
+class CapacityWait(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workflow_uid: UUID
+    workflow_started_at: AwareDatetime
+    attempt: PositiveInt
+    started_at: AwareDatetime
+    ended_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_interval(self) -> Self:
+        if self.started_at < self.workflow_started_at or (
+            self.ended_at is not None and self.ended_at < self.started_at
+        ):
+            raise ValueError("The capacity wait timestamps are out of order.")
         return self
 
 
@@ -87,8 +115,8 @@ class WorkflowLaunch:
             },
         )
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        with urllib.request.urlopen(request, timeout=timeout, context=self.context) as response:
-            workflow = Workflow.model_validate_json(response.read())
+        with response_errors(), urllib.request.urlopen(request, timeout=timeout, context=self.context) as response:
+            workflow = parse_response(Workflow, response.read())
         metadata = workflow.metadata.model_copy(update={"started_at": workflow.status.started_at})
         if metadata.uid != self.uid:
             raise RuntimeError("Workflow UID changed")
@@ -111,15 +139,22 @@ class WorkflowLaunch:
             delay = min(delay * 2, MAX_READ_BACKOFF_SECONDS)
         raise WorkflowReadTimeout("The Workflow read outage reached its deadline")
 
-    def write(self, metadata: WorkflowMetadata, launch: Launch) -> None:
+    def write(self, metadata: WorkflowMetadata, launch: Launch, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
+        self.write_annotations(metadata, {ANNOTATION: launch.mark_json()}, timeout=timeout)
+
+    def write_admitted(self, metadata: WorkflowMetadata, launch: Launch, wait: CapacityWait) -> None:
+        self.write_annotations(
+            metadata,
+            {ANNOTATION: launch.mark_json(), CAPACITY_WAIT: wait.model_dump_json()},
+            timeout=CLAIM_WRITE_TIMEOUT_SECONDS,
+        )
+
+    def write_annotations(
+        self, metadata: WorkflowMetadata, annotations: dict[str, str], *, timeout: float = REQUEST_TIMEOUT_SECONDS
+    ) -> None:
         self._request(
-            {
-                "metadata": {
-                    "uid": str(self.uid),
-                    "resourceVersion": metadata.version,
-                    "annotations": {ANNOTATION: launch.model_dump_json()},
-                }
-            }
+            {"metadata": {"uid": str(self.uid), "resourceVersion": metadata.version, "annotations": annotations}},
+            timeout=timeout,
         )
 
 

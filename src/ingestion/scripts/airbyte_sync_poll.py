@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import NamedTuple
 
 import insight_logging
+from airbyte_admission import CapacityUnreadable
 from airbyte_auth import FatalError, airbyte_api_url, oauth_token
 from airbyte_launch import Launch, WorkflowReadTimeout
-from airbyte_sync_trigger import report_launch, workflow_launch
+from airbyte_sync_trigger import CAPACITY_CONFIGURATION, UNREADABLE, report_launch, workflow_launch
+from capacity_lease import CapacityConfigurationError
 
 Progress = tuple[str | None, int, int, int]
 
@@ -192,6 +194,12 @@ def main() -> int:
             if result.job_id is None:
                 return 1
             job_id = result.job_id
+        except CapacityUnreadable as error:
+            log.error(str(error))
+            return UNREADABLE
+        except CapacityConfigurationError as error:
+            log.error("The Airbyte capacity check stopped.", extra={"detail": str(error)})
+            return CAPACITY_CONFIGURATION
         except WorkflowReadTimeout:
             log.error("The Workflow read outage reached its deadline.")
             return 2

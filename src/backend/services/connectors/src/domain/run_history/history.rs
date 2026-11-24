@@ -157,10 +157,13 @@ fn build(records: &[Record], now: DateTime<Utc>) -> Run {
             finished_at: r.finished_at,
             duration_ms: r.started_at.map(|start| ms(start, until)),
             reason: r.reason.clone(),
-            resources: r
-                .resources
-                .as_deref()
-                .and_then(|raw| Resources::parse(raw).ok()),
+            resources: r.resources.as_deref().and_then(|raw| {
+                if r.stage == "bronze" {
+                    serde_json::from_str(raw).ok()
+                } else {
+                    Resources::parse(raw).ok()
+                }
+            }),
             peak_query_memory_bytes: r.peak_query_memory_bytes,
         });
     }

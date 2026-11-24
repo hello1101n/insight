@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
+from api_response import parse_response
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 CPU = Annotated[int, Field(strict=True, ge=1, le=2**32 - 1)]
@@ -99,19 +100,17 @@ class AirbyteResources:
         self.request = request
         self.url = url
 
-    def _airbyte[Model: BaseModel](
-        self, token: str, path: str, body: dict[str, JsonValue], model: type[Model]
-    ) -> Model:
-        return parse(model, self.request(f"{self.url}/api/v1/{path}", token, json.dumps(body).encode()))
+    def call[Model: BaseModel](self, token: str, path: str, body: dict[str, JsonValue], model: type[Model]) -> Model:
+        return parse_response(model, self.request(f"{self.url}/api/v1/{path}", token, json.dumps(body).encode()))
 
     def _source(self, token: str, source_id: UUID) -> Source:
-        source = self._airbyte(token, "sources/get", {"sourceId": str(source_id)}, Source)
+        source = self.call(token, "sources/get", {"sourceId": str(source_id)}, Source)
         if source.id != source_id:
             raise ValueError("Airbyte returned a different source")
         return source
 
     def _update_source(self, token: str, source: UUID, target: Allocation) -> None:
-        updated = self._airbyte(
+        updated = self.call(
             token,
             "sources/partial_update",
             {
@@ -128,13 +127,13 @@ class AirbyteResources:
         if not desired and not clear:
             return ()
 
-        live = self._airbyte(token, "connections/get", {"connectionId": str(connection)}, Connection)
+        live = self.call(token, "connections/get", {"connectionId": str(connection)}, Connection)
         if live.id != connection:
             raise ValueError("Airbyte returned a different connection")
         source = self._source(token, live.source)
         count = source.connections
         if count is None:
-            siblings = self._airbyte(
+            siblings = self.call(
                 token,
                 "web_backend/connections/list",
                 {"workspaceId": str(source.workspace), "sourceId": [str(source.id)], "pageSize": 2},

@@ -467,11 +467,17 @@ A refused patch restores the previous database row. Uncertain writes use the sch
 
 Reconcile reads the latest overrides under the instance lock and applies them to the CronWorkflow or one-shot Workflow.
 Argo passes the submitted values to Bronze, the dbt steps, and the identity seed.
-The Bronze trigger updates the dedicated source allocation before launch when a saved size differs.
+The trigger or poll step updates the dedicated source allocation before launch when a saved size differs.
 Reconcile removes the managed sync allocation on the next pass after both effective sizes are cleared.
 The [chart README](../../../../../charts/insight/README.md#configure-connector-instance-resources) lists the fields and their units.
 
 The history observer reads the parameter on the submitted Workflow and stores the relevant fields for each attempt.
+The trigger or poll step records a capacity wait when no eligible node can fit the estimated Airbyte pod request.
+The launch claim closes the wait before job submission.
+The observer closes an open wait when the Workflow ends and keeps the stage outcome.
+The observer records a separate Bronze attempt for each Workflow execution.
+It uses the Workflow start time to distinguish attempts across Argo retries.
+The observer uses the actual replication pod request from the launch receipt when available.
 The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
 It reads the query log by the stage's `log_comment`.
 The observer records the largest query memory and preserves the pod memory failure reason.

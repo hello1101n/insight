@@ -29,11 +29,7 @@ pub(super) async fn save(
 
     tx.execute_raw(sql(
         "INSERT INTO ingestion_runs(sync_id,stand,tenant,connector,source_id,workflow_name,started_at,execution,finished_at,status,ready_at)
-         VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE
-         status=IF(VALUES(execution)>=execution,VALUES(status),status),
-         finished_at=IF(VALUES(execution)>=execution,VALUES(finished_at),finished_at),
-         ready_at=IF(VALUES(execution)>=execution,VALUES(ready_at),ready_at),
-         execution=GREATEST(execution,VALUES(execution))",
+         VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE sync_id=VALUES(sync_id)",
         vec![run.uid.clone().into(), stand.into(), run.tenant.clone().into(), run.connector.clone().into(),
             run.source.clone().into(), run.name.clone().into(), run.created_at.into(), run.execution.into(), run.finished_at.into(),
             run.status.into(), ready.into()],
@@ -42,12 +38,73 @@ pub(super) async fn save(
     let mut ordered: Vec<_> = run.stages.iter().collect();
     ordered.sort_unstable_by_key(|stage| (stage.stage, stage.attempt));
     for stage in ordered {
-        save_stage(&tx, &run.uid, stage, now).await?;
+        let key = stage.key();
+        if stage.stage == "bronze" {
+            scope_bronze_attempt(&tx, run, stage, &key).await?;
+        }
+        save_stage(&tx, &run.uid, stage, &key, now).await?;
     }
+
+    tx.execute_raw(sql(
+        "UPDATE ingestion_runs SET status=?,finished_at=?,ready_at=?,execution=?
+         WHERE sync_id=? AND execution<=?",
+        vec![
+            run.status.into(),
+            run.finished_at.into(),
+            ready.into(),
+            run.execution.into(),
+            run.uid.clone().into(),
+            run.execution.into(),
+        ],
+    ))
+    .await?;
     tx.commit().await
 }
 
+async fn scope_bronze_attempt(
+    tx: &DatabaseTransaction,
+    run: &RunSnapshot,
+    stage: &StageSnapshot,
+    key: &str,
+) -> Result<(), DbErr> {
+    let execution = stage.bronze_execution.unwrap_or(run.created_at);
+    let previous_key = tx
+        .query_one_raw(sql(
+            "SELECT s.execution_key FROM ingestion_stage_attempts s
+             JOIN ingestion_runs r ON r.sync_id=s.sync_id
+             WHERE s.sync_id=? AND s.stage='bronze' AND (
+                s.execution_key=? OR
+                (s.execution_key='bronze:pending' AND s.finished_at IS NULL AND r.execution<=?) OR
+                (s.execution_key=? AND r.execution=? AND (s.finished_at IS NULL OR s.finished_at>=r.execution))
+             )
+             ORDER BY (s.execution_key=?) DESC, (s.execution_key='bronze:pending') DESC LIMIT 1",
+            vec![
+                run.uid.clone().into(), key.into(), execution.into(),
+                stage.attempt.to_string().into(), execution.into(), key.into(),
+            ],
+        ))
+        .await?;
+    if let Some(row) = previous_key {
+        let previous: String = row.try_get("", "execution_key")?;
+        if previous != key {
+            tx.execute_raw(sql(
+                "UPDATE ingestion_stage_attempts SET execution_key=?
+                 WHERE sync_id=? AND stage='bronze' AND execution_key=?",
+                vec![key.into(), run.uid.clone().into(), previous.into()],
+            ))
+            .await?;
+        }
+    }
+    Ok(())
+}
+
 fn merge_waits(waits: &mut Vec<StageWait>, stage: &StageSnapshot, now: DateTime<Utc>) {
+    if let Some(capacity) = &stage.capacity_wait {
+        merge_capacity_wait(waits, capacity);
+        if capacity.ended_at.is_none() {
+            return;
+        }
+    }
     if let Some(last) = waits.last_mut().filter(|last| last.ended_at.is_none()) {
         if let Some(current) = &stage.wait {
             if last.kind == current.kind {
@@ -74,17 +131,34 @@ fn merge_waits(waits: &mut Vec<StageWait>, stage: &StageSnapshot, now: DateTime<
     }
 }
 
+fn merge_capacity_wait(waits: &mut Vec<StageWait>, capacity: &StageWait) {
+    if let Some(existing) = waits
+        .iter_mut()
+        .find(|wait| wait.kind == capacity.kind && wait.started_at == capacity.started_at)
+    {
+        existing.ended_at = capacity.ended_at.or(existing.ended_at);
+        return;
+    }
+    let index = waits.partition_point(|wait| wait.started_at <= capacity.started_at);
+    if let Some(prior) = index.checked_sub(1).and_then(|i| waits.get_mut(i))
+        && prior.ended_at.is_none_or(|end| end > capacity.started_at)
+    {
+        prior.ended_at = Some(capacity.started_at);
+    }
+    waits.insert(index, capacity.clone());
+}
+
 async fn save_stage(
     tx: &DatabaseTransaction,
     uid: &str,
     stage: &StageSnapshot,
+    key: &str,
     now: DateTime<Utc>,
 ) -> Result<(), DbErr> {
-    let key = stage.key();
     let saved = SavedAttempt::find_by_statement(sql(
         "SELECT attempt,CAST(waits AS CHAR) AS waits,finished_at,airbyte_job_id FROM ingestion_stage_attempts
          WHERE sync_id=? AND stage=? AND execution_key=?",
-        vec![uid.into(), stage.stage.into(), key.clone().into()],
+        vec![uid.into(), stage.stage.into(), key.into()],
     ))
     .one(tx)
     .await?;
@@ -97,8 +171,15 @@ async fn save_stage(
     }
     let attempt = match saved.as_ref() {
         Some(saved) => saved.attempt,
-        None if stage.stage == "bronze" => stage.attempt,
+        None if stage.stage == "bronze" => {
+            next_attempt(tx, uid, stage.stage).await?.max(stage.attempt)
+        }
         None => next_attempt(tx, uid, stage.stage).await?,
+    };
+    let queued_at = if stage.stage == "bronze" && attempt > 1 {
+        stage.queued_at.max(stage.bronze_execution.unwrap_or(now))
+    } else {
+        stage.queued_at
     };
     let mut waits = match saved {
         Some(saved) => {
@@ -109,8 +190,9 @@ async fn save_stage(
     merge_waits(&mut waits, stage, now);
     let waits = serde_json::to_string(&waits).map_err(|error| DbErr::Json(error.to_string()))?;
     let resources = stage
-        .resources
+        .actual_resources
         .as_ref()
+        .or(stage.resources.as_ref())
         .map(serde_json::to_string)
         .transpose()
         .map_err(|error| DbErr::Json(error.to_string()))?;
@@ -126,10 +208,10 @@ async fn save_stage(
             THEN reason ELSE COALESCE(VALUES(reason),reason) END,
          connection_id=COALESCE(connection_id,VALUES(connection_id)),
          airbyte_job_id=COALESCE(airbyte_job_id,VALUES(airbyte_job_id)), records_reported=COALESCE(VALUES(records_reported),records_reported),query_pod=COALESCE(query_pod,VALUES(query_pod)),
-         resources=COALESCE(resources,VALUES(resources))",
-        vec![uid.into(), stage.stage.into(), attempt.into(), stage.status.into(), stage.queued_at.into(),
+         resources=IF(?,VALUES(resources),COALESCE(resources,VALUES(resources)))",
+        vec![uid.into(), stage.stage.into(), attempt.into(), stage.status.into(), queued_at.into(),
             stage.started_at.into(), stage.finished_at.into(), waits.into(), stage.reason.clone().into(),
-            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into()],
+            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into(), stage.actual_resources.is_some().into()],
     )).await?;
     Ok(())
 }
@@ -184,6 +266,7 @@ struct OpenAttempt {
     airbyte_job_id: Option<String>,
     stage: String,
     status: String,
+    execution_key: String,
     waits: String,
 }
 
@@ -200,7 +283,7 @@ pub(super) async fn close_missing(
     )).await?;
 
     let open = OpenAttempt::find_by_statement(sql(
-        "SELECT id,stage,status,attempt,airbyte_job_id,CAST(waits AS CHAR) AS waits FROM ingestion_stage_attempts
+        "SELECT id,stage,status,attempt,airbyte_job_id,execution_key,CAST(waits AS CHAR) AS waits FROM ingestion_stage_attempts
          WHERE sync_id=? AND finished_at IS NULL",
         vec![uid.into()],
     ))
@@ -209,7 +292,7 @@ pub(super) async fn close_missing(
     for attempt in open {
         if attempt.stage == "bronze" && attempt.airbyte_job_id.is_some() {
             if let Some(load) = load.as_ref().filter(|load| load.attempt == attempt.attempt) {
-                save_stage(&tx, uid, load, now).await?;
+                save_stage(&tx, uid, load, &attempt.execution_key, now).await?;
             }
             continue;
         }

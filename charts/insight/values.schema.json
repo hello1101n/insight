@@ -34,6 +34,33 @@
             "dbt_query_memory_bytes": {"type": "integer", "minimum": 2, "maximum": 9007199254740991}
           }
         },
+        "airbyteSync": {
+          "type": "object",
+          "properties": {
+            "capacityCheck": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^(orchestrator|source|destination|init)$": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "cpu": { "type": "string", "minLength": 1 },
+                        "memory": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "maxConcurrentSyncs": { "type": "integer", "minimum": 1 },
         "maxConcurrentBronzeLoads": { "type": "integer", "minimum": 1 },
         "maxConcurrentConnectorChecks": { "type": "integer", "minimum": 1 },

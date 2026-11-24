@@ -121,10 +121,11 @@ request gets 401.
 5. For instances with only legacy loads, the heading states how many loads the table shows,
    for example "Latest 10 of 50 recorded".
 6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes three wait reasons.
-   These are a writer lock, a Bronze slot, and pod placement.
+   These are a writer lock, a Bronze slot, and cluster capacity.
+   The timeline counts the wait for cluster capacity before Airbyte submission as queued time.
    A wait shows a warning after three hours.
 7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock or Bronze slot.
-   Pod placement and post-sync checks can continue beyond six hours.
+   A wait for cluster capacity and post-sync checks can continue beyond six hours.
    The run's wait time ends when Gold succeeds.
 8. The service retains the recorded run history after Argo deletes the workflow.
 9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.
@@ -136,7 +137,9 @@ request gets 401.
 2. An admin can set a ClickHouse query memory limit for that instance's dbt runs.
 3. Each unset value inherits its chart default. An unset chart default keeps the step's standard behavior.
 4. The resource settings share the schedule's save, revision, reconciliation, and removal rules.
-5. Each run uses the settings effective at submission. Run history records the settings for each stage attempt.
+5. Each run uses the settings effective at submission.
+   Run history records the settings for each stage attempt.
+   When the Bronze trigger observes the replication pod, run history records its actual CPU and memory requests.
 6. Run history records the largest logged ClickHouse query memory for completed dbt and identity seed attempts.
 7. Run history reports a pod killed for memory as a pod memory failure.
 

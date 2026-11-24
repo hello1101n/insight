@@ -62,23 +62,29 @@ impl RunSnapshot {
 struct StageSnapshot {
     stage: &'static str,
     attempt: u32,
+    bronze_execution: Option<DateTime<Utc>>,
     status: &'static str,
     queued_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
     wait: Option<StageWait>,
+    capacity_wait: Option<StageWait>,
     reason: Option<String>,
     connection: Option<String>,
     job: Option<u64>,
     records: Option<u64>,
     query_pod: Option<uuid::Uuid>,
     resources: Option<Resources>,
+    actual_resources: Option<Resources>,
 }
 
 impl StageSnapshot {
     fn key(&self) -> String {
         if self.stage == "bronze" {
-            self.attempt.to_string()
+            self.bronze_execution.map_or_else(
+                || "bronze:pending".to_owned(),
+                |execution| format!("bronze:{}", execution.timestamp_millis()),
+            )
         } else {
             format!("{}:{}", self.attempt, self.queued_at.timestamp_millis())
         }
@@ -88,17 +94,20 @@ impl StageSnapshot {
         Self {
             stage,
             attempt,
+            bronze_execution: None,
             status: "starting",
             queued_at,
             started_at: None,
             finished_at: None,
             wait: None,
+            capacity_wait: None,
             reason: None,
             connection: None,
             job: None,
             records: None,
             query_pod: None,
             resources: None,
+            actual_resources: None,
         }
     }
 }

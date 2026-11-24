@@ -70,7 +70,7 @@ toolbox image because the poller's environment variable also changed.
 ## Connector sync limits and history
 
 Argo limits Bronze loads and connector checks separately.
-A Bronze slot covers connection lookup, Airbyte launch, and polling.
+A Bronze slot covers connection lookup, the wait for cluster capacity, Airbyte launch, and polling.
 The slot is released when the Bronze step ends.
 A check slot covers the post-sync `connector-checks` step.
 Keep the `syncs` key for this release. Queued workflows from the prior release still read it.
@@ -81,7 +81,7 @@ The same mutex protects a writer group on both the Jira and non-Jira paths.
 | Setting | Default | Applies to |
 | --- | --- | --- |
 | `ingestion.maxConcurrentSyncs` | 4 | Legacy pipelines that still reference `syncs` |
-| `ingestion.maxConcurrentBronzeLoads` | 2 | Bronze slots in this namespace |
+| `ingestion.maxConcurrentBronzeLoads` | 4 | Upper limit for Bronze loads in this namespace |
 | `ingestion.maxConcurrentConnectorChecks` | 2 | Check slots in this namespace |
 | `clickhouse.syncUser.username` | Empty | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
 | `clickhouse.syncUser.passwordSecret.name` | Empty | Existing Secret in the release namespace |
@@ -99,12 +99,48 @@ It distinguishes the sync user's total, the query limit, server memory pressure,
 For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
 
 The Connectors page shows Bronze, Silver, Identity, and Gold.
-The queue distinguishes a writer lock, a Bronze slot, and Kubernetes pod placement.
+The queue distinguishes a writer lock, a Bronze slot, and a wait for cluster capacity.
 The lock reason includes the holder when Argo reports it.
 A wait shows a warning after three hours.
 Connectors stops a Workflow after more than six hours of waiting for a writer lock or Bronze slot.
 The stop applies before Gold succeeds. The page and elapsed wait time end at Gold.
-Connectors records check attempts separately. Kubernetes pod placement can continue beyond six hours.
+Connectors records check attempts separately. A wait for cluster capacity can continue beyond six hours.
+
+### Check Airbyte pod capacity
+
+Bronze checks available CPU and memory on each eligible node before it submits a sync.
+The trigger checks the initial submission. The poll step checks a resubmission after an Argo retry.
+An unscheduled Airbyte job pod also delays submission.
+When capacity is insufficient, Bronze keeps its slot and checks again every 15 seconds.
+A continuous check outage stops the step after the period in `ingestion.airbyteSync.launchUnreadableSeconds`.
+The Connectors page shows `Waiting for cluster capacity` and includes this interval in queued time.
+
+The trigger and poll steps share an account that lists pods across namespaces.
+Every pod bound to a node can use its capacity.
+The account reads nodes and holds the release's Lease while the step checks and submits a sync.
+The step releases the Lease when it sees the replication pod or when Airbyte settles the launch without a job.
+The step holds the Lease for at most 120 seconds.
+Set `ingestion.airbyteSync.capacityCheck.enabled` to `false` to disable this check and its RBAC.
+
+Set `ingestion.airbyteSync.capacityCheck.nodeSelector` to match the Airbyte job pod node selector.
+The default selector is empty.
+If you set Airbyte's `global.jobs.resources`, set `ingestion.airbyteSync.capacityCheck.requests` to match those pod requests.
+Use Kubernetes quantities for each `cpu` and `memory` value.
+
+| Container | Default CPU | Default memory |
+| --- | --- | --- |
+| Orchestrator | 1 | 2 GiB |
+| Source | 1 | 2 GiB |
+| Destination | 500m | 1 GiB |
+| Init | 1 | 2 GiB |
+
+For the source and destination, the estimate uses each request field from the connection, actor, definition, or chart default, in that order.
+For an actor or definition, a sync-specific field takes precedence over its default.
+The source default is an estimate for sources with no allocation.
+The launch step records the actual replication pod request if it finds the pod within 120 seconds of submission.
+A measurement error leaves the request empty and the accepted job continues to polling.
+
+### Confirm an Airbyte launch
 
 The trigger records its launch claim on the Workflow before it calls Airbyte.
 A replacement trigger reads the claim and checks for the same launch.
@@ -116,7 +152,7 @@ A manual retry can start a new launch as soon as a readable list confirms that t
 Set `ingestion.airbyteSync.launchUnreadableSeconds` to bound confirmation when the job list is unreadable.
 The default is 1800 seconds. An unreadable list leaves the launch outcome unknown.
 Set `ingestion.airbyteSync.statusUnreadableThresholdSeconds` to limit how long the poll step tolerates an outage.
-The poll step applies this limit when it reads the Workflow at startup and when it reads Airbyte job status.
+The poll step applies this limit to its initial Workflow read and to Airbyte job status reads.
 The default is 1800 seconds. A permanent credential error stops the poll step immediately.
 
 ### Configure connector instance resources

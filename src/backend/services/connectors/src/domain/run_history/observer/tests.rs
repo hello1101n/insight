@@ -492,3 +492,322 @@ fn legacy_bronze_uses_argo_phases_and_the_job_id_passed_to_poll() -> Result<()> 
     }
     Ok(())
 }
+
+fn bronze_capacity_marker(
+    execution: i64,
+    attempt: u32,
+    started: i64,
+    ended: Option<i64>,
+) -> String {
+    json!({
+        "workflow_uid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "workflow_started_at": at(execution),
+        "attempt": attempt,
+        "started_at": at(started),
+        "ended_at": ended.map(at),
+    })
+    .to_string()
+}
+
+fn bronze_launch_mark(execution: i64, attempt: u32, job_id: u64) -> Value {
+    json!({
+        "workflow_uid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "workflow_started_at": at(execution),
+        "attempt": attempt,
+        "connection": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "outcome": "accepted",
+        "job_id": job_id,
+    })
+}
+
+#[test]
+fn bronze_capacity_wait_is_a_placement_wait_for_the_current_execution_and_survives_six_hours()
+-> Result<()> {
+    let mut workflow = workflow(&json!({"phase":"Running", "startedAt":at(2)}))?;
+    workflow.metadata.annotations = Some(
+        [
+            (
+                "insight.cyberfabric.com/airbyte-capacity-wait".into(),
+                bronze_capacity_marker(2, 2, 3, None),
+            ),
+            (
+                "insight.cyberfabric.com/airbyte-launch".into(),
+                bronze_launch_mark(1, 1, 19).to_string(),
+            ),
+        ]
+        .into(),
+    );
+
+    let (mut run, _) = identity(&workflow, at(10), false).context("missing run")?;
+    let stage = bronze::snapshot(&workflow, run.created_at, &HashMap::new(), None);
+    assert_eq!(stage.attempt, 2);
+    assert_eq!(stage.job, None);
+    assert_eq!(stage.status, "queued");
+    assert_eq!(stage.started_at, None);
+    let wait = stage.wait.as_ref().context("missing placement wait")?;
+    assert_eq!(wait.kind, WaitKind::Placement);
+    assert_eq!(wait.started_at, at(3));
+    run.stages.push(stage);
+    assert!(timeout::expired(&run, at(10)).is_none());
+
+    workflow.data["status"]["startedAt"] = json!(at(4));
+    let next_execution = bronze::snapshot(&workflow, run.created_at, &HashMap::new(), None);
+    assert!(next_execution.wait.is_none());
+    assert_eq!(next_execution.job, None);
+    Ok(())
+}
+
+#[test]
+fn failed_workflow_closes_the_capacity_wait_and_keeps_its_failure() -> Result<()> {
+    for (template, expected_reason) in [
+        ("trigger-sync", "stage_failed"),
+        ("poll-job", "airbyte_job_failed"),
+        ("", "stage_failed"),
+    ] {
+        let mut status = json!({"phase":"Failed", "startedAt":at(1), "finishedAt":at(4)});
+        if !template.is_empty() {
+            status["nodes"] = json!({"load": {
+                "type":"Pod", "templateName":template, "phase":"Failed",
+                "startedAt":at(2), "finishedAt":at(3),
+            }});
+        }
+        let mut workflow = workflow(&status)?;
+        workflow
+            .metadata
+            .annotations
+            .get_or_insert_default()
+            .insert(
+                "insight.cyberfabric.com/airbyte-capacity-wait".into(),
+                bronze_capacity_marker(1, 1, 2, None),
+            );
+        let stage = bronze::snapshot(&workflow, at(1), &HashMap::new(), Some(at(4)));
+
+        assert_eq!(
+            (stage.status, stage.reason.as_deref()),
+            ("failed", Some(expected_reason)),
+            "{template}"
+        );
+        assert_eq!(
+            stage.finished_at,
+            Some(if template.is_empty() { at(4) } else { at(3) })
+        );
+        assert!(stage.wait.is_none());
+        let wait = stage.capacity_wait.context("missing capacity wait")?;
+        assert_eq!(
+            (wait.kind, wait.started_at, wait.ended_at),
+            (WaitKind::Placement, at(2), Some(at(4)))
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn poll_launch_receipt_recovers_a_relaunch_when_the_annotation_stays_pending() -> Result<()> {
+    let old = bronze_launch_mark(1, 1, 19);
+    let mut relaunch = bronze_launch_mark(2, 2, 20);
+    relaunch["pod_request"] = json!({"cpu_millis":2500, "memory_bytes":5_368_709_120_u64});
+    let mut pending = relaunch.clone();
+    pending["outcome"] = json!("pending");
+    pending["job_id"] = Value::Null;
+    pending["pod_request"] = Value::Null;
+    let mut wf = workflow(&json!({"phase":"Running", "startedAt":at(2), "nodes":{
+        "trigger":{"type":"Pod", "templateName":"trigger-sync",
+            "outputs":{"parameters":[{"name":"airbyte-launch-evidence","value":old.to_string()}]}},
+        "poll":{"type":"Pod", "templateName":"poll-job",
+            "outputs":{"parameters":[{"name":"airbyte-launch-evidence","value":relaunch.to_string()}]}}
+    }}))?;
+    wf.metadata.annotations.get_or_insert_default().insert(
+        "insight.cyberfabric.com/airbyte-launch".into(),
+        pending.to_string(),
+    );
+    let stage = bronze::snapshot(&wf, at(1), &HashMap::new(), None);
+
+    assert_eq!((stage.attempt, stage.job), (2, Some(20)));
+    assert_eq!(
+        stage
+            .actual_resources
+            .and_then(|resources| resources.airbyte_cpu_millis),
+        Some(2500)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn history_records_the_next_execution_after_bronze_stops_without_a_launch_claim() -> Result<()>
+{
+    use sea_orm::Database;
+    use sea_orm_migration::MigratorTrait;
+
+    use crate::domain::run_history::history;
+    use crate::migration::Migrator;
+
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let mut workflow = workflow(&json!({"phase":"Failed", "startedAt":at(1), "finishedAt":at(3)}))?;
+    workflow.metadata.uid = Some(uuid::Uuid::new_v4().to_string());
+    let uid = workflow
+        .metadata
+        .uid
+        .clone()
+        .context("missing Workflow UID")?;
+    let key = "insight.cyberfabric.com/airbyte-capacity-wait";
+
+    for (execution, attempt, started, now) in [(1, 1, 2, 3), (4, 2, 5, 6)] {
+        if execution > 1 {
+            workflow.data["status"] = json!({"phase":"Running", "startedAt":at(execution)});
+        }
+        let mut wait: Value =
+            serde_json::from_str(&bronze_capacity_marker(execution, attempt, started, None))?;
+        wait["workflow_uid"] = json!(uid);
+        workflow
+            .metadata
+            .annotations
+            .get_or_insert_default()
+            .insert(key.into(), wait.to_string());
+        let (mut run, _) = identity(&workflow, at(now), false).context("missing run")?;
+        run.stages = vec![bronze::snapshot(
+            &workflow,
+            run.created_at,
+            &HashMap::new(),
+            run.finished_at,
+        )];
+        store::save(&db, &stand, &run, at(now)).await?;
+        store::save(&db, &stand, &run, at(now)).await?;
+    }
+
+    let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("example")).await?;
+    assert_eq!(result[0].execution_started_at, at(4));
+    assert_eq!(result[0].stages.len(), 2);
+    let first = &result[0].stages[0];
+    let retry = &result[0].stages[1];
+    assert_eq!(
+        (
+            first.attempt,
+            first.status.as_str(),
+            first.reason.as_deref()
+        ),
+        (1, "failed", Some("stage_failed"))
+    );
+    assert_eq!(first.waits.len(), 1);
+    assert_eq!(first.waits[0].ended_at, Some(at(3)));
+    assert_eq!(
+        (
+            retry.attempt,
+            retry.status.as_str(),
+            retry.airbyte_job_id.as_deref()
+        ),
+        (2, "wait_warning", None)
+    );
+    assert_eq!(retry.waits.len(), 1);
+    assert_eq!(
+        (
+            retry.waits[0].kind,
+            retry.waits[0].started_at,
+            retry.waits[0].ended_at
+        ),
+        (WaitKind::Placement, at(5), None)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn history_records_bronze_capacity_time_and_the_actual_pod_request_after_replay() -> Result<()>
+{
+    use sea_orm::Database;
+    use sea_orm_migration::MigratorTrait;
+
+    use crate::domain::run_history::history;
+    use crate::migration::Migrator;
+
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let mut workflow = workflow(&json!({"phase":"Running", "startedAt":at(1)}))?;
+    workflow.data["spec"]["arguments"]["parameters"]
+        .as_array_mut()
+        .context("missing Workflow parameters")?
+        .push(json!({"name":PARAMETER, "value":"{\"airbyte_cpu_millis\":1750}"}));
+    let annotations = workflow.metadata.annotations.get_or_insert_default();
+    let key = "insight.cyberfabric.com/airbyte-capacity-wait";
+    annotations.insert(key.into(), bronze_capacity_marker(1, 1, 2, None));
+    let (mut run, _) = identity(&workflow, at(7), false).context("missing run")?;
+    run.stages = vec![bronze::snapshot(
+        &workflow,
+        run.created_at,
+        &HashMap::new(),
+        None,
+    )];
+    observe_resources(&workflow, &mut run.stages);
+    store::save(&db, &stand, &run, at(7)).await?;
+    let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("example")).await?;
+    assert_eq!(result[0].stages[0].status, "wait_warning");
+
+    let annotations = workflow.metadata.annotations.get_or_insert_default();
+    annotations.insert(key.into(), bronze_capacity_marker(1, 1, 2, Some(8)));
+    let mut mark = bronze_launch_mark(1, 1, 20);
+    mark["pod_request"] = json!({"cpu_millis":3575, "memory_bytes":5_368_709_120_u64});
+    annotations.insert(
+        "insight.cyberfabric.com/airbyte-launch".into(),
+        mark.to_string(),
+    );
+    let evidence = json!({
+        "job_id":20, "status":"succeeded", "started_at":at(9).timestamp(), "ended_at":at(10).timestamp(),
+    });
+    workflow.data["status"]["nodes"] = json!({"poll": {
+        "templateName":"poll-job", "type":"Pod", "phase":"Succeeded", "finishedAt":at(10),
+        "outputs":{"parameters":[{"name":"airbyte-evidence","value":evidence.to_string()}]},
+    }});
+    run.stages = vec![bronze::snapshot(
+        &workflow,
+        run.created_at,
+        &HashMap::new(),
+        None,
+    )];
+    observe_resources(&workflow, &mut run.stages);
+    store::save(&db, &stand, &run, at(11)).await?;
+    store::save(&db, &stand, &run, at(12)).await?;
+    let result = history::runs(&db, &stand, "jira", Some("tenant"), Some("example")).await?;
+    let stage = &result[0].stages[0];
+    assert_eq!(stage.waits.len(), 1);
+    assert_eq!(stage.waits[0].ended_at, Some(at(8)));
+    assert_eq!(result[0].wait_ms, Some(6 * 60 * 60 * 1000));
+    assert_eq!(result[0].load_ms, Some(60 * 60 * 1000));
+    let recorded = stage.resources.as_ref().context("missing resources")?;
+    assert_eq!(recorded.airbyte_cpu_millis, Some(3575));
+    assert_eq!(recorded.airbyte_memory_bytes, Some(5 * 1024_u64.pow(3)));
+    Ok(())
+}
+
+#[test]
+fn bronze_attempt_one_is_scoped_to_each_workflow_execution() -> Result<()> {
+    let mut wf = workflow(
+        &json!({"phase":"Failed", "startedAt":at(1), "finishedAt":at(3), "nodes":{
+            "resolve":{"type":"Pod", "templateName":"resolve-connection-by-name", "phase":"Failed",
+                       "startedAt":at(1), "finishedAt":at(3)}
+        }}),
+    )?;
+    let failed = bronze::snapshot(&wf, at(0), &HashMap::new(), Some(at(3)));
+    assert_eq!(failed.attempt, 1);
+    assert!(failed.capacity_wait.is_none() && failed.job.is_none());
+
+    wf.data["status"] = json!({"phase":"Running", "startedAt":at(4)});
+    let retry = bronze::snapshot(&wf, at(0), &HashMap::new(), None);
+    assert_eq!(retry.attempt, 1);
+    assert_ne!(retry.key(), failed.key());
+
+    wf.metadata.annotations.get_or_insert_default().insert(
+        "insight.cyberfabric.com/airbyte-capacity-wait".into(),
+        bronze_capacity_marker(4, 1, 5, None),
+    );
+    let waiting = bronze::snapshot(&wf, at(0), &HashMap::new(), None);
+    assert_eq!(waiting.key(), retry.key());
+    assert_eq!(waiting.status, "queued");
+    assert_eq!(
+        waiting.wait.context("missing retry wait")?.started_at,
+        at(5)
+    );
+    Ok(())
+}

@@ -13,20 +13,44 @@ import sys
 import time
 import urllib.error
 import urllib.parse
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
 import insight_logging
+from airbyte_admission import (
+    CHECK_INTERVAL_SECONDS,
+    POD_OBSERVATION_SECONDS,
+    Admission,
+    CapacityUnreadable,
+    CheckOutage,
+    capacity_wait,
+    next_attempt,
+    start_wait,
+)
 from airbyte_auth import FatalError, airbyte_api_url, oauth_token, request
-from airbyte_launch import Launch, WorkflowLaunch, read_claim
+from airbyte_estimate import estimate
+from airbyte_launch import (
+    CLAIM_WRITE_TIMEOUT_SECONDS,
+    REQUEST_TIMEOUT_SECONDS,
+    CapacityWait,
+    Launch,
+    WorkflowLaunch,
+    WorkflowMetadata,
+    WorkflowReadTimeout,
+    read_claim,
+)
 from airbyte_resources import AirbyteResources, Sizes, parse
+from api_response import connection_error, parse_response, transient_error
+from capacity_lease import CapacityConfigurationError, HeldLease, LeaseLost
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints, ValidationError
 
 REJECTED = 42
 UNCONFIRMED = 43
 UNREADABLE = 44
+CAPACITY_CONFIGURATION = 45
 WRITE_ATTEMPTS = 5
 POLL_INTERVAL_SECONDS = 10
 
@@ -89,7 +113,7 @@ def jobs(url: str, connection: UUID, token: str) -> tuple[int, ...]:
     query = urllib.parse.urlencode(
         {"connectionId": str(connection), "jobType": "sync", "limit": 2, "orderBy": "createdAt|DESC"}
     )
-    return JobList.model_validate_json(request(f"{url}/api/public/v1/jobs?{query}", token)).ids(connection)
+    return parse_response(JobList, request(f"{url}/api/public/v1/jobs?{query}", token)).ids(connection)
 
 
 def triggered_job_id(body: bytes) -> int | str | None:
@@ -138,13 +162,15 @@ def confirm(url: str, claim: Launch) -> Launch:
         time.sleep(max(0, min(POLL_INTERVAL_SECONDS, next_check - time.time())))
 
 
-def finished_job(url: str, claim: Launch) -> bool:
+def finished_job(url: str, claim: Launch, *, strict: bool) -> bool:
     if claim.job_id is None:
         return False
     body = json.dumps({"id": claim.job_id}).encode()
     try:
-        job = JobStatusResponse.model_validate_json(request(f"{url}/api/v1/jobs/get", oauth_token(), body)).job
+        job = parse_response(JobStatusResponse, request(f"{url}/api/v1/jobs/get", oauth_token(), body)).job
     except (OSError, ValueError, KeyError):
+        if strict:
+            raise
         return False
     return (
         job.id == claim.job_id
@@ -189,10 +215,78 @@ def recover(url: str, claim: Launch, trigger_receipt: Launch | None) -> Launch:
         and trigger_receipt.connection == claim.connection
         and trigger_receipt.attempt == claim.attempt
     ):
-        result = claim.model_copy(update={"outcome": "accepted", "job_id": trigger_receipt.job_id})
+        result = claim.model_copy(
+            update={"outcome": "accepted", "job_id": trigger_receipt.job_id, "pod_request": trigger_receipt.pod_request}
+        )
     if result.outcome in {"pending", "unreadable"}:
         result = confirm(url, claim)
     return result
+
+
+def prepare(url: str, token: str, connection: UUID, previous_job: int | None, sizes: Sizes | None) -> int:
+    if previous_job is None:
+        before = jobs(url, connection, token)
+        previous_job = before[0] if before else 0
+    if sizes is not None:
+        overrides = AirbyteResources(request, url).converge(token, connection, sizes)
+        if overrides:
+            insight_logging.configure("airbyte-sync").warning(
+                "The Airbyte connection overrides the source resource settings.",
+                extra={"connection_id": str(connection), "fields": overrides},
+            )
+    return previous_job
+
+
+def observe_launch(result: Launch, capacity: Admission, lease: HeldLease, deadline: float) -> Launch:
+    error = None
+    request = None
+    try:
+        if result.outcome == "accepted":
+            request = capacity.observe(result, lease, deadline)
+    except (OSError, ValueError, RuntimeError, KeyError) as failure:
+        error = failure
+    finally:
+        lease.close()
+    log = insight_logging.configure("airbyte-sync")
+    if error := error or lease.error:
+        log.warning(
+            "The Airbyte pod request measurement did not complete.",
+            extra={"job_id": result.job_id, "error_type": type(error).__name__},
+        )
+        return result
+    if request is None or result.estimated_pod_request is None:
+        return result
+    if request != result.estimated_pod_request:
+        log.warning(
+            "The Airbyte pod request differs from the estimate.",
+            extra={
+                "job_id": result.job_id,
+                "estimated": result.estimated_pod_request.model_dump(),
+                "actual": request.model_dump(),
+            },
+        )
+    return result.model_copy(update={"pod_request": request})
+
+
+def write_claim(
+    store: WorkflowLaunch, metadata: WorkflowMetadata, claim: Launch, wait: CapacityWait | None, lease: HeldLease | None
+) -> None:
+    if lease is None:
+        store.write(metadata, claim)
+        return
+    try:
+        if wait is not None and wait.ended_at is None:
+            ended = wait.model_copy(update={"ended_at": max(wait.started_at, datetime.now(UTC))})
+            store.write_admitted(metadata, claim, ended)
+        else:
+            store.write(metadata, claim, timeout=CLAIM_WRITE_TIMEOUT_SECONDS)
+    except OSError as error:
+        if not connection_error(error):
+            raise
+        current = store.read()
+        if current.started_at != claim.workflow_started_at or read_claim(current, claim.connection) != claim:
+            raise
+        lease.ensure_held(REQUEST_TIMEOUT_SECONDS)
 
 
 def launch(
@@ -203,72 +297,131 @@ def launch(
     unreadable_window: int,
     trigger_receipt: Launch | None = None,
     *,
-    workflow_read_seconds: int = 0,
+    workflow_read_seconds: int | None = None,
     sizes: Sizes | None = None,
+    capacity_enabled: bool = False,
 ) -> Launch:
-    read_deadline = time.monotonic() + workflow_read_seconds if workflow_read_seconds > 0 else None
-    for _ in range(WRITE_ATTEMPTS):
-        metadata = store.read() if read_deadline is None else store.read_until(read_deadline)
-        if metadata.started_at is None:
-            raise RuntimeError("Workflow start is unavailable")
-        prior = read_claim(metadata, connection)
-        previous_job = None
-        if prior is not None and (
-            prior.workflow_started_at == metadata.started_at
-            or (prior.outcome not in {"rejected", "unconfirmed"} and not finished_job(url, prior))
-        ):
-            recovered = recover(url, prior, trigger_receipt)
-            if prior.workflow_started_at == metadata.started_at or recovered.outcome != "unconfirmed":
-                result = recovered.model_copy(update={"workflow_started_at": metadata.started_at})
-                return save_receipt(store, prior, result) if result != prior else result
-            previous_job = prior.previous_job
-
-        token = oauth_token()
-        if previous_job is None:
-            before = jobs(url, connection, token)
-            previous_job = before[0] if before else 0
-        if sizes is not None:
-            overrides = AirbyteResources(request, url).converge(token, connection, sizes)
-            if overrides:
-                insight_logging.configure("airbyte-sync").warning(
-                    "The Airbyte connection overrides the source resource settings.",
-                    extra={"connection_id": str(connection), "fields": overrides},
-                )
-
-        now = time.time()
-        claim = Launch(
-            workflow_uid=metadata.uid,
-            workflow_started_at=metadata.started_at,
-            attempt=prior.attempt + 1 if prior is not None else 1,
-            connection=connection,
-            previous_job=previous_job,
-            deadline=now + window,
-            read_deadline=now + unreadable_window,
-        )
+    read_deadline = (
+        time.monotonic() + workflow_read_seconds if workflow_read_seconds and workflow_read_seconds > 0 else None
+    )
+    outage = CheckOutage(unreadable_window)
+    capacity = None
+    conflicts = 0
+    initial_read = True
+    while conflicts < WRITE_ATTEMPTS:
+        started = time.monotonic()
+        claim_written = False
         try:
-            store.write(metadata, claim)
-        except urllib.error.HTTPError as error:
-            if error.code != 409:
-                raise
-            continue
+            if read_deadline is not None and (initial_read or not capacity_enabled):
+                metadata = store.read_until(read_deadline)
+            else:
+                metadata = store.read()
+            initial_read = False
+            if metadata.started_at is None:
+                raise RuntimeError("Workflow start is unavailable")
+            prior = read_claim(metadata, connection)
+            previous_job = None
+            if prior is not None and (
+                prior.workflow_started_at == metadata.started_at
+                or (
+                    prior.outcome not in {"rejected", "unconfirmed"}
+                    and not finished_job(url, prior, strict=capacity_enabled and workflow_read_seconds is None)
+                )
+            ):
+                recovered = recover(url, prior, trigger_receipt)
+                if prior.workflow_started_at == metadata.started_at or recovered.outcome != "unconfirmed":
+                    result = recovered.model_copy(update={"workflow_started_at": metadata.started_at})
+                    return save_receipt(store, prior, result) if result != prior else result
+                previous_job = prior.previous_job
 
-        result = send(url, token, claim)
-        if result.outcome == "pending":
-            result = confirm(url, claim)
-        return save_receipt(store, claim, result)
+            attempt = next_attempt(metadata, prior, capacity=capacity_enabled)
+            if capacity_enabled and capacity is None:
+                capacity = Admission(store)
+            lease = capacity.lease.take() if capacity is not None else None
+            if capacity is not None and lease is None:
+                outage.missed(started, "Lease contention")
+                continue
+
+            with lease if lease is not None else nullcontext():
+                token = oauth_token()
+                previous_job = prepare(url, token, connection, previous_job, sizes)
+                estimated = None
+                has_capacity = True
+                if capacity is not None:
+                    estimated = estimate(AirbyteResources(request, url), token, connection, capacity.settings.requests)
+                    has_capacity = capacity.fits(estimated)
+                    outage.checked()
+                if has_capacity:
+                    wait = capacity_wait(metadata, attempt) if capacity is not None else None
+                    if lease is not None:
+                        lease.ensure_held(CLAIM_WRITE_TIMEOUT_SECONDS + REQUEST_TIMEOUT_SECONDS)
+                    now = time.time()
+                    claim = Launch(
+                        workflow_uid=metadata.uid,
+                        workflow_started_at=metadata.started_at,
+                        attempt=attempt,
+                        connection=connection,
+                        previous_job=previous_job,
+                        deadline=now + window,
+                        read_deadline=now + unreadable_window,
+                        estimated_pod_request=estimated,
+                    )
+                    try:
+                        write_claim(store, metadata, claim, wait, lease)
+                    except urllib.error.HTTPError as error:
+                        if error.code != 409:
+                            raise
+                        conflicts += 1
+                        continue
+                    claim_written = True
+                    observation_deadline = time.monotonic() + POD_OBSERVATION_SECONDS
+                    result = send(url, token, claim)
+                    if result.outcome == "pending":
+                        result = confirm(url, claim)
+                    if capacity is not None and lease is not None:
+                        result = observe_launch(result, capacity, lease, observation_deadline)
+                    return save_receipt(store, claim, result)
+
+            try:
+                start_wait(store, metadata, attempt)
+            except urllib.error.HTTPError as error:
+                if error.code != 409:
+                    raise
+                conflicts += 1
+                continue
+            if lease is not None and (error := lease.error) is not None:
+                if not (isinstance(error, LeaseLost) or transient_error(error)):
+                    raise error
+                insight_logging.configure("airbyte-sync").warning(
+                    "The Airbyte capacity Lease operation did not complete.", extra={"error_type": type(error).__name__}
+                )
+        except (CapacityUnreadable, WorkflowReadTimeout):
+            raise
+        except OSError as error:
+            if claim_written or (initial_read and workflow_read_seconds is not None):
+                raise
+            if not capacity_enabled or not (isinstance(error, LeaseLost) or transient_error(error)):
+                raise
+            outage.missed(started, type(error).__name__)
+        else:
+            time.sleep(CHECK_INTERVAL_SECONDS)
 
     raise RuntimeError("The Workflow launch claim write conflicted.")
 
 
-def workflow_launch(url: str, trigger_receipt: Launch | None = None, *, workflow_read_seconds: int = 0) -> Launch:
+def workflow_launch(
+    url: str, trigger_receipt: Launch | None = None, *, workflow_read_seconds: int | None = None
+) -> Launch:
     connection = UUID(os.environ["CONNECTION_ID"])
     window = int(os.environ["LAUNCH_CONFIRMATION_SECONDS"])
     unreadable_window = int(os.environ["LAUNCH_UNREADABLE_SECONDS"])
     if min(window, unreadable_window) <= 0:
         raise ValueError("Airbyte launch windows must be positive")
     sizes = parse(Sizes, os.environ["SYNC_RESOURCES"]) if "SYNC_RESOURCES" in os.environ else None
+    store = WorkflowLaunch()
+    capacity_enabled = os.environ.get("AIRBYTE_CAPACITY_CHECK_ENABLED") == "true"
     return launch(
-        WorkflowLaunch(),
+        store,
         url,
         connection,
         window,
@@ -276,6 +429,7 @@ def workflow_launch(url: str, trigger_receipt: Launch | None = None, *, workflow
         trigger_receipt,
         workflow_read_seconds=workflow_read_seconds,
         sizes=sizes,
+        capacity_enabled=capacity_enabled,
     )
 
 
@@ -283,7 +437,7 @@ def report_launch(result: Launch) -> int:
     log = insight_logging.configure("airbyte-sync")
     if path := os.environ.get("AIRBYTE_LAUNCH_EVIDENCE_PATH"):
         try:
-            Path(path).write_text(result.model_dump_json())
+            Path(path).write_text(result.mark_json())
         except OSError:
             log.warning("The Argo launch receipt write did not complete.")
     match result.outcome:
@@ -307,6 +461,12 @@ def main() -> int:
     try:
         result = workflow_launch(airbyte_api_url())
         exit_code = report_launch(result)
+    except CapacityUnreadable as error:
+        log.error(str(error))
+        return UNREADABLE
+    except CapacityConfigurationError as error:
+        log.error("The Airbyte capacity check stopped.", extra={"detail": str(error)})
+        return CAPACITY_CONFIGURATION
     except (FatalError, OSError, ValueError, RuntimeError, KeyError) as error:
         log.error("Airbyte launch evidence is unavailable.", extra={"error_type": type(error).__name__})
         return 1
