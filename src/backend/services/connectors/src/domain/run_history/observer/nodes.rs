@@ -61,19 +61,6 @@ pub(super) fn waiting_lock(node: &Value) -> Option<&str> {
         .filter(|lock| !lock.is_empty())
 }
 
-pub(super) fn bronze_slot_wait(status: &Value) -> Option<DateTime<Utc>> {
-    nodes(status).find_map(|node| {
-        let lock = waiting_lock(node)?;
-        if lock.ends_with("/insight-sync-limits/bronze") {
-            return time(node, "startedAt");
-        }
-        if template(node) == Some("pipeline") && lock.ends_with("/insight-sync-limits/syncs") {
-            return time(status, "startedAt").or_else(|| time(node, "startedAt"));
-        }
-        None
-    })
-}
-
 fn mutex_holder(status: &Value, lock: &str) -> Option<String> {
     let entry = status["synchronization"]["mutex"]["waiting"]
         .as_array()?

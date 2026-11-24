@@ -122,7 +122,6 @@ class SyncFact(BaseModel):
 
 class WaitKind(StrEnum):
     lock = 'lock'
-    sync_slot = 'sync_slot'
     check_slot = 'check_slot'
     placement = 'placement'
 

@@ -56,8 +56,7 @@ pub(super) fn expired(run: &RunSnapshot, now: DateTime<Utc>) -> Option<&StageSna
             && stage.status == "queued"
             && stage.started_at.is_none()
             && stage.wait.as_ref().is_some_and(|wait| {
-                matches!(wait.kind, WaitKind::Lock | WaitKind::SyncSlot)
-                    && now - wait.started_at > WAIT_LIMIT
+                wait.kind == WaitKind::Lock && now - wait.started_at > WAIT_LIMIT
             })
     })
 }

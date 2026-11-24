@@ -69,19 +69,13 @@ toolbox image because the poller's environment variable also changed.
 
 ## Connector sync limits and history
 
-Argo limits Bronze loads and connector checks separately.
-A Bronze slot covers connection lookup, the wait for cluster capacity, Airbyte launch, and polling.
-The slot is released when the Bronze step ends.
+Argo limits connector checks with a semaphore.
 A check slot covers the post-sync `connector-checks` step.
-Keep the `syncs` key for this release. Queued workflows from the prior release still read it.
-Remove the key in the next release after those workflows finish.
 Argo uses one mutex for staging, one for Identity, and one for downstream transformations.
 The same mutex protects a writer group on both the Jira and non-Jira paths.
 
 | Setting | Default | Applies to |
 | --- | --- | --- |
-| `ingestion.maxConcurrentSyncs` | 4 | Legacy pipelines that still reference `syncs` |
-| `ingestion.maxConcurrentBronzeLoads` | 4 | Upper limit for Bronze loads in this namespace |
 | `ingestion.maxConcurrentConnectorChecks` | 2 | Check slots in this namespace |
 | `clickhouse.syncUser.username` | Empty | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
 | `clickhouse.syncUser.passwordSecret.name` | Empty | Existing Secret in the release namespace |
@@ -99,10 +93,10 @@ It distinguishes the sync user's total, the query limit, server memory pressure,
 For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
 
 The Connectors page shows Bronze, Silver, Identity, and Gold.
-The queue distinguishes a writer lock, a Bronze slot, and a wait for cluster capacity.
+The queue distinguishes a writer lock, a check slot, and a wait for cluster capacity.
 The lock reason includes the holder when Argo reports it.
 A wait shows a warning after three hours.
-Connectors stops a Workflow after more than six hours of waiting for a writer lock or Bronze slot.
+Connectors stops a Workflow after more than six hours of waiting for a writer lock.
 The stop applies before Gold succeeds. The page and elapsed wait time end at Gold.
 Connectors records check attempts separately. A wait for cluster capacity can continue beyond six hours.
 
@@ -111,7 +105,7 @@ Connectors records check attempts separately. A wait for cluster capacity can co
 Bronze checks available CPU and memory on each eligible node before it submits a sync.
 The trigger checks the initial submission. The poll step checks a resubmission after an Argo retry.
 An unscheduled Airbyte job pod also delays submission.
-When capacity is insufficient, Bronze keeps its slot and checks again every 15 seconds.
+When capacity is insufficient, Bronze checks again every 15 seconds.
 The step stops if `ingestion.airbyteSync.launchUnreadableSeconds` elapses without a sync submission or a no-fit check with a recorded wait.
 The exit log names the operation and the last error.
 The Connectors page shows `Waiting for cluster capacity` and includes this interval in queued time.
@@ -219,7 +213,7 @@ Use the largest applicable dbt model cap for each writer group.
 Estimate the sync total with this formula.
 
 ```text
-Bronze slots × Bronze query budget
+concurrent Bronze loads × Bronze query budget
 + staging transform cap + downstream transform cap
 + identity seed cap
 + check slots × check query budget

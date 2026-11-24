@@ -232,8 +232,6 @@ ingestion:
   # image, either here or with the script's `--image` flag.
   seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.25.14.58-1d46f9f" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
   syncResourceDefaults: {}
-  maxConcurrentSyncs: 4
-  maxConcurrentBronzeLoads: 4
   maxConcurrentConnectorChecks: 2
   airbyteSync:
     capacityCheck:

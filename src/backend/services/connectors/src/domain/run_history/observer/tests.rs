@@ -113,13 +113,11 @@ fn identity_query_attribution_survives_pod_deletion() {
 }
 
 #[test]
-fn argo_lock_holder_and_sync_slot_are_distinct_from_placement() -> Result<()> {
+fn argo_lock_holder_is_distinct_from_placement() -> Result<()> {
     let mut workflow = workflow(&json!({
         "phase":"Running",
         "synchronization":{"mutex":{"waiting":[{"mutex":"example/Mutex/ch-staging","holder":"example/holder/id"}]}},
         "nodes":{
-            "pipeline":{"id":"pipeline","templateName":"pipeline","type":"DAG","phase":"Pending",
-                "startedAt":at(1),"synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/syncs"}},
             "staging":{"id":"staging","displayName":"transform-jira-staging","type":"Pod","phase":"Pending",
                 "startedAt":at(1),"synchronizationStatus":{"waiting":"example/Mutex/ch-staging"}},
             "identity":{"id":"identity","displayName":"identity-seed","type":"Pod","phase":"Pending",
@@ -156,33 +154,20 @@ fn argo_lock_holder_and_sync_slot_are_distinct_from_placement() -> Result<()> {
         wait("identity-seed").map(|wait| wait.kind),
         Some(WaitKind::Placement)
     );
-    assert_eq!(
-        wait("bronze").map(|wait| wait.kind),
-        Some(WaitKind::SyncSlot)
-    );
     Ok(())
 }
 
 #[test]
-fn bronze_and_checks_report_their_own_slot_waits() -> Result<()> {
-    let mut workflow = workflow(&json!({
+fn checks_report_their_own_slot_wait() -> Result<()> {
+    let workflow = workflow(&json!({
         "phase":"Running",
         "nodes":{
-            "load":{"id":"load","templateRef":{"name":"airbyte-sync","template":"main"},
-                "type":"Steps","phase":"Pending","startedAt":at(2),
-                "synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/bronze"}},
             "checks":{"id":"checks","displayName":"connector-checks","type":"Pod","phase":"Pending",
                 "startedAt":at(3),"synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/checks"}}
         }
     }))?;
     let pods = HashMap::new();
-    let load = bronze::snapshot(&workflow, at(1), &pods, None);
     let checks = &nodes::transforms(&workflow.data["status"], &pods, None)[0];
-    assert_eq!(
-        load.wait.as_ref().map(|wait| wait.kind),
-        Some(WaitKind::SyncSlot)
-    );
-    assert_eq!(load.wait.as_ref().map(|wait| wait.started_at), Some(at(2)));
     assert_eq!(
         serde_json::to_value(checks.wait.as_ref().map(|wait| wait.kind))?,
         "check_slot"
@@ -192,10 +177,6 @@ fn bronze_and_checks_report_their_own_slot_waits() -> Result<()> {
     run.stages = vec![nodes::transforms(&workflow.data["status"], &pods, None).remove(0)];
     assert!(timeout::expired(&run, at(9)).is_none());
     assert!(timeout::expired(&run, at(10)).is_none());
-
-    workflow.data["status"]["nodes"]["load"]["phase"] = json!("Error");
-    let ended = bronze::snapshot(&workflow, at(1), &pods, Some(at(8)));
-    assert!(ended.wait.is_none());
     Ok(())
 }
 
@@ -225,7 +206,7 @@ fn stops_strictly_after_six_hours_and_only_for_argo_synchronization() -> Result<
     for (kind, stop) in [
         (WaitKind::Placement, false),
         (WaitKind::Lock, true),
-        (WaitKind::SyncSlot, true),
+        (WaitKind::CheckSlot, false),
     ] {
         let mut attempt = StageSnapshot::new("bronze", 1, at(1));
         attempt.status = "queued";
@@ -313,7 +294,7 @@ async fn stop_patches_uid_and_version_and_ignores_placement_or_running_stages() 
     stage.status = "queued";
     run.stages.push(stage);
     timeout::stop(&api, &object, &run, at(8)).await?;
-    run.stages[0].wait = Some(nodes::wait(WaitKind::SyncSlot, at(1), None));
+    run.stages[0].wait = Some(nodes::wait(WaitKind::Lock, at(1), None));
     run.stages[0].started_at = Some(at(2));
     timeout::stop(&api, &object, &run, at(8)).await?;
     assert!(

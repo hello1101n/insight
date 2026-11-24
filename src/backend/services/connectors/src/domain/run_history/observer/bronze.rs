@@ -177,12 +177,7 @@ pub(super) fn observation(
     if stage.wait.is_some() {
         return (stage, lookup);
     }
-    if workflow_end.is_none()
-        && let Some(at) = nodes::bronze_slot_wait(status)
-    {
-        stage.wait = Some(nodes::wait(WaitKind::SyncSlot, at, None));
-        stage.status = "queued";
-    } else if stage.job.is_none()
+    if stage.job.is_none()
         && workflow_end.is_none()
         && let Some(node) = trigger.or(resolve)
         && let Some(at) = nodes::placement(node, node["id"].as_str().and_then(|id| pods.get(id)))

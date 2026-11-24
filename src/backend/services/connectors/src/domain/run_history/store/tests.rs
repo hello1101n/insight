@@ -77,7 +77,7 @@ fn merge_waits_keeps_one_open_wait_until_the_reason_changes() {
     let mut observed = StageSnapshot::new("bronze", 1, first);
     let mut waits = Vec::new();
     observed.wait = Some(StageWait {
-        kind: WaitKind::SyncSlot,
+        kind: WaitKind::Lock,
         started_at: first,
         ended_at: None,
         holder: None,

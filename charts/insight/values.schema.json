@@ -61,8 +61,6 @@
             }
           }
         },
-        "maxConcurrentSyncs": { "type": "integer", "minimum": 1 },
-        "maxConcurrentBronzeLoads": { "type": "integer", "minimum": 1 },
         "maxConcurrentConnectorChecks": { "type": "integer", "minimum": 1 },
         "toolboxImage":    { "type": "string" },
         "reconcile": {

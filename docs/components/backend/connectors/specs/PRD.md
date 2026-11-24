@@ -120,11 +120,11 @@ request gets 401.
    load shows the measurements that Airbyte recorded.
 5. For instances with only legacy loads, the heading states how many loads the table shows,
    for example "Latest 10 of 50 recorded".
-6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes three wait reasons.
-   These are a writer lock, a Bronze slot, and cluster capacity.
+6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes two wait reasons.
+   These are a writer lock and cluster capacity.
    The timeline counts the wait for cluster capacity before Airbyte submission as queued time.
    A wait shows a warning after three hours.
-7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock or Bronze slot.
+7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock.
    A wait for cluster capacity and post-sync checks can continue beyond six hours.
    The run's wait time ends when Gold succeeds.
 8. The service retains the recorded run history after Argo deletes the workflow.

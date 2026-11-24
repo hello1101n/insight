@@ -2132,7 +2132,7 @@ describe("connector workflow runs", () => {
           status: "queued",
           queued_at: run(1).started_at,
           waits: [
-            { kind: "sync_slot" as const, started_at: run(1).started_at },
+            { kind: "placement" as const, started_at: run(1).started_at },
           ],
         },
       ],

@@ -926,7 +926,6 @@
       "queue_reason": {
         "lock": "Waiting for a lock",
         "lock_holder": "Waiting for a lock held by {{holder}}",
-        "sync_slot": "Waiting for a free load slot",
         "placement": "Waiting for cluster capacity"
       },
       "reason": {

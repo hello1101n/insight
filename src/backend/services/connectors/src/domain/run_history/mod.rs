@@ -12,7 +12,6 @@ use super::connector_schedules::resources::Resources;
 #[serde(rename_all = "snake_case")]
 pub(crate) enum WaitKind {
     Lock,
-    SyncSlot,
     CheckSlot,
     Placement,
 }
