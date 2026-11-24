@@ -86,6 +86,8 @@ class RecordKeys(_HubspotModel):
 
 class PropertyDescriptor(_HubspotModel):
     name: str | None = None
+    showCurrencySymbol: bool | None = None
+    numberDisplayHint: str | None = None
 
 
 class PropertiesPage(_HubspotModel):

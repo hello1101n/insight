@@ -2,8 +2,11 @@ name: hubspot
 # MAJOR per ADR-0015: the one-shot dbt --full-refresh it dispatches is what
 #   fills the new class_crm_* columns for rows stored before them.
 # 3.9.0: tickets and their property history also feed the support classes
-#   (dim_support_ticket, class_support_activity). MINOR: new staging models
-#   build whole on their first run; nothing already stored changes meaning.
+#   (dim_support_ticket, class_support_activity). The connector requests no
+#   money property: a property with a currency flag or a standard money name
+#   (source_hubspot/money.py) is not requested and not stored, and the deal
+#   history no longer tracks amount and currency. The money columns stay in the
+#   schema and are NULL. MINOR: no column changes; nothing is backfilled.
 version: "3.9.0"
 type: cdk
 schedule: "0 6 * * *"

@@ -37,7 +37,7 @@ models:
       - name: stage
         description: "Stage ID — joins to class_crm_pipeline_stages.stage_id (object_type = 'deals')"
       - name: currency
-        description: "ISO currency of `amount`; `amount_home` is in the portal's home currency"
+        description: "ISO currency of `amount`. NULL for HubSpot: the connector collects no money, so `amount`, `amount_home`, `acv`, `tcv`, `arr`, `currency` and `exchange_rate` are NULL"
       - name: data_source
         description: "Source discriminator"
         tests:
