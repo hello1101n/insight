@@ -20,3 +20,4 @@ secret:
     - zendesk_secret
   optional_fields:
     - zendesk_start_date
+    - zendesk_jira_external_id

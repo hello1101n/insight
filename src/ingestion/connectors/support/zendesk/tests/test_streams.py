@@ -165,3 +165,71 @@ def test_rejected_credentials_fail_the_sync_instead_of_retrying(http_mocker: Htt
     assert any("OAuth client" in (e.trace.error.message or "") for e in output.errors), (
         f"should fail with the auth hint on {status}"
     )
+
+
+def test_jira_links_follow_after_cursor_and_keep_the_link_id(http_mocker: HttpMocker) -> None:
+    mock_token(http_mocker)
+    link = {"id": 5, "ticket_id": "2", "issue_id": "10001", "issue_key": "PROJ-1", "created_at": "2026-06-20T00:00:00Z"}
+    http_mocker.get(
+        HttpRequest(f"{BASE_URL}/jira/links", query_params={"page[size]": "1000"}),
+        ok({"links": [link], "meta": {"has_more": True, "after_cursor": "l2"}}),
+    )
+    http_mocker.get(
+        HttpRequest(f"{BASE_URL}/jira/links", query_params={"page[size]": "1000", "page[after]": "l2"}),
+        ok({"links": [{**link, "id": 6, "issue_id": "10002"}], "meta": {"has_more": False, "after_cursor": None}}),
+    )
+
+    output = read_stream(CONNECTOR, "zendesk_jira_links", ZendeskConfigBuilder().build())
+
+    assert [r.record.data["unique_key"] for r in output.records] == ["test-tenant-test-source-5", "test-tenant-test-source-6"]
+    assert json.loads(output.records[0].record.data["payload_json"])["issue_key"] == "PROJ-1"
+
+
+@pytest.mark.parametrize("status", [403, 404])
+def test_an_account_without_the_jira_integration_yields_an_empty_link_stream(http_mocker: HttpMocker, status: int) -> None:
+    mock_token(http_mocker)
+    http_mocker.get(
+        HttpRequest(f"{BASE_URL}/jira/links", query_params={"page[size]": "1000"}),
+        HttpResponse(body=json.dumps({"errors": [{"status": status}]}), status_code=status),
+    )
+
+    output = read_stream(CONNECTOR, "zendesk_jira_links", ZendeskConfigBuilder().build())
+
+    assert output.records == [], f"should be empty on {status}"
+    assert output.errors == [], f"should not fail on {status}"
+
+
+def test_jira_v2_links_follow_meta_after_and_key_on_the_ticket_and_issue_pair(http_mocker: HttpMocker) -> None:
+    mock_token(http_mocker)
+    links_url = f"{BASE_URL}/integrations/jira/ext-1/links"
+    link = {"ticket_id": "2", "issue_id": "10001", "issue_key": "PROJ-1"}
+    http_mocker.get(
+        HttpRequest(links_url, query_params={"page[size]": "100"}),
+        ok({"count": 2, "links": [link], "meta": {"has_more": True, "after": "a2", "before": None}}),
+    )
+    http_mocker.get(
+        HttpRequest(links_url, query_params={"page[size]": "100", "page[after]": "a2"}),
+        ok({"count": 2, "links": [{**link, "ticket_id": "3"}], "meta": {"has_more": False, "after": None, "before": "a2"}}),
+    )
+    config = ZendeskConfigBuilder().build()
+    config["zendesk_jira_external_id"] = "ext-1"
+
+    output = read_stream(CONNECTOR, "zendesk_jira_links_v2", config)
+
+    assert [r.record.data["unique_key"] for r in output.records] == [
+        "test-tenant-test-source-2-10001",
+        "test-tenant-test-source-3-10001",
+    ]
+
+
+def test_jira_v2_links_without_an_external_id_yield_an_empty_stream(http_mocker: HttpMocker) -> None:
+    mock_token(http_mocker)
+    http_mocker.get(
+        HttpRequest(f"{BASE_URL}/integrations/jira/not-configured/links", query_params={"page[size]": "100"}),
+        HttpResponse(body=json.dumps({"errors": [{"status": 404}]}), status_code=404),
+    )
+
+    output = read_stream(CONNECTOR, "zendesk_jira_links_v2", ZendeskConfigBuilder().build())
+
+    assert output.records == []
+    assert output.errors == []

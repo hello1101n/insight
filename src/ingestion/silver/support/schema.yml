@@ -366,3 +366,44 @@ models:
         description: Time
         tests:
           - not_null
+  - name: class_support_ticket_issue_links
+    description: Links from a ticket to a tracker issue, one row per ticket, issue and way the link was found.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{tracker}-{found_by}-{ticket}-{issue}`'
+        tests:
+          - not_null
+          - unique
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: tracker
+        description: Tracker of the issue
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - jira
+      - name: issue_id
+        description: Immutable issue id in the tracker; the join key to task tracking
+        tests:
+          - not_null
+      - name: issue_key
+        description: Issue key as the integration last reported it; display only, it changes when the issue moves
+      - name: found_by
+        description: Where the link came from
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - integration
+                  - integration_v2
+      - name: linked_at
+        description: Link creation; NULL for the Jira integration V2, which reports no time
+      - name: last_seen_at
+        description: Last sync that listed the link; older than the latest sync means Zendesk removed it
+        tests:
+          - not_null
