@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use serde::Deserialize;
+use reqwest::header::{AUTHORIZATION, HeaderValue};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::access::{Caller, PersonId, Role};
@@ -11,6 +12,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const ADMIN_ROLE_ID: Uuid = Uuid::from_u128(0xa4d1_1000_0000_4000_8000_0000_0000_0001);
 
 const ASSIGNMENTS_PAGE: usize = 500;
+
+const VISIBLE_PERSONS_BATCH: usize = 1000;
 
 #[cfg(test)]
 const FIXED_CALLER: Uuid = Uuid::nil();
@@ -57,6 +60,16 @@ struct PersonList {
 #[derive(Debug, Deserialize)]
 struct PersonSummary {
     person_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+struct VisibleRequest<'a> {
+    person_ids: &'a [Uuid],
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleResponse {
+    visible: Vec<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -345,6 +358,49 @@ impl IdentityClient {
             .into_iter()
             .filter_map(NamedPerson::shown)
             .collect())
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the personal metric reads filter by visibility")
+    )]
+    pub(crate) async fn visible(
+        &self,
+        authorization: &HeaderValue,
+        ids: &[PersonId],
+    ) -> Result<HashSet<PersonId>, IdentityError> {
+        let (http, base_url) = match &self.mode {
+            Mode::Live { http, base_url } => (http, base_url),
+            #[cfg(test)]
+            Mode::Fixed(fixed) => {
+                return Ok(ids
+                    .iter()
+                    .copied()
+                    .filter(|person| !fixed.strangers.contains(&person.uuid()))
+                    .collect());
+            }
+        };
+
+        let url = format!("{base_url}/v1/visible-persons");
+        let asked: Vec<Uuid> = ids.iter().map(|person| person.uuid()).collect();
+        let mut visible = HashSet::new();
+
+        for batch in asked.chunks(VISIBLE_PERSONS_BATCH) {
+            let response = http
+                .post(&url)
+                .header(AUTHORIZATION, authorization)
+                .json(&VisibleRequest { person_ids: batch })
+                .send()
+                .await?;
+            if !response.status().is_success() {
+                return Err(IdentityError::Refused(response.status().as_u16()));
+            }
+
+            let answered: VisibleResponse = response.json().await?;
+            visible.extend(answered.visible.into_iter().map(PersonId::new));
+        }
+
+        Ok(visible)
     }
 
     pub(crate) async fn holds_admin(
