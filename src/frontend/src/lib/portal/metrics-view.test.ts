@@ -7,6 +7,7 @@ import { identityPerson, pid } from "@/test/identity";
 
 import {
   chunkKeys,
+  columnFormula,
   compareGaps,
   formatGap,
   headerUnit,
@@ -15,7 +16,6 @@ import {
   metricGroups,
   metricsRows,
   metricsViewCatalog,
-  sortRows,
   type MetricsRow,
 } from "./metrics-view";
 
@@ -180,27 +180,80 @@ describe("metricsRows", () => {
   });
 });
 
-describe("sortRows", () => {
-  const row = (name: string): MetricsRow => ({
-    entityId: name,
-    displayName: name,
-    depth: 2,
-    hasReports: false,
-    expanded: false,
-  });
-  const byKey = new Map([
-    ["git.commits", result("git.commits", [["a", 1], ["b", 3], ["c", null], ["d", 2]])],
+describe("metricsRows with an order", () => {
+  const tree = identityPerson("boss", {}, [
+    identityPerson("a", {}, [identityPerson("c"), identityPerson("d"), identityPerson("e")]),
+    identityPerson("b"),
+    identityPerson("f"),
   ]);
-  const rows = ["a", "b", "c", "d"].map(row);
+  const byKey = new Map([
+    [
+      "git.commits",
+      result("git.commits", [
+        [pid("boss"), 1],
+        [pid("a"), 5],
+        [pid("b"), 9],
+        [pid("c"), 2],
+        [pid("d"), 7],
+        [pid("e"), null],
+        [pid("f"), null],
+      ]),
+    ],
+  ]);
+  const order = (direction: "ascending" | "descending") => ({
+    key: "git.commits",
+    direction,
+    byKey,
+  });
+  const shape = (rows: MetricsRow[]) => rows.map((row) => [row.displayName, row.depth]);
+  const all = new Set(["boss", "a"].map(pid));
 
   it.each([
-    ["descending", ["b", "d", "a", "c"]],
-    ["ascending", ["a", "d", "b", "c"]],
-  ] as const)("orders people by a metric %s, with no value last", (direction, order) => {
-    const sorted = sortRows(rows, "git.commits", direction, byKey);
+    [
+      "descending",
+      [["boss", 0], ["b", 1], ["a", 1], ["d", 2], ["c", 2], ["e", 2], ["f", 1]],
+    ],
+    [
+      "ascending",
+      [["boss", 0], ["a", 1], ["c", 2], ["d", 2], ["e", 2], ["b", 1], ["f", 1]],
+    ],
+  ] as const)(
+    "keeps the root first and sorts each branch %s, with no value last",
+    (direction, expected) => {
+      expect(shape(metricsRows(tree, [], all, order(direction)))).toEqual(expected);
+    },
+  );
 
-    expect(sorted.map((r) => r.entityId), `should order ${direction}`).toEqual(order);
-    expect(sorted.every((r) => r.depth === 0)).toBe(true);
+  it("keeps the reports of a collapsed manager hidden", () => {
+    const rows = metricsRows(tree, [], new Set([pid("boss")]), order("descending"));
+
+    expect(shape(rows)).toEqual([["boss", 0], ["b", 1], ["a", 1], ["f", 1]]);
+  });
+
+  it("sorts ties by name", () => {
+    const tied = new Map([
+      ["git.commits", result("git.commits", [[pid("a"), 1], [pid("b"), 1], [pid("f"), 1]])],
+    ]);
+    const rows = metricsRows(tree, [], new Set([pid("boss")]), {
+      key: "git.commits",
+      direction: "descending",
+      byKey: tied,
+    });
+
+    expect(rows.map((row) => row.displayName)).toEqual(["boss", "a", "b", "f"]);
+  });
+
+  it("sorts the flat list by value when there is no root", () => {
+    const people = ["a", "b", "c", "e"].map((id) => ({
+      person_id: pid(id),
+      display_name: id,
+      email: "",
+      username: "",
+    }));
+
+    expect(
+      metricsRows(null, people, new Set(), order("descending")).map((row) => row.displayName),
+    ).toEqual(["b", "a", "c", "e"]);
   });
 });
 
@@ -292,5 +345,21 @@ describe("rolesById", () => {
         [pid("b"), "Software Engineer"],
       ]),
     );
+  });
+});
+
+describe("columnFormula", () => {
+  it.each([
+    ["a sum with a unit", "sum", "integer", "days", "Total · days"],
+    ["a percent ratio", "ratio", "percent", null, "Ratio · %"],
+    ["a sum of hours", "sum", "decimal", "h", "Total · h min"],
+    ["a unitless sum", "sum", "integer", null, "Total · count"],
+    ["a median", "median", "decimal", "h", "Median · h min"],
+    ["a percentile", "percentile", "decimal", "min", "Percentile · min"],
+    ["a standard deviation", "stddev", "decimal", "min", "Std dev · min"],
+    ["a distinct count", "distinct_count", "integer", null, "Total · count"],
+    ["a unit the label also names", "sum", "integer", "emails", "Total · emails"],
+  ] as const)("writes %s", (_case, computation, format, unit, text) => {
+    expect(columnFormula({ computation, format, unit })).toBe(text);
   });
 });

@@ -1,6 +1,6 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
-import { metricDisplayUnit } from "@/lib/format";
+import { isDurationUnit, metricDisplayUnit } from "@/lib/format";
 import {
   personDisplayName,
   type PersonNaming,
@@ -80,10 +80,34 @@ function byName(a: { displayName: string }, b: { displayName: string }): number 
   return a.displayName.localeCompare(b.displayName);
 }
 
+export interface RowOrder {
+  key: string;
+  direction: SortDirection;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+}
+
+function siblingComparator<T extends { displayName: string }>(
+  idOf: (item: T) => string,
+  order: RowOrder | undefined,
+): (a: T, b: T) => number {
+  const result = order?.byKey.get(order.key);
+  if (!order || !result) return byName;
+  const sign = order.direction === "ascending" ? 1 : -1;
+
+  return (a, b) => {
+    const left = finiteValue(result, idOf(a));
+    const right = finiteValue(result, idOf(b));
+    if (left == null) return right == null ? byName(a, b) : 1;
+    if (right == null) return -1;
+    return (left - right) * sign || byName(a, b);
+  };
+}
+
 function treeRows(
   node: IdentityPerson,
   depth: number,
   expanded: ReadonlySet<string>,
+  order: RowOrder | undefined,
 ): MetricsRow[] {
   const entityId = normalizePersonId(node.person_id);
   const hasReports = node.subordinates.length > 0;
@@ -97,19 +121,27 @@ function treeRows(
   };
   if (!open) return [row];
 
-  const reports = [...node.subordinates].sort((a, b) =>
-    personDisplayName(a).localeCompare(personDisplayName(b)),
-  );
+  const reports = node.subordinates
+    .map((report) => ({
+      node: report,
+      displayName: personDisplayName(report),
+      entityId: normalizePersonId(report.person_id),
+    }))
+    .sort(siblingComparator((report) => report.entityId, order));
 
-  return [row, ...reports.flatMap((report) => treeRows(report, depth + 1, expanded))];
+  return [
+    row,
+    ...reports.flatMap((report) => treeRows(report.node, depth + 1, expanded, order)),
+  ];
 }
 
 export function metricsRows(
   root: IdentityPerson | null,
   people: ReadonlyArray<PersonNaming & { person_id: string }>,
   expanded: ReadonlySet<string>,
+  order?: RowOrder,
 ): MetricsRow[] {
-  if (root) return treeRows(root, 0, expanded);
+  if (root) return treeRows(root, 0, expanded, order);
 
   return people
     .map((person) => ({
@@ -119,28 +151,7 @@ export function metricsRows(
       hasReports: false,
       expanded: false,
     }))
-    .sort(byName);
-}
-
-export function sortRows(
-  rows: readonly MetricsRow[],
-  metricKey: string,
-  direction: SortDirection,
-  byKey: ReadonlyMap<string, NormalizedMetricResult>,
-): MetricsRow[] {
-  const result = byKey.get(metricKey);
-  const valueOf = (row: MetricsRow) => (result ? finiteValue(result, row.entityId) : null);
-  const sign = direction === "ascending" ? 1 : -1;
-
-  return rows
-    .map((row) => ({ ...row, depth: 0 }))
-    .sort((a, b) => {
-      const left = valueOf(a);
-      const right = valueOf(b);
-      if (left == null) return right == null ? byName(a, b) : 1;
-      if (right == null) return -1;
-      return (left - right) * sign || byName(a, b);
-    });
+    .sort(siblingComparator((row) => row.entityId, order));
 }
 
 export function metricGroups(keys: readonly string[]): MetricGroup[] {
@@ -226,4 +237,28 @@ export function rolesById(root: IdentityPerson | null): Map<string, string> {
   };
   if (root) walk(root);
   return roles;
+}
+
+const COMPUTATION_LABEL: Record<NormalizedMetricResult["computation"], string> = {
+  sum: "Total",
+  ratio: "Ratio",
+  median: "Median",
+  percentile: "Percentile",
+  stddev: "Std dev",
+  distinct_count: "Total",
+};
+
+export function columnFormula(
+  result: Pick<NormalizedMetricResult, "computation" | "format" | "unit">,
+): string {
+  const unit =
+    result.format === "percent"
+      ? "%"
+      : result.format === "currency"
+        ? "USD"
+        : isDurationUnit(result.unit)
+          ? "h min"
+          : (result.unit ?? "count");
+
+  return `${COMPUTATION_LABEL[result.computation]} · ${unit}`;
 }

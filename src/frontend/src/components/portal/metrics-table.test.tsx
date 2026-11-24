@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MetricDrilldownResponse } from "@/api/metric-drilldown-client";
 import { MetricEvidenceDialogProvider } from "@/components/metric-evidence-dialog-provider";
-import { MetricValue } from "@/components/portal/metrics-table";
+import { MetricsTable, MetricValue } from "@/components/portal/metrics-table";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { buildMetricDefinitions } from "@/mocks/metric-definitions-factory";
 import { metaFor } from "@/mocks/metric-results-factory";
@@ -236,4 +236,55 @@ describe("MetricValue drill-down of a time metric", () => {
       );
     }
   );
+});
+
+describe("MetricsTable header", () => {
+  it("reads the calculation and unit under the column title", () => {
+    const days = {
+      ...metaFor("collab.meeting_hours"),
+      label: "Active days",
+      computation: "sum",
+      format: "integer",
+      unit: "days",
+      period: { view: "period", values: [] },
+    } as NormalizedMetricResult;
+
+    render(
+      <MetricsTable
+        rows={[]}
+        groups={[{ family: "collab", name: "Collaboration", keys: ["collab.days"] }]}
+        byKey={new Map([["collab.days", days]])}
+        roles={new Map()}
+        sort={null}
+        onSort={vi.fn()}
+        onToggle={vi.fn()}
+        onScope={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Sort by Active days" })
+    ).toHaveTextContent("Active daysTotal · days");
+  });
+});
+
+describe("MetricsTable duration cell", () => {
+  it("writes a duration as hours and minutes", () => {
+    const hours = {
+      ...metaFor("collab.meeting_hours"),
+      unit: "h",
+      format: "decimal",
+      period: {
+        view: "period",
+        values: [{ entity_id: PERSON, value: 0.7833 }],
+      },
+    } as NormalizedMetricResult;
+
+    render(
+      <MetricValue result={hours} entityId={PERSON} personName="Ada Lovelace" />,
+      { wrapper: Providers }
+    );
+
+    expect(screen.getByText("0 h 47 min")).toBeInTheDocument();
+  });
 });
