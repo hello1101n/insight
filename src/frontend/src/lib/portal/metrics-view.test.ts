@@ -18,6 +18,7 @@ import {
   metricGroups,
   metricsRows,
   metricsViewCatalog,
+  orderMetricKeys,
   sortRows,
   type MetricsRow,
 } from "./metrics-view";
@@ -120,14 +121,14 @@ describe("metricsViewCatalog", () => {
 describe("DEFAULT_METRIC_KEYS", () => {
   it("names the built-in default metrics", () => {
     expect([...DEFAULT_METRIC_KEYS]).toEqual([
+      "git.pr_size",
       "git.default_branch_prs_merged",
       "git.default_branch_merge_rate",
-      "git.pr_size",
       "git.pr_cycle_time_h",
       "git.reviews_performed",
       "git.pr_comments",
-      "tasks.closed",
       "ai.active_days",
+      "tasks.closed",
     ]);
   });
 
@@ -161,6 +162,17 @@ describe("defaultMetricKeys", () => {
     expect(defaultMetricKeys(["git.pr_size", "collab.messages_sent"], [])).toEqual([
       "git.pr_size",
     ]);
+  });
+});
+
+describe("orderMetricKeys", () => {
+  it("puts the default keys first, in the default order, then the rest as they came", () => {
+    expect(
+      orderMetricKeys(["git.a", "tasks.closed", "git.pr_size", "collab.x"], [
+        "git.pr_size",
+        "tasks.closed",
+      ]),
+    ).toEqual(["git.pr_size", "tasks.closed", "git.a", "collab.x"]);
   });
 });
 

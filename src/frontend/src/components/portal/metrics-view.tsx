@@ -34,6 +34,8 @@ import { usePageTitle } from "@/lib/portal/document-title-frame";
 import {
   compareTeams,
   defaultMetricKeys,
+  defaultMetricOrder,
+  orderMetricKeys,
   rolesById,
   keysWithData,
   metricGroups,
@@ -114,7 +116,10 @@ export function MetricsView() {
     setPicked(typeof action === "function" ? action(selected) : action);
   const metricKeys = useMemo(() => {
     const chosen = new Set(selected);
-    return catalogKeys.filter((key) => chosen.has(key));
+    return orderMetricKeys(
+      catalogKeys.filter((key) => chosen.has(key)),
+      defaultMetricOrder(),
+    );
   }, [catalogKeys, selected]);
 
   const { pivot, roster } = orgScope;

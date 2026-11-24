@@ -35,26 +35,47 @@ export interface MetricGroup {
 export type SortDirection = "ascending" | "descending";
 
 export const DEFAULT_METRIC_KEYS: readonly string[] = [
+  "git.pr_size",
   "git.default_branch_prs_merged",
   "git.default_branch_merge_rate",
-  "git.pr_size",
   "git.pr_cycle_time_h",
   "git.reviews_performed",
   "git.pr_comments",
-  "tasks.closed",
   "ai.active_days",
+  "tasks.closed",
 ];
 
 export const METRIC_FILTERS: Readonly<Record<string, readonly MetricDimensionFilter[]>> = {
   "git.pr_comments": [{ dimension: "comment_target", values: ["others"] }],
 };
 
+function standMetricKeys(): readonly string[] {
+  return runtimeConfig().metricsView?.defaultMetrics ?? [];
+}
+
+export function defaultMetricOrder(
+  standKeys: readonly string[] = standMetricKeys(),
+): readonly string[] {
+  return standKeys.length > 0 ? standKeys : DEFAULT_METRIC_KEYS;
+}
+
 export function defaultMetricKeys(
   catalogKeys: readonly string[],
-  standKeys: readonly string[] = runtimeConfig().metricsView?.defaultMetrics ?? [],
+  standKeys: readonly string[] = standMetricKeys(),
 ): string[] {
-  const defaults = new Set(standKeys.length > 0 ? standKeys : DEFAULT_METRIC_KEYS);
+  const defaults = new Set(defaultMetricOrder(standKeys));
   return catalogKeys.filter((key) => defaults.has(key));
+}
+
+export function orderMetricKeys(
+  keys: readonly string[],
+  order: readonly string[],
+): string[] {
+  const rank = new Map(order.map((key, index) => [key, index]));
+  const first = keys
+    .filter((key) => rank.has(key))
+    .sort((a, b) => rank.get(a)! - rank.get(b)!);
+  return [...first, ...keys.filter((key) => !rank.has(key))];
 }
 
 function servesData(metric: MetricDefinition): boolean {

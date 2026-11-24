@@ -358,15 +358,15 @@ describe("MetricsView", () => {
     expect(mocks.refetchDefinitions).toHaveBeenCalled();
   });
 
-  it("asks for the linked person-level metrics, in family order", () => {
+  it("asks for the linked person-level metrics, defaults first, then in family order", () => {
     act(() =>
       portalRouter.set({ metrics: "collab.messages_sent,tasks.closed,git.default_branch_commits" }),
     );
     render(<MetricsView />);
 
     expect(mocks.requestedKeys).toEqual([
-      "git.default_branch_commits",
       "tasks.closed",
+      "git.default_branch_commits",
       "collab.messages_sent",
     ]);
   });
@@ -397,7 +397,7 @@ describe("MetricsView", () => {
 
     render(<MetricsView />);
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits"]);
   });
 
   it("drops a metric the reader unticks", async () => {
@@ -407,7 +407,7 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
     await user.click(screen.getByRole("checkbox", { name: "Messages" }));
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits"]);
     expect(screen.queryByRole("columnheader", { name: /Messages/ })).not.toBeInTheDocument();
   });
 
@@ -423,7 +423,7 @@ describe("MetricsView", () => {
 
     await user.click(screen.getByRole("button", { name: "Select all metrics" }));
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed", "collab.messages_sent"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits", "collab.messages_sent"]);
   });
 
   it("scopes the table to the person whose name is clicked", async () => {
@@ -627,6 +627,19 @@ describe("MetricsView", () => {
     expect(screen.getByRole("button", { name: "Metrics: 2 of 4" })).toBeInTheDocument();
   });
 
+  it("shows the default metrics first, in the default order, then the rest", () => {
+    mocks.definitions.push(definition("git.pr_size", "PR size"));
+    act(() => portalRouter.set({ metrics: `${LINKED},git.pr_size` }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "git.pr_size",
+      "tasks.closed",
+      "git.default_branch_commits",
+      "collab.messages_sent",
+    ]);
+  });
+
   it("opens on the stand's default metrics when the deploy sets them", () => {
     window.__INSIGHT_CONFIG__ = { metricsView: { defaultMetrics: ["collab.messages_sent"] } };
     act(() => portalRouter.set({ metrics: undefined }));
@@ -660,8 +673,8 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Select all metrics" }));
 
     expect(mocks.requestedKeys).toEqual([
-      "git.default_branch_commits",
       "tasks.closed",
+      "git.default_branch_commits",
       "collab.messages_sent",
     ]);
     expect(portalRouter.search).toMatchObject({
