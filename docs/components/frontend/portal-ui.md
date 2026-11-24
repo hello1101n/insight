@@ -140,7 +140,7 @@ As the services allow: create / rename / delete folders; put a dashboard in fold
 
 ## People
 
-- Pane: Me; My team; Roster · by role (flat: Overview; Roster). On a person page: that person's sections, dot per section showing data state. On team views: work chart: reporting tree rooted at the viewer (flat: alphabetical list), searchable; lead → their team, person → their page.
+- Pane: Me; My team; Roster · by role; Metrics view (flat: Overview; Roster; Metrics view). On a person page: that person's sections, dot per section showing data state. On team views other than Metrics view, whose table is the tree: work chart: reporting tree rooted at the viewer (flat: alphabetical list), searchable; lead → their team, person → their page.
 - **Person page**: name, title, department; manager if within reach; sections with data / without / no source; headline figures with trends vs the org scope; worth a look; per section: figures and the work behind them.
 - **Team**: scope size; team-level summary figures; worth a look; members grid compared within the org scope, ordered by name until sorted; subset filter; open any member.
 - **Roster**: everyone in reach: title, placement, status; searchable; row opens the person.
