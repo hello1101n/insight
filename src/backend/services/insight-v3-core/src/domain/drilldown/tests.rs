@@ -258,6 +258,19 @@ fn a_row_is_presented_without_the_working_cells_and_with_its_numbers_as_numbers(
 }
 
 #[test]
+fn a_whole_number_above_i64_keeps_every_digit_when_presented() {
+    let row = json!({ "day": "2026-09-01", "total": "18446744073709551615" });
+    let row = row.as_object().cloned().unwrap_or_default();
+
+    let shown = presented(row, &columns(), &[]);
+
+    assert_eq!(
+        shown.get("total"),
+        Some(&serde_json::Value::Number(u64::MAX.into()))
+    );
+}
+
+#[test]
 fn the_names_the_wrapper_writes_are_kept_from_a_metrics_columns() {
     for (name, reserved) in [
         ("__drilldown_flag", true),

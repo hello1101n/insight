@@ -480,6 +480,9 @@ fn read_error(caller: Caller, metric: &str, field: &str, error: CustomError) -> 
         }
         error @ (CustomError::Body(_) | CustomError::Compile(_)) => {
             tracing::error!(%error, metric_id = metric, "a stored personal metric cannot be read");
+            if caller.is_administrator() {
+                return stored_fault(metric, &error);
+            }
             not_read()
         }
         error if caller.is_administrator() => PersonalMetricApiError::custom_error(error),
@@ -508,6 +511,12 @@ fn records_error(caller: Caller, metric: &str, error: DrilldownError) -> Canonic
             not_read()
         }
     }
+}
+
+fn stored_fault(metric: &str, error: &CustomError) -> CanonicalError {
+    PersonalMetricApiError::data_loss(format!("metric `{metric}`: {error}"))
+        .with_resource(metric)
+        .create()
 }
 
 fn not_read() -> CanonicalError {

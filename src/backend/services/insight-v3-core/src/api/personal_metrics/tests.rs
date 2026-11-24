@@ -796,6 +796,32 @@ async fn values_fail_on_the_server_when_a_stored_metric_does_not_compile() {
         "{}",
         failed.body
     );
+    let said = failed.body.to_string();
+    assert!(said.contains("metric `lines_broken`"), "{said}");
+    assert!(said.contains("maximum range `P1W`"), "{said}");
+}
+
+#[tokio::test]
+async fn values_hide_from_a_member_why_a_stored_metric_does_not_compile() {
+    let harness = Harness::new().await;
+    let mut broken = lines_metric();
+    broken["max_range"] = json!("P1W");
+    harness
+        .marked_as("lines_broken", "Lines broken", &broken)
+        .await;
+    harness.grant("lines_broken", "everyone", ADMIN).await;
+
+    let failed = harness
+        .values(MEMBER, asked(&["lines_broken"], &[ALICE]))
+        .await;
+
+    assert_eq!(
+        failed.status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "{}",
+        failed.body
+    );
+    assert!(!failed.body.to_string().contains("P1W"), "{}", failed.body);
 }
 
 #[tokio::test]
@@ -1203,6 +1229,9 @@ async fn records_fail_on_the_server_when_a_stored_body_does_not_parse() {
         "{}",
         failed.body
     );
+    let said = failed.body.to_string();
+    assert!(said.contains("metric `lines_broken`"), "{said}");
+    assert!(said.contains("not a list"), "{said}");
 }
 
 #[tokio::test]
