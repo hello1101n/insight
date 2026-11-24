@@ -28,7 +28,8 @@ class Airbyte:
     overrides: dict[str, str] = field(default_factory=dict)
     calls: list[str] = field(default_factory=list)
     launched: list[dict] = field(default_factory=list)
-    connections: int = 1
+    connections: int | None = 1
+    sibling_count: int = 1
 
     def request(self, url: str, _token: str, data: bytes | None) -> bytes:
         path = url.split("/api/v1/")[1]
@@ -40,6 +41,12 @@ class Airbyte:
         if path == "connections/sync":
             self.launched.append(self.allocation)
             return b'{"job":{"id":19}}'
+        if path == "web_backend/connections/list":
+            assert data is not None
+            assert json.loads(data) == {"workspaceId": WORKSPACE, "sourceId": [SOURCE], "pageSize": 2}
+            return json.dumps(
+                {"num_connections": self.sibling_count, "connections": [{"connectionId": str(CONNECTION)}]}
+            ).encode()
         if path == "sources/partial_update":
             assert data is not None
             self.allocation = json.loads(data)["resourceAllocation"]
@@ -101,3 +108,16 @@ def test_clear_removes_only_the_sync_entry_and_writes_once() -> None:
     assert airbyte.allocation == initial
     resources.converge("fixture", CONNECTION, Sizes(), clear=True)
     assert airbyte.calls.count("sources/partial_update") == 2
+
+
+@pytest.mark.parametrize("list_siblings", [False, True], ids=["source-count", "siblings-count"])
+def test_shared_source_rejects_sizing_without_writes(list_siblings: bool) -> None:
+    airbyte = Airbyte(connections=None if list_siblings else 2, sibling_count=2)
+    calls = ["connections/get", "sources/get"]
+    if list_siblings:
+        calls.append("web_backend/connections/list")
+
+    with pytest.raises(ValueError, match="source sizing requires a dedicated source"):
+        AirbyteResources(airbyte.request, BASE).converge("fixture", CONNECTION, Sizes(airbyte_cpu_millis=1200))
+
+    assert airbyte.calls == calls

@@ -150,7 +150,6 @@ def test_capacity_access_and_settings_are_scoped_to_the_enabled_launch_steps(cha
     assert subject[0] in chart["RoleBinding", "contract-airbyte-auth-reader"]["subjects"]
     assert ("ServiceAccount", account) in chart
     assert ("Lease", account) in chart
-    assert "lastRetry.exitCode != '45'" in trigger["retryStrategy"]["expression"]
     env = {item["name"]: item for item in trigger["container"]["env"]}
     assert env["AIRBYTE_CAPACITY_CHECK_ENABLED"]["value"] == "true"
     for name in ("AIRBYTE_CAPACITY_SETTINGS", "AIRBYTE_CAPACITY_LEASE", "POD_UID"):
@@ -291,6 +290,48 @@ def test_sync_budget_must_fit_below_the_known_clickhouse_limit() -> None:
     )
 
 
+@pytest.mark.parametrize("exit_code", [42, 43, 44, 45])
+def test_airbyte_launch_does_not_retry_terminal_exit_codes(charts: dict[str, dict], exit_code: int) -> None:
+    trigger = templates(charts["defaults"], "airbyte-sync")["trigger-sync"]
+    assert f"lastRetry.exitCode != '{exit_code}'" in trigger["retryStrategy"]["expression"].split(" && ")
+
+
+@pytest.mark.parametrize("username", ["test", "default", "presentation", "grafana", "insight_mcp", "insight_v3_reader"])
+def test_sync_user_must_have_a_dedicated_name(charts: dict[str, dict], username: str) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render(
+            "--set",
+            f"clickhouse.syncUser.username={username},clickhouse.syncUser.password=example,"
+            "clickhouse.syncUser.totalMemoryBytes=12884901888",
+        )
+    assert "clickhouse.syncUser.username must name a dedicated ClickHouse user" in error.value.stderr
+
+
+@pytest.mark.parametrize(
+    "sources",
+    ["", ",clickhouse.syncUser.password=example,clickhouse.syncUser.passwordSecret.name=example-secret"],
+    ids=["neither", "both"],
+)
+def test_sync_user_requires_exactly_one_password_source(charts: dict[str, dict], sources: str) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render("--set", "clickhouse.syncUser.username=etl,clickhouse.syncUser.totalMemoryBytes=12884901888" + sources)
+    assert (
+        "Set exactly one of clickhouse.syncUser.password and clickhouse.syncUser.passwordSecret.name"
+        in error.value.stderr
+    )
+
+
+def test_sync_user_provisioning_requires_a_job(charts: dict[str, dict]) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render(
+            "--set",
+            "clickhouse.syncUser.username=etl,clickhouse.syncUser.password=example,"
+            "clickhouse.syncUser.totalMemoryBytes=12884901888,clickhouse.provisionAccess=true,"
+            "clickhouse.createDatabases=false,clickhouse.runMigrations=false",
+        )
+    assert "requires ingestion.toolboxImage and a ClickHouse provisioning job" in error.value.stderr
+
+
 def test_memory_byte_values_from_a_values_file_render_as_integers(tmp_path: Path) -> None:
     values = tmp_path / "sync.yaml"
     values.write_text(
@@ -333,22 +374,36 @@ def render(*args: str) -> dict[tuple[str, str], dict]:
     return {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(result.stdout) if doc}
 
 
-def test_connector_resources_reach_each_main_container_and_the_reconcile_submission(charts: dict[str, dict]) -> None:
+@pytest.mark.parametrize(
+    ("workflow", "prefix", "cap"),
+    [
+        ("dbt-run", "dbt", "r.dbt_query_memory_bytes"),
+        ("connector-checks", "dbt", "r.dbt_query_memory_bytes"),
+        ("identity-seed-run", "identity", "nil"),
+    ],
+)
+def test_sync_pod_patch_uses_resource_units_and_caps_only_dbt(
+    charts: dict[str, dict], workflow: str, prefix: str, cap: str
+) -> None:
+    patch = " ".join(templates(charts["overrides"], workflow)["run"]["podSpecPatch"].split())
+
+    assert f"let cpu = r.{prefix}_cpu_millis;" in patch
+    assert f"let memory = r.{prefix}_memory_bytes;" in patch
+    assert "cpu == nil ? {} : {'cpu': string(int(cpu)) + 'm'}" in patch
+    assert "memory == nil ? {} : {'memory': string(int(memory))}" in patch
+    assert "{'name': 'main'}, len(sizes) == 0 ? {} : {'resources': {'requests': sizes, 'limits': sizes} }" in patch
+    assert f"let cap = {cap};" in patch
+    assert "cap == nil ? {} : {'env': [{'name': 'DBT_QUERY_MEMORY_BYTES', 'value': string(int(cap))}]}" in patch
+    assert "{'containers': [main]}" in patch
+
+
+def test_connector_resources_reach_airbyte_and_the_reconcile_submission(charts: dict[str, dict]) -> None:
     chart = charts["overrides"]
     pipeline = templates(chart, "ingestion-pipeline")
     for entrypoint in pipeline.values():
         for task in entrypoint["dag"]["tasks"]:
             params = {p["name"]: p["value"] for p in task["arguments"]["parameters"]}
             assert params["sync_resources"] == "{{inputs.parameters.sync_resources}}"
-    for template, prefix in [("dbt-run", "dbt"), ("connector-checks", "dbt"), ("identity-seed-run", "identity")]:
-        patch = templates(chart, template)["run"]["podSpecPatch"]
-        assert "'name': 'main'" in patch
-        assert f"r.{prefix}_cpu_millis" in patch
-        assert f"r.{prefix}_memory_bytes" in patch
-        if prefix == "dbt":
-            assert "r.dbt_query_memory_bytes" in patch
-            assert "DBT_QUERY_MEMORY_BYTES" in patch
-
     bronze = templates(chart, "airbyte-sync")
     trigger_env = {item["name"]: item.get("value") for item in bronze["trigger-sync"]["container"]["env"]}
     poll_env = {item["name"]: item.get("value") for item in bronze["poll-job"]["container"]["env"]}

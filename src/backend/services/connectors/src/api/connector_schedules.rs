@@ -142,3 +142,5 @@ fn reply(response: ScheduleResponse) -> Response {
 mod live_tests;
 #[cfg(test)]
 mod support;
+#[cfg(test)]
+mod tests;

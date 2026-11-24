@@ -210,3 +210,24 @@ pub(crate) struct ResourceState {
 }
 
 impl toolkit::api::api_dto::RequestApiDto for Resources {}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn resource_patch_clears_null_and_keeps_absent_fields() -> anyhow::Result<()> {
+        let stored = Resources {
+            dbt_cpu_millis: Some(500),
+            dbt_memory_bytes: Some(1 << 30),
+            ..Resources::default()
+        };
+        let patch: ResourcePatch = serde_json::from_value(json!({"dbt_cpu_millis": null}))?;
+        let merged = patch.merge(&stored);
+        assert_eq!(merged.dbt_cpu_millis, None);
+        assert_eq!(merged.dbt_memory_bytes, stored.dbt_memory_bytes);
+        Ok(())
+    }
+}

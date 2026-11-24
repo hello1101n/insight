@@ -105,3 +105,25 @@ def test_exact_fit_uses_bound_pods_in_any_namespace_and_ignores_terminal_pods() 
 def test_only_eligible_nodes_offer_capacity(settings: dict[str, object], eligible: bool) -> None:
     request = PodRequest(cpu_millis=1, memory_bytes=1)
     assert fits(request, [node("example", **settings)], [], "example-airbyte", {"pool": "jobs"}) is eligible, settings
+
+
+@pytest.mark.parametrize(
+    ("labels", "scheduled", "available"),
+    [
+        pytest.param({"airbyte": "job-pod"}, True, True, id="scheduled-job"),
+        pytest.param({}, False, True, id="unlabelled-pod"),
+        pytest.param({"airbyte": "job-pod"}, False, False, id="unscheduled-job"),
+    ],
+)
+def test_only_unscheduled_airbyte_jobs_block_capacity(labels: dict[str, str], scheduled: bool, available: bool) -> None:
+    namespace = "example-airbyte"
+    pending = Pod.model_validate(
+        {
+            "metadata": {"name": "example-pod", "namespace": namespace, "labels": labels},
+            "spec": {"nodeName": "example" if scheduled else None, "containers": [{}]},
+            "status": {"phase": "Pending", "conditions": [{"type": "PodScheduled", "status": str(scheduled)}]},
+        }
+    )
+    request = PodRequest(cpu_millis=1, memory_bytes=1)
+
+    assert fits(request, [node("example")], [pending], namespace, {}) is available

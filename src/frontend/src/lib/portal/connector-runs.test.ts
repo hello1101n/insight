@@ -19,12 +19,47 @@ const now = "2026-11-20T01:03:00Z";
 
 describe("connector run state", () => {
   it.each([
+    ["airbyte_launch_rejected", "Airbyte refused the sync request"],
+    ["airbyte_launch_unconfirmed", "Airbyte did not confirm the sync launch"],
     [
-      "failed",
+      "airbyte_launch_unreadable",
+      "The Airbyte job list was unavailable. The sync launch is not confirmed.",
+    ],
+    ["airbyte_job_failed", "The Airbyte job failed"],
+    ["airbyte_job_cancelled", "Airbyte cancelled the job"],
+    ["clickhouse_memory_limit", "ClickHouse memory limit exceeded"],
+    [
+      "clickhouse_user_memory_limit",
+      "Syncs reached their shared ClickHouse memory limit",
+    ],
+    [
+      "clickhouse_server_memory_pressure",
+      "ClickHouse ran out of available server memory",
+    ],
+    ["pod_oom", "The sync exceeded its memory limit"],
+    ["source_pod_oom", "The source exceeded its memory limit"],
+    ["workflow_not_found", "The sync record could not be found"],
+    ["wait_timeout", "Waited over 6 hours"],
+    [
       "clickhouse_query_error:47:UNKNOWN_IDENTIFIER",
       "A calculation refers to an unknown field",
     ],
-    ["failed", "pod_oom", "The sync exceeded its memory limit"],
+    [
+      "clickhouse_query_error:62:SYNTAX_ERROR",
+      "A calculation could not be completed",
+    ],
+  ])("gives %s its specific failure text", (reason, expected) => {
+    expect(
+      stageFailureReason({
+        stage: "bronze",
+        attempt: 1,
+        status: "failed",
+        reason,
+      })
+    ).toBe(expected);
+  });
+
+  it.each([
     ["failed", "stage_failed", "The step failed"],
     ["wait_timeout", null, "Waited over 6 hours"],
   ] as const)("explains %s with %s", (status, reason, expected) => {

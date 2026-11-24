@@ -308,6 +308,43 @@ pub(crate) async fn runs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_warning_starts_after_three_hours() {
+        let start = DateTime::UNIX_EPOCH;
+        let record = Record {
+            waits: Some(serde_json::json!([{"kind": "lock", "started_at": start}]).to_string()),
+            airbyte_job_id: None,
+            sync_id: "example".into(),
+            tenant: "example-tenant".into(),
+            connector: "example-connector".into(),
+            source_id: "main".into(),
+            run_status: None,
+            run_start: start,
+            execution_started_at: start,
+            run_end: None,
+            workflow_end: None,
+            stage: "bronze".into(),
+            attempt: 1,
+            status: "queued".into(),
+            queued_at: start,
+            started_at: None,
+            finished_at: None,
+            reason: None,
+            records_reported: None,
+            resources: None,
+            peak_query_memory_bytes: None,
+        };
+        for (minutes, expected) in [(179, "queued"), (180, "queued"), (181, "wait_warning")] {
+            let now = start + chrono::Duration::minutes(minutes);
+            assert_eq!(
+                stage_status(&record, now),
+                expected,
+                "waited {minutes} minutes"
+            );
+        }
+    }
+
     #[test]
     fn unobserved_worker_start_keeps_stage_and_wait_durations_unknown() {
         let now = Utc::now();

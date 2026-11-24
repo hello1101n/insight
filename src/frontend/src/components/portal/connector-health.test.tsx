@@ -1496,6 +1496,44 @@ describe("connector workflow runs", () => {
   const runBand = () =>
     within(screen.getByRole("figure", { name: "Steps of the selected sync" }));
 
+  it.each([
+    [179, "idle"],
+    [181, "unknown"],
+  ] as const)(
+    "uses the queue tone for %s minutes of waiting",
+    async (minutes, tone) => {
+      const queued = stamp(-minutes * 60);
+      await openRun({
+        ...run(1),
+        status: "queued",
+        started_at: queued,
+        finished_at: null,
+        stages: [
+          { stage: "bronze", attempt: 1, status: "queued", queued_at: queued },
+        ],
+      });
+
+      expectTone(within(rowFor("example")).getByText("Queued"), tone);
+      expectTone(currentRun().getByText("Queued"), tone);
+    }
+  );
+
+  it.each([
+    ["succeeded", "Ready", "ok"],
+    ["transforming", "Running", "active"],
+  ] as const)(
+    "renders the %s badge with its state tone",
+    async (status, label, tone) => {
+      await openRun({
+        ...run(1),
+        status,
+        finished_at: status === "succeeded" ? NOW : null,
+      });
+
+      expectTone(within(rowFor("example")).getByText(label), tone);
+    }
+  );
+
   it.each([4, 7])(
     "measures the minute queued after %s hours of Bronze work",
     async (hours) => {

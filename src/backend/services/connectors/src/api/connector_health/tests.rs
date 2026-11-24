@@ -162,3 +162,171 @@ async fn connector_summary_survives_a_history_read_error() {
     assert!(response.connectors[0].configured);
     assert!(response.schedule_read_error.is_none());
 }
+
+const SYNCS_PATH: &str =
+    "/v1/connector-health/example-connector/syncs?tenant_id=example-tenant&source_id=main";
+
+async fn saved_history_api(
+    runs: &[(Option<&str>, bool)],
+    clickhouse_unavailable: bool,
+) -> anyhow::Result<(axum::Router, Vec<String>, tokio::task::AbortHandle)> {
+    use axum::{
+        Router,
+        http::StatusCode,
+        routing::{get, post},
+    };
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::MigratorTrait;
+    use serde_json::json;
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let url = format!("http://{}", listener.local_addr()?);
+    let upstream = Router::new()
+        .route("/v1/me", get(|| async {
+            Json(json!({"roles": [{"role_id": "a4d11000-0000-4000-8000-000000000001"}]}))
+        }))
+        .route("/", post(move || async move {
+            if clickhouse_unavailable {
+                (StatusCode::SERVICE_UNAVAILABLE, "The fixture warehouse is unavailable.")
+            } else {
+                (StatusCode::NOT_FOUND, "Code: 60. DB::Exception: Table ingestion_history.sync_events does not exist. (UNKNOWN_TABLE)")
+            }
+        }));
+    let upstream_task = tokio::spawn(async move { axum::serve(listener, upstream).await });
+
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    crate::migration::Migrator::up(&db, None).await?;
+    let mut cluster = crate::infra::cluster::Cluster::disabled();
+    cluster.namespace = uuid::Uuid::new_v4().to_string();
+    cluster.client = Some(kube::Client::try_from(kube::Config::new(url.parse()?))?);
+    let epoch = chrono::DateTime::<Utc>::UNIX_EPOCH + chrono::Duration::days(1);
+    let mut ids = Vec::new();
+    for ((status, ready), minutes) in runs.iter().zip(0_i64..) {
+        let id = uuid::Uuid::new_v4().to_string();
+        let start = epoch + chrono::Duration::minutes(minutes);
+        let end = start + chrono::Duration::seconds(30);
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::MySql,
+            "INSERT INTO ingestion_runs (sync_id,stand,tenant,connector,source_id,workflow_name,started_at,execution,finished_at,status,ready_at)
+             VALUES (?,?,'example-tenant','example-connector','main','example-sync',?,?,?,?,?)",
+            [id.clone().into(), cluster.namespace.clone().into(), start.into(), start.into(),
+                status.map(|_|end).into(), (*status).into(), ready.then_some(end).into()],
+        )).await?;
+        ids.push(id);
+    }
+
+    let state = Arc::new(AppState {
+        db,
+        cluster,
+        identity: crate::infra::identity::IdentityClient::new(&url)?,
+        ch: insight_clickhouse::Client::new(insight_clickhouse::Config::new(url, "default")),
+        schedule_slots: tokio::sync::Semaphore::new(1),
+    });
+    let router = Router::new()
+        .route("/v1/connector-health", get(get_connector_health))
+        .route(
+            "/v1/connector-health/{connector}/syncs",
+            get(get_connector_syncs),
+        )
+        .layer(Extension(state));
+    Ok((router, ids, upstream_task.abort_handle()))
+}
+
+async fn get_json<T: serde::de::DeserializeOwned>(
+    app: &axum::Router,
+    path: &str,
+) -> anyhow::Result<T> {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+
+    let response = app
+        .clone()
+        .oneshot(Request::get(path).body(Body::empty())?)
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK, "GET {path}");
+    Ok(serde_json::from_slice(
+        &to_bytes(response.into_body(), 1 << 20).await?,
+    )?)
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn summary_picks_the_latest_run_and_latest_ready_run_for_an_unconfigured_instance()
+-> anyhow::Result<()> {
+    let (app, ids, upstream) = saved_history_api(
+        &[
+            (Some("succeeded"), false),
+            (None, true),
+            (Some("failed"), false),
+            (None, false),
+        ],
+        false,
+    )
+    .await?;
+    let summary: ConnectorHealthResponse = get_json(&app, "/v1/connector-health").await?;
+    upstream.abort();
+
+    assert!(summary.history_available);
+    assert_eq!(summary.connectors.len(), 1);
+    let row = &summary.connectors[0];
+    assert!(!row.configured);
+    let latest = row
+        .latest_run
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("missing latest run"))?;
+    let ready = row
+        .last_successful_run
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("missing ready run"))?;
+    assert_eq!(latest.sync_id, ids[3]);
+    assert!(latest.finished_at.is_none());
+    assert_eq!(ready.sync_id, ids[1]);
+    assert_eq!(ready.status, "succeeded");
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn syncs_returns_only_the_fifty_newest_runs() -> anyhow::Result<()> {
+    let (app, ids, upstream) = saved_history_api(&[(Some("succeeded"), false); 52], false).await?;
+    let history: SyncHistoryResponse = get_json(&app, SYNCS_PATH).await?;
+    upstream.abort();
+
+    assert_eq!(history.runs.len(), 50);
+    let returned: Vec<_> = history.runs.iter().map(|run| &run.sync_id).collect();
+    assert_eq!(returned, ids[2..].iter().rev().collect::<Vec<_>>());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn clickhouse_outage_still_serves_stored_summary_and_syncs() -> anyhow::Result<()> {
+    let (app, ids, upstream) = saved_history_api(&[(Some("failed"), false)], true).await?;
+    let summary: ConnectorHealthResponse = get_json(&app, "/v1/connector-health").await?;
+    assert!(summary.schedule_read_error.is_some());
+    assert_eq!(
+        summary.connectors[0]
+            .latest_run
+            .as_ref()
+            .map(|run| &run.sync_id),
+        ids.first()
+    );
+
+    let history: SyncHistoryResponse = get_json(&app, SYNCS_PATH).await?;
+    upstream.abort();
+
+    assert!(history.syncs.is_empty());
+    assert_eq!(
+        history
+            .runs
+            .iter()
+            .map(|run| &run.sync_id)
+            .collect::<Vec<_>>(),
+        [&ids[0]]
+    );
+    Ok(())
+}

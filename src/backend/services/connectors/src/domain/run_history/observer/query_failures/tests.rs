@@ -24,6 +24,11 @@ async fn query_log_distinguishes_memory_and_query_errors_by_pod_tag() -> Result<
             "clickhouse_server_memory_pressure",
         ),
         (
+            241,
+            "Memory limit (for user) exceeded",
+            "clickhouse_user_memory_limit",
+        ),
+        (
             47,
             "Fixture query error",
             "clickhouse_query_error:47:UNKNOWN_IDENTIFIER",
@@ -87,7 +92,7 @@ async fn query_log_distinguishes_memory_and_query_errors_by_pod_tag() -> Result<
             observed.attempt
         );
     }
-    assert_eq!(result[0].stages.len(), 4);
+    assert_eq!(result[0].stages.len(), cases.len());
     assert!(query(&app.ch, "", &tag_prefix, since, end).await?.is_none());
     Ok(())
 }

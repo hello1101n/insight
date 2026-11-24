@@ -260,6 +260,13 @@ async fn stop_patches_uid_and_version_and_ignores_placement_or_running_stages() 
         .get_or_insert_default()
         .insert(timeout::ANNOTATION.into(), marker.into());
     drop(sent);
+    object.data["spec"]["shutdown"] = json!("Terminate");
+    timeout::stop(&api, &object, &run, at(8)).await?;
+    assert_eq!(
+        patches.lock().await.len(),
+        1,
+        "a stopped Workflow was patched again"
+    );
     task.abort();
 
     run.finished_at = Some(at(8));
@@ -963,3 +970,5 @@ async fn history_keeps_the_succeeded_bronze_attempt_when_only_transform_retries(
     }
     Ok(())
 }
+
+mod pod_history;
