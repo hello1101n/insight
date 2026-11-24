@@ -282,24 +282,22 @@ async fn fixture_state() -> Result<AppState> {
     })
 }
 
-#[tokio::test]
-#[ignore = "requires INTEGRATION_TESTS_CLICKHOUSE_URL and INTEGRATION_TESTS_MARIADB_URL"]
-async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_queries() -> Result<()>
-{
-    async fn log_query(ch: &insight_clickhouse::Client, tag: &str, count: u64) -> Result<u64> {
-        ch.query(
-            "SELECT length(groupArray(toString(number))) FROM numbers(?) SETTINGS max_threads=1",
-        )
+async fn log_query(ch: &insight_clickhouse::Client, tag: &str, count: u64) -> Result<u64> {
+    ch.query("SELECT length(groupArray(toString(number))) FROM numbers(?) SETTINGS max_threads=1")
         .bind(count)
         .with_setting("log_comment", tag)
         .execute()
         .await?;
-        ch.query("SYSTEM FLUSH LOGS").execute().await?;
-        Ok(ch.query(
-            "SELECT max(memory_usage) FROM system.query_log WHERE log_comment=? AND type='QueryFinish'"
-        ).bind(tag).fetch_one().await?)
-    }
+    ch.query("SYSTEM FLUSH LOGS").execute().await?;
+    Ok(ch.query(
+        "SELECT max(memory_usage) FROM system.query_log WHERE log_comment=? AND type='QueryFinish'"
+    ).bind(tag).fetch_one().await?)
+}
 
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_CLICKHOUSE_URL and INTEGRATION_TESTS_MARIADB_URL"]
+async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_queries() -> Result<()>
+{
     let app = fixture_state().await?;
     let start = Utc::now();
     let pod = uuid::Uuid::new_v4();
@@ -307,13 +305,24 @@ async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_que
     let tag = format!("insight:sync={uid}:stage=transform-staging:pod={pod}");
     let early = log_query(&app.ch, &tag, 100).await?;
 
-    let workflow: kube::api::DynamicObject = serde_json::from_value(serde_json::json!({
+    let mut workflow: kube::api::DynamicObject = serde_json::from_value(serde_json::json!({
         "apiVersion": "argoproj.io/v1alpha1",
         "kind": "Workflow",
         "spec": {
             "workflowTemplateRef": {"name":"ingestion-pipeline"},
-            "arguments": {"parameters":[{"name":"sync_resources","value":
-                r#"{"dbt_cpu_millis":1200,"dbt_query_memory_bytes":5368709120,"airbyte_memory_bytes":1073741824}"#}]}
+            "arguments": {"parameters":[
+                {"name":"sync_resources","value":r#"{"dbt_cpu_millis":300,"dbt_query_memory_bytes":2}"#},
+                {"name":"dbt_pod_patch","value":serde_json::json!({
+                    "containers": [{
+                        "name":"main",
+                        "env":[{"name":"DBT_QUERY_MEMORY_BYTES","value":"5368709120"}],
+                        "resources": {
+                            "requests":{"cpu":"1200m","memory":"2147483648"},
+                            "limits":{"cpu":"1200m","memory":"2147483648"}
+                        }
+                    }]
+                }).to_string()}
+            ]}
         }
     }))?;
     let end = Utc::now() + chrono::Duration::seconds(30);
@@ -321,9 +330,12 @@ async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_que
     stage.query_pod = Some(pod);
     stage.status = "failed";
     stage.finished_at = Some(end);
-    let mut stages = vec![stage];
-    super::super::observe_resources(&workflow, &mut stages);
-    let run = RunSnapshot {
+    stage.resources = Some(crate::domain::connector_schedules::resources::Resources {
+        dbt_cpu_millis: Some(300),
+        dbt_query_memory_bytes: Some(2),
+        ..Default::default()
+    });
+    let mut run = RunSnapshot {
         uid,
         name: "example".into(),
         connector: "example".into(),
@@ -333,8 +345,25 @@ async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_que
         execution: start,
         status: Some("succeeded"),
         finished_at: Some(end),
-        stages,
+        stages: vec![stage],
     };
+    store::save(&app.db, &app.cluster.namespace, &run, end).await?;
+    super::super::observe_resources(&workflow, &mut run.stages);
+    store::save(&app.db, &app.cluster.namespace, &run, end).await?;
+    let settings = serde_json::json!({
+        "dbt_cpu_millis": 1200, "dbt_memory_bytes": 2_147_483_648_u64,
+        "dbt_query_memory_bytes": 5_368_709_120_u64,
+    });
+    assert_eq!(
+        serde_json::to_value(&saved_runs(&app).await?[0].stages[0].resources)?,
+        settings
+    );
+    let parameters = workflow.data["spec"]["arguments"]["parameters"].take();
+    super::super::observe_resources(&workflow, &mut run.stages);
+    store::save(&app.db, &app.cluster.namespace, &run, end).await?;
+    assert!(saved_runs(&app).await?[0].stages[0].resources.is_none());
+    workflow.data["spec"]["arguments"]["parameters"] = parameters;
+    super::super::observe_resources(&workflow, &mut run.stages);
     store::save(&app.db, &app.cluster.namespace, &run, end).await?;
     reconcile(&app, end + LOG_SETTLE_TIME).await?;
     assert_eq!(
@@ -356,12 +385,7 @@ async fn history_keeps_submitted_stage_settings_and_the_peak_of_its_finished_que
     reconcile(&app, end + LOOKUP_WINDOW).await?;
     let saved = saved_runs(&app).await?;
     let attempt = &saved[0].stages[0];
-    assert_eq!(
-        serde_json::to_value(&attempt.resources)?,
-        serde_json::json!({
-            "dbt_cpu_millis": 1200, "dbt_query_memory_bytes": 5_368_709_120_u64,
-        })
-    );
+    assert_eq!(serde_json::to_value(&attempt.resources)?, settings);
     assert_eq!(attempt.peak_query_memory_bytes, Some(actual));
     assert!(attempt.reason.is_none());
     Ok(())

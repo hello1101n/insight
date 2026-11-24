@@ -1,102 +1,123 @@
-[
-  {
-    "name": "nothing set",
-    "requested": {},
-    "defaults": {},
-    "sync_resources": "{}",
-    "dbt_pod_patch": "{}",
-    "identity_pod_patch": "{}"
+{
+  "parameters": {
+    "sync": "sync_resources",
+    "dbt": "dbt_pod_patch",
+    "identity": "identity_pod_patch"
   },
-  {
-    "name": "only CPU",
-    "requested": {
-      "dbt_cpu_millis": 125
+  "cases": [
+    {
+      "name": "nothing set",
+      "requested": {},
+      "defaults": {},
+      "sync_resources": "{}",
+      "dbt_pod_patch": "{}",
+      "identity_pod_patch": "{}"
     },
-    "defaults": {
-      "identity_cpu_millis": 250
+    {
+      "name": "only CPU",
+      "requested": {
+        "dbt_cpu_millis": 125
+      },
+      "defaults": {
+        "identity_cpu_millis": 250
+      },
+      "sync_resources": "{\"dbt_cpu_millis\":125,\"identity_cpu_millis\":250}",
+      "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"125m\"},\"requests\":{\"cpu\":\"125m\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"250m\"},\"requests\":{\"cpu\":\"250m\"}}}]}"
     },
-    "sync_resources": "{\"dbt_cpu_millis\":125,\"identity_cpu_millis\":250}",
-    "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"125m\"},\"requests\":{\"cpu\":\"125m\"}}}]}",
-    "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"250m\"},\"requests\":{\"cpu\":\"250m\"}}}]}"
-  },
-  {
-    "name": "only memory",
-    "requested": {
-      "identity_memory_bytes": 512
+    {
+      "name": "only memory",
+      "requested": {
+        "identity_memory_bytes": 512
+      },
+      "defaults": {
+        "dbt_memory_bytes": 1024
+      },
+      "sync_resources": "{\"dbt_memory_bytes\":1024,\"identity_memory_bytes\":512}",
+      "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"memory\":\"1024\"},\"requests\":{\"memory\":\"1024\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"memory\":\"512\"},\"requests\":{\"memory\":\"512\"}}}]}"
     },
-    "defaults": {
-      "dbt_memory_bytes": 1024
+    {
+      "name": "CPU and memory",
+      "requested": {
+        "dbt_cpu_millis": 300,
+        "identity_memory_bytes": 4096
+      },
+      "defaults": {
+        "dbt_cpu_millis": 800,
+        "dbt_memory_bytes": 8192,
+        "identity_cpu_millis": 175
+      },
+      "sync_resources": "{\"dbt_cpu_millis\":300,\"dbt_memory_bytes\":8192,\"identity_cpu_millis\":175,\"identity_memory_bytes\":4096}",
+      "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"300m\",\"memory\":\"8192\"},\"requests\":{\"cpu\":\"300m\",\"memory\":\"8192\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"175m\",\"memory\":\"4096\"},\"requests\":{\"cpu\":\"175m\",\"memory\":\"4096\"}}}]}"
     },
-    "sync_resources": "{\"dbt_memory_bytes\":1024,\"identity_memory_bytes\":512}",
-    "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"memory\":\"1024\"},\"requests\":{\"memory\":\"1024\"}}}]}",
-    "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"memory\":\"512\"},\"requests\":{\"memory\":\"512\"}}}]}"
-  },
-  {
-    "name": "CPU and memory",
-    "requested": {
-      "dbt_cpu_millis": 300,
-      "identity_memory_bytes": 4096
+    {
+      "name": "query cap alone",
+      "requested": {
+        "dbt_query_memory_bytes": 2
+      },
+      "defaults": {},
+      "sync_resources": "{\"dbt_query_memory_bytes\":2}",
+      "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"2\"}],\"name\":\"main\"}]}",
+      "identity_pod_patch": "{}"
     },
-    "defaults": {
-      "dbt_cpu_millis": 800,
-      "dbt_memory_bytes": 8192,
-      "identity_cpu_millis": 175
+    {
+      "name": "query cap and pod defaults",
+      "requested": {
+        "dbt_query_memory_bytes": 5368709120
+      },
+      "defaults": {
+        "airbyte_memory_bytes": 2147483648,
+        "dbt_cpu_millis": 750,
+        "identity_cpu_millis": 350
+      },
+      "sync_resources": "{\"airbyte_memory_bytes\":2147483648,\"dbt_cpu_millis\":750,\"identity_cpu_millis\":350,\"dbt_query_memory_bytes\":5368709120}",
+      "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"5368709120\"}],\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"750m\"},\"requests\":{\"cpu\":\"750m\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"350m\"},\"requests\":{\"cpu\":\"350m\"}}}]}"
     },
-    "sync_resources": "{\"dbt_cpu_millis\":300,\"dbt_memory_bytes\":8192,\"identity_cpu_millis\":175,\"identity_memory_bytes\":4096}",
-    "dbt_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"300m\",\"memory\":\"8192\"},\"requests\":{\"cpu\":\"300m\",\"memory\":\"8192\"}}}]}",
-    "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"175m\",\"memory\":\"4096\"},\"requests\":{\"cpu\":\"175m\",\"memory\":\"4096\"}}}]}"
-  },
-  {
-    "name": "query cap alone",
-    "requested": {
-      "dbt_query_memory_bytes": 2
+    {
+      "name": "Airbyte alone",
+      "requested": {},
+      "defaults": {
+        "airbyte_cpu_millis": 800,
+        "airbyte_memory_bytes": 1048576
+      },
+      "sync_resources": "{\"airbyte_cpu_millis\":800,\"airbyte_memory_bytes\":1048576}",
+      "dbt_pod_patch": "{}",
+      "identity_pod_patch": "{}"
     },
-    "defaults": {},
-    "sync_resources": "{\"dbt_query_memory_bytes\":2}",
-    "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"2\"}],\"name\":\"main\"}]}",
-    "identity_pod_patch": "{}"
-  },
-  {
-    "name": "Airbyte alone",
-    "requested": {},
-    "defaults": {
-      "airbyte_cpu_millis": 800,
-      "airbyte_memory_bytes": 1048576
+    {
+      "name": "everything set",
+      "requested": {
+        "airbyte_cpu_millis": 1000,
+        "airbyte_memory_bytes": 1073741824,
+        "dbt_cpu_millis": 2000,
+        "dbt_memory_bytes": 2147483648,
+        "identity_cpu_millis": 250,
+        "identity_memory_bytes": 536870912,
+        "dbt_query_memory_bytes": 5368709120
+      },
+      "defaults": {},
+      "sync_resources": "{\"airbyte_cpu_millis\":1000,\"airbyte_memory_bytes\":1073741824,\"dbt_cpu_millis\":2000,\"dbt_memory_bytes\":2147483648,\"identity_cpu_millis\":250,\"identity_memory_bytes\":536870912,\"dbt_query_memory_bytes\":5368709120}",
+      "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"5368709120\"}],\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"2000m\",\"memory\":\"2147483648\"},\"requests\":{\"cpu\":\"2000m\",\"memory\":\"2147483648\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"250m\",\"memory\":\"536870912\"},\"requests\":{\"cpu\":\"250m\",\"memory\":\"536870912\"}}}]}"
     },
-    "sync_resources": "{\"airbyte_cpu_millis\":800,\"airbyte_memory_bytes\":1048576}",
-    "dbt_pod_patch": "{}",
-    "identity_pod_patch": "{}"
-  },
-  {
-    "name": "everything set",
-    "requested": {
-      "airbyte_cpu_millis": 1000,
-      "airbyte_memory_bytes": 1073741824,
-      "dbt_cpu_millis": 2000,
-      "dbt_memory_bytes": 2147483648,
-      "identity_cpu_millis": 250,
-      "identity_memory_bytes": 536870912,
-      "dbt_query_memory_bytes": 5368709120
-    },
-    "defaults": {},
-    "sync_resources": "{\"airbyte_cpu_millis\":1000,\"airbyte_memory_bytes\":1073741824,\"dbt_cpu_millis\":2000,\"dbt_memory_bytes\":2147483648,\"identity_cpu_millis\":250,\"identity_memory_bytes\":536870912,\"dbt_query_memory_bytes\":5368709120}",
-    "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"5368709120\"}],\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"2000m\",\"memory\":\"2147483648\"},\"requests\":{\"cpu\":\"2000m\",\"memory\":\"2147483648\"}}}]}",
-    "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"250m\",\"memory\":\"536870912\"},\"requests\":{\"cpu\":\"250m\",\"memory\":\"536870912\"}}}]}"
-  },
-  {
-    "name": "largest allowed values",
-    "requested": {},
-    "defaults": {
-      "airbyte_cpu_millis": 4294967295,
-      "airbyte_memory_bytes": 9007199254740991,
-      "dbt_cpu_millis": 4294967295,
-      "dbt_memory_bytes": 9007199254740991,
-      "identity_cpu_millis": 4294967295,
-      "identity_memory_bytes": 9007199254740991,
-      "dbt_query_memory_bytes": 9007199254740991
-    },
-    "sync_resources": "{\"airbyte_cpu_millis\":4294967295,\"airbyte_memory_bytes\":9007199254740991,\"dbt_cpu_millis\":4294967295,\"dbt_memory_bytes\":9007199254740991,\"identity_cpu_millis\":4294967295,\"identity_memory_bytes\":9007199254740991,\"dbt_query_memory_bytes\":9007199254740991}",
-    "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"9007199254740991\"}],\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"},\"requests\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"}}}]}",
-    "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"},\"requests\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"}}}]}"
-  }
-]
+    {
+      "name": "largest allowed values",
+      "requested": {},
+      "defaults": {
+        "airbyte_cpu_millis": 4294967295,
+        "airbyte_memory_bytes": 9007199254740991,
+        "dbt_cpu_millis": 4294967295,
+        "dbt_memory_bytes": 9007199254740991,
+        "identity_cpu_millis": 4294967295,
+        "identity_memory_bytes": 9007199254740991,
+        "dbt_query_memory_bytes": 9007199254740991
+      },
+      "sync_resources": "{\"airbyte_cpu_millis\":4294967295,\"airbyte_memory_bytes\":9007199254740991,\"dbt_cpu_millis\":4294967295,\"dbt_memory_bytes\":9007199254740991,\"identity_cpu_millis\":4294967295,\"identity_memory_bytes\":9007199254740991,\"dbt_query_memory_bytes\":9007199254740991}",
+      "dbt_pod_patch": "{\"containers\":[{\"env\":[{\"name\":\"DBT_QUERY_MEMORY_BYTES\",\"value\":\"9007199254740991\"}],\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"},\"requests\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"}}}]}",
+      "identity_pod_patch": "{\"containers\":[{\"name\":\"main\",\"resources\":{\"limits\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"},\"requests\":{\"cpu\":\"4294967295m\",\"memory\":\"9007199254740991\"}}}]}"
+    }
+  ]
+}

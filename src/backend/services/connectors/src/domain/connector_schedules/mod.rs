@@ -304,7 +304,7 @@ fn resource_state(
     let target = requested.resolve(&defaults.cloned().unwrap_or_default());
     let status = if observed.live.as_ref().is_some_and(|live| live.suspended) {
         Paused
-    } else if live != Some(&target) {
+    } else if !observed.matches_resources(&target) {
         Pending
     } else if requested.is_empty() {
         Inherited

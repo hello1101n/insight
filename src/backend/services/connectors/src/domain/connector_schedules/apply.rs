@@ -19,6 +19,13 @@ pub(crate) struct Observation {
     pub(crate) resource_read_error: Option<String>,
 }
 
+impl Observation {
+    pub(super) fn matches_resources(&self, target: &Resources) -> bool {
+        self.resources.as_ref() == Some(target)
+            && self.pod_patches == target.pod_patches().map(Some)
+    }
+}
+
 pub(crate) fn observation(object: Option<&DynamicObject>) -> Result<Observation, Error> {
     let resources = object.map(workflow::live_resources).transpose();
     let resource_defaults = object.map(workflow::resource_defaults).transpose();
@@ -166,10 +173,7 @@ impl Target {
                 .live
                 .as_ref()
                 .is_some_and(|live| workflow::matches(live, target)),
-            Self::Resources(target) => {
-                observed.resources.as_ref() == Some(target)
-                    && observed.pod_patches == target.pod_patches().map(Some)
-            }
+            Self::Resources(target) => observed.matches_resources(target),
         }
     }
 

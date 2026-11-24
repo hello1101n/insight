@@ -3,6 +3,7 @@ mod bronze;
 mod nodes;
 mod pods;
 mod query_failures;
+mod resources;
 mod timeout;
 
 use std::collections::{HashMap, HashSet};
@@ -18,10 +19,10 @@ use kube::{
 };
 use tokio_util::sync::CancellationToken;
 
+use self::resources::observe_resources;
 use super::{RunSnapshot, StageSnapshot, WaitKind, store};
 use crate::api::AppState;
 use crate::domain::connector_health::{ConnectorName, SourceId, TenantId};
-use crate::domain::connector_schedules::resources::{PARAMETER, Resources};
 
 const PERIOD: Duration = Duration::from_secs(5);
 const RELIST_SECONDS: u32 = 30;
@@ -244,24 +245,6 @@ fn invocation(spec: &serde_json::Value) -> Option<(&serde_json::Value, bool)> {
         .flatten()
         .find(|step| step["templateRef"]["name"] == "ingestion-pipeline")?;
     Some((step, step["templateRef"]["template"] != "transform"))
-}
-
-fn observe_resources(workflow: &DynamicObject, stages: &mut [StageSnapshot]) {
-    let Some((invocation, _)) = invocation(&workflow.data["spec"]) else {
-        return;
-    };
-    let Some(raw) = nodes::parameter(invocation, "arguments", PARAMETER) else {
-        return;
-    };
-    match Resources::parse(raw) {
-        Ok(resources) => {
-            for stage in stages {
-                let used = resources.for_stage(stage.stage);
-                stage.resources = (!used.is_empty()).then_some(used);
-            }
-        }
-        Err(error) => tracing::warn!(%error, "The Workflow resource settings are invalid."),
-    }
 }
 
 fn identity(wf: &DynamicObject, now: DateTime<Utc>, deleted: bool) -> Option<(RunSnapshot, bool)> {

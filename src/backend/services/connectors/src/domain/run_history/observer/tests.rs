@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::{Value, json};
 
+use crate::domain::connector_schedules::resources::PARAMETER;
+
 fn at(hours: i64) -> DateTime<Utc> {
     DateTime::UNIX_EPOCH + chrono::Duration::hours(hours)
 }
@@ -16,6 +18,84 @@ fn workflow(status: &Value) -> serde_json::Result<DynamicObject> {
         ]}},
         "status":status,
     }))
+}
+
+#[test]
+fn history_records_stage_overrides_from_the_workflow_patches() -> Result<()> {
+    let fixture = crate::test_support::ResourceParameterFixture::load()?;
+    let case = fixture
+        .cases
+        .iter()
+        .find(|case| case.name == "everything set")
+        .context("missing resource case")?;
+    let names = fixture.parameters;
+    let mut workflow = workflow(&json!({}))?;
+    let sync = json!({"name": names.sync, "value": case.sync_resources});
+    let dbt = json!({"name": names.dbt, "value": case.dbt_pod_patch});
+    let identity = json!({"name": names.identity, "value": case.identity_pod_patch});
+    let empty_dbt = json!({"name": names.dbt, "value": "{}"});
+    let empty_identity = json!({"name": names.identity, "value": "{}"});
+    let dbt_settings = json!({
+        "dbt_cpu_millis":2000, "dbt_memory_bytes":2_147_483_648_u64,
+        "dbt_query_memory_bytes":5_368_709_120_u64
+    });
+    let identity_settings = json!({"identity_cpu_millis":250, "identity_memory_bytes":536_870_912});
+    let default = Value::Null;
+
+    for (label, parameters, expected_dbt, expected_identity, expected_bronze) in [
+        (
+            "legacy",
+            vec![&sync],
+            &default,
+            &default,
+            json!({"airbyte_cpu_millis":1000, "airbyte_memory_bytes":1_073_741_824_u64}),
+        ),
+        (
+            "empty patches",
+            vec![&sync, &empty_dbt, &empty_identity],
+            &default,
+            &default,
+            json!({"airbyte_cpu_millis":1000, "airbyte_memory_bytes":1_073_741_824_u64}),
+        ),
+        (
+            "patches only",
+            vec![&dbt, &identity],
+            &dbt_settings,
+            &identity_settings,
+            Value::Null,
+        ),
+    ] {
+        workflow.data["spec"]["arguments"]["parameters"] = json!(parameters);
+        let mut stages = [
+            "bronze",
+            "transform-staging",
+            "connector-checks",
+            "identity-seed",
+        ]
+        .map(|stage| StageSnapshot::new(stage, 1, at(1)));
+        observe_resources(&workflow, &mut stages);
+        assert_eq!(
+            json!(stages[1].resources),
+            *expected_dbt,
+            "{label}: dbt transform"
+        );
+        assert_eq!(
+            json!(stages[2].resources),
+            *expected_dbt,
+            "{label}: connector checks"
+        );
+        assert_eq!(
+            json!(stages[3].resources),
+            *expected_identity,
+            "{label}: identity"
+        );
+        assert_eq!(
+            json!(stages[0].resources),
+            expected_bronze,
+            "{label}: bronze"
+        );
+    }
+    Ok(())
 }
 
 #[test]

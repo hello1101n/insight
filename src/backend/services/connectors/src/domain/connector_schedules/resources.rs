@@ -4,7 +4,10 @@ use serde_json::{Map, Value, json};
 use super::{Error, dto::ScheduleStatus, validation::Violation};
 
 pub(crate) const PARAMETER: &str = "sync_resources";
-pub(super) const POD_PATCH_PARAMETERS: [&str; 2] = ["dbt_pod_patch", "identity_pod_patch"];
+pub(crate) const DBT_POD_PATCH: &str = "dbt_pod_patch";
+pub(crate) const IDENTITY_POD_PATCH: &str = "identity_pod_patch";
+pub(crate) const DBT_QUERY_MEMORY_ENV: &str = "DBT_QUERY_MEMORY_BYTES";
+pub(super) const POD_PATCH_PARAMETERS: [&str; 2] = [DBT_POD_PATCH, IDENTITY_POD_PATCH];
 pub(super) const DEPLOYMENT: &str = "insight.cyberfabric.com/deployment-resources";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
@@ -127,27 +130,6 @@ impl Resources {
             pod_patch(self.identity_cpu_millis, self.identity_memory_bytes, None),
         ]
     }
-
-    pub(crate) fn for_stage(&self, stage: &str) -> Self {
-        match stage {
-            "bronze" => Self {
-                airbyte_cpu_millis: self.airbyte_cpu_millis,
-                airbyte_memory_bytes: self.airbyte_memory_bytes,
-                ..Self::default()
-            },
-            "identity-seed" => Self {
-                identity_cpu_millis: self.identity_cpu_millis,
-                identity_memory_bytes: self.identity_memory_bytes,
-                ..Self::default()
-            },
-            _ => Self {
-                dbt_cpu_millis: self.dbt_cpu_millis,
-                dbt_memory_bytes: self.dbt_memory_bytes,
-                dbt_query_memory_bytes: self.dbt_query_memory_bytes,
-                ..Self::default()
-            },
-        }
-    }
 }
 
 fn pod_patch(
@@ -171,7 +153,7 @@ fn pod_patch(
     if let Some(cap) = query_bytes {
         main.insert(
             "env".to_owned(),
-            json!([{"name": "DBT_QUERY_MEMORY_BYTES", "value": cap.to_string()}]),
+            json!([{"name": DBT_QUERY_MEMORY_ENV, "value": cap.to_string()}]),
         );
     }
     main.insert("name".to_owned(), json!("main"));

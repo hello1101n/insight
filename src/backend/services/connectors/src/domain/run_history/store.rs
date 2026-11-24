@@ -207,6 +207,7 @@ async fn save_stage(
         .map(serde_json::to_string)
         .transpose()
         .map_err(|error| DbErr::Json(error.to_string()))?;
+    let replace_resources = stage.stage != "bronze" || stage.actual_resources.is_some();
     tx.execute_raw(sql(
         "INSERT INTO ingestion_stage_attempts(sync_id,stage,attempt,status,queued_at,started_at,finished_at,waits,reason,connection_id,airbyte_job_id,records_reported,execution_key,query_pod,resources)
          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE
@@ -222,7 +223,7 @@ async fn save_stage(
          resources=IF(?,VALUES(resources),COALESCE(resources,VALUES(resources)))",
         vec![uid.into(), stage.stage.into(), attempt.into(), stage.status.into(), queued_at.into(),
             stage.started_at.into(), stage.finished_at.into(), waits.into(), stage.reason.clone().into(),
-            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into(), stage.actual_resources.is_some().into()],
+            stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into(), replace_resources.into()],
     )).await?;
     Ok(())
 }

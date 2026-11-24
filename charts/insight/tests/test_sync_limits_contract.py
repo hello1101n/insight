@@ -11,6 +11,12 @@ CHART = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
+def resource_parameter_names() -> dict[str, str]:
+    fixture = CHART.parents[1] / "tests/fixtures/connector-resource-parameters.json"
+    return json.loads(fixture.read_text())["parameters"]
+
+
+@pytest.fixture(scope="module")
 def charts() -> dict[str, dict[tuple[str, str], dict]]:
     subprocess.run(["helm", "dependency", "build", str(CHART), "--skip-refresh"], check=True, capture_output=True)
     renders = {}
@@ -374,52 +380,55 @@ def render(*args: str) -> dict[tuple[str, str], dict]:
     return {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(result.stdout) if doc}
 
 
-def test_pipeline_passes_pod_patches_by_plain_substitution(charts: dict[str, dict]) -> None:
+def test_pipeline_passes_pod_patches_by_plain_substitution(
+    charts: dict[str, dict], resource_parameter_names: dict[str, str]
+) -> None:
     for path in (CHART / "templates/ingestion").rglob("*"):
         if path.is_file():
             assert "{{=" not in path.read_text(), path.name
 
+    sync = resource_parameter_names["sync"]
     consumers = {
-        "dbt-run": {"dbt_pod_patch"},
-        "connector-checks": {"dbt_pod_patch"},
-        "identity-seed-run": {"identity_pod_patch"},
+        "dbt-run": resource_parameter_names["dbt"],
+        "connector-checks": resource_parameter_names["dbt"],
+        "identity-seed-run": resource_parameter_names["identity"],
     }
-    patches = set().union(*consumers.values())
-    task_patches = consumers | {"transform": patches, "airbyte-sync": set()}
+    names = set(resource_parameter_names.values())
+    assert len(names) == 3
+    task_inputs = {workflow: {sync, patch} for workflow, patch in consumers.items()}
+    task_inputs.update({"transform": names, "airbyte-sync": {sync}})
+
     for chart in charts.values():
-        for workflow, names in consumers.items():
-            (name,) = names
+        for workflow, patch in consumers.items():
             run = templates(chart, workflow)["run"]
-            assert run["podSpecPatch"] == "{{inputs.parameters." + name + "}}", workflow
-            inputs = {p["name"]: p.get("default") for p in run["inputs"]["parameters"]}
-            assert inputs[name] == "{}", workflow
+            assert run["podSpecPatch"] == "{{inputs.parameters." + patch + "}}", workflow
+            inputs = [(p["name"], p.get("default")) for p in run["inputs"]["parameters"] if p["name"] in names]
+            assert sorted(inputs) == sorted((name, "{}") for name in task_inputs[workflow]), workflow
 
         pipeline = templates(chart, "ingestion-pipeline")
         for entrypoint, spec in pipeline.items():
-            inputs = {p["name"]: p.get("default") for p in spec["inputs"]["parameters"]}
-            assert {name: inputs.get(name) for name in patches} == dict.fromkeys(patches, "{}"), entrypoint
+            inputs = [(p["name"], p.get("default")) for p in spec["inputs"]["parameters"] if p["name"] in names]
+            assert sorted(inputs) == sorted((name, "{}") for name in names), entrypoint
             for task in spec["dag"]["tasks"]:
                 consumer = task["templateRef"]["name"] if "templateRef" in task else task["template"]
-                arguments = {p["name"]: p["value"] for p in task["arguments"]["parameters"] if p["name"] in patches}
-                expected = {name: "{{inputs.parameters." + name + "}}" for name in task_patches[consumer]}
-                assert arguments == expected, task["name"]
+                arguments = [(p["name"], p["value"]) for p in task["arguments"]["parameters"] if p["name"] in names]
+                expected = [(name, "{{inputs.parameters." + name + "}}") for name in task_inputs[consumer]]
+                assert sorted(arguments) == sorted(expected), task["name"]
 
 
-def test_connector_resources_reach_airbyte_and_the_reconcile_submission(charts: dict[str, dict]) -> None:
+def test_connector_resources_reach_airbyte_and_the_reconcile_submission(
+    charts: dict[str, dict], resource_parameter_names: dict[str, str]
+) -> None:
+    sync = resource_parameter_names["sync"]
     chart = charts["overrides"]
-    pipeline = templates(chart, "ingestion-pipeline")
-    for entrypoint in pipeline.values():
-        for task in entrypoint["dag"]["tasks"]:
-            params = {p["name"]: p["value"] for p in task["arguments"]["parameters"]}
-            assert params["sync_resources"] == "{{inputs.parameters.sync_resources}}"
     bronze = templates(chart, "airbyte-sync")
     trigger_env = {item["name"]: item.get("value") for item in bronze["trigger-sync"]["container"]["env"]}
     poll_env = {item["name"]: item.get("value") for item in bronze["poll-job"]["container"]["env"]}
-    assert trigger_env["SYNC_RESOURCES"] == "{{inputs.parameters.sync_resources}}"
+    assert trigger_env["SYNC_RESOURCES"] == "{{inputs.parameters." + sync + "}}"
     assert poll_env["SYNC_RESOURCES"] == trigger_env["SYNC_RESOURCES"]
     poll_step = bronze["sync"]["steps"][1][0]
     arguments = {item["name"]: item["value"] for item in poll_step["arguments"]["parameters"]}
-    assert arguments["sync_resources"] == "{{inputs.parameters.sync_resources}}"
+    assert arguments[sync] == trigger_env["SYNC_RESOURCES"]
     assert "AIRBYTE_RESOURCE_JOURNAL" not in trigger_env.keys() | poll_env.keys()
     reconcile = chart["CronWorkflow", "contract-reconcile-loop"]
     env = reconcile["spec"]["workflowSpec"]["templates"][0]["container"]["env"]

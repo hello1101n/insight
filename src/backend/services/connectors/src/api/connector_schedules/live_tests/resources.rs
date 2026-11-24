@@ -1,5 +1,8 @@
 use super::*;
 use crate::infra::cluster_stub::Scenario;
+use crate::test_support::{
+    ResourceParameterCase, ResourceParameterFixture, ResourceParameterNames,
+};
 
 async fn patch(
     h: &Harness,
@@ -20,6 +23,12 @@ async fn refusing_resource_settings_restores_the_row_and_keeps_the_live_schedule
     let Some(db) = connect_or_skip().await? else {
         return Ok(());
     };
+    let fixture = ResourceParameterFixture::load()?;
+    let case = fixture
+        .cases
+        .iter()
+        .find(|case| case.name == "query cap and pod defaults")
+        .ok_or("missing resource case")?;
     let (connector, uri) = identity();
     let history = Mock::new();
     let h = harness_for_cluster(
@@ -36,7 +45,7 @@ async fn refusing_resource_settings_restores_the_row_and_keeps_the_live_schedule
     assert_eq!(status, StatusCode::OK);
     let mut workflow = h.workflow.object().await;
     workflow["metadata"]["annotations"]["insight.cyberfabric.com/deployment-resources"] =
-        json!(r#"{"dbt_cpu_millis":750,"airbyte_memory_bytes":2147483648}"#);
+        json!(serde_json::to_string(&case.defaults)?);
     h.workflow.replace(workflow, Scenario::Accept).await;
 
     let saved = patch(
@@ -52,12 +61,9 @@ async fn refusing_resource_settings_restores_the_row_and_keeps_the_live_schedule
     let saved = body(saved).await?;
     assert_eq!(saved["requested"], schedule["requested"]);
     assert_eq!(saved["resources"]["status"], "applied");
-    assert_eq!(
-        saved["resources"]["live"],
-        json!({
-            "dbt_cpu_millis": 1200,"dbt_query_memory_bytes": 5_368_709_120_u64,"airbyte_memory_bytes":2_147_483_648_u64
-        })
-    );
+    let mut expected_live: Value = serde_json::from_str(&case.sync_resources)?;
+    expected_live["dbt_cpu_millis"] = json!(1200);
+    assert_eq!(saved["resources"]["live"], expected_live);
     let before = Entity::find_by_id((connector.clone(), "main".to_owned()))
         .one(&db)
         .await?;
@@ -84,14 +90,10 @@ async fn refusing_resource_settings_restores_the_row_and_keeps_the_live_schedule
     assert_eq!(partial.status(), StatusCode::OK);
     assert_eq!(partial.headers()["etag"], "\"3\"");
     let partial = body(partial).await?;
-    assert_eq!(
-        partial["resources"]["requested"],
-        json!({"dbt_query_memory_bytes": 5_368_709_120_u64})
-    );
+    assert_eq!(partial["resources"]["requested"], json!(case.requested));
     assert_eq!(partial["resources"]["live"]["dbt_cpu_millis"], 750);
 
-    assert_repeat_save_fills_in_pod_patches(&h, &history, &uri, &partial["resources"]["requested"])
-        .await?;
+    assert_repeat_save_fills_in_pod_patches(&h, &history, &uri, &fixture.parameters, case).await?;
 
     let reset = patch(
         &h,
@@ -113,26 +115,52 @@ async fn assert_repeat_save_fills_in_pod_patches(
     h: &Harness,
     history: &Mock,
     uri: &str,
-    requested: &Value,
+    names: &ResourceParameterNames,
+    case: &ResourceParameterCase,
 ) -> R {
-    let mut legacy_workflow = h.workflow.object().await;
-    let parameters = &mut legacy_workflow["spec"]["workflowSpec"]["arguments"]["parameters"];
-    parameters
-        .as_array_mut()
-        .ok_or("missing Workflow arguments")?
-        .retain(|p| p["name"] != "dbt_pod_patch" && p["name"] != "identity_pod_patch");
-    h.workflow.replace(legacy_workflow, Scenario::Accept).await;
+    let current = h.workflow.object().await;
+    let expected = [
+        (names.sync.as_str(), case.sync_resources.as_str()),
+        (names.dbt.as_str(), case.dbt_pod_patch.as_str()),
+        (names.identity.as_str(), case.identity_pod_patch.as_str()),
+    ];
+    for (name, replacement) in [
+        (names.dbt.as_str(), None),
+        (names.identity.as_str(), Some("{}")),
+    ] {
+        let mut stale = current.clone();
+        let parameters = stale["spec"]["workflowSpec"]["arguments"]["parameters"]
+            .as_array_mut()
+            .ok_or("missing Workflow arguments")?;
+        parameters.retain(|p| p["name"] != name);
+        if let Some(value) = replacement {
+            parameters.push(json!({"name": name, "value": value}));
+        }
+        h.workflow.replace(stale, Scenario::Accept).await;
 
-    let noop = patch(h, history, uri, "3", &json!({})).await?;
-    assert_eq!(noop.status(), StatusCode::OK);
-    assert_eq!(noop.headers()["etag"], "\"3\"");
-    assert_eq!(&body(noop).await?["resources"]["requested"], requested);
+        let (status, schedule) = send((h, history), "GET", uri, None, &[]).await?;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(schedule["resources"]["status"], "pending", "{name}");
 
-    let workflow = h.workflow.object().await;
-    let parameters = workflow["spec"]["workflowSpec"]["arguments"]["parameters"]
-        .as_array()
-        .ok_or("missing Workflow arguments")?;
-    assert!(parameters.iter().any(|p| p["name"] == "dbt_pod_patch"));
-    assert!(parameters.iter().any(|p| p["name"] == "identity_pod_patch"));
+        let noop = patch(h, history, uri, "3", &json!({})).await?;
+        assert_eq!(noop.status(), StatusCode::OK);
+        assert_eq!(noop.headers()["etag"], "\"3\"");
+        let saved = body(noop).await?;
+        assert_eq!(saved["resources"]["requested"], json!(case.requested));
+        assert_eq!(saved["resources"]["status"], "applied");
+
+        let workflow = h.workflow.object().await;
+        let parameters = workflow["spec"]["workflowSpec"]["arguments"]["parameters"]
+            .as_array()
+            .ok_or("missing Workflow arguments")?;
+        for (name, value) in expected {
+            let actual = parameters.iter().find(|p| p["name"] == name);
+            assert_eq!(
+                actual.and_then(|p| p["value"].as_str()),
+                Some(value),
+                "{name}"
+            );
+        }
+    }
     Ok(())
 }

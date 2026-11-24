@@ -1,35 +1,24 @@
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
-
 use super::*;
+use crate::test_support::ResourceParameterFixture;
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 fn cron_workflow_uses_the_shared_resource_parameter_contract() -> R {
-    #[derive(Debug, Deserialize)]
-    struct Case {
-        name: String,
-        requested: Resources,
-        defaults: Resources,
-        sync_resources: String,
-        dbt_pod_patch: String,
-        identity_pod_patch: String,
-    }
-
-    let cases: Vec<Case> = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../tests/fixtures/connector-resource-parameters.json"
-    )))?;
+    let ResourceParameterFixture {
+        parameters: names,
+        cases,
+    } = ResourceParameterFixture::load()?;
     for case in cases {
         let workflow = serde_json::from_value(json!({
             "metadata": {"uid": "example-uid", "resourceVersion": "1"},
             "spec": {"workflowSpec": {"arguments": {"parameters": [
                 {"name": "insight_source_id", "value": "main"},
-                {"name": "sync_resources", "value": "{}"},
-                {"name": "dbt_pod_patch", "value": "{}"},
-                {"name": "identity_pod_patch", "value": "{}"}
+                {"name": names.sync, "value": "{}"},
+                {"name": names.dbt, "value": "{}"},
+                {"name": names.identity, "value": "{}"}
             ]}}}
         }))?;
         let effective = case
@@ -46,11 +35,11 @@ fn cron_workflow_uses_the_shared_resource_parameter_contract() -> R {
 
         let mut expected = BTreeMap::from([
             ("insight_source_id", "main"),
-            ("dbt_pod_patch", case.dbt_pod_patch.as_str()),
-            ("identity_pod_patch", case.identity_pod_patch.as_str()),
+            (names.dbt.as_str(), case.dbt_pod_patch.as_str()),
+            (names.identity.as_str(), case.identity_pod_patch.as_str()),
         ]);
         if case.sync_resources != "{}" {
-            expected.insert("sync_resources", &case.sync_resources);
+            expected.insert(&names.sync, &case.sync_resources);
         }
 
         assert_eq!(actual, expected, "{}", case.name);
