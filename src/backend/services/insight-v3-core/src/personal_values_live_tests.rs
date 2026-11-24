@@ -13,7 +13,9 @@ use crate::chat::ChatClient;
 use crate::domain::access::PersonId;
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _};
 use crate::domain::drilldown::{Page, Records};
+use crate::domain::kinds::dataset::declaration::Declaration;
 use crate::domain::personal::{Direction, Marked, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::query::metric_query::over::Over;
 use crate::domain::query::metric_query::{
     MetricQuery, MetricRunner, People, RunResult, TableEngine,
 };
@@ -22,6 +24,7 @@ use crate::store::definitions::memory::MemoryDefinitions;
 use crate::store::identity::IdentityClient;
 
 const URL_VAR: &str = "INTEGRATION_TESTS_CLICKHOUSE_URL";
+const DATASET_TABLE: &str = "ds_commits_1";
 
 struct Stand {
     runner: MetricRunner,
@@ -151,6 +154,61 @@ impl Stand {
         .await;
     }
 
+    async fn seed_dataset(&self) {
+        execute(
+            &self.client,
+            &format!(
+                "CREATE TABLE {}.{DATASET_TABLE} (id UUID, table_name String, raw_data String, \
+                 received_at DateTime64(3, 'UTC')) ENGINE = MergeTree \
+                 ORDER BY (table_name, received_at, id)",
+                self.database
+            ),
+        )
+        .await;
+
+        let records: Vec<String> = [
+            (1, 1, "alice", 10, "main", "2026-09-02 10:00:00"),
+            (2, 1, "alice", 5, "main", "2026-09-03 10:00:00"),
+            (3, 1, "alice", 100, "dev", "2026-09-03 11:00:00"),
+            (4, 1, "alice", 1000, "main", "2026-08-01 10:00:00"),
+            (5, 2, "bob", 7, "main", "2026-09-05 10:00:00"),
+            (6, 3, "carol", 50, "main", "2026-09-05 10:00:00"),
+            (7, 5, "erin", 9, "main", "2026-09-06 10:00:00"),
+        ]
+        .iter()
+        .map(|(seed, author, name, lines, branch, at)| {
+            let raw = json!({
+                "author": format!("{name}@example.com"),
+                "author_id": person(*author).to_string(),
+                "lines": lines,
+                "branch": branch,
+                "merged_at": at
+            });
+            format!(
+                "(toUUID('{}'), 'commits', '{raw}', now64(3))",
+                record(*seed)
+            )
+        })
+        .collect();
+        execute(
+            &self.client,
+            &format!(
+                "INSERT INTO {}.{DATASET_TABLE} (id, table_name, raw_data, received_at) VALUES {}",
+                self.database,
+                records.join(", ")
+            ),
+        )
+        .await;
+    }
+
+    fn over<'a>(&'a self, declaration: &'a Declaration) -> Over<'a> {
+        Over {
+            declaration,
+            database: &self.database,
+            table: DATASET_TABLE,
+        }
+    }
+
     fn metric(&self, value_fields: &Value) -> MetricQuery {
         self.metric_by(
             json!({
@@ -243,6 +301,37 @@ async fn execute(client: &insight_clickhouse::Client, sql: &str) {
 
 fn person(seed: u128) -> PersonId {
     PersonId::new(Uuid::from_u128(seed))
+}
+
+fn record(seed: u128) -> Uuid {
+    Uuid::from_u128(0x0d00_0000 + seed)
+}
+
+fn commits_declaration() -> Declaration {
+    serde_json::from_value(json!({
+        "title": "Commits",
+        "fields": [
+            { "name": "author", "path": "author", "type": "string", "person": "email" },
+            { "name": "author_id", "path": "author_id", "type": "string", "person": "id" },
+            { "name": "lines", "path": "lines", "type": "int" },
+            { "name": "branch", "path": "branch", "type": "string" },
+            { "name": "merged_at", "path": "merged_at", "type": "datetime", "default_clock": true }
+        ]
+    }))
+    .unwrap_or_else(|error| panic!("the declaration parses: {error}"))
+}
+
+fn dataset_metric(person_field: &str) -> MetricQuery {
+    serde_json::from_value(json!({
+        "dataset": "commits",
+        "fields": [
+            { "field": person_field, "type": "string", "as_name": "author" },
+            { "field": "lines", "type": "int", "agg": "sum", "as_name": "lines" }
+        ],
+        "group_by": ["author"],
+        "filters": [{ "field": "branch", "type": "string", "op": "eq", "value": "main" }]
+    }))
+    .unwrap_or_else(|error| panic!("the dataset metric parses: {error}"))
 }
 
 fn capitalized(name: &str) -> String {
@@ -708,6 +797,203 @@ async fn the_records_route_lists_a_persons_rows_newest_first() {
         ])
     );
     assert_eq!(answer["next_cursor"], Value::Null);
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn personal_values_over_a_dataset_read_the_declared_person_and_clock() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    stand.seed_dataset().await;
+    let declaration = commits_declaration();
+
+    for (person_field, persons, expected) in [
+        (
+            "author",
+            vec![person(1), person(2), person(4)],
+            vec![
+                (person(1).to_string(), json!(15)),
+                (person(2).to_string(), json!(7)),
+            ],
+        ),
+        (
+            "author_id",
+            vec![person(1), person(2), person(5)],
+            vec![
+                (person(1).to_string(), json!(15)),
+                (person(2).to_string(), json!(7)),
+                (person(5).to_string(), json!(9)),
+            ],
+        ),
+    ] {
+        let compiled = dataset_metric(person_field)
+            .personal_values(
+                &marked("lines"),
+                &persons,
+                &september_week(),
+                stand.runner.people(),
+                TableEngine::Other,
+                Some(stand.over(&declaration)),
+            )
+            .unwrap_or_else(|error| panic!("the personal values compile: {error}"));
+
+        assert_eq!(
+            by_person(&stand.run(&compiled).await),
+            expected,
+            "{person_field}"
+        );
+    }
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn a_team_value_over_a_dataset_is_one_total_over_its_persons() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    stand.seed_dataset().await;
+    let declaration = commits_declaration();
+
+    let compiled = dataset_metric("author")
+        .team_value(
+            &marked("lines"),
+            &[person(1), person(2)],
+            &september_week(),
+            stand.runner.people(),
+            TableEngine::Other,
+            Some(stand.over(&declaration)),
+        )
+        .unwrap_or_else(|error| panic!("the team value compiles: {error}"));
+
+    assert_eq!(only_value(&stand.run(&compiled).await), json!(22));
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn personal_records_over_a_dataset_carry_each_records_id() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    stand.seed_dataset().await;
+    let declaration = commits_declaration();
+
+    let compiled = dataset_metric("author")
+        .personal_records(
+            &marked("lines"),
+            person(1),
+            &september_week(),
+            stand.runner.people(),
+            TableEngine::Other,
+            Some(stand.over(&declaration)),
+        )
+        .unwrap_or_else(|error| panic!("the personal records compile: {error}"));
+    let result = stand.run(&compiled).await;
+
+    assert_eq!(
+        result.columns,
+        ["time", "author", "lines", "__drilldown_record"]
+    );
+    let mut rows = result.rows.clone();
+    rows.sort_by_key(|row| row.first().map(Value::to_string));
+    assert_eq!(
+        rows,
+        vec![
+            vec![
+                json!("2026-09-02 10:00:00.000"),
+                json!("Alice Example"),
+                json!(10),
+                json!(record(1).to_string())
+            ],
+            vec![
+                json!("2026-09-03 10:00:00.000"),
+                json!("Alice Example"),
+                json!(5),
+                json!(record(2).to_string())
+            ],
+        ]
+    );
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn personal_values_by_person_id_answer_each_person_asked_for() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    let by_id = stand.metric_by(
+        json!({
+            "column": "author_person_id", "type": "string", "as_name": "author", "person": "id"
+        }),
+        &lines(),
+    );
+
+    let compiled = by_id
+        .personal_values(
+            &marked("lines"),
+            &[person(1), person(2), person(3), person(4)],
+            &september_week(),
+            stand.runner.people(),
+            TableEngine::MergeTree,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("the personal values compile: {error}"));
+
+    assert_eq!(
+        by_person(&stand.run(&compiled).await),
+        vec![
+            (person(1).to_string(), json!(15)),
+            (person(2).to_string(), json!(7)),
+            (person(3).to_string(), json!(50)),
+        ]
+    );
+
+    stand.drop_database().await;
+}
+
+#[tokio::test]
+async fn an_admin_run_shows_each_person_read_by_id_once_by_name() {
+    let Some(stand) = stand_or_skip().await else {
+        return;
+    };
+    stand.seed().await;
+    let by_id = stand.metric_by(
+        json!({
+            "column": "author_person_id", "type": "string", "as_name": "author", "person": "id"
+        }),
+        &lines(),
+    );
+
+    let compiled = by_id
+        .compile_window(
+            stand.runner.people(),
+            &september_week(),
+            TableEngine::MergeTree,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("the admin run compiles: {error}"));
+    let result = stand.run(&compiled).await;
+
+    assert_eq!(result.columns, ["author", "lines"]);
+    let mut rows = result.rows.clone();
+    rows.sort_by_key(|row| row.first().map(Value::to_string));
+    assert_eq!(
+        rows,
+        vec![
+            vec![json!(person(5).to_string()), json!(9)],
+            vec![json!("Alice Example"), json!(15)],
+            vec![json!("Bob Example"), json!(7)],
+            vec![json!("Carol Example"), json!(50)],
+        ]
+    );
 
     stand.drop_database().await;
 }
