@@ -15,6 +15,7 @@ use thiserror::Error;
 use crate::domain::kinds::dataset::declaration::{
     BUCKET_COLUMN, Declaration, FieldType as DeclaredType,
 };
+use crate::domain::personal::MarkError;
 use crate::domain::query::time_window::MaximumRange;
 
 pub(crate) use engine::TableEngine;
@@ -36,6 +37,8 @@ const FACT_ALIAS: &str = "__f";
 pub(crate) const RECORD_COLUMN: &str = "__drilldown_record";
 
 pub(crate) const TWIN_COLUMN: &str = "__drilldown_twin";
+
+pub(crate) const RECORD_TIME_COLUMN: &str = "time";
 
 #[derive(Debug)]
 pub(crate) struct Reference<'a> {
@@ -300,6 +303,10 @@ fn column_kind(field: &Field, declaration: Option<&Declaration>) -> ColumnKind {
         return ColumnKind::Number;
     }
 
+    read_kind(field, declaration)
+}
+
+fn read_kind(field: &Field, declaration: Option<&Declaration>) -> ColumnKind {
     let declared = declaration
         .zip(field.reads())
         .and_then(|(declaration, named)| declaration.field(named))
@@ -438,6 +445,12 @@ pub(crate) enum MetricQueryError {
     RangeExceedsMaximum(String),
     #[error(transparent)]
     Window(#[from] WindowError),
+    #[error(transparent)]
+    Mark(#[from] MarkError),
+    #[error("a personal value needs at least one person")]
+    NoPersons,
+    #[error("`{RECORD_TIME_COLUMN}` is reserved for the time of a personal record")]
+    RecordTime,
 }
 
 #[cfg(test)]

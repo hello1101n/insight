@@ -7,12 +7,14 @@ use super::filter::FilterBind;
 use super::over::Over;
 use super::people::{People, PersonHandle};
 use super::{
-    CompiledQuery, FACT_ALIAS, MetricQuery, MetricQueryError, RECORD_COLUMN, TWIN_COLUMN,
-    UndatedQuery,
+    ColumnKind, CompiledQuery, FACT_ALIAS, MetricQuery, MetricQueryError, RECORD_COLUMN,
+    RECORD_TIME_COLUMN, TWIN_COLUMN, UndatedQuery,
 };
-use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
+use crate::domain::access::PersonId;
+use crate::domain::kinds::dataset::declaration::{BUCKET_COLUMN, Declaration};
 use crate::domain::kinds::dataset::read::Form;
 use crate::domain::kinds::metric::answerable::effective_clock;
+use crate::domain::personal::{MarkError, PersonalMark};
 use crate::domain::query::metric_query::TableEngine;
 use crate::domain::query::time_window::Window;
 
@@ -189,39 +191,14 @@ impl MetricQuery {
             }
             selection.as_names.insert(field.as_name.as_str());
 
-            let carried = match over {
-                Some(over) => over.person_of(field.declared.as_deref()),
-                None => field.person,
-            };
-            let expression = match carried {
+            let expression = match carried(field, over) {
                 Some(handle) => {
                     if !selection.handles.contains(&handle) {
                         selection.handles.push(handle);
                     }
-                    let read = match over {
-                        Some(over) => over.read_as(
-                            field.declared.as_deref(),
-                            "a person field",
-                            qualifier,
-                            Form::Raw,
-                        )?,
-                        None => field.source()?.sql(field.r#type, qualifier)?,
-                    };
-                    let shown = match over {
-                        Some(over) => {
-                            over.read(field.declared.as_deref(), "a person field", qualifier)?
-                        }
-                        None => read.clone(),
-                    };
-                    let alias = format!("__p{index}");
-                    let _ = write!(
-                        selection.joins,
-                        " LEFT JOIN {} AS `{alias}` ON `{alias}`.`handle` = {}",
-                        handle.cte(),
-                        handle.key(&read)
-                    );
-                    let resolved =
-                        format!("coalesce(nullIf(`{alias}`.`display_name`, ''), {shown})");
+                    let alias =
+                        join_person(field, index, handle, over, qualifier, &mut selection.joins)?;
+                    let resolved = shown_person(field, &alias, over, qualifier)?;
                     let condition = field.condition(over, qualifier, &mut selection.binds)?;
 
                     field.aggregated_if(resolved, condition)
@@ -286,10 +263,10 @@ impl MetricQuery {
             self.validate_shape(table)?;
         }
 
-        let joins_a_person = self.fields.iter().any(|field| match over {
-            Some(over) => over.person_of(field.declared.as_deref()).is_some(),
-            None => field.person.is_some(),
-        });
+        let joins_a_person = self
+            .fields
+            .iter()
+            .any(|field| carried(field, over).is_some());
         let qualifier = joins_a_person.then_some(FACT_ALIAS);
         let Selection {
             mut parts,
@@ -391,17 +368,8 @@ impl MetricQuery {
         if bound != Bound::Paged || self.groups_its_rows() {
             return (Vec::new(), false);
         }
-        if !over_a_dataset {
-            return (vec![TWIN_COLUMN.to_owned()], true);
-        }
 
-        let id = match qualifier {
-            Some(alias) => format!("`{alias}`.`id`"),
-            None => "`id`".to_owned(),
-        };
-        parts.push(format!("{id} AS `{RECORD_COLUMN}`"));
-
-        (vec![RECORD_COLUMN.to_owned()], false)
+        identified(over_a_dataset, qualifier, parts)
     }
 
     fn bound_by(
@@ -551,4 +519,424 @@ impl MetricQuery {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Personal {
+    person: usize,
+    handle: PersonHandle,
+    value: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Spread {
+    PerPerson,
+    Together,
+}
+
+impl MetricQuery {
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the personal metric values read runs it")
+    )]
+    pub(crate) fn personal_values(
+        &self,
+        mark: &PersonalMark,
+        persons: &[PersonId],
+        window: &Window,
+        people: &People,
+        engine: TableEngine,
+        over: Option<Over<'_>>,
+    ) -> Result<CompiledQuery, MetricQueryError> {
+        self.valued(
+            mark,
+            persons,
+            window,
+            people,
+            engine,
+            over,
+            Spread::PerPerson,
+        )
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the personal metric values read runs it")
+    )]
+    pub(crate) fn team_value(
+        &self,
+        mark: &PersonalMark,
+        persons: &[PersonId],
+        window: &Window,
+        people: &People,
+        engine: TableEngine,
+        over: Option<Over<'_>>,
+    ) -> Result<CompiledQuery, MetricQueryError> {
+        self.valued(
+            mark,
+            persons,
+            window,
+            people,
+            engine,
+            over,
+            Spread::Together,
+        )
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the personal metric records read pages it")
+    )]
+    pub(crate) fn personal_records(
+        &self,
+        mark: &PersonalMark,
+        person: PersonId,
+        window: &Window,
+        people: &People,
+        engine: TableEngine,
+        over: Option<Over<'_>>,
+    ) -> Result<CompiledQuery, MetricQueryError> {
+        let personal = self.personal(mark, over)?;
+        let qualifier = Some(FACT_ALIAS);
+        let window = window.clone().unbucketed();
+        let time = self.time_expression(&window, over, qualifier, &HashSet::new())?;
+
+        let mut parts = Vec::with_capacity(self.fields.len() + 2);
+        let mut column_types = HashMap::with_capacity(self.fields.len() + 1);
+        let mut joins = String::new();
+        let mut handles = vec![personal.handle];
+        let mut binds = Vec::new();
+        if let Some(clock) = time.as_deref() {
+            parts.push(format!("{clock} AS `{RECORD_TIME_COLUMN}`"));
+            column_types.insert(RECORD_TIME_COLUMN.to_owned(), FieldType::String);
+        }
+
+        for (index, field) in self.record_fields() {
+            if !is_identifier(&field.as_name) {
+                return Err(MetricQueryError::Identifier(field.as_name.clone()));
+            }
+            if time.is_some() && field.as_name == RECORD_TIME_COLUMN {
+                return Err(MetricQueryError::RecordTime);
+            }
+
+            let (expression, read_type) = match carried(field, over) {
+                Some(handle) => {
+                    if !handles.contains(&handle) {
+                        handles.push(handle);
+                    }
+                    let alias = join_person(field, index, handle, over, qualifier, &mut joins)?;
+
+                    (
+                        shown_person(field, &alias, over, qualifier)?,
+                        FieldType::String,
+                    )
+                }
+                None => (
+                    field.read(over, qualifier, &mut binds)?,
+                    field.read_type(over),
+                ),
+            };
+            parts.push(format!("{expression} AS `{}`", field.as_name));
+            column_types.insert(field.as_name.clone(), read_type);
+        }
+
+        let (hidden, numbered) = identified(over.is_some(), qualifier, &mut parts);
+
+        let mut where_parts = Vec::with_capacity(self.filters.len() + 4);
+        add_window_predicates(&window, time.as_deref(), &mut where_parts, &mut binds)?;
+        self.add_filters(over, qualifier, &mut where_parts, &mut binds)?;
+        where_parts.push(format!(
+            "`{}`.`person_id` = ?",
+            person_alias(personal.person)
+        ));
+        binds.push(FilterBind::Str(person.to_string()));
+
+        let valued = &self.fields[personal.value];
+        if valued.divide.is_none()
+            && let Some(condition) = valued.condition(over, qualifier, &mut binds)?
+        {
+            where_parts.push(condition);
+        }
+
+        let sql = format!(
+            "{}SELECT {} FROM {}{joins} WHERE {}",
+            people.prelude(&handles)?,
+            parts.join(", "),
+            self.table_source(over, qualifier, engine),
+            where_parts.join(" AND ")
+        );
+
+        Ok(CompiledQuery {
+            sql,
+            binds,
+            column_types,
+            percents: Vec::new(),
+            exacts: self
+                .record_fields()
+                .filter(|(_, field)| field.exact)
+                .map(|(_, field)| field.as_name.clone())
+                .collect(),
+            hidden,
+            numbered,
+        })
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the personal metric records read pages it")
+    )]
+    pub(crate) fn personal_record_kinds(
+        &self,
+        declaration: Option<&Declaration>,
+    ) -> Vec<(String, ColumnKind)> {
+        let clocked = match declaration {
+            Some(declaration) => effective_clock(self, declaration).is_some(),
+            None => self.has_clock().unwrap_or(false),
+        };
+
+        let mut kinds = Vec::with_capacity(self.fields.len() + 1);
+        if clocked {
+            kinds.push((RECORD_TIME_COLUMN.to_owned(), ColumnKind::Date));
+        }
+        for (_, field) in self.record_fields() {
+            let output = super::Output { field, declaration };
+            let kind = if output.carries_a_person() {
+                ColumnKind::Text
+            } else {
+                super::read_kind(field, declaration)
+            };
+            kinds.push((field.as_name.clone(), kind));
+        }
+
+        kinds
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the two public reads share every argument but the spread"
+    )]
+    fn valued(
+        &self,
+        mark: &PersonalMark,
+        persons: &[PersonId],
+        window: &Window,
+        people: &People,
+        engine: TableEngine,
+        over: Option<Over<'_>>,
+        spread: Spread,
+    ) -> Result<CompiledQuery, MetricQueryError> {
+        if persons.is_empty() {
+            return Err(MetricQueryError::NoPersons);
+        }
+        let personal = self.personal(mark, over)?;
+        let qualifier = Some(FACT_ALIAS);
+        let window = window.clone().unbucketed();
+        let alias = person_alias(personal.person);
+
+        let mut joins = String::new();
+        join_person(
+            &self.fields[personal.person],
+            personal.person,
+            personal.handle,
+            over,
+            qualifier,
+            &mut joins,
+        )?;
+
+        let mut binds = Vec::new();
+        let value = self.value_expression(personal.value, over, qualifier, &mut binds)?;
+        let mut parts = Vec::with_capacity(2);
+        if spread == Spread::PerPerson {
+            parts.push(format!("`{alias}`.`person_id` AS `person_id`"));
+        }
+        parts.push(format!("{value} AS `value`"));
+
+        let time = self.time_expression(&window, over, qualifier, &HashSet::new())?;
+        let mut where_parts = Vec::with_capacity(self.filters.len() + 3);
+        add_window_predicates(&window, time.as_deref(), &mut where_parts, &mut binds)?;
+        self.add_filters(over, qualifier, &mut where_parts, &mut binds)?;
+        where_parts.push(format!(
+            "`{alias}`.`person_id` IN ({})",
+            vec!["?"; persons.len()].join(", ")
+        ));
+        binds.extend(
+            persons
+                .iter()
+                .map(|person| FilterBind::Str(person.to_string())),
+        );
+
+        let mut sql = format!(
+            "{}SELECT {} FROM {}{joins} WHERE {}",
+            people.prelude(&[personal.handle])?,
+            parts.join(", "),
+            self.table_source(over, qualifier, engine),
+            where_parts.join(" AND ")
+        );
+        if spread == Spread::PerPerson {
+            let _ = write!(sql, " GROUP BY `{alias}`.`person_id`");
+        }
+
+        let valued = &self.fields[personal.value];
+        let mut column_types = HashMap::from([(
+            "value".to_owned(),
+            match over {
+                Some(over) => valued.result_type_over(over),
+                None => valued.result_type(),
+            },
+        )]);
+        if spread == Spread::PerPerson {
+            column_types.insert("person_id".to_owned(), FieldType::String);
+        }
+        let named_value = |marked: bool| {
+            if marked {
+                vec!["value".to_owned()]
+            } else {
+                Vec::new()
+            }
+        };
+
+        Ok(CompiledQuery {
+            sql,
+            binds,
+            column_types,
+            percents: named_value(valued.percent),
+            exacts: named_value(valued.exact),
+            hidden: Vec::new(),
+            numbered: false,
+        })
+    }
+
+    fn personal(
+        &self,
+        mark: &PersonalMark,
+        over: Option<Over<'_>>,
+    ) -> Result<Personal, MetricQueryError> {
+        if over.is_none() {
+            self.validate_shape(self.split().1)?;
+        }
+        mark.check(self, over.map(|over| over.declaration))?;
+
+        let position = |as_name: &str| {
+            self.fields
+                .iter()
+                .position(|field| field.as_name == as_name)
+        };
+        let person = position(&mark.person_field)
+            .ok_or_else(|| MarkError::NoPersonField(mark.person_field.clone()))?;
+        let handle = carried(&self.fields[person], over)
+            .ok_or_else(|| MarkError::NoPersonHandle(mark.person_field.clone()))?;
+        let value = position(&mark.value_field)
+            .ok_or_else(|| MarkError::NoValueField(mark.value_field.clone()))?;
+
+        Ok(Personal {
+            person,
+            handle,
+            value,
+        })
+    }
+
+    fn value_expression(
+        &self,
+        index: usize,
+        over: Option<Over<'_>>,
+        qualifier: Option<&str>,
+        binds: &mut Vec<FilterBind>,
+    ) -> Result<String, MetricQueryError> {
+        let field = &self.fields[index];
+        let Some((numerator, denominator)) = field.divided()? else {
+            return field.expression(over, qualifier, binds);
+        };
+
+        let mut divided = Vec::with_capacity(2);
+        for name in [numerator, denominator] {
+            let earlier = self.fields[..index]
+                .iter()
+                .rposition(|field| field.as_name == name)
+                .ok_or_else(|| field.divides_no_earlier(name))?;
+            divided.push(self.value_expression(earlier, over, qualifier, binds)?);
+        }
+
+        Ok(field.division(&divided[0], &divided[1]))
+    }
+
+    fn record_fields(&self) -> impl Iterator<Item = (usize, &Field)> {
+        self.fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| field.divide.is_none() && !field.reads_nothing())
+    }
+}
+
+fn carried(field: &Field, over: Option<Over<'_>>) -> Option<PersonHandle> {
+    match over {
+        Some(over) => over.person_of(field.declared.as_deref()),
+        None => field.person,
+    }
+}
+
+fn person_alias(index: usize) -> String {
+    format!("__p{index}")
+}
+
+fn person_read(
+    field: &Field,
+    over: Option<Over<'_>>,
+    qualifier: Option<&str>,
+    form: Form,
+) -> Result<String, MetricQueryError> {
+    match over {
+        Some(over) => over.read_as(field.declared.as_deref(), "a person field", qualifier, form),
+        None => field.source()?.sql(field.r#type, qualifier),
+    }
+}
+
+fn join_person(
+    field: &Field,
+    index: usize,
+    handle: PersonHandle,
+    over: Option<Over<'_>>,
+    qualifier: Option<&str>,
+    joins: &mut String,
+) -> Result<String, MetricQueryError> {
+    let read = person_read(field, over, qualifier, Form::Raw)?;
+    let alias = person_alias(index);
+    let _ = write!(
+        joins,
+        " LEFT JOIN {} AS `{alias}` ON `{alias}`.`handle` = {}",
+        handle.cte(),
+        handle.key(&read)
+    );
+
+    Ok(alias)
+}
+
+fn shown_person(
+    field: &Field,
+    alias: &str,
+    over: Option<Over<'_>>,
+    qualifier: Option<&str>,
+) -> Result<String, MetricQueryError> {
+    let shown = person_read(field, over, qualifier, Form::Presented)?;
+
+    Ok(format!(
+        "coalesce(nullIf(`{alias}`.`display_name`, ''), {shown})"
+    ))
+}
+
+fn identified(
+    over_a_dataset: bool,
+    qualifier: Option<&str>,
+    parts: &mut Vec<String>,
+) -> (Vec<String>, bool) {
+    if !over_a_dataset {
+        return (vec![TWIN_COLUMN.to_owned()], true);
+    }
+
+    let id = match qualifier {
+        Some(alias) => format!("`{alias}`.`id`"),
+        None => "`id`".to_owned(),
+    };
+    parts.push(format!("{id} AS `{RECORD_COLUMN}`"));
+
+    (vec![RECORD_COLUMN.to_owned()], false)
 }

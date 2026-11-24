@@ -66,10 +66,10 @@ impl People {
         for handle in handles {
             ctes.push(match handle {
                 PersonHandle::Email => format!(
-                    "{EMAIL_CTE} AS (SELECT `h`.`handle` AS `handle`, `n`.`display_name` AS `display_name` FROM (SELECT `value_effective` AS `handle`, argMax(`person_id`, `created_at`) AS `person_id` FROM {persons} WHERE `value_type` = 'email' GROUP BY `value_effective`) AS `h` INNER JOIN {NAME_CTE} AS `n` ON `n`.`person_id` = `h`.`person_id`)"
+                    "{EMAIL_CTE} AS (SELECT `h`.`handle` AS `handle`, toString(`h`.`person_id`) AS `person_id`, `n`.`display_name` AS `display_name` FROM (SELECT `value_effective` AS `handle`, argMax(`person_id`, `created_at`) AS `person_id` FROM {persons} WHERE `value_type` = 'email' GROUP BY `value_effective`) AS `h` INNER JOIN {NAME_CTE} AS `n` ON `n`.`person_id` = `h`.`person_id`)"
                 ),
                 PersonHandle::Id => format!(
-                    "{ID_CTE} AS (SELECT toString(`person_id`) AS `handle`, `display_name` FROM {NAME_CTE})"
+                    "{ID_CTE} AS (SELECT toString(`person_id`) AS `handle`, toString(`person_id`) AS `person_id`, `display_name` FROM {NAME_CTE})"
                 ),
             });
         }

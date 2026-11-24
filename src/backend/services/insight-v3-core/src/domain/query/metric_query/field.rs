@@ -81,20 +81,23 @@ impl Field {
     }
 
     pub(super) fn result_type_over(&self, over: Over<'_>) -> FieldType {
-        let declared = self
-            .reads()
-            .and_then(|named| over.declaration.field(named))
+        self.result_type_reading(self.read_type(Some(over)))
+    }
+
+    pub(super) fn read_type(&self, over: Option<Over<'_>>) -> FieldType {
+        let declared = over
+            .zip(self.reads())
+            .and_then(|(over, named)| over.declaration.field(named))
             .map(|declared| declared.r#type);
-        let read = match declared {
+
+        match declared {
             Some(DeclaredType::Int) => FieldType::Int,
             Some(DeclaredType::Float) => FieldType::Float,
             Some(DeclaredType::String | DeclaredType::Datetime | DeclaredType::Bool) => {
                 FieldType::String
             }
             None => self.r#type,
-        };
-
-        self.result_type_reading(read)
+        }
     }
 
     fn result_type_reading(&self, read: FieldType) -> FieldType {
@@ -160,7 +163,7 @@ impl Field {
         })
     }
 
-    fn read(
+    pub(super) fn read(
         &self,
         over: Option<Over<'_>>,
         qualifier: Option<&str>,
@@ -219,7 +222,7 @@ impl Field {
         Ok(Some(parts.join(" AND ")))
     }
 
-    fn reads_nothing(&self) -> bool {
+    pub(super) fn reads_nothing(&self) -> bool {
         self.declared.is_none() && self.json.is_none() && self.column.is_none()
     }
 
@@ -230,6 +233,23 @@ impl Field {
         &self,
         selected: &HashSet<&str>,
     ) -> Result<Option<String>, MetricQueryError> {
+        let Some((numerator, denominator)) = self.divided()? else {
+            return Ok(None);
+        };
+
+        for name in [numerator, denominator] {
+            if !selected.contains(name) {
+                return Err(self.divides_no_earlier(name));
+            }
+        }
+
+        Ok(Some(self.division(
+            &format!("`{numerator}`"),
+            &format!("`{denominator}`"),
+        )))
+    }
+
+    pub(super) fn divided(&self) -> Result<Option<(&str, &str)>, MetricQueryError> {
         let Some(names) = &self.divide else {
             return Ok(None);
         };
@@ -241,22 +261,24 @@ impl Field {
             )));
         };
 
-        for name in [numerator, denominator] {
-            if !selected.contains(name.as_str()) {
-                return Err(MetricQueryError::Ratio(format!(
-                    "`{}` divides `{name}`, which no earlier field of this query selects",
-                    self.as_name
-                )));
-            }
-        }
+        Ok(Some((numerator, denominator)))
+    }
 
-        let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
+    pub(super) fn divides_no_earlier(&self, name: &str) -> MetricQueryError {
+        MetricQueryError::Ratio(format!(
+            "`{}` divides `{name}`, which no earlier field of this query selects",
+            self.as_name
+        ))
+    }
 
-        Ok(Some(if self.percent {
+    pub(super) fn division(&self, numerator: &str, denominator: &str) -> String {
+        let division = format!("({numerator} / nullIf({denominator}, 0))");
+
+        if self.percent {
             format!("(100 * {division})")
         } else {
             division
-        }))
+        }
     }
 
     pub(super) fn aggregated_if(&self, read: String, condition: Option<String>) -> String {

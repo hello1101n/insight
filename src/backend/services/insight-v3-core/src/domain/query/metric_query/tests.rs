@@ -1904,3 +1904,562 @@ fn over_a_dataset_column_types_follow_the_declaration_as_column_kinds_do() {
         "a quoted Int64 from a declared int arrives as a number"
     );
 }
+
+fn person(seed: u128) -> crate::domain::access::PersonId {
+    crate::domain::access::PersonId::new(uuid::Uuid::from_u128(seed))
+}
+
+fn marked(person_field: &str, value_field: &str) -> crate::domain::personal::PersonalMark {
+    serde_json::from_value(json!({
+        "person_field": person_field,
+        "value_field": value_field,
+        "unit": null,
+        "format": "number",
+        "direction": "higher_is_better",
+        "description": "Lines merged in the period"
+    }))
+    .unwrap_or_else(|error| panic!("the mark parses: {error}"))
+}
+
+fn merged_lines() -> MetricQuery {
+    query(json!({
+        "table": "silver.class_git_pull_requests",
+        "time": { "column": "merged_at", "type": "datetime" },
+        "fields": [
+            { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+            { "column": "lines", "type": "int", "agg": "sum", "as_name": "lines",
+              "when": [{ "column": "kind", "type": "string", "op": "eq", "value": "code" }] },
+            { "agg": "count", "type": "int", "as_name": "merged" }
+        ],
+        "group_by": ["author"],
+        "filters": [{ "column": "state", "type": "string", "op": "eq", "value": "MERGED" }]
+    }))
+}
+
+fn gate_pass_rate() -> MetricQuery {
+    query(json!({
+        "database": "insight",
+        "table": "ci_metric_observations",
+        "time": { "column": "observed_at", "type": "datetime" },
+        "fields": [
+            { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+            { "column": "value", "type": "int", "agg": "sum", "as_name": "passed",
+              "when": [{ "column": "measure_key", "type": "string", "op": "eq",
+                         "value": "gate_passed" }] },
+            { "column": "value", "type": "int", "agg": "sum", "as_name": "runs",
+              "when": [{ "column": "measure_key", "type": "string", "op": "eq",
+                         "value": "gate_runs" }] },
+            { "divide": ["passed", "runs"], "percent": true, "type": "float", "as_name": "pass_rate" }
+        ],
+        "group_by": ["author"],
+        "filters": [{ "column": "branch", "type": "string", "op": "eq", "value": "main" }]
+    }))
+}
+
+fn september_week() -> Window {
+    window("2026-09-01/2026-09-08", false)
+}
+
+fn september_millis() -> (String, String) {
+    let at = |text: &str| {
+        chrono::DateTime::parse_from_rfc3339(text)
+            .unwrap_or_else(|error| panic!("the synthetic instant parses: {error}"))
+            .timestamp_millis()
+            .to_string()
+    };
+
+    (at("2026-09-01T00:00:00Z"), at("2026-09-08T00:00:00Z"))
+}
+
+fn after_the_people(sql: &str) -> &str {
+    sql.rsplit_once(") SELECT ")
+        .map_or(sql, |(_, selected)| selected)
+}
+
+#[test]
+fn personal_values_group_by_person_id() {
+    let compiled = merged_lines()
+        .personal_values(
+            &marked("author", "lines"),
+            &[person(1), person(2)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled.sql.contains(
+            " SELECT `__p0`.`person_id` AS `person_id`, sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `value` FROM `silver`.`class_git_pull_requests` AS `__f` LEFT JOIN __people_by_email AS `__p0` ON `__p0`.`handle` = `__f`.`author_email` WHERE "
+        ),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled.sql.ends_with(" GROUP BY `__p0`.`person_id`"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled.sql.contains(
+            "__people_by_email AS (SELECT `h`.`handle` AS `handle`, toString(`h`.`person_id`) AS `person_id`, `n`.`display_name` AS `display_name` FROM"
+        ),
+        "{}",
+        compiled.sql
+    );
+    assert!(!compiled.sql.contains("AS `author`"), "{}", compiled.sql);
+    assert!(!compiled.sql.contains("AS `merged`"), "{}", compiled.sql);
+    assert!(!compiled.sql.contains(" LIMIT "), "{}", compiled.sql);
+}
+
+#[test]
+fn personal_values_bind_the_person_ids() {
+    let compiled = merged_lines()
+        .personal_values(
+            &marked("author", "lines"),
+            &[person(1), person(2)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+    let (from, to) = september_millis();
+
+    assert!(
+        compiled
+            .sql
+            .contains(" AND `__p0`.`person_id` IN (?, ?) GROUP BY"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        !compiled.sql.contains(&person(1).to_string()),
+        "{}",
+        compiled.sql
+    );
+    assert_eq!(
+        compiled.binds,
+        vec![
+            "code".to_owned(),
+            from,
+            to,
+            "MERGED".to_owned(),
+            "00000000-0000-0000-0000-000000000001".to_owned(),
+            "00000000-0000-0000-0000-000000000002".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn personal_values_keep_the_metric_filters() {
+    let compiled = merged_lines()
+        .personal_values(
+            &marked("author", "lines"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled.sql.contains(
+            " WHERE `__f`.`merged_at` >= fromUnixTimestamp64Milli(?, 'UTC') AND `__f`.`merged_at` < fromUnixTimestamp64Milli(?, 'UTC') AND `__f`.`state` = ? AND `__p0`.`person_id` IN (?)"
+        ),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled
+            .sql
+            .contains("sumIf(`__f`.`lines`, `__f`.`kind` = ?)"),
+        "{}",
+        compiled.sql
+    );
+}
+
+#[test]
+fn team_value_has_no_group_by() {
+    let compiled = merged_lines()
+        .team_value(
+            &marked("author", "lines"),
+            &[person(1), person(2)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled
+            .sql
+            .contains(" SELECT sumIf(`__f`.`lines`, `__f`.`kind` = ?) AS `value` FROM "),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled.sql.ends_with(" AND `__p0`.`person_id` IN (?, ?)"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        !after_the_people(&compiled.sql).contains("GROUP BY"),
+        "{}",
+        compiled.sql
+    );
+    assert_eq!(compiled.binds.len(), 6);
+}
+
+#[test]
+fn personal_values_inline_a_ratio_value() {
+    let compiled = gate_pass_rate()
+        .personal_values(
+            &marked("author", "pass_rate"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled.sql.contains(
+            "`__p0`.`person_id` AS `person_id`, (100 * (sumIf(`__f`.`value`, `__f`.`measure_key` = ?) / nullIf(sumIf(`__f`.`value`, `__f`.`measure_key` = ?), 0))) AS `value` FROM"
+        ),
+        "{}",
+        compiled.sql
+    );
+    assert!(!compiled.sql.contains("AS `passed`"), "{}", compiled.sql);
+    assert_eq!(
+        compiled.binds[..2],
+        ["gate_passed".to_owned(), "gate_runs".to_owned()]
+    );
+}
+
+#[test]
+fn personal_values_need_a_person() {
+    let refusal = merged_lines().personal_values(
+        &marked("author", "lines"),
+        &[],
+        &september_week(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    assert!(
+        matches!(refusal, Err(MetricQueryError::NoPersons)),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn personal_values_refuse_a_mark_the_metric_does_not_carry() {
+    let refusal = merged_lines().team_value(
+        &marked("lines", "merged"),
+        &[person(1)],
+        &september_week(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    assert!(
+        matches!(refusal, Err(MetricQueryError::Mark(_))),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn personal_values_keep_the_maximum_range() {
+    let metric = query(json!({
+        "table": "events",
+        "time": { "column": "occurred_at" },
+        "max_range": "P30D",
+        "fields": [
+            { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+            { "agg": "count", "type": "int", "as_name": "total" }
+        ],
+        "group_by": ["author"]
+    }));
+
+    let refusal = metric.personal_values(
+        &marked("author", "total"),
+        &[person(1)],
+        &window("P1Y", false),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    assert!(
+        matches!(refusal, Err(MetricQueryError::RangeExceedsMaximum(_))),
+        "{refusal:?}"
+    );
+}
+
+#[test]
+fn personal_values_read_the_final_rows_of_a_replacing_table() {
+    let compiled = merged_lines()
+        .personal_values(
+            &marked("author", "lines"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::ReplacingMergeTree,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled
+            .sql
+            .contains("FROM `silver`.`class_git_pull_requests` AS `__f` FINAL LEFT JOIN"),
+        "{}",
+        compiled.sql
+    );
+}
+
+fn reviews_declaration() -> crate::domain::kinds::dataset::declaration::Declaration {
+    serde_json::from_value(json!({
+        "title": "Reviews",
+        "fields": [
+            { "name": "reviewer", "path": "reviewer", "type": "string", "person": "email" },
+            { "name": "comments", "path": "comments", "type": "int" },
+            { "name": "reviewed_at", "path": "reviewed_at", "type": "datetime",
+              "default_clock": true }
+        ]
+    }))
+    .unwrap_or_else(|error| panic!("the declaration parses: {error}"))
+}
+
+fn comments_by_reviewer() -> MetricQuery {
+    query(json!({
+        "dataset": "reviews",
+        "fields": [
+            { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+            { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+        ],
+        "group_by": ["reviewer"]
+    }))
+}
+
+#[test]
+fn personal_values_over_a_dataset_join_the_declared_person() {
+    let declaration = reviews_declaration();
+    let over = over::Over {
+        declaration: &declaration,
+        database: "insight_datasets",
+        table: "ds_reviews_1",
+    };
+
+    let compiled = comments_by_reviewer()
+        .personal_values(
+            &marked("reviewer", "comments"),
+            &[person(1)],
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            Some(over),
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled
+            .sql
+            .contains(" SELECT `__p0`.`person_id` AS `person_id`, sum("),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled
+            .sql
+            .contains("LEFT JOIN __people_by_email AS `__p0` ON `__p0`.`handle` = "),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled.sql.contains("`insight_datasets`.`ds_reviews_1`"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled.sql.contains("`__p0`.`person_id` IN (?) GROUP BY"),
+        "{}",
+        compiled.sql
+    );
+}
+
+#[test]
+fn personal_records_apply_the_value_condition() {
+    let compiled = merged_lines()
+        .personal_records(
+            &marked("author", "lines"),
+            person(1),
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+    let (from, to) = september_millis();
+
+    assert!(
+        compiled.sql.contains(
+            " SELECT `__f`.`merged_at` AS `time`, coalesce(nullIf(`__p0`.`display_name`, ''), `__f`.`author_email`) AS `author`, `__f`.`lines` AS `lines` FROM "
+        ),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled
+            .sql
+            .ends_with(" AND `__f`.`state` = ? AND `__p0`.`person_id` = ? AND `__f`.`kind` = ?"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        !after_the_people(&compiled.sql).contains("GROUP BY"),
+        "{}",
+        compiled.sql
+    );
+    assert!(!compiled.sql.contains("sum"), "{}", compiled.sql);
+    assert_eq!(
+        compiled.binds,
+        vec![
+            from,
+            to,
+            "MERGED".to_owned(),
+            "00000000-0000-0000-0000-000000000001".to_owned(),
+            "code".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn personal_records_of_a_ratio_apply_only_the_metric_filters() {
+    let compiled = gate_pass_rate()
+        .personal_records(
+            &marked("author", "pass_rate"),
+            person(1),
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(
+        compiled
+            .sql
+            .ends_with(" AND `__f`.`branch` = ? AND `__p0`.`person_id` = ?"),
+        "{}",
+        compiled.sql
+    );
+    assert!(
+        compiled
+            .sql
+            .contains(", `__f`.`value` AS `passed`, `__f`.`value` AS `runs` FROM "),
+        "{}",
+        compiled.sql
+    );
+    assert!(!compiled.sql.contains("measure_key"), "{}", compiled.sql);
+}
+
+#[test]
+fn personal_records_carry_the_identity_drilldown_pages_by() {
+    let over_a_table = merged_lines()
+        .personal_records(
+            &marked("author", "lines"),
+            person(1),
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(over_a_table.numbered());
+    assert_eq!(over_a_table.hidden(), [TWIN_COLUMN]);
+
+    let declaration = reviews_declaration();
+    let over = over::Over {
+        declaration: &declaration,
+        database: "insight_datasets",
+        table: "ds_reviews_1",
+    };
+    let over_a_dataset = comments_by_reviewer()
+        .personal_records(
+            &marked("reviewer", "comments"),
+            person(1),
+            &september_week(),
+            &people(),
+            TableEngine::Other,
+            Some(over),
+        )
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert!(!over_a_dataset.numbered());
+    assert_eq!(over_a_dataset.hidden(), [RECORD_COLUMN]);
+    assert!(
+        over_a_dataset
+            .sql
+            .contains("`__f`.`id` AS `__drilldown_record` FROM"),
+        "{}",
+        over_a_dataset.sql
+    );
+}
+
+#[test]
+fn personal_record_kinds_name_the_columns_the_records_select() {
+    let declaration = reviews_declaration();
+
+    assert_eq!(
+        merged_lines().personal_record_kinds(None),
+        vec![
+            (RECORD_TIME_COLUMN.to_owned(), ColumnKind::Date),
+            ("author".to_owned(), ColumnKind::Text),
+            ("lines".to_owned(), ColumnKind::Number),
+        ]
+    );
+    assert_eq!(
+        comments_by_reviewer().personal_record_kinds(Some(&declaration)),
+        vec![
+            (RECORD_TIME_COLUMN.to_owned(), ColumnKind::Date),
+            ("reviewer".to_owned(), ColumnKind::Text),
+            ("comments".to_owned(), ColumnKind::Number),
+        ]
+    );
+}
+
+#[test]
+fn a_record_field_named_like_the_record_time_is_refused() {
+    let metric = query(json!({
+        "table": "events",
+        "time": { "column": "occurred_at" },
+        "fields": [
+            { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+            { "column": "spent", "type": "int", "agg": "sum", "as_name": "time" }
+        ],
+        "group_by": ["author"]
+    }));
+
+    let refusal = metric.personal_records(
+        &marked("author", "time"),
+        person(1),
+        &september_week(),
+        &people(),
+        TableEngine::Other,
+        None,
+    );
+
+    assert!(
+        matches!(refusal, Err(MetricQueryError::RecordTime)),
+        "{refusal:?}"
+    );
+}
