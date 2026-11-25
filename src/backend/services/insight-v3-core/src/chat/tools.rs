@@ -155,7 +155,12 @@ fn widget_schema() -> Value {
         "additionalProperties": false,
         "required": ["type", "metric"],
         "properties": {
-            "type": { "enum": ["table", "line", "bar", "area", "stat", "pie"] },
+            "type": {
+                "enum": [
+                    "table", "line", "bar", "area", "stat", "pie", "heatmap", "funnel", "treemap",
+                    "scatter",
+                ],
+            },
             "metric": metric_reference,
             "columns": { "type": "array", "items": plain },
             "x": plain,
@@ -170,6 +175,13 @@ fn widget_schema() -> Value {
             },
             "target": target,
             "compare": compare,
+            "stages": {
+                "type": "array",
+                "items": plain,
+                "description": "A funnel: 2 to 12 distinct columns of one row, one stage each, in order.",
+            },
+            "group": described("A treemap: the column that groups its tiles."),
+            "size": described("A scatter: the column that sizes each point."),
         },
     })
 }

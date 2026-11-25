@@ -428,3 +428,172 @@ fn an_option_out_of_its_shape_is_not_a_widget() {
         assert!(drawn.is_err(), "should refuse: {body}");
     }
 }
+
+fn funnel_metric() -> Metric {
+    Metric::parse(json!({
+        "dataset": "reviews",
+        "fields": [
+            { "agg": "count", "type": "int", "as_name": "opened" },
+            { "agg": "count", "type": "int", "as_name": "reviewed" },
+            { "agg": "count", "type": "int", "as_name": "merged" }
+        ],
+        "filters": []
+    }))
+    .unwrap_or_else(|error| panic!("the fixture parses: {error}"))
+}
+
+#[test]
+fn each_new_kind_draws_the_columns_its_metric_produces() {
+    let accepted = [
+        json!({ "type": "heatmap", "metric": "m", "x": "outcome", "y": "bucket", "value": "runs" }),
+        json!({ "type": "heatmap", "metric": "m", "x": "bucket", "value": "runs" }),
+        json!({ "type": "treemap", "metric": "m", "label": "outcome", "value": "runs" }),
+        json!({ "type": "treemap", "metric": "m", "label": "outcome", "value": "runs",
+                "group": "bucket" }),
+        json!({ "type": "scatter", "metric": "m", "x": "runs", "y": "runs" }),
+        json!({ "type": "scatter", "metric": "m", "x": "bucket", "y": "runs", "size": "runs",
+                "series": "outcome", "label": "outcome" }),
+    ];
+
+    for body in accepted {
+        assert!(
+            widget(body.clone())
+                .check_against(&stacked_metric(), CLOCKED)
+                .is_ok(),
+            "should accept: {body}"
+        );
+    }
+}
+
+#[test]
+fn each_column_a_new_kind_names_must_be_one_its_metric_produces() {
+    let refused = [
+        json!({ "type": "heatmap", "metric": "m", "x": "outcome", "y": "team", "value": "runs" }),
+        json!({ "type": "heatmap", "metric": "m", "x": "outcome", "y": "bucket", "value": "team" }),
+        json!({ "type": "treemap", "metric": "m", "label": "outcome", "value": "runs",
+                "group": "team" }),
+        json!({ "type": "scatter", "metric": "m", "x": "runs", "y": "runs", "size": "team" }),
+        json!({ "type": "scatter", "metric": "m", "x": "runs", "y": "runs", "series": "team" }),
+        json!({ "type": "scatter", "metric": "m", "x": "runs", "y": "runs", "label": "team" }),
+        json!({ "type": "funnel", "metric": "m", "stages": ["runs", "team"] }),
+    ];
+
+    for body in refused {
+        let checked = widget(body.clone()).check_against(&stacked_metric(), CLOCKED);
+        assert!(
+            matches!(checked, Err(WidgetError::UnknownColumn { ref column, .. }) if column == "team"),
+            "should refuse: {body}: {checked:?}"
+        );
+    }
+}
+
+#[test]
+fn a_heatmap_without_y_is_a_calendar_drawn_by_the_bucket() {
+    let by_outcome = widget(json!({
+        "type": "heatmap", "metric": "m", "x": "outcome", "value": "runs"
+    }));
+
+    assert!(matches!(
+        by_outcome.check_against(&stacked_metric(), CLOCKED),
+        Err(WidgetError::CalendarNotByBucket(ref column)) if column == "outcome"
+    ));
+}
+
+#[test]
+fn a_funnel_draws_two_to_twelve_stages_from_one_row() {
+    let two = widget(json!({ "type": "funnel", "metric": "m", "stages": ["opened", "merged"] }));
+    let three = widget(json!({
+        "type": "funnel", "metric": "m", "stages": ["opened", "reviewed", "merged"]
+    }));
+
+    assert!(two.check_against(&funnel_metric(), CLOCKLESS).is_ok());
+    assert!(three.check_against(&funnel_metric(), CLOCKLESS).is_ok());
+
+    for count in [0, 1, 13] {
+        let stages: Vec<String> = (0..count).map(|stage| format!("stage_{stage}")).collect();
+        let drawn = widget(json!({ "type": "funnel", "metric": "m", "stages": stages }));
+
+        assert!(
+            matches!(
+                drawn.check_against(&funnel_metric(), CLOCKLESS),
+                Err(WidgetError::FunnelStages(named)) if named == count
+            ),
+            "should refuse {count} stages"
+        );
+    }
+}
+
+#[test]
+fn a_funnel_names_each_stage_once() {
+    let drawn = widget(json!({
+        "type": "funnel", "metric": "m", "stages": ["opened", "merged", "opened"]
+    }));
+
+    assert!(matches!(
+        drawn.check_against(&funnel_metric(), CLOCKLESS),
+        Err(WidgetError::RepeatedStage(ref stage)) if stage == "opened"
+    ));
+}
+
+#[test]
+fn a_new_kind_narrows_its_detail_by_the_columns_it_stands_for() {
+    let cases = [
+        (
+            json!({ "type": "heatmap", "x": "day", "y": "author", "value": "total_lines" }),
+            "author",
+        ),
+        (
+            json!({ "type": "treemap", "label": "day", "group": "author", "value": "total_lines" }),
+            "author",
+        ),
+        (
+            json!({ "type": "treemap", "label": "author", "value": "total_lines" }),
+            "author",
+        ),
+        (
+            json!({ "type": "scatter", "x": "total_lines", "y": "total_lines", "label": "author" }),
+            "author",
+        ),
+        (
+            json!({ "type": "scatter", "x": "total_lines", "y": "total_lines", "series": "author" }),
+            "author",
+        ),
+    ];
+
+    for (mut body, column) in cases {
+        body["metric"] = json!("lines_per_day");
+        body["detail"] = json!("line_events");
+        let drawn: Widget = serde_json::from_value(body.clone())
+            .unwrap_or_else(|error| panic!("the fixture parses: {error}"));
+
+        assert!(
+            matches!(
+                drawn.check_detail_against(&metric(), &detail(), CLOCKLESS),
+                Err(WidgetError::DetailLacksColumn { column: ref lacking, .. }) if lacking == column
+            ),
+            "should narrow by {column}: {body}"
+        );
+    }
+}
+
+#[test]
+fn a_funnel_and_a_scatter_of_sums_stand_for_no_group_so_any_detail_narrows_them() {
+    let cases = [
+        json!({ "type": "funnel", "stages": ["day", "total_lines"] }),
+        json!({ "type": "scatter", "x": "author", "y": "author", "size": "author" }),
+    ];
+
+    for mut body in cases {
+        body["metric"] = json!("lines_per_day");
+        body["detail"] = json!("line_events");
+        let drawn: Widget = serde_json::from_value(body.clone())
+            .unwrap_or_else(|error| panic!("the fixture parses: {error}"));
+
+        assert!(
+            drawn
+                .check_detail_against(&metric(), &detail(), CLOCKLESS)
+                .is_ok(),
+            "should accept: {body}"
+        );
+    }
+}

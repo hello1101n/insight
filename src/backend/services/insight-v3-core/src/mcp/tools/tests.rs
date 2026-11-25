@@ -330,6 +330,22 @@ fn put_widget_tells_a_client_the_options_of_a_chart_and_a_stat() {
 }
 
 #[test]
+fn put_widget_tells_a_client_every_kind_of_widget() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_widget) = tools.iter().find(|tool| tool.name == "put_widget") else {
+        panic!("put_widget is a tool");
+    };
+    let description = put_widget.description.as_deref().unwrap_or_default();
+
+    for kind in ["heatmap", "funnel", "treemap", "scatter"] {
+        assert!(
+            description.contains(&format!("{{\"type\": \"{kind}\"")),
+            "{kind}: {description}"
+        );
+    }
+}
+
+#[test]
 fn put_metric_tells_a_client_how_to_combine_metrics() {
     let tools = CustomSurfaces::tool_router().list_all();
     let Some(put_metric) = tools.iter().find(|tool| tool.name == "put_metric") else {

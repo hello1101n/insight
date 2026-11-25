@@ -467,9 +467,15 @@ fn the_widget_schema_offers_exactly_the_kinds_the_renderer_draws() {
 
     assert_eq!(
         widget["type"]["enum"],
-        json!(["table", "line", "bar", "area", "stat", "pie"])
+        json!([
+            "table", "line", "bar", "area", "stat", "pie", "heatmap", "funnel", "treemap",
+            "scatter"
+        ])
     );
-    for field in ["metric", "columns", "x", "y", "value", "label"] {
+    assert_eq!(widget["stages"]["type"], json!("array"));
+    for field in [
+        "metric", "columns", "x", "y", "value", "label", "stages", "group", "size", "series",
+    ] {
         assert!(widget[field].is_object(), "{field} is offered");
     }
 }
@@ -493,6 +499,18 @@ fn the_widget_schema_offers_the_options_of_a_chart_and_a_stat() {
         widget["compare"]["properties"]["better"]["enum"],
         json!(["higher", "lower", "neutral"])
     );
+}
+
+#[test]
+fn the_prompt_names_every_kind_of_widget() {
+    let prompt = system_prompt("", &Catalogue::default());
+
+    for kind in ["heatmap", "funnel", "treemap", "scatter"] {
+        assert!(
+            prompt.contains(&format!("{{\"type\":\"{kind}\"")),
+            "{kind}: {prompt}"
+        );
+    }
 }
 
 #[test]
