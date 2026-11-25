@@ -167,14 +167,14 @@ GROUP BY p.department
 
 #### 1.6 Where the tenant comes from
 
-Keycloak is the only source of the tenant. The session gets the tenant from the Keycloak token. No request, query or tool argument can set it.
+The tenant is pinned in the Keycloak config, for each identity provider registration. Insight does not trust a tenant from an outer identity provider. No request, query or tool argument can set the tenant.
 
 ```mermaid
 flowchart LR
     subgraph KC[Keycloak broker realm]
-        R1[GitHub registration A<br/>mapper: tenant = acme]
-        R2[Entra registration<br/>mapper: tenant = acme]
-        R3[GitHub registration B<br/>mapper: tenant = globex]
+        R1[GitHub registration A<br/>pinned: tenant = acme]
+        R2[Entra registration<br/>pinned: tenant = acme]
+        R3[GitHub registration B<br/>pinned: tenant = globex]
     end
     U1[User of acme] -->|acme.insight.example| R1
     U2[User of acme] -->|acme.insight.example| R2
@@ -184,26 +184,29 @@ flowchart LR
     R3 --> T2[Token: tenant = globex]
 ```
 
-- **One identity provider registration belongs to one tenant.** When the operator adds an identity provider to Keycloak, the operator sets the tenant id in the mapper of that registration.
-- **Every user who signs in through that registration gets that tenant.** Keycloak writes the mapper value into the token.
+- **One identity provider registration belongs to one tenant.** When the operator adds an identity provider to Keycloak, the operator pins the tenant id in the hardcoded mapper of that registration.
+- **Every user who signs in through that registration gets that tenant.** The value comes from the Keycloak config, not from the user or the provider.
 - **A tenant can have more than one identity provider.** Each registration has its own mapper with the same tenant id.
-- **The tenant never comes from the identity provider.** Keycloak ignores any tenant value that the provider sends.
+- **The tenant never comes from the outer identity provider.** We cannot trust it. Keycloak ignores any tenant value that the provider sends.
 - **The same provider can serve more than one tenant.** Each tenant gets its own registration, so the mapper values do not mix.
 - **The operator with cluster access configures the registrations.** There is no API or UI for this.
 
-The tenant then moves from the token to the service:
+After sign-in, Insight uses only the pinned tenant:
 
 ```mermaid
 sequenceDiagram
     participant B as Browser (acme.insight.example)
+    participant IDP as Outer identity provider
     participant KC as Keycloak (broker)
     participant GW as Gateway
     participant SVC as Analytics / v3-core
     participant QC as Query compiler
     participant CH as ClickHouse
 
-    B->>KC: sign in through the tenant's identity provider
-    KC-->>B: token with tenant = acme (mapper value)
+    B->>KC: sign in at acme.insight.example
+    KC->>IDP: authenticate the user
+    IDP-->>KC: user identity (any tenant claim is ignored)
+    KC-->>B: Keycloak token, tenant = acme pinned in the Keycloak config
     B->>GW: request with session cookie (bound to the host)
     GW->>SVC: request + tenant from the session
     SVC->>QC: SQL text + tenant
