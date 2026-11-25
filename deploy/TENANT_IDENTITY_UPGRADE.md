@@ -6,11 +6,12 @@ release on, an install has one tenant: the lowercase UUID in
 `authenticator.oidc.defaultTenantId`. Every tenant column, every stored key,
 identity resolution, sign-in and analytics filtering use it, and analytics
 filters every read to the session tenant; there is no switch to turn that off.
-A Bronze row without a tenant still builds: keys read it as an empty tenant,
-and the `not_null` and `not_empty` dbt tests on each model's tenant report it in
-the sync's `connector-checks` step without failing the sync. Identity
-resolution refuses it: the identity inputs fail to build over a tenant that is
-not a UUID.
+A Bronze row whose tenant is NULL, empty or not a UUID fails the dbt build of
+the model that reads it, and so that connector's run, with a message naming the
+model (the `bronze_tenant` macro; set the dbt var `bronze_tenant_on_invalid` to
+`warn` to keep such rows for the `not_null`/`not_empty` tests to report instead).
+Identity resolution refuses it too: the identity inputs fail to build over a
+tenant that is not a UUID.
 
 A **fresh install** only sets that value — see [Fresh install](#fresh-install).
 An install that **already holds data** wrote its Bronze, history relations,

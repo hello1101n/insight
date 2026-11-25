@@ -90,6 +90,7 @@ Evidence: `docs/CONNECTORS_REFERENCE.md:333–347` — `github_collection_runs`.
 7. **Read pattern** — silver consumers MUST use `SELECT … FROM silver.X FINAL` or `argMax(... ORDER BY _version)`. RMT tables hold multiple versions per `unique_key` until background merge.
 8. **Silver class = the analysed population only** — a `class_*` table is a clean view for the metrics built on it, not a mirror of bronze. A connector's staging feeder drops accounts the source proves are outside that population (unlicensed, guest, deactivated, non-billable) with a `WHERE` on the source's account-status signal; the class carries no status column for gold to filter on. Analysing the excluded accounts (guest engagement, offboarding) belongs in a separate model reading bronze, which keeps every raw row. Filter on account status, never on a flag derived from activity (a per-day active flag, a billable-active-user flag: a quiet period is not an inactive account), and state in a comment whether a `NULL` signal keeps or drops the row. Adding the filter to an existing incremental feeder needs a MAJOR connector version bump: that dispatches the `dbt --full-refresh` that purges rows written before it. Reference: the M365 `m365__collab_*` feeders (`isLicensed` / `assignedProducts`) and the Slack chat feeder (`is_guest`).
 9. **Airbyte sync mode** — always `destinationSyncMode='append_dedup'` with `primaryKey=[['unique_key']]`. A stream without a `unique_key` schema property fails catalog normalization (it would land as an ever-duplicating table); `append` and `overwrite` are forbidden. The 2.x destination performs no destination-side dedup work — append_dedup is the same append-only insert path with an engine-level-dedup table shape, so the old OOM concern does not apply.
+10. **Bronze tenant through `bronze_tenant()`** — a staging model reads every Bronze tenant column (`tenant_id`, `insight_tenant_id`; Nullable by Airbyte policy) as `{{ bronze_tenant('col') }} AS tenant_id`: a non-Nullable lowercase canonical UUID String. A NULL, empty or non-UUID tenant fails the build naming the model, because a NULL tenant otherwise vanishes silently in keys, joins and dedup and the `connector-checks` tests never fail a sync. The dbt var `bronze_tenant_on_invalid` (`throw` default, `warn`) is the one switch. The check runs only where the expression is evaluated, so project it into the model's output, not into a column a reader prunes.
 
 ### Anti-patterns
 
@@ -98,6 +99,7 @@ Evidence: `docs/CONNECTORS_REFERENCE.md:333–347` — `github_collection_runs`.
 - ❌ `materialized='view'` for silver `class_*` / `fct_*` / `mtr_*`
 - ❌ `incremental_strategy='delete+insert'` with RMT — two dedup mechanisms stacked
 - ❌ Reading silver without `FINAL` / `argMax`
+- ❌ `ifNull(tenant_id, '')`, `coalesce(tenant_id, '')` or a bare Bronze `tenant_id` in staging — use `bronze_tenant()`
 - ❌ Connector emitting record without `unique_key` field
 - ❌ Account-status columns (`is_guest`, `is_licensed`, …) on a silver class so gold can filter — drop the out-of-scope accounts in the staging feeder instead
 
@@ -106,6 +108,7 @@ Evidence: `docs/CONNECTORS_REFERENCE.md:333–347` — `github_collection_runs`.
 | Macro | Purpose |
 |---|---|
 | `union_by_tag(tag)` | Generates `UNION ALL` over all dbt models tagged with `tag`. Patched to handle ephemeral models (no DB relation check). |
+| `bronze_tenant(column)` | A Bronze tenant as a lowercase canonical UUID String; fails the build on NULL, empty or non-UUID (var `bronze_tenant_on_invalid`). |
 | `snapshot()` | Append-only SCD2 helper. |
 | `fields_history()` | Per-(entity, field) change log derived from a snapshot. |
 | `identity_inputs_from_history()` | Emits UPSERT/DELETE observation rows for `identity.identity_inputs`. |

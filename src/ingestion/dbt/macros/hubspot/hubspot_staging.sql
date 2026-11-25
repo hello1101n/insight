@@ -67,8 +67,10 @@ LEFT JOIN (
 ) AS stored
     ON stored.unique_key = {{ cte }}.unique_key
 {% endif %}
-{#- INVARIANT: the latest version is chosen over (unique_key, _version) alone; sorting the wide rows exhausts server memory. -#}
-WHERE ({{ cte }}.unique_key, {{ cte }}._version) IN (
+{#- INVARIANT: the latest version is chosen over (unique_key, _version) alone; sorting the wide rows exhausts server memory.
+    The guard comes first: a NULL unique_key never matches the IN and would vanish. -#}
+WHERE {{ tenant_guard_fail(cte ~ '.unique_key IS NULL', 'unique_key is NULL before dedup') }} = 0
+  AND ({{ cte }}.unique_key, {{ cte }}._version) IN (
     SELECT unique_key, max(_version)
     FROM {{ cte }}
     GROUP BY unique_key
