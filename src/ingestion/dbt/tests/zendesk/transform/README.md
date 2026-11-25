@@ -48,5 +48,6 @@ The scenarios cover two tenants sharing one source's ticket, audit, user and
 field ids: ticket availability and close time, the event order of the ticket
 history, custom-field cardinality, comment and actor kinds, the assignee a
 rating names, issue links, and the support classes. A bronze row without a
-tenant still builds, and the `not_empty` test on the tenant of each model that
-reads it reports the row.
+valid tenant fails the build of the model that reads it; with
+`--vars '{bronze_tenant_on_invalid: warn}'` it builds, and the `not_empty` test on
+the tenant of each model that reads it reports the row.

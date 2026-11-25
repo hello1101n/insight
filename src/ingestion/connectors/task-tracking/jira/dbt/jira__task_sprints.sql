@@ -14,7 +14,7 @@
 
 SELECT
     s.unique_key                                AS unique_key,
-    ifNull(s.insight_tenant_id, '')                     AS insight_tenant_id,
+    {{ bronze_tenant('s.insight_tenant_id') }}                     AS insight_tenant_id,
     s.source_id                                 AS insight_source_id,
     CAST('jira' AS String)                      AS data_source,
     toString(s.sprint_id)                       AS sprint_id,

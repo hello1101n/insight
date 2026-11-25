@@ -56,14 +56,14 @@ WITH long_text_fields AS (
 -- planner cannot hash it instead (#4370).
 from_snapshot AS (
     SELECT
-        i.insight_tenant_id                                       AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
         CAST(i.source_id AS String)                       AS insight_source_id,
         kv.2                                              AS content,
         CAST('adf_json' AS String)                        AS content_form
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
-        ON f.insight_tenant_id = i.insight_tenant_id
+        ON f.insight_tenant_id = {{ bronze_tenant('i.insight_tenant_id') }}
        AND f.insight_source_id = CAST(i.source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
@@ -120,8 +120,8 @@ all_text AS (
 -- named `content` shadows the input column, so any expression wrapping it here
 -- parses as nesting one aggregate inside another.
 SELECT
-    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-jira-', text_id) AS unique_key,
-    ifNull(insight_tenant_id, '')                                 AS insight_tenant_id,
+    concat(insight_tenant_id, '-', insight_source_id, '-jira-', text_id) AS unique_key,
+    insight_tenant_id                                     AS insight_tenant_id,
     insight_source_id,
     CAST('jira' AS String)                                AS data_source,
     text_id,
