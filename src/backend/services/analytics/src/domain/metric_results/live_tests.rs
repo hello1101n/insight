@@ -123,12 +123,11 @@ async fn fetch_rows<T: DeserializeOwned>(
     ch: &insight_clickhouse::Client,
     query: &CompiledQuery,
 ) -> anyhow::Result<Vec<T>> {
-    let mut ch_query = ch.query(&query.sql);
-    for param in &query.params {
-        ch_query = ch_query.bind(param.as_str());
-    }
-
-    let raw_bytes = ch_query.fetch_bytes("JSONEachRow")?.collect().await?;
+    let raw_bytes = ch
+        .query_sql(&query.sql)
+        .fetch_bytes("JSONEachRow")?
+        .collect()
+        .await?;
     raw_bytes
         .split(|&b| b == b'\n')
         .filter(|line| !line.is_empty())

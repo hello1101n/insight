@@ -1,5 +1,5 @@
 use base64::Engine;
-use insight_clickhouse::MissingRelation;
+use insight_clickhouse::{MissingRelation, Param, sql};
 use serde::{Deserialize, Serialize};
 use toolkit_canonical_errors::CanonicalError;
 use toolkit_security::crypto::hash::Sha256;
@@ -88,12 +88,12 @@ pub(super) async fn evidence_snapshot_id(
 ) -> Result<EvidenceSnapshot, CanonicalError> {
     let (database, table) = relation.table_ref();
     let found = ch
-        .query(
+        .query_sql(&sql!(
             "SELECT toString(uuid) AS snapshot_id \
-             FROM system.tables WHERE database = ? AND name = ?",
-        )
-        .bind(database)
-        .bind(table)
+             FROM system.tables WHERE database = {database} AND name = {table}",
+            database = Param::string(database),
+            table = Param::string(table),
+        ))
         .fetch_optional::<EvidenceSnapshotRow>()
         .await
         .map_err(|error| {

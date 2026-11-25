@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use insight_clickhouse::Sql;
 use serde::de::DeserializeOwned;
 use toolkit_security::crypto::hash::Sha256;
 
@@ -32,8 +33,7 @@ impl QueryFetchError {
 
 pub(crate) async fn fetch_json_rows<T>(
     client: &insight_clickhouse::Client,
-    sql: &str,
-    params: &[String],
+    sql: &Sql,
     kind: QueryKind,
     log_comment: &str,
 ) -> Result<Vec<T>, QueryFetchError>
@@ -41,7 +41,7 @@ where
     T: DeserializeOwned,
 {
     let started = Instant::now();
-    let result = fetch_json_rows_inner(client, sql, params, log_comment).await;
+    let result = fetch_json_rows_inner(client, sql, log_comment).await;
 
     match &result {
         Ok(_) => metrics::record_query(kind, QueryOutcome::Success, started.elapsed()),
@@ -55,23 +55,21 @@ where
 
 async fn fetch_json_rows_inner<T>(
     client: &insight_clickhouse::Client,
-    sql: &str,
-    params: &[String],
+    sql: &Sql,
     log_comment: &str,
 ) -> Result<Vec<T>, QueryFetchError>
 where
     T: DeserializeOwned,
 {
-    let mut query = client.query(sql).with_setting("log_comment", log_comment);
-    for param in params {
-        query = query.bind(param.as_str());
-    }
+    let query = client
+        .query_sql(sql)
+        .with_setting("log_comment", log_comment);
 
     let mut cursor = query.fetch_bytes("JSONEachRow").map_err(|error| {
         log_query_failure(
             &error.to_string(),
             log_comment,
-            sql,
+            &sql.render().sql,
             "ClickHouse query failed",
         );
         QueryFetchError::Submit(error.to_string())
@@ -82,7 +80,7 @@ where
             log_query_failure(
                 "timeout",
                 log_comment,
-                sql,
+                &sql.render().sql,
                 "ClickHouse query fetch timed out",
             );
             QueryFetchError::Timeout
@@ -91,7 +89,7 @@ where
             log_query_failure(
                 &error.to_string(),
                 log_comment,
-                sql,
+                &sql.render().sql,
                 "ClickHouse query fetch failed",
             );
             QueryFetchError::Fetch(error.to_string())
@@ -109,7 +107,7 @@ where
             log_query_failure(
                 &error.to_string(),
                 log_comment,
-                sql,
+                &sql.render().sql,
                 "failed to parse ClickHouse query rows",
             );
             QueryFetchError::Parse(error.to_string())

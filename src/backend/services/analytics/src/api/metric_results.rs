@@ -446,7 +446,7 @@ async fn fetch_rows<T>(
 where
     T: serde::de::DeserializeOwned,
 {
-    fetch_json_rows(&state.ch, &query.sql, &query.params, kind, log_comment)
+    fetch_json_rows(&state.ch, &query.sql, kind, log_comment)
         .await
         .map_err(|error| match error {
             QueryFetchError::Submit(message) | QueryFetchError::Fetch(message) => {

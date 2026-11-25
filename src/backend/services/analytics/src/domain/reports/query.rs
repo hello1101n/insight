@@ -72,7 +72,6 @@ impl ReportQueryRunner for ClickHouseReportQueryRunner<'_> {
         let rows = match fetch_json_rows::<TimeseriesQueryRow>(
             self.client,
             &query.compiled.sql,
-            &query.compiled.params,
             QueryKind::Report,
             &log_comment,
         )
@@ -177,6 +176,8 @@ pub(crate) fn compile_report_metric_query(
 
 #[cfg(test)]
 mod tests {
+    use insight_clickhouse::Param;
+
     use super::*;
     use crate::domain::metric_definitions::definition::{
         AliasCollapse, ComputationSpec, MetricBase, MetricDirection, MetricFormat, MetricInput,
@@ -184,7 +185,7 @@ mod tests {
     };
 
     #[test]
-    fn report_query_uses_direct_quarter_aggregation_and_preserves_parameter_order() {
+    fn report_query_uses_direct_quarter_aggregation_and_binds_its_scope_by_name() {
         let tenant_id = Uuid::from_u128(9);
         let person_id = Uuid::from_u128(2);
         let query = compile_report_metric_query(
@@ -198,26 +199,25 @@ mod tests {
             true,
         );
 
+        let rendered = query.compiled.sql.render();
         assert!(
-            query
-                .compiled
+            rendered
                 .sql
                 .contains("toString(toStartOfQuarter(assumeNotNull(metric_date))) AS bucket_start")
         );
-        assert!(query.compiled.sql.contains("GROUP BY GROUPING SETS"));
+        assert!(rendered.sql.contains("GROUP BY GROUPING SETS"));
+        let named = |name: &str, param: Param| (name.to_owned(), param);
         assert_eq!(
-            query.compiled.params,
+            rendered.params,
             [
-                person_id.to_string(),
-                "2026-01-10".to_owned(),
-                "2026-06-20".to_owned(),
-                person_id.to_string(),
-                tenant_id.to_string(),
-                "test".to_owned(),
-                "person".to_owned(),
-                "2026-01-10".to_owned(),
-                "2026-06-20".to_owned(),
-                "value".to_owned(),
+                named("person_ids", Param::uuids([person_id])),
+                named("from", Param::date(date("2026-01-10"))),
+                named("to", Param::date(date("2026-06-20"))),
+                named("entity_ids", Param::strings([person_id.to_string()])),
+                named("tenant", Param::string(tenant_id.to_string())),
+                named("source_key", Param::string("test")),
+                named("entity_type", Param::string("person")),
+                named("measure_key", Param::string("value")),
             ]
         );
     }

@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
+use insight_clickhouse::{Param, Sql, sql};
 use serde::Deserialize;
 use uuid::Uuid;
 
-pub(crate) fn named_persons() -> String {
-    format!("({})", aggregate(""))
+pub(crate) fn named_persons(tenant: Uuid) -> Sql {
+    sql!("({named})", named = aggregate(tenant, Sql::default()))
 }
 
 #[derive(Debug, Deserialize, clickhouse::Row)]
@@ -33,9 +34,7 @@ pub(crate) async fn lookup_bounded(
         return HashMap::new();
     }
 
-    match bound(ch.query(&aggregate(" AND person_id IN ?")))
-        .bind(tenant.to_string())
-        .bind(ids)
+    match bound(ch.query_sql(&named_among(tenant, ids)))
         .fetch_all::<PersonName>()
         .await
     {
@@ -65,11 +64,19 @@ fn by_person(found: Vec<PersonName>) -> HashMap<Uuid, PersonName> {
         .collect()
 }
 
+fn named_among(tenant: Uuid, ids: &[Uuid]) -> Sql {
+    let among = sql!(
+        " AND person_id IN {ids}",
+        ids = Param::uuids(ids.iter().copied())
+    );
+    aggregate(tenant, among)
+}
+
 /// INVARIANT: every selected name coalesces to `''`. A `nullIf` left uncovered
 /// makes the column `Nullable(String)`, which the row type refuses to decode —
 /// and the refusal surfaces only against a real server.
-fn aggregate(person: &str) -> String {
-    format!(
+fn aggregate(tenant: Uuid, person: Sql) -> Sql {
+    sql!(
         "SELECT person_id, \
          coalesce(\
            nullIf(argMaxIf(value_effective, (created_at, id), value_type = 'display_name'), ''), \
@@ -83,8 +90,10 @@ fn aggregate(person: &str) -> String {
          coalesce(nullIf(argMaxIf(value_effective, (created_at, id), value_type = 'username'), ''), '') AS username \
          FROM identity.identity_persons \
          WHERE value_type IN ('display_name', 'first_name', 'last_name', 'username') \
-         AND insight_tenant_id = toUUID(?){person} \
-         GROUP BY person_id"
+         AND insight_tenant_id = {tenant}{person} \
+         GROUP BY person_id",
+        tenant = Param::uuid(tenant),
+        person = person,
     )
 }
 
@@ -135,19 +144,35 @@ mod tests {
         );
     }
 
+    const TENANT: Uuid = Uuid::from_u128(0x7e);
+
     #[test]
     fn the_relation_binds_the_tenant_and_nothing_else() {
-        assert_eq!(named_persons().matches('?').count(), 1);
+        let params = named_persons(TENANT).render().params;
+
+        assert_eq!(params, [("tenant".to_owned(), Param::uuid(TENANT))]);
     }
 
     #[test]
     fn the_lookup_binds_the_tenant_and_the_person_set() {
-        assert_eq!(aggregate(" AND person_id IN ?").matches('?').count(), 2);
+        let ids = [Uuid::from_u128(1), Uuid::from_u128(2)];
+
+        let params = named_among(TENANT, &ids).render().params;
+
+        assert_eq!(
+            params,
+            [
+                ("tenant".to_owned(), Param::uuid(TENANT)),
+                ("ids".to_owned(), Param::uuids(ids)),
+            ]
+        );
     }
 
     #[test]
     fn every_name_the_aggregate_selects_is_never_null() {
-        let sql: String = named_persons()
+        let sql: String = named_persons(TENANT)
+            .render()
+            .sql
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect();
@@ -158,10 +183,10 @@ mod tests {
 
     #[test]
     fn the_person_filter_sits_before_the_grouping() {
-        let sql = aggregate(" AND person_id IN ?");
+        let sql = named_among(TENANT, &[Uuid::from_u128(1)]).render().sql;
 
         assert!(
-            sql.find("person_id IN ?") < sql.find("GROUP BY"),
+            sql.find("person_id IN {ids:Array(UUID)}") < sql.find("GROUP BY"),
             "filtering after the GROUP BY aggregates the whole tenant: {sql}"
         );
     }

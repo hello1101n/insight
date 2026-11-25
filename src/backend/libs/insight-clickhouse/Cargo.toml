@@ -18,14 +18,14 @@ test-support = ["dep:axum", "dep:tokio", "clickhouse/test-util"]
 clickhouse = { workspace = true }
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 time = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+serde = { workspace = true }
 clickhouse = { workspace = true, features = ["test-util"] }
 axum = { workspace = true }
 tokio = { workspace = true }

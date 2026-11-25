@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use chrono::NaiveDate;
 use clickhouse::Row;
+use insight_clickhouse::{Param, Sql, sql};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 
@@ -499,28 +500,19 @@ impl MetricDefinitionValidator {
             return Ok(Some(MetricSchemaErrorCode::Unknown));
         }
 
-        let (observation_database, observation_table) = observation_relation.table_ref();
+        let measure_keys = expected
+            .iter()
+            .map(|measure| measure.measure_key.as_str())
+            .collect::<Vec<_>>();
         let observation_sql =
-            evidence_observation_dates_sql(observation_database, observation_table, expected.len());
-        let mut observation_query =
-            with_evidence_query_limits(self.ch.query(&observation_sql)).bind(source_key);
-        for measure in expected {
-            observation_query = observation_query.bind(&measure.measure_key);
-        }
+            evidence_observation_dates_sql(observation_relation, source_key, &measure_keys);
+        let observation_query = with_evidence_query_limits(self.ch.query_sql(&observation_sql));
         let observed_dates = parse_measure_dates(observation_query.fetch_all().await?)?.last;
         let observed_measures = observed_dates.keys().cloned().collect::<BTreeSet<_>>();
         let window_start = evidence_window_start(&observed_dates);
 
-        let (database, table) = relation.table_ref();
-        let sql = evidence_contract_sql(database, table, expected.len(), window_start.is_some());
-        let mut query = with_evidence_query_limits(self.ch.query(&sql)).bind(source_key);
-        for measure in expected {
-            query = query.bind(&measure.measure_key);
-        }
-        if let Some(window_start) = window_start {
-            query = query.bind(window_start.to_string());
-        }
-        let actual = query
+        let sql = evidence_contract_sql(relation, source_key, &measure_keys, window_start);
+        let actual = with_evidence_query_limits(self.ch.query_sql(&sql))
             .fetch_all::<EvidenceContractProbeRow>()
             .await?
             .into_iter()
@@ -541,13 +533,12 @@ impl MetricDefinitionValidator {
         entity_type: &str,
         measure_keys: &[&str],
     ) -> Result<MeasureDates, clickhouse::error::Error> {
-        let (database, table) = relation.table_ref();
-        let sql = measure_dates_sql(database, table, measure_keys.len());
-        let mut query = self.ch.query(&sql).bind(source_key).bind(entity_type);
-        for measure_key in measure_keys {
-            query = query.bind(*measure_key);
-        }
-        let rows = query.fetch_all::<MeasureDateProbeRow>().await?;
+        let sql = measure_dates_sql(relation, source_key, entity_type, measure_keys);
+        let rows = self
+            .ch
+            .query_sql(&sql)
+            .fetch_all::<MeasureDateProbeRow>()
+            .await?;
         parse_measure_dates(rows)
     }
 
@@ -579,18 +570,14 @@ impl MetricDefinitionValidator {
         measure_windows: &[(&str, NaiveDate)],
         dimension: &str,
     ) -> Result<Vec<DimensionCoverageProbeRow>, clickhouse::error::Error> {
-        let (database, table) = relation.table_ref();
-        let sql = dimension_coverage_sql(database, table, measure_windows.len());
-        let mut query = self
-            .ch
-            .query(&sql)
-            .bind(dimension)
-            .bind(source_key)
-            .bind(entity_type);
-        for (measure_key, date) in measure_windows {
-            query = query.bind(*measure_key).bind(date.to_string());
-        }
-        query.fetch_all().await
+        let sql = dimension_coverage_sql(
+            relation,
+            source_key,
+            entity_type,
+            measure_windows,
+            dimension,
+        );
+        self.ch.query_sql(&sql).fetch_all().await
     }
 }
 
@@ -830,18 +817,30 @@ fn measure_windows<'a>(
         .collect()
 }
 
-fn measure_dates_sql(database: &str, table: &str, measure_count: usize) -> String {
-    let placeholders = vec!["?"; measure_count].join(", ");
-    format!(
+fn measure_dates_sql(
+    relation: &ObservationRelation,
+    source_key: &str,
+    entity_type: &str,
+    measure_keys: &[&str],
+) -> Sql {
+    sql!(
         "SELECT measure_key, \
                 toString(min(metric_date)) AS first_date, \
                 toString(max(metric_date)) AS last_date \
-         FROM {database}.{table} \
-         WHERE source_key = ? \
-           AND entity_type = ? \
-           AND measure_key IN ({placeholders}) \
-         GROUP BY measure_key"
+         FROM {relation} \
+         WHERE source_key = {source_key} \
+           AND entity_type = {entity_type} \
+           AND measure_key IN {measure_keys} \
+         GROUP BY measure_key",
+        relation = relation_sql(relation.table_ref()),
+        source_key = Param::string(source_key),
+        entity_type = Param::string(entity_type),
+        measure_keys = Param::strings(measure_keys.iter().copied()),
     )
+}
+
+fn relation_sql((database, table): (&str, &str)) -> Sql {
+    Sql::raw(format!("{database}.{table}"))
 }
 
 fn expected_granularities_are_known(expected: &[SourceMeasureEvidence]) -> bool {
@@ -855,36 +854,46 @@ fn expected_granularities_are_known(expected: &[SourceMeasureEvidence]) -> bool 
         })
 }
 
-fn evidence_observation_dates_sql(database: &str, table: &str, measure_count: usize) -> String {
-    let placeholders = vec!["?"; measure_count].join(", ");
-    format!(
+fn evidence_observation_dates_sql(
+    relation: &ObservationRelation,
+    source_key: &str,
+    measure_keys: &[&str],
+) -> Sql {
+    sql!(
         "SELECT measure_key, \
                 toString(min(metric_date)) AS first_date, \
                 toString(max(metric_date)) AS last_date \
-         FROM {database}.{table} \
-         WHERE source_key = ? AND measure_key IN ({placeholders}) \
-         GROUP BY measure_key"
+         FROM {relation} \
+         WHERE source_key = {source_key} AND measure_key IN {measure_keys} \
+         GROUP BY measure_key",
+        relation = relation_sql(relation.table_ref()),
+        source_key = Param::string(source_key),
+        measure_keys = Param::strings(measure_keys.iter().copied()),
     )
 }
 
 fn evidence_contract_sql(
-    database: &str,
-    table: &str,
-    measure_count: usize,
-    windowed: bool,
-) -> String {
-    let placeholders = vec!["?"; measure_count].join(", ");
-    let window_sql = if windowed {
-        " AND metric_date >= toDate(?)"
-    } else {
-        ""
-    };
-    format!(
+    relation: &EvidenceRelation,
+    source_key: &str,
+    measure_keys: &[&str],
+    window_start: Option<NaiveDate>,
+) -> Sql {
+    let window = window_start.map_or_else(Sql::default, |window_start| {
+        sql!(
+            " AND metric_date >= {window_start}",
+            window_start = Param::date(window_start),
+        )
+    });
+    sql!(
         "SELECT measure_key, groupUniqArray(granularity) AS granularities, \
                 groupUniqArrayArray(mapKeys(details)) AS detail_keys \
-         FROM {database}.{table} \
-         WHERE source_key = ? AND measure_key IN ({placeholders}){window_sql} \
-         GROUP BY measure_key"
+         FROM {relation} \
+         WHERE source_key = {source_key} AND measure_key IN {measure_keys}{window} \
+         GROUP BY measure_key",
+        relation = relation_sql(relation.table_ref()),
+        source_key = Param::string(source_key),
+        measure_keys = Param::strings(measure_keys.iter().copied()),
+        window = window,
     )
 }
 
@@ -990,21 +999,35 @@ fn parse_probe_date(raw: &str, measure_key: &str) -> Result<NaiveDate, clickhous
     })
 }
 
-fn dimension_coverage_sql(database: &str, table: &str, measure_count: usize) -> String {
-    let per_measure = (0..measure_count)
-        .map(|_| format!("(measure_key = ? AND metric_date >= toDate(?) - {PROBE_WINDOW_DAYS})"))
-        .collect::<Vec<_>>()
-        .join(" OR ");
-    format!(
+fn dimension_coverage_sql(
+    relation: &ObservationRelation,
+    source_key: &str,
+    entity_type: &str,
+    measure_windows: &[(&str, NaiveDate)],
+    dimension: &str,
+) -> Sql {
+    let per_measure = measure_windows.iter().map(|(measure_key, last_date)| {
+        sql!(
+            "(measure_key = {measure_key} AND metric_date >= {last_date} - {PROBE_WINDOW_DAYS})",
+            measure_key = Param::string(*measure_key),
+            last_date = Param::date(*last_date),
+        )
+    });
+    sql!(
         "SELECT \
             measure_key, \
             count() AS total_rows, \
-            countIf(has(arrayMap(d -> d.key, dimensions), ?)) AS matching_rows \
-         FROM {database}.{table} \
-         WHERE source_key = ? \
-           AND entity_type = ? \
+            countIf(has(arrayMap(d -> d.key, dimensions), {dimension})) AS matching_rows \
+         FROM {relation} \
+         WHERE source_key = {source_key} \
+           AND entity_type = {entity_type} \
            AND ({per_measure}) \
-         GROUP BY measure_key"
+         GROUP BY measure_key",
+        dimension = Param::string(dimension),
+        relation = relation_sql(relation.table_ref()),
+        source_key = Param::string(source_key),
+        entity_type = Param::string(entity_type),
+        per_measure = Sql::join(per_measure, " OR "),
     )
 }
 
@@ -1167,17 +1190,52 @@ mod tests {
         );
     }
 
+    fn observations() -> ObservationRelation {
+        ObservationRelation::parse("ai_metric_observations")
+            .unwrap_or_else(|| panic!("fixture relation must parse"))
+    }
+
+    fn named(name: &str, param: Param) -> (String, Param) {
+        (name.to_owned(), param)
+    }
+
     #[test]
     fn sql_builders_emit_one_window_clause_per_measure() {
-        let dates = measure_dates_sql("insight", "ai_metric_observations", 2);
-        assert!(dates.contains("measure_key IN (?, ?)"));
-        assert!(dates.contains("min(metric_date)"));
-        assert!(dates.contains("max(metric_date)"));
+        let dates = measure_dates_sql(&observations(), "ai_usage", "person", &["a", "b"]).render();
+        assert!(dates.sql.contains("FROM insight.ai_metric_observations"));
+        assert!(
+            dates
+                .sql
+                .contains("measure_key IN {measure_keys:Array(String)}")
+        );
+        assert!(dates.sql.contains("min(metric_date)"));
+        assert!(dates.sql.contains("max(metric_date)"));
+        assert!(
+            dates
+                .params
+                .contains(&named("measure_keys", Param::strings(["a", "b"])))
+        );
 
-        let cov = dimension_coverage_sql("insight", "ai_metric_observations", 3);
-        assert_eq!(cov.matches("measure_key = ?").count(), 3);
-        assert_eq!(cov.matches(" OR ").count(), 2);
-        assert!(cov.contains(&format!("toDate(?) - {PROBE_WINDOW_DAYS}")));
+        let windows = [
+            ("a", date("2026-07-01")),
+            ("b", date("2026-07-02")),
+            ("c", date("2026-07-03")),
+        ];
+        let cov = dimension_coverage_sql(&observations(), "ai_usage", "person", &windows, "tool")
+            .render();
+        assert_eq!(cov.sql.matches("(measure_key = {measure_key").count(), 3);
+        assert_eq!(cov.sql.matches(" OR ").count(), 2);
+        assert!(cov.sql.contains(&format!(
+            "(measure_key = {{measure_key_2:String}} AND metric_date >= {{last_date_2:Date}} - {PROBE_WINDOW_DAYS})"
+        )));
+        assert!(
+            cov.params
+                .contains(&named("measure_key_2", Param::string("c")))
+        );
+        assert!(
+            cov.params
+                .contains(&named("last_date_2", Param::date(date("2026-07-03"))))
+        );
     }
 
     fn granularity(measure_key: &str, value: Option<&str>) -> SourceMeasureEvidence {
@@ -1247,20 +1305,50 @@ mod tests {
     }
 
     #[test]
-    fn evidence_sql_binds_one_placeholder_per_measure_and_windows_on_demand() {
-        let dates = evidence_observation_dates_sql("insight", "ai_metric_observations", 2);
-        assert!(dates.contains("measure_key IN (?, ?)"));
-        assert!(dates.contains("max(metric_date)"));
-        assert!(!dates.contains("entity_type"));
+    fn evidence_sql_binds_the_measures_as_one_array_and_windows_on_demand() {
+        let dates =
+            evidence_observation_dates_sql(&observations(), "ai_usage", &["a", "b"]).render();
+        assert!(
+            dates
+                .sql
+                .contains("measure_key IN {measure_keys:Array(String)}")
+        );
+        assert!(dates.sql.contains("max(metric_date)"));
+        assert!(!dates.sql.contains("entity_type"));
 
-        let windowed = evidence_contract_sql("insight", "ai_metric_evidence", 3, true);
-        assert!(windowed.contains("measure_key IN (?, ?, ?)"));
-        assert!(windowed.contains("groupUniqArray(granularity)"));
-        assert!(windowed.contains("groupUniqArrayArray(mapKeys(details))"));
-        assert!(windowed.contains("AND metric_date >= toDate(?)"));
+        let evidence = EvidenceRelation::parse("ai_metric_evidence")
+            .unwrap_or_else(|| panic!("fixture relation must parse"));
+        let windowed = evidence_contract_sql(
+            &evidence,
+            "ai_usage",
+            &["a", "b", "c"],
+            Some(date("2026-06-01")),
+        )
+        .render();
+        assert!(
+            windowed
+                .sql
+                .contains("measure_key IN {measure_keys:Array(String)}")
+        );
+        assert!(windowed.sql.contains("groupUniqArray(granularity)"));
+        assert!(
+            windowed
+                .sql
+                .contains("groupUniqArrayArray(mapKeys(details))")
+        );
+        assert!(
+            windowed
+                .sql
+                .contains("AND metric_date >= {window_start:Date}")
+        );
+        assert!(
+            windowed
+                .params
+                .contains(&named("window_start", Param::date(date("2026-06-01"))))
+        );
 
-        let unwindowed = evidence_contract_sql("insight", "ai_metric_evidence", 1, false);
-        assert!(!unwindowed.contains("metric_date >="));
+        let unwindowed = evidence_contract_sql(&evidence, "ai_usage", &["a"], None).render();
+        assert!(!unwindowed.sql.contains("metric_date >="));
     }
 
     #[test]

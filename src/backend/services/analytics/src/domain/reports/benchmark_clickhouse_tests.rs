@@ -308,16 +308,18 @@ async fn query_summary(
 ) -> anyhow::Result<QueryLogSummary> {
     let rows = fetch_json_rows::<QueryLogSummary>(
         client,
-        "SELECT \
-         count() AS queries, \
-         sum(read_rows) AS read_rows, \
-         sum(written_rows) AS written_rows, \
-         max(memory_usage) AS peak_query_memory_bytes, \
-         sum(query_duration_ms) AS total_query_duration_ms, \
-         max(query_duration_ms) AS max_query_duration_ms \
-         FROM system.query_log \
-         WHERE type = 'QueryFinish' AND startsWith(log_comment, ?)",
-        &[log_prefix.to_owned()],
+        &insight_clickhouse::sql!(
+            "SELECT \
+             count() AS queries, \
+             sum(read_rows) AS read_rows, \
+             sum(written_rows) AS written_rows, \
+             max(memory_usage) AS peak_query_memory_bytes, \
+             sum(query_duration_ms) AS total_query_duration_ms, \
+             max(query_duration_ms) AS max_query_duration_ms \
+             FROM system.query_log \
+             WHERE type = 'QueryFinish' AND startsWith(log_comment, {log_prefix})",
+            log_prefix = insight_clickhouse::Param::string(log_prefix),
+        ),
         crate::infra::metrics::QueryKind::Report,
         "benchmark:report-query-summary",
     )
