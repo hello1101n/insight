@@ -25,11 +25,15 @@ def warehouse() -> Client:
 
 
 def snapshot(warehouse: Client, tenant: str | None, source: str, entries: list[object], second: int) -> None:
+    # Bronze is a ReplacingMergeTree on unique_key: a shared (empty) key would let a background
+    # merge collapse every test's snapshots into one, so each read gets its own.
+    raw_id = str(uuid4())
     warehouse.insert(
         "bronze_bamboohr.whos_out",
         [
             [
-                str(uuid4()),
+                raw_id,
+                raw_id,
                 datetime(2025, 6, 1, 0, 0, second, tzinfo=UTC),
                 tenant,
                 source,
@@ -40,6 +44,7 @@ def snapshot(warehouse: Client, tenant: str | None, source: str, entries: list[o
         ],
         column_names=[
             "_airbyte_raw_id",
+            "unique_key",
             "_airbyte_extracted_at",
             "insight_tenant_id",
             "source_id",
@@ -189,4 +194,8 @@ def test_attribute_claims_fail_on_an_employee_without_a_valid_tenant(warehouse: 
             "ALTER TABLE bronze_bamboohr.employees DELETE WHERE source_id = {source:String} SETTINGS mutations_sync = 2",
             parameters={"source": source},
         )
-        warehouse.command("DROP TABLE IF EXISTS staging.bamboohr__employees_snapshot")
+        warehouse.command(
+            "ALTER TABLE staging.bamboohr__employees_snapshot DELETE WHERE source_id = {source:String}"
+            " SETTINGS mutations_sync = 2",
+            parameters={"source": source},
+        )
