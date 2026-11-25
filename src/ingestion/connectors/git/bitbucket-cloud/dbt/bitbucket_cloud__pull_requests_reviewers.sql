@@ -12,10 +12,10 @@
 -- FINAL: a participant's state changes as people review, so a re-fetch within
 -- one sync can leave a pre-merge duplicate that ties the class dedup.
 SELECT
-    pr.tenant_id,
+    pr.insight_tenant_id,
     pr.source_id,
     concat(
-        COALESCE(pr.tenant_id, ''), ':',
+        COALESCE(pr.insight_tenant_id, ''), ':',
         COALESCE(pr.source_id, ''), ':',
         COALESCE(pr.repo_full_name, ''), ':',
         toString(COALESCE(pr.id, 0)), ':',
@@ -38,5 +38,5 @@ FROM {{ source('bronze_bitbucket_cloud', 'pull_requests') }} AS pr FINAL
 ARRAY JOIN JSONExtractArrayRaw(COALESCE(toString(pr.participants), '[]')) AS p
 WHERE JSONExtractString(p, 'role') = 'REVIEWER'
 {% if is_incremental() %}
-    AND pr._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.tenant_id', 'pr.source_id']) }}
+    AND pr._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.insight_tenant_id', 'pr.source_id']) }}
 {% endif %}

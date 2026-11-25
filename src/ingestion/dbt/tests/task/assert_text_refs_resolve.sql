@@ -18,7 +18,7 @@
 
 WITH history_refs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source,
         issue_id,
@@ -38,7 +38,7 @@ WITH history_refs AS (
 
 current_refs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source,
         issue_id,
@@ -56,7 +56,7 @@ text_refs AS (
 )
 
 SELECT
-    r.tenant_id,
+    r.insight_tenant_id,
     r.insight_source_id,
     r.data_source,
     r.issue_id,
@@ -66,7 +66,7 @@ SELECT
     if(ifNull(t.text_id, '') = '', 'no stored body', 'display is not a prefix of the body') AS finding
 FROM text_refs AS r
 LEFT JOIN {{ ref('class_task_field_text') }} AS t FINAL
-    ON t.tenant_id = r.tenant_id
+    ON t.insight_tenant_id = r.insight_tenant_id
    AND t.insight_source_id = r.insight_source_id
    AND t.data_source = r.data_source
    AND t.text_id = r.text_id

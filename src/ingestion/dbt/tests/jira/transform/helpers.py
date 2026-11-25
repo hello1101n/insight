@@ -44,7 +44,9 @@ def _airbyte(extracted_at: str) -> dict[str, Any]:
 
 def as_other_tenant(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The same ids under the other tenant, keyed the way its connector would key them."""
-    return [{**r, "tenant_id": OTHER_TENANT, "unique_key": f"{OTHER_TENANT}-{r['unique_key']}"} for r in records]
+    return [
+        {**r, "insight_tenant_id": OTHER_TENANT, "unique_key": f"{OTHER_TENANT}-{r['unique_key']}"} for r in records
+    ]
 
 
 def field(
@@ -63,7 +65,7 @@ def field(
         "key": field_id,
         "name": name or field_id,
         "custom": schema_custom != "",
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{field_id}",
         "field_id": field_id,
@@ -102,7 +104,7 @@ def issue(
         **_airbyte(extracted_at),
         "id": jira_id or key,
         "key": key,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{key}",
         "jira_id": jira_id or key,
@@ -122,7 +124,7 @@ def census_entry(key: str, *, jira_id: str, extracted_at: str = OBSERVED_AT) -> 
     return {
         **_airbyte(extracted_at),
         "id": jira_id,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{jira_id}",
         "jira_id": jira_id,
@@ -136,7 +138,7 @@ def user(account_id: str, *, email: str | None, extracted_at: str = OBSERVED_AT)
     """One account as /users/search returned it; `email` is None when Jira hides it."""
     return {
         **_airbyte(extracted_at),
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{account_id}",
         "account_id": account_id,
@@ -154,7 +156,7 @@ def status(status_id: str, *, name: str, category_key: str, extracted_at: str = 
         **_airbyte(extracted_at),
         "id": status_id,
         "name": name,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-status-{status_id}",
         "status_id": int(status_id),
@@ -170,7 +172,7 @@ def project_visibility(
         **_airbyte(extracted_at),
         "id": project_id,
         "key": key,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{project_id}",
         "project_id": project_id,
@@ -217,7 +219,7 @@ def event(
     return {
         **_airbyte(extracted_at),
         "id": str(changelog_id),
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{changelog_id}",
         "id_readable": key,
@@ -243,7 +245,7 @@ def comment(
     return {
         **_airbyte(extracted_at),
         "id": str(comment_id),
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-comment-{comment_id}",
         "comment_id": comment_id,
@@ -271,7 +273,7 @@ def worklog(
         **_airbyte(extracted_at),
         "id": str(worklog_id),
         "issueId": jira_id,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-worklog-{worklog_id}",
         "worklog_id": worklog_id,
@@ -292,7 +294,7 @@ def worklog_tombstone(worklog_id: int, *, deleted_at_ms: int, extracted_at: str 
         **_airbyte(extracted_at),
         "worklogId": worklog_id,
         "updatedTime": deleted_at_ms,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-worklog-deleted-{worklog_id}",
         "worklog_id": worklog_id,

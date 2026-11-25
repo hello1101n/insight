@@ -18,12 +18,12 @@ SAME_INSTANT = "2026-01-06T10:00:00.000+0000"
 # The rank among one issue's lifecycle events of one millisecond is the low
 # digits of `event_order` (`task_event_order`).
 COMMENT_EVENTS_SQL = (
-    "SELECT tenant_id, issue_id, id_readable, value_ids[1] AS entity_id, author_id, delta_action,"
+    "SELECT insight_tenant_id, issue_id, id_readable, value_ids[1] AS entity_id, author_id, delta_action,"
     " toUInt32(event_order % 100000) AS same_instant_rank"
     " FROM staging.jira__comment_lifecycle_events FINAL WHERE insight_source_id = {src:String}"
 )
 WORKLOG_EVENTS_SQL = (
-    "SELECT tenant_id, issue_id, id_readable, value_ids[1] AS entity_id, author_id, delta_action,"
+    "SELECT insight_tenant_id, issue_id, id_readable, value_ids[1] AS entity_id, author_id, delta_action,"
     " toUInt32(event_order % 100000) AS same_instant_rank"
     " FROM staging.jira__worklog_lifecycle_events FINAL WHERE insight_source_id = {src:String}"
 )
@@ -72,7 +72,7 @@ def test_each_event_lands_on_its_own_tenants_issue_ranked_among_its_own_tenants_
 
     assert sorted(
         (
-            r["tenant_id"],
+            r["insight_tenant_id"],
             r["issue_id"],
             r["id_readable"],
             r["entity_id"],

@@ -26,18 +26,18 @@ WITH comments AS (
 -- jira_comments re-emits the whole list (no client-side cursor filter).
 issue_comment_reads AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         max(_airbyte_extracted_at)                      AS last_read_at
     FROM comments
     WHERE jira_id IS NOT NULL
-    GROUP BY tenant_id, source_id, jira_id
+    GROUP BY insight_tenant_id, source_id, jira_id
 ),
 
 unavailable_issues AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id
     FROM {{ ref('jira__issue_availability_state') }} FINAL
@@ -47,7 +47,7 @@ unavailable_issues AS (
 
 SELECT
     c.unique_key                                        AS unique_key,
-    {{ bronze_tenant('c.tenant_id') }}                  AS tenant_id,
+    {{ bronze_tenant('c.insight_tenant_id') }}                  AS insight_tenant_id,
     c.source_id                                         AS source_id,
     toString(c.comment_id)                              AS comment_id,
     c.id_readable                                       AS id_readable,
@@ -63,10 +63,10 @@ SELECT
     )                                                   AS is_deleted
 FROM comments AS c
 LEFT JOIN issue_comment_reads AS r
-    ON r.tenant_id = c.tenant_id
+    ON r.insight_tenant_id = c.insight_tenant_id
     AND r.source_id = c.source_id
     AND r.jira_id = c.jira_id
 LEFT JOIN unavailable_issues AS ui
-    ON ui.tenant_id = c.tenant_id
+    ON ui.insight_tenant_id = c.insight_tenant_id
     AND ui.source_id = c.source_id
     AND ui.jira_id = c.jira_id

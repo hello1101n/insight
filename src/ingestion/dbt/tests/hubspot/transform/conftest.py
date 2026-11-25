@@ -83,7 +83,7 @@ class Warehouse:
             "_airbyte_extracted_at": at(extracted),
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
-            "tenant_id": tenant,
+            "insight_tenant_id": tenant,
             "source_id": SOURCE,
             "unique_key": f"{tenant or 'no-tenant'}-{SOURCE}-{key}",
             "data_source": "hubspot",

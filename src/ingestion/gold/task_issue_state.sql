@@ -52,13 +52,13 @@ WITH
 -- `assert_field_values_are_canonical` reports the typo row itself.
 issue_type_map AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         source_key,
         target_value
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             source_key,
             target_value,
@@ -67,7 +67,7 @@ issue_type_map AS (
         WHERE field = 'issue_type'
           AND valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id, source_key
+        LIMIT 1 BY insight_tenant_id, insight_source_id, source_key
     )
     WHERE is_deleted = 0
       AND target_value IN ('bug', 'task', 'unknown')
@@ -75,12 +75,12 @@ issue_type_map AS (
 -- Per (tenant, source) fallback for unmapped type ids; same shape, same guard.
 issue_type_default AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         default_value
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             default_value,
             is_deleted
@@ -88,7 +88,7 @@ issue_type_default AS (
         WHERE field = 'issue_type'
           AND valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id
+        LIMIT 1 BY insight_tenant_id, insight_source_id
     )
     WHERE is_deleted = 0
       AND default_value IN ('bug', 'task', 'unknown')
@@ -98,13 +98,13 @@ issue_type_default AS (
 -- lockstep — latest row first, tombstone/domain filter after.
 resolution_map AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         source_key,
         target_value
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             source_key,
             target_value,
@@ -113,19 +113,19 @@ resolution_map AS (
         WHERE field = 'resolution'
           AND valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id, source_key
+        LIMIT 1 BY insight_tenant_id, insight_source_id, source_key
     )
     WHERE is_deleted = 0
       AND target_value IN ('fixed', 'duplicate', 'wontfix', 'unknown')
 ),
 resolution_default AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         default_value
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             default_value,
             is_deleted
@@ -133,7 +133,7 @@ resolution_default AS (
         WHERE field = 'resolution'
           AND valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id
+        LIMIT 1 BY insight_tenant_id, insight_source_id
     )
     WHERE is_deleted = 0
       AND default_value IN ('fixed', 'duplicate', 'wontfix', 'unknown')
@@ -143,7 +143,7 @@ resolution_default AS (
 -- listed has no row, and dropping either takes its issues out of every measure.
 task_users AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         if(email LIKE '%@%', {{ normalized_email('email') }}, '') AS email
@@ -152,7 +152,7 @@ task_users AS (
 -- Per-issue scalar pivot; created = first synthetic_initial event.
 history AS (
     SELECT
-        fh.tenant_id                                                          AS tenant_id,
+        fh.insight_tenant_id                                                          AS insight_tenant_id,
         fh.insight_source_id                                                  AS insight_source_id,
         fh.data_source                                                        AS data_source,
         fh.issue_id                                                           AS issue_id,
@@ -184,7 +184,7 @@ history AS (
            ifNull(r.unit_multiplier, 1), CAST(NULL AS Nullable(Float64)))     AS unit_multiplier
     FROM {{ ref('class_task_field_history') }} AS fh FINAL
     LEFT JOIN {{ ref('task_field_roles_current') }} AS r
-        ON r.tenant_id = fh.tenant_id
+        ON r.insight_tenant_id = fh.insight_tenant_id
         AND r.insight_source_id = fh.insight_source_id
         AND r.data_source = fh.data_source
         AND r.field_id = fh.field_id
@@ -197,7 +197,7 @@ history AS (
 ),
 issue_pivot AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         argMaxIf(value_ids[1], event_order,
@@ -243,33 +243,33 @@ issue_pivot AS (
                  role = 'availability')                                      AS availability,
         any(data_source)                                                     AS data_source
     FROM history
-    GROUP BY tenant_id, insight_source_id, issue_id
+    GROUP BY insight_tenant_id, insight_source_id, issue_id
 ),
 -- One row per status event, flagged done and whether the event before it (in
 -- `event_order`) was done. A status the dimension does not know is not done.
 status_steps AS (
     SELECT
-        fh.tenant_id                                                         AS tenant_id,
+        fh.insight_tenant_id                                                         AS insight_tenant_id,
         fh.insight_source_id                                                 AS insight_source_id,
         fh.issue_id                                                          AS issue_id,
         fh.event_at                                                          AS event_at,
         toUInt8(ifNull(st.status_category, '') = 'done')                     AS is_done,
         lagInFrame(toUInt8(ifNull(st.status_category, '') = 'done'), 1, toUInt8(0)) OVER (
-            PARTITION BY fh.tenant_id, fh.insight_source_id, fh.issue_id
+            PARTITION BY fh.insight_tenant_id, fh.insight_source_id, fh.issue_id
             ORDER BY fh.event_order
             ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
         )                                                                    AS was_done,
         toUInt8(
             fh.event_kind = 'snapshot_diff'
             AND lagInFrame(toString(fh.event_kind), 1, '') OVER (
-                PARTITION BY fh.tenant_id, fh.insight_source_id, fh.issue_id
+                PARTITION BY fh.insight_tenant_id, fh.insight_source_id, fh.issue_id
                 ORDER BY fh.event_order
                 ROWS BETWEEN 1 PRECEDING AND CURRENT ROW
             ) = 'synthetic_initial'
         )                                                                    AS dates_seeded_value
     FROM history AS fh
     LEFT JOIN {{ ref('class_task_statuses') }} AS st FINAL
-        ON st.tenant_id = fh.tenant_id
+        ON st.insight_tenant_id = fh.insight_tenant_id
         AND st.insight_source_id = fh.insight_source_id
         AND st.status_id = fh.value_ids[1]
     WHERE fh.role = 'status' AND fh.delta_action = 'set'
@@ -282,15 +282,15 @@ status_steps AS (
 -- `final_close_at IS NOT NULL` gates the closed-issue measures.
 issue_close AS (
     SELECT
-        tenant_id                                                            AS tenant_id,
+        insight_tenant_id,
         insight_source_id                                                    AS insight_source_id,
         issue_id                                                             AS issue_id,
         maxIfOrNull(event_at, is_done = 1 AND (was_done = 0 OR dates_seeded_value = 1)) AS final_close_at
     FROM status_steps
-    GROUP BY tenant_id, insight_source_id, issue_id
+    GROUP BY insight_tenant_id, insight_source_id, issue_id
 )
 SELECT
-    p.tenant_id                                                              AS tenant_id,
+    p.insight_tenant_id                                                              AS insight_tenant_id,
     coalesce(u.email, '')                                                    AS entity_id,
     {{ task_account_source_type('p.data_source') }}                          AS account_source_type,
     p.insight_source_id                                                      AS account_source_id,
@@ -335,34 +335,34 @@ SELECT
     p.last_status_event_at                                                   AS last_status_event_at
 FROM issue_pivot AS p
 LEFT JOIN task_users AS u
-    ON u.tenant_id = p.tenant_id
+    ON u.insight_tenant_id = p.insight_tenant_id
     AND u.insight_source_id = p.insight_source_id
     AND u.user_id = p.assignee_account_id
 LEFT JOIN issue_close AS c
-    ON c.tenant_id = p.tenant_id
+    ON c.insight_tenant_id = p.insight_tenant_id
     AND c.insight_source_id = p.insight_source_id
     AND c.issue_id = p.issue_id
 LEFT JOIN {{ ref('class_task_statuses') }} AS cur FINAL
-    ON cur.tenant_id = p.tenant_id
+    ON cur.insight_tenant_id = p.insight_tenant_id
     AND cur.insight_source_id = p.insight_source_id
     AND cur.status_id = p.status_id
 LEFT JOIN {{ ref('class_task_issuetypes') }} AS it FINAL
-    ON it.tenant_id = p.tenant_id
+    ON it.insight_tenant_id = p.insight_tenant_id
     AND it.insight_source_id = p.insight_source_id
     AND it.issue_type_id = p.issue_type_id
 LEFT JOIN issue_type_map AS m
-    ON m.tenant_id = p.tenant_id
+    ON m.insight_tenant_id = p.insight_tenant_id
     AND m.insight_source_id = p.insight_source_id
     AND m.source_key = p.issue_type_id
 LEFT JOIN issue_type_default AS d
-    ON d.tenant_id = p.tenant_id
+    ON d.insight_tenant_id = p.insight_tenant_id
     AND d.insight_source_id = p.insight_source_id
 LEFT JOIN resolution_map AS rm
-    ON rm.tenant_id = p.tenant_id
+    ON rm.insight_tenant_id = p.insight_tenant_id
     AND rm.insight_source_id = p.insight_source_id
     AND rm.source_key = p.resolution_id_raw
 LEFT JOIN resolution_default AS rd
-    ON rd.tenant_id = p.tenant_id
+    ON rd.insight_tenant_id = p.insight_tenant_id
     AND rd.insight_source_id = p.insight_source_id
 -- Issues deleted at the source (or in the project trash) leave every task
 -- metric: this table is the root of the gold task chain, so the filter

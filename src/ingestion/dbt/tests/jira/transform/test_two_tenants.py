@@ -71,11 +71,11 @@ def test_each_tenant_keeps_its_own_changelog_items(scenario: Scenario) -> None:
 
     rows = _rows(
         scenario,
-        "SELECT tenant_id, field_id, value_to_string FROM staging.jira_changelog_items"
-        " WHERE insight_source_id = {src:String} ORDER BY tenant_id, field_id",
+        "SELECT insight_tenant_id, field_id, value_to_string FROM staging.jira_changelog_items"
+        " WHERE insight_source_id = {src:String} ORDER BY insight_tenant_id, field_id",
     )
 
-    assert [(r["tenant_id"], r["field_id"], r["value_to_string"]) for r in rows] == [
+    assert [(r["insight_tenant_id"], r["field_id"], r["value_to_string"]) for r in rows] == [
         (TENANT_ID, POINTS, "5"),
         (OTHER_TENANT, POINTS, "9"),
         (OTHER_TENANT, LABEL, "theirs"),
@@ -87,20 +87,20 @@ def test_a_field_is_classified_only_where_its_tenant_catalogues_it(scenario: Sce
 
     kinds = _rows(
         scenario,
-        "SELECT tenant_id, field_id FROM staging.jira__task_field_kind"
-        " WHERE insight_source_id = {src:String} ORDER BY tenant_id, field_id",
+        "SELECT insight_tenant_id, field_id FROM staging.jira__task_field_kind"
+        " WHERE insight_source_id = {src:String} ORDER BY insight_tenant_id, field_id",
     )
     unclassified = _rows(
         scenario,
-        "SELECT tenant_id, field_id FROM staging.jira__task_field_unclassified WHERE insight_source_id = {src:String}",
+        "SELECT insight_tenant_id, field_id FROM staging.jira__task_field_unclassified WHERE insight_source_id = {src:String}",
     )
 
-    assert [(r["tenant_id"], r["field_id"]) for r in kinds] == [
+    assert [(r["insight_tenant_id"], r["field_id"]) for r in kinds] == [
         (TENANT_ID, POINTS),
         (TENANT_ID, LABEL),
         (OTHER_TENANT, POINTS),
     ]
-    assert [(r["tenant_id"], r["field_id"]) for r in unclassified] == [(OTHER_TENANT, LABEL)], (
+    assert [(r["insight_tenant_id"], r["field_id"]) for r in unclassified] == [(OTHER_TENANT, LABEL)], (
         "the label is catalogued by the first tenant only; the other's change to it is unclassified there"
     )
 
@@ -110,12 +110,12 @@ def test_each_tenant_snapshots_its_own_issue(scenario: Scenario) -> None:
 
     rows = _rows(
         scenario,
-        "SELECT tenant_id, value_ids FROM staging.jira_issue_field_snapshot"
-        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY tenant_id",
+        "SELECT insight_tenant_id, value_ids FROM staging.jira_issue_field_snapshot"
+        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY insight_tenant_id",
         field=POINTS,
     )
 
-    assert [(r["tenant_id"], list(r["value_ids"])) for r in rows] == [(TENANT_ID, ["5"]), (OTHER_TENANT, ["9"])]
+    assert [(r["insight_tenant_id"], list(r["value_ids"])) for r in rows] == [(TENANT_ID, ["5"]), (OTHER_TENANT, ["9"])]
 
 
 def test_each_tenant_resolves_an_issue_key_to_its_own_issue(scenario: Scenario) -> None:
@@ -129,11 +129,11 @@ def test_each_tenant_resolves_an_issue_key_to_its_own_issue(scenario: Scenario) 
 
     rows = _rows(
         scenario,
-        "SELECT tenant_id, issue_id FROM staging.jira__issue_key_ids"
-        " WHERE insight_source_id = {src:String} AND issue_key = 'TST-1' ORDER BY tenant_id",
+        "SELECT insight_tenant_id, issue_id FROM staging.jira__issue_key_ids"
+        " WHERE insight_source_id = {src:String} AND issue_key = 'TST-1' ORDER BY insight_tenant_id",
     )
 
-    assert [(r["tenant_id"], r["issue_id"]) for r in rows] == [(TENANT_ID, "1001"), (OTHER_TENANT, "2002")]
+    assert [(r["insight_tenant_id"], r["issue_id"]) for r in rows] == [(TENANT_ID, "1001"), (OTHER_TENANT, "2002")]
 
 
 def test_each_tenant_converts_a_shared_field_id_by_its_own_kind(scenario: Scenario) -> None:
@@ -149,19 +149,22 @@ def test_each_tenant_converts_a_shared_field_id_by_its_own_kind(scenario: Scenar
 
     kinds = _rows(
         scenario,
-        "SELECT tenant_id, field_kind FROM staging.jira__task_field_kind"
-        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY tenant_id",
+        "SELECT insight_tenant_id, field_kind FROM staging.jira__task_field_kind"
+        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY insight_tenant_id",
         field=CHOICE,
     )
     values = _rows(
         scenario,
-        "SELECT tenant_id, value_ids, value_displays FROM staging.jira_issue_field_snapshot"
-        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY tenant_id, value_ids",
+        "SELECT insight_tenant_id, value_ids, value_displays FROM staging.jira_issue_field_snapshot"
+        " WHERE insight_source_id = {src:String} AND field_id = {field:String} ORDER BY insight_tenant_id, value_ids",
         field=CHOICE,
     )
 
-    assert [(r["tenant_id"], r["field_kind"]) for r in kinds] == [(TENANT_ID, "scalar"), (OTHER_TENANT, "option")]
-    assert [(r["tenant_id"], list(r["value_ids"]), list(r["value_displays"])) for r in values] == [
+    assert [(r["insight_tenant_id"], r["field_kind"]) for r in kinds] == [
+        (TENANT_ID, "scalar"),
+        (OTHER_TENANT, "option"),
+    ]
+    assert [(r["insight_tenant_id"], list(r["value_ids"]), list(r["value_displays"])) for r in values] == [
         (TENANT_ID, ["5"], ["5"]),
         (OTHER_TENANT, ["9002"], ["High"]),
     ]
@@ -216,11 +219,11 @@ def test_each_tenant_ranks_its_tied_entries_by_its_own_chain(scenario: Scenario)
 
     rows = _rows(
         scenario,
-        "SELECT tenant_id, issue_id, changelog_id, entry_rank FROM staging.jira__changelog_entry_ranks"
-        " WHERE insight_source_id = {src:String} ORDER BY tenant_id, issue_id, changelog_id",
+        "SELECT insight_tenant_id, issue_id, changelog_id, entry_rank FROM staging.jira__changelog_entry_ranks"
+        " WHERE insight_source_id = {src:String} ORDER BY insight_tenant_id, issue_id, changelog_id",
     )
 
-    assert [(r["tenant_id"], r["issue_id"], r["changelog_id"], r["entry_rank"]) for r in rows] == [
+    assert [(r["insight_tenant_id"], r["issue_id"], r["changelog_id"], r["entry_rank"]) for r in rows] == [
         (TENANT_ID, "TST-1", "101", 1),
         (TENANT_ID, "TST-1", "102", 0),
         (TENANT_ID, "TST-2", "201", 0),
@@ -305,13 +308,13 @@ def test_each_tenant_resolves_its_link_occurrences_within_the_tenant(scenario: S
 
     rows = _rows(
         scenario,
-        "SELECT tenant_id, issue_id, occurrence_key, target_ident, length(ops) AS op_count, held_before"
+        "SELECT insight_tenant_id, issue_id, occurrence_key, target_ident, length(ops) AS op_count, held_before"
         " FROM staging.jira__link_occurrences FINAL"
-        " WHERE insight_source_id = {src:String} ORDER BY tenant_id, issue_id, target_ident",
+        " WHERE insight_source_id = {src:String} ORDER BY insight_tenant_id, issue_id, target_ident",
     )
 
     assert [
-        (r["tenant_id"], r["issue_id"], r["occurrence_key"], r["target_ident"], r["op_count"], r["held_before"])
+        (r["insight_tenant_id"], r["issue_id"], r["occurrence_key"], r["target_ident"], r["op_count"], r["held_before"])
         for r in rows
     ] == [
         (TENANT_ID, "1001", "type:10000:outward", "1002", 1, False),

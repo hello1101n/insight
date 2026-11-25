@@ -17,8 +17,8 @@
 
 SELECT
     email,
-    tenant_id,
+    insight_tenant_id,
     count() AS rows
 FROM {{ ref('github__unowned_commit_emails') }}
-GROUP BY email, tenant_id
+GROUP BY email, insight_tenant_id
 HAVING rows > 1

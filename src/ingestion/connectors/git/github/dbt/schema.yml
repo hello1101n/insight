@@ -39,7 +39,7 @@ models:
   - name: github__item_events
     description: "GitHub issue and pull-request lifecycle events -> staging, feeds class_git_item_events"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -102,14 +102,14 @@ models:
     description: "Commit author e-mails no GitHub account claims, with the name their commits carry"
     columns:
       - name: email
-        description: "Lowercased commit author e-mail, and the account id it is published under. Unique per tenant, not globally — the grain is (email, tenant_id)"
+        description: "Lowercased commit author e-mail, and the account id it is published under. Unique per tenant, not globally — the grain is (email, insight_tenant_id)"
         data_tests:
           - not_null
       - name: author_name
         description: "Name from the author's most recent commit, so an operator can recognise them"
       - name: last_committed_at
         description: "Most recent commit authored under this address"
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -135,7 +135,7 @@ models:
   - name: github__task_field_history
     description: "Per-source staging projection unioned into silver.class_task_field_history."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -143,7 +143,7 @@ models:
   - name: github__task_links
     description: "Per-source staging projection unioned into silver.class_task_links."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -151,7 +151,7 @@ models:
   - name: github__task_field_metadata
     description: "Per-source staging projection unioned into silver.class_task_field_metadata."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -159,7 +159,7 @@ models:
   - name: github__task_issuetypes
     description: "Per-source staging projection unioned into silver.class_task_issuetypes."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -167,7 +167,7 @@ models:
   - name: github__task_projects
     description: "Per-source staging projection unioned into silver.class_task_projects."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null
@@ -177,7 +177,7 @@ models:
   - name: github__issue_link_events
     description: "Every link between work items that appeared or disappeared, as a delta."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
         tests:
           - not_null

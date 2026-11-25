@@ -16,7 +16,7 @@
 
 SELECT
     s.unique_key                                        AS unique_key,
-    ifNull(s.tenant_id, '')                             AS tenant_id,
+    ifNull(s.insight_tenant_id, '')                             AS insight_tenant_id,
     s.source_id                                         AS insight_source_id,
     CAST('jira' AS String)                              AS data_source,
     s.comment_id                                        AS comment_id,
@@ -30,8 +30,8 @@ SELECT
     CAST(p.issue_id AS Nullable(String))                 AS issue_id
 FROM {{ ref('jira__comment_state') }} AS s FINAL
 LEFT JOIN (
-    SELECT tenant_id, source_id, toString(comment_id) AS comment_id,
+    SELECT insight_tenant_id, source_id, toString(comment_id) AS comment_id,
         argMax(jira_id, _airbyte_extracted_at) AS issue_id
     FROM {{ source('bronze_jira', 'jira_comments') }} FINAL
-    GROUP BY tenant_id, source_id, comment_id
-) AS p ON p.tenant_id = s.tenant_id AND p.source_id = s.source_id AND p.comment_id = s.comment_id
+    GROUP BY insight_tenant_id, source_id, comment_id
+) AS p ON p.insight_tenant_id = s.insight_tenant_id AND p.source_id = s.source_id AND p.comment_id = s.comment_id

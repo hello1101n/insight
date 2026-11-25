@@ -212,7 +212,7 @@ def test_a_source_recorded_under_two_tenants_counts_each_changelog_item_once(sce
     own_boundary = min(_first_syncs(scenario))
     scenario.warehouse.execute(
         "INSERT INTO staging.jira__catalogue_first_seen"
-        " (unique_key, tenant_id, insight_source_id, catalogue_first_sync, recorded_at, _version)"
+        " (unique_key, insight_tenant_id, insight_source_id, catalogue_first_sync, recorded_at, _version)"
         " SELECT concat('-', insight_source_id), '', insight_source_id,"
         "        catalogue_first_sync - INTERVAL 1 DAY, recorded_at, _version + 86400000"
         " FROM staging.jira__catalogue_first_seen FINAL"

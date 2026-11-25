@@ -26,7 +26,7 @@ models:
   - name: m365__collab_chat_activity
     description: "M365 Teams chat activity → staging, feeds class_collab_chat_activity"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id
@@ -52,7 +52,7 @@ models:
   - name: m365__collab_meeting_activity
     description: "M365 Teams meeting activity → staging, feeds class_collab_meeting_activity"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id
@@ -74,7 +74,7 @@ models:
   - name: m365__collab_email_activity
     description: "M365 Outlook email activity → staging, feeds class_collab_email_activity"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id
@@ -94,7 +94,7 @@ models:
   - name: m365__collab_document_activity_onedrive
     description: "M365 OneDrive document activity → staging, unioned into class_collab_document_activity"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id
@@ -119,7 +119,7 @@ models:
   - name: m365__collab_document_activity_sharepoint
     description: "M365 SharePoint document activity → staging, unioned into class_collab_document_activity"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id

@@ -41,7 +41,7 @@ def row(
     values = [] if field_value is None else [field_value]
     return {
         "unique_key": f"{issue}-{field_id}-{seq}-{event_id or 'initial'}",
-        "tenant_id": TENANT,
+        "insight_tenant_id": TENANT,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "issue_id": issue,
@@ -83,7 +83,7 @@ def gold(warehouse):
         [
             {
                 "unique_key": f"{SOURCE}-actor",
-                "tenant_id": TENANT,
+                "insight_tenant_id": TENANT,
                 "insight_source_id": SOURCE,
                 "data_source": "jira",
                 "user_id": "actor",

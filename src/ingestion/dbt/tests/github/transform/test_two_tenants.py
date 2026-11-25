@@ -65,12 +65,13 @@ def test_a_tenant_still_picks_up_events_older_than_another_tenants_watermark(cas
     case.build("github__item_events")
 
     found = case.rows(
-        f"SELECT tenant_id, event_id FROM staging.github__item_events WHERE source_id = '{SOURCE}' ORDER BY tenant_id"
+        f"SELECT insight_tenant_id, event_id FROM staging.github__item_events WHERE source_id = '{SOURCE}' ORDER BY insight_tenant_id"
     )
 
-    assert found == [{"tenant_id": OTHER_TENANT, "event_id": "older"}, {"tenant_id": TENANT, "event_id": "newer"}], (
-        found
-    )
+    assert found == [
+        {"insight_tenant_id": OTHER_TENANT, "event_id": "older"},
+        {"insight_tenant_id": TENANT, "event_id": "newer"},
+    ], found
 
 
 def test_an_email_owned_only_in_another_tenant_is_still_unowned_here(case: Warehouse) -> None:
@@ -82,8 +83,8 @@ def test_an_email_owned_only_in_another_tenant_is_still_unowned_here(case: Wareh
     case.build("+github__unowned_commit_emails")
 
     found = case.rows(
-        "SELECT tenant_id, email FROM staging.github__unowned_commit_emails"
-        f" WHERE source_id = '{SOURCE}' ORDER BY tenant_id, email"
+        "SELECT insight_tenant_id, email FROM staging.github__unowned_commit_emails"
+        f" WHERE source_id = '{SOURCE}' ORDER BY insight_tenant_id, email"
     )
 
-    assert found == [{"tenant_id": TENANT, "email": "shared@example.com"}], found
+    assert found == [{"insight_tenant_id": TENANT, "email": "shared@example.com"}], found

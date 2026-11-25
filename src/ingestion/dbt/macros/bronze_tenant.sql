@@ -1,13 +1,13 @@
 {#-
-  bronze_tenant(column='tenant_id')
+  bronze_tenant(column='insight_tenant_id')
 
   The tenant of a Bronze row as a non-Nullable String: the lowercase canonical
   UUID (8-4-4-4-12). Bronze tenant columns are Nullable by Airbyte policy, and
   a NULL tenant is silently lost downstream (keys turn NULL, joins never match,
   dedup collapses it), so every read of a Bronze tenant goes through here:
 
-      tenant_id   ->   {{ bronze_tenant() }} AS tenant_id
-      b.tenant_id ->   {{ bronze_tenant('b.tenant_id') }} AS tenant_id
+      insight_tenant_id   ->   {{ bronze_tenant() }} AS insight_tenant_id
+      b.insight_tenant_id ->   {{ bronze_tenant('b.insight_tenant_id') }} AS insight_tenant_id
 
   A NULL, empty, non-UUID or nil-UUID value is invalid. The reaction is set by
   the `bronze_tenant_on_invalid` var (dbt_project.yml, or `--vars`):
@@ -20,7 +20,7 @@
   column nothing selects, a `count()` over it) is never computed, and a row
   another filter or the primary-key index drops first is never checked.
 -#}
-{% macro bronze_tenant(column='tenant_id') -%}
+{% macro bronze_tenant(column='insight_tenant_id') -%}
     {%- set value = "ifNull(toString(" ~ column ~ "), '')" -%}
     if(
         {{ tenant_guard_fail(

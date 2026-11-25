@@ -22,7 +22,7 @@
 -- Any violation means the writer got the kind vs id wrong.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     data_source,
     issue_id,

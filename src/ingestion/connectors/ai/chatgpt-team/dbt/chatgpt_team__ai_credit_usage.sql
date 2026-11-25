@@ -52,14 +52,14 @@ WITH instance_watermark AS (
 )
 {% endif %}
 SELECT
-    bronze.tenant_id                                    AS insight_tenant_id,
+    bronze.insight_tenant_id                                    AS insight_tenant_id,
     bronze.source_id                                    AS source_id,
     -- Qualified: instance_watermark also carries source_id, so the bare name is
-    -- ambiguous once the incremental join is in place. tenant_id goes with it —
+    -- ambiguous once the incremental join is in place. insight_tenant_id goes with it —
     -- one half of a key expression qualified and the other not reads as an
     -- oversight.
     CAST(concat(
-        coalesce(bronze.tenant_id, ''), '-',
+        coalesce(bronze.insight_tenant_id, ''), '-',
         coalesce(bronze.source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(date, '')
@@ -87,11 +87,11 @@ FROM (
     SELECT *
     FROM {{ source('bronze_chatgpt_team', 'chatgpt_team_codex_user_daily') }}
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY tenant_id, source_id, lower(trim(email)), date
+    LIMIT 1 BY insight_tenant_id, source_id, lower(trim(email)), date
 ) AS bronze
 {% if is_incremental() %}
 LEFT JOIN instance_watermark AS w
-       ON w.insight_tenant_id = bronze.tenant_id
+       ON w.insight_tenant_id = bronze.insight_tenant_id
       AND w.source_id = bronze.source_id
 {% endif %}
 WHERE email IS NOT NULL

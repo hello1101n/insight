@@ -1,6 +1,6 @@
 """A bronze row without a tenant builds, and the tenant tests on its models report it.
 
-`hubspot_support_scope` reads the tenant through `coalesce(tenant_id, '')`, so a
+`hubspot_support_scope` reads the tenant through `coalesce(insight_tenant_id, '')`, so a
 missing one never makes a key Nullable and arrives as an empty tenant; `not_empty`
 on each support model's tenant is the guard, with `not_null` beside it.
 """
@@ -63,7 +63,7 @@ SELECTOR = " ".join(f"+{model}" for model in STREAMS)
 
 
 def tenant_tests(model: str) -> tuple[str, str]:
-    return f"not_null_{model}_tenant_id", f"not_empty_{model}_tenant_id"
+    return f"not_null_{model}_insight_tenant_id", f"not_empty_{model}_insight_tenant_id"
 
 
 def _seed(case: Warehouse, tenant: str | None, *models: str) -> None:
@@ -83,7 +83,7 @@ def test_the_tenant_tests_pass_over_rows_that_carry_a_tenant(case: Warehouse) ->
 
 
 # BUG: hubspot__crm_field_history and hubspot__crm_teams key a row by
-# concat(tenant_id, ...), which is NULL for a NULL tenant, and
+# concat(insight_tenant_id, ...), which is NULL for a NULL tenant, and
 # hubspot_staging_tail's `(unique_key, _version) IN (...)` then drops the row:
 # it is lost before any tenant test can report it.
 DROPPED_BY_CRM_STAGING = {"hubspot__support_ticket_field_history", "hubspot__support_groups"}
@@ -108,7 +108,7 @@ def test_a_bronze_row_without_a_tenant_builds_and_the_tenant_tests_report_it(cas
     case.build(f"+{model}")
 
     failing = case.failing_tests(tenant_tests(model))
-    assert f"not_empty_{model}_tenant_id" in failing, f"{model} should report the row: {sorted(failing)}"
+    assert f"not_empty_{model}_insight_tenant_id" in failing, f"{model} should report the row: {sorted(failing)}"
 
 
 def test_the_support_class_reports_a_ticket_without_a_tenant(case: Warehouse) -> None:
@@ -116,4 +116,4 @@ def test_the_support_class_reports_a_ticket_without_a_tenant(case: Warehouse) ->
     case.build("+class_support_tickets")
 
     failing = case.failing_tests(tenant_tests("class_support_tickets"))
-    assert "not_empty_class_support_tickets_tenant_id" in failing, sorted(failing)
+    assert "not_empty_class_support_tickets_insight_tenant_id" in failing, sorted(failing)

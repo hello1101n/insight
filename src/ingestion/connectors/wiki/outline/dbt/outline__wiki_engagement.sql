@@ -35,7 +35,7 @@
 
 WITH comments AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         page_id,
         comment_id,
@@ -51,10 +51,10 @@ WITH comments AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         coalesce(source_id, ''), '-',
         coalesce(page_id, ''), '-',
         toString(toDate(created_ts))
@@ -81,4 +81,4 @@ WHERE created_ts IS NOT NULL
   -- this filter is expected to be a no-op, but without it a malformed
   -- bronze row would group into a fake (tenant, source, '', day) bucket.
   AND page_id IS NOT NULL AND page_id != ''
-GROUP BY tenant_id, source_id, page_id, toDate(created_ts)
+GROUP BY insight_tenant_id, source_id, page_id, toDate(created_ts)

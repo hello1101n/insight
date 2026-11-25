@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'commit_hash'],
+    order_by=['insight_tenant_id', 'data_source', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -32,7 +32,7 @@
 WITH
 collected_branch_commits AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_key,
         repo_slug,
@@ -43,7 +43,7 @@ collected_branch_commits AS (
 ),
 pull_request_links AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_key,
         repo_slug,
@@ -54,13 +54,13 @@ pull_request_links AS (
         -- of a branch commit is the same commit, and its rows carry the work.
         uniqExactIf(
             commit_hash,
-            (tenant_id, data_source, commit_hash) IN (
-                SELECT tenant_id, data_source, commit_hash
+            (insight_tenant_id, data_source, commit_hash) IN (
+                SELECT insight_tenant_id, data_source, commit_hash
                 FROM collected_branch_commits
             )
         ) AS collected_branch_commit_count
     FROM {{ ref('class_git_pull_requests_commits') }} FINAL
-    GROUP BY tenant_id, source_id, project_key, repo_slug, data_source, pr_id
+    GROUP BY insight_tenant_id, source_id, project_key, repo_slug, data_source, pr_id
 ),
 -- The requests that produced a result commit at all. Narrowed before the
 -- resolution below, whose prefix test is a residual predicate: the join's only
@@ -68,7 +68,7 @@ pull_request_links AS (
 -- that repository's whole commit set.
 merged_requests AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_key,
         repo_slug,
@@ -84,13 +84,13 @@ merged_requests AS (
 -- `git_merge_result_match`.
 resolved_results AS (
     SELECT
-        prs.tenant_id AS tenant_id,
+        prs.insight_tenant_id AS insight_tenant_id,
         prs.data_source AS data_source,
         groupUniqArray(result.commit_hash) AS candidates,
         any(links.linked_hashes) AS linked_hashes
     FROM merged_requests AS prs
     INNER JOIN pull_request_links AS links
-        ON links.tenant_id = prs.tenant_id
+        ON links.insight_tenant_id = prs.insight_tenant_id
         AND links.source_id = prs.source_id
         AND links.project_key = prs.project_key
         AND links.repo_slug = prs.repo_slug
@@ -100,7 +100,7 @@ resolved_results AS (
     WHERE links.collected_branch_commit_count > 0
       AND links.collected_branch_commit_count < length(links.linked_hashes)
     GROUP BY
-        prs.tenant_id,
+        prs.insight_tenant_id,
         prs.source_id,
         prs.project_key,
         prs.repo_slug,
@@ -110,7 +110,7 @@ resolved_results AS (
 ),
 partly_collected_results AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         data_source,
         arrayElement(candidates, 1) AS commit_hash,
         linked_hashes
@@ -120,7 +120,7 @@ partly_collected_results AS (
 ),
 linked_commit_of_result AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         data_source,
         commit_hash,
         linked_hash
@@ -128,12 +128,12 @@ linked_commit_of_result AS (
     ARRAY JOIN linked_hashes AS linked_hash
 )
 SELECT DISTINCT
-    result.tenant_id AS tenant_id,
+    result.insight_tenant_id AS insight_tenant_id,
     result.data_source AS data_source,
     result.commit_hash AS commit_hash,
     branch_change.file_path AS file_path
 FROM linked_commit_of_result AS result
 INNER JOIN {{ ref('class_git_file_changes') }} AS branch_change FINAL
-    ON branch_change.tenant_id IS NOT DISTINCT FROM result.tenant_id
+    ON branch_change.insight_tenant_id IS NOT DISTINCT FROM result.insight_tenant_id
     AND branch_change.data_source = result.data_source
     AND branch_change.commit_hash = result.linked_hash

@@ -37,11 +37,11 @@ DAY_7_AT = "2026-01-07 10:00:00.000"
 MINE_UPDATED_AT = "2026-02-01 09:00:00.000"
 
 LINK_ROWS = (
-    "SELECT tenant_id, issue_id, link_type, toString(valid_from) AS valid_from, valid_from_known,"
+    "SELECT insight_tenant_id, issue_id, link_type, toString(valid_from) AS valid_from, valid_from_known,"
     "       if(valid_to IS NULL, NULL, toString(valid_to)) AS valid_to, toString(evidence) AS evidence"
     " FROM staging.jira__task_links FINAL"
     " WHERE insight_source_id = {src:String} AND issue_id = {issue:String}"
-    " ORDER BY tenant_id, link_type, valid_from"
+    " ORDER BY insight_tenant_id, link_type, valid_from"
 )
 
 

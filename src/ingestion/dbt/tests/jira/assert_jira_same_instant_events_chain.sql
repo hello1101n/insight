@@ -27,7 +27,7 @@
 
 WITH kinds AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         field_id,
         field_kind
@@ -38,7 +38,7 @@ WITH kinds AS (
 
 live_items AS (
     SELECT
-        ci.tenant_id                                      AS tenant_id,
+        ci.insight_tenant_id                                      AS insight_tenant_id,
         ci.insight_source_id                              AS insight_source_id,
         assumeNotNull(ci.jira_id)                         AS issue_id,
         ci.field_id                                       AS field_id,
@@ -48,7 +48,7 @@ live_items AS (
                             'ci.value_to', 'ci.value_to_string') }}    AS sides
     FROM {{ ref('jira__changelog_items') }} AS ci
     INNER JOIN kinds AS k
-        ON k.tenant_id = ci.tenant_id
+        ON k.insight_tenant_id = ci.insight_tenant_id
        AND k.insight_source_id = ci.insight_source_id
        AND k.field_id = ci.field_id
     WHERE ci.jira_id IS NOT NULL
@@ -58,7 +58,7 @@ live_items AS (
 
 entry_items AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         field_id,
@@ -66,12 +66,12 @@ entry_items AS (
         event_at,
         {{ jira_entry_items_ordered('groupArray((sides.1, sides.2, sides.3, sides.4))') }} AS items
     FROM live_items
-    GROUP BY tenant_id, insight_source_id, issue_id, field_id, changelog_id, event_at
+    GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id, changelog_id, event_at
 ),
 
 entry_events AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         field_id,
@@ -87,7 +87,7 @@ entry_events AS (
 
 journal_order AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         field_id,
@@ -99,7 +99,7 @@ journal_order AS (
 
 same_instant_steps AS (
     SELECT
-        e.tenant_id                                       AS tenant_id,
+        e.insight_tenant_id                                       AS insight_tenant_id,
         e.insight_source_id                               AS insight_source_id,
         e.issue_id                                        AS issue_id,
         e.field_id                                        AS field_id,
@@ -110,17 +110,17 @@ same_instant_steps AS (
                     ordered_steps, arrayEnumerate(ordered_steps)) AS steps
     FROM entry_events AS e
     INNER JOIN journal_order AS j
-        ON j.tenant_id = e.tenant_id
+        ON j.insight_tenant_id = e.insight_tenant_id
        AND j.insight_source_id = e.insight_source_id
        AND j.issue_id = e.issue_id
        AND j.field_id = e.field_id
        AND j.event_id = e.changelog_id
-    GROUP BY e.tenant_id, e.insight_source_id, e.issue_id, e.field_id, e.event_at
+    GROUP BY e.insight_tenant_id, e.insight_source_id, e.issue_id, e.field_id, e.event_at
     HAVING count() > 1
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     issue_id,
     field_id,

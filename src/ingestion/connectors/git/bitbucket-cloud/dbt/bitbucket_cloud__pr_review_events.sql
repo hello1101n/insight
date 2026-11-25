@@ -11,12 +11,12 @@
 -- earliest-observed pair wins so the pick is stable across syncs.
 WITH account_email AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         account_id,
         argMin(email, (observed_at, email)) AS email
     FROM {{ ref('bitbucket_cloud__account_emails') }}
-    GROUP BY tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, source_id, account_id
 ),
 
 events AS (
@@ -25,7 +25,7 @@ events AS (
     -- duplicates the comments stream without the comment's own id — both
     -- stay out.
     SELECT
-        a.tenant_id AS tenant_id,
+        a.insight_tenant_id AS insight_tenant_id,
         a.source_id AS source_id,
         a.unique_key AS unique_key,
         splitByChar('/', COALESCE(a.repo_full_name, ''))[1] AS project_key,
@@ -45,7 +45,7 @@ events AS (
     UNION ALL
 
     SELECT
-        c.tenant_id AS tenant_id,
+        c.insight_tenant_id AS insight_tenant_id,
         c.source_id AS source_id,
         c.unique_key AS unique_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,
@@ -63,7 +63,7 @@ events AS (
 )
 
 SELECT
-    e.tenant_id AS tenant_id,
+    e.insight_tenant_id AS insight_tenant_id,
     e.source_id AS source_id,
     e.unique_key AS unique_key,
     e.project_key AS project_key,
@@ -85,9 +85,9 @@ FROM events AS e
 -- re-trigger rows already staged; the address catches up when the event's own
 -- bronze row is re-extracted.
 LEFT JOIN account_email AS ae
-    ON ae.tenant_id = e.tenant_id
+    ON ae.insight_tenant_id = e.insight_tenant_id
     AND ae.source_id = e.source_id
     AND ae.account_id = e.actor_account_id
 {% if is_incremental() %}
-WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.tenant_id', 'e.source_id']) }}
+WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.source_id']) }}
 {% endif %}

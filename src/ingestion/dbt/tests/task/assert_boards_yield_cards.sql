@@ -29,29 +29,29 @@
 -- all. A new organization with empty boards satisfies neither of the first two.
 
 WITH boards AS (
-    SELECT DISTINCT tenant_id, source_id
+    SELECT DISTINCT insight_tenant_id, source_id
     FROM {{ source('bronze_github', 'project_fields') }} FINAL
     WHERE COALESCE(project_id, '') != ''
 ),
 
 board_events AS (
-    SELECT DISTINCT tenant_id, source_id
+    SELECT DISTINCT insight_tenant_id, source_id
     FROM {{ source('bronze_github', 'issue_timeline_events') }} FINAL
     WHERE event_type = 'ProjectV2ItemStatusChangedEvent'
 ),
 
 cards AS (
-    SELECT DISTINCT tenant_id, source_id
+    SELECT DISTINCT insight_tenant_id, source_id
     FROM {{ source('bronze_github', 'project_items') }} FINAL
     WHERE COALESCE(item_id, '') != ''
 )
 
 SELECT
-    b.tenant_id  AS tenant_id,
+    b.insight_tenant_id  AS insight_tenant_id,
     b.source_id  AS source_id,
     'boards and board events are collected, cards are not — the sweep returned nothing' AS finding
 FROM boards AS b
 INNER JOIN board_events AS e
-    ON e.tenant_id = b.tenant_id AND e.source_id = b.source_id
+    ON e.insight_tenant_id = b.insight_tenant_id AND e.source_id = b.source_id
 LEFT ANTI JOIN cards AS c
-    ON c.tenant_id = b.tenant_id AND c.source_id = b.source_id
+    ON c.insight_tenant_id = b.insight_tenant_id AND c.source_id = b.source_id

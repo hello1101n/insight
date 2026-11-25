@@ -23,8 +23,8 @@
 -- the alternative is an issue that silently never closes.
 
 SELECT
-    CAST(concat(ifNull(m.tenant_id, ''), ':', m.insight_source_id, ':github:status:', m.value_id) AS Nullable(String)) AS unique_key,
-    ifNull(m.tenant_id, '')                                 AS tenant_id,
+    CAST(concat(ifNull(m.insight_tenant_id, ''), ':', m.insight_source_id, ':github:status:', m.value_id) AS Nullable(String)) AS unique_key,
+    ifNull(m.insight_tenant_id, '')                                 AS insight_tenant_id,
     CAST(m.insight_source_id AS Nullable(String))           AS insight_source_id,
     CAST('github' AS String)                                AS data_source,
     CAST(m.value_id AS Nullable(String))                    AS status_id,
@@ -36,7 +36,7 @@ SELECT
     toUnixTimestamp64Milli(now64(3))                        AS _version
 FROM (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         value_id,
         value_display,
@@ -51,5 +51,5 @@ FROM (
       AND is_deleted = 0
       AND valid_from <= now64(3)
     ORDER BY valid_from DESC, recorded_at DESC
-    LIMIT 1 BY tenant_id, insight_source_id, value_id
+    LIMIT 1 BY insight_tenant_id, insight_source_id, value_id
 ) AS m

@@ -28,7 +28,7 @@
 
 WITH observations AS (
     SELECT
-        {{ tenant_uuid('tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'zoom-guest' AS insight_source_type,
         account_id AS source_account_id,
@@ -42,7 +42,7 @@ WITH observations AS (
     FROM {{ ref('zoom__collab_meeting_activity') }} FINAL
     WHERE account_source_type = 'zoom-guest'
       AND account_id != ''
-    GROUP BY {{ tenant_uuid('tenant_id') }}, insight_source_id, account_id
+    GROUP BY insight_tenant_id, insight_source_id, account_id
     HAVING uniqExact(date) >= 2
        AND value != ''
 )

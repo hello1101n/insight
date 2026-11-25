@@ -23,17 +23,17 @@
 
 WITH first_syncs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         CAST(source_id AS String)                         AS insight_source_id,
         min(_airbyte_extracted_at)                        AS catalogue_first_sync,
         now64(3)                                          AS recorded_at
     FROM {{ source('bronze_jira', 'jira_fields') }}
-    GROUP BY tenant_id, insight_source_id
+    GROUP BY insight_tenant_id, insight_source_id
 )
 
 SELECT
-    concat(ifNull(tenant_id, ''), '-', insight_source_id)             AS unique_key,
-    tenant_id,
+    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id)             AS unique_key,
+    insight_tenant_id,
     insight_source_id,
     catalogue_first_sync,
     recorded_at,

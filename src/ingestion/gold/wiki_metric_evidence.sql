@@ -4,7 +4,7 @@
 -- the analytics runtime resolves through `identity.person_map` while it serves.
 -- An unresolvable row stays and starts counting the moment it resolves.
 SELECT
-    src.tenant_id,
+    src.insight_tenant_id,
     src.source_key,
     src.entity_type,
     {{ normalized_email('src.entity_id') }} AS entity_id,
@@ -29,7 +29,7 @@ FROM (
 WITH
 pages AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         page_id,
         lower(author_email) AS entity_id
@@ -38,7 +38,7 @@ pages AS (
 ),
 page_creations AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         page_id,
         title,
@@ -53,7 +53,7 @@ page_creations AS (
 ),
 activity AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         lower(author_email) AS entity_id,
         day AS metric_date,
         total_edits,
@@ -65,14 +65,14 @@ activity AS (
 ),
 engagement AS (
     SELECT
-        e.tenant_id AS tenant_id,
+        e.insight_tenant_id AS insight_tenant_id,
         p.entity_id AS entity_id,
         e.day AS metric_date,
         e.total_comments AS total_comments,
         CAST([] AS Array(Tuple(key String, value String, label Nullable(String)))) AS no_dimensions
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             source_id,
             page_id,
             day,
@@ -81,7 +81,7 @@ engagement AS (
         WHERE day IS NOT NULL
     ) AS e
     INNER JOIN pages AS p
-        ON e.tenant_id = p.tenant_id
+        ON e.insight_tenant_id = p.insight_tenant_id
        AND e.source_id = p.source_id
        AND e.page_id = p.page_id
 ),
@@ -97,7 +97,7 @@ value_measures AS (
     {{ sum_measure('comments', 'engagement', 'total_comments', 'no_dimensions') }}
 )
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'wiki' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -119,14 +119,14 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM value_measures
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'wiki' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -145,5 +145,5 @@ SELECT
         'title', coalesce(title, '')
     ) AS details
 FROM page_creations
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
 ) AS src

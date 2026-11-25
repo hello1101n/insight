@@ -32,4 +32,4 @@
 SELECT candidate.* FROM (
     {{ union_by_tag('silver:class_git_item_events') }}
 ) AS candidate
-{{ silver_incremental_watermark(['tenant_id', 'source_id', 'data_source']) }}
+{{ silver_incremental_watermark(['insight_tenant_id', 'source_id', 'data_source']) }}

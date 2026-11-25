@@ -250,7 +250,7 @@ def test_a_table_carrying_no_catalogue_record_is_rebuilt_not_patched(scenario: S
     scenario.warehouse.execute(
         "INSERT INTO staging.jira__field_history_derived"
         " SELECT * REPLACE ('4004' AS issue_id,"
-        "        concat(tenant_id, '-', insight_source_id, '-jira-4004-', field_id, '-', event_id) AS unique_key)"
+        "        concat(insight_tenant_id, '-', insight_source_id, '-jira-4004-', field_id, '-', event_id) AS unique_key)"
         " FROM staging.jira__field_history_derived LIMIT 1"
     )
     assert _of_issue(_journal(scenario), "4004"), "the fixture row was not inserted"

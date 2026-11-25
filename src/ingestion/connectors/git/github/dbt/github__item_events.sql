@@ -22,7 +22,7 @@
 -- reports the new state alone.
 WITH pull_request_events AS (
     SELECT
-        e.tenant_id AS tenant_id,
+        e.insight_tenant_id AS insight_tenant_id,
         e.source_id AS source_id,
         e.unique_key AS unique_key,
         e.repo_full_name AS repo_full_name,
@@ -48,7 +48,7 @@ events AS (
     SELECT * FROM pull_request_events
 )
 SELECT
-    ifNull(tenant_id, '') AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,

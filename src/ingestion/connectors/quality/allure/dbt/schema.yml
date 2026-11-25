@@ -30,7 +30,7 @@ models:
   - name: allure__launches
     description: "Allure TestOps launches -> staging, one row per launch"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -51,7 +51,7 @@ models:
   - name: allure__test_results
     description: "Allure TestOps test results -> staging, one row per result, read per launch"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -90,7 +90,7 @@ models:
   - name: allure__test_cases
     description: "Allure TestOps test cases -> staging, one row per test case"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -109,7 +109,7 @@ models:
   - name: allure__test_case_custom_fields
     description: "One row per test case x custom field value, rebuilt from bronze each run so removed values drop out"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -128,7 +128,7 @@ models:
   - name: allure__custom_fields
     description: "Custom fields each configured project defines, including ones no test case uses yet"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -143,7 +143,7 @@ models:
   - name: allure__launch_environment
     description: "Allure TestOps launch environment -> staging, one row per launch and variable value"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -164,7 +164,7 @@ models:
   - name: allure__launch_errors
     description: "Errors Allure TestOps recorded against a launch itself, outside any test result -> staging, one row per error"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -183,7 +183,7 @@ models:
   - name: allure__categories
     description: "Failure categories each synced project uses -> staging, one row per project and category"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -198,7 +198,7 @@ models:
   - name: allure__category_matchers
     description: "Rules that assign a failed result to a failure category by regex on its message or trace -> staging, one row per project and matcher"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -217,7 +217,7 @@ models:
   - name: allure__defects
     description: "Defects triaged in Allure TestOps -> staging, one row per defect, read from the defect detail"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id
@@ -238,7 +238,7 @@ models:
   - name: allure__defect_test_results
     description: "Test results linked to each defect -> staging, one row per defect and result"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         data_tests:
           - not_null
       - name: source_id

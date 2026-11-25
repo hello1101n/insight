@@ -37,7 +37,7 @@
 -- carries the best-effort rows meanwhile.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     field_id,
     field_name,

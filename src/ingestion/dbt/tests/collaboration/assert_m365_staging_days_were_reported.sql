@@ -29,7 +29,7 @@
     {%- endif -%}
 {%- endfor -%}
 {%- if present | length == 0 %}
-SELECT '' AS problem, '' AS feeder, '' AS tenant_id, '' AS insight_source_id, toDate('1970-01-01') AS date
+SELECT '' AS problem, '' AS feeder, '' AS insight_tenant_id, '' AS insight_source_id, toDate('1970-01-01') AS date
 WHERE 0
 {%- else %}
 WITH staged AS (
@@ -37,7 +37,7 @@ WITH staged AS (
     SELECT DISTINCT
         '{{ feeder }}' AS feeder,
         '{{ stream }}' AS stream,
-        ifNull(tenant_id, '') AS tenant_id,
+        ifNull(insight_tenant_id, '') AS insight_tenant_id,
         ifNull(insight_source_id, '') AS insight_source_id,
         date
     FROM {{ staging }}
@@ -50,7 +50,7 @@ reported AS (
     {%- for stream in streams %}
     SELECT
         '{{ stream }}' AS stream,
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         report_day AS date
     FROM ({{ m365_reported_days(stream) }})
@@ -59,10 +59,10 @@ reported AS (
     {%- endif %}
     {%- endfor %}
 )
-SELECT 'carried_forward_copy' AS problem, feeder, tenant_id, insight_source_id, date
+SELECT 'carried_forward_copy' AS problem, feeder, insight_tenant_id, insight_source_id, date
 FROM staged
-WHERE (stream, tenant_id, insight_source_id, date) NOT IN (
-    SELECT stream, tenant_id, insight_source_id, date FROM reported
+WHERE (stream, insight_tenant_id, insight_source_id, date) NOT IN (
+    SELECT stream, insight_tenant_id, insight_source_id, date FROM reported
 )
 {%- for stream in streams %}
 
@@ -71,7 +71,7 @@ UNION ALL
 SELECT DISTINCT
     'unparseable_last_activity' AS problem,
     '{{ stream }}' AS feeder,
-    ifNull(tenant_id, '') AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     ifNull(source_id, '') AS insight_source_id,
     toDate(reportRefreshDate) AS date
 FROM {{ source('bronze_m365', stream) }} FINAL

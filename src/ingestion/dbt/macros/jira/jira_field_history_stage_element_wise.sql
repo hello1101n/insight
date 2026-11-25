@@ -22,7 +22,7 @@ ranked_events AS (
 -- for no benefit.
 snapshot_element_wise AS (
     SELECT
-        s.tenant_id                                       AS tenant_id,
+        s.insight_tenant_id                                       AS insight_tenant_id,
         s.insight_source_id                               AS insight_source_id,
         s.issue_id                                        AS issue_id,
         s.field_id                                        AS field_id,
@@ -30,11 +30,11 @@ snapshot_element_wise AS (
         s.value_displays                                  AS value_displays
     FROM {{ ref('jira__issue_field_snapshot') }} AS s FINAL
     INNER JOIN kinds AS k
-        ON k.tenant_id = s.tenant_id
+        ON k.insight_tenant_id = s.insight_tenant_id
        AND k.insight_source_id = s.insight_source_id
        AND k.field_id = s.field_id
     WHERE k.field_kind IN {{ jira_element_wise_kinds() }}
-      AND {{ jira_journal_in_batch('s.tenant_id', 's.insight_source_id', 's.issue_id') }}
+      AND {{ jira_journal_in_batch('s.insight_tenant_id', 's.insight_source_id', 's.issue_id') }}
 ),
 
 
@@ -69,7 +69,7 @@ snapshot_element_wise AS (
 -- snapshot supplies only the elements no operation ever touched.
 element_wise_items AS (
     SELECT
-        e.tenant_id                                       AS tenant_id,
+        e.insight_tenant_id                                       AS insight_tenant_id,
         e.insight_source_id                               AS insight_source_id,
         e.issue_id                                        AS issue_id,
         e.field_id                                        AS field_id,
@@ -88,7 +88,7 @@ element_wise_items AS (
         -- the numbering is reproducible where the window's order among them was
         -- arbitrary. Items of one entry name distinct elements, so no element's
         -- own order depends on the tiebreak.
-        row_number() OVER (PARTITION BY e.tenant_id, e.insight_source_id, e.issue_id, e.field_id
+        row_number() OVER (PARTITION BY e.insight_tenant_id, e.insight_source_id, e.issue_id, e.field_id
                            ORDER BY e.event_at, e.entry_rank, e.event_ord, e.element.1) AS seq
     FROM ranked_events AS e
     WHERE e.field_kind IN {{ jira_element_wise_kinds() }}
@@ -96,19 +96,19 @@ element_wise_items AS (
 
 element_wise_extent AS (
     SELECT
-        tenant_id                                         AS tenant_id,
+        insight_tenant_id,
         insight_source_id                                 AS insight_source_id,
         issue_id                                          AS issue_id,
         field_id                                          AS field_id,
         max(seq)                                          AS last_seq
     FROM element_wise_items
-    GROUP BY tenant_id, insight_source_id, issue_id, field_id
+    GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id
 ),
 
 -- One row per (issue, field, element), carrying that element's own operations.
 element_wise_element AS (
     SELECT
-        i.tenant_id                                       AS tenant_id,
+        i.insight_tenant_id                                       AS insight_tenant_id,
         i.insight_source_id                               AS insight_source_id,
         i.issue_id                                        AS issue_id,
         i.field_id                                        AS field_id,
@@ -120,7 +120,7 @@ element_wise_element AS (
         arraySort(x -> x.1,
                   groupArray((i.seq, i.delta_action, i.pair)))  AS ops
     FROM element_wise_items AS i
-    GROUP BY i.tenant_id, i.insight_source_id, i.issue_id, i.field_id, i.element_id
+    GROUP BY i.insight_tenant_id, i.insight_source_id, i.issue_id, i.field_id, i.element_id
 ),
 
 -- Whether the element is in the list after each of its operations, and whether
@@ -170,7 +170,7 @@ element_wise_presence AS (
 -- The snapshot's elements, deduplicated by id exactly as the pairs were.
 element_wise_snapshot_pairs AS (
     SELECT
-        s.tenant_id                                       AS tenant_id,
+        s.insight_tenant_id                                       AS insight_tenant_id,
         s.insight_source_id                               AS insight_source_id,
         s.issue_id                                        AS issue_id,
         s.field_id                                        AS field_id,
@@ -178,7 +178,7 @@ element_wise_snapshot_pairs AS (
         s.pair                                            AS pair
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             issue_id,
             field_id,
@@ -191,14 +191,14 @@ element_wise_snapshot_pairs AS (
 -- to the state after every event as well as to the state at creation.
 element_wise_untouched AS (
     SELECT
-        p.tenant_id                                       AS tenant_id,
+        p.insight_tenant_id                                       AS insight_tenant_id,
         p.insight_source_id                               AS insight_source_id,
         p.issue_id                                        AS issue_id,
         p.field_id                                        AS field_id,
         p.pair                                            AS pair
     FROM element_wise_snapshot_pairs AS p
     LEFT ANTI JOIN element_wise_element AS e
-        ON e.tenant_id = p.tenant_id
+        ON e.insight_tenant_id = p.insight_tenant_id
        AND e.insight_source_id = p.insight_source_id
        AND e.issue_id = p.issue_id
        AND e.field_id = p.field_id
@@ -211,7 +211,7 @@ element_wise_untouched AS (
 -- the end of the sequence when none does.
 element_wise_spans AS (
     SELECT
-        e.tenant_id                                       AS tenant_id,
+        e.insight_tenant_id                                       AS insight_tenant_id,
         e.insight_source_id                               AS insight_source_id,
         e.issue_id                                        AS issue_id,
         e.field_id                                        AS field_id,
@@ -229,7 +229,7 @@ element_wise_spans AS (
         ))                                                AS span
     FROM element_wise_presence AS e
     INNER JOIN element_wise_extent AS x
-        ON x.tenant_id = e.tenant_id
+        ON x.insight_tenant_id = e.insight_tenant_id
        AND x.insight_source_id = e.insight_source_id
        AND x.issue_id = e.issue_id
        AND x.field_id = e.field_id
@@ -237,7 +237,7 @@ element_wise_spans AS (
     UNION ALL
 
     SELECT
-        u.tenant_id                                       AS tenant_id,
+        u.insight_tenant_id                                       AS insight_tenant_id,
         u.insight_source_id                               AS insight_source_id,
         u.issue_id                                        AS issue_id,
         u.field_id                                        AS field_id,
@@ -246,7 +246,7 @@ element_wise_spans AS (
         (toUInt64(0), x.last_seq, u.pair)                 AS span
     FROM element_wise_untouched AS u
     INNER JOIN element_wise_extent AS x
-        ON x.tenant_id = u.tenant_id
+        ON x.insight_tenant_id = u.insight_tenant_id
        AND x.insight_source_id = u.insight_source_id
        AND x.issue_id = u.issue_id
        AND x.field_id = u.field_id
@@ -265,7 +265,7 @@ element_wise_spans AS (
 -- contract reads these arrays as a set.
 element_wise_states AS (
     SELECT
-        tenant_id                                         AS tenant_id,
+        insight_tenant_id,
         insight_source_id                                 AS insight_source_id,
         issue_id                                          AS issue_id,
         field_id                                          AS field_id,
@@ -275,7 +275,7 @@ element_wise_states AS (
                            groupArray((span_start, pair)))) AS state_pairs
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             issue_id,
             field_id,
@@ -285,12 +285,12 @@ element_wise_states AS (
             span.3                                        AS pair
         FROM element_wise_spans
     )
-    GROUP BY tenant_id, insight_source_id, issue_id, field_id, seq
+    GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id, seq
 ),
 
 element_wise_initial AS (
     SELECT
-        tenant_id                                         AS tenant_id,
+        insight_tenant_id,
         insight_source_id                                 AS insight_source_id,
         issue_id                                          AS issue_id,
         field_id                                          AS field_id,
@@ -302,7 +302,7 @@ element_wise_initial AS (
         -- event, an element whose first operation removed it was there too but
         -- is named by that operation.
         SELECT
-            tenant_id, insight_source_id, issue_id, field_id,
+            insight_tenant_id, insight_source_id, issue_id, field_id,
             toUInt8(1)                                    AS entered,
             first_pair                                    AS pair
         FROM element_wise_presence
@@ -310,10 +310,10 @@ element_wise_initial AS (
 
         UNION ALL
 
-        SELECT tenant_id, insight_source_id, issue_id, field_id, toUInt8(0) AS entered, pair
+        SELECT insight_tenant_id, insight_source_id, issue_id, field_id, toUInt8(0) AS entered, pair
         FROM element_wise_untouched
     )
-    GROUP BY tenant_id, insight_source_id, issue_id, field_id
+    GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id
 ),
 
 -- One row per operation again, with the state that operation produced.
@@ -321,7 +321,7 @@ element_wise_initial AS (
 -- rows use to pick the state after the last item of an entry.
 element_wise_state AS (
     SELECT
-        i.tenant_id                                       AS tenant_id,
+        i.insight_tenant_id                                       AS insight_tenant_id,
         i.insight_source_id                               AS insight_source_id,
         i.issue_id                                        AS issue_id,
         i.field_id                                        AS field_id,
@@ -337,13 +337,13 @@ element_wise_state AS (
         i.seq                                             AS ops_seq
     FROM element_wise_items AS i
     LEFT JOIN element_wise_states AS st
-        ON st.tenant_id = i.tenant_id
+        ON st.insight_tenant_id = i.insight_tenant_id
        AND st.insight_source_id = i.insight_source_id
        AND st.issue_id = i.issue_id
        AND st.field_id = i.field_id
        AND st.seq = i.seq
     LEFT JOIN element_wise_initial AS ini
-        ON ini.tenant_id = i.tenant_id
+        ON ini.insight_tenant_id = i.insight_tenant_id
        AND ini.insight_source_id = i.insight_source_id
        AND ini.issue_id = i.issue_id
        AND ini.field_id = i.field_id

@@ -91,7 +91,7 @@ LIMIT 1 BY {{ cte }}.unique_key
 -#}
     {% for tbl in ['deal_pipelines', 'ticket_pipelines'] %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         objectType                                      AS object_type,
         id                                              AS pipeline_id,
@@ -103,7 +103,7 @@ LIMIT 1 BY {{ cte }}.unique_key
         updatedAt,
         data_source,
         _airbyte_extracted_at,
-        max(_airbyte_extracted_at) OVER (PARTITION BY tenant_id, source_id, objectType) AS polled_at
+        max(_airbyte_extracted_at) OVER (PARTITION BY insight_tenant_id, source_id, objectType) AS polled_at
     FROM {{ source('bronze_hubspot', tbl) }} FINAL
     {% if not loop.last %}UNION ALL{% endif %}
     {% endfor %}

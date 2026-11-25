@@ -1,6 +1,6 @@
 """A Jira row without the source or issue id its stream requires stops the transform.
 
-Every Jira stream declares `tenant_id` and `source_id` required, and the
+Every Jira stream declares `insight_tenant_id` and `source_id` required, and the
 issue-level streams `jira_id`; bronze still holds them as `Nullable(String)`.
 The models read the source and issue id through `CAST(... AS String)`, so a NULL
 fails the run instead of becoming an empty source or issue. A missing tenant

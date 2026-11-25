@@ -22,7 +22,7 @@
 -- (type, source, resolution) dimension tuples while the invariant is per
 -- entity-date.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -36,5 +36,5 @@ SELECT
     sumIf(ifNull(value, 0), measure_key = 'tasks_closed') AS tasks_closed
 FROM {{ ref('task_metric_observations') }}
 WHERE measure_key IN ('closed_fixed', 'closed_duplicate', 'closed_wontfix', 'tasks_closed')
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date
 HAVING closed_fixed + closed_duplicate + closed_wontfix > tasks_closed

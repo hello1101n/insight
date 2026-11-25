@@ -6,7 +6,7 @@
 -- per-closed-issue by design — many rows per (entity, day) feed the query-time
 -- median — so they are exempt from the uniqueness grain.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     entity_id,
     account_source_type,
     account_source_id,
@@ -18,5 +18,5 @@ SELECT
     count() AS row_count
 FROM {{ ref('task_metric_observations') }}
 WHERE measure_key NOT IN ('resolution_days', 'pickup_days')
-GROUP BY tenant_id, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions, subject_key
+GROUP BY insight_tenant_id, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions, subject_key
 HAVING count() > 1

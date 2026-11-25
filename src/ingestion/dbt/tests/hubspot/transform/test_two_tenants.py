@@ -112,7 +112,7 @@ def _seed(case: Warehouse) -> None:
 def _by_tenant(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
     found: dict[str, dict[str, object]] = {}
     for row in rows:
-        tenant = str(row.pop("tenant_id"))
+        tenant = str(row.pop("insight_tenant_id"))
         assert tenant not in found, f"{tenant} has more than one row: {rows}"
         found[tenant] = row
     return found
@@ -124,7 +124,7 @@ def test_each_tenant_reads_its_own_stage_merge_and_custom_properties(case: Wareh
 
     found = _by_tenant(
         case.rows(
-            "SELECT tenant_id, unique_key, status, availability, merged_into_id, custom_attrs"
+            "SELECT insight_tenant_id, unique_key, status, availability, merged_into_id, custom_attrs"
             f" FROM staging.hubspot__support_tickets FINAL WHERE insight_source_id = '{SOURCE}' AND ticket_id = '1'"
         )
     )
@@ -153,11 +153,11 @@ def test_each_tenant_orders_and_attributes_its_own_ticket_history(case: Warehous
 
     history: dict[str, list[tuple[object, ...]]] = {}
     for row in case.rows(
-        "SELECT tenant_id, event_order, field_id, value, actor_id"
+        "SELECT insight_tenant_id, event_order, field_id, value, actor_id"
         " FROM staging.hubspot__support_ticket_field_history FINAL"
-        f" WHERE insight_source_id = '{SOURCE}' AND ticket_id = '1' ORDER BY tenant_id, event_order"
+        f" WHERE insight_source_id = '{SOURCE}' AND ticket_id = '1' ORDER BY insight_tenant_id, event_order"
     ):
-        history.setdefault(str(row["tenant_id"]), []).append(
+        history.setdefault(str(row["insight_tenant_id"]), []).append(
             (row["event_order"], row["field_id"], row["value"], row["actor_id"])
         )
 
@@ -176,11 +176,11 @@ def test_a_contact_is_a_customer_only_where_a_ticket_names_it(case: Warehouse) -
     case.build("+hubspot__support_customers")
 
     found = case.rows(
-        "SELECT tenant_id, unique_key FROM staging.hubspot__support_customers FINAL"
+        "SELECT insight_tenant_id, unique_key FROM staging.hubspot__support_customers FINAL"
         f" WHERE insight_source_id = '{SOURCE}' AND customer_id = 'c1'"
     )
 
-    assert found == [{"tenant_id": TENANT, "unique_key": f"{TENANT}-{SOURCE}-user-c1"}], found
+    assert found == [{"insight_tenant_id": TENANT, "unique_key": f"{TENANT}-{SOURCE}-user-c1"}], found
 
 
 CLASSES = {
@@ -197,8 +197,10 @@ def test_the_support_classes_keep_one_row_per_tenant(case: Warehouse) -> None:
 
     for name, (where, expected) in CLASSES.items():
         rows = case.rows(
-            f"SELECT tenant_id, unique_key FROM silver.{name} FINAL"
-            f" WHERE data_source = 'hubspot' AND insight_source_id = '{SOURCE}' AND {where} ORDER BY tenant_id"
+            f"SELECT insight_tenant_id, unique_key FROM silver.{name} FINAL"
+            f" WHERE data_source = 'hubspot' AND insight_source_id = '{SOURCE}' AND {where} ORDER BY insight_tenant_id"
         )
-        assert [r["tenant_id"] for r in rows] == expected, f"{name}: {rows}"
-        assert all(str(r["unique_key"]).startswith(f"{r['tenant_id']}-{SOURCE}-") for r in rows), f"{name}: {rows}"
+        assert [r["insight_tenant_id"] for r in rows] == expected, f"{name}: {rows}"
+        assert all(str(r["unique_key"]).startswith(f"{r['insight_tenant_id']}-{SOURCE}-") for r in rows), (
+            f"{name}: {rows}"
+        )

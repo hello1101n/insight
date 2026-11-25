@@ -16,7 +16,7 @@
 -- Snapshot that preserved duplicates.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     data_source,
     issue_id,

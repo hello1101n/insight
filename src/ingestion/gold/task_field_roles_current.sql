@@ -27,7 +27,7 @@
 WITH
 observed_sources AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source
     FROM {{ ref('class_task_field_history') }}
@@ -38,7 +38,7 @@ observed_sources AS (
 -- rather than asked of every deployment. Time is already seconds.
 vendor_defaults AS (
     SELECT
-        s.tenant_id                             AS tenant_id,
+        s.insight_tenant_id                             AS insight_tenant_id,
         s.insight_source_id                     AS insight_source_id,
         s.data_source                           AS data_source,
         d.1                                     AS field_id,
@@ -60,7 +60,7 @@ vendor_defaults AS (
     UNION ALL
 
     SELECT
-        s.tenant_id                             AS tenant_id,
+        s.insight_tenant_id                             AS insight_tenant_id,
         s.insight_source_id                     AS insight_source_id,
         s.data_source                           AS data_source,
         if(s.data_source = 'youtrack', 'summary', 'title') AS field_id,
@@ -74,7 +74,7 @@ vendor_defaults AS (
 -- row — filter `is_deleted` after the LIMIT 1 BY pick, never before.
 authored AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source,
         field_id,
@@ -84,7 +84,7 @@ authored AS (
         unit_multiplier
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             data_source,
             field_id,
@@ -96,14 +96,14 @@ authored AS (
         FROM {{ source('config', 'task_field_roles') }} FINAL
         WHERE valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id, data_source, field_id
+        LIMIT 1 BY insight_tenant_id, insight_source_id, data_source, field_id
     )
     WHERE is_deleted = 0
 ),
 
 every_binding AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source,
         field_id,
@@ -116,7 +116,7 @@ every_binding AS (
     UNION ALL
 
     SELECT
-        d.tenant_id,
+        d.insight_tenant_id,
         d.insight_source_id,
         d.data_source,
         d.field_id,
@@ -126,7 +126,7 @@ every_binding AS (
         toFloat64(1)                 AS unit_multiplier
     FROM vendor_defaults AS d
     LEFT ANTI JOIN authored AS a
-        ON a.tenant_id = d.tenant_id
+        ON a.insight_tenant_id = d.insight_tenant_id
         AND a.insight_source_id = d.insight_source_id
         AND a.data_source = d.data_source
         AND a.field_id = d.field_id

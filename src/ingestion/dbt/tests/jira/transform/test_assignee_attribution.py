@@ -34,7 +34,7 @@ def history_row(issue: str, field_id: str, value: str | None, seq: int, tenant: 
     at = "2026-02-02 09:00:00"
     return {
         "unique_key": f"{tenant}-{issue}-{field_id}-{seq}",
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "issue_id": issue,
@@ -63,7 +63,7 @@ def issue_assigned_to(issue: str, account: str | None, tenant: str = TENANT) -> 
 def user(account: str, email: str | None, tenant: str = TENANT) -> dict[str, Any]:
     return {
         "unique_key": f"{tenant}-{SOURCE}-{account}",
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "user_id": account,
@@ -105,7 +105,7 @@ def attribution(warehouse: Warehouse) -> dict[str, dict[str, Any]]:
     warehouse.dbt("run", "--select", "task_field_roles_current", "task_issue_state", "--full-refresh")
     rows = warehouse.rows(
         """
-        SELECT issue_id, tenant_id, entity_id, account_source_type, account_source_id, account_id
+        SELECT issue_id, insight_tenant_id, entity_id, account_source_type, account_source_id, account_id
         FROM insight.task_issue_state
         WHERE insight_source_id = {src:String}
         """,
@@ -123,7 +123,7 @@ def test_an_assigned_issue_keeps_its_row_under_the_account(
 ) -> None:
     row = attribution.get(issue)
     assert row is not None, f"should keep a row: {issue}"
-    assert (row["tenant_id"], row["entity_id"]) == (TENANT, entity_id), f"attribution of {issue}: {row}"
+    assert (row["insight_tenant_id"], row["entity_id"]) == (TENANT, entity_id), f"attribution of {issue}: {row}"
     assert (row["account_source_type"], row["account_source_id"], row["account_id"]) == ("jira", SOURCE, account_id), (
         f"account key of {issue}: {row}"
     )
@@ -132,7 +132,9 @@ def test_an_assigned_issue_keeps_its_row_under_the_account(
 def test_an_unassigned_issue_keeps_a_row_that_names_nobody(attribution: dict[str, dict[str, Any]]) -> None:
     row = attribution.get("ATR-4")
     assert row is not None, "should keep a row: ATR-4"
-    assert (row["tenant_id"], row["entity_id"], row["account_id"]) == (TENANT, "", ""), f"attribution of ATR-4: {row}"
+    assert (row["insight_tenant_id"], row["entity_id"], row["account_id"]) == (TENANT, "", ""), (
+        f"attribution of ATR-4: {row}"
+    )
     assert (row["account_source_type"], row["account_source_id"]) == ("jira", SOURCE), f"source of ATR-4: {row}"
 
 
@@ -145,4 +147,4 @@ def test_an_account_reads_the_directory_of_its_own_tenant_only(
 ) -> None:
     row = attribution.get(issue)
     assert row is not None, f"should keep a row: {issue}"
-    assert (row["tenant_id"], row["entity_id"]) == (tenant, entity_id), f"attribution of {issue}: {row}"
+    assert (row["insight_tenant_id"], row["entity_id"]) == (tenant, entity_id), f"attribution of {issue}: {row}"

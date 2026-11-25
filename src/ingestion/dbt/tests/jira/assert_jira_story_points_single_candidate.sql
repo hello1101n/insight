@@ -21,23 +21,23 @@
 -- expects one, and the coalescing needs to come back.
 
 WITH candidates AS (
-    SELECT DISTINCT tenant_id, insight_source_id, field_id
+    SELECT DISTINCT insight_tenant_id, insight_source_id, field_id
     FROM {{ ref('jira__task_field_kind') }}
     WHERE schema_custom = 'com.pyxis.greenhopper.jira:jsw-story-points'
        OR lowerUTF8(field_name) IN ('story points', 'story point estimate')
 )
 
 SELECT
-    s.tenant_id,
+    s.insight_tenant_id,
     s.insight_source_id,
     s.issue_id,
     s.id_readable,
     groupArray(s.field_id) AS candidate_fields_with_values
 FROM {{ ref('jira__issue_field_snapshot') }} AS s FINAL
 INNER JOIN candidates AS c
-    ON c.tenant_id = s.tenant_id
+    ON c.insight_tenant_id = s.insight_tenant_id
    AND c.insight_source_id = s.insight_source_id
    AND c.field_id = s.field_id
 WHERE length(s.value_ids) > 0
-GROUP BY s.tenant_id, s.insight_source_id, s.issue_id, s.id_readable
+GROUP BY s.insight_tenant_id, s.insight_source_id, s.issue_id, s.id_readable
 HAVING count() > 1

@@ -15,7 +15,7 @@
 -- does not match its kind is visible rather than absorbed.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     field_id,
     any(field_kind)                                       AS field_kind,
@@ -23,14 +23,14 @@ SELECT
     groupArray(10)(changelog_id)                          AS sample_changelog_ids
 FROM (
     SELECT
-        ci.tenant_id                                      AS tenant_id,
+        ci.insight_tenant_id                                      AS insight_tenant_id,
         ci.insight_source_id                              AS insight_source_id,
         ci.changelog_id                                   AS changelog_id,
         ci.field_id                                       AS field_id,
         any(k.field_kind)                                 AS field_kind
     FROM {{ ref('jira__changelog_items') }} AS ci FINAL
     INNER JOIN {{ ref('jira__task_field_kind') }} AS k
-        ON k.tenant_id = ci.tenant_id
+        ON k.insight_tenant_id = ci.insight_tenant_id
        AND k.insight_source_id = ci.insight_source_id
        AND k.field_id = ci.field_id
     WHERE ci.jira_id IS NOT NULL
@@ -39,7 +39,7 @@ FROM (
       AND k.field_kind NOT IN {{ jira_element_wise_kinds() }}
       AND {{ jira_item_is_live('k.field_kind', 'ci.value_from', 'ci.value_from_string',
                                'ci.value_to', 'ci.value_to_string') }}
-    GROUP BY ci.tenant_id, ci.insight_source_id, ci.changelog_id, ci.field_id
+    GROUP BY ci.insight_tenant_id, ci.insight_source_id, ci.changelog_id, ci.field_id
     HAVING count() > 1
 )
-GROUP BY tenant_id, insight_source_id, field_id
+GROUP BY insight_tenant_id, insight_source_id, field_id

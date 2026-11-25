@@ -1,6 +1,6 @@
 """A bronze row without a tenant builds, and the tenant tests on its models report it.
 
-A key reads the tenant through `ifNull(tenant_id, '')`, so a missing one never makes
+A key reads the tenant through `ifNull(insight_tenant_id, '')`, so a missing one never makes
 a key Nullable; `not_null` and `not_empty` on each model's tenant are the guard.
 """
 
@@ -11,7 +11,7 @@ from conftest import SOURCE, TENANT, Warehouse
 
 
 def tenant_tests(model: str) -> tuple[str, str]:
-    return f"not_null_{model}_tenant_id", f"not_empty_{model}_tenant_id"
+    return f"not_null_{model}_insight_tenant_id", f"not_empty_{model}_insight_tenant_id"
 
 
 LINK_EVENT = {
@@ -53,11 +53,11 @@ CASES: dict[str, tuple[str, dict[str, object]]] = {
 
 
 REPORTED_BY: dict[str, tuple[str, str]] = {
-    "github__item_events": ("github__item_events", "not_empty_github__item_events_tenant_id"),
-    "+github__task_links": ("github__issue_link_events", "not_null_github__issue_link_events_tenant_id"),
+    "github__item_events": ("github__item_events", "not_empty_github__item_events_insight_tenant_id"),
+    "+github__task_links": ("github__issue_link_events", "not_null_github__issue_link_events_insight_tenant_id"),
     "+github__unowned_commit_emails": (
         "github__unowned_commit_emails",
-        "not_null_github__unowned_commit_emails_tenant_id",
+        "not_null_github__unowned_commit_emails_insight_tenant_id",
     ),
 }
 

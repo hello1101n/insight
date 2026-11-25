@@ -132,7 +132,7 @@ identity_field_events AS (
     {% for f in identity_fields %}
     SELECT DISTINCT
         CAST(concat(
-            coalesce(tenant_id, ''), '-',
+            coalesce(insight_tenant_id, ''), '-',
             coalesce(source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(entity_id, ''), '-',
@@ -140,7 +140,7 @@ identity_field_events AS (
             if(new_value = '', 'DELETE-', 'UPSERT-'),
             toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         entity_id AS source_account_id,
@@ -179,7 +179,7 @@ upserts AS (
 -- DELETE: account deactivation detected — emit DELETE for all identity fields
 account_deactivation_events AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         entity_id,
         updated_at
@@ -195,7 +195,7 @@ account_deactivation_events AS (
 {% if roster_membership_kind != 'none' %}
 roster_inactivation_events AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         entity_id,
         updated_at
@@ -211,7 +211,7 @@ roster_inactivation_events AS (
 roster_membership_upserts AS (
     SELECT DISTINCT
         CAST(concat(
-            coalesce(h.tenant_id, ''), '-',
+            coalesce(h.insight_tenant_id, ''), '-',
             coalesce(h.source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(h.entity_id, ''), '-',
@@ -219,7 +219,7 @@ roster_membership_upserts AS (
             'UPSERT-',
             toString(toUnixTimestamp64Milli(toDateTime64(h.updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('h.tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('h.insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(h.source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         h.entity_id AS source_account_id,
@@ -231,7 +231,7 @@ roster_membership_upserts AS (
         toUnixTimestamp64Milli(toDateTime64(h.updated_at, 3)) AS _version
     FROM history h
     LEFT ANTI JOIN roster_inactivation_events d
-        ON  d.tenant_id  = h.tenant_id
+        ON  d.insight_tenant_id  = h.insight_tenant_id
         AND d.source_id  = h.source_id
         AND d.entity_id  = h.entity_id
         AND d.updated_at = h.updated_at
@@ -242,7 +242,7 @@ roster_membership_upserts AS (
 roster_membership_deletes AS (
     SELECT DISTINCT
         CAST(concat(
-            coalesce(d.tenant_id, ''), '-',
+            coalesce(d.insight_tenant_id, ''), '-',
             coalesce(d.source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
@@ -250,7 +250,7 @@ roster_membership_deletes AS (
             'DELETE-',
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('d.tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,
@@ -289,7 +289,7 @@ deletes AS (
     {% for f in identity_fields %}
     SELECT
         CAST(concat(
-            coalesce(d.tenant_id, ''), '-',
+            coalesce(d.insight_tenant_id, ''), '-',
             coalesce(d.source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
@@ -297,7 +297,7 @@ deletes AS (
             'DELETE-',
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('d.tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,
@@ -322,7 +322,7 @@ deletes AS (
 id_upserts AS (
     SELECT DISTINCT
         CAST(concat(
-            coalesce(tenant_id, ''), '-',
+            coalesce(insight_tenant_id, ''), '-',
             coalesce(source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(entity_id, ''), '-',
@@ -330,7 +330,7 @@ id_upserts AS (
             'UPSERT-',
             toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         entity_id AS source_account_id,
@@ -348,7 +348,7 @@ id_upserts AS (
 id_deletes AS (
     SELECT DISTINCT
         CAST(concat(
-            coalesce(d.tenant_id, ''), '-',
+            coalesce(d.insight_tenant_id, ''), '-',
             coalesce(d.source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
@@ -356,7 +356,7 @@ id_deletes AS (
             'DELETE-',
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
-        {{ tenant_uuid('d.tenant_id') }} AS insight_tenant_id,
+        {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
         toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,

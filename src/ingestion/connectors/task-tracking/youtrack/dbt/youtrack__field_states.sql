@@ -14,22 +14,22 @@ WITH events AS (
     SELECT a.*, r.entry_rank,
         {{ task_event_order('a.event_at', '1', 'r.entry_rank') }} AS event_order
     FROM {{ ref('youtrack__activities') }} AS a
-    INNER JOIN {{ ref('youtrack__activity_order') }} AS r USING (tenant_id, insight_source_id, issue_id, event_id)
+    INNER JOIN {{ ref('youtrack__activity_order') }} AS r USING (insight_tenant_id, insight_source_id, issue_id, event_id)
 ), grouped AS (
-    SELECT tenant_id, insight_source_id, issue_id, field_id,
+    SELECT insight_tenant_id, insight_source_id, issue_id, field_id,
         arraySort(e -> e.1, groupArray((event_order, event_id, before_pairs, after_pairs, field_cardinality))) AS events
-    FROM events GROUP BY tenant_id, insight_source_id, issue_id, field_id
+    FROM events GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id
 ), latest AS (
-    SELECT tenant_id, insight_source_id, issue_id, field_id, argMax(pairs, observed_at) AS pairs
+    SELECT insight_tenant_id, insight_source_id, issue_id, field_id, argMax(pairs, observed_at) AS pairs
     FROM {{ ref('youtrack__issue_field_snapshot') }}
-    WHERE (tenant_id, insight_source_id, issue_id, field_id) IN (
-        SELECT tenant_id, insight_source_id, issue_id, field_id FROM {{ ref('youtrack__activities') }})
-    GROUP BY tenant_id, insight_source_id, issue_id, field_id
+    WHERE (insight_tenant_id, insight_source_id, issue_id, field_id) IN (
+        SELECT insight_tenant_id, insight_source_id, issue_id, field_id FROM {{ ref('youtrack__activities') }})
+    GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id
 ), candidates AS (
     SELECT g.*, s.pairs AS snapshot_pairs,
         arrayDistinct(arrayMap(p -> p.1, arrayFlatten(arrayMap(e -> arrayConcat(e.3, e.4), events)))) AS touched_ids
     FROM grouped AS g
-    LEFT JOIN latest AS s USING (tenant_id, insight_source_id, issue_id, field_id)
+    LEFT JOIN latest AS s USING (insight_tenant_id, insight_source_id, issue_id, field_id)
 ), initial AS (
     -- A single-valued field starts from what its first change replaced. The
     -- id-merge below is for sets: applied to a single value it keeps the old
@@ -48,8 +48,8 @@ WITH events AS (
         events, [initial_pairs]) AS states
     FROM initial
 )
-SELECT concat(ifNull(tenant_id, ''), '-', insight_source_id, '-youtrack-', issue_id, '-', field_id, '-', event_id) AS unique_key,
-    tenant_id, insight_source_id, issue_id, field_id, event_id, pairs,
+SELECT concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-youtrack-', issue_id, '-', field_id, '-', event_id) AS unique_key,
+    insight_tenant_id, insight_source_id, issue_id, field_id, event_id, pairs,
     toUInt64(toUnixTimestamp64Milli(now64(3))) AS _version
 -- INVARIANT: no lambda here may capture events or states; a captured array is copied per element.
 FROM replay ARRAY JOIN

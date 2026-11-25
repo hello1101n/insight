@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'entity_id', 'metric_date'],
+    order_by=['insight_tenant_id', 'entity_id', 'metric_date'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -22,7 +22,7 @@ WITH review_person_map AS (
 )
 
 SELECT
-    events.tenant_id AS tenant_id,
+    events.insight_tenant_id AS insight_tenant_id,
     events.source_id AS source_id,
     events.event_kind AS event_kind,
     events.unique_key AS event_key,
@@ -72,16 +72,16 @@ SELECT
     ) AS Array(Tuple(key String, value String, label Nullable(String)))) AS source_dimensions
 FROM {{ ref('class_git_pr_review_events') }} AS events FINAL
 LEFT JOIN {{ ref('class_git_pull_requests') }} AS prs FINAL
-    ON prs.tenant_id = events.tenant_id
+    ON prs.insight_tenant_id = events.insight_tenant_id
     AND prs.source_id = events.source_id
     AND prs.project_key = events.project_key
     AND prs.repo_slug = events.repo_slug
     AND prs.pr_id = events.pr_id
 LEFT JOIN review_person_map AS actor_map
-    ON actor_map.tenant_id = toString(events.tenant_id)
+    ON actor_map.insight_tenant_id = toString(events.insight_tenant_id)
    AND actor_map.email = lower(trimBoth(events.actor_email))
 LEFT JOIN review_person_map AS author_map
-    ON author_map.tenant_id = toString(events.tenant_id)
+    ON author_map.insight_tenant_id = toString(events.insight_tenant_id)
    AND author_map.email = lower(trimBoth(coalesce(prs.author_email, '')))
 WHERE trimBoth(events.actor_email) != ''
   AND events.created_at IS NOT NULL

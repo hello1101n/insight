@@ -36,7 +36,7 @@ def _issue(
     case.insert(
         "youtrack_issues",
         {
-            "tenant_id": tenant,
+            "insight_tenant_id": tenant,
             "id": "issue-1",
             "idReadable": "EX-1",
             "created": 1767225600000,
@@ -54,7 +54,7 @@ def _activity(case: Warehouse, tenant: str, event_id: str, value_id: str, at: in
     case.insert(
         "youtrack_activities",
         {
-            "tenant_id": tenant,
+            "insight_tenant_id": tenant,
             "id": event_id,
             "unique_key": f"{tenant}-{SOURCE}-{event_id}",
             "_type": "CustomFieldActivityItem",
@@ -73,7 +73,7 @@ def _field_type(case: Warehouse, tenant: str, field_type: str, observed: str) ->
     case.insert(
         "youtrack_custom_fields",
         {
-            "tenant_id": tenant,
+            "insight_tenant_id": tenant,
             "id": "field-1",
             "unique_key": f"{tenant}-{SOURCE}-field-1",
             "name": "Synthetic field",
@@ -122,7 +122,7 @@ def _seed_field_types(case: Warehouse) -> None:
 
 
 def _per_tenant(case: Warehouse, sql: str) -> dict[str, str]:
-    return {str(row["tenant_id"]): str(row["value"]) for row in case.rows(sql)}
+    return {str(row["insight_tenant_id"]): str(row["value"]) for row in case.rows(sql)}
 
 
 def test_each_tenant_keeps_its_own_activity(case: Warehouse) -> None:
@@ -130,7 +130,7 @@ def test_each_tenant_keeps_its_own_activity(case: Warehouse) -> None:
 
     found = _per_tenant(
         case,
-        "SELECT tenant_id, toString(after_pairs) AS value FROM staging.youtrack__activities"
+        "SELECT insight_tenant_id, toString(after_pairs) AS value FROM staging.youtrack__activities"
         f" WHERE insight_source_id = '{SOURCE}' AND event_id = 'activity-1'",
     )
 
@@ -144,7 +144,7 @@ def test_each_tenant_snapshots_its_own_issue(case: Warehouse) -> None:
 
     found = _per_tenant(
         case,
-        "SELECT tenant_id, toString(pairs) AS value FROM staging.youtrack__issue_field_snapshot"
+        "SELECT insight_tenant_id, toString(pairs) AS value FROM staging.youtrack__issue_field_snapshot"
         f" WHERE insight_source_id = '{SOURCE}' AND issue_id = 'issue-1' AND field_id = 'field-1'",
     )
 
@@ -157,31 +157,31 @@ def test_each_tenant_derives_its_own_field_states(case: Warehouse) -> None:
 
     states = list(
         case.rows(
-            "SELECT tenant_id, toString(pairs) AS value FROM staging.youtrack__field_states"
-            f" WHERE insight_source_id = '{SOURCE}' AND issue_id = 'issue-1' ORDER BY tenant_id"
+            "SELECT insight_tenant_id, toString(pairs) AS value FROM staging.youtrack__field_states"
+            f" WHERE insight_source_id = '{SOURCE}' AND issue_id = 'issue-1' ORDER BY insight_tenant_id"
         )
     )
 
-    tenants = {str(row["tenant_id"]) for row in states}
+    tenants = {str(row["insight_tenant_id"]) for row in states}
     assert tenants == {TENANT, OTHER_TENANT}, states
     for row in states:
-        foreign = "theirs" if row["tenant_id"] == TENANT else "mine"
-        assert foreign not in str(row["value"]), f"{row['tenant_id']} reads the other tenant's value: {row}"
+        foreign = "theirs" if row["insight_tenant_id"] == TENANT else "mine"
+        assert foreign not in str(row["value"]), f"{row['insight_tenant_id']} reads the other tenant's value: {row}"
 
 
 def test_each_tenant_types_its_events_by_its_own_field_types(case: Warehouse) -> None:
     _seed_field_types(case)
 
     found = case.rows(
-        "SELECT tenant_id, event_id, field_cardinality FROM staging.youtrack__activities"
-        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY tenant_id, event_id"
+        "SELECT insight_tenant_id, event_id, field_cardinality FROM staging.youtrack__activities"
+        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY insight_tenant_id, event_id"
     )
 
     assert list(found) == [
-        {"tenant_id": OTHER_TENANT, "event_id": "after-every-type", "field_cardinality": "multi"},
-        {"tenant_id": OTHER_TENANT, "event_id": "before-any-type", "field_cardinality": "multi"},
-        {"tenant_id": TENANT, "event_id": "after-every-type", "field_cardinality": "single"},
-        {"tenant_id": TENANT, "event_id": "before-any-type", "field_cardinality": "single"},
+        {"insight_tenant_id": OTHER_TENANT, "event_id": "after-every-type", "field_cardinality": "multi"},
+        {"insight_tenant_id": OTHER_TENANT, "event_id": "before-any-type", "field_cardinality": "multi"},
+        {"insight_tenant_id": TENANT, "event_id": "after-every-type", "field_cardinality": "single"},
+        {"insight_tenant_id": TENANT, "event_id": "before-any-type", "field_cardinality": "single"},
     ]
 
 
@@ -189,16 +189,16 @@ def test_each_tenant_types_its_snapshots_by_its_own_field_types(case: Warehouse)
     _seed_field_types(case)
 
     found = case.rows(
-        "SELECT tenant_id, toString(observed_at) AS observed_at, field_cardinality"
+        "SELECT insight_tenant_id, toString(observed_at) AS observed_at, field_cardinality"
         " FROM staging.youtrack__issue_field_snapshot"
-        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY tenant_id, observed_at"
+        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY insight_tenant_id, observed_at"
     )
 
     assert list(found) == [
-        {"tenant_id": OTHER_TENANT, "observed_at": "2026-01-05 00:00:00.000", "field_cardinality": "multi"},
-        {"tenant_id": OTHER_TENANT, "observed_at": "2026-01-12 00:00:00.000", "field_cardinality": "multi"},
-        {"tenant_id": TENANT, "observed_at": "2026-01-05 00:00:00.000", "field_cardinality": "single"},
-        {"tenant_id": TENANT, "observed_at": "2026-01-12 00:00:00.000", "field_cardinality": "single"},
+        {"insight_tenant_id": OTHER_TENANT, "observed_at": "2026-01-05 00:00:00.000", "field_cardinality": "multi"},
+        {"insight_tenant_id": OTHER_TENANT, "observed_at": "2026-01-12 00:00:00.000", "field_cardinality": "multi"},
+        {"insight_tenant_id": TENANT, "observed_at": "2026-01-05 00:00:00.000", "field_cardinality": "single"},
+        {"insight_tenant_id": TENANT, "observed_at": "2026-01-12 00:00:00.000", "field_cardinality": "single"},
     ]
 
 
@@ -206,13 +206,13 @@ def test_each_tenant_keeps_its_own_field_type_history(case: Warehouse) -> None:
     _seed_field_types(case)
 
     found = case.rows(
-        "SELECT tenant_id, observed_cardinality, previously_observed_type FROM staging.youtrack__field_type_history"
-        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY tenant_id"
+        "SELECT insight_tenant_id, observed_cardinality, previously_observed_type FROM staging.youtrack__field_type_history"
+        f" WHERE insight_source_id = '{SOURCE}' AND field_id = 'field-1' ORDER BY insight_tenant_id"
     )
 
     assert list(found) == [
-        {"tenant_id": OTHER_TENANT, "observed_cardinality": "multi", "previously_observed_type": None},
-        {"tenant_id": TENANT, "observed_cardinality": "single", "previously_observed_type": None},
+        {"insight_tenant_id": OTHER_TENANT, "observed_cardinality": "multi", "previously_observed_type": None},
+        {"insight_tenant_id": TENANT, "observed_cardinality": "single", "previously_observed_type": None},
     ]
 
 
@@ -241,14 +241,14 @@ def test_a_field_is_long_text_only_for_the_tenant_that_types_it_so(case: Warehou
     _seed_long_text_type_for_one_tenant(case)
 
     found = case.rows(
-        "SELECT tenant_id, field_id FROM staging.youtrack__long_text_fields"
-        f" WHERE insight_source_id = '{SOURCE}' ORDER BY tenant_id, field_id"
+        "SELECT insight_tenant_id, field_id FROM staging.youtrack__long_text_fields"
+        f" WHERE insight_source_id = '{SOURCE}' ORDER BY insight_tenant_id, field_id"
     )
 
     assert list(found) == [
-        {"tenant_id": OTHER_TENANT, "field_id": "description"},
-        {"tenant_id": TENANT, "field_id": "description"},
-        {"tenant_id": TENANT, "field_id": "field-1"},
+        {"insight_tenant_id": OTHER_TENANT, "field_id": "description"},
+        {"insight_tenant_id": TENANT, "field_id": "description"},
+        {"insight_tenant_id": TENANT, "field_id": "field-1"},
     ]
 
 
@@ -287,7 +287,7 @@ def _seed_text_classes(case: Warehouse) -> None:
         case.insert(
             "youtrack_issues",
             {
-                "tenant_id": tenant,
+                "insight_tenant_id": tenant,
                 "id": "issue-1",
                 "idReadable": "EX-1",
                 "created": 1767225600000,
@@ -307,15 +307,15 @@ def test_the_same_body_is_stored_once_per_tenant_in_the_class(case: Warehouse) -
 
     rows = list(
         case.rows(
-            "SELECT tenant_id, text_id, unique_key FROM silver.class_task_field_text FINAL"
+            "SELECT insight_tenant_id, text_id, unique_key FROM silver.class_task_field_text FINAL"
             f" WHERE data_source = 'youtrack' AND insight_source_id = '{SOURCE}'"
-            f" AND startsWith(content, 'Shared synthetic notes') ORDER BY tenant_id"
+            f" AND startsWith(content, 'Shared synthetic notes') ORDER BY insight_tenant_id"
         )
     )
 
-    assert [r["tenant_id"] for r in rows] == sorted(DESCRIPTIONS), rows
+    assert [r["insight_tenant_id"] for r in rows] == sorted(DESCRIPTIONS), rows
     assert len({r["text_id"] for r in rows}) == 1, f"one body should hash to one text_id: {rows}"
-    assert all(str(r["unique_key"]).startswith(f"{r['tenant_id']}-{SOURCE}-youtrack-") for r in rows), rows
+    assert all(str(r["unique_key"]).startswith(f"{r['insight_tenant_id']}-{SOURCE}-youtrack-") for r in rows), rows
 
 
 def test_each_tenants_current_description_resolves_to_its_own_body(case: Warehouse) -> None:
@@ -323,10 +323,10 @@ def test_each_tenants_current_description_resolves_to_its_own_body(case: Warehou
 
     found = _per_tenant(
         case,
-        "SELECT c.tenant_id AS tenant_id, t.content AS value"
+        "SELECT c.insight_tenant_id AS insight_tenant_id, t.content AS value"
         " FROM silver.class_task_field_current_text AS c FINAL"
         " INNER JOIN silver.class_task_field_text AS t FINAL"
-        "     ON t.tenant_id = c.tenant_id AND t.insight_source_id = c.insight_source_id"
+        "     ON t.insight_tenant_id = c.insight_tenant_id AND t.insight_source_id = c.insight_source_id"
         "    AND t.data_source = c.data_source AND t.text_id = c.text_id"
         f" WHERE c.data_source = 'youtrack' AND c.insight_source_id = '{SOURCE}'"
         " AND c.issue_id = 'issue-1' AND c.field_id = 'description'",

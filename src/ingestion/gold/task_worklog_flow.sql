@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'entity_id', 'account_source_type', 'account_source_id', 'account_id', 'metric_date', 'insight_source_id', 'issue_id'],
+    order_by=['insight_tenant_id', 'entity_id', 'account_source_type', 'account_source_id', 'account_id', 'metric_date', 'insight_source_id', 'issue_id'],
     schema=var('gold_database'),
     alias='task_worklog_flow',
     tags=['gold'],
@@ -24,7 +24,7 @@ WITH
 -- through the account.
 task_users AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         if(email LIKE '%@%', {{ normalized_email('email') }}, '') AS email
@@ -32,7 +32,7 @@ task_users AS (
 ),
 in_progress_per_account_issue_day AS (
     SELECT
-        s.tenant_id                                                          AS tenant_id,
+        s.insight_tenant_id                                                          AS insight_tenant_id,
         s.entity_id                                                          AS entity_id,
         s.account_source_type                                                AS account_source_type,
         s.account_source_id                                                  AS account_source_id,
@@ -48,7 +48,7 @@ in_progress_per_account_issue_day AS (
                      least(i.interval_end, toDateTime(day) + toIntervalDay(1)))))) AS in_progress_seconds
     FROM {{ ref('task_status_spans') }} AS i
     INNER JOIN {{ ref('task_issue_state') }} AS s
-        ON s.tenant_id = i.tenant_id
+        ON s.insight_tenant_id = i.insight_tenant_id
         AND s.insight_source_id = i.insight_source_id
         AND s.issue_id = i.issue_id
     ARRAY JOIN
@@ -58,7 +58,7 @@ in_progress_per_account_issue_day AS (
                      dateDiff('day', toDate(i.interval_start), toDate(i.interval_end)) + 1
                  )))) AS day
     WHERE i.status_category = 'in_progress'
-    GROUP BY s.tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
+    GROUP BY s.insight_tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
              i.insight_source_id, i.issue_id, day
 ),
 -- in_progress_per_account_issue_day inherits the availability filter through
@@ -67,7 +67,7 @@ in_progress_per_account_issue_day AS (
 -- (worklog tombstones + deleted parent issue).
 worklog_per_account_issue_day AS (
     SELECT
-        w.tenant_id                                                          AS tenant_id,
+        w.insight_tenant_id                                                          AS insight_tenant_id,
         coalesce(u.email, '')                                                AS entity_id,
         {{ task_account_source_type('w.data_source') }}                      AS account_source_type,
         w.insight_source_id                                                  AS account_source_id,
@@ -80,18 +80,18 @@ worklog_per_account_issue_day AS (
         sum(ifNull(w.duration_seconds, 0))                                   AS worklog_seconds
     FROM {{ ref('class_task_worklogs') }} AS w FINAL
     LEFT JOIN task_users AS u
-        ON u.tenant_id = w.tenant_id
+        ON u.insight_tenant_id = w.insight_tenant_id
         AND u.insight_source_id = w.insight_source_id
         AND u.user_id = w.author_id
     WHERE w.work_date IS NOT NULL
       AND ifNull(w.is_deleted, 0) = 0
       AND coalesce(w.author_id, '') != ''
-    GROUP BY w.tenant_id, entity_id, account_source_type, account_source_id, account_id,
+    GROUP BY w.insight_tenant_id, entity_id, account_source_type, account_source_id, account_id,
              insight_source_id, issue_id, metric_date
 ),
 account_issue_days AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -108,7 +108,7 @@ account_issue_days AS (
     UNION ALL
 
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -124,7 +124,7 @@ account_issue_days AS (
 ),
 person_day_rows AS (
     SELECT
-        tenant_id                                                            AS day_tenant_id,
+        insight_tenant_id                                                            AS day_tenant_id,
         entity_id                                                            AS day_entity_id,
         account_source_type                                                  AS day_account_source_type,
         account_source_id                                                    AS day_account_source_id,
@@ -157,7 +157,7 @@ person_day_issue_rows AS (
     WINDOW person_day_window AS (PARTITION BY day_tenant_id, day_entity_id, person_day, day_metric_date)
 )
 SELECT
-    ifNull(r.day_tenant_id, '')                                              AS tenant_id,
+    ifNull(r.day_tenant_id, '')                                              AS insight_tenant_id,
     assumeNotNull(r.day_entity_id)                                           AS entity_id,
     any(r.account_source_type)                                               AS account_source_type,
     any(r.account_source_id)                                                 AS account_source_id,
@@ -175,7 +175,7 @@ SELECT
     any(r.person_day_in_progress_seconds)                                    AS person_day_in_progress_seconds
 FROM person_day_issue_rows AS r
 LEFT JOIN {{ ref('task_issue_state') }} AS s
-    ON s.tenant_id = r.day_tenant_id
+    ON s.insight_tenant_id = r.day_tenant_id
     AND s.insight_source_id = r.day_insight_source_id
     AND s.issue_id = r.day_issue_id
 GROUP BY r.day_tenant_id, r.day_entity_id, r.person_day, r.day_metric_date,

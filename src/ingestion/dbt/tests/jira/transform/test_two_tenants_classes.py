@@ -34,14 +34,14 @@ THEIRS_OPENED = "2026-01-06 10:00:00.000"
 
 POINTS_ROWS = (
     " WHERE insight_source_id = {src:String} AND data_source = 'jira' AND field_id = {field:String}"
-    " ORDER BY tenant_id, issue_id, event_order, unique_key"
+    " ORDER BY insight_tenant_id, issue_id, event_order, unique_key"
 )
 JOURNAL_SQL = (
-    "SELECT tenant_id, issue_id, event_kind, event_id, value_ids, unique_key, _version"
+    "SELECT insight_tenant_id, issue_id, event_kind, event_id, value_ids, unique_key, _version"
     " FROM staging.jira__field_history_derived FINAL" + POINTS_ROWS
 )
 CLASS_SQL = (
-    "SELECT tenant_id, issue_id, event_kind, event_id, value_ids, unique_key, _version"
+    "SELECT insight_tenant_id, issue_id, event_kind, event_id, value_ids, unique_key, _version"
     " FROM silver.class_task_field_history FINAL" + POINTS_ROWS
 )
 
@@ -55,7 +55,7 @@ def _points(scenario: Scenario, sql: str) -> list[dict[str, Any]]:
 
 
 def _history(rows: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
-    return [(r["tenant_id"], r["event_kind"], r["event_id"], list(r["value_ids"])) for r in rows]
+    return [(r["insight_tenant_id"], r["event_kind"], r["event_id"], list(r["value_ids"])) for r in rows]
 
 
 def _clear_class(scenario: Scenario) -> None:
@@ -98,7 +98,7 @@ def test_the_same_issue_and_changelog_ids_are_one_history_per_tenant_through_the
         (OTHER_TENANT, "synthetic_initial", "initial:1001", ["7"]),
         (OTHER_TENANT, "changelog", "101", ["9"]),
     ]
-    assert all(r["unique_key"].startswith(f"{r['tenant_id']}-{SOURCE_ID}-jira-1001-") for r in first), first
+    assert all(r["unique_key"].startswith(f"{r['insight_tenant_id']}-{SOURCE_ID}-jira-1001-") for r in first), first
 
     scenario.warehouse.insert(
         "bronze_jira.jira_issue",
@@ -111,10 +111,10 @@ def test_the_same_issue_and_changelog_ids_are_one_history_per_tenant_through_the
     scenario.build(full_refresh=False)
     second = _points(scenario, JOURNAL_SQL)
 
-    assert [r for r in second if r["tenant_id"] == TENANT_ID] == [r for r in first if r["tenant_id"] == TENANT_ID], (
-        "rebuilding the other tenant's issue must not touch this tenant's rows"
-    )
-    assert _history([r for r in second if r["tenant_id"] == OTHER_TENANT]) == [
+    assert [r for r in second if r["insight_tenant_id"] == TENANT_ID] == [
+        r for r in first if r["insight_tenant_id"] == TENANT_ID
+    ], "rebuilding the other tenant's issue must not touch this tenant's rows"
+    assert _history([r for r in second if r["insight_tenant_id"] == OTHER_TENANT]) == [
         (OTHER_TENANT, "synthetic_initial", "initial:1001", ["7"]),
         (OTHER_TENANT, "changelog", "101", ["9"]),
         (OTHER_TENANT, "changelog", "102", ["11"]),
@@ -133,7 +133,7 @@ def test_a_batched_rebuild_of_one_tenants_issues_leaves_the_others_alone(scenari
     scenario.seed(fields=[POINTS_FIELD], issues=issues)
     scenario.seed(fields=as_other_tenant([POINTS_FIELD]), issues=as_other_tenant(issues))
     scenario.build()
-    mine = [r for r in _points(scenario, JOURNAL_SQL) if r["tenant_id"] == TENANT_ID]
+    mine = [r for r in _points(scenario, JOURNAL_SQL) if r["insight_tenant_id"] == TENANT_ID]
 
     scenario.warehouse.insert(
         "bronze_jira.jira_issue",
@@ -144,10 +144,10 @@ def test_a_batched_rebuild_of_one_tenants_issues_leaves_the_others_alone(scenari
     scenario.build(full_refresh=False, dbt_vars={"jira_journal_issues_per_batch": 1})
     after = _points(scenario, JOURNAL_SQL)
 
-    theirs = [r for r in after if r["tenant_id"] == OTHER_TENANT]
+    theirs = [r for r in after if r["insight_tenant_id"] == OTHER_TENANT]
 
     assert mine, "the scenario produced no journal"
-    assert [r for r in after if r["tenant_id"] == TENANT_ID] == mine, (
+    assert [r for r in after if r["insight_tenant_id"] == TENANT_ID] == mine, (
         "another tenant's batches must not touch these rows"
     )
     assert {r["issue_id"] for r in theirs} == {"1001", "1002"}
@@ -197,11 +197,11 @@ def test_each_tenant_folds_its_links_against_its_own_issues(scenario: Scenario) 
     scenario.build(LINKS_SELECTOR)
 
     rows = scenario.warehouse.rows(
-        "SELECT tenant_id, issue_id, id_readable, link_type, target_id, target_readable,"
+        "SELECT insight_tenant_id, issue_id, id_readable, link_type, target_id, target_readable,"
         "       toString(valid_from) AS valid_from, valid_from_known,"
         "       if(valid_to IS NULL, NULL, toString(valid_to)) AS valid_to, unique_key"
         " FROM staging.jira__task_links FINAL WHERE insight_source_id = {src:String}"
-        " ORDER BY tenant_id, issue_id, valid_from",
+        " ORDER BY insight_tenant_id, issue_id, valid_from",
         {"src": SOURCE_ID},
     )
 
@@ -209,15 +209,16 @@ def test_each_tenant_folds_its_links_against_its_own_issues(scenario: Scenario) 
         (TENANT_ID, "1001", "TST-1", "blocking", "1002", "TST-2", MINE_OPENED, 0, MINE_CLOSED),
         (OTHER_TENANT, "1001", "TST-1", "duplicate_of", "2002", "TST-2", THEIRS_OPENED, 1, None),
     ]
-    assert all(r["unique_key"].startswith(f"{r['tenant_id']}-{SOURCE_ID}-jira-1001-") for r in rows), rows
+    assert all(r["unique_key"].startswith(f"{r['insight_tenant_id']}-{SOURCE_ID}-jira-1001-") for r in rows), rows
 
     linked = scenario.warehouse.rows(
-        "SELECT tenant_id, arraySort(groupUniqArrayArray(value_ids)) AS linked"
+        "SELECT insight_tenant_id, arraySort(groupUniqArrayArray(value_ids)) AS linked"
         " FROM staging.jira__field_history_derived FINAL"
         " WHERE insight_source_id = {src:String} AND field_id = {field:String}"
-        " GROUP BY tenant_id ORDER BY tenant_id",
+        " GROUP BY insight_tenant_id ORDER BY insight_tenant_id",
         {"src": SOURCE_ID, "field": LINKS},
     )
-    assert [(r["tenant_id"], list(r["linked"])) for r in linked] == [(TENANT_ID, ["1002"]), (OTHER_TENANT, ["2002"])], (
-        "the journal resolves each tenant's TST-2 to its own issue"
-    )
+    assert [(r["insight_tenant_id"], list(r["linked"])) for r in linked] == [
+        (TENANT_ID, ["1002"]),
+        (OTHER_TENANT, ["2002"]),
+    ], "the journal resolves each tenant's TST-2 to its own issue"

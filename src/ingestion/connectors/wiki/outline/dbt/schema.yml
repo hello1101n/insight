@@ -57,7 +57,7 @@ models:
       Outline endpoint exposing emails; embedded user objects omit the email
       field on self-hosted instances). No cross-connector JOIN needed.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -96,7 +96,7 @@ models:
       author_email resolved via LEFT JOIN with the connector's own
       wiki_users stream (embedded createdBy objects omit email).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -143,7 +143,7 @@ models:
       from parent_comment_id. Aggregations: total_comments, footer_comments,
       inline_comments, replies, unique_commenters, unresolved_inline_count.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id

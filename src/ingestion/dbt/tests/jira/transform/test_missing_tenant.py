@@ -4,7 +4,7 @@ A model that reads its tenant through `bronze_tenant()` fails to build over a NU
 non-UUID tenant, naming itself; with `bronze_tenant_on_invalid: warn` it builds and its
 `not_empty` test reports the row. `jira__comment_state` is the converted model.
 
-A model not converted yet reads the tenant through `ifNull(tenant_id, '')`, so a missing one
+A model not converted yet reads the tenant through `ifNull(insight_tenant_id, '')`, so a missing one
 never makes a key Nullable; `not_null` and `not_empty` on each model's tenant are the guard.
 Each case builds the chain from rows that carry a tenant, adds one row that does not, and
 rebuilds only the model that reads it, so the finding is that model's own.
@@ -45,17 +45,17 @@ PRODUCERS = (
 
 # Spelled out: a table name cannot be bound, and a formatted statement is what the security gate rejects.
 DROP_TENANTLESS = {
-    "bronze_jira.jira_fields": "ALTER TABLE bronze_jira.jira_fields DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2",
-    "bronze_jira.jira_issue": "ALTER TABLE bronze_jira.jira_issue DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2",
+    "bronze_jira.jira_fields": "ALTER TABLE bronze_jira.jira_fields DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2",
+    "bronze_jira.jira_issue": "ALTER TABLE bronze_jira.jira_issue DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2",
     "bronze_jira.jira_issue_history": (
-        "ALTER TABLE bronze_jira.jira_issue_history DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2"
+        "ALTER TABLE bronze_jira.jira_issue_history DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2"
     ),
     "bronze_jira.jira_comments": (
         "ALTER TABLE bronze_jira.jira_comments DELETE WHERE startsWith(unique_key, 'no-tenant-')"
         " SETTINGS mutations_sync = 2"
     ),
     "bronze_jira.jira_worklogs": (
-        "ALTER TABLE bronze_jira.jira_worklogs DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2"
+        "ALTER TABLE bronze_jira.jira_worklogs DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2"
     ),
 }
 
@@ -70,7 +70,7 @@ TRUNCATE_CLASSES = (
 
 
 def _without_tenant(record: dict[str, Any]) -> dict[str, Any]:
-    return {**record, "tenant_id": None, "unique_key": f"no-tenant-{record['unique_key']}"}
+    return {**record, "insight_tenant_id": None, "unique_key": f"no-tenant-{record['unique_key']}"}
 
 
 def _issue() -> dict[str, Any]:
@@ -91,17 +91,17 @@ CASES: dict[str, tuple[str, Callable[[], dict[str, Any]]]] = {
 }
 
 REPORTED_BY = {
-    "jira__catalogue_first_seen": "not_null_jira__catalogue_first_seen_tenant_id",
-    "jira__changelog_items": "not_empty_jira__changelog_items_tenant_id",
-    "jira__issue_availability_state": "not_null_jira__issue_availability_state_tenant_id",
-    "jira__issue_key_ids": "not_null_jira__issue_key_ids_tenant_id",
-    "jira__task_field_kind": "not_null_jira__task_field_kind_tenant_id",
-    "jira__task_field_metadata": "not_empty_jira__task_field_metadata_tenant_id",
+    "jira__catalogue_first_seen": "not_null_jira__catalogue_first_seen_insight_tenant_id",
+    "jira__changelog_items": "not_empty_jira__changelog_items_insight_tenant_id",
+    "jira__issue_availability_state": "not_null_jira__issue_availability_state_insight_tenant_id",
+    "jira__issue_key_ids": "not_null_jira__issue_key_ids_insight_tenant_id",
+    "jira__task_field_kind": "not_null_jira__task_field_kind_insight_tenant_id",
+    "jira__task_field_metadata": "not_empty_jira__task_field_metadata_insight_tenant_id",
 }
 
 
 def tenant_tests(model: str) -> tuple[str, str]:
-    return f"not_null_{model}_tenant_id", f"not_empty_{model}_tenant_id"
+    return f"not_null_{model}_insight_tenant_id", f"not_empty_{model}_insight_tenant_id"
 
 
 def _rebuild(warehouse: Warehouse, model: str) -> None:
@@ -172,7 +172,7 @@ def test_a_tenantless_issue_reaches_the_journal_and_its_tenant_tests_report_it(b
             built.execute(DROP_TENANTLESS[table])
         built.build(SELECTOR)
 
-    assert "not_empty_jira__field_history_derived_tenant_id" in failing, (
+    assert "not_empty_jira__field_history_derived_insight_tenant_id" in failing, (
         f"the journal should report it: {sorted(failing)}"
     )
 
@@ -183,7 +183,7 @@ def test_the_producers_and_their_classes_carry_a_string_tenant(built: Warehouse)
     types = {
         f"{row['database']}.{row['table']}": row["type"]
         for row in built.rows(
-            "SELECT database, table, type FROM system.columns WHERE name = 'tenant_id'"
+            "SELECT database, table, type FROM system.columns WHERE name = 'insight_tenant_id'"
             " AND ((database = 'staging' AND table IN {producers:Array(String)})"
             " OR (database = 'silver' AND table IN {classes:Array(String)}))",
             {"producers": list(PRODUCERS), "classes": list(CLASSES)},
@@ -195,13 +195,13 @@ def test_the_producers_and_their_classes_carry_a_string_tenant(built: Warehouse)
 
 
 GUARDED = "jira__comment_state"
-GUARD_MESSAGE = "staging.jira__comment_state: a Bronze c.tenant_id is NULL, empty or not a UUID"
+GUARD_MESSAGE = "staging.jira__comment_state: a Bronze c.insight_tenant_id is NULL, empty or not a UUID"
 WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
 
 
 def _comment(tenant: str | None) -> dict[str, Any]:
     row = comment("TST-9", 909, jira_id="TST-9", updated="2026-01-07T10:00:00.000+0000")
-    return {**row, "tenant_id": tenant, "unique_key": f"no-tenant-{row['unique_key']}"}
+    return {**row, "insight_tenant_id": tenant, "unique_key": f"no-tenant-{row['unique_key']}"}
 
 
 @pytest.mark.parametrize("tenant", [None, "", "not-a-uuid", "gbcdefab-1111-2222-3333-444455556666"])
@@ -229,7 +229,9 @@ def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_test
         _rebuild(built, GUARDED)
 
     assert invocation.success, f"{GUARDED} should build in warn mode:\n{invocation.log}"
-    assert failing == {f"not_empty_{GUARDED}_tenant_id"}, f"warn mode should keep the row as '': {sorted(failing)}"
+    assert failing == {f"not_empty_{GUARDED}_insight_tenant_id"}, (
+        f"warn mode should keep the row as '': {sorted(failing)}"
+    )
 
 
 def test_a_bronze_tenant_is_read_as_its_lowercase_canonical_uuid(built: Warehouse) -> None:
@@ -237,11 +239,11 @@ def test_a_bronze_tenant_is_read_as_its_lowercase_canonical_uuid(built: Warehous
     try:
         built.dbt("run", "--select", GUARDED)
         rows = built.rows(
-            "SELECT tenant_id, toTypeName(tenant_id) AS type FROM staging.jira__comment_state"
+            "SELECT insight_tenant_id, toTypeName(insight_tenant_id) AS type FROM staging.jira__comment_state"
             " WHERE startsWith(unique_key, 'no-tenant-')"
         )
     finally:
         built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
         _rebuild(built, GUARDED)
 
-    assert rows == [{"tenant_id": "abcdefab-1111-2222-3333-444455556666", "type": "String"}]
+    assert rows == [{"insight_tenant_id": "abcdefab-1111-2222-3333-444455556666", "type": "String"}]

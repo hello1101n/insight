@@ -11,7 +11,7 @@ models:
       Each cursor member produces up to 3 rows: id, email, display_name.
     columns:
       - name: insight_tenant_id
-        description: "Canonical tenant UUID, as Bronze tenant_id carries it"
+        description: "Canonical tenant UUID, as Bronze insight_tenant_id carries it"
         tests:
           - not_null
       - name: value_type
@@ -49,13 +49,13 @@ models:
   - name: account_assignment
     description: >
       Current binding of every source account to a canonical person: one row
-      per (tenant_id, source_type, source_id, account_id), from the newest
+      per (insight_tenant_id, source_type, source_id, account_id), from the newest
       `value_type='id'` observation in the identity journal. A view, so an
       operator correction is visible as soon as the persons-sync publishes it.
       Carries `created_at` and the whole account triple so effective-dated
       assignment and account-keyed consumers stay reachable without a rewrite.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant UUID, as text — the tenant every consumer joins on"
         tests:
           - not_null
@@ -90,7 +90,7 @@ models:
       are asserted by singular tests at error severity — a duplicate row would
       multiply joined facts and an unnormalized one would match nothing.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Canonical tenant UUID, as text — each tenant resolves its own addresses"
         tests:
           - not_null

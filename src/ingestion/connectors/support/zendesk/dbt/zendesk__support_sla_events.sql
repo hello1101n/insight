@@ -10,7 +10,7 @@
 
 WITH events AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         payload,
         JSONExtractString(payload, 'metric')           AS vendor_metric,
@@ -22,7 +22,7 @@ WITH events AS (
 
 SELECT
     {{ zendesk_key([zendesk_id('payload', "'id'")]) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     {{ zendesk_id('payload', "'ticket_id'") }}         AS ticket_id,

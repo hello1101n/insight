@@ -26,7 +26,7 @@
 
 WITH sets AS (
     SELECT
-        COALESCE(tenant_id, '')                                 AS tenant_id,
+        COALESCE(insight_tenant_id, '')                                 AS insight_tenant_id,
         COALESCE(source_id, '')                                 AS insight_source_id,
         concat(COALESCE(repo_full_name, ''), '#', toString(COALESCE(item_number, 0))) AS id_readable,
         arrayJoin([
@@ -39,7 +39,7 @@ WITH sets AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     id_readable,
     s.1 AS link_set,

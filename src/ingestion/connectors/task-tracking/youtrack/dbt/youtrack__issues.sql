@@ -8,12 +8,12 @@
 {% set issue_streams = ['youtrack_issues', 'youtrack_activity_issues'] %}
 {% set complete = 'id IS NOT NULL AND created IS NOT NULL AND source_id IS NOT NULL' %}
 WITH winners AS (
-    SELECT tenant_id, source_id, id,
+    SELECT insight_tenant_id, source_id, id,
         argMax(stream, (_airbyte_extracted_at, stream_rank)) AS win_stream,
         max(_airbyte_extracted_at) AS win_at
     FROM (
     {%- for stream in issue_streams %}
-        SELECT ifNull(tenant_id, '') AS tenant_id, source_id, id, _airbyte_extracted_at,
+        SELECT ifNull(insight_tenant_id, '') AS insight_tenant_id, source_id, id, _airbyte_extracted_at,
             '{{ stream }}' AS stream, {{ loop.revindex0 }} AS stream_rank
         FROM {{ source('bronze_youtrack', stream) }} FINAL
         WHERE {{ complete }}
@@ -22,9 +22,9 @@ WITH winners AS (
         {%- endif %}
     {%- endfor %}
     )
-    GROUP BY tenant_id, source_id, id
+    GROUP BY insight_tenant_id, source_id, id
 )
-SELECT tenant_id, assumeNotNull(source_id) AS insight_source_id,
+SELECT insight_tenant_id, assumeNotNull(source_id) AS insight_source_id,
     assumeNotNull(id) AS issue_id, coalesce(idReadable, '') AS id_readable,
     fromUnixTimestamp64Milli(toInt64(assumeNotNull(created))) AS created_at,
     reporter_id, coalesce(project_id, '') AS project_id,
@@ -33,11 +33,11 @@ SELECT tenant_id, assumeNotNull(source_id) AS insight_source_id,
     toDateTime64(_airbyte_extracted_at, 3) AS observed_at
 FROM (
 {%- for stream in issue_streams %}
-    SELECT ifNull(tenant_id, '') AS tenant_id, source_id, id, idReadable, created, reporter_id, project_id,
+    SELECT ifNull(insight_tenant_id, '') AS insight_tenant_id, source_id, id, idReadable, created, reporter_id, project_id,
         issue_json, custom_fields_json, _airbyte_extracted_at
     FROM {{ source('bronze_youtrack', stream) }} FINAL
-    WHERE {{ complete }} AND (ifNull(tenant_id, ''), source_id, id, _airbyte_extracted_at) IN (
-        SELECT tenant_id, source_id, id, win_at FROM winners WHERE win_stream = '{{ stream }}')
+    WHERE {{ complete }} AND (ifNull(insight_tenant_id, ''), source_id, id, _airbyte_extracted_at) IN (
+        SELECT insight_tenant_id, source_id, id, win_at FROM winners WHERE win_stream = '{{ stream }}')
     {%- if not loop.last %}
     UNION ALL
     {%- endif %}

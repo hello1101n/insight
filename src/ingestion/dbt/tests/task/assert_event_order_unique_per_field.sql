@@ -17,7 +17,7 @@
 -- changed carries the entry's position.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     data_source,
     issue_id,
@@ -25,5 +25,5 @@ SELECT
     event_order,
     count() AS n
 FROM silver.class_task_field_history FINAL
-GROUP BY tenant_id, insight_source_id, data_source, issue_id, field_id, event_order
+GROUP BY insight_tenant_id, insight_source_id, data_source, issue_id, field_id, event_order
 HAVING n > 1

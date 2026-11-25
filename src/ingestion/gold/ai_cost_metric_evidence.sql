@@ -4,7 +4,7 @@
 -- the analytics runtime resolves through `identity.person_map` while it serves.
 -- An unresolvable row stays and starts counting the moment it resolves.
 SELECT
-    src.tenant_id,
+    src.insight_tenant_id,
     src.source_key,
     src.entity_type,
     {{ normalized_email('src.entity_id') }} AS entity_id,
@@ -40,7 +40,7 @@ WITH
 -- what tells an unscoped price whether it is the tenant's only one.
 priced_lines AS (
     SELECT
-        invoice.insight_tenant_id               AS tenant_id,
+        invoice.insight_tenant_id               AS insight_tenant_id,
         invoice.source                          AS source,
         invoice.period_month                    AS period_month,
         invoice.source_id                       AS invoice_source_id,
@@ -59,7 +59,7 @@ priced_lines AS (
     FROM {{ ref('class_ai_invoice') }} AS invoice FINAL
     LEFT JOIN (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             source,
             tier_ref,
@@ -68,7 +68,7 @@ priced_lines AS (
         FROM {{ source('config', 'ai_seat_tier_map') }} FINAL
         WHERE is_deleted = 0
     ) AS binding
-        ON  binding.tenant_id = invoice.insight_tenant_id
+        ON  binding.insight_tenant_id = invoice.insight_tenant_id
         AND binding.insight_source_id = invoice.source_id
         AND binding.source = invoice.source
         AND binding.tier_ref = invoice.tier_ref
@@ -79,26 +79,26 @@ priced_lines AS (
 ),
 month_seat_prices AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source,
         period_month,
         groupUniqArray(tuple(seat_source_id, tier, price)) AS scoped_prices,
         uniqExact(invoice_source_id)            AS invoice_sources
     FROM priced_lines
-    GROUP BY tenant_id, source, period_month
+    GROUP BY insight_tenant_id, source, period_month
 ),
 -- When each seat population's billing period began. A billing period need not
 -- start on the 1st, so the month's first or last reading is not the billed one.
 population_billing_starts AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source,
         period_month,
         seat_source_id,
         min(billed_at)                          AS period_started_at
     FROM priced_lines
     WHERE billed_at IS NOT NULL
-    GROUP BY tenant_id, source, period_month, seat_source_id
+    GROUP BY insight_tenant_id, source, period_month, seat_source_id
 ),
 -- A seat's state at its last reading before its billing period began. A tier
 -- changed later reaches the invoice only as a proration, which prices nothing
@@ -106,7 +106,7 @@ population_billing_starts AS (
 -- billed at, or at none once it was moved off its tier.
 seat_billed_states AS (
     SELECT
-        reading.insight_tenant_id               AS tenant_id,
+        reading.insight_tenant_id               AS insight_tenant_id,
         reading.source                          AS source,
         reading.source_id                       AS source_id,
         reading.account_id                      AS account_id,
@@ -116,7 +116,7 @@ seat_billed_states AS (
                                                 AS billed_with_ceiling
     FROM {{ ref('class_ai_overage_daily') }} AS reading FINAL
     INNER JOIN population_billing_starts AS starts
-        ON  starts.tenant_id = reading.insight_tenant_id
+        ON  starts.insight_tenant_id = reading.insight_tenant_id
         AND starts.source = reading.source
     -- An unscoped start reaches every population; the offers below decide
     -- whether its price may.
@@ -132,7 +132,7 @@ seat_billed_states AS (
 ),
 seat_month_source AS (
     SELECT
-        insight_tenant_id                       AS tenant_id,
+        insight_tenant_id,
         source,
         source_id,
         account_id,
@@ -162,17 +162,17 @@ seat_month_source AS (
 -- produced an invoice at all.
 month_seat_populations AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source,
         period_month,
         uniqExact(source_id)                    AS seat_sources
     FROM seat_month_source
-    GROUP BY tenant_id, source, period_month
+    GROUP BY insight_tenant_id, source, period_month
 ),
 -- How many populations the seat's own month holds, carried onto the seat.
 --
 -- INVARIANT: one join per level. Two joins in one SELECT beside `seat.*`, where
--- both joined relations carry a `tenant_id` of their own, leave the unqualified
+-- both joined relations carry a `insight_tenant_id` of their own, leave the unqualified
 -- name unresolvable and the model fails to build.
 seat_month_scoped AS (
     SELECT
@@ -180,7 +180,7 @@ seat_month_scoped AS (
         populations.seat_sources                AS seat_sources
     FROM seat_month_source AS seat
     LEFT JOIN month_seat_populations AS populations
-        ON  populations.tenant_id = seat.tenant_id
+        ON  populations.insight_tenant_id = seat.insight_tenant_id
         AND populations.source = seat.source
         AND populations.period_month = seat.period_month
 ),
@@ -198,7 +198,7 @@ seat_month_offers AS (
         )                                       AS offers
     FROM seat_month_scoped AS scoped
     LEFT JOIN month_seat_prices AS prices
-        ON  prices.tenant_id = scoped.tenant_id
+        ON  prices.insight_tenant_id = scoped.insight_tenant_id
         AND prices.source = scoped.source
         AND prices.period_month = scoped.period_month
 ),
@@ -213,7 +213,7 @@ seat_month_billed AS (
         coalesce(billed.billed_with_ceiling, 0) AS billed_with_ceiling
     FROM seat_month_offers AS offered
     LEFT JOIN seat_billed_states AS billed
-        ON  billed.tenant_id = offered.tenant_id
+        ON  billed.insight_tenant_id = offered.insight_tenant_id
         AND billed.source = offered.source
         AND billed.source_id = offered.source_id
         AND billed.account_id = offered.account_id
@@ -248,7 +248,7 @@ seat_month_priced AS (
 -- readings and nothing else.
 seat_day_source AS (
     SELECT
-        insight_tenant_id                       AS tenant_id,
+        insight_tenant_id,
         source,
         source_id,
         account_id,
@@ -282,7 +282,7 @@ seat_day_held AS (
             greatest(
                 used_amount_cents,
                 lagInFrame(used_amount_cents, 1, toUInt32(0)) OVER (
-                    PARTITION BY tenant_id, source, source_id, account_id, period_month
+                    PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
                     ORDER BY metric_date
                 )
             ),
@@ -296,7 +296,7 @@ seat_day_corrected AS (
     SELECT
         *,
         min(held_cents) OVER (
-            PARTITION BY tenant_id, source, source_id, account_id, period_month
+            PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
             ORDER BY metric_date
             ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
         )                                       AS corrected_cents
@@ -316,13 +316,13 @@ seat_day_step AS (
         ))                                      AS covers_days
     FROM seat_day_corrected
     WINDOW w AS (
-        PARTITION BY tenant_id, source, source_id, account_id, period_month
+        PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
         ORDER BY metric_date
     )
 )
 
 SELECT
-    assumeNotNull(tenant_id)                    AS tenant_id,
+    assumeNotNull(insight_tenant_id)                    AS insight_tenant_id,
     'ai_cost'                                   AS source_key,
     'person'                                    AS entity_type,
     assumeNotNull(entity_id)                    AS entity_id,
@@ -374,14 +374,14 @@ ARRAY JOIN arrayConcat(
         []
     )
 ) AS seat_measure
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id)                    AS tenant_id,
+    assumeNotNull(insight_tenant_id)                    AS insight_tenant_id,
     'ai_cost'                                   AS source_key,
     'person'                                    AS entity_type,
     assumeNotNull(entity_id)                    AS entity_id,
@@ -407,7 +407,7 @@ SELECT
         'covers_days', toString(covers_days)
     )                                           AS details
 FROM seat_day_step
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 UNION ALL
@@ -436,7 +436,7 @@ UNION ALL
 -- describes. Refusing to report a month because some of its days have not
 -- arrived would replace a known-partial number with no number at all.
 SELECT
-    assumeNotNull(tenant_id)                    AS tenant_id,
+    assumeNotNull(insight_tenant_id)                    AS insight_tenant_id,
     'ai_cost'                                   AS source_key,
     'person'                                    AS entity_type,
     assumeNotNull(entity_id)                    AS entity_id,
@@ -479,7 +479,7 @@ FROM (
     -- precedence is a ranking question rather than a join condition.
     SELECT * FROM (
         SELECT
-            credit.insight_tenant_id            AS tenant_id,
+            credit.insight_tenant_id            AS insight_tenant_id,
             credit.email                        AS entity_id,
             credit.source_id                    AS source_id,
             credit.source                       AS source,
@@ -522,7 +522,7 @@ FROM (
         INNER JOIN (
             SELECT * FROM {{ source('config', 'ai_credit_pricing') }} FINAL WHERE is_deleted = 0
         ) AS pricing
-                ON pricing.tenant_id = credit.insight_tenant_id
+                ON pricing.insight_tenant_id = credit.insight_tenant_id
                AND pricing.source = credit.source
         WHERE credit.email IS NOT NULL
           AND credit.email != ''
@@ -547,7 +547,7 @@ ARRAY JOIN [
     tuple('extra_usage_usd', toFloat64(usd_cents) / 100,
           'seat_month', toStartOfMonth(day))
 ] AS credit_measure
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND day IS NOT NULL
 ) AS src

@@ -35,15 +35,15 @@
 -- One row per tenant and source keeps the join from multiplying changelog items.
 WITH catalogue_first_sync AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         min(catalogue_first_sync)                         AS catalogue_first_sync
     FROM {{ ref('jira__catalogue_first_seen') }} FINAL
-    GROUP BY tenant_id, insight_source_id
+    GROUP BY insight_tenant_id, insight_source_id
 )
 
 SELECT
-    ci.tenant_id                                          AS tenant_id,
+    ci.insight_tenant_id                                          AS insight_tenant_id,
     ci.insight_source_id                                  AS insight_source_id,
     CAST('jira' AS String)                                AS data_source,
     ci.field_id                                           AS field_id,
@@ -57,10 +57,10 @@ SELECT
     max(ci.created_at) > min(c.catalogue_first_sync)      AS metadata_is_missing
 FROM {{ ref('jira__changelog_items') }} AS ci
 LEFT ANTI JOIN {{ ref('jira__task_field_kind') }} AS k
-    ON k.tenant_id = ci.tenant_id
+    ON k.insight_tenant_id = ci.insight_tenant_id
    AND k.insight_source_id = ci.insight_source_id
    AND k.field_id = ci.field_id
 LEFT JOIN catalogue_first_sync AS c
-    ON c.tenant_id = ci.tenant_id
+    ON c.insight_tenant_id = ci.insight_tenant_id
    AND c.insight_source_id = ci.insight_source_id
-GROUP BY ci.tenant_id, ci.insight_source_id, ci.field_id
+GROUP BY ci.insight_tenant_id, ci.insight_source_id, ci.field_id

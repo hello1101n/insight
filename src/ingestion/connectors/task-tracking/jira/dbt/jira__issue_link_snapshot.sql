@@ -18,14 +18,14 @@
 
 {% set previous = load_relation(this) if execute else none %}
 -- INVARIANT: a table built before the tenant reached this model holds no
--- tenant_id; its rows take the tenant of the issue that holds them.
+-- insight_tenant_id; its rows take the tenant of the issue that holds them.
 {%- set previous_columns = adapter.get_columns_in_relation(previous) if previous is not none else [] %}
-{%- set previous_has_tenant = 'tenant_id' in (previous_columns | map(attribute='name') | list) %}
-{%- set previous_tenant = 'p.tenant_id' if previous_has_tenant else 'r.tenant_id' %}
+{%- set previous_has_tenant = 'insight_tenant_id' in (previous_columns | map(attribute='name') | list) %}
+{%- set previous_tenant = 'p.insight_tenant_id' if previous_has_tenant else 'r.insight_tenant_id' %}
 
 WITH held AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         id_readable,
@@ -45,7 +45,7 @@ WITH held AS (
 
 issue_reads AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         read_at
@@ -54,7 +54,7 @@ issue_reads AS (
 
 held_keys AS (
     SELECT
-        tenant_id AS held_tenant_id,
+        insight_tenant_id AS held_tenant_id,
         insight_source_id AS held_source_id,
         issue_id AS held_issue_id,
         kind AS held_kind,
@@ -65,7 +65,7 @@ held_keys AS (
 missing_rows AS (
     {% if previous is not none %}
     SELECT
-        {{ previous_tenant }} AS tenant_id,
+        {{ previous_tenant }} AS insight_tenant_id,
         p.insight_source_id AS insight_source_id,
         p.issue_id AS issue_id,
         p.id_readable AS id_readable,
@@ -94,7 +94,7 @@ missing_rows AS (
        AND h.held_link_id = p.link_id
     {% else %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         id_readable,
@@ -116,7 +116,7 @@ missing_rows AS (
 
 missing_links AS (
     SELECT
-        m.tenant_id AS tenant_id,
+        m.insight_tenant_id AS insight_tenant_id,
         m.insight_source_id AS insight_source_id,
         m.issue_id AS issue_id,
         m.id_readable AS id_readable,
@@ -134,7 +134,7 @@ missing_links AS (
         r.read_at AS read_at
     FROM missing_rows AS m
     LEFT JOIN issue_reads AS r
-        ON r.tenant_id = m.tenant_id
+        ON r.insight_tenant_id = m.insight_tenant_id
        AND r.insight_source_id = m.insight_source_id
        AND r.issue_id = m.issue_id
 ),
@@ -145,7 +145,7 @@ visible_links AS (
 
 remembered AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         id_readable,
@@ -165,7 +165,7 @@ remembered AS (
     UNION ALL
 
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         id_readable,
@@ -185,8 +185,8 @@ remembered AS (
 )
 
 SELECT
-    CAST(concat(ifNull(tenant_id, ''), '-', insight_source_id, '-', issue_id, '-', kind, '-', link_id, '-', target_id, '-', target_key) AS String) AS unique_key,
-    tenant_id,
+    CAST(concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-', issue_id, '-', kind, '-', link_id, '-', target_id, '-', target_key) AS String) AS unique_key,
+    insight_tenant_id,
     insight_source_id,
     issue_id,
     id_readable,

@@ -77,50 +77,53 @@ def silver(scenario: Scenario) -> Iterator[Scenario]:
 
 def test_the_same_body_is_stored_once_per_tenant(silver: Scenario) -> None:
     rows = silver.warehouse.rows(
-        "SELECT tenant_id, text_id, unique_key FROM silver.class_task_field_text FINAL"
-        " WHERE insight_source_id = {src:String} AND content = {body:String} ORDER BY tenant_id",
+        "SELECT insight_tenant_id, text_id, unique_key FROM silver.class_task_field_text FINAL"
+        " WHERE insight_source_id = {src:String} AND content = {body:String} ORDER BY insight_tenant_id",
         {"src": SOURCE_ID, "body": SHARED_BODY},
     )
 
-    assert [r["tenant_id"] for r in rows] == [TENANT_ID, OTHER_TENANT], rows
+    assert [r["insight_tenant_id"] for r in rows] == [TENANT_ID, OTHER_TENANT], rows
     assert len({r["text_id"] for r in rows}) == 1, f"one body should hash to one text_id: {rows}"
-    assert all(r["unique_key"].startswith(f"{r['tenant_id']}-{SOURCE_ID}-jira-") for r in rows), rows
+    assert all(r["unique_key"].startswith(f"{r['insight_tenant_id']}-{SOURCE_ID}-jira-") for r in rows), rows
 
 
 def test_each_tenants_current_body_resolves_to_its_own_document(silver: Scenario) -> None:
     rows = silver.warehouse.rows(
-        "SELECT c.tenant_id AS tenant_id, t.content AS content"
+        "SELECT c.insight_tenant_id AS insight_tenant_id, t.content AS content"
         " FROM silver.class_task_field_current_text AS c FINAL"
         " INNER JOIN silver.class_task_field_text AS t FINAL"
-        "         ON t.tenant_id = c.tenant_id"
+        "         ON t.insight_tenant_id = c.insight_tenant_id"
         "        AND t.insight_source_id = c.insight_source_id"
         "        AND t.data_source = c.data_source"
         "        AND t.text_id = c.text_id"
         " WHERE c.insight_source_id = {src:String} AND c.issue_id = {issue:String} AND c.field_id = 'description'"
-        " ORDER BY c.tenant_id",
+        " ORDER BY c.insight_tenant_id",
         {"src": SOURCE_ID, "issue": ISSUE_ID},
     )
 
-    assert [(r["tenant_id"], json.loads(r["content"])) for r in rows] == [(TENANT_ID, MINE), (OTHER_TENANT, THEIRS)]
+    assert [(r["insight_tenant_id"], json.loads(r["content"])) for r in rows] == [
+        (TENANT_ID, MINE),
+        (OTHER_TENANT, THEIRS),
+    ]
 
 
 def test_every_history_reference_resolves_within_its_own_tenant(silver: Scenario) -> None:
     """`assert_text_refs_resolve`, scoped to this source: the class tables outlive the module."""
     refs = silver.warehouse.rows(
-        "SELECT h.tenant_id AS tenant_id, h.event_kind AS event_kind, t.content AS content"
+        "SELECT h.insight_tenant_id AS insight_tenant_id, h.event_kind AS event_kind, t.content AS content"
         " FROM silver.class_task_field_history AS h FINAL"
         " ARRAY JOIN h.value_ids AS ref"
         " LEFT JOIN silver.class_task_field_text AS t FINAL"
-        "        ON t.tenant_id = h.tenant_id"
+        "        ON t.insight_tenant_id = h.insight_tenant_id"
         "       AND t.insight_source_id = h.insight_source_id"
         "       AND t.data_source = h.data_source"
         "       AND t.text_id = ref"
         " WHERE h.insight_source_id = {src:String} AND h.value_id_type = 'text_ref'"
-        " ORDER BY h.tenant_id, h.event_order",
+        " ORDER BY h.insight_tenant_id, h.event_order",
         {"src": SOURCE_ID},
     )
 
-    assert [(r["tenant_id"], r["event_kind"], r["content"]) for r in refs] == [
+    assert [(r["insight_tenant_id"], r["event_kind"], r["content"]) for r in refs] == [
         (tenant, kind, body)
         for tenant in (TENANT_ID, OTHER_TENANT)
         for kind, body in (("synthetic_initial", OLD_BODY), ("changelog", SHARED_BODY))
