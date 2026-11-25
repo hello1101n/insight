@@ -9,12 +9,12 @@ Both surfaces land in `class_ai_assistant_usage`, as Enterprise does. Gold does 
 Capture the requests behind the Chat and Cowork tabs and answer for each:
 
 1. Does one request return every member active that day, not a top-N?
-2. Does it carry a reference: the day's active-member count, or an org total?
+2. Does it carry the day's active-member count?
 3. Is it a GET?
 4. Does each row carry an email, ideally an account UUID?
 5. Which counters come per member? Chat needs chats or messages. Cowork needs sessions.
 
-A tab with only aggregates is blocked. If one request serves both tabs, one stream feeds both surfaces.
+A tab with only aggregates, or with no active-member count, is blocked. If one request serves both tabs, one stream feeds both surfaces.
 
 ## Bronze
 
@@ -27,14 +27,16 @@ A tab with only aggregates is blocked. If one request serves both tabs, one stre
 
 ## Staging
 
-- Gate per surface: admit a read only when its distinct members equal the headcount, or its summed counter equals the org total.
+- Gate per surface on headcount only: admit a read only when its distinct attributable members equal the same read's active-member count, as `claude_team__ai_dev_usage` does. A summed counter misses a member whose counted field is zero.
 - `staging.claude_team__ai_assistant_usage` emits `claude_enterprise__ai_assistant_usage`'s columns in the same order, one CTE per surface.
 - `tool` `claude`, `source` `claude_team`, `surface` `chat` or `cowork`.
 - Chat: chats to `conversation_count`, messages to `message_count`.
 - Cowork: sessions to `session_count`, plus `message_count`, `action_count`, `dispatch_turn_count`, `skills_used_count` when present.
 - Raw row to `surface_metrics_json`.
 - Keep a row only when a counter is above zero and it has an email and a date.
-- The class accepts `claude_team` as a `source`. No new column, no warehouse heal.
+- `class_ai_assistant_usage.sql` gains `-- depends_on: {{ ref('claude_team__ai_assistant_usage') }}`, so dbt sees the `union_by_tag` dependency.
+- `silver/ai/schema.yml`: add `claude_team` to the `source` accepted values and description, and add claude-team to the class description's list of staging models that gate emission.
+- No new column, no warehouse heal. Each stream is a MINOR `descriptor.yaml` bump per ADR-0015.
 
 ## Rules
 
@@ -44,12 +46,13 @@ A tab with only aggregates is blocked. If one request serves both tabs, one stre
 4. Read up to today and re-read the revision tail. Registry `revision` is at least `lookback_window` (#2682).
 5. Gate emission on activity, never on seat state.
 6. Bound staging increments by extraction time per instance, never by business date (#752, #4297).
-7. Treat a 403 as an empty stream and flag it with a silver `data_quality` check.
+7. Treat a 403 as an empty stream. A 403 leaves no read and no envelope, so the gate never sees it. A `data_quality` test like `assert_ai_overage_stream_not_silent` flags a source whose `claude_team_code_metrics_org` reads land while a surface stays empty for seven days.
 
 ## Tests
 
 - Data-path spec per surface: a short read never becomes the day's state.
 - `data_quality` test per surface: reports days the gate held back.
+- `data_quality` test per surface: flags a silent surface, as in rule 7.
 - `test_claude_team_stream_cursors_agree.py` covers each member and `_org` pair.
 
 ## Open question
