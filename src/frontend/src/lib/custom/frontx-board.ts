@@ -264,12 +264,29 @@ function widgetCell(
   };
 }
 
+// INVARIANT: an Insight heading or text is plain text, so its whitespace collapses as in HTML and no ASCII punctuation is markdown.
+const plain = (text: string) =>
+  text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[!-/:-@[-`{-~]/g, "\\$&");
+
+const GONE = plain("This widget is no longer on the dashboard.");
+
+function goneCell(dashboard: string, key: string): DashboardCell {
+  return {
+    size: "medium",
+    height: "low",
+    widget: { id: markdownId(`${dashboard}/${key}`), render: { body: GONE } },
+  };
+}
+
 // INVARIANT: a markdown_card refuses an empty body, and a blank Insight text shows nothing.
 function proseCells(
   dashboard: string,
   key: string,
   text: string,
-  body = text
+  body: string
 ): DashboardCell[] {
   if (!text.trim()) return [];
 
@@ -311,12 +328,12 @@ export function frontxBoard(
   const cells = items.flatMap((item, index) => {
     const key = keys[index];
     if ("heading" in item) {
-      return proseCells(id, key, item.heading, `### ${item.heading}`);
+      return proseCells(id, key, item.heading, `## ${plain(item.heading)}`);
     }
-    if ("text" in item) return proseCells(id, key, item.text);
+    if ("text" in item) return proseCells(id, key, item.text, plain(item.text));
 
     const widget = byId.get(item.widget);
-    return widget ? [widgetCell(id, widget, key, windowed)] : [];
+    return [widget ? widgetCell(id, widget, key, windowed) : goneCell(id, key)];
   });
 
   const dashboardId = `${DASHBOARD_TYPE_ID}${uuidv5(id, NAMESPACE)}`;

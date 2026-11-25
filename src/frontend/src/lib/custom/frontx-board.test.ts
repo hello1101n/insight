@@ -113,29 +113,53 @@ function cells(items: DashboardItem[], timeRanges?: string[]) {
 }
 
 describe("frontxBoard", () => {
-  it("draws one cell per item in order and skips a widget the list does not hold", () => {
+  it("draws one cell per item in order, and a note for a widget the list does not hold", () => {
     const drawn = cells([
       { heading: "Throughput" },
-      { text: "Some words." },
+      { text: "Some words" },
       { widget: "table" },
       { widget: "gone" },
       { widget: "stat" },
     ]);
 
-    expect(drawn).toHaveLength(4);
+    expect(drawn).toHaveLength(5);
     expect(drawn[0]).toMatchObject({
       size: "large",
       frame: false,
-      widget: { render: { body: "### Throughput" } },
+      widget: { render: { body: "## Throughput" } },
     });
     expect(drawn[1]).toMatchObject({
       size: "large",
       frame: false,
-      widget: { render: { body: "Some words." } },
+      widget: { render: { body: "Some words" } },
+    });
+    expect(drawn[3]).toEqual({
+      size: "medium",
+      height: "low",
+      widget: {
+        id: expect.stringContaining(".widget.markdown_card.v1~"),
+        render: {
+          body: String.raw`This widget is no longer on the dashboard\.`,
+        },
+      },
     });
     expect(drawn[0].widget.id).toContain(".widget.markdown_card.v1~");
     expect(drawn[2].widget.id).toContain(".widget.grid.v1~");
-    expect(drawn[3].widget.id).toContain(".widget.metric_card.v1~");
+    expect(drawn[4].widget.id).toContain(".widget.metric_card.v1~");
+  });
+
+  it("writes a heading and a text as plain text, with their whitespace collapsed", () => {
+    const [heading, text] = cells([
+      { heading: "Q1 *goals* #1" },
+      {
+        text: "1. Ship [it](https://example.com) & <b>now</b>\n\n    `soon` _ok_!",
+      },
+    ]);
+
+    expect(heading.widget.render.body).toBe(String.raw`## Q1 \*goals\* \#1`);
+    expect(text.widget.render.body).toBe(
+      String.raw`1\. Ship \[it\]\(https\:\/\/example\.com\) \& \<b\>now\<\/b\> \`soon\` \_ok\_\!`
+    );
   });
 
   it("draws no cell for a blank heading or text, which a markdown card refuses", () => {
