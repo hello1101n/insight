@@ -10,11 +10,19 @@ The last step resumes the writers the pre-upgrade hook suspended: a sync
 started before the rebuild ends would read half-rebuilt relations. A failed
 step leaves them suspended and the state ConfigMap in place; the next deploy's
 post hook submits the rebuild again.
+
+SECURITY: no template takes an input that reaches a command. The two steps
+that need the cutover ServiceAccount (it patches CronWorkflows and creates
+Jobs) are fixed templates with hard-coded commands and carry that account
+themselves; every other pod runs as argo-workflow, as dbt-run does.
 */}}
 {{- if and .Values.ingestion.templates.enabled .Values.ingestion.tenantCutover.enabled }}
 {{- $name := printf "%s-tenant-cutover" (include "insight.fullname" .) }}
 {{- $staging := "tag:staging +identity_inputs" }}
 {{- $stepDeadline := .Values.ingestion.tenantCutover.dbtStepDeadlineSeconds | toString }}
+{{- if not (regexMatch "^[1-9][0-9]*$" $stepDeadline) }}
+{{- fail (printf "ingestion.tenantCutover.dbtStepDeadlineSeconds must be a positive whole number of seconds, got %q" $stepDeadline) }}
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -79,7 +87,8 @@ metadata:
     {{- include "insight.labels" . | nindent 4 }}
     app.kubernetes.io/component: tenant-cutover
 spec:
-  serviceAccountName: {{ $name }}
+  # dbt-run's own account; only the two cutover steps below take {{ $name }}.
+  serviceAccountName: argo-workflow
   entrypoint: rebuild
   activeDeadlineSeconds: 43200
   ttlStrategy:
@@ -99,8 +108,7 @@ spec:
                 - {name: dbt_full_refresh, value: "true"}
                 - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
         - - name: identity-seed
-            template: cutover
-            arguments: {parameters: [{name: step, value: seed}]}
+            template: identity-seed
         # An empty selection is the whole buildable graph; what step one built is left out.
         - - name: everything-else
             templateRef: {name: dbt-run, template: run}
@@ -111,16 +119,15 @@ spec:
                 - {name: dbt_full_refresh, value: "true"}
                 - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
         - - name: resume-writers
-            template: cutover
-            arguments: {parameters: [{name: step, value: resume}]}
-    - name: cutover
-      inputs:
-        parameters:
-          - name: step
+            template: resume-writers
+{{- range $step := list (list "identity-seed" "seed") (list "resume-writers" "resume") }}
+    - name: {{ index $step 0 }}
+      serviceAccountName: {{ $name }}
       container:
-        image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
+        image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" $.Values.ingestion.toolboxImage | quote }}
         imagePullPolicy: IfNotPresent
-        command: [bash, /ingestion/scripts/tenant-cutover.sh, {{ `"{{inputs.parameters.step}}"` }}]
+        command: [bash, /ingestion/scripts/tenant-cutover.sh, {{ index $step 1 }}]
         env:
-          {{- include "insight.tenantCutover.env" . | nindent 10 }}
+          {{- include "insight.tenantCutover.env" $ | nindent 10 }}
+{{- end }}
 {{- end }}

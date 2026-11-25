@@ -82,12 +82,66 @@ def test_the_rebuild_resumes_the_writers_only_as_its_last_step(manifests: list[d
     steps = [group[0] for group in template["spec"]["templates"][0]["steps"]]
 
     assert [s["name"] for s in steps] == ["staging", "identity-seed", "everything-else", "resume-writers"]
-    assert steps[-1]["arguments"]["parameters"] == [{"name": "step", "value": "resume"}]
+    assert steps[-1]["template"] == "resume-writers"
     assert all(
         {"name": "dbt_full_refresh", "value": "true"} in s["arguments"]["parameters"]
         for s in steps
         if "templateRef" in s
     )
+
+
+def test_no_input_reaches_a_command_and_only_the_two_cutover_steps_run_as_its_account(
+    manifests: list[dict[str, Any]],
+) -> None:
+    """Anyone who may submit a Workflow can pick any template as its entrypoint."""
+    spec = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]
+    templates = {t["name"]: t for t in spec["templates"]}
+
+    assert spec["serviceAccountName"] == "argo-workflow"
+    assert not any("inputs" in t for t in templates.values())
+    assert "{{" not in yaml.safe_dump(spec), "no parameter or expression is substituted anywhere"
+    assert {n: t.get("serviceAccountName") for n, t in templates.items() if t.get("serviceAccountName")} == {
+        "identity-seed": "insight-tenant-cutover",
+        "resume-writers": "insight-tenant-cutover",
+    }
+    assert templates["identity-seed"]["container"]["command"] == [
+        "bash",
+        "/ingestion/scripts/tenant-cutover.sh",
+        "seed",
+    ]
+    assert templates["resume-writers"]["container"]["command"] == [
+        "bash",
+        "/ingestion/scripts/tenant-cutover.sh",
+        "resume",
+    ]
+
+
+def test_the_dbt_step_deadline_is_a_number_and_reaches_only_the_deadline(manifests: list[dict[str, Any]]) -> None:
+    run = _by_name(manifests, "WorkflowTemplate", "dbt-run")["spec"]["templates"][0]
+    rebuild = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]["templates"][0]
+    deadlines = [
+        p["value"]
+        for group in rebuild["steps"]
+        for p in group[0].get("arguments", {}).get("parameters", [])
+        if p["name"] == "active_deadline_seconds"
+    ]
+
+    assert run["activeDeadlineSeconds"] == "{{inputs.parameters.active_deadline_seconds}}"
+    assert "active_deadline_seconds" not in yaml.safe_dump(
+        {k: v for k, v in run.items() if k not in ("inputs", "activeDeadlineSeconds")}
+    )
+    assert deadlines and all(d.isdigit() for d in deadlines), deadlines
+
+
+def test_a_step_deadline_that_is_not_a_number_fails_the_render() -> None:
+    result = subprocess.run(
+        ["helm", "template", "insight", str(CHART), "--values", str(CHART / "tests" / "values.yaml"),
+         "--set-string", "ingestion.tenantCutover.dbtStepDeadlineSeconds=60 x"],
+        capture_output=True, text=True, timeout=300, check=False,
+    )  # fmt: skip
+
+    assert result.returncode != 0
+    assert "dbtStepDeadlineSeconds must be a positive whole number" in result.stderr
 
 
 def test_the_field_value_map_loader_is_given_the_tenant(manifests: list[dict[str, Any]]) -> None:
