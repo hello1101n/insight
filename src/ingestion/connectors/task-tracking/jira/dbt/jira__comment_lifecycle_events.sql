@@ -42,7 +42,7 @@ WITH transitions AS (
 -- issue; `assert_jira_substream_rows_without_issue_id` reports those.
 comment_issue AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                   AS insight_tenant_id,
         source_id,
         toString(comment_id)                                    AS comment_id,
         any(jira_id)                                            AS jira_id

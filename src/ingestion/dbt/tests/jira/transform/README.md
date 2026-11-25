@@ -37,12 +37,12 @@ worklog streams — `scenario.seed(comments=..., worklogs=...)`, with rows from
 the `comment` and `worklog` builders — and it builds `LIFECYCLE_SELECTOR`, the
 two lifecycle producers and their ancestors, instead of the journal's.
 
-`test_missing_tenant.py` proves the other half of tenant isolation. A model that
-reads its tenant through `bronze_tenant()` (`jira__comment_state`) fails to build
-over a NULL, empty or non-UUID bronze tenant, naming itself; with
+`test_missing_tenant.py` proves the other half of tenant isolation. Every model
+reads its Bronze tenant through `bronze_tenant()`, so it fails to build over a
+NULL, empty or non-UUID tenant, naming itself, including the ones that INNER JOIN
+on the tenant (a view fails when read); with
 `--vars '{bronze_tenant_on_invalid: warn}'` it builds and `not_empty` reports the
-row. A model not converted yet still builds, and the `not_null` and `not_empty`
-tests on the tenant of the model that reads it report the row.
+row, except where an INNER JOIN on the tenant cannot match the empty value.
 
 Bronze is created by the Airbyte destination from the Jira connector's own
 catalogue, through the same scripts `bootstrap-db.sh` uses — so the tables carry
@@ -99,8 +99,11 @@ against dbt-clickhouse, never enters into it.
 @case(
     fields=[field("customfield_10001", name="Story Points", schema_type="number")],
     issues=[issue("TST-1", fields={"customfield_10001": 5})],
-    events=[event("TST-1", 101, "2026-01-06T10:00:00",
-                  [item("customfield_10001", frm="3", frm_str="3", to="5", to_str="5")])],
+    events=[
+        event(
+            "TST-1", 101, "2026-01-06T10:00:00", [item("customfield_10001", frm="3", frm_str="3", to="5", to_str="5")]
+        )
+    ],
 )
 def test_the_rule_it_states(scenario: Scenario) -> None:
     assert scenario.states("customfield_10001") == [["3"], ["5"]]

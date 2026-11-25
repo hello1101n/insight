@@ -1,11 +1,8 @@
 """What a bronze row without a valid tenant does to the model that reads it.
 
-A model that reads its tenant through `bronze_tenant()` fails to build over a NULL, empty or
-non-UUID tenant, naming itself; with `bronze_tenant_on_invalid: warn` it builds and its
-`not_empty` test reports the row. `jira__comment_state` is the converted model.
-
-A model not converted yet reads the tenant through `ifNull(insight_tenant_id, '')`, so a missing one
-never makes a key Nullable; `not_null` and `not_empty` on each model's tenant are the guard.
+Every Jira model reads its Bronze tenant through `bronze_tenant()`, so it fails to build over
+a NULL, empty or non-UUID tenant, naming itself, even where it INNER JOINs on the tenant;
+with `bronze_tenant_on_invalid: warn` it builds and its `not_empty` test reports the row.
 Each case builds the chain from rows that carry a tenant, adds one row that does not, and
 rebuilds only the model that reads it, so the finding is that model's own.
 """
@@ -88,15 +85,15 @@ CASES: dict[str, tuple[str, Callable[[], dict[str, Any]]]] = {
     ),
     "jira__issue_availability_state": ("bronze_jira.jira_issue", _issue),
     "jira__task_field_kind": ("bronze_jira.jira_fields", lambda: field("customfield_10099", schema_type="number")),
-}
-
-REPORTED_BY = {
-    "jira__catalogue_first_seen": "not_null_jira__catalogue_first_seen_insight_tenant_id",
-    "jira__changelog_items": "not_empty_jira__changelog_items_insight_tenant_id",
-    "jira__issue_availability_state": "not_null_jira__issue_availability_state_insight_tenant_id",
-    "jira__issue_key_ids": "not_null_jira__issue_key_ids_insight_tenant_id",
-    "jira__task_field_kind": "not_null_jira__task_field_kind_insight_tenant_id",
-    "jira__task_field_metadata": "not_empty_jira__task_field_metadata_insight_tenant_id",
+    # INNER JOINs on the tenant: the row must fail the build, not vanish from the join.
+    "jira__worklog_state": (
+        "bronze_jira.jira_worklogs",
+        lambda: worklog(609, jira_id="TST-1", key="TST-1", started="2026-01-07T10:00:00.000+0000"),
+    ),
+    "jira__task_field_text": (
+        "bronze_jira.jira_issue",
+        lambda: issue("TST-9", jira_id="9009", fields={NOTES: "tenantless body"}),
+    ),
 }
 
 
@@ -132,26 +129,58 @@ def built(warehouse: Warehouse) -> Iterator[Warehouse]:
         warehouse.execute(statement)
 
 
+GUARD = "insight_tenant_id is NULL, empty or not a UUID"
+# In warn mode the row's tenant is '', which an INNER JOIN on the tenant cannot match.
+INNER_JOINED = {"jira__worklog_state", "jira__task_field_text"}
+VIEWS = {"jira__task_field_kind"}
+# The relation a model builds, which the guard's message names, where it differs from the model.
+RELATIONS = {"jira__changelog_items": "jira_changelog_items"}
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
+
+
 @pytest.mark.parametrize("model", sorted(CASES))
-def test_a_bronze_row_without_a_tenant_builds_and_the_model_that_reads_it_reports_it(
-    built: Warehouse, model: str
-) -> None:
+def test_a_bronze_row_without_a_tenant_fails_the_build_of_the_model_that_reads_it(built: Warehouse, model: str) -> None:
     table, row = CASES[model]
     assert built.failing_tests(tenant_tests(model)) == frozenset(), f"{model} should start from tenanted rows only"
 
     built.insert(table, [_without_tenant(row())])
+    relation = RELATIONS.get(model, model)
     try:
         invocation = built.dbt_status("run", "--select", model)
+        if model in VIEWS:
+            # A view fails only when read.
+            with pytest.raises(Exception, match=f"staging.{relation}: a Bronze .*{GUARD}"):
+                built.rows(f"SELECT * FROM staging.{relation}")
+    finally:
+        built.execute(DROP_TENANTLESS[table])
+        _rebuild(built, model)
+
+    if model in VIEWS:
+        return
+    assert not invocation.success, f"{model} should refuse a {table} row without a tenant"
+    assert f"staging.{relation}: a Bronze" in invocation.log and GUARD in invocation.log, (
+        f"the failure should name {relation}:\n{invocation.log}"
+    )
+
+
+@pytest.mark.parametrize("model", sorted(set(CASES) - INNER_JOINED))
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_model_reports_it(
+    built: Warehouse, model: str
+) -> None:
+    table, row = CASES[model]
+    built.insert(table, [_without_tenant(row())])
+    try:
+        invocation = built.dbt_status("run", "--select", model, *WARN)
         failing = built.failing_tests(tenant_tests(model))
     finally:
         built.execute(DROP_TENANTLESS[table])
         _rebuild(built, model)
 
-    assert invocation.success, f"{model} should build over a {table} row without a tenant:\n{invocation.log}"
-    assert REPORTED_BY[model] in failing, f"{model} should report the {table} row without a tenant: {sorted(failing)}"
+    assert invocation.success, f"{model} should build in warn mode:\n{invocation.log}"
+    assert f"not_empty_{model}_insight_tenant_id" in failing, f"{model} should report the row: {sorted(failing)}"
 
 
-def test_a_tenantless_issue_reaches_the_journal_and_its_tenant_tests_report_it(built: Warehouse) -> None:
+def test_in_warn_mode_a_tenantless_issue_reaches_the_journal_and_its_tenant_tests_report_it(built: Warehouse) -> None:
     rows = {
         "bronze_jira.jira_issue": _issue(),
         "bronze_jira.jira_issue_history": event(
@@ -165,7 +194,7 @@ def test_a_tenantless_issue_reaches_the_journal_and_its_tenant_tests_report_it(b
     for table, row in rows.items():
         built.insert(table, [_without_tenant(row)])
     try:
-        built.build(SELECTOR)
+        built.build(SELECTOR, dbt_vars={"bronze_tenant_on_invalid": "warn"})
         failing = built.failing_tests(tenant_tests("jira__field_history_derived"))
     finally:
         for table in rows:
@@ -196,7 +225,6 @@ def test_the_producers_and_their_classes_carry_a_string_tenant(built: Warehouse)
 
 GUARDED = "jira__comment_state"
 GUARD_MESSAGE = "staging.jira__comment_state: a Bronze c.insight_tenant_id is NULL, empty or not a UUID"
-WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
 
 
 def _comment(tenant: str | None) -> dict[str, Any]:

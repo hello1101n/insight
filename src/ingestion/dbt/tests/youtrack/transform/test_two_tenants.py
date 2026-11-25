@@ -12,7 +12,7 @@ import json
 
 from conftest import SOURCE, TENANT, Warehouse
 
-OTHER_TENANT = "synthetic-other-tenant"
+OTHER_TENANT = "aaaaaaaa-1111-4111-8111-111111111111"
 
 
 def _value(value_id: str) -> list[dict[str, str]]:

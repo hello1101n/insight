@@ -91,7 +91,7 @@ LIMIT 1 BY {{ cte }}.unique_key
 -#}
     {% for tbl in ['deal_pipelines', 'ticket_pipelines'] %}
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
         source_id,
         objectType                                      AS object_type,
         id                                              AS pipeline_id,
