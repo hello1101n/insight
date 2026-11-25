@@ -38,7 +38,7 @@ WITH roster_seat_type AS (
     -- Column names are prefixed so the join below stays unambiguous against
     -- the activity row's own insight_tenant_id / source_id / email / seat_type.
     SELECT
-        coalesce(insight_tenant_id, '')                                     AS r_tenant_id,
+        {{ bronze_tenant() }}                                       AS r_tenant_id,
         coalesce(source_id, '')                                     AS r_source_id,
         lower(trim(email))                                          AS r_email,
         nullIf(trim(coalesce(seat_type, '')), '')                   AS r_seat_type
@@ -51,9 +51,9 @@ WITH roster_seat_type AS (
 )
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }}                                           AS insight_tenant_id,
     source_id,
-    CAST(concat(coalesce(insight_tenant_id, ''), '-', coalesce(source_id, ''), '-', lower(trim(coalesce(email, ''))), '-', coalesce(date, ''), '-chat') AS String)
+    CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', lower(trim(coalesce(email, ''))), '-', coalesce(date, ''), '-chat') AS String)
                                                                     AS unique_key,
     lower(trim(email))                                              AS email,
     toDate(date)                                                    AS day,

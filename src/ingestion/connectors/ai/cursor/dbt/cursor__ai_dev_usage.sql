@@ -69,9 +69,9 @@ WITH daily AS (
 )
 
 SELECT
-    d.insight_tenant_id                                     AS insight_tenant_id,
+    {{ bronze_tenant('d.insight_tenant_id') }}      AS insight_tenant_id,
     d.source_id                                     AS source_id,
-    CAST(concat(coalesce(d.insight_tenant_id, ''), '-', coalesce(d.source_id, ''), '-', coalesce(d.userId, ''), '-', toString(d.day_key)) AS String)
+    CAST(concat(insight_tenant_id, '-', coalesce(d.source_id, ''), '-', coalesce(d.userId, ''), '-', toString(d.day_key)) AS String)
                                                     AS unique_key,
     lower(trim(d.email))                            AS email,
     CAST(NULL AS Nullable(String))                  AS api_key_id,

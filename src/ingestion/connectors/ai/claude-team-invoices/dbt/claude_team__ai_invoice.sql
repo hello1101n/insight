@@ -60,7 +60,7 @@ WITH latest_per_key AS (
 )
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant('latest_per_key.insight_tenant_id') }} AS insight_tenant_id,
     source_id,
     unique_key,
     invoice_id,
