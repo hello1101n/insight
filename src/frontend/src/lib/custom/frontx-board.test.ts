@@ -350,6 +350,36 @@ describe("frontxBoard", () => {
     }
   });
 
+  it("sizes each table column from its title, so a few short columns fit the cell", () => {
+    const board = frontxBoard("board", read([{ widget: "t" }]), [
+      widget("t", {
+        type: "table",
+        metric: "m",
+        columns: ["id", "pipeline", "duration_min"],
+      }),
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+    const { columns } = cell.widget.render as {
+      columns: { title: string; width: number }[];
+    };
+
+    expect(columns.map(({ title, width }) => [title, width])).toEqual([
+      ["id", 62],
+      ["pipeline", 104],
+      ["duration_min", 132],
+    ]);
+  });
+
+  it("draws a pie whole, with its legend under it, as the current chart does", () => {
+    const [pie] = cells([{ widget: "pie" }]);
+
+    expect(pie.widget.render).toEqual({
+      radius: ["80%"],
+      legend_position: "bottom",
+      drill_down: true,
+    });
+  });
+
   it("captions a stat with its label, or with its value column when it has none", () => {
     const board = frontxBoard(
       "board",
@@ -744,13 +774,14 @@ describe("frontxBoard percent columns", () => {
 
     expect(cell.widget.render).toEqual({
       columns: [
-        { key: "c0", title: "team" },
+        { key: "c0", title: "team", width: 76 },
         {
           key: "c1",
           title: "rate",
+          width: 76,
           value_format: { value_type: "percent", decimals: 1 },
         },
-        { key: "c2", title: "runs" },
+        { key: "c2", title: "runs", width: 76 },
       ],
     });
     expect(drawnData(table, ["rate"], answer)).toEqual({

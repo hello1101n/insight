@@ -61,6 +61,10 @@ const PERCENT = { value_type: "percent" } as const;
 
 const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 
+// WORKAROUND: a FrontX grid column with no width takes 160 px, so a table of a few short columns scrolls sideways.
+// INVARIANT: the kit table header takes at most 7 px a letter, 32 px of padding and 16 px for the sort mark.
+const columnWidth = (title: string) => 7 * title.length + 48;
+
 const DATE = cel(String.raw`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])`);
 
 const MONTHS = cel(
@@ -181,6 +185,7 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
           columns: widget.columns.map((name, index) => ({
             key: `c${index}`,
             title: name,
+            width: columnWidth(name),
             ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
           })),
         },
@@ -211,8 +216,8 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
         type: "pie_chart",
         ...(percent(widget.value) ? { value_format: PERCENT } : {}),
         render: {
-          radius: ["50%", "80%"],
-          legend_position: "right",
+          radius: ["80%"],
+          legend_position: "bottom",
           drill_down: true,
         },
         transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
