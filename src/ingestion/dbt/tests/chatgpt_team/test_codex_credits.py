@@ -158,15 +158,22 @@ def test_reconciliation_keeps_the_tenant_of_a_one_sided_row(warehouse: Client) -
 
 
 @pytest.mark.parametrize("tenant", [None, "", "not-a-uuid"])
-def test_a_bronze_row_without_a_valid_tenant_fails_the_build(warehouse: Client, tenant: str | None) -> None:
+@pytest.mark.parametrize(
+    "model",
+    [
+        "chatgpt_team__ai_credit_usage",
+        # Joins and the completeness gate compare the tenant; the row must fail, not fall out of a join.
+        "chatgpt_team__ai_dev_usage",
+    ],
+)
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build(warehouse: Client, tenant: str | None, model: str) -> None:
     marker = str(uuid4())
     leaderboard(warehouse, tenant, marker, "eve", "2026-03-10", 1)
     try:
-        result = dbt("chatgpt_team__ai_credit_usage")
+        result = dbt(model)
         assert result.returncode != 0
-        assert "chatgpt_team__ai_credit_usage: a Bronze bronze.insight_tenant_id is NULL, empty or not a UUID" in (
-            result.stdout
-        )
+        assert f"{model}: a Bronze" in result.stdout
+        assert "is NULL, empty or not a UUID" in result.stdout
     finally:
         warehouse.command(
             "ALTER TABLE bronze_chatgpt_team.chatgpt_team_codex_user_daily DELETE WHERE source_id = {marker:String}"

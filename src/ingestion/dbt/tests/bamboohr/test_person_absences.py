@@ -145,3 +145,48 @@ def test_a_snapshot_without_a_valid_tenant_fails_the_build(warehouse: Client, te
             "ALTER TABLE bronze_bamboohr.whos_out DELETE WHERE source_id = {source:String} SETTINGS mutations_sync = 2",
             parameters={"source": source},
         )
+
+
+@pytest.mark.parametrize("tenant", [None, "not-a-uuid"])
+def test_attribute_claims_fail_on_an_employee_without_a_valid_tenant(warehouse: Client, tenant: str | None) -> None:
+    """attribute_claims joins its watermark on the tenant; the row must fail the build, not drop out."""
+    source = str(uuid4())
+    warehouse.insert(
+        "bronze_bamboohr.employees",
+        [[str(uuid4()), datetime(2025, 6, 1, tzinfo=UTC), tenant, source, f"{source}-7", "7", "Engineer", "{}"]],
+        column_names=[
+            "_airbyte_raw_id",
+            "_airbyte_extracted_at",
+            "insight_tenant_id",
+            "source_id",
+            "unique_key",
+            "id",
+            "jobTitle",
+            "raw_data",
+        ],
+    )
+    try:
+        result = subprocess.run(
+            [
+                os.environ["DBT_EXECUTABLE"],
+                "run",
+                "--profiles-dir",
+                os.environ["DBT_PROFILES_DIR"],
+                "--select",
+                "+bamboohr__person_attribute_claims",
+            ],
+            cwd=DBT_DIR,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert (
+            "bamboohr__person_attribute_claims: a Bronze insight_tenant_id is NULL, empty or not a UUID"
+            in result.stdout
+        )
+    finally:
+        warehouse.command(
+            "ALTER TABLE bronze_bamboohr.employees DELETE WHERE source_id = {source:String} SETTINGS mutations_sync = 2",
+            parameters={"source": source},
+        )
+        warehouse.command("DROP TABLE IF EXISTS staging.bamboohr__employees_snapshot")
