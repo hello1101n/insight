@@ -167,7 +167,31 @@ GROUP BY p.department
 
 #### 1.6 Where the tenant comes from
 
-The tenant always comes from the session. No request, query or tool argument can set it.
+Keycloak is the only source of the tenant. The session gets the tenant from the Keycloak token. No request, query or tool argument can set it.
+
+```mermaid
+flowchart LR
+    subgraph KC[Keycloak broker realm]
+        R1[GitHub registration A<br/>mapper: tenant = acme]
+        R2[Entra registration<br/>mapper: tenant = acme]
+        R3[GitHub registration B<br/>mapper: tenant = globex]
+    end
+    U1[User of acme] -->|acme.insight.example| R1
+    U2[User of acme] -->|acme.insight.example| R2
+    U3[User of globex] -->|globex.insight.example| R3
+    R1 --> T1[Token: tenant = acme]
+    R2 --> T1
+    R3 --> T2[Token: tenant = globex]
+```
+
+- **One identity provider registration belongs to one tenant.** When the operator adds an identity provider to Keycloak, the operator sets the tenant id in the mapper of that registration.
+- **Every user who signs in through that registration gets that tenant.** Keycloak writes the mapper value into the token.
+- **A tenant can have more than one identity provider.** Each registration has its own mapper with the same tenant id.
+- **The tenant never comes from the identity provider.** Keycloak ignores any tenant value that the provider sends.
+- **The same provider can serve more than one tenant.** Each tenant gets its own registration, so the mapper values do not mix.
+- **The operator with cluster access configures the registrations.** There is no API or UI for this.
+
+The tenant then moves from the token to the service:
 
 ```mermaid
 sequenceDiagram
