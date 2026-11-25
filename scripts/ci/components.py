@@ -126,6 +126,7 @@ COMPONENTS = [
         # migrator to prove idempotency and skip cleanly when unset).
         "live_db": True,
         "live_db_name": "identity",
+        "live_ch": True,
         "cover_ignore_regex": "src/backend/libs/",
         "paths": [
             "src/backend/services/identity-resolution",

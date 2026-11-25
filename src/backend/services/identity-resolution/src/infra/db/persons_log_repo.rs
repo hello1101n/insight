@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use super::entities::persons;
@@ -18,6 +18,24 @@ impl<'a> MariaDbPersonsLogReader<'a> {
 
 #[async_trait]
 impl PersonsLogReader for MariaDbPersonsLogReader<'_> {
+    async fn tenants(&self) -> anyhow::Result<Vec<Uuid>> {
+        let tenants: Vec<Vec<u8>> = persons::Entity::find()
+            .select_only()
+            .column(persons::Column::InsightTenantId)
+            .distinct()
+            .order_by_asc(persons::Column::InsightTenantId)
+            .into_tuple()
+            .all(self.db)
+            .await?;
+        tenants
+            .iter()
+            .map(|bytes| {
+                Uuid::from_slice(bytes)
+                    .map_err(|e| anyhow::anyhow!("persons.insight_tenant_id is not a UUID: {e}"))
+            })
+            .collect()
+    }
+
     async fn read_all(&self) -> anyhow::Result<Vec<PersonsLogRow>> {
         let models = persons::Entity::find()
             .order_by_asc(persons::Column::Id)
@@ -26,8 +44,18 @@ impl PersonsLogReader for MariaDbPersonsLogReader<'_> {
         models.into_iter().map(map_row).collect()
     }
 
-    async fn latest_id(&self) -> anyhow::Result<Option<u64>> {
+    async fn read_tenant(&self, tenant: Uuid) -> anyhow::Result<Vec<PersonsLogRow>> {
+        let models = persons::Entity::find()
+            .filter(persons::Column::InsightTenantId.eq(tenant.as_bytes().to_vec()))
+            .order_by_asc(persons::Column::Id)
+            .all(self.db)
+            .await?;
+        models.into_iter().map(map_row).collect()
+    }
+
+    async fn latest_id(&self, tenant: Uuid) -> anyhow::Result<Option<u64>> {
         let latest = persons::Entity::find()
+            .filter(persons::Column::InsightTenantId.eq(tenant.as_bytes().to_vec()))
             .order_by_desc(persons::Column::Id)
             .one(self.db)
             .await?;

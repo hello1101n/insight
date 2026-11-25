@@ -3,6 +3,8 @@
 
 use core::fmt::Write;
 
+use uuid::Uuid;
+
 use crate::Topology;
 
 const MERGE_TREE: &str = "MergeTree";
@@ -21,6 +23,7 @@ pub struct TableSpec {
     name: String,
     columns: Vec<(String, String)>,
     sort_key: Vec<String>,
+    partition_key: Option<String>,
     on_existing: OnExisting,
 }
 
@@ -45,8 +48,15 @@ impl TableSpec {
                 .map(|(name, data_type)| ((*name).to_owned(), (*data_type).to_owned()))
                 .collect(),
             sort_key: sort_key.iter().map(|column| (*column).to_owned()).collect(),
+            partition_key: None,
             on_existing: OnExisting::Fail,
         }
+    }
+
+    #[must_use]
+    pub fn partition_by(mut self, column: &str) -> Self {
+        self.partition_key = Some(column.to_owned());
+        self
     }
 
     /// `IF NOT EXISTS`: a name already held is this create repeating itself,
@@ -76,11 +86,11 @@ impl TableSpec {
         } else {
             ""
         };
-        let _ = write!(
-            sql,
-            " ENGINE = {prefix}{MERGE_TREE} ORDER BY {}",
-            self.sort_key_sql()
-        );
+        let _ = write!(sql, " ENGINE = {prefix}{MERGE_TREE}");
+        if let Some(partition_key) = &self.partition_key {
+            let _ = write!(sql, " PARTITION BY {partition_key}");
+        }
+        let _ = write!(sql, " ORDER BY {}", self.sort_key_sql());
 
         sql
     }
@@ -120,6 +130,14 @@ pub enum Ddl {
         from: String,
         to: String,
     },
+    /// An empty source partition empties the target partition. On a replicated
+    /// table the statement reads the source parts of the replica that runs it.
+    ReplacePartition {
+        database: String,
+        table: String,
+        partition: Uuid,
+        from: String,
+    },
 }
 
 impl Ddl {
@@ -154,12 +172,23 @@ impl Ddl {
         }
     }
 
+    #[must_use]
+    pub fn replace_partition(database: &str, table: &str, partition: Uuid, from: &str) -> Self {
+        Self::ReplacePartition {
+            database: database.to_owned(),
+            table: table.to_owned(),
+            partition,
+            from: from.to_owned(),
+        }
+    }
+
     pub(crate) fn database(&self) -> &str {
         match self {
             Self::CreateTable(spec) => &spec.database,
             Self::DropTable { database, .. }
             | Self::ExchangeTables { database, .. }
-            | Self::RenameTable { database, .. } => database,
+            | Self::RenameTable { database, .. }
+            | Self::ReplacePartition { database, .. } => database,
         }
     }
 
@@ -182,6 +211,16 @@ impl Ddl {
                 "RENAME TABLE {} TO {}",
                 qualified(database, from),
                 qualified(database, to)
+            ),
+            Self::ReplacePartition {
+                database,
+                table,
+                partition,
+                from,
+            } => format!(
+                "ALTER TABLE {} REPLACE PARTITION '{partition}' FROM {}",
+                qualified(database, table),
+                qualified(database, from)
             ),
         }
     }

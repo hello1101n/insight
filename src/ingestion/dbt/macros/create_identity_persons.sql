@@ -1,8 +1,8 @@
 {#-
   THE creator of `identity.identity_persons` — the persons-log copy that dbt
   does NOT own the DATA of. It is written exclusively by the
-  identity-resolution service's persons-sync (full snapshot + atomic EXCHANGE
-  swap), which issues no CREATE for it (#3552). The `account_assignment` view
+  identity-resolution service's persons-sync (REPLACE PARTITION for each
+  tenant), which issues no CREATE for it (#3552). The `account_assignment` view
   reads it, `person_map` builds on that, and the analytics runtime joins
   `person_map` when it serves a person.
 
@@ -20,15 +20,13 @@
   The `identity` database itself is not created here: `create-databases.sh` is
   the one site that creates a database, and it runs before any dbt build.
 
-  SCHEMA CONTRACT: this DDL is a byte-for-byte copy of COLUMNS_DDL in
+  SCHEMA CONTRACT: this DDL is a byte-for-byte copy of COLUMNS, PARTITION_KEY and SORT_KEY in
   src/backend/services/identity-resolution/src/infra/identity_persons.rs —
   the service owns the schema (it mirrors its own MariaDB `persons` log,
   `000_baseline.sql`, minus the generated `value_hash`, plus the `_synced_at`
   watermark). If the service changes the schema, change THIS macro in the
-  same PR. A drifted hook is mostly harmless (CREATE IF NOT EXISTS never
-  alters an existing table; the service's own staging-swap upgrades the live
-  schema on its next run) but a fresh environment would create the stale
-  shape — keep them in lockstep.
+  same PR. A drifted live table gets one full snapshot by EXCHANGE on the next
+  sync, but a fresh environment creates the shape of this macro.
 
   An install whose first persons-sync beats its first dbt run has no table for
   the swap to exchange with, and the sync renames its own staging into place.
@@ -58,6 +56,7 @@
             _synced_at          DateTime64(3, 'UTC')
         )
         ENGINE = " ~ engine ~ "
-        ORDER BY id
+        PARTITION BY insight_tenant_id
+        ORDER BY (insight_tenant_id, id)
     ") %}
 {% endmacro %}
