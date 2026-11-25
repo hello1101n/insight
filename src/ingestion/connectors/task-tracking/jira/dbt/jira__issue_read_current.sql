@@ -9,7 +9,7 @@
 
 WITH issues AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
         CAST(source_id AS String)                                     AS insight_source_id,
         CAST(jira_id AS String)                                       AS issue_id,
         argMax(COALESCE(toString(id_readable), ''), _airbyte_extracted_at) AS current_key,
@@ -21,7 +21,7 @@ WITH issues AS (
 )
 
 SELECT
-    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-', issue_id) AS unique_key,
+    concat(insight_tenant_id, '-', insight_source_id, '-', issue_id) AS unique_key,
     insight_tenant_id,
     insight_source_id,
     issue_id,

@@ -30,8 +30,8 @@ from bronze import create_bronze  # noqa: E402
 from dbt_profiles import Connection, build_profile  # noqa: E402
 
 SOURCE = "synthetic-zendesk"
-TENANT = "synthetic-tenant"
-OTHER_TENANT = "synthetic-other-tenant"
+TENANT = "bbbbbbbb-2222-4222-8222-222222222222"
+OTHER_TENANT = "aaaaaaaa-1111-4111-8111-111111111111"
 
 # INVARIANT: every class_support_* union also reads the HubSpot arm, which reads
 # HubSpot bronze; an empty one is enough.
@@ -52,11 +52,26 @@ class Warehouse:
         }
 
     def build(self, selector: str) -> None:
+        success, log = self.build_status(selector)
+        assert success, log
+
+    def build_status(self, selector: str, *args: str) -> tuple[bool, str]:
+        """Run the selector and hand back whether it succeeded and its log, judging nothing."""
         messages: list[str] = []
         result = dbtRunner(callbacks=[lambda e: messages.append(e.info.msg)]).invoke(
-            ["run", "--project-dir", str(DBT), "--profiles-dir", str(self.profile), "--quiet", "--select", selector]
+            [
+                "run",
+                "--project-dir",
+                str(DBT),
+                "--profiles-dir",
+                str(self.profile),
+                "--quiet",
+                "--select",
+                selector,
+                *args,
+            ]
         )
-        assert result.success, "\n".join(messages)[-10000:]
+        return result.success, "\n".join(messages)[-10000:]
 
     def failing_tests(self, names: Sequence[str]) -> set[str]:
         result = dbtRunner().invoke(

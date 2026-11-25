@@ -1,8 +1,8 @@
 {{ config(materialized='table', engine=insight_engine('ReplacingMergeTree', '_version'), order_by=['unique_key'], settings={'allow_nullable_key': 1}, schema='staging', tags=['youtrack', 'staging', 'silver:class_task_issuetypes']) }}
 
-SELECT CAST(concat(ifNull(v.insight_tenant_id, ''), '-', v.insight_source_id, '-youtrack-type-', v.value_id)
+SELECT CAST(concat(v.insight_tenant_id, '-', v.insight_source_id, '-youtrack-type-', v.value_id)
         AS Nullable(String)) AS unique_key,
-    ifNull(v.insight_tenant_id, '') AS insight_tenant_id,
+    v.insight_tenant_id AS insight_tenant_id,
     CAST(v.insight_source_id AS Nullable(String)) AS insight_source_id, 'youtrack' AS data_source,
     CAST(v.value_id AS Nullable(String)) AS issue_type_id,
     CAST(v.value_name AS Nullable(String)) AS issue_type_name,

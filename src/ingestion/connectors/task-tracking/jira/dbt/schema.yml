@@ -61,6 +61,12 @@ models:
           - not_empty
   - name: jira__task_users
     description: "Per-source staging projection of Jira users. Unioned into silver.class_task_users."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: jira__task_projects
     description: "Per-source staging projection of Jira projects. Unioned into silver.class_task_projects."
     columns:
@@ -104,6 +110,7 @@ models:
         description: "The tenant the catalogue rows were synced under; empty for a source recorded before the column existed and absent from bronze since."
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         description: "The connector instance."
       - name: catalogue_first_sync
@@ -439,6 +446,20 @@ models:
           - not_empty
   - name: jira__issue_field_snapshot
     description: "Every field value each issue holds now, one row per issue and field."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: jira__task_field_text
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: jira__task_field_current_text
     columns:
       - name: insight_tenant_id
         description: "Canonical tenant the row belongs to; never NULL or empty."
