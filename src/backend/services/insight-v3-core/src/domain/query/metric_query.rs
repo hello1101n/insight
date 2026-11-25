@@ -17,15 +17,15 @@ use crate::domain::kinds::dataset::declaration::{
 };
 use crate::domain::query::time_window::MaximumRange;
 
+pub(crate) use compiler::{Bound, bound_by, imposed_limit};
 pub(crate) use engine::TableEngine;
-use field::FieldType;
+pub(crate) use field::{FieldType, OrderBy, is_identifier, ratio_sql};
 pub(crate) use filter::FilterBind;
 pub(crate) use people::People;
 pub(crate) use runner::{MetricRunError, MetricRunner, RunResult};
 
 use clock::TimeField;
-use field::is_identifier;
-use field::{Field, OrderBy};
+use field::Field;
 use filter::Filter;
 
 use crate::domain::query::time_window::WindowError;
@@ -218,13 +218,22 @@ impl MetricQuery {
         &self.group_by
     }
 
-    pub(crate) fn own_order(&self) -> Option<(&str, bool)> {
-        self.order_by.as_ref().map(|order| {
-            (
-                order.field.as_str(),
-                matches!(order.direction, field::Direction::Desc),
-            )
+    pub(crate) fn names_a_limit(&self) -> bool {
+        self.limit.is_some()
+    }
+
+    pub(crate) fn adds_up(&self, column: &str) -> bool {
+        self.fields.iter().any(|field| {
+            field.as_name == column
+                && field.divide.is_none()
+                && matches!(field.agg, Some(field::Agg::Count | field::Agg::Sum))
         })
+    }
+
+    pub(crate) fn own_order(&self) -> Option<(&str, bool)> {
+        self.order_by
+            .as_ref()
+            .map(|order| (order.field.as_str(), order.descending()))
     }
 
     pub(crate) fn column_kinds(
@@ -318,6 +327,24 @@ pub(crate) struct CompiledQuery {
 }
 
 impl CompiledQuery {
+    pub(crate) fn composed(
+        sql: String,
+        binds: Vec<FilterBind>,
+        column_types: HashMap<String, FieldType>,
+        percents: Vec<String>,
+        exacts: Vec<String>,
+    ) -> Self {
+        Self {
+            sql,
+            binds,
+            column_types,
+            percents,
+            exacts,
+            hidden: Vec::new(),
+            numbered: false,
+        }
+    }
+
     pub(crate) fn sql(&self) -> &str {
         &self.sql
     }
@@ -340,6 +367,10 @@ impl CompiledQuery {
 
     pub(crate) fn numbered(&self) -> bool {
         self.numbered
+    }
+
+    pub(crate) fn column_type(&self, column: &str) -> Option<FieldType> {
+        self.column_types.get(column).copied()
     }
 }
 
