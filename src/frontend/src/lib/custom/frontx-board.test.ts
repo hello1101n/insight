@@ -360,8 +360,8 @@ describe("frontxBoard", () => {
     expect(line.widget.render).toMatchObject({
       x_axis: { type: "category" },
       y_axis: { type: "value" },
-      drill_down: true,
     });
+    expect(line.widget.render).not.toHaveProperty("drill_down");
     expect(bar.widget.render).toMatchObject({
       x_axis: { type: "category" },
       y_axis: { type: "value" },
@@ -399,7 +399,6 @@ describe("frontxBoard", () => {
     expect(pie.widget.render).toEqual({
       radius: ["80%"],
       legend_position: "bottom",
-      drill_down: true,
     });
   });
 

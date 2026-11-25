@@ -116,6 +116,7 @@ interface Drawn {
   value_format?: WidgetInstance["value_format"];
 }
 
+// INVARIANT: no chart sets drill_down. With it, FrontX draws a "Show data" row inside the cell under the frame's own actions.
 function chart(
   x: string,
   y: string,
@@ -132,7 +133,6 @@ function chart(
       ...render,
       x_axis: { type: "category" },
       y_axis: { type: "value" },
-      drill_down: true,
     },
     transform: `cel.bind(x, ${column(x)}, cel.bind(w, ${spansYears}, cel.bind(y, ${column(y)}, {'series': ${series(point, cel(y))}})))`,
   };
@@ -219,7 +219,6 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
         render: {
           radius: ["80%"],
           legend_position: "bottom",
-          drill_down: true,
         },
         transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
       };
