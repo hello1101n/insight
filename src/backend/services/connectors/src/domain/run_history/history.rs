@@ -226,17 +226,22 @@ pub(crate) async fn enrich(
     output: &mut ConnectorHealthResponse,
 ) -> Result<(), sea_orm::DbErr> {
     let query = format!(
-        "WITH ranked AS (SELECT sync_id,ROW_NUMBER() OVER(PARTITION BY tenant,connector,source_id
-              ORDER BY started_at DESC,sync_id DESC) AS latest,ROW_NUMBER() OVER(PARTITION BY tenant,connector,source_id,(ready_at IS NOT NULL OR status='succeeded')
-              ORDER BY started_at DESC,sync_id DESC) AS by_status,(ready_at IS NOT NULL OR status='succeeded') AS ready
-              FROM ingestion_runs
-              WHERE stand=?) SELECT {RUN_COLUMNS}
-              FROM ranked k
-              JOIN ingestion_runs r ON r.sync_id=k.sync_id
-              LEFT JOIN ingestion_stage_attempts s ON s.sync_id=r.sync_id
-              WHERE k.latest=1 OR (k.ready=1
-              AND k.by_status=1)
-              ORDER BY s.queued_at,s.id"
+        "WITH instances AS (
+            SELECT DISTINCT stand,tenant,connector,source_id
+            FROM ingestion_runs FORCE INDEX (instance_runs) WHERE stand=?
+         ), selected AS (
+            SELECT (SELECT sync_id FROM ingestion_runs FORCE INDEX (instance_runs)
+                    WHERE stand=i.stand AND tenant=i.tenant AND connector=i.connector AND source_id=i.source_id
+                    ORDER BY started_at DESC,sync_id DESC LIMIT 1) AS sync_id FROM instances i
+            UNION
+            SELECT (SELECT sync_id FROM ingestion_runs FORCE INDEX (instance_runs)
+                    WHERE stand=i.stand AND tenant=i.tenant AND connector=i.connector AND source_id=i.source_id
+                    AND (ready_at IS NOT NULL OR status='succeeded')
+                    ORDER BY started_at DESC,sync_id DESC LIMIT 1) FROM instances i
+         ) SELECT {RUN_COLUMNS} FROM selected k
+           JOIN ingestion_runs r ON r.sync_id=k.sync_id
+           LEFT JOIN ingestion_stage_attempts s ON s.sync_id=r.sync_id
+           ORDER BY s.queued_at,s.id"
     );
     let records = Record::find_by_statement(sql(query, vec![stand.into()]))
         .all(db)
@@ -282,7 +287,7 @@ pub(crate) async fn runs(
     let query = format!(
         "SELECT {RUN_COLUMNS}
               FROM (SELECT sync_id
-              FROM ingestion_runs
+              FROM ingestion_runs FORCE INDEX (instance_runs)
               WHERE stand=?
               AND connector=?
               AND tenant=?

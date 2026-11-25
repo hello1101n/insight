@@ -5,6 +5,7 @@ pub(crate) mod lock;
 mod membership;
 mod repository;
 pub(crate) mod resources;
+mod resources_capacity;
 mod timing;
 pub(crate) mod validation;
 pub(crate) mod workflow;
@@ -41,6 +42,8 @@ pub(crate) enum Error {
     RevisionExhausted,
     #[error("{0}")]
     Invalid(#[from] validation::Violation),
+    #[error("{0}")]
+    UnschedulableResources(validation::Violation),
     #[error("schedule database read or write failed")]
     Database(#[from] sea_orm::DbErr),
     #[error("schedule lock failed")]
@@ -198,6 +201,13 @@ async fn save_locked(
     save_hooks::checkpoint(instance, "revision").await;
     if matches!(change, Change::Delete) {
         apply::require_reset_target(&cluster, instance).await?;
+    }
+    if let Change::Resources(patch) = &change {
+        let stored = Resources::stored(previous.as_ref().and_then(|row| row.resources.as_ref()))?;
+        if let Err(error) = resources_capacity::validate(&cluster, patch, &stored).await {
+            release(guard.release().await);
+            return Err(error);
+        }
     }
     let resources_only = matches!(change, Change::Resources(_));
     let written = repository::write(&state.db, instance, revision, change, caller)

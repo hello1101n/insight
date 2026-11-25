@@ -3,8 +3,10 @@
   value: "true"
 - name: AIRBYTE_CAPACITY_LEASE
   value: {{ printf "%s-airbyte-capacity" (include "insight.fullname" .) | quote }}
+- name: AIRBYTE_CAPACITY_NAMESPACES
+  value: {{ include "insight.airbyteCapacity.namespaces" . | quote }}
 - name: AIRBYTE_CAPACITY_SETTINGS
-  value: {{ omit .Values.ingestion.airbyteSync.capacityCheck "enabled" | toJson | quote }}
+  value: {{ omit .Values.ingestion.airbyteSync.capacityCheck "enabled" "podNamespaces" | toJson | quote }}
 - name: POD_UID
   valueFrom:
     fieldRef:
@@ -158,15 +160,11 @@ spec:
                   value: {{ `"{{inputs.parameters.airbyte_url}}"` }}
 
     - name: trigger-sync
-      {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
-      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-capacity
-      {{- else }}
       serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
-      {{- end }}
       retryStrategy:
         limit: 3
         retryPolicy: Always
-        expression: "lastRetry.exitCode != '42' && lastRetry.exitCode != '43' && lastRetry.exitCode != '44'{{ if .Values.ingestion.airbyteSync.capacityCheck.enabled }} && lastRetry.exitCode != '45'{{ end }}"
+        expression: "lastRetry.exitCode != '42' && lastRetry.exitCode != '43' && lastRetry.exitCode != '44'{{ if .Values.ingestion.airbyteSync.capacityCheck.enabled }} && lastRetry.exitCode != '45' && lastRetry.exitCode != '46' && lastRetry.exitCode != '47'{{ end }}"
         backoff:
           duration: "30s"
           factor: 2
@@ -237,11 +235,7 @@ spec:
                 key: INSIGHT_LOG_LEVEL
 
     - name: poll-job
-      {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
-      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-capacity
-      {{- else }}
       serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
-      {{- end }}
       retryStrategy:
         limit: 3
         retryPolicy: OnError

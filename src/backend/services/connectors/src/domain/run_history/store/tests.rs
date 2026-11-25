@@ -7,6 +7,65 @@ use crate::migration::Migrator;
 
 #[tokio::test]
 #[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn retention_preserves_latest_ready_run_after_many_failures() -> anyhow::Result<()> {
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let start = DateTime::UNIX_EPOCH + chrono::Duration::days(1);
+    let mut last_success = String::new();
+    for index in 0..103 {
+        let at = start + chrono::Duration::minutes(index);
+        let ready = (index < 2).then_some(at);
+        let uid = uuid::Uuid::new_v4().to_string();
+        if ready.is_some() {
+            last_success.clone_from(&uid);
+        }
+        db.execute_raw(sql(
+            "INSERT INTO ingestion_runs(sync_id,stand,tenant,connector,source_id,workflow_name,started_at,execution,finished_at,status,ready_at)
+             VALUES (?,?,'example','jira','example','example',?,?,?,'failed',?)",
+            vec![
+                uid.into(),
+                stand.as_str().into(),
+                at.into(),
+                at.into(),
+                at.into(),
+                ready.into(),
+            ],
+        ))
+        .await?;
+    }
+
+    let mut health = crate::domain::connector_health::ConnectorHealthResponse {
+        as_of: start.to_rfc3339(),
+        checked_at: None,
+        typical_read_interval_ms: None,
+        history_available: false,
+        schedule_read_error: None,
+        history_read_error: None,
+        connectors: Vec::new(),
+    };
+    let removed = prune(&db, &stand, 100, 200).await?;
+    history::enrich(&db, &stand, &mut health).await?;
+    assert_eq!(
+        health.connectors[0]
+            .last_successful_run
+            .as_ref()
+            .map(|run| run.sync_id.as_str()),
+        Some(last_success.as_str()),
+    );
+    assert_eq!(removed, 2);
+    assert_eq!(
+        health.connectors[0]
+            .latest_run
+            .as_ref()
+            .map(|run| run.status.as_str()),
+        Some("failed")
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
 async fn bronze_retry_closes_a_superseded_capacity_wait() -> anyhow::Result<()> {
     let (latest, unsettled, retry) = save_bronze_retry(None).await?;
     assert_eq!(latest.status, "succeeded");
@@ -488,5 +547,94 @@ async fn a_closed_bronze_row_without_a_job_reopens_with_its_first_job() -> anyho
         ),
         ("loading", Some("21"), None)
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn retention_keeps_newest_runs_per_instance_and_cascades_attempts() -> anyhow::Result<()> {
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let other = uuid::Uuid::new_v4().to_string();
+    let start = DateTime::UNIX_EPOCH + chrono::Duration::days(1);
+
+    let mut all = Vec::new();
+    for (scope, source, count) in [
+        (stand.as_str(), "main", 4),
+        (stand.as_str(), "peer", 2),
+        (other.as_str(), "main", 4),
+    ] {
+        let mut ids = Vec::new();
+        for index in 0..count {
+            let at = start + chrono::Duration::minutes(index / 2);
+            let finished = at + chrono::Duration::seconds(20);
+            let mut stage = StageSnapshot::new("bronze", 1, at);
+            stage.status = "succeeded";
+            stage.finished_at = Some(finished);
+            stage.wait = Some(StageWait {
+                kind: WaitKind::Placement,
+                started_at: at,
+                ended_at: Some(finished),
+                holder: None,
+            });
+            let uid = uuid::Uuid::new_v4().to_string();
+            let run = RunSnapshot {
+                uid: uid.clone(),
+                name: "example".into(),
+                connector: "jira".into(),
+                tenant: "example".into(),
+                source: source.into(),
+                created_at: at,
+                execution: at,
+                finished_at: Some(finished),
+                status: Some("succeeded"),
+                stages: vec![stage],
+            };
+            save(&db, scope, &run, finished).await?;
+            ids.push((at, uid));
+        }
+        ids.sort_unstable_by(|a, b| b.cmp(a));
+        all.push((scope, source, ids));
+    }
+
+    assert_eq!(prune(&db, &stand, 2, 1).await?, 1);
+    assert_eq!(prune(&db, &stand, 2, 100).await?, 1);
+    assert_eq!(prune(&db, &stand, 2, 100).await?, 0);
+    for (scope, source, ids) in all {
+        let keep = if scope == stand { 2 } else { ids.len() };
+        let records = history::runs(&db, scope, "jira", Some("example"), Some(source)).await?;
+        let retained: Vec<_> = records.iter().map(|run| &run.sync_id).collect();
+        let expected: Vec<_> = ids[..keep].iter().map(|(_, id)| id).collect();
+        assert_eq!(retained, expected, "{scope}/{source}");
+        assert!(records.iter().all(|run| run.stages[0].waits.len() == 1));
+
+        for (_, id) in &ids[keep..] {
+            let stage = db
+                .query_one_raw(sql(
+                    "SELECT id FROM ingestion_stage_attempts WHERE sync_id=?",
+                    vec![id.as_str().into()],
+                ))
+                .await?;
+            assert!(stage.is_none(), "expired run {id} has an attempt");
+        }
+    }
+    let mut health = crate::domain::connector_health::ConnectorHealthResponse {
+        as_of: start.to_rfc3339(),
+        checked_at: None,
+        typical_read_interval_ms: None,
+        history_available: false,
+        schedule_read_error: None,
+        history_read_error: None,
+        connectors: Vec::new(),
+    };
+    history::enrich(&db, &stand, &mut health).await?;
+    assert_eq!(health.connectors.len(), 2);
+    assert!(health.connectors.iter().all(|connector| {
+        matches!(
+            (&connector.latest_run, &connector.last_successful_run),
+            (Some(latest), Some(success)) if latest.sync_id == success.sync_id
+        )
+    }));
     Ok(())
 }

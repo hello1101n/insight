@@ -1,0 +1,57 @@
+{{- if .Values.ingestion.templates.enabled }}
+{{- $account := printf "%s-airbyte-trigger" (include "insight.fullname" .) }}
+{{- $policy := printf "%s.%s" $account .Release.Namespace }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $policy }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [argoproj.io]
+        apiVersions: [v1alpha1]
+        operations: [UPDATE]
+        resources: [workflows]
+  matchConditions:
+    - name: trigger-account
+      expression: >-
+        request.namespace == {{ .Release.Namespace | quote }} &&
+        request.userInfo.username == {{ printf "system:serviceaccount:%s:%s" .Release.Namespace $account | quote }}
+  variables:
+    - name: podNames
+      expression: 'request.userInfo.extra[?"authentication.kubernetes.io/pod-name"].orValue([])'
+    - name: prefix
+      expression: 'oldObject.metadata.name + "-"'
+    - name: allowed
+      expression: '["insight.cyberfabric.com/airbyte-launch", "insight.cyberfabric.com/airbyte-capacity-wait"]'
+    - name: before
+      expression: 'oldObject.metadata.?annotations.orValue({})'
+    - name: after
+      expression: 'object.metadata.?annotations.orValue({})'
+  validations:
+    - expression: >-
+        size(variables.podNames) == 1 &&
+        variables.podNames[0].startsWith(variables.prefix) &&
+        variables.podNames[0].substring(size(variables.prefix)).matches("^(trigger-sync|poll-job)-[0-9]{1,10}$")
+      message: The Airbyte pod may update only its own Workflow.
+    - expression: >-
+        object.spec == oldObject.spec &&
+        object.?status == oldObject.?status &&
+        object.metadata.?labels == oldObject.metadata.?labels &&
+        object.metadata.?ownerReferences == oldObject.metadata.?ownerReferences &&
+        object.metadata.?finalizers == oldObject.metadata.?finalizers &&
+        object.metadata.?generateName == oldObject.metadata.?generateName &&
+        object.metadata.?deletionGracePeriodSeconds == oldObject.metadata.?deletionGracePeriodSeconds &&
+        variables.before.all(key, key in variables.allowed || variables.before[?key] == variables.after[?key]) &&
+        variables.after.all(key, key in variables.allowed || variables.before[?key] == variables.after[?key])
+      message: The Airbyte pod may update only the launch and capacity wait annotations.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $policy }}
+spec:
+  policyName: {{ $policy }}
+  validationActions: [Deny]
+{{- end }}

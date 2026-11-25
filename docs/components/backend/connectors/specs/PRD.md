@@ -127,11 +127,19 @@ request gets 401.
    A wait shows a warning after three hours.
 7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock.
    Post-sync checks run without Argo synchronization.
-   A wait for cluster capacity can continue beyond six hours.
+   A wait for cluster capacity stops the load at the configured limit. The default is six hours.
+   The page shows the capacity wait timeout as a separate failure reason.
    The run's wait time ends when Gold succeeds.
-8. The service retains the recorded run history after Argo deletes the workflow.
+8. The service retains the 100 most recent recorded runs per connector instance by default.
+   It also keeps the latest successful run and older active runs until they finish.
+   It removes expired runs with their attempts and waits.
+   Run history persists after Argo deletes the workflow.
 9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.
    It names the shared sync memory limit when ClickHouse reports that limit.
+10. If matching nodes exist, Bronze fails before submission when the estimated Airbyte pod cannot fit on any eligible node.
+    The size check accounts for scheduled workloads that stay on each node and excludes pods marked for deletion.
+    The page shows this failure as a separate reason.
+    Bronze waits when no node matches the selector or when capacity is temporarily unavailable.
 
 ### 4.7 Resource settings
 
@@ -139,11 +147,16 @@ request gets 401.
 2. An admin can set a ClickHouse query memory limit for that instance's dbt runs.
 3. Each unset value inherits its chart default. An unset chart default keeps the step's standard behavior.
 4. The resource settings share the schedule's save, revision, reconciliation, and removal rules.
+   A successful response confirms the save only. Bronze checks the live cluster at load time.
+   If the pod is too large, Bronze fails the load immediately with a separate reason.
 5. Each run uses the settings effective at submission.
    Run history records the settings for each stage attempt.
    When the Bronze trigger observes the replication pod, run history records its actual CPU and memory requests.
 6. Run history records the largest logged ClickHouse query memory for completed dbt and identity seed attempts.
 7. Run history reports a pod killed for memory as a pod memory failure.
+8. A save returns HTTP 422 if no matching node can hold the requested CPU and memory.
+   The service includes the other Airbyte container requests when those sizes are known.
+   If the node list is unreadable, the service logs it and applies the standard field validation.
 
 ## 5. Constraints
 

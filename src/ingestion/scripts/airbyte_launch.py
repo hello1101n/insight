@@ -6,7 +6,7 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Self
 from uuid import UUID
@@ -36,7 +36,9 @@ class Launch(BaseModel):
     previous_job: int = Field(ge=0)
     deadline: float
     read_deadline: float
-    outcome: Literal["pending", "accepted", "rejected", "unconfirmed", "unreadable"] = "pending"
+    outcome: Literal[
+        "pending", "accepted", "rejected", "unconfirmed", "unreadable", "pod_too_large", "capacity_wait_exceeded"
+    ] = "pending"
     job_id: PositiveInt | None = None
     outcome_at: datetime | None = None
     estimated_pod_request: PodRequest | None = None
@@ -61,6 +63,9 @@ class CapacityWait(BaseModel):
     attempt: PositiveInt
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None
+
+    def deadline(self, limit_seconds: int) -> datetime | None:
+        return self.started_at + timedelta(seconds=limit_seconds) if self.ended_at is None else None
 
     @model_validator(mode="after")
     def validate_interval(self) -> Self:
@@ -146,7 +151,7 @@ class WorkflowLaunch:
     def write(self, metadata: WorkflowMetadata, launch: Launch, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
         self.write_annotations(metadata, {ANNOTATION: launch.mark_json()}, timeout=timeout)
 
-    def write_admitted(self, metadata: WorkflowMetadata, launch: Launch, wait: CapacityWait) -> None:
+    def write_with_wait(self, metadata: WorkflowMetadata, launch: Launch, wait: CapacityWait) -> None:
         self.write_annotations(
             metadata,
             {ANNOTATION: launch.mark_json(), CAPACITY_WAIT: wait.model_dump_json()},

@@ -932,6 +932,8 @@
         "airbyte_launch_rejected": "Airbyte refused the sync request",
         "airbyte_launch_unconfirmed": "Airbyte did not confirm the sync launch",
         "airbyte_launch_unreadable": "The Airbyte job list was unavailable. The sync launch is not confirmed.",
+        "airbyte_pod_too_large": "The Airbyte pod is too large for any eligible node",
+        "airbyte_capacity_wait_exceeded": "The wait for Airbyte cluster capacity reached its time limit",
         "airbyte_job_failed": "The Airbyte job failed",
         "airbyte_job_cancelled": "Airbyte cancelled the job",
         "clickhouse_memory_limit": "ClickHouse memory limit exceeded",

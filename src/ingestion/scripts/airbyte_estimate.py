@@ -5,8 +5,8 @@ from typing import Self
 from uuid import UUID
 
 from airbyte_resources import AirbyteResources, Response
-from pod_capacity import PodRequest, Requests, pod_request
-from pydantic import Field
+from pod_capacity import PodRequest, Requests, Toleration, pod_request
+from pydantic import Field, PositiveInt
 
 
 class ContainerDefault(Response):
@@ -93,7 +93,10 @@ class DestinationDefinition(Definition):
 
 class Settings(Response):
     node_selector: dict[str, str] = Field(alias="nodeSelector")
+    tolerations: tuple[Toleration, ...] = ()
     requests: Defaults
+    pending_max_age_seconds: PositiveInt = Field(default=1800, alias="pendingMaxAgeSeconds")
+    wait_limit_seconds: PositiveInt = Field(default=21600, alias="waitLimitSeconds")
 
 
 def actor_request(

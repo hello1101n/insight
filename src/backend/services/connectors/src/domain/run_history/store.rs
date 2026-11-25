@@ -10,6 +10,34 @@ pub(super) fn sql(query: impl Into<String>, params: Vec<Value>) -> Statement {
     Statement::from_sql_and_values(sea_orm::DbBackend::MySql, query, params)
 }
 
+pub(super) async fn prune(
+    db: &DatabaseConnection,
+    stand: &str,
+    keep: u32,
+    batch: u32,
+) -> Result<u64, DbErr> {
+    let result = db
+        .execute_raw(sql(
+            "DELETE r FROM ingestion_runs r JOIN (
+            SELECT sync_id FROM (
+                SELECT sync_id, finished_at, (ready_at IS NOT NULL OR status <=> 'succeeded') AS successful,
+                    ROW_NUMBER() OVER instance_order AS position,
+                    COUNT(CASE WHEN ready_at IS NOT NULL OR status='succeeded' THEN 1 END)
+                        OVER instance_order AS successes
+                FROM ingestion_runs FORCE INDEX (instance_runs) WHERE stand=?
+                WINDOW instance_order AS (
+                    PARTITION BY tenant, connector, source_id
+                    ORDER BY started_at DESC, sync_id DESC
+                )
+            ) ranked WHERE position>? AND finished_at IS NOT NULL
+                AND (NOT successful OR successes>1) LIMIT ?
+         ) expired ON expired.sync_id=r.sync_id WHERE r.finished_at IS NOT NULL",
+            vec![stand.into(), keep.into(), batch.into()],
+        ))
+        .await?;
+    Ok(result.rows_affected())
+}
+
 #[derive(Debug, FromQueryResult)]
 struct SavedAttempt {
     attempt: u32,

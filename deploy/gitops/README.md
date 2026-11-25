@@ -97,7 +97,7 @@ deploy/gitops/
     ├── secret-fetch.sh          # password-manager stub for `make seal-secret`
     ├── compose-app-secrets.sh   # derives the app *-config Secrets from insight-db-creds
     ├── airbyte-setup.sh         # post-install Airbyte setup-wizard automation
-    ├── provision-ci-deployer.sh # namespace-scoped ServiceAccount for the test-stand CI deploy
+    ├── provision-ci-deployer.sh # ServiceAccount and RBAC for the test-stand CI deploy
     ├── recreate-test-stand.sh   # tear down + rebuild the test stand
     └── push-deploy-log.sh       # ships the deploy log into in-cluster Loki
 ```
@@ -229,7 +229,7 @@ AIRBYTE_SETUP_EMAIL=admin@example.com AIRBYTE_SETUP_ORG=Sandbox \
   make system            ENV=local
 make system-status       ENV=local   # what's installed in insight-infra
 
-# L3 — the umbrella app. Only touches the `insight` namespace. Applies
+# L3 — the umbrella app. Applies
 # every L3 sealed manifest, waits for `insight-db-creds` to materialise,
 # composes the derived `insight-analytics-config`,
 # `insight-identity-resolution-config`, and `insight-v3-core-config` Secrets,
@@ -239,6 +239,9 @@ make system-status       ENV=local   # what's installed in insight-infra
 make diff   ENV=local                # inspect what would change
 make deploy ENV=local
 ```
+
+`make diff`, `make validate-insight`, and the deploy preview render on the client.
+Those renders write local manifests without reading Secrets from the cluster.
 
 ## Adding a new environment
 

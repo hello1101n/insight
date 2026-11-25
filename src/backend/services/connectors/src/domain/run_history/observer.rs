@@ -26,6 +26,7 @@ use crate::domain::connector_health::{ConnectorName, SourceId, TenantId};
 
 const PERIOD: Duration = Duration::from_secs(5);
 const RELIST_SECONDS: u32 = 30;
+const RETENTION_BATCH: u32 = 200;
 
 pub(crate) async fn run(state: Arc<AppState>, cancel: CancellationToken) {
     tokio::join!(
@@ -108,6 +109,16 @@ async fn observe_window(
     };
     *completed = retained;
     record_missing(state, http, &present).await?;
+    if let Err(error) = store::prune(
+        &state.db,
+        &state.cluster.namespace,
+        state.cluster.history_runs_per_instance.get(),
+        RETENTION_BATCH,
+    )
+    .await
+    {
+        tracing::warn!(%error, "Run history retention failed.");
+    }
 
     let watch = tokio::time::timeout(
         PERIOD,

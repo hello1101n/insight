@@ -12,6 +12,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+bigdecimal = "0.4"
 insight-clickhouse = { workspace = true }
 insight-http-client = { workspace = true }
 insight-http-metrics = { workspace = true }

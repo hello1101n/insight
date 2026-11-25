@@ -86,6 +86,9 @@ It records the largest query memory for the attempt after that window.
 The lookup allows 60 seconds of clock difference at each end of the stage.
 It distinguishes the sync user's total, the query limit, server memory pressure, and a pod killed for memory.
 For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
+Set `connectors.runHistory.runsPerInstance` to change the default of 100 runs per connector instance.
+The observer removes older completed runs with their stage attempts and waits in batches.
+The observer retains the latest successful run. It also retains older active runs until they finish.
 
 The Connectors page shows Bronze, Silver, Identity, and Gold.
 The queue distinguishes a writer lock and a wait for cluster capacity.
@@ -93,27 +96,51 @@ The lock reason includes the holder when Argo reports it.
 A wait shows a warning after three hours.
 Connectors stops a Workflow after more than six hours of waiting for a writer lock.
 The stop applies before Gold succeeds. The page and elapsed wait time end at Gold.
-Connectors records check attempts separately. A wait for cluster capacity can continue beyond six hours.
+Connectors records check attempts separately.
 
 ### Check Airbyte pod capacity
 
-Bronze checks available CPU and memory on each eligible node before it submits a sync.
+Bronze checks available CPU and memory on schedulable nodes that match the Airbyte node selector.
+The replication pod must tolerate a node's blocking taints before Bronze counts its available capacity.
 The trigger checks the initial submission. The poll step checks a resubmission after an Argo retry.
-An unscheduled Airbyte job pod also delays submission.
-When capacity is insufficient, Bronze checks again every 15 seconds.
+A Pending Airbyte job pod delays submission up to `ingestion.airbyteSync.capacityCheck.pendingMaxAgeSeconds`.
+The default is 1800 seconds.
+The capacity check logs the blocking pod's namespace, name, age, and `PodScheduled` reason.
+The size check includes matching cordoned and unready nodes and ignores `node.kubernetes.io/*` taints.
+It excludes nodes with other `NoSchedule` or `NoExecute` taints that the replication pod does not tolerate.
+It subtracts the requests of scheduled DaemonSet and mirror pods that are still active and have no deletion timestamp.
+If matching nodes exist and the estimated replication pod cannot fit on any of them, Bronze fails before submission.
+The Connectors page shows that the Airbyte pod is too large.
+Bronze checks again every 15 seconds when no node matches the selector or when capacity is temporarily unavailable.
+Set `ingestion.airbyteSync.capacityCheck.waitLimitSeconds` to limit the wait. The default is 21,600 seconds.
+The trigger or poll step stops the load at the limit. The Connectors page shows a capacity wait timeout.
 The step stops if `ingestion.airbyteSync.launchUnreadableSeconds` elapses without a sync submission or a no-fit check with a recorded wait.
 The exit log names the operation and the last error.
 The Connectors page shows `Waiting for cluster capacity` and includes this interval in queued time.
 
-The trigger and poll steps share an account that lists pods across namespaces.
-Every pod bound to a node can use its capacity.
-The account reads nodes and holds the release's Lease while the step checks and submits a sync.
+The trigger and poll steps list nodes and pods directly through the Kubernetes API.
+The steps list pods only in `ingestion.airbyteSync.capacityCheck.podNamespaces`.
+The defaults are the release namespace and the Airbyte namespace.
+Include every namespace whose pods use the eligible nodes, such as the datastore namespace.
+The capacity check overestimates free capacity if a namespace is missing.
+The size check cannot see DaemonSet pods in namespaces outside `podNamespaces`.
+
+Both steps use the trigger service account to read capacity and write launch marks.
+The account has a cluster grant for `get` and `list` on nodes and a `list` grant for pods in each configured namespace.
+The steps hold the release's Lease through submission.
+Ingestion requires the `admissionregistration.k8s.io/v1` API for `ValidatingAdmissionPolicy` and its binding.
+The chart creates the policy and its `Deny` binding whenever ingestion templates are enabled.
+The policy permits a pod to change only the launch annotations on its own Workflow.
+Use Argo v2 pod names for these steps.
+Give the deploy account permission to manage the chart's cluster RBAC, admission objects, and Roles and RoleBindings in the configured namespaces.
+Give it the permissions in the roles that the chart creates so Kubernetes permits the deploy account to grant them.
 The step releases the Lease when it sees the replication pod or when Airbyte settles the launch without a job.
 The step holds the Lease for at most 120 seconds.
 Set `ingestion.airbyteSync.capacityCheck.enabled` to `false` to disable this check and its RBAC.
 
 Set `ingestion.airbyteSync.capacityCheck.nodeSelector` to match the Airbyte job pod node selector.
 The default selector is empty.
+Set `ingestion.airbyteSync.capacityCheck.tolerations` to match the Airbyte job pod tolerations. The default list is empty.
 If you set Airbyte's `global.jobs.resources`, set `ingestion.airbyteSync.capacityCheck.requests` to match those pod requests.
 Use Kubernetes quantities for each `cpu` and `memory` value.
 
@@ -149,6 +176,13 @@ The default is 1800 seconds. A permanent credential error stops the poll step im
 
 Set install-wide defaults under `ingestion.syncResourceDefaults`. The default map is empty.
 Each default uses the same field name as the connector instance API.
+A resource save returns HTTP 422 if no matching node has sufficient allocatable CPU and memory.
+The size check includes cordoned and unready nodes.
+For the Airbyte source, the service also checks the estimated replication pod when the other requests are configured.
+If the node list is unreadable, the service logs the error and applies the standard field validation.
+
+HTTP 200 confirms the resource save only. At load time, Bronze checks whether the Airbyte pod can fit in the live cluster.
+If the check finds the pod is too large, the load fails immediately with a separate reason on the Connectors page.
 
 | Field | Unit | Applies to |
 | --- | --- | --- |
@@ -177,6 +211,10 @@ Each absolute spill threshold is half the limit, rounded down. Both spill ratio 
 The sync user's total memory limit still applies. With no instance or chart query limit, the dbt model settings apply as written.
 
 ### Configure the ClickHouse sync user
+
+When Helm generates a sync password, the pre-install or pre-upgrade database job reads a temporary Secret.
+Helm removes the temporary Secret after the pre-hook phase.
+The migration job and sync workflows read the configured password Secret.
 
 Every installation runs Bronze loads, dbt, the identity seed, and connector checks as the sync user.
 Use a distinct username for each stand that shares a ClickHouse server.

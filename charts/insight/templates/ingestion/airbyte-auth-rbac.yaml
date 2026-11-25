@@ -58,11 +58,6 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "insight.fullname" . }}-airbyte-trigger
     namespace: {{ .Release.Namespace }}
-  {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
-  - kind: ServiceAccount
-    name: {{ include "insight.fullname" . }}-airbyte-capacity
-    namespace: {{ .Release.Namespace }}
-  {{- end }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

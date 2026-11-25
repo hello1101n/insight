@@ -15,6 +15,12 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [workflowtaskresults]
     verbs: [create, patch]
+  {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [{{ include "insight.fullname" . }}-airbyte-capacity]
+    verbs: [get, patch]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

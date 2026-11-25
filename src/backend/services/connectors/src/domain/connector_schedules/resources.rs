@@ -184,6 +184,24 @@ impl ResourcePatch {
         self.merge(&Resources::default()).validate().map(|_| ())
     }
 
+    pub(super) fn sets_pod_resources(&self) -> bool {
+        let sizes = self.merge(&Resources::default());
+        [
+            sizes.airbyte_cpu_millis,
+            sizes.dbt_cpu_millis,
+            sizes.identity_cpu_millis,
+        ]
+        .iter()
+        .any(Option::is_some)
+            || [
+                sizes.airbyte_memory_bytes,
+                sizes.dbt_memory_bytes,
+                sizes.identity_memory_bytes,
+            ]
+            .iter()
+            .any(Option::is_some)
+    }
+
     pub(super) fn only_clears(&self) -> bool {
         self.merge(&Resources::default()).is_empty()
     }

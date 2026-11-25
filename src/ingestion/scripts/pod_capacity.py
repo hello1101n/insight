@@ -3,18 +3,20 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import Enum
 from fractions import Fraction
 from math import ceil
-from typing import Self
+from typing import Literal, Self
 
+import insight_logging
 from airbyte_resources import Response
-from pydantic import Field, NonNegativeInt
+from pydantic import AwareDatetime, Field, NonNegativeInt
 
 QUANTITY = re.compile(r"([+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)([a-zA-Z]*)")
 SCALE = {"": 1, "n": Fraction(1, 10**9), "u": Fraction(1, 10**6), "m": Fraction(1, 1000)}
 SCALE.update(zip("kMGTPE", (1000**power for power in range(1, 7)), strict=True))
 SCALE.update(zip(("Ki", "Mi", "Gi", "Ti", "Pi", "Ei"), (1024**power for power in range(1, 7)), strict=True))
-PLACEMENT_TAINTS = {"node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"}
 
 
 def quantity(raw: str) -> Fraction:
@@ -32,6 +34,11 @@ class PodRequest(Response):
         return (
             used.cpu_millis + self.cpu_millis <= available.cpu_millis
             and used.memory_bytes + self.memory_bytes <= available.memory_bytes
+        )
+
+    def __add__(self, other: PodRequest) -> PodRequest:
+        return PodRequest(
+            cpu_millis=self.cpu_millis + other.cpu_millis, memory_bytes=self.memory_bytes + other.memory_bytes
         )
 
 
@@ -75,15 +82,27 @@ def pod_request(
     return ((total + sidecars).max(init_peak) + overhead).to_pod_request()
 
 
+class OwnerReference(Response):
+    kind: str
+
+
 class Metadata(Response):
     name: str
     namespace: str = ""
     labels: dict[str, str] = Field(default_factory=dict)
+    created_at: AwareDatetime | None = Field(default=None, alias="creationTimestamp")
+
+
+class PodMetadata(Metadata):
+    annotations: dict[str, str] = Field(default_factory=dict)
+    owners: tuple[OwnerReference, ...] = Field(default=(), alias="ownerReferences")
+    deleted_at: AwareDatetime | None = Field(default=None, alias="deletionTimestamp")
 
 
 class Condition(Response):
     kind: str = Field(alias="type")
     status: str
+    reason: str | None = None
 
 
 class ContainerResources(Response):
@@ -108,9 +127,15 @@ class PodStatus(Response):
 
 
 class Pod(Response):
-    metadata: Metadata
+    metadata: PodMetadata
     spec: PodSpec
     status: PodStatus = PodStatus()
+
+    def stays_on_node(self) -> bool:
+        return self.metadata.deleted_at is None and (
+            "kubernetes.io/config.mirror" in self.metadata.annotations
+            or any(owner.kind == "DaemonSet" for owner in self.metadata.owners)
+        )
 
     def request(self) -> PodRequest:
         return pod_request(
@@ -122,17 +147,54 @@ class Pod(Response):
             Requests.read(self.spec.overhead),
         )
 
-    def unscheduled_airbyte_job(self, namespace: str) -> bool:
-        return (
-            self.metadata.namespace == namespace
-            and self.metadata.labels.get("airbyte") == "job-pod"
-            and not any(c.kind == "PodScheduled" and c.status == "True" for c in self.status.conditions)
+    def blocks_airbyte_queue(self, namespace: str, now: datetime, max_age_seconds: int) -> bool:
+        if (
+            self.metadata.namespace != namespace
+            or self.metadata.labels.get("airbyte") != "job-pod"
+            or self.status.phase != "Pending"
+            or self.spec.node is not None
+        ):
+            return False
+
+        scheduled = next((c for c in self.status.conditions if c.kind == "PodScheduled"), None)
+        if scheduled is not None and scheduled.status == "True":
+            return False
+
+        created = self.metadata.created_at
+        age = (now - created).total_seconds() if created is not None else None
+        if age is not None and age > max_age_seconds:
+            return False
+
+        insight_logging.configure("airbyte-sync").info(
+            "A Pending Airbyte pod holds the capacity queue.",
+            extra={
+                "namespace": namespace,
+                "pod": self.metadata.name,
+                "age_seconds": age,
+                "pod_scheduled_reason": scheduled.reason if scheduled is not None else None,
+            },
         )
+        return True
 
 
 class Taint(Response):
     key: str
     effect: str
+    value: str = ""
+
+
+class Toleration(Response):
+    key: str = ""
+    effect: Literal["", "NoSchedule", "PreferNoSchedule", "NoExecute"] = ""
+    operator: Literal["", "Equal", "Exists"] = "Equal"
+    value: str = ""
+
+    def matches(self, taint: Taint) -> bool:
+        if self.effect and self.effect != taint.effect:
+            return False
+        if self.operator == "Exists":
+            return not self.key or self.key == taint.key
+        return self.key == taint.key and self.value == taint.value
 
 
 class NodeSpec(Response):
@@ -150,37 +212,68 @@ class Node(Response):
     spec: NodeSpec = NodeSpec()
     status: NodeStatus
 
-    def eligible(self, selector: Mapping[str, str]) -> bool:
-        return (
-            any(c.kind == "Ready" and c.status == "True" for c in self.status.conditions)
-            and not self.spec.unschedulable
-            and not any(
-                t.effect in {"NoSchedule", "NoExecute"} and t.key not in PLACEMENT_TAINTS for t in self.spec.taints
-            )
-            and all(self.metadata.labels.get(key) == value for key, value in selector.items())
+    def schedulable(self) -> bool:
+        return not self.spec.unschedulable and any(
+            c.kind == "Ready" and c.status == "True" for c in self.status.conditions
+        )
+
+    def has_blocking_taint(self, tolerations: tuple[Toleration, ...], *, ignore_conditions: bool = False) -> bool:
+        return any(
+            taint.effect in {"NoSchedule", "NoExecute"}
+            and not (ignore_conditions and taint.key.startswith("node.kubernetes.io/"))
+            and not any(toleration.matches(taint) for toleration in tolerations)
+            for taint in self.spec.taints
         )
 
 
-def fits(
-    request: PodRequest, nodes: Iterable[Node], pods: Iterable[Pod], namespace: str, selector: Mapping[str, str]
-) -> bool:
-    free = {
-        node.metadata.name: Requests.read(node.status.allocatable).to_pod_request()
-        for node in nodes
-        if node.eligible(selector)
-    }
+class Capacity(Enum):
+    FITS = "fits"
+    WAIT = "wait"
+    TOO_LARGE = "too_large"
+
+
+def placement(
+    request: PodRequest,
+    nodes: Iterable[Node],
+    pods: Iterable[Pod],
+    namespace: str,
+    selector: Mapping[str, str],
+    pending_max_age_seconds: int = 1800,
+    *,
+    tolerations: tuple[Toleration, ...] = (),
+) -> Capacity:
+    matching = [
+        node for node in nodes if all(node.metadata.labels.get(key) == value for key, value in selector.items())
+    ]
+    if not matching:
+        return Capacity.WAIT
+
+    eligible = [node for node in matching if not node.has_blocking_taint(tolerations, ignore_conditions=True)]
+    allocatable = {node.metadata.name: Requests.read(node.status.allocatable).to_pod_request() for node in eligible}
+    if not any(request.fits(available, NO_REQUEST) for available in allocatable.values()):
+        return Capacity.TOO_LARGE
+
+    now = datetime.now(UTC)
     used: dict[str, PodRequest] = {}
+    permanent: dict[str, PodRequest] = {}
+    queued = False
     for pod in pods:
-        if pod.unscheduled_airbyte_job(namespace):
-            return False
+        queued = pod.blocks_airbyte_queue(namespace, now, pending_max_age_seconds) or queued
         node = pod.spec.node
-        if node is None or node not in free or pod.status.phase in {"Succeeded", "Failed"}:
+        if node is None or node not in allocatable or pod.status.phase in {"Succeeded", "Failed"}:
             continue
-        current = used.get(node, NO_REQUEST)
         occupied = pod.request()
-        used[node] = PodRequest(
-            cpu_millis=current.cpu_millis + occupied.cpu_millis,
-            memory_bytes=current.memory_bytes + occupied.memory_bytes,
-        )
+        used[node] = used.get(node, NO_REQUEST) + occupied
+        if pod.stays_on_node():
+            permanent[node] = permanent.get(node, NO_REQUEST) + occupied
 
-    return any(request.fits(available, used.get(node, NO_REQUEST)) for node, available in free.items())
+    if not any(request.fits(available, permanent.get(node, NO_REQUEST)) for node, available in allocatable.items()):
+        return Capacity.TOO_LARGE
+    if not queued and any(
+        node.schedulable()
+        and not node.has_blocking_taint(tolerations)
+        and request.fits(allocatable[node.metadata.name], used.get(node.metadata.name, NO_REQUEST))
+        for node in eligible
+    ):
+        return Capacity.FITS
+    return Capacity.WAIT

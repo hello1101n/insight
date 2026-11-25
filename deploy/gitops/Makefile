@@ -286,7 +286,7 @@ help:
 	@echo "  make system-alloy-metrics ENV=$(ENV)      }   (infra metrics → VictoriaMetrics)"
 	@echo "  make system-grafana ENV=$(ENV)            }"
 	@echo "  make system-status ENV=$(ENV)             Show what's installed in insight-infra"
-	@echo "  make provision-ci ENV=$(ENV)      Provision the namespace-scoped CI deploy credential"
+	@echo "  make provision-ci ENV=$(ENV)      Provision the CI deploy credential"
 	@echo "  make verify-ci-credential ENV=$(ENV)  Assert the CI credential's RBAC scope"
 	@echo "  make revoke-ci ENV=$(ENV)         Delete the CI deploy credential (SA + RBAC + token)"
 	@echo "  make rollback ENV=$(ENV)          Roll back the umbrella to previous revision"
@@ -1109,17 +1109,25 @@ verify-ci-credential: vpn-up kube-ctx
 	check yes "get PVCs in $(NS_APP) (helm reads the git-cli-proxy cache claim every upgrade)" get persistentvolumeclaims -n $(NS_APP); \
 	check yes "update PVCs in $(NS_APP) (its chart/version labels change every bump)" update persistentvolumeclaims -n $(NS_APP); \
 	check no  "delete PVCs in $(NS_APP) (the clone cache outlives the release)" delete persistentvolumeclaims -n $(NS_APP); \
-	check yes "get Roles in $(AIRBYTE_NAMESPACE) (helm reads airbyte-auth-reader every upgrade)" get roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check yes "update Roles in $(AIRBYTE_NAMESPACE) (its chart/version labels change every bump)" update roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
+	check yes "get the Airbyte auth Role" get roles.rbac.authorization.k8s.io/$(RELEASE)-airbyte-auth-reader -n $(AIRBYTE_NAMESPACE); \
+	check yes "update the Airbyte auth Role" update roles.rbac.authorization.k8s.io/$(RELEASE)-airbyte-auth-reader -n $(AIRBYTE_NAMESPACE); \
 	check yes "create Roles in $(AIRBYTE_NAMESPACE)"                         create roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check yes "create RoleBindings in $(AIRBYTE_NAMESPACE) (the chart's airbyte-auth-reader)" create rolebindings.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check no  "read pods in $(AIRBYTE_NAMESPACE) (the exception is RBAC-only)" get pods -n $(AIRBYTE_NAMESPACE); \
+	check yes "create RoleBindings in $(AIRBYTE_NAMESPACE)"                  create rolebindings.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
+	check yes "list pods in $(AIRBYTE_NAMESPACE) (capacity and observation)" list pods -n $(AIRBYTE_NAMESPACE); \
+	check yes "read the Airbyte auth Secret" get secrets/airbyte-auth-secrets -n $(AIRBYTE_NAMESPACE); \
+	check yes "list nodes (capacity)"                                       list nodes; \
+	check yes "create ClusterRoles (node reads)"                             create clusterroles.rbac.authorization.k8s.io; \
+	check yes "create ClusterRoleBindings (node reads)"                      create clusterrolebindings.rbac.authorization.k8s.io; \
+	check yes "create the admission policy"                                  create validatingadmissionpolicies.admissionregistration.k8s.io; \
+	check yes "create the admission policy binding"                          create validatingadmissionpolicybindings.admissionregistration.k8s.io; \
+	check no  "get individual Airbyte pods"                                  get pods -n $(AIRBYTE_NAMESPACE); \
+	check no  "list pods across namespaces"                                  list pods --all-namespaces; \
 	check no  "anything, anywhere (the blanket check)"                       '*' '*' --all-namespaces; \
 	check no  "list namespaces at cluster scope"                            list namespaces --all-namespaces; \
 	check no  "create namespaces (hence the --create-namespace limitation)" create namespaces --all-namespaces; \
 	check no  "read Secrets across all namespaces"                          get secrets --all-namespaces; \
-	check no  "list nodes"                                                  list nodes --all-namespaces; \
-	check no  "create ClusterRoleBindings"                                  create clusterrolebindings.rbac.authorization.k8s.io --all-namespaces; \
+	check no  "escalate ClusterRoles"                                       escalate clusterroles.rbac.authorization.k8s.io; \
+	check no  "bind ClusterRoles without holding their permissions"        bind clusterroles.rbac.authorization.k8s.io; \
 	check no  "read pods in kube-system"                                    get pods -n kube-system; \
 	[ "$$FAILURES" -eq 0 ] || { echo "$(C_RED)ERROR$(C_RST): $$FAILURES scope assertion(s) failed — do not put this kubeconfig in a GitHub environment"; exit 1; }; \
 	echo "$(C_GRN)all scope assertions hold$(C_RST)"

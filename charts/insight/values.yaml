@@ -236,6 +236,10 @@ ingestion:
     capacityCheck:
       enabled: true
       nodeSelector: {}
+      tolerations: []
+      podNamespaces: []
+      pendingMaxAgeSeconds: 1800
+      waitLimitSeconds: 21600
       requests:
         orchestrator: {cpu: "1", memory: "2Gi"}
         source: {cpu: "1", memory: "2Gi"}
@@ -950,6 +954,8 @@ frontend:
     # lists is hidden.
     planned: []
 connectors:
+  runHistory:
+    runsPerInstance: 100
   infraFromUmbrella: true
   replicaCount: 1
   databaseName: connectors

@@ -1647,6 +1647,16 @@
             },
             "description": "Content-Type application/json required"
           },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource requests exceed node capacity"
+          },
           "428": {
             "content": {
               "application/problem+json": {

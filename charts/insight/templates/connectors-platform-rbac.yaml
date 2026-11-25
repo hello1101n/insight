@@ -1,0 +1,9 @@
+{{- $service := .Subcharts.connectors }}
+{{- $values := mergeOverwrite (deepCopy $service.Values) (dict "mariadb" .Values.mariadb "clickhouse" .Values.clickhouse "tenantId" .Values.ingestion.reconcile.tenantId "cluster" (dict "enabled" .Values.ingestion.templates.enabled)) }}
+{{- $_ := set $values.runHistory "airbyteNamespace" (include "insight.airbyte.namespace" .) }}
+{{- $_ := set $values.runHistory "airbyteReader" (dict "url" (include "insight.airbyte.url" .) "secret" (ternary .Values.airbyte.authSecret.name "" .Values.ingestion.templates.enabled) "client_id_key" (default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey) "client_secret_key" (default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey)) }}
+{{- with .Values.identityUrl }}
+{{- $_ := set $values "identityUrl" . }}
+{{- end }}
+{{- $context := mergeOverwrite (deepCopy $service) (dict "Values" $values) }}
+{{ include "insight-connectors.platformRbac" $context }}

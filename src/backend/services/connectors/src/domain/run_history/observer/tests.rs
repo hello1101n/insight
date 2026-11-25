@@ -1084,3 +1084,38 @@ fn bronze_retry_takes_the_job_only_from_the_new_launch_mark() -> Result<()> {
 }
 
 mod pod_history;
+
+#[test]
+fn an_oversized_airbyte_pod_is_a_terminal_bronze_failure() -> Result<()> {
+    assert_terminal_bronze_failure("pod_too_large", "airbyte_pod_too_large")
+}
+
+#[test]
+fn an_expired_capacity_wait_is_a_terminal_bronze_failure() -> Result<()> {
+    assert_terminal_bronze_failure("capacity_wait_exceeded", "airbyte_capacity_wait_exceeded")
+}
+
+fn assert_terminal_bronze_failure(outcome: &str, reason: &str) -> Result<()> {
+    let mut workflow = workflow(&json!({"startedAt": at(1)}))?;
+    let mut mark = bronze_launch_mark(1, 1, 19);
+    mark["job_id"] = Value::Null;
+    mark["outcome"] = json!(outcome);
+    mark["outcome_at"] = json!(at(2));
+    workflow
+        .metadata
+        .annotations
+        .get_or_insert_with(Default::default)
+        .insert(
+            "insight.cyberfabric.com/airbyte-launch".into(),
+            mark.to_string(),
+        );
+
+    let (load, lookup) = bronze::observation(&workflow, at(1), &HashMap::new(), None);
+    assert_eq!(
+        (load.status, load.reason.as_deref()),
+        ("failed", Some(reason))
+    );
+    assert_eq!(load.finished_at, Some(at(2)));
+    assert!(!lookup);
+    Ok(())
+}

@@ -49,6 +49,8 @@ enum LaunchOutcome {
     Rejected,
     Unconfirmed,
     Unreadable,
+    PodTooLarge,
+    CapacityWaitExceeded,
 }
 
 fn latest_node<'a>(
@@ -205,6 +207,8 @@ fn apply_receipt(
         LaunchOutcome::Rejected => Some("airbyte_launch_rejected"),
         LaunchOutcome::Unconfirmed => Some("airbyte_launch_unconfirmed"),
         LaunchOutcome::Unreadable => Some("airbyte_launch_unreadable"),
+        LaunchOutcome::PodTooLarge => Some("airbyte_pod_too_large"),
+        LaunchOutcome::CapacityWaitExceeded => Some("airbyte_capacity_wait_exceeded"),
         LaunchOutcome::Pending => {
             stage.status = if workflow_end.is_some() {
                 "unknown"
@@ -217,7 +221,14 @@ fn apply_receipt(
         LaunchOutcome::Accepted => None,
     };
     if let Some(reason) = reason {
-        stage.status = "not_started";
+        stage.status = if matches!(
+            receipt.outcome,
+            LaunchOutcome::PodTooLarge | LaunchOutcome::CapacityWaitExceeded
+        ) {
+            "failed"
+        } else {
+            "not_started"
+        };
         stage.reason = Some(reason.into());
         stage.finished_at = receipt_finish(receipt, trigger, poll).or(workflow_end);
         return false;

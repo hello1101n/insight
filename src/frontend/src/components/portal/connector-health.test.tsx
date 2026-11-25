@@ -2024,6 +2024,16 @@ describe("connector workflow runs", () => {
       "The Airbyte job list was unavailable. The sync launch is not confirmed.",
       "starting",
     ],
+    [
+      "airbyte_pod_too_large",
+      "The Airbyte pod is too large for any eligible node",
+      "failed",
+    ],
+    [
+      "airbyte_capacity_wait_exceeded",
+      "The wait for Airbyte cluster capacity reached its time limit",
+      "failed",
+    ],
   ] as const)(
     "shows a terminal Bronze failure for %s",
     async (reason, label, status) => {
@@ -2034,7 +2044,11 @@ describe("connector workflow runs", () => {
         stages: [
           {
             stage: "bronze",
-            status: "not_started",
+            status:
+              reason === "airbyte_pod_too_large" ||
+              reason === "airbyte_capacity_wait_exceeded"
+                ? "failed"
+                : "not_started",
             reason,
             attempt: 1,
             queued_at: stamp(-55),

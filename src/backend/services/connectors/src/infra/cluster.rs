@@ -1,3 +1,6 @@
+pub(crate) mod capacity;
+
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use kube::api::{ApiResource, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams};
@@ -19,6 +22,8 @@ pub(crate) enum Error {
     Disabled,
     #[error("too many CronWorkflows")]
     Limit,
+    #[error("node allocatable resources are unavailable")]
+    NodeCapacity,
 }
 
 impl Error {
@@ -41,7 +46,9 @@ pub(crate) struct Cluster {
     api: Option<Api<DynamicObject>>,
     pub(crate) client: Option<Client>,
     pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_placement: capacity::AirbytePlacement,
     pub(crate) query_log_replicas: String,
+    pub(crate) history_runs_per_instance: NonZeroU32,
     pub(crate) airbyte_reader: crate::config::AirbyteReader,
     call_timeout: Duration,
     pub(crate) namespace: String,
@@ -55,7 +62,9 @@ impl Cluster {
             api: None,
             client: None,
             airbyte_namespace: String::new(),
+            airbyte_placement: capacity::AirbytePlacement::default(),
             query_log_replicas: String::new(),
+            history_runs_per_instance: crate::config::history_runs_default(),
             airbyte_reader: crate::config::AirbyteReader::default(),
             call_timeout: CALL_TIMEOUT,
             namespace: String::new(),

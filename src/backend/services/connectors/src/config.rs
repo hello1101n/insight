@@ -1,7 +1,11 @@
+use std::num::NonZeroU32;
+
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use toolkit::bootstrap::AppConfig;
 use url::Url;
+
+use crate::infra::cluster::capacity::AirbytePlacement;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -32,7 +36,9 @@ pub(crate) struct GearConfig {
     pub(crate) tenant_id: String,
     pub(crate) reconcile_workflow_name: String,
     pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_placement: AirbytePlacement,
     pub(crate) airbyte_reader: AirbyteReader,
+    pub(crate) history_runs_per_instance: NonZeroU32,
 }
 
 impl Default for GearConfig {
@@ -55,7 +61,9 @@ impl Default for GearConfig {
             tenant_id: String::new(),
             reconcile_workflow_name: String::new(),
             airbyte_namespace: String::new(),
+            airbyte_placement: AirbytePlacement::default(),
             airbyte_reader: AirbyteReader::default(),
+            history_runs_per_instance: history_runs_default(),
         }
     }
 }
@@ -185,4 +193,8 @@ mod tests;
 #[serde(default)]
 pub(crate) struct ClusterConfig {
     pub(crate) enabled: bool,
+}
+
+pub(crate) fn history_runs_default() -> NonZeroU32 {
+    NonZeroU32::new(100).unwrap_or(NonZeroU32::MIN)
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import time
 import urllib.error
@@ -14,7 +15,7 @@ from airbyte_launch import CAPACITY_WAIT, CapacityWait, Launch, WorkflowLaunch, 
 from airbyte_resources import Response, parse
 from api_response import transient_error
 from capacity_lease import API_TIMEOUT_SECONDS, CapacityConfigurationError, HeldLease, Kubernetes, LeaseClient
-from pod_capacity import Node, Pod, PodRequest, fits
+from pod_capacity import Capacity, Node, Pod, PodRequest, placement
 from pydantic import Field
 
 CHECK_INTERVAL_SECONDS = 15
@@ -36,6 +37,7 @@ class Admission:
         self.api = Kubernetes(store.context, store.token)
         try:
             self.namespace = os.environ["AIRBYTE_AUTH_SECRET_NAMESPACE"]
+            self.namespaces = tuple(dict.fromkeys(os.environ["AIRBYTE_CAPACITY_NAMESPACES"].split(",")))
             self.lease = LeaseClient(
                 self.api, os.environ["WORKFLOW_NAMESPACE"], os.environ["POD_UID"], os.environ["AIRBYTE_CAPACITY_LEASE"]
             )
@@ -62,10 +64,20 @@ class Admission:
                 return
             query["continue"] = page.metadata.token
 
-    def fits(self, request: PodRequest) -> bool:
+    def placement(self, request: PodRequest) -> Capacity:
         nodes = self._list("/api/v1/nodes", Page[Node])
-        pods = self._list("/api/v1/pods", Page[Pod])
-        return fits(request, nodes, pods, self.namespace, self.settings.node_selector)
+        pods = itertools.chain.from_iterable(
+            self._list(f"/api/v1/namespaces/{namespace}/pods", Page[Pod]) for namespace in self.namespaces
+        )
+        return placement(
+            request,
+            nodes,
+            pods,
+            self.namespace,
+            self.settings.node_selector,
+            self.settings.pending_max_age_seconds,
+            tolerations=self.settings.tolerations,
+        )
 
     def job_request(self, connection: UUID, job: int, deadline: float) -> PodRequest | None:
         labels = f"job_id={job},connection_id={connection}"
@@ -180,9 +192,12 @@ def next_attempt(metadata: WorkflowMetadata, prior: Launch | None, *, capacity: 
     return attempt
 
 
-def start_wait(store: WorkflowLaunch, metadata: WorkflowMetadata, attempt: int) -> None:
-    if metadata.started_at is None or capacity_wait(metadata, attempt) is not None:
-        return
+def start_wait(store: WorkflowLaunch, metadata: WorkflowMetadata, attempt: int) -> CapacityWait | None:
+    if metadata.started_at is None:
+        return None
+    existing = capacity_wait(metadata, attempt)
+    if existing is not None:
+        return existing
     wait = CapacityWait(
         workflow_uid=metadata.uid,
         workflow_started_at=metadata.started_at,
@@ -190,3 +205,4 @@ def start_wait(store: WorkflowLaunch, metadata: WorkflowMetadata, attempt: int) 
         started_at=max(metadata.started_at, datetime.now(UTC)),
     )
     store.write_annotations(metadata, {CAPACITY_WAIT: wait.model_dump_json()})
+    return wait

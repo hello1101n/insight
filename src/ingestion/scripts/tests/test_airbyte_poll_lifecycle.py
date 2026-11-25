@@ -224,7 +224,7 @@ def test_poll_retries_the_bronze_launch_when_argo_keeps_the_old_trigger(
     fixture.workflow[ANNOTATION] = old.model_dump_json()
     fixture.previous_jobs = (20, 19)
     fixture.job_id = 21
-    fixture.nodes = iter(["4Gi", "6Gi"])
+    fixture.nodes = iter([admission_tests.BUSY, "6Gi"])
     for name, value in {
         "WORKFLOW_UID": str(UID),
         "JOB_ID": "20",

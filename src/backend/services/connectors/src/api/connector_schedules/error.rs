@@ -4,7 +4,7 @@ use toolkit_canonical_errors::{CanonicalError, Http, Problem};
 
 use crate::api::ADMIN_ONLY;
 use crate::api::error::ConnectorScheduleError;
-use crate::domain::connector_schedules::Error;
+use crate::domain::connector_schedules::{Error, validation::Violation};
 
 pub(super) fn admin_only() -> CanonicalError {
     ConnectorScheduleError::permission_denied()
@@ -42,6 +42,13 @@ impl IntoResponse for ScheduleError {
 pub(super) fn invalid(field: &str, problem: impl Into<String>) -> CanonicalError {
     ConnectorScheduleError::invalid_argument()
         .with_field_violation(field, problem, "INVALID")
+        .create()
+}
+
+fn unschedulable(problem: Violation) -> CanonicalError {
+    ConnectorScheduleError::invalid_argument()
+        .with_field_violation(&problem.field, problem.problem, "UNSCHEDULABLE")
+        .with_override(Http::status_code(422))
         .create()
 }
 
@@ -93,6 +100,7 @@ pub(super) fn domain_error(error: Error) -> ScheduleError {
             .with_field_violation("If-Match", error.to_string(), "INVALID")
             .create(),
         Error::Invalid(problem) => invalid(&problem.field, problem.problem),
+        Error::UnschedulableResources(problem) => unschedulable(problem),
         Error::NotChanged(_) | Error::ResourcesNotChanged(_) | Error::RestoreFailed(_) | Error::ResourceRestoreFailed(_) => CanonicalError::service_unavailable()
             .with_detail(error.to_string())
             .create(),

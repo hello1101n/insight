@@ -463,7 +463,14 @@ The schedule `PUT` and `DELETE` act on the schedule.
 The `resources` response object has `requested`, `live`, `inherited`, `status`, and `read_error`.
 The service compares the effective settings and both pod patches with the CronWorkflow's parameters.
 It reads the chart defaults from the CronWorkflow's `insight.cyberfabric.com/deployment-resources` annotation.
+Before writing overrides, the service checks CPU and memory together against each matching node's allocatable resources.
+It includes the configured Airbyte replication containers and init request when calculating that pod's size.
+The size check includes cordoned and unready nodes. The service returns HTTP 422 if the request cannot fit.
+A node list error leaves the standard field validation in effect.
 A refused patch restores the previous database row. Uncertain writes use the schedule's readback and fence rules.
+
+HTTP 200 confirms the save only. At load time, the trigger or poll step checks whether the Airbyte pod fits the live cluster.
+If the pod is too large, the step fails the load immediately and records `airbyte_pod_too_large`.
 
 Reconcile reads the latest overrides under the instance lock and applies them to the CronWorkflow or one-shot Workflow.
 The connectors service and reconcile build `dbt_pod_patch` and `identity_pod_patch` from the effective settings.
@@ -481,9 +488,24 @@ Set `clickhouse.syncUser.totalMemoryBytes` to supply the total directly.
 The history observer reads Airbyte settings from `sync_resources` on the submitted Workflow.
 For dbt and identity seed attempts, it records the CPU and memory requests from the corresponding pod patch.
 It reads the dbt query memory limit from `dbt_pod_patch`.
-The trigger or poll step records a capacity wait when no eligible node can fit the estimated Airbyte pod request.
+Under the Lease, the trigger and poll steps list nodes and read pods from the configured namespaces.
+The steps use the trigger account for Kubernetes capacity reads and Workflow updates.
+The admission policy limits the trigger account to launch annotations on its own Workflow.
+The chart creates the policy and its `Deny` binding when it renders the ingestion templates.
+The cluster must serve `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` in `admissionregistration.k8s.io/v1`.
+The trigger or poll step records a capacity wait when no schedulable node can fit the estimated pod now.
+A young Pending Airbyte job can also hold the queue. The age limit defaults to 30 minutes.
+The size check includes matching cordoned and unready nodes and ignores `node.kubernetes.io/*` taints.
+The size check excludes nodes with other blocking taints unless the configured tolerations match those taints.
+The check subtracts requests from visible, scheduled DaemonSet and mirror pods that are active and have no deletion timestamp.
+If matching nodes exist and none can hold the estimate, the step records `airbyte_pod_too_large` and fails before submission.
+If no node matches the selector, the step waits for capacity.
+The trigger or poll step times the wait from the Workflow annotation. The default limit is six hours.
+At the limit, the step closes the wait and records `airbyte_capacity_wait_exceeded`.
+The step can stop the load when the observer is down.
 The launch claim closes the wait before job submission.
 The observer closes an open wait when the Workflow ends and keeps the stage outcome.
+The observer keeps each connector instance's latest successful run when it prunes older runs.
 The observer uses the Workflow start time to distinguish Bronze attempts across Argo retries.
 A retry adds a Bronze attempt only if it runs the trigger or poll step, or records a capacity wait.
 When the Workflow has a launch mark, a Bronze attempt takes its Airbyte job only from the launch mark of its own execution.
@@ -493,6 +515,8 @@ The observer uses the actual replication pod request from the launch receipt whe
 The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
 It reads the query log by the stage's `log_comment`.
 The observer records the largest query memory and preserves the pod memory failure reason.
+The observer deletes old completed runs in batches. The foreign key removes their attempts and waits.
+History reads use the instance index to select the latest run and the latest successful run.
 
 ## 4. Compose Stand and CI
 

@@ -22,9 +22,10 @@ import airbyte_auth
 import airbyte_sync_trigger as trigger
 import capacity_lease
 import pytest
+from airbyte_admission import Admission
 from airbyte_launch import ANNOTATION, CAPACITY_WAIT, CapacityWait, Launch, WorkflowLaunch
 from capacity_lease import Kubernetes, LeaseClient
-from pod_capacity import PodRequest
+from pod_capacity import Capacity, PodRequest
 
 UID = UUID(int=1)
 CONNECTION = UUID(int=2)
@@ -34,6 +35,9 @@ SOURCE_DEF = UUID(int=5)
 DEST_DEF = UUID(int=6)
 VERSION = "resourceVersion"
 LEASE = "example-airbyte-capacity"
+NODES_PATH = "/api/v1/nodes"
+PODS_PATH = "/api/v1/namespaces/example-airbyte/pods"
+BUSY = "busy"
 SETTINGS = json.dumps(
     {
         "nodeSelector": {"pool": "jobs"},
@@ -55,7 +59,7 @@ def job_pod(*, scheduled: str, name: str, labels: dict[str, str]) -> dict[str, o
     return {
         "metadata": {"name": name, "namespace": "example-airbyte", "labels": labels},
         "spec": {"containers": [{"resources": {"requests": {"cpu": "3575m", "memory": "5Gi"}}}]},
-        "status": {"conditions": [{"type": "PodScheduled", "status": scheduled}]},
+        "status": {"phase": "Pending", "conditions": [{"type": "PodScheduled", "status": scheduled}]},
     }
 
 
@@ -78,11 +82,13 @@ class Fixture:
     started_at: str = "2026-01-01T00:00:00Z"
     previous_jobs: tuple[int, ...] = (19,)
     job_id: int = 20
+    busy: bool = False
 
     def urlopen(self, request: urllib.request.Request, **_kwargs: object) -> io.BytesIO:
         target = urllib.parse.urlsplit(request.full_url)
         patch = json.loads(request.data) if request.data is not None else None
         path = target.path
+        query = urllib.parse.parse_qs(target.query)
         if path.endswith("/workflows/example"):
             if patch is not None:
                 assert patch["metadata"][VERSION] == str(self.workflow_version)
@@ -120,29 +126,34 @@ class Fixture:
                 else:
                     self.events.append("renew" if held else "take")
             reply = {"metadata": {VERSION: str(self.lease_version)}, "spec": self.lease}
-        elif path == "/api/v1/nodes":
+        elif path == NODES_PATH:
             assert self.lease.get("holderIdentity")
             self.events.append("nodes")
             memory = next(self.nodes, "16Gi")
             if isinstance(memory, Exception):
                 raise memory
+            self.busy = memory == BUSY
             reply = {
                 "items": [
                     {
                         "metadata": {"name": "example", "labels": {"pool": "jobs"}},
                         "status": {
-                            "allocatable": {"cpu": "8", "memory": memory},
+                            "allocatable": {"cpu": "8", "memory": "6Gi" if self.busy else memory},
                             "conditions": [{"type": "Ready", "status": "True"}],
                         },
                     }
                 ]
             }
-        elif path == "/api/v1/pods":
+        elif path == PODS_PATH and "labelSelector" not in query:
             assert self.lease.get("holderIdentity")
             self.events.append("pods")
-            reply = {"items": next(self.pods, [])}
-        elif path == "/api/v1/namespaces/example-airbyte/pods":
-            query = urllib.parse.parse_qs(target.query)
+            occupied = {
+                "metadata": {"name": "other-work", "namespace": "example-airbyte"},
+                "spec": {"nodeName": "example", "containers": [{"resources": {"requests": {"memory": "1"}}}]},
+                "status": {"phase": "Running"},
+            }
+            reply = {"items": [occupied] if self.busy else next(self.pods, [])}
+        elif path == PODS_PATH:
             assert query["labelSelector"] == [f"job_id={self.job_id},connection_id={CONNECTION}"]
             self.events.append("job-pod")
             labels = {"job_id": str(self.job_id), "attempt_id": "0", "connection_id": str(CONNECTION)}
@@ -234,6 +245,7 @@ def fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Fixture:
         "AIRBYTE_CAPACITY_CHECK_ENABLED": "true",
         "AIRBYTE_CAPACITY_SETTINGS": SETTINGS,
         "AIRBYTE_CAPACITY_LEASE": LEASE,
+        "AIRBYTE_CAPACITY_NAMESPACES": "example-airbyte",
         "CONNECTION_ID": str(CONNECTION),
         "LAUNCH_CONFIRMATION_SECONDS": "600",
         "LAUNCH_UNREADABLE_SECONDS": "1800",
@@ -244,12 +256,56 @@ def fixture(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Fixture:
     return stub
 
 
+def test_capacity_reads_all_pages_of_the_configured_namespaces(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app_pods = "/api/v1/namespaces/example-app/pods?limit=500"
+    responses = {
+        f"{NODES_PATH}?limit=500": {
+            "items": [
+                {
+                    "metadata": {"name": "example-node", "labels": {"pool": "jobs"}},
+                    "spec": {"taints": [{"key": "dedicated", "value": "jobs", "effect": "NoSchedule"}]},
+                    "status": {
+                        "allocatable": {"cpu": "8", "memory": "16Gi"},
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                    },
+                }
+            ]
+        },
+        f"{PODS_PATH}?limit=500": {"items": []},
+        app_pods: {"metadata": {"continue": "next"}, "items": []},
+        f"{app_pods}&continue=next": {
+            "items": [
+                {
+                    "metadata": {"name": "example-pod", "namespace": "example-app"},
+                    "spec": {"nodeName": "example-node", "containers": [{"resources": {"requests": {"cpu": "4"}}}]},
+                    "status": {"phase": "Running"},
+                }
+            ]
+        },
+    }
+
+    def urlopen(request: urllib.request.Request, **_kwargs: object) -> io.BytesIO:
+        path = request.full_url.removeprefix("https://kubernetes.default.svc")
+        return io.BytesIO(json.dumps(responses.pop(path)).encode())
+
+    settings = json.loads(SETTINGS)
+    settings["tolerations"] = [{"key": "dedicated", "value": "jobs", "effect": "NoSchedule"}]
+    monkeypatch.setenv("AIRBYTE_CAPACITY_SETTINGS", json.dumps(settings))
+    monkeypatch.setenv("AIRBYTE_CAPACITY_NAMESPACES", "example-airbyte,example-app,example-airbyte")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    admission = Admission(trigger.WorkflowLaunch())
+    assert admission.placement(PodRequest(cpu_millis=5000, memory_bytes=0)) is Capacity.WAIT
+    assert responses == {}
+
+
 @pytest.mark.parametrize("mode", ["accepted", "lost"])
 def test_fit_after_convergence_waits_outside_the_lease_and_records_the_pod(
     fixture: Fixture, mode: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fixture.mode = mode
-    fixture.nodes = iter(["5Gi", "4Gi", "5Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, BUSY, BUSY, "6Gi"])
     assert trigger.main() == 0
     captured = capsys.readouterr()
     assert captured.out == "20\n"
@@ -296,7 +352,7 @@ def test_fit_after_convergence_waits_outside_the_lease_and_records_the_pod(
 def test_unscheduled_airbyte_job_blocks_an_otherwise_fitting_launch(fixture: Fixture, status: str) -> None:
     blocker = job_pod(scheduled=status, name="example-job", labels={"airbyte": "job-pod"})
     if status == "missing":
-        blocker["status"] = {}
+        blocker["status"] = {"phase": "Pending"}
     other_namespace = {
         **blocker,
         "metadata": {"name": "other", "namespace": "another", "labels": {"airbyte": "job-pod"}},
@@ -414,7 +470,7 @@ def test_disabled_switch_keeps_the_original_launch_calls(fixture: Fixture, monke
 
 
 def test_enabled_poll_can_claim_only_after_capacity_becomes_available(fixture: Fixture) -> None:
-    fixture.nodes = iter(["4Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, "6Gi"])
     result = trigger.workflow_launch("https://example.com", workflow_read_seconds=600)
     assert result.job_id == 20
     assert fixture.events.index("wait-start") < fixture.events.index("wait-end") < fixture.events.index("sync")
@@ -511,7 +567,7 @@ def test_uninterrupted_missed_checks_stop_at_the_outage_limit(
 
 
 def test_successful_no_fit_check_resets_the_outage_limit(fixture: Fixture, monkeypatch: pytest.MonkeyPatch) -> None:
-    fixture.nodes = iter([http_error(408), "4Gi", http_error(429), "6Gi"])
+    fixture.nodes = iter([http_error(408), BUSY, http_error(429), "6Gi"])
     elapsed = 0.0
     monkeypatch.setenv("LAUNCH_UNREADABLE_SECONDS", "20")
     monkeypatch.setattr(trigger.time, "monotonic", lambda: elapsed)
@@ -536,7 +592,7 @@ def test_accepted_job_survives_measurement_and_lease_errors(
 
     def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
         path = urllib.parse.urlsplit(request.full_url).path
-        if path == "/api/v1/namespaces/example-airbyte/pods":
+        if path == PODS_PATH and "labelSelector" in request.full_url:
             if failure == "pod-list":
                 raise http_error(403)
             if failure == "renewal":
@@ -603,7 +659,11 @@ def test_claim_waits_for_a_lease_that_covers_the_write_and_send(
     def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
         nonlocal offset
         reply = original_open(request, **kwargs)
-        if urllib.parse.urlsplit(request.full_url).path == "/api/v1/pods" and fixture.events.count("take") == 1:
+        if (
+            urllib.parse.urlsplit(request.full_url).path == PODS_PATH
+            and "labelSelector" not in request.full_url
+            and fixture.events.count("take") == 1
+        ):
             offset = 90
             assert lease is not None
             lease.valid_until = lease.deadline
@@ -643,7 +703,7 @@ def test_lease_loss_after_claim_does_not_stop_submission(fixture: Fixture, monke
 def test_retry_after_a_wait_without_a_claim_uses_a_fresh_attempt(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture.nodes = iter(["4Gi", "4Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, BUSY, "6Gi"])
 
     class SimulatedStop(Exception):
         pass
@@ -678,7 +738,7 @@ def test_pod_observation_does_not_run_past_120_seconds_from_submission(
 
     def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
         nonlocal elapsed
-        if urllib.parse.urlsplit(request.full_url).path == "/api/v1/namespaces/example-airbyte/pods":
+        if urllib.parse.urlsplit(request.full_url).path == PODS_PATH and "labelSelector" in request.full_url:
             requests.append((elapsed, kwargs["timeout"]))
             assert elapsed < 120, "pod observation exceeded 120 seconds"
             if len(requests) == 1:
@@ -720,7 +780,7 @@ def test_pod_observation_does_not_run_past_120_seconds_from_submission(
 def test_uncertain_claim_write_sends_only_with_a_durable_claim_and_a_valid_lease(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch, fault: OSError, applied: bool, can_send: bool
 ) -> None:
-    fixture.nodes = iter(["4Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, "6Gi"])
     elapsed = 0.0
     failed = False
     original = fixture.urlopen
@@ -759,7 +819,7 @@ def test_uncertain_claim_write_sends_only_with_a_durable_claim_and_a_valid_lease
 def test_retry_without_an_earlier_annotation_tracks_the_wait_for_its_execution(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture.nodes = iter(["4Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, "6Gi"])
     fixture.previous_jobs = (19, 20)
     assert trigger.main() == 1
     assert fixture.workflow == {}
@@ -816,8 +876,7 @@ def test_unreadable_api_responses_retry_before_launch(
         if path.endswith("/applications/token"):
             return io.BytesIO(body() if not failed else b'{"access_token":"example-token"}')
         if not failed and (
-            (target == "nodes" and path == "/api/v1/nodes")
-            or (target == "workflow" and path.endswith("/workflows/example"))
+            (target == "nodes" and path == NODES_PATH) or (target == "workflow" and path.endswith("/workflows/example"))
         ):
             return io.BytesIO(body())
         return fixture.urlopen(request, **kwargs)
@@ -841,7 +900,7 @@ def test_unreadable_api_responses_retry_before_launch(
     assert fixture.events.index("sleep") < fixture.events.index("sync")
 
 
-@pytest.mark.parametrize("memory", ["4Gi", "6Gi"])
+@pytest.mark.parametrize("memory", [BUSY, "6Gi"])
 def test_successful_check_counts_after_the_outage_limit(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch, memory: str
 ) -> None:
@@ -867,14 +926,14 @@ def test_successful_check_counts_after_the_outage_limit(
 
     assert trigger.main() == 0
     assert fixture.events.count("sync") == 1
-    assert fixture.events.count("wait-start") == int(memory == "4Gi")
+    assert fixture.events.count("wait-start") == int(memory == BUSY)
 
 
 @pytest.mark.parametrize("status", [503, 403])
 def test_no_fit_records_the_wait_even_when_the_lease_release_fails(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
-    fixture.nodes = iter(["4Gi", "6Gi"])
+    fixture.nodes = iter([BUSY, "6Gi"])
 
     def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
         result = fixture.urlopen(request, **kwargs)
@@ -958,7 +1017,7 @@ def test_admission_outage_limit_requires_progress(
         raise capacity_lease.LeaseLost("The capacity Lease cannot cover submission.")
 
     if failure == "wait":
-        fixture.nodes = iter(["4Gi"] * 4)
+        fixture.nodes = iter([BUSY] * 4)
     if failure == "lease":
         monkeypatch.setattr(capacity_lease.HeldLease, "ensure_held", lose_lease)
     monkeypatch.setattr(trigger.time, "sleep", sleep)
@@ -986,7 +1045,7 @@ def test_permanent_capacity_api_errors_exit_without_retry(
     fixture: Fixture, monkeypatch: pytest.MonkeyPatch, fault: OSError | bytes
 ) -> None:
     def urlopen(request: urllib.request.Request, **kwargs: object) -> io.BytesIO:
-        if urllib.parse.urlsplit(request.full_url).path == "/api/v1/nodes":
+        if urllib.parse.urlsplit(request.full_url).path == NODES_PATH:
             if isinstance(fault, OSError):
                 raise fault
             return io.BytesIO(fault)
@@ -1020,3 +1079,81 @@ def test_switch_off_missing_secret_data_reports_key_error(
     assert trigger.main() == 1
     assert json.loads(capsys.readouterr().err)["fields"]["error_type"] == "KeyError"
     assert fixture.events == []
+
+
+@pytest.mark.parametrize(("allocatable", "expected"), [("6442450943", trigger.POD_TOO_LARGE), ("6Gi", 0)])
+def test_replication_request_must_fit_an_empty_node(fixture: Fixture, allocatable: str, expected: int) -> None:
+    fixture.nodes = iter([allocatable])
+    assert trigger.main() == expected
+    receipt = Launch.model_validate_json(fixture.workflow[ANNOTATION])
+    assert receipt.estimated_pod_request == PodRequest(cpu_millis=3250, memory_bytes=6 * 1024**3)
+    if expected == trigger.POD_TOO_LARGE:
+        assert receipt.outcome == "pod_too_large" and receipt.outcome_at is not None
+        assert {"sleep", "wait-start", "pods", "sync"}.isdisjoint(fixture.events)
+        assert trigger.main() == expected
+    else:
+        assert receipt.outcome == "accepted" and fixture.events.count("sync") == 1
+
+
+@pytest.mark.parametrize("expired", [True, False])
+def test_capacity_wait_limit_stops_only_expired_waits(
+    fixture: Fixture, expired: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = json.loads(SETTINGS)
+    settings["waitLimitSeconds"] = 120
+    monkeypatch.setenv("AIRBYTE_CAPACITY_SETTINGS", json.dumps(settings))
+    wait = CapacityWait(
+        workflow_uid=UID,
+        workflow_started_at=datetime.fromisoformat(fixture.started_at),
+        attempt=1,
+        started_at=datetime.now(UTC) - timedelta(seconds=180 if expired else 30),
+    )
+    fixture.workflow[CAPACITY_WAIT] = wait.model_dump_json()
+    fixture.nodes = iter([BUSY, "6Gi"])
+
+    assert trigger.main() == (47 if expired else 0)
+    receipt = Launch.model_validate_json(fixture.workflow[ANNOTATION])
+    current = CapacityWait.model_validate_json(fixture.workflow[CAPACITY_WAIT])
+    assert current.started_at == wait.started_at and current.ended_at is not None
+    if expired:
+        assert receipt.outcome == "capacity_wait_exceeded"
+        assert current.ended_at == receipt.outcome_at
+        assert fixture.events == ["wait-end", "capacity_wait_exceeded"]
+        assert trigger.main() == 47
+    else:
+        assert receipt.outcome == "accepted"
+        assert fixture.events.count("sleep") == 1
+        assert fixture.events.count("sync") == 1
+
+
+def test_capacity_that_frees_at_the_deadline_does_not_start_a_load(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = json.loads(SETTINGS)
+    settings["waitLimitSeconds"] = 5
+    monkeypatch.setenv("AIRBYTE_CAPACITY_SETTINGS", json.dumps(settings))
+    now = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now
+
+    def advance_during_lease_check(_lease: capacity_lease.HeldLease, _seconds: float) -> None:
+        nonlocal now
+        now += timedelta(seconds=1)
+
+    monkeypatch.setattr(trigger, "datetime", Clock)
+    monkeypatch.setattr(capacity_lease.HeldLease, "ensure_held", advance_during_lease_check)
+    wait = CapacityWait(
+        workflow_uid=UID,
+        workflow_started_at=datetime.fromisoformat(fixture.started_at),
+        attempt=1,
+        started_at=now - timedelta(seconds=4),
+    )
+    fixture.workflow[CAPACITY_WAIT] = wait.model_dump_json()
+    fixture.nodes = iter(["6Gi"])
+
+    assert trigger.main() == 47
+    assert fixture.events[-2:] == ["wait-end", "capacity_wait_exceeded"]
+    assert "sync" not in fixture.events

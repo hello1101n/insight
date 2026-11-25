@@ -50,6 +50,8 @@ readinessProbe:
 
 tenantId: "00000000-0000-0000-0000-000000000000"
 
+airbytePlacement: {}
 runHistory:
+  runsPerInstance: 100
   airbyteNamespace: ""
   airbyteReader: {}

@@ -44,7 +44,9 @@ impl Gear for ConnectorsGear {
         }
         .with_reconcile_workflow(config.reconcile_workflow_name);
         cluster.query_log_replicas = config.query_log_cluster;
+        cluster.history_runs_per_instance = config.history_runs_per_instance;
         cluster.airbyte_namespace = config.airbyte_namespace;
+        cluster.airbyte_placement = config.airbyte_placement;
         cluster.airbyte_reader = config.airbyte_reader;
         let state = api::AppState {
             cluster,

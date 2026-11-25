@@ -34,12 +34,7 @@ def charts() -> dict[str, dict[tuple[str, str], dict]]:
             ],
         ),
     ]:
-        rendered = subprocess.check_output(
-            ["helm", "template", "contract", str(CHART), "-f", str(CHART / "tests/values.yaml"), *options], text=True
-        )
-        renders[release] = {
-            (item["kind"], item["metadata"]["name"]): item for item in yaml.safe_load_all(rendered) if item
-        }
+        renders[release] = render(*options)
     return renders
 
 
@@ -109,9 +104,9 @@ def test_bronze_uses_three_pods_and_passes_the_confirmation_window(charts: dict[
 
 
 def test_airbyte_launch_role_grants_only_claim_and_executor_access(charts: dict[str, dict]) -> None:
-    chart = charts["defaults"]
-    account = templates(chart, "airbyte-sync")["poll-job"]["serviceAccountName"]
-    name = chart["RoleBinding", f"{account}-workflow"]["roleRef"]["name"]
+    chart = render("--set", "ingestion.airbyteSync.capacityCheck.enabled=false")
+    name = templates(chart, "airbyte-sync")["poll-job"]["serviceAccountName"]
+    assert charts["defaults"]["Role", name]["rules"][:2] == chart["Role", name]["rules"]
     assert chart["Role", name]["rules"] == [
         {"apiGroups": ["argoproj.io"], "resources": ["workflows"], "verbs": ["get", "patch"]},
         {"apiGroups": ["argoproj.io"], "resources": ["workflowtaskresults"], "verbs": ["create", "patch"]},
@@ -125,41 +120,41 @@ def test_capacity_access_and_settings_are_scoped_to_the_enabled_launch_steps(cha
     chart = charts["defaults"]
     airbyte = templates(chart, "airbyte-sync")
     trigger = airbyte["trigger-sync"]
-    account = trigger["serviceAccountName"]
-    cluster_role = f"{account}.default"
-    subject = [{"kind": "ServiceAccount", "name": account, "namespace": "default"}]
-    assert chart["ClusterRole", cluster_role]["rules"] == [
-        {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]},
-        {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
-    ]
-    assert chart["ClusterRoleBinding", cluster_role]["subjects"] == subject
-    assert chart["ClusterRoleBinding", cluster_role]["roleRef"]["name"] == cluster_role
-    assert chart["Role", account]["rules"] == [
+    lease = "contract-airbyte-capacity"
+    assert all((kind, lease) not in chart for kind in ("Deployment", "Service", "ServiceAccount"))
+    trigger_account = trigger["serviceAccountName"]
+    assert trigger_account == airbyte["poll-job"]["serviceAccountName"] == "contract-airbyte-trigger"
+    assert chart["Role", trigger_account]["rules"][2:] == [
         {
             "apiGroups": ["coordination.k8s.io"],
             "resources": ["leases"],
-            "resourceNames": [account],
+            "resourceNames": [lease],
             "verbs": ["get", "patch"],
         }
     ]
-    assert chart["RoleBinding", account]["subjects"] == subject
-    assert chart["RoleBinding", account]["roleRef"]["name"] == account
-    assert chart["RoleBinding", f"{account}-workflow"]["subjects"] == subject
-    assert chart["RoleBinding", f"{account}-workflow"]["roleRef"]["name"] == "contract-airbyte-trigger"
-    assert airbyte["poll-job"]["serviceAccountName"] == account
-    assert airbyte["resolve-connection-by-name"].get("serviceAccountName") != account
-    assert subject[0] in chart["RoleBinding", "contract-airbyte-auth-reader"]["subjects"]
-    assert ("ServiceAccount", account) in chart
-    assert ("Lease", account) in chart
+    assert airbyte["resolve-connection-by-name"].get("serviceAccountName") != trigger_account
+    assert ("Lease", lease) in chart
     env = {item["name"]: item for item in trigger["container"]["env"]}
+    poll_env = {item["name"]: item for item in airbyte["poll-job"]["container"]["env"]}
+    capacity_keys = {
+        "AIRBYTE_CAPACITY_CHECK_ENABLED",
+        "AIRBYTE_CAPACITY_SETTINGS",
+        "AIRBYTE_CAPACITY_LEASE",
+        "AIRBYTE_CAPACITY_NAMESPACES",
+        "POD_UID",
+    }
+    for step_env in (env, poll_env):
+        assert {name for name in step_env if name.startswith("AIRBYTE_CAPACITY_") or name == "POD_UID"} == capacity_keys
+    assert {name: env[name] for name in capacity_keys} == {name: poll_env[name] for name in capacity_keys}
     assert env["AIRBYTE_CAPACITY_CHECK_ENABLED"]["value"] == "true"
-    for name in ("AIRBYTE_CAPACITY_SETTINGS", "AIRBYTE_CAPACITY_LEASE", "POD_UID"):
-        poll_env = {item["name"]: item for item in airbyte["poll-job"]["container"]["env"]}
-        assert poll_env[name] == env[name]
-    assert env["AIRBYTE_CAPACITY_LEASE"]["value"] == account
+    assert env["AIRBYTE_CAPACITY_LEASE"]["value"] == lease
+    assert env["AIRBYTE_CAPACITY_NAMESPACES"]["value"] == "default"
     assert env["POD_UID"]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.uid"
     assert json.loads(env["AIRBYTE_CAPACITY_SETTINGS"]["value"]) == {
         "nodeSelector": {},
+        "tolerations": [],
+        "pendingMaxAgeSeconds": 1800,
+        "waitLimitSeconds": 21600,
         "requests": {
             "orchestrator": {"cpu": "1", "memory": "2Gi"},
             "source": {"cpu": "1", "memory": "2Gi"},
@@ -170,26 +165,39 @@ def test_capacity_access_and_settings_are_scoped_to_the_enabled_launch_steps(cha
 
     disabled = render("--set", "ingestion.airbyteSync.capacityCheck.enabled=false")
     assert all("airbyte-capacity" not in name for _, name in disabled)
-    assert subject[0] not in disabled["RoleBinding", "contract-airbyte-auth-reader"]["subjects"]
     airbyte = templates(disabled, "airbyte-sync")
     assert airbyte["trigger-sync"]["serviceAccountName"] == airbyte["poll-job"]["serviceAccountName"]
     for step in ("trigger-sync", "poll-job"):
         assert all(not item["name"].startswith("AIRBYTE_CAPACITY_") for item in airbyte[step]["container"]["env"])
     assert all(item["name"] != "SYNC_RESOURCES" for item in airbyte["poll-job"]["container"]["env"])
 
+    tolerations = [{"key": "dedicated", "value": "jobs", "effect": "NoSchedule"}]
     override = render(
         "--set-string",
         "ingestion.airbyteSync.capacityCheck.nodeSelector.pool=jobs",
         "--set-string",
         "ingestion.airbyteSync.capacityCheck.requests.source.cpu=1500m",
+        "--set-json",
+        f"ingestion.airbyteSync.capacityCheck.tolerations={json.dumps(tolerations)}",
+        "--set",
+        "ingestion.airbyteSync.capacityCheck.pendingMaxAgeSeconds=300,ingestion.airbyteSync.capacityCheck.waitLimitSeconds=900",
     )
     separate_release = render("--set-string", "fullnameOverride=another")
-    assert ("Lease", "another-airbyte-capacity") in separate_release and ("Lease", account) not in separate_release
+    assert ("Lease", "another-airbyte-capacity") in separate_release and ("Lease", lease) not in separate_release
 
-    trigger_env = templates(override, "airbyte-sync")["trigger-sync"]["container"]["env"]
-    settings = json.loads(next(item["value"] for item in trigger_env if item["name"] == "AIRBYTE_CAPACITY_SETTINGS"))
-    assert settings["nodeSelector"] == {"pool": "jobs"}
-    assert settings["requests"]["source"] == {"cpu": "1500m", "memory": "2Gi"}
+    for step in ("trigger-sync", "poll-job"):
+        step_env = templates(override, "airbyte-sync")[step]["container"]["env"]
+        settings = json.loads(next(item["value"] for item in step_env if item["name"] == "AIRBYTE_CAPACITY_SETTINGS"))
+        assert settings["nodeSelector"] == {"pool": "jobs"}
+        assert settings["tolerations"] == tolerations
+        assert settings["pendingMaxAgeSeconds"] == 300
+        assert settings["waitLimitSeconds"] == 900
+        assert settings["requests"]["source"] == {"cpu": "1500m", "memory": "2Gi"}
+    connector_config = yaml.safe_load(
+        charts["overrides"]["ConfigMap", "contract-connectors-gears-config"]["data"]["insight.yaml"]
+    )
+    source = connector_config["gears"]["connectors"]["config"]["airbyte_placement"]["requests"]["source"]
+    assert source == {"cpu": "1000m", "memory": "1073741824"}
 
 
 def test_identity_tags_clickhouse_queries_and_reports_the_pod_uid(charts: dict[str, dict]) -> None:
@@ -231,11 +239,16 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     databases = default["Job", "contract-clickhouse-databases"]["metadata"]["annotations"]
     assert "pre-install" in databases["helm.sh/hook"]
     assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < int(databases["helm.sh/hook-weight"])
-    reference = {"secretKeyRef": {"name": "contract-clickhouse-sync-bootstrap", "key": "password", "optional": True}}
-    assert len(jobs) == 2
-    for job in jobs.values():
+    delete_policy = bootstrap["metadata"]["annotations"]["helm.sh/hook-delete-policy"].split(",")
+    assert "hook-succeeded" in delete_policy
+    assert set(jobs) == {"contract-clickhouse-databases", "contract-clickhouse-migrate"}
+    for name, job in jobs.items():
         assert job["CLICKHOUSE_SYNC_USER"]["value"] == "insight_sync"
-        assert job["CLICKHOUSE_SYNC_PASSWORD"]["valueFrom"] == reference
+        ref = job["CLICKHOUSE_SYNC_PASSWORD"]["valueFrom"]["secretKeyRef"]
+        if name.endswith("clickhouse-databases"):
+            assert ref == {"name": "contract-clickhouse-sync-bootstrap", "key": "password", "optional": True}
+        else:
+            assert ref == {"name": "insight-db-creds", "key": "clickhouse-sync-password", "optional": True}
         assert "CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES" not in job
 
     for provision in (True, False):
@@ -330,8 +343,6 @@ def lookup_chart(tmp_path: Path, charts: dict[str, dict]) -> Path:
 def substitute_sync_secret(
     chart: Path, data: dict[str, str], *, name: str = "insight-db-creds", managed: bool = True
 ) -> None:
-    template = chart / "templates/secrets.yaml"
-    source = template.read_text()
     labels = {"app.kubernetes.io/managed-by": "Helm"}
     metadata = {"labels": labels if managed else {}}
     default_data = datastore_credentials() | {"example-key": base64.b64encode(b"unrelated-example-password").decode()}
@@ -340,9 +351,12 @@ def substitute_sync_secret(
         name: {"metadata": metadata, "data": data},
     }
     lookups = f"({json.dumps(json.dumps(secrets))} | fromJson)"
-    for ref in ("$syncRef.name", '"insight-db-creds"'):
-        source = source.replace(f'lookup "v1" "Secret" .Release.Namespace {ref}', f"(get {lookups} {ref})")
-    template.write_text(source)
+    for filename, refs in (("secrets.yaml", ("$syncRef.name", '"insight-db-creds"')), ("_helpers.tpl", ("$ref.name",))):
+        template = chart / "templates" / filename
+        source = template.read_text()
+        for ref in refs:
+            source = source.replace(f'lookup "v1" "Secret" .Release.Namespace {ref}', f"(get {lookups} {ref})")
+        template.write_text(source)
 
 
 @pytest.mark.parametrize("value", [None, ""])
@@ -392,10 +406,19 @@ def test_helm_resolves_the_sync_password_for_an_existing_managed_secret(
     resources = render(chart=lookup_chart)
     result = resources["Secret", "insight-db-creds"]["stringData"]["clickhouse-sync-password"]
     assert result == password if password is not None else len(result) == 24
-    assert resources["Secret", "contract-clickhouse-sync-bootstrap"]["stringData"]["password"] == result
+    bootstrap = ("Secret", "contract-clickhouse-sync-bootstrap")
+    job = resources["Job", "contract-clickhouse-databases"]
+    env = job["spec"]["template"]["spec"]["containers"][0]["env"]
+    password_ref = next(item["valueFrom"]["secretKeyRef"] for item in env if item["name"] == "CLICKHOUSE_SYNC_PASSWORD")
+    if password is None:
+        assert resources[bootstrap]["stringData"]["password"] == result
+        assert password_ref == {"name": bootstrap[1], "key": "password", "optional": True}
+    else:
+        assert bootstrap not in resources
+        assert password_ref == {"name": "insight-db-creds", "key": "clickhouse-sync-password", "optional": True}
 
 
-@pytest.mark.parametrize("exit_code", [42, 43, 44, 45])
+@pytest.mark.parametrize("exit_code", [42, 43, 44, 45, 46, 47])
 def test_airbyte_launch_does_not_retry_terminal_exit_codes(charts: dict[str, dict], exit_code: int) -> None:
     trigger = templates(charts["defaults"], "airbyte-sync")["trigger-sync"]
     assert f"lastRetry.exitCode != '{exit_code}'" in trigger["retryStrategy"]["expression"].split(" && ")
@@ -439,13 +462,17 @@ def test_memory_byte_values_from_a_values_file_render_as_integers(tmp_path: Path
 
 
 def render(*args: str, chart: Path = CHART) -> dict[tuple[str, str], dict]:
+    return {(doc["kind"], doc["metadata"]["name"]): doc for doc in render_docs(*args, chart=chart)}
+
+
+def render_docs(*args: str, chart: Path = CHART, release: str = "contract") -> list[dict]:
     result = subprocess.run(
-        ["helm", "template", "contract", str(chart), "-f", str(chart / "tests/values.yaml"), *args],
+        ["helm", "template", release, str(chart), "-f", str(chart / "tests/values.yaml"), *args],
         check=True,
         capture_output=True,
         text=True,
     )
-    return {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(result.stdout) if doc}
+    return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
 
 
 def test_pipeline_passes_pod_patches_by_plain_substitution(
@@ -510,3 +537,185 @@ def test_connector_resources_reach_airbyte_and_the_reconcile_submission(
         "identity_memory_bytes": 536870912,
         "dbt_query_memory_bytes": 5368709120,
     }
+
+
+def test_capacity_rbac_grants_the_launch_steps_only_nodes_and_allowlisted_pods() -> None:
+    for args, expected in [
+        ([], {"default", "example-airbyte"}),
+        (
+            ["--set", "ingestion.airbyteSync.capacityCheck.podNamespaces={example-airbyte,example-datastores}"],
+            {"example-airbyte", "example-datastores"},
+        ),
+    ]:
+        docs = render_docs("--set", "airbyte.namespace=example-airbyte", *args)
+        subject = {"kind": "ServiceAccount", "name": "contract-airbyte-trigger", "namespace": "default"}
+        role_name = "contract-airbyte-capacity.default"
+        assert all(
+            not {"pods", "*"} & set(rule.get("resources", []))
+            for doc in docs
+            if doc["kind"] == "ClusterRole"
+            for rule in doc["rules"]
+        )
+        cluster_roles = {doc["metadata"]["name"]: doc["rules"] for doc in docs if doc["kind"] == "ClusterRole"}
+        bindings = [doc for doc in docs if doc["kind"] == "ClusterRoleBinding" and subject in doc["subjects"]]
+        assert len(bindings) == 1
+        assert bindings[0]["subjects"] == [subject]
+        assert bindings[0]["roleRef"] == {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": role_name,
+        }
+        assert cluster_roles[role_name] == [{"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]}]
+        pod_rule = {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]}
+        roles = [doc for doc in docs if doc["kind"] == "Role" and doc["metadata"]["name"] == role_name]
+        assert sorted(doc["metadata"]["namespace"] for doc in roles) == sorted(expected)
+        assert all(doc["rules"] == [pod_rule] for doc in roles)
+        pod_bindings = [doc for doc in docs if doc["kind"] == "RoleBinding" and doc["roleRef"]["name"] == role_name]
+        assert sorted(doc["metadata"]["namespace"] for doc in pod_bindings) == sorted(expected)
+        for binding in pod_bindings:
+            assert binding["subjects"] == [subject]
+            assert binding["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": role_name}
+
+
+def test_workflow_admission_policy_renders_without_api_discovery() -> None:
+    name = "contract-airbyte-trigger.default"
+    resources = render()
+    policy = ("ValidatingAdmissionPolicy", name)
+    binding = ("ValidatingAdmissionPolicyBinding", name)
+    assert resources[binding]["apiVersion"] == resources[policy]["apiVersion"] == "admissionregistration.k8s.io/v1"
+    assert resources[binding]["spec"] == {"policyName": name, "validationActions": ["Deny"]}
+    assert resources[policy]["spec"]["failurePolicy"] == "Fail"
+    assert "authentication.kubernetes.io/pod-name" in str(resources[policy]["spec"]["variables"])
+    assert "workflows" in resources[policy]["spec"]["matchConstraints"]["resourceRules"][0]["resources"]
+
+
+@pytest.mark.parametrize("key", ["managePlatformAccess", "airbyteSync.allowWorkflowPatchWithoutPolicy"])
+def test_removed_ingestion_access_values_are_rejected_by_schema(key: str) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render_docs("--set", f"ingestion.{key}=true")
+    assert "values" in error.value.stderr
+    assert key.rsplit(".", 1)[-1] in error.value.stderr
+
+
+def test_unrelated_ingestion_values_can_render() -> None:
+    chart = render("--set", "ingestion.exampleExtension=true,ingestion.airbyteSync.exampleExtension=true")
+
+    assert ("WorkflowTemplate", "airbyte-sync") in chart
+
+
+@pytest.mark.parametrize("runs", [1_000_000, 4_294_967_295])
+def test_connectors_run_history_renders_as_an_integer(runs: int) -> None:
+    chart = render("--set-json", f"connectors.runHistory.runsPerInstance={runs}")
+    config = yaml.safe_load(chart["ConfigMap", "contract-connectors-gears-config"]["data"]["insight.yaml"])
+    rendered_runs = config["gears"]["connectors"]["config"]["history_runs_per_instance"]
+
+    assert type(rendered_runs) is int
+    assert rendered_runs == runs
+
+
+def test_connectors_platform_access_renders_without_api_discovery() -> None:
+    docs = render_docs("--set", "airbyte.namespace=example-airbyte")
+    resources = {(doc["kind"], doc["metadata"]["name"]): doc for doc in docs}
+    cluster_name = "contract-connectors.default"
+    observer_name = "default-contract-connectors-observer"
+    subject = {"kind": "ServiceAccount", "name": "contract-connectors", "namespace": "default"}
+    assert resources["ClusterRole", cluster_name]["rules"] == [
+        {"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]}
+    ]
+    observer = resources["Role", observer_name]
+    assert observer["metadata"]["namespace"] == "example-airbyte"
+    assert observer["rules"] == [
+        {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
+        {"apiGroups": [""], "resources": ["secrets"], "resourceNames": ["airbyte-auth-secrets"], "verbs": ["get"]},
+    ]
+    for kind, name in [("ClusterRole", cluster_name), ("Role", observer_name)]:
+        binding = resources[f"{kind}Binding", name]
+        assert binding["subjects"] == [subject]
+        assert binding["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": kind, "name": name}
+    assert resources["RoleBinding", observer_name]["metadata"]["namespace"] == "example-airbyte"
+
+
+@pytest.mark.parametrize(
+    ("role_kind", "role_name", "namespace", "managed_kinds", "delegated"),
+    [
+        (
+            "ClusterRole",
+            "ci-deployer-ingestion-admission.insight",
+            None,
+            {
+                "ClusterRole": "clusterroles",
+                "ClusterRoleBinding": "clusterrolebindings",
+                "ValidatingAdmissionPolicy": "validatingadmissionpolicies",
+                "ValidatingAdmissionPolicyBinding": "validatingadmissionpolicybindings",
+            },
+            [{"apiGroups": [""], "resources": ["nodes"], "verbs": ["get", "list"]}],
+        ),
+        (
+            "Role",
+            "ci-deployer-airbyte.insight",
+            "airbyte",
+            {"Role": "roles", "RoleBinding": "rolebindings"},
+            [
+                {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
+                {
+                    "apiGroups": [""],
+                    "resources": ["secrets"],
+                    "resourceNames": ["airbyte-auth-secrets"],
+                    "verbs": ["get"],
+                },
+            ],
+        ),
+    ],
+    ids=["cluster", "airbyte"],
+)
+def test_ci_deployer_can_manage_only_named_platform_resources_after_create(
+    role_kind: str, role_name: str, namespace: str | None, managed_kinds: dict[str, str], delegated: list[dict]
+) -> None:
+    docs = render_docs("--namespace", "insight", "--set", "airbyte.namespace=airbyte", release="insight")
+    ci = CHART.parents[1] / "deploy/gitops/environments/test-stand/ci-deployer-rbac.yaml"
+    rbac = {(doc["kind"], doc["metadata"]["name"]): doc for doc in yaml.safe_load_all(ci.read_text())}
+    role = rbac[role_kind, role_name]
+    binding = rbac[f"{role_kind}Binding", role_name]
+    assert role["metadata"].get("namespace") == binding["metadata"].get("namespace") == namespace
+    assert binding["subjects"] == [{"kind": "ServiceAccount", "name": "ci-deployer", "namespace": "insight"}]
+    assert binding["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": role_kind, "name": role_name}
+
+    expected = delegated.copy()
+    for kind, resource in managed_kinds.items():
+        rendered = [doc for doc in docs if doc["kind"] == kind and doc["metadata"].get("namespace") == namespace]
+        assert rendered, kind
+        api_groups = [rendered[0]["apiVersion"].split("/")[0]]
+        names = sorted(doc["metadata"]["name"] for doc in rendered)
+        expected.append({"apiGroups": api_groups, "resources": [resource], "verbs": ["create"]})
+        expected.append(
+            {
+                "apiGroups": api_groups,
+                "resources": [resource],
+                "resourceNames": names,
+                "verbs": ["get", "update", "patch", "delete"],
+            }
+        )
+
+    actual = [{**rule, "resources": [resource]} for rule in role["rules"] for resource in rule["resources"]]
+    assert len(actual) == len(expected)
+    for rule in expected:
+        assert rule in actual, rule
+    for doc in docs:
+        if doc["kind"] != role_kind or doc["metadata"].get("namespace") != namespace:
+            continue
+        assert all(rule in delegated for rule in doc["rules"])
+
+
+def test_ci_deployer_can_manage_the_capacity_lease() -> None:
+    ci = CHART.parents[1] / "deploy/gitops/environments/test-stand/ci-deployer-rbac.yaml"
+    core = next(doc for doc in yaml.safe_load_all(ci.read_text()) if doc["metadata"]["name"] == "ci-deployer-core")
+    leases = next(rule for rule in core["rules"] if rule["resources"] == ["leases"])
+    assert set(leases["verbs"]) >= {"create", "get", "patch", "update", "delete"}
+
+
+def test_only_the_bootstrap_secret_hook_manages_its_lifecycle() -> None:
+    resources = render()
+    secret = resources["Secret", "contract-clickhouse-sync-bootstrap"]
+    assert "hook-succeeded" in secret["metadata"]["annotations"]["helm.sh/hook-delete-policy"].split(",")
+    name = "contract-clickhouse-bootstrap-cleanup"
+    assert all((kind, name) not in resources for kind in ("Job", "ServiceAccount", "Role", "RoleBinding"))

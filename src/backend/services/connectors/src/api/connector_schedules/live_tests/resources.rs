@@ -164,3 +164,92 @@ async fn assert_repeat_save_fills_in_pod_patches(
     }
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn resource_save_rejects_unschedulable_pods_and_allows_an_unreadable_node_list() -> R {
+    let Some(db) = connect_or_skip().await? else {
+        return Ok(());
+    };
+    let (connector, uri) = identity();
+    let history = Mock::new();
+    let mut workflow =
+        crate::infra::cluster_stub::Stub::start(Scenario::Accept, &connector, "main").await?;
+    workflow.cluster.airbyte_placement = serde_json::from_value(json!({
+        "node_selector": {"pool":"jobs"},
+        "requests": {
+            "orchestrator":{"cpu":"1","memory":"1Gi"},
+            "source":{"cpu":"1","memory":"1Gi"},
+            "destination":{"cpu":"500m","memory":"1Gi"},
+            "init":{"cpu":"4","memory":"4Gi"}
+        }
+    }))?;
+    let h = harness_with_cluster(
+        db.clone(),
+        history.url(),
+        context("user", &[])?,
+        true,
+        workflow,
+    )
+    .await?;
+
+    let unavailable = patch(
+        &h,
+        &history,
+        &uri,
+        "0",
+        &json!({
+            "dbt_memory_bytes": 10_000_000_000_000_u64
+        }),
+    )
+    .await?;
+    assert_eq!(unavailable.status(), StatusCode::OK, "403 from node list");
+
+    h.workflow
+        .set_nodes(json!([
+            {
+                "metadata":{"name":"example-small","labels":{"pool":"jobs"}},
+                "status":{"conditions":[{"type":"Ready","status":"True"}],
+                    "allocatable":{"cpu":"3","memory":"3Gi"}}
+            },
+            {
+                "metadata":{"name":"example-jobs","labels":{"pool":"jobs"}},
+                "spec":{"unschedulable":true},
+                "status":{"conditions":[{"type":"Ready","status":"True"}],
+                    "allocatable":{"cpu":"4","memory":"4Gi"}}
+            },
+            {
+                "metadata":{"name":"example-memory","labels":{"pool":"general"}},
+                "status":{"conditions":[{"type":"Ready","status":"True"}],
+                    "allocatable":{"cpu":"2","memory":"8Gi"}}
+            }
+        ]))
+        .await;
+
+    for (settings, status) in [
+        (
+            json!({"dbt_cpu_millis":2001,"dbt_memory_bytes":5_368_709_120_u64}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"identity_memory_bytes":8_589_934_593_u64,"dbt_memory_bytes":null}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"airbyte_cpu_millis":2501,"dbt_memory_bytes":null}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"airbyte_memory_bytes":2_147_483_649_u64,"dbt_memory_bytes":null}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"airbyte_cpu_millis":2500,"airbyte_memory_bytes":2_147_483_648_u64,"dbt_memory_bytes":null}),
+            StatusCode::OK,
+        ),
+    ] {
+        let reply = patch(&h, &history, &uri, "1", &settings).await?;
+        assert_eq!(reply.status(), status, "{settings}");
+    }
+    clear(&db, &connector).await
+}

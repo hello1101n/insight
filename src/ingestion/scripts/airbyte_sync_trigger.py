@@ -45,12 +45,15 @@ from airbyte_launch import (
 from airbyte_resources import AirbyteResources, Sizes, parse
 from api_response import capacity_check_enabled, parse_response, transient_error
 from capacity_lease import CapacityConfigurationError, HeldLease, LeaseLost
+from pod_capacity import Capacity
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints, ValidationError
 
 REJECTED = 42
 UNCONFIRMED = 43
 UNREADABLE = 44
 CAPACITY_CONFIGURATION = 45
+POD_TOO_LARGE = 46
+CAPACITY_WAIT_EXCEEDED = 47
 WRITE_ATTEMPTS = 5
 POLL_INTERVAL_SECONDS = 10
 
@@ -273,13 +276,14 @@ def observe_launch(result: Launch, capacity: Admission, lease: HeldLease, deadli
 def write_claim(
     store: WorkflowLaunch, metadata: WorkflowMetadata, claim: Launch, wait: CapacityWait | None, lease: HeldLease | None
 ) -> None:
-    if lease is None:
+    if lease is None and wait is None:
         store.write(metadata, claim)
         return
     try:
         if wait is not None and wait.ended_at is None:
-            ended = wait.model_copy(update={"ended_at": max(wait.started_at, datetime.now(UTC))})
-            store.write_admitted(metadata, claim, ended)
+            ended_at = max(wait.started_at, claim.outcome_at or datetime.now(UTC))
+            ended = wait.model_copy(update={"ended_at": ended_at})
+            store.write_with_wait(metadata, claim, ended)
         else:
             store.write(metadata, claim, timeout=CLAIM_WRITE_TIMEOUT_SECONDS)
     except OSError as error:
@@ -288,7 +292,8 @@ def write_claim(
         current = store.read()
         if current.started_at != claim.workflow_started_at or read_claim(current, claim.connection) != claim:
             raise
-        lease.ensure_held(REQUEST_TIMEOUT_SECONDS)
+        if claim.outcome == "pending" and lease is not None:
+            lease.ensure_held(REQUEST_TIMEOUT_SECONDS)
 
 
 def launch(
@@ -328,7 +333,7 @@ def launch(
             if prior is not None and (
                 prior.workflow_started_at == metadata.started_at
                 or (
-                    prior.outcome not in {"rejected", "unconfirmed"}
+                    prior.outcome not in {"rejected", "unconfirmed", "pod_too_large", "capacity_wait_exceeded"}
                     and not finished_job(url, prior, strict=capacity_enabled and workflow_read_seconds is None)
                 )
             ):
@@ -341,6 +346,35 @@ def launch(
             attempt = next_attempt(metadata, prior, capacity=capacity_enabled)
             if capacity_enabled and capacity is None:
                 capacity = Admission(store)
+            wait = capacity_wait(metadata, attempt) if capacity is not None else None
+            wait_deadline = (
+                wait.deadline(capacity.settings.wait_limit_seconds)
+                if capacity is not None and wait is not None
+                else None
+            )
+            if wait_deadline is not None and datetime.now(UTC) >= wait_deadline:
+                now = time.time()
+                stopped = Launch(
+                    workflow_uid=metadata.uid,
+                    workflow_started_at=metadata.started_at,
+                    attempt=attempt,
+                    connection=connection,
+                    previous_job=0,
+                    deadline=now + window,
+                    read_deadline=now + unreadable_window,
+                    outcome="capacity_wait_exceeded",
+                    outcome_at=wait_deadline,
+                )
+                operation = "Record the capacity wait timeout"
+                try:
+                    write_claim(store, metadata, stopped, wait, None)
+                except urllib.error.HTTPError as error:
+                    if error.code != 409:
+                        raise
+                    conflicts += 1
+                    continue
+                return stopped
+
             operation = "Acquire the capacity Lease"
             lease = capacity.lease.take() if capacity is not None else None
             if capacity is not None and lease is None:
@@ -353,17 +387,18 @@ def launch(
                 operation = "Prepare the Airbyte sync"
                 previous_job = prepare(url, token, connection, previous_job, sizes)
                 estimated = None
-                has_capacity = True
+                placement = Capacity.FITS
                 if capacity is not None:
                     operation = "Estimate the Airbyte pod request"
                     estimated = estimate(AirbyteResources(request, url), token, connection, capacity.settings.requests)
                     operation = "Check the capacity of the cluster"
-                    has_capacity = capacity.fits(estimated)
-                if has_capacity:
-                    wait = capacity_wait(metadata, attempt) if capacity is not None else None
-                    if lease is not None:
+                    placement = capacity.placement(estimated)
+                if placement is not Capacity.WAIT:
+                    if lease is not None and placement is Capacity.FITS:
                         operation = "Check the Lease submission budget"
                         lease.ensure_held(CLAIM_WRITE_TIMEOUT_SECONDS + REQUEST_TIMEOUT_SECONDS)
+                    if wait_deadline is not None and datetime.now(UTC) >= wait_deadline:
+                        continue
                     now = time.time()
                     claim = Launch(
                         workflow_uid=metadata.uid,
@@ -375,6 +410,8 @@ def launch(
                         read_deadline=now + unreadable_window,
                         estimated_pod_request=estimated,
                     )
+                    if placement is Capacity.TOO_LARGE:
+                        claim = claim.model_copy(update={"outcome": "pod_too_large", "outcome_at": datetime.now(UTC)})
                     operation = "Write the Workflow launch claim"
                     try:
                         write_claim(store, metadata, claim, wait, lease)
@@ -383,6 +420,8 @@ def launch(
                             raise
                         conflicts += 1
                         continue
+                    if placement is Capacity.TOO_LARGE:
+                        return claim
                     claim_written = True
                     observation_deadline = time.monotonic() + POD_OBSERVATION_SECONDS
                     result = send(url, token, claim)
@@ -394,12 +433,14 @@ def launch(
 
             operation = "Record the Workflow capacity wait"
             try:
-                start_wait(store, metadata, attempt)
+                wait = start_wait(store, metadata, attempt)
             except urllib.error.HTTPError as error:
                 if error.code != 409:
                     raise
                 conflicts += 1
                 continue
+            if capacity is not None and wait is not None:
+                wait_deadline = wait.deadline(capacity.settings.wait_limit_seconds)
             outage.progressed()
             if lease is not None and (error := lease.error) is not None:
                 if not (isinstance(error, LeaseLost) or transient_error(error)):
@@ -416,7 +457,10 @@ def launch(
                 raise
             outage.missed(started, operation, error)
         else:
-            time.sleep(CHECK_INTERVAL_SECONDS)
+            delay = CHECK_INTERVAL_SECONDS
+            if wait_deadline is not None:
+                delay = min(delay, max(0, (wait_deadline - datetime.now(UTC)).total_seconds()))
+            time.sleep(delay)
 
     raise RuntimeError("The Workflow launch claim write conflicted.")
 
@@ -461,6 +505,12 @@ def report_launch(result: Launch) -> int:
         case "unreadable":
             log.error("The Airbyte job list remained unreadable.")
             return UNREADABLE
+        case "pod_too_large":
+            log.error("The Airbyte pod request exceeds the capacity of every eligible node.")
+            return POD_TOO_LARGE
+        case "capacity_wait_exceeded":
+            log.error("The Airbyte capacity wait reached its time limit.")
+            return CAPACITY_WAIT_EXCEEDED
         case "accepted":
             return 0
         case "pending":

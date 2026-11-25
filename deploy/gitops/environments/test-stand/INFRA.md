@@ -26,10 +26,9 @@ kubectl -n insight get sa argo-workflow
 kubectl -n airbyte get role insight-airbyte-auth-reader
 ```
 
-The CI deploy credential (namespace-scoped SA in `insight`) can run none of
-those — it cannot `helm list -A`, read `mariadb/`, or see the Gateway. That is
-the right shape for a deploy credential, and the reason this file is maintained
-by hand rather than generated.
+Use an administrator credential for the infrastructure checks.
+The CI deploy credential manages the umbrella release and its explicitly named cluster resources.
+See the [permissions in the credentials runbook](credentials-runbook.md#3-verify-the-scope).
 
 ## The layer model
 
@@ -49,6 +48,10 @@ carries native Gateway API templates, so `HTTPRoute/insight-gateway` and
 that does not exist is created successfully and serves nothing.
 
 ## The deploy order
+
+The cluster must serve `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` in `admissionregistration.k8s.io/v1`.
+The release creates both resources and binds the Workflow policy with the `Deny` action.
+Create the release and Airbyte namespaces before you apply the CI deployer RBAC.
 
 `deploy-all.sh` runs each `deploy-<svc>.sh` then its `validate-<svc>.sh`,
 stopping at the first failure. The order is not interchangeable:

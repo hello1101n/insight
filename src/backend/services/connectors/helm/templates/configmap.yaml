@@ -115,7 +115,9 @@ data:
             enabled: {{ .Values.cluster.enabled }}
           namespace: {{ .Release.Namespace | quote }}
           query_log_cluster: {{ if .Values.clickhouse.clusterMode }}{{ .Values.clickhouse.clusterName | default "" | quote }}{{ else }}""{{ end }}
+          airbyte_placement: {{ .Values.airbytePlacement | toJson }}
           airbyte_reader: {{ .Values.runHistory.airbyteReader | toJson }}
+          history_runs_per_instance: {{ .Values.runHistory.runsPerInstance | int64 }}
           airbyte_namespace: {{ .Values.runHistory.airbyteNamespace | default .Release.Namespace | quote }}
           {{- if .Values.cluster.enabled }}
           tenant_id: {{ required "tenantId is required" .Values.tenantId | quote }}
