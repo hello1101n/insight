@@ -15,6 +15,7 @@ In plain words: what it takes for one Insight install to serve many tenants, who
 - Queries that our code writes add the tenant filter themselves.
 - Queries that users and the AI write go through one query compiler. The compiler parses the SQL, checks it, adds the tenant to every table, and writes new SQL. The original text never runs.
 - Bronze is an input for dbt only. No user, admin or AI query reads it.
+- A semantic layer describes silver and gold for the AI: a catalogue generated from dbt, plus the predefined metrics.
 - Data isolation must land before a second tenant exists in an install.
 
 ## Where things stand
@@ -67,7 +68,45 @@ flowchart LR
 - **Predefined metrics** are queries that we write and review: the analytics registry. They add the tenant filter on every read, with no switch.
 - **The query compiler** handles every query that a user or the AI writes.
 
-#### 1.3 The query compiler
+#### 1.3 The semantic layer
+
+The semantic layer tells people and the AI what the data means. The AI uses it to choose tables, columns and metrics before it writes a query.
+
+```mermaid
+flowchart LR
+    DBT[dbt models and<br/>schema.yml descriptions] -->|generate| CAT[(Catalogue<br/>silver + gold)]
+    REG[Analytics registry<br/>registry.yaml] --> MET[(Predefined metrics<br/>passports)]
+    CAT --> T1[list_tables<br/>describe_table]
+    MET --> T2[list_metrics<br/>run_metric]
+    CAT --> QC[Query compiler]
+    T1 --> AI[AI]
+    T2 --> AI
+    AI -->|SQL| QC
+```
+
+The semantic layer has three parts:
+
+1. **The catalogue.** A script generates it from dbt (`manifest.json` and `schema.yml`). It lists the silver and gold tables, their columns, types and descriptions, and optional relationships such as `person_id -> persons`.
+   - It does not show `insight_tenant_id`.
+   - It does not show technical columns: `_airbyte_*`, `unique_key`, `_version`.
+   - It does not show bronze.
+   - The dbt descriptions are the documentation for the AI. Their quality sets the quality of the answers.
+2. **Predefined metrics.** The analytics registry (`registry.yaml`, documented in `passports.md`) defines measures, formulas, units and notes. We write and review these metrics. The AI can run a metric by its key, without SQL.
+3. **The query compiler** (1.4). It uses the catalogue to check every query. It is the only path for SQL that a user or the AI writes.
+
+The AI gets tools on top of these parts:
+
+- `list_tables` and `describe_table` read the catalogue;
+- `list_metrics` and `run_metric` use the predefined metrics;
+- `run_sql` sends SQL to the query compiler.
+
+**What exists today:**
+
+- The analytics registry has about 118 measures. It stays as it is.
+- insight-v3-core has datasets and a `MetricQuery` JSON: one table for each query, no joins, no tenant. Its future is an open question.
+- The analytics MCP shows the schema through `system.tables` and `system.columns`. This shows bronze, the tenant column and technical columns. The catalogue replaces it.
+
+#### 1.4 The query compiler
 
 The compiler is the one place where SQL from users and the AI enters the system.
 
@@ -97,13 +136,11 @@ flowchart TD
 4. **Print.** The compiler writes new SQL from the tree and binds all values as parameters.
 5. **Run.** A reader user runs the SQL. This user can read only silver and gold.
 
-**The catalogue** comes from dbt (`manifest.json` and `schema.yml`). It lists the silver and gold tables, their columns, types and descriptions, and optional relationships such as `person_id -> persons`. It does not show `insight_tenant_id` or technical columns (`_airbyte_*`, `unique_key`, `_version`). The dbt descriptions are also the documentation for the AI.
-
 **The function allowlist** fails closed. Only listed functions run. A new ClickHouse function stays blocked until we add it. The list does not contain functions that read data by name instead of by a table reference: table functions (`remote`, `url`, `file`, `s3`, `merge`, `cluster`, `dictionary`), `dictGet*` and `joinGet`.
 
 **A rejected query** returns a clear reason. The AI uses the reason to write a new query.
 
-#### 1.4 The tenant rewrite
+#### 1.5 The tenant rewrite
 
 Every table reference becomes a subquery with the tenant filter. This covers `FROM`, `JOIN`, subqueries, `IN (SELECT ...)`, `WITH`, `ARRAY JOIN` and `UNION`, because SQL has no other way to name a table.
 
@@ -128,7 +165,7 @@ WHERE c.committed_at >= now() - INTERVAL {p1:UInt32} DAY
 GROUP BY p.department
 ```
 
-#### 1.5 Where the tenant comes from
+#### 1.6 Where the tenant comes from
 
 The tenant always comes from the session. No request, query or tool argument can set it.
 
@@ -150,7 +187,7 @@ sequenceDiagram
     CH-->>SVC: rows of acme only
 ```
 
-#### 1.6 Changes to the current paths
+#### 1.7 Changes to the current paths
 
 | Path | Change |
 |---|---|
