@@ -313,15 +313,57 @@ models:
 
   - name: hubspot__support_tickets
     description: "HubSpot tickets for class_support_tickets: status open or closed from the ticket state of the stage, merges from hs_merged_object_ids."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_ticket_field_history
     description: "Changes of the tracked ticket properties for class_support_ticket_field_history, with a status row when a stage change opens or closes the ticket."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_field_definitions
     description: "Ticket property definitions for class_support_field_definitions."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_agents
     description: "HubSpot owners as support agents for class_support_agents."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_customers
     description: "The contacts and companies that tickets name, for class_support_customers."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_groups
     description: "HubSpot teams as support groups for class_support_groups."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_group_memberships
     description: "Current team memberships of the owners for class_support_group_memberships."
+    columns:
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
