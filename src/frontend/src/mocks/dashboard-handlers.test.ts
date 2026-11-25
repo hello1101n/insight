@@ -128,3 +128,36 @@ describe("example dashboard mocks", () => {
     }
   );
 });
+
+describe("example previous-period runs", () => {
+  const run = (body: object) =>
+    fetch(
+      new URL(
+        "/api/v3/v1/dashboards/comparisons-and-targets/widgets/ct-deploys/run",
+        window.location.href
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+
+  it("answers the previous period of a bounded range with other numbers", async () => {
+    const now = (await (await run({ range: "P30D" })).json()) as {
+      rows: unknown[][];
+    };
+    const before = (await (
+      await run({ range: "P30D", previous: true })
+    ).json()) as { rows: unknown[][] };
+
+    expect(before.rows).not.toEqual(now.rows);
+  });
+
+  it.each([{ previous: true }, { range: "inf", previous: true }])(
+    "refuses a previous period with no bounded range: %o",
+    async (body) => {
+      expect((await run(body)).status).toBe(400);
+    }
+  );
+});

@@ -439,8 +439,15 @@ export const dashboardHandlers = [
 
       const asked = (await request.json().catch(() => ({}))) as {
         range?: string;
+        previous?: boolean;
       };
-      const answer = exampleRun(widget, asked.range);
+      if (asked.previous && (!asked.range || asked.range === "inf")) {
+        return HttpResponse.json(
+          { detail: "a previous period needs a bounded range" },
+          { status: 400 }
+        );
+      }
+      const answer = exampleRun(widget, asked.range, asked.previous);
       if (!answer) return HttpResponse.json(DEPLOYS_ROWS);
       if ("status" in answer) {
         return HttpResponse.json(answer.body, { status: answer.status });

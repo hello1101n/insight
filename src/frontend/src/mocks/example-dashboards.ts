@@ -410,6 +410,165 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     label: "category",
     value: "tickets",
   }),
+
+  widget("ct-deploys", "Deploys", {
+    type: "stat",
+    metric: "ct",
+    value: "deploys",
+    label: "deploys in the window",
+    compare: {},
+  }),
+  widget(
+    "ct-failure-rate",
+    "Change failure rate",
+    {
+      type: "stat",
+      metric: "ct",
+      value: "rate",
+      label: "of deploys failed",
+      compare: { better: "lower" },
+    },
+    { clock, percents: ["rate"] }
+  ),
+  widget("ct-lead-time", "Lead time", {
+    type: "stat",
+    metric: "ct",
+    value: "lead_hours",
+    label: "median, commit to deploy",
+    compare: { better: "lower" },
+  }),
+  widget("ct-reviews", "Reviews", {
+    type: "stat",
+    metric: "ct",
+    value: "reviews",
+    label: "reviews in the window",
+    compare: { better: "neutral" },
+  }),
+  widget("ct-services", "Deploys by service", {
+    type: "bar",
+    metric: "ct",
+    x: "service",
+    y: "deploys",
+    horizontal: true,
+    labels: true,
+  }),
+  widget("ct-severity-share", "Share of incidents by severity", {
+    type: "bar",
+    metric: "ct",
+    x: "team",
+    y: "incidents",
+    series: "severity",
+    stack: "percent",
+    target: { value: 25, label: "Critical limit" },
+  }),
+  widget(
+    "ct-pass-rate",
+    "Pass rate per day",
+    {
+      type: "line",
+      metric: "ct",
+      x: "bucket",
+      y: "pass_rate",
+      target: { value: 90, label: "Goal" },
+    },
+    { clock, percents: ["pass_rate"] }
+  ),
+  widget("ct-cost", "Cost per day, USD", {
+    type: "bar",
+    metric: "ct",
+    x: "bucket",
+    y: "cost_usd",
+    target: { value: 20, label: "Budget" },
+  }),
+  widget("ct-open", "Open pull requests", {
+    type: "area",
+    metric: "ct",
+    x: "bucket",
+    y: "open",
+    target: { value: 25 },
+  }),
+  widget("ct-review-wait", "Review wait by team", {
+    type: "bar",
+    metric: "ct",
+    x: "team",
+    y: "wait_hours",
+    horizontal: true,
+    target: { value: 24, label: "SLA" },
+  }),
+  widget("ct-deploys-by-team", "Deploys per day by team", {
+    type: "line",
+    metric: "ct",
+    x: "bucket",
+    y: "deploys",
+    series: "team",
+  }),
+  widget("ct-open-by-team", "Open pull requests by team", {
+    type: "area",
+    metric: "ct",
+    x: "bucket",
+    y: "open",
+    series: "team",
+  }),
+
+  widget("mt-commit-calendar", "Commits per day", {
+    type: "heatmap",
+    metric: "mt",
+    x: "bucket",
+    value: "commits",
+  }),
+  widget("mt-review-hours", "Reviews by weekday and team", {
+    type: "heatmap",
+    metric: "mt",
+    x: "weekday",
+    y: "team",
+    value: "reviews",
+  }),
+  widget("mt-review-funnel", "Pull request funnel", {
+    type: "funnel",
+    metric: "mt",
+    stages: ["opened", "reviewed", "approved", "merged"],
+  }),
+  widget("mt-repositories", "Commits by repository and area", {
+    type: "treemap",
+    metric: "mt",
+    label: "repository",
+    value: "commits",
+    group: "area",
+  }),
+  widget("mt-services", "Deploys by service", {
+    type: "treemap",
+    metric: "mt",
+    label: "service",
+    value: "deploys",
+  }),
+  widget("mt-pr-size", "Pull request size and review time", {
+    type: "scatter",
+    metric: "mt",
+    x: "lines_changed",
+    y: "review_hours",
+    size: "comments",
+    label: "pull_request",
+  }),
+  widget("mt-pr-size-by-team", "Pull request size and review time by team", {
+    type: "scatter",
+    metric: "mt",
+    x: "lines_changed",
+    y: "review_hours",
+    series: "team",
+    label: "pull_request",
+  }),
+  widget("mt-stage-timings", "Stage timings", {
+    type: "table",
+    metric: "mt",
+    columns: ["stage", "p50", "p95", "queued", "runs"],
+  }),
+  widget("mt-lead-by-team", "Lead time by team", {
+    type: "bar",
+    metric: "mt",
+    x: "team",
+    y: "lead_hours",
+    labels: true,
+  }),
 ];
 
 export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
@@ -462,7 +621,7 @@ export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
       default_range: "P30D",
       items: [
         {
-          text: "A bar with a series column stacks. Insight widgets have no grouped bar and no line or area with several series.",
+          text: "A bar with a series column stacks. Insight widgets have no grouped bar.",
         },
         { widget: "bd-incidents" },
         { widget: "bd-reviews" },
@@ -560,6 +719,51 @@ export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
       ],
     },
   },
+  "comparisons-and-targets": {
+    name: "Comparisons and targets",
+    body: {
+      title: "Comparisons and targets",
+      time_ranges: ["P7D", "P30D", "PQC", "inf"],
+      default_range: "P30D",
+      items: [
+        { heading: "Since the previous period" },
+        { widget: "ct-deploys" },
+        { widget: "ct-failure-rate" },
+        { widget: "ct-lead-time" },
+        { widget: "ct-reviews" },
+        { heading: "Bars" },
+        { widget: "ct-services" },
+        { widget: "ct-severity-share" },
+        { heading: "Targets" },
+        { widget: "ct-pass-rate" },
+        { widget: "ct-cost" },
+        { widget: "ct-open" },
+        { widget: "ct-review-wait" },
+        { heading: "By series" },
+        { widget: "ct-deploys-by-team" },
+        { widget: "ct-open-by-team" },
+      ],
+    },
+  },
+  "more-chart-types": {
+    name: "More chart types",
+    body: {
+      title: "More chart types",
+      time_ranges: ["P7D", "P30D", "PQC"],
+      default_range: "P30D",
+      items: [
+        { widget: "mt-commit-calendar" },
+        { widget: "mt-review-hours" },
+        { widget: "mt-review-funnel" },
+        { widget: "mt-repositories" },
+        { widget: "mt-services" },
+        { widget: "mt-pr-size" },
+        { widget: "mt-pr-size-by-team" },
+        { widget: "mt-stage-timings" },
+        { widget: "mt-lead-by-team" },
+      ],
+    },
+  },
 };
 
 function buckets(days: number, limit = 90): string[] {
@@ -589,17 +793,38 @@ function pipelineRun(i: number): unknown[] {
   ];
 }
 
-const result = (columns: string[], rows: unknown[][]): ExampleAnswer => ({
-  result: { columns, rows },
+const result = (
+  columns: string[],
+  rows: unknown[][],
+  units?: MetricResult["units"]
+): ExampleAnswer => ({
+  result: { columns, rows, ...(units ? { units } : {}) },
 });
+
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const AREAS = ["platform", "product", "tooling"];
+const STAGES = ["checkout", "build", "unit tests", "browser tests", "deploy"];
+
+// INVARIANT: the bucket grain follows the range as the service picks it: a week over a quarter, a day below.
+function weeks(count: number): string[] {
+  return Array.from({ length: count }, (_, i) =>
+    new Date(Date.UTC(2026, 6, 6) + i * 7 * 86_400_000)
+      .toISOString()
+      .slice(0, 10)
+  );
+}
 
 export function exampleRun(
   id: string,
-  range: string | undefined
+  range: string | undefined,
+  previous = false
 ): ExampleAnswer | undefined {
   const days = DAYS[range ?? ""] ?? 30;
   const span = buckets(days);
   const total = span.reduce((sum, _, i) => sum + wave(i), 0);
+  // INVARIANT: a previous period answers the same shape with other numbers, so a change shows.
+  const earlier = previous ? 0.8 : 1;
+  const grain = range === "PQC" ? weeks(13) : buckets(days, 31);
 
   switch (id) {
     case "pulse-deploys":
@@ -876,6 +1101,159 @@ export function exampleRun(
       return result(
         ["category", "tickets"],
         TICKET_CATEGORIES.map((category, i) => [category, 40 - i * 5])
+      );
+
+    case "ct-deploys":
+      return result(["deploys"], [[Math.round(total * earlier)]]);
+    case "ct-failure-rate":
+      return result(["rate"], [[round1((12 + days / 37.5) / earlier)]]);
+    case "ct-lead-time":
+      return result(["lead_hours"], [[round1((30 + days / 3) * earlier)]], {
+        lead_hours: "h",
+      });
+    case "ct-reviews":
+      return result(["reviews"], [[Math.round(days * 9 * (2 - earlier))]]);
+    case "ct-services":
+      return result(
+        ["service", "deploys"],
+        SERVICES.slice(0, 8).map((name, i) => [
+          name,
+          Math.round((40 - i * 4) * (days / 30)),
+        ])
+      );
+    case "ct-severity-share":
+      return result(
+        ["team", "severity", "incidents"],
+        TEAMS.flatMap((team, t) =>
+          SEVERITIES.map((severity, s) => [
+            team,
+            severity,
+            Math.round(((t + 1) * (4 - s) * days) / 15),
+          ])
+        )
+      );
+    case "ct-pass-rate":
+      return result(
+        ["bucket", "pass_rate"],
+        span.map((day, i) => [day, round1(88 + 7 * Math.sin(i / 4))])
+      );
+    case "ct-cost":
+      return result(
+        ["bucket", "cost_usd"],
+        span.map((day, i) => [
+          day,
+          Math.round((12 + wave(i) * 1.3) * 100) / 100,
+        ])
+      );
+    case "ct-open":
+      return result(
+        ["bucket", "open"],
+        span.map((day, i) => [day, 18 + wave(i * 2)])
+      );
+    case "ct-review-wait":
+      return result(
+        ["team", "wait_hours"],
+        SIX_TEAMS.map((team, i) => [team, round1(6 + i * 7.5)]),
+        { wait_hours: "h" }
+      );
+    case "ct-deploys-by-team":
+      return result(
+        ["bucket", "team", "deploys"],
+        buckets(days, 31).flatMap((day, i) =>
+          TEAMS.slice(0, 3).map((team, t) => [
+            day,
+            team,
+            // INVARIANT: one team skips some days, so a line by series shows its gaps.
+            t === 2 && i % 6 === 0 ? null : wave(i + t * 3),
+          ])
+        )
+      );
+    case "ct-open-by-team":
+      return result(
+        ["bucket", "team", "open"],
+        buckets(days, 31).flatMap((day, i) =>
+          TEAMS.slice(0, 3).map((team, t) => [day, team, 4 + (wave(i + t) % 7)])
+        )
+      );
+
+    case "mt-commit-calendar":
+      return result(
+        ["bucket", "commits"],
+        grain.map((day, i) => [
+          `${day} 00:00:00`,
+          range === "PQC" ? 7 * wave(i) : i % 7 > 4 ? 1 : wave(i),
+        ])
+      );
+    case "mt-review-hours":
+      return result(
+        ["weekday", "team", "reviews"],
+        WEEKDAYS.flatMap((weekday, d) =>
+          TEAMS.map((team, t) => [
+            weekday,
+            team,
+            Math.round(((d + 2) * (t + 1) * days) / 20),
+          ])
+        )
+      );
+    case "mt-review-funnel":
+      return result(
+        ["merged", "approved", "reviewed", "opened"],
+        [
+          [
+            Math.round(days * 5.1),
+            Math.round(days * 6.2),
+            Math.round(days * 8.4),
+            Math.round(days * 10),
+          ],
+        ]
+      );
+    case "mt-repositories":
+      return result(
+        ["repository", "area", "commits"],
+        REPOSITORIES.map((name, i) => [
+          name,
+          AREAS[i % AREAS.length],
+          Math.round((300 / (i + 1)) * (days / 30)),
+        ])
+      );
+    case "mt-services":
+      return result(
+        ["service", "deploys"],
+        SERVICES.map((name, i) => [
+          name,
+          Math.round((5 + ((i * 7) % 23)) * (days / 30)),
+        ])
+      );
+    case "mt-pr-size":
+    case "mt-pr-size-by-team":
+      return result(
+        ["pull_request", "team", "lines_changed", "review_hours", "comments"],
+        Array.from({ length: 36 }, (_, i) => [
+          `PR-${String(4100 + i)}`,
+          TEAMS[i % TEAMS.length],
+          20 + ((i * 97) % 900),
+          round1(1 + ((i * 37) % 60) / 2.5),
+          (i * 7) % 15,
+        ]),
+        { review_hours: "h" }
+      );
+    case "mt-stage-timings":
+      return result(
+        ["stage", "p50", "p95", "queued", "runs"],
+        STAGES.map((stage, i) => [
+          stage,
+          round1(0.8 + i * 2.6),
+          round1(2.5 + i * 9.4),
+          45 + i * 140,
+          Math.round(days * 40 * (1 - i / 10)),
+        ]),
+        { p50: "min", p95: "min", queued: "s" }
+      );
+    case "mt-lead-by-team":
+      return result(
+        ["team", "lead_hours"],
+        SIX_TEAMS.map((team, i) => [team, round1(14 + i * 9.7)]),
+        { lead_hours: "h" }
       );
     default:
       return undefined;
