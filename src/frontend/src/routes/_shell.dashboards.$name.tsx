@@ -1,6 +1,6 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
-import { lazy, Suspense, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ellipsis, Maximize2, Table2 } from "lucide-react";
 
 import {
@@ -53,7 +53,9 @@ import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { TEXT_BODY, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
-const FrontxBoard = lazy(() => import("@/components/custom/frontx-board"));
+const loadFrontxBoard = () => import("@/components/custom/frontx-board");
+
+const FrontxBoard = lazy(loadFrontxBoard);
 
 export const Route = createFileRoute("/_shell/dashboards/$name")({
   validateSearch: validateDashboardSearch,
@@ -80,6 +82,8 @@ function CustomDashboardPage() {
 
   const offered = read?.body.time_ranges;
   const range = selectedRange(offered, read?.body.default_range, search.range);
+  useFrontxPrefetch(id, read, range);
+
   return (
     <CustomDashboardBody
       read={read}
@@ -93,6 +97,34 @@ function CustomDashboardPage() {
       onSelectRange={(token) => setSearch({ range: token })}
     />
   );
+}
+
+// INVARIANT: each run takes the cache key that the FrontX host asks for, so the host answers it from the cache.
+function useFrontxPrefetch(
+  id: string,
+  read: DashboardRead | undefined,
+  range: string | undefined
+) {
+  const showPlanned = usePortalShowPlanned();
+  const queryClient = useQueryClient();
+  const widgets = useQuery({
+    ...dashboardWidgetsQuery(id),
+    enabled: showPlanned,
+  });
+
+  useEffect(() => {
+    if (showPlanned) void loadFrontxBoard();
+  }, [showPlanned]);
+
+  useEffect(() => {
+    if (!showPlanned || !read || !widgets.data) return;
+
+    for (const widget of widgets.data) {
+      void queryClient.prefetchQuery(
+        dashboardWidgetResultQuery(id, widget.id, runOptions(widget, range))
+      );
+    }
+  }, [showPlanned, read, widgets.data, queryClient, id, range]);
 }
 
 function CustomDashboardBody({
@@ -369,9 +401,7 @@ function DashboardWidgetSlot({
   return (
     <Card>
       <CardHeader className="flex flex-row items-start gap-2">
-        <CardTitle className="min-w-0 flex-1">
-          {heading}
-        </CardTitle>
+        <CardTitle className="min-w-0 flex-1">{heading}</CardTitle>
         {drawnOverAllTime(widget, range) ? (
           <Badge variant="secondary" className="shrink-0">
             All time

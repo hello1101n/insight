@@ -459,7 +459,41 @@ describe("/dashboards/$name — with planned sections on", () => {
       screen.getByRole("heading", { name: "Engineering" })
     ).toBeInTheDocument();
     expect(screen.getByRole("toolbar", { name: "Period" })).toBeInTheDocument();
-    expect(customClient.runDashboardWidget).not.toHaveBeenCalled();
+  });
+
+  it("starts each widget's run on the selected window while the FrontX board loads", async () => {
+    setPortalShowPlanned(true);
+    vi.mocked(customClient.fetchDashboardRead).mockResolvedValue({
+      ...READ,
+      body: {
+        title: "Engineering",
+        widgets: ["opened_line", "commits_table"],
+        time_ranges: ["P7D", "P30D"],
+        default_range: "P30D",
+      },
+    });
+    vi.mocked(customClient.fetchDashboardWidgets).mockResolvedValue([
+      drawn(
+        "opened_line",
+        { type: "line", metric: "opened", x: "bucket", y: "total" },
+        CLOCK
+      ),
+      COMMITS_TABLE,
+    ]);
+    vi.mocked(customClient.runDashboardWidget).mockResolvedValue({
+      columns: ["day", "lines"],
+      rows: [],
+    });
+    portalRouter.go("/dashboards/engineering");
+
+    render(<Component />, { wrapper });
+
+    await vi.waitFor(() =>
+      expect(vi.mocked(customClient.runDashboardWidget).mock.calls).toEqual([
+        ["engineering", "opened_line", { range: "P30D", bucket: true }],
+        ["engineering", "commits_table", undefined],
+      ])
+    );
   });
 
   it("goes back to the current board when planned sections turn off", async () => {
