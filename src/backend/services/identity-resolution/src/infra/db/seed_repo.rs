@@ -98,6 +98,31 @@ pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Resu
         .collect()
 }
 
+/// A tenant other than `tenant_id` that `persons` already holds, if any: the
+/// seed's wrong-tenant guard. One probe on `idx_tenant_person`.
+///
+/// # Errors
+///
+/// Returns an error if the query fails.
+pub async fn other_tenant(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> anyhow::Result<Option<Uuid>> {
+    const SQL: &str = "SELECT insight_tenant_id FROM persons WHERE insight_tenant_id <> ? LIMIT 1";
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::MySql,
+            SQL,
+            [tenant_id.as_bytes().to_vec().into()],
+        ))
+        .await?;
+    row.map(|r| {
+        let id: Vec<u8> = r.try_get("", "insight_tenant_id")?;
+        Ok(Uuid::from_slice(&id)?)
+    })
+    .transpose()
+}
+
 pub async fn known_account_bindings(
     db: &DatabaseConnection,
     tenant_id: Uuid,

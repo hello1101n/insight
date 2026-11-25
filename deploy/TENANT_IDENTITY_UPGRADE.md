@@ -94,9 +94,11 @@ ClickHouse disk for a second copy of every migrated table until `finalize`.
   If either differs, or `persons` holds several tenants, stop: moving the
   MariaDB stores to another tenant is not covered here.
 
-If `<OLD_TENANT>` already equals `<TENANT_UUID>`, skip step 6 (the tool refuses:
-there is nothing to move) and do everything else — the previous release stamped
-identity inputs with a hashed tenant, which only the rebuild replaces.
+If `<OLD_TENANT>` already equals `<TENANT_UUID>`, do every step anyway, step 6
+included: the tool then moves only the rows with a NULL or empty tenant, and
+their keys, which dbt refuses to build over; rows already under
+`<TENANT_UUID>` stay. The previous release stamped identity inputs with a
+hashed tenant, which only the rebuild replaces.
 
 ### 2. Prepare the migration tool
 
@@ -111,8 +113,17 @@ export CLICKHOUSE_URL=http://127.0.0.1:8123        # ClickHouse HTTP, e.g. throu
 export CLICKHOUSE_USER=<clickhouse.username>
 export CLICKHOUSE_PASSWORD="$(kubectl -n <NS> get secret insight-db-creds \
   -o jsonpath='{.data.clickhouse-password}' | base64 -d)"
-python3 -m tenant_migration plan --tenant <TENANT_UUID> --old-tenant <OLD_TENANT>
+export INSIGHT_TENANT_ID=<TENANT_UUID>             # authenticator.oidc.defaultTenantId, as the chart sets it
+python3 -m tenant_migration plan
 ```
+
+The tool takes both values from the install: the new tenant from
+`INSIGHT_TENANT_ID` (the install's config), and the old one from its data — the
+one tenant the stored rows hold besides `<TENANT_UUID>`, or `<TENANT_UUID>`
+itself when they hold no other, which moves only the empty tenant. `plan`
+prints both and where each came from: check them against step 1 before
+`apply`. Rows holding two other tenants are refused and named. `--tenant` and
+`--old-tenant` override either value.
 
 The user must be able to create, exchange and drop tables in `bronze_*`,
 `staging`, `silver`, `config` and `ingestion_history` — the chart's ClickHouse
@@ -201,8 +212,7 @@ deploy, or that deploy's loader writes the old tenant's rows again.
 ### 6. Migrate the stored tenant
 
 ```sh
-python3 -m tenant_migration apply --tenant <TENANT_UUID> --old-tenant <OLD_TENANT> \
-  --dump-dir <DUMP_DIR>
+python3 -m tenant_migration apply --dump-dir <DUMP_DIR>
 ```
 
 `<DUMP_DIR>` must not exist yet and must be on disk that outlives the window.
@@ -210,9 +220,11 @@ python3 -m tenant_migration apply --tenant <TENANT_UUID> --old-tenant <OLD_TENAN
 Otherwise it dumps every table it will change — DDL, rows and a
 `manifest.json` with each table's row and key counts — then moves each table
 by copy, count check and `EXCHANGE`, and prints the rows and keys it holds
-afterwards. Rows under `<OLD_TENANT>` and rows with an empty tenant move;
-rows already under `<TENANT_UUID>` stay. Each original stays beside its table
-as `<table>__tenant_backup` until step 10.
+afterwards. Rows under `<OLD_TENANT>` and rows with a NULL or empty tenant
+move; rows already under `<TENANT_UUID>` stay. When `<OLD_TENANT>` equals
+`<TENANT_UUID>`, `plan` prints `only rows with a NULL or empty tenant move`;
+when it lists no table changing, `apply` changes nothing. Each original stays
+beside its table as `<table>__tenant_backup` until step 10.
 
 If it stops part-way, run `python3 -m tenant_migration rollback` — it puts every
 original back, wherever the run stopped — then `python3 -m tenant_migration
@@ -298,9 +310,12 @@ EOF
    ```
 
    The `grep` must print nothing. The CronJob runs the seed with `--guard-ok`,
-   which exits 0 when it refuses; a line naming `identity_inputs returned 0
-   rows for tenant <TENANT_UUID>` means the inputs still carry another tenant —
-   step 6 or step 7.1 did not take.
+   which exits 0 when the input guard refuses; a line naming `identity_inputs
+   returned 0 rows for tenant <TENANT_UUID>` means the inputs still carry
+   another tenant — step 6 or step 7.1 did not take. If `persons` holds a
+   tenant other than `<TENANT_UUID>`, the seed logs `tenant guard`, writes
+   nothing and exits 4 whatever its flags, so the job fails: the configured
+   tenant is not the one step 1 found.
 
 3. Everything downstream — each connector's silver and the gold it feeds —
    then every gold model once more, for a gold relation no installed

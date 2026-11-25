@@ -27,7 +27,7 @@ from tenant_migration.__main__ import main
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
 from tenant_migration.inventory import Relation, discover, history_relations
 from tenant_migration.keys import Tenants
-from tenant_migration.plan import Plan, survey
+from tenant_migration.plan import Plan, stored_tenants, survey
 from tenant_migration.prerequisites import fill_youtrack_comment_ids
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
@@ -409,6 +409,122 @@ def test_the_command_line_plans_applies_and_refuses_a_bad_tenant(warehouse: Clic
     assert main(["apply", "--tenant", NEW, "--old-tenant", OLD, "--dump-dir", str(tmp_path / "dump")]) == 0
     assert (tmp_path / "dump" / "manifest.json").is_file()
     assert main(["finalize"]) == 0
+
+
+def _settle_on_the_uuid(ch: ClickHouse, tmp_path: Path) -> None:
+    """An install already keyed by the UUID, which then wrote rows without a tenant."""
+    _apply(ch, _plan(ch), tmp_path / "first")
+    migration.finalize(ch)
+    ch.execute(
+        "INSERT INTO bronze_example.items VALUES "
+        "('-main-PROJ-20', NULL, 'main', 'written without a tenant', '2026-01-03 00:00:00'), "
+        "(':main:PROJ-21', '', 'main', 'an empty tenant, colon key', '2026-01-03 00:00:00')"
+    )
+    ch.execute("INSERT INTO ingestion_history.sync_events VALUES ('2026-01-03 00:00:00', '', 'main', 'sync')")
+
+
+def test_an_install_already_on_the_uuid_moves_only_its_empty_tenant_rows(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+
+    plan = _plan(warehouse, old=NEW)
+
+    moving = {t.table.relation: t.moving for t in plan.tables if t.moving}
+    assert plan.refusals == []
+    assert moving == {"bronze_example.items": 2, "ingestion_history.sync_events": 1}, moving
+
+    _apply(warehouse, plan, tmp_path)
+
+    assert _column(warehouse, "bronze_example.items", "tenant_id") == [NEW] * 7
+    assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
+    assert f"{NEW}:main:PROJ-21" in _column(warehouse, "bronze_example.items", "unique_key")
+    assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW] * 3
+    assert _plan(warehouse, old=NEW).changing == [], "a second run must find nothing to move"
+    assert migration.rollback(warehouse) == ["bronze_example.items", "ingestion_history.sync_events"]
+    migration.finalize(warehouse)
+    assert _column(warehouse, "bronze_example.items", "tenant_id").count(NEW) == 5
+
+
+def test_an_install_already_on_the_uuid_still_refuses_a_second_tenant(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+    warehouse.execute(f"INSERT INTO bronze_example.items VALUES ('{OLD}-main-1', '{OLD}', 'main', '', now())")
+
+    plan = _plan(warehouse, old=NEW)
+
+    assert any("holds another tenant" in r for r in plan.refusals), plan.refusals
+
+
+def test_the_command_line_takes_the_uuid_as_both_tenants(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+
+    assert main(["plan", "--tenant", NEW, "--old-tenant", NEW]) == 0
+    assert main(["apply", "--tenant", NEW, "--old-tenant", NEW, "--dump-dir", str(tmp_path / "dump")]) == 0
+    assert main(["finalize"]) == 0
+    assert "" not in _column(warehouse, "ingestion_history.sync_events", "tenant_id")
+
+
+def test_the_stored_rows_name_the_old_tenant_beside_the_uuid(warehouse: ClickHouse) -> None:
+    assert stored_tenants(warehouse, discover(warehouse, history_relations())) == {OLD, NEW}
+
+
+def test_the_command_line_takes_the_tenant_from_the_env_and_the_old_one_from_the_rows(
+    warehouse: ClickHouse, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
+
+    assert main(["plan"]) == 0
+    out = capsys.readouterr().out
+    assert f"new tenant: {NEW} (from INSIGHT_TENANT_ID)" in out, out
+    assert f"old tenant: '{OLD}' (from the stored rows)" in out, out
+    assert main(["apply", "--dump-dir", str(tmp_path / "dump")]) == 0
+    assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW, NEW]
+
+
+def test_the_command_line_finds_only_empty_tenants_on_an_install_already_on_the_uuid(
+    warehouse: ClickHouse, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
+    capsys.readouterr()
+
+    assert main(["plan"]) == 0
+    out = capsys.readouterr().out
+    assert f"old tenant: '{NEW}' (from the stored rows)" in out, out
+    assert "only rows with a NULL or empty tenant move" in out, out
+
+
+def test_the_command_line_flags_override_the_env_and_the_rows(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("INSIGHT_TENANT_ID", "not-a-uuid")
+
+    assert main(["plan", "--tenant", NEW, "--old-tenant", OLD]) == 0
+    out = capsys.readouterr().out
+    assert "(from --tenant)" in out and "(from --old-tenant)" in out, out
+
+
+def test_the_command_line_refuses_two_old_tenants_and_names_them(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
+    warehouse.execute("INSERT INTO bronze_example.items VALUES ('other-main-1', 'other', 'main', '', now())")
+
+    assert main(["plan"]) == 1
+    err = capsys.readouterr().err
+    assert f"several tenants ({OLD}, other)" in err, err
+
+
+@pytest.mark.parametrize("value", [None, "", NEW.upper()], ids=["unset", "empty", "not lowercase"])
+def test_the_command_line_refuses_a_missing_or_malformed_env_tenant(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: str | None
+) -> None:
+    if value is None:
+        monkeypatch.delenv("INSIGHT_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("INSIGHT_TENANT_ID", value)
+
+    assert main(["plan"]) == 1
+    err = capsys.readouterr().err
+    assert "INSIGHT_TENANT_ID" in err or "lowercase UUID" in err, err
 
 
 TAB_AND_NEWLINE = "synthetic\titems\nsecond line"
