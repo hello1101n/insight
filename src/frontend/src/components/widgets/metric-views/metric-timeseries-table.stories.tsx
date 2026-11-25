@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, waitFor } from "storybook/test";
 
 import { MetricTimeseriesTable } from "@/components/widgets/metric-views/metric-timeseries-table";
+import { GUTTER_PX } from "@/components/widgets/metric-views/metric-timeseries-table-model";
 import { groupedTimeseriesModel } from "@/components/widgets/metric-views/metric-timeseries.test-fixtures";
 import {
   CARD_PX_AT_390,
@@ -9,8 +10,6 @@ import {
 } from "@/test/storybook/layout";
 
 const SHORT_PX = 180;
-
-const GUTTER_PX = 48;
 
 const meta: Meta<typeof MetricTimeseriesTable> = {
   title: "Widgets/MetricViews/MetricTimeseriesTable",
@@ -148,8 +147,8 @@ export const TestWidenedTableReleasesItsGutters: Story = {
       `the widened table still scrolls sideways (${scrollport.scrollWidth}px of table in ${scrollport.clientWidth}px)`
     ).toBeLessThanOrEqual(scrollport.clientWidth);
     await expect(
-      wrapper.className,
+      getComputedStyle(wrapper).paddingInlineStart,
       "the wrapper kept a gutter it no longer has a control for"
-    ).not.toContain("ps-12");
+    ).toBe("0px");
   },
 };

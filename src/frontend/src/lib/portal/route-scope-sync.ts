@@ -6,6 +6,6 @@ export function claimScopeSync(personId: string): boolean {
   return true;
 }
 
-export function resetRouteScopeSync(): void {
+export function resetRouteScopeSyncForTests(): void {
   lastSynced = null;
 }

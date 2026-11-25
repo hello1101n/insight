@@ -40,7 +40,7 @@ export function validateDateRange(range: DateRange): DateRangeValidation {
 
   if (!from || !to) return { valid: false, reason: "invalid_date" };
   if (from > to) return { valid: false, reason: "inverted" };
-  if (to > latestPickableDay()) return { valid: false, reason: "future" };
+  if (to > laterOfLocalAndUtcDay()) return { valid: false, reason: "future" };
 
   const days = differenceInCalendarDays(to, from) + 1;
 
@@ -64,7 +64,7 @@ export function localToday(): Date {
   return today;
 }
 
-export function latestPickableDay(now: Date = new Date()): Date {
+export function laterOfLocalAndUtcDay(now: Date = new Date()): Date {
   const localDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const utcDay = new Date(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return utcDay > localDay ? utcDay : localDay;

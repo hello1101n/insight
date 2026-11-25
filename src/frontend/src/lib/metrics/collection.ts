@@ -335,9 +335,11 @@ export function forEntity(
   };
 }
 
-export const MAX_PROJECTED_ROWS = 4500;
+const BACKEND_MAX_PROJECTED_ROWS = 5000;
 
-export const MAX_ENTITY_IDS = 1000;
+export const PROJECTED_ROWS_BUDGET = BACKEND_MAX_PROJECTED_ROWS - 500;
+
+const MAX_PERSON_IDS = 1000;
 
 export function entityChunkSize(
   collection: MetricCollectionConfig
@@ -359,8 +361,8 @@ export function entityChunkSize(
   }
   if (rowsPerEntity === 0) return null;
   return Math.min(
-    MAX_ENTITY_IDS,
-    Math.max(1, Math.floor(MAX_PROJECTED_ROWS / rowsPerEntity)),
+    MAX_PERSON_IDS,
+    Math.max(1, Math.floor(PROJECTED_ROWS_BUDGET / rowsPerEntity)),
   );
 }
 

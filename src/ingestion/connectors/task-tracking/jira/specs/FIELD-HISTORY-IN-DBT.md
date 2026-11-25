@@ -154,7 +154,7 @@ are instance-specific; type constants are not. This is enforced by a test.
 | `issue_ref` | `schema_custom` ends `:gh-epic-link` or `:jpo-custom-field-parent` | `"PROJ-1"` — the referenced issue's key | Set, numeric id + key display |
 | `ignored` | `schema_type` in progress / watches / votes / statusCategory / securitylevel / timetracking / issuerestriction / comments-page; `schema_items = 'worklog'`; `field_id` in issuekey / thumbnail | container or aggregate | not a field state |
 | `ignored` | `schema_custom` ends `:gh-lexo-rank`, `:timeinstatus`, `:devsummarycf`, `:vulnerabilitycf` | ordering artifact or app-computed | decided, not measured |
-| `ignored` | app and JSM single-value types: `schema_type` in option-with-child / option2 / team / atlas-project / sd-request-lang / sd-approvals / sd-feedback / sd-customerrequesttype | app-specific | decided, not measured |
+| `ignored` | app and JSM single-value types: `schema_type` in option-with-child / option2 / team / atlas-project / sd-request-lang / sd-approvals / sd-feedback / sd-customerrequesttype / sd-servicelevelagreement | app-specific | decided, not measured |
 
 Four consequences of matching on structure rather than on plugin keys:
 

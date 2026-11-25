@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { AnalyticsApiError } from "@/api/analytics-client";
 import {
   MAX_EVIDENCE_PERSONS,
   personsEvidenceSelection,
@@ -30,9 +29,10 @@ import {
 } from "@gears-frontx/ui-kit";
 import { formatMetricNumber, formatTimeMetricValue } from "@/lib/format";
 import { nextSort } from "@/lib/metrics/evidence-rows";
-import { sameEvidenceSubject } from "@/lib/metrics/evidence-placeholder";
+import { keepRowsOnReorder } from "@/lib/metrics/evidence-placeholder";
 import { type BucketBreakdownRow } from "@/lib/portal/trend-drilldown";
 import { useMetricDefinition } from "@/queries/metric-definitions";
+import { retryServerFailureOnce } from "@/queries/retry-server-failure-once";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 50;
@@ -130,14 +130,9 @@ function Records({
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    placeholderData: (previous, previousQuery) =>
-      sameEvidenceSubject(previousQuery?.queryKey, queryKey)
-        ? previous
-        : undefined,
+    placeholderData: keepRowsOnReorder(queryKey),
     enabled: sessionScope != null && selection != null,
-    retry: (failureCount, error) =>
-      failureCount < 1 &&
-      (!(error instanceof AnalyticsApiError) || error.status >= 500),
+    retry: retryServerFailureOnce,
   });
 
   const rows = useMemo(

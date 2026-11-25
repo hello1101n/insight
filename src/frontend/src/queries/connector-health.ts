@@ -26,6 +26,7 @@ import { instanceKey } from "@/lib/portal/connector-health";
 const KEY = ["connector-health"] as const;
 
 const RECHECK_MS = 60_000;
+const PENDING_POLL_MS = 30_000;
 
 export function useConnectorHealth(): UseQueryResult<ConnectorHealthSummary> {
   const { session } = useAuth();
@@ -85,7 +86,7 @@ export function useConnectorHealth(): UseQueryResult<ConnectorHealthSummary> {
       query.state.data?.connectors.some((row) =>
         scheduleNeedsPolling(row.schedule_request?.last_observation?.status)
       )
-        ? 30_000
+        ? PENDING_POLL_MS
         : RECHECK_MS,
   });
 }
@@ -203,7 +204,7 @@ export function schedulePollInterval(
   polling: boolean
 ): number | false {
   return polling || scheduleNeedsPolling(read?.schedule.status)
-    ? 30_000
+    ? PENDING_POLL_MS
     : false;
 }
 

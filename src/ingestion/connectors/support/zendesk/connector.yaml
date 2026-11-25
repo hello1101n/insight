@@ -1,45 +1,12 @@
-# Airbyte Declarative Source for zendesk — INSIGHT-459.
-#
-# Streams:
-#   1.  support_tickets              — cursor-based incremental export,
-#                                      DatetimeBasedCursor on updated_at
-#   1b. support_ticket_ids           — slim (id + updated_at only) mirror of stream 1;
-#                                      the substream parent for stream 4 (keeps the
-#                                      CDK parent-record cache tiny — no metadata payload)
-#   2.  support_agents               — full refresh, Zendesk cursor pagination
-#   3.  zendesk_satisfaction_ratings — incremental, DatetimeBasedCursor on updated_at,
-#                                      Zendesk cursor pagination
-#   4.  support_ticket_events        — per-ticket audit log (SubstreamPartitionRouter
-#                                      over support_ticket_ids, incremental_dependency);
-#                                      actor-attributed activity
-#
-# Pagination: the two ticket streams use Zendesk's CURSOR-based incremental
-# export (incremental/tickets/cursor.json + `cursor`), and the two list streams
-# use Zendesk cursor pagination (page[size] + page[after] + meta.after_cursor).
-# Mixing the two protocols — an offset-paginated request read with a
-# cursor-shaped paginator — yields an empty token and ends pagination after one
-# page, silently.
-#
-# Not yet implemented (schema locked in zendesk.md):
-#   5. zendesk_ticket_ext           — custom field key-value pairs
-#   (Guide / Help-Center articles — for the KB-authoring metric — also TBD.)
-#
-# Auth: HTTP Basic Auth, username = "{email}/token", password = "{api_token}"
-# API base: https://{subdomain}.zendesk.com/api/v2/
+# Airbyte declarative source for Zendesk Support.
+# Design: docs/domain/support/specs/DESIGN.md §3. Bronze keeps each API object
+# whole in `payload_json`; staging parses it.
 
 version: "7.0.4"
 type: DeclarativeSource
 
 definitions:
-  # Zendesk caps the incremental-export endpoints at 10 requests/minute — one
-  # budget shared by every /incremental/* call, so both ticket streams draw on
-  # it — separately from the account-wide limit, and answers 429 with
-  # Retry-After. The CDK default (exponential backoff, no header) can retry
-  # inside the reset window and burn all 5 attempts, so every stream shares
-  # this handler. 401/403 FAIL rather than retry: an expired token or a
-  # non-admin email is not a transient error, and retrying hides the cause
-  # behind retry exhaustion.
-  base_error_handler: &base_error_handler
+  error_handler: &error_handler
     type: DefaultErrorHandler
     backoff_strategies:
       - type: WaitTimeFromHeader
@@ -51,18 +18,75 @@ definitions:
       - type: HttpResponseFilter
         action: FAIL
         http_codes: [401, 403]
-        error_message: "Zendesk rejected the request (check zendesk_email, zendesk_api_token, that Token Access is enabled, and that the email belongs to an administrator: the incremental ticket export and satisfaction ratings are admin-only)."
+        error_message: "Zendesk rejected the request: check zendesk_client_id and zendesk_secret, that the OAuth client allows the read scope, and that it was created by an administrator."
 
-  base_requester: &base_requester
+  # SAFETY: a 404 on an optional product (survey CSAT, Help Center) means the
+  # account does not run it; the stream is empty, the sync continues.
+  optional_product_error_handler: &optional_product_error_handler
+    type: DefaultErrorHandler
+    backoff_strategies:
+      - type: WaitTimeFromHeader
+        header: Retry-After
+    response_filters:
+      - type: HttpResponseFilter
+        action: IGNORE
+        http_codes: [404]
+      - type: HttpResponseFilter
+        action: RATE_LIMITED
+        http_codes: [429, 503]
+      - type: HttpResponseFilter
+        action: FAIL
+        http_codes: [401, 403]
+        error_message: "Zendesk rejected the request: check zendesk_client_id and zendesk_secret, that the OAuth client allows the read scope, and that it was created by an administrator."
+
+  # SAFETY: the Jira link endpoints answer 403 or 404 when the account runs no
+  # Jira integration of that version; the stream is empty, the sync continues.
+  optional_integration_error_handler: &optional_integration_error_handler
+    type: DefaultErrorHandler
+    backoff_strategies:
+      - type: WaitTimeFromHeader
+        header: Retry-After
+    response_filters:
+      - type: HttpResponseFilter
+        action: IGNORE
+        http_codes: [403, 404]
+      - type: HttpResponseFilter
+        action: RATE_LIMITED
+        http_codes: [429, 503]
+      - type: HttpResponseFilter
+        action: FAIL
+        http_codes: [401]
+        error_message: "Zendesk rejected the request: check zendesk_client_id and zendesk_secret, that the OAuth client allows the read scope, and that it was created by an administrator."
+
+  # The token lives 30 minutes and has no refresh token; a new one is
+  # requested before it expires.
+  authenticator: &authenticator
+    type: SessionTokenAuthenticator
+    login_requester:
+      type: HttpRequester
+      url_base: "https://{{ config['zendesk_subdomain'] }}.zendesk.com/"
+      path: oauth/tokens
+      http_method: POST
+      request_body:
+        type: RequestBodyUrlEncodedForm
+        value:
+          grant_type: client_credentials
+          client_id: "{{ config['zendesk_client_id'] }}"
+          client_secret: "{{ config['zendesk_secret'] }}"
+          scope: read
+    session_token_path: [access_token]
+    expiration_duration: PT25M
+    request_authentication:
+      type: Bearer
+
+  requester: &requester
     type: HttpRequester
     url_base: "https://{{ config['zendesk_subdomain'] }}.zendesk.com/api/v2/"
-    authenticator:
-      type: BasicHttpAuthenticator
-      username: "{{ config['zendesk_email'] }}/token"
-      password: "{{ config['zendesk_api_token'] }}"
-    error_handler: *base_error_handler
+    http_method: GET
+    authenticator: *authenticator
+    error_handler: *error_handler
 
-  standard_fields: &standard_fields
+  stamp: &stamp
     - type: AddedFieldDefinition
       path: [tenant_id]
       value: "{{ config['insight_tenant_id'] }}"
@@ -70,652 +94,729 @@ definitions:
       path: [source_id]
       value: "{{ config['insight_source_id'] }}"
     - type: AddedFieldDefinition
-      path: [collected_at]
-      value: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
-    - type: AddedFieldDefinition
-      path: [data_source]
-      value: insight_zendesk
+      path: [unique_key]
+      value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
 
-# `check` reads the first page of two streams: support_agents (any agent's
-# token can list users) and zendesk_satisfaction_ratings (admin-only, like the
-# ticket export), so a token paired with a non-admin email fails here instead
-# of three streams into the first sync. An account without CSAT answers 200
-# and an empty page, which still passes. (There is no dedicated /users/me
-# stream to point at.)
+  payload: &payload
+    type: AddFields
+    fields:
+      - type: AddedFieldDefinition
+        path: [payload_json]
+        value: "{{ record | tojson }}"
+        value_type: string
+
+  # Shared by every list stream that speaks Zendesk cursor pagination.
+  cursor_paginator: &cursor_paginator
+    type: DefaultPaginator
+    pagination_strategy:
+      type: CursorPagination
+      cursor_value: "{{ response.get('meta', {}).get('after_cursor', '') }}"
+      stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after_cursor') }}"
+    page_token_option:
+      type: RequestOption
+      field_name: "page[after]"
+      inject_into: request_parameter
+
+  # Jira integration V2 names its cursor `meta.after`, not `meta.after_cursor`.
+  v2_cursor_paginator: &v2_cursor_paginator
+    type: DefaultPaginator
+    pagination_strategy:
+      type: CursorPagination
+      cursor_value: "{{ response.get('meta', {}).get('after', '') }}"
+      stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after') }}"
+    page_token_option:
+      type: RequestOption
+      field_name: "page[after]"
+      inject_into: request_parameter
+
+  # Cursor exports (tickets, users): page 2+ is the whole `after_url`.
+  export_cursor_paginator: &export_cursor_paginator
+    type: DefaultPaginator
+    pagination_strategy:
+      type: CursorPagination
+      cursor_value: "{{ response.get('after_url', '') }}"
+      stop_condition: "{{ response.get('end_of_stream', False) == True or not response.get('after_url') }}"
+    page_token_option:
+      type: RequestPath
+
+  # Time-based exports: page 2+ is the whole `next_page`.
+  export_time_paginator: &export_time_paginator
+    type: DefaultPaginator
+    pagination_strategy:
+      type: CursorPagination
+      cursor_value: "{{ response.get('next_page') or '' }}"
+      stop_condition: "{{ response.get('end_of_stream', False) == True or not response.get('next_page') or last_page_size == 0 }}"
+    page_token_option:
+      type: RequestPath
+
+  start_datetime: &start_datetime
+    type: MinMaxDatetime
+    datetime: "{{ config.get('zendesk_start_date') or '2007-01-01' }}"
+    datetime_format: "%Y-%m-%d"
+
+  end_datetime: &end_datetime
+    type: MinMaxDatetime
+    datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+    datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+
+  iso_formats: &iso_formats
+    - "%Y-%m-%dT%H:%M:%SZ"
+    - "%Y-%m-%dT%H:%M:%S.%fZ"
+
+  # INVARIANT: every export re-reads one day behind its state. The exports are
+  # eventually consistent at the boundary; bronze dedup absorbs the overlap.
+  lookback: &lookback "P1D"
+
+  base_properties: &base_properties
+    tenant_id: { type: string }
+    source_id: { type: string }
+    unique_key: { type: string }
+    payload_json: { type: string }
+
 check:
   type: CheckStream
   stream_names:
-    - support_agents
-    - zendesk_satisfaction_ratings
+    - zendesk_ticket_fields
 
 streams:
-  # ── Stream 1: support_tickets ──────────────────────────────────────
-  # Incremental ticket export via Zendesk's bulk cursor endpoint.
-  # Sideloads metric_sets to get timing fields (first_reply, full_resolution)
-  # in the same response — avoids N+1 per-ticket calls.
-  #
-  # Both business-hours and calendar-hours timing variants are extracted.
-  # satisfaction_score is NULL in Phase 1 (ratings live in stream 3).
-  #
-  # Note: on the incremental export endpoint, ?include=metric_sets embeds the
-  # metric set per-ticket as record.metric_set (singular) — no parallel-array
-  # join is needed; field extraction reads it directly below.
-  - &support_tickets_stream
-    type: DeclarativeStream
-    name: support_tickets
-    primary_key:
-      - ticket_id
+  - type: DeclarativeStream
+    name: zendesk_tickets
+    primary_key: [unique_key]
     schema_loader:
       type: InlineSchemaLoader
       schema:
         $schema: http://json-schema.org/schema#
         type: object
         additionalProperties: true
+        required: [unique_key]
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
-          unique_key: { type: string }
-          collected_at: { type: string }
-          data_source: { type: string }
-          ticket_id: { type: string }
-          subject: { type: ["string", "null"] }
-          status: { type: string }
-          priority: { type: ["string", "null"] }
-          ticket_type: { type: ["string", "null"] }
-          assignee_id: { type: ["string", "null"] }
-          group_id: { type: ["string", "null"] }
-          requester_id: { type: ["string", "null"] }
-          organization_id: { type: ["string", "null"] }
-          created_at: { type: string }
+          <<: *base_properties
+          id: { type: integer }
           updated_at: { type: string }
-          solved_at: { type: ["string", "null"] }
-          first_reply_time_seconds: { type: ["integer", "null"] }
-          first_reply_time_calendar_seconds: { type: ["integer", "null"] }
-          full_resolution_time_seconds: { type: ["integer", "null"] }
-          full_resolution_time_calendar_seconds: { type: ["integer", "null"] }
-          satisfaction_score: { type: ["string", "null"] }
-          tags: { type: ["string", "null"] }
-          metadata: { type: string }
-        required:
-          - unique_key
     retriever:
       type: SimpleRetriever
       requester:
-        <<: *base_requester
-        # start_time rides in the PATH, not in request_parameters: page 2+ is
-        # addressed by Zendesk's after_url, which the RequestPath paginator
-        # substitutes for the whole path — so the follow-up carries `cursor` and
-        # no start_time, the alternation Zendesk documents. A conditional query
-        # parameter cannot express this: the CDK renders a None-valued
-        # parameter as the literal string "None" rather than dropping it.
-        path: "incremental/tickets/cursor.json?start_time={{ stream_interval['start_time'] }}"
-        request_parameters:
-          include: "metric_sets"
-          per_page: "1000"
+        <<: *requester
+        # WORKAROUND: start_time rides in the path because page 2+ replaces the
+        # whole path with after_url; a None query parameter renders as "None".
+        path: "incremental/tickets/cursor.json?start_time={{ stream_interval['start_time'] }}&include=metric_sets&support_type_scope=all&per_page=1000"
       record_selector:
         type: RecordSelector
-        extractor:
-          type: DpathExtractor
-          field_path: [tickets]
-      paginator:
-        type: DefaultPaginator
-        pagination_strategy:
-          type: CursorPagination
-          cursor_value: "{{ response.get('after_url', '') }}"
-          stop_condition: "{{ response.get('end_of_stream', False) == True }}"
-        page_token_option:
-          type: RequestPath
+        extractor: { type: DpathExtractor, field_path: [tickets] }
+      paginator: *export_cursor_paginator
     incremental_sync:
       type: DatetimeBasedCursor
       cursor_field: updated_at
-      cursor_datetime_formats:
-        - "%Y-%m-%dT%H:%M:%SZ"
-        - "%Y-%m-%dT%H:%M:%S.%fZ"
+      cursor_datetime_formats: *iso_formats
       datetime_format: "%s"
-      # Re-query a 1-day tail on every sync. Zendesk's incremental export is
-      # eventually-consistent at the cursor boundary, so without this a record
-      # whose updated_at lands at the edge is permanently skipped — and for a
-      # ticket that drops its ENTIRE audit activity (our only source of
-      # updates/comments/solved). Append-only RMT bronze + read-time dedup
-      # absorb the re-delivery, so the overlap is free of duplicates. (cf. jira
-      # #1316: use lookback_window, NOT a future end_datetime — the latter
-      # advances the cursor past the real query time and permanently skips rows.)
-      lookback_window: "P1D"
-      start_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ config.get('start_date') or day_delta(-90, format='%Y-%m-%d') }}"
-        datetime_format: "%Y-%m-%d"
-      end_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
-        datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
     transformations:
+      - *payload
       - type: AddFields
-        fields: *standard_fields
-      - type: AddFields
-        fields:
-          - type: AddedFieldDefinition
-            path: [ticket_id]
-            value: "{{ record['id'] | string }}"
-          - type: AddedFieldDefinition
-            path: [assignee_id]
-            value: "{{ record['assignee_id'] | string if record.get('assignee_id') else none }}"
-          - type: AddedFieldDefinition
-            path: [requester_id]
-            value: "{{ record['requester_id'] | string if record.get('requester_id') else none }}"
-          - type: AddedFieldDefinition
-            path: [group_id]
-            value: "{{ record['group_id'] | string if record.get('group_id') else none }}"
-          - type: AddedFieldDefinition
-            path: [organization_id]
-            value: "{{ record['organization_id'] | string if record.get('organization_id') else none }}"
-          - type: AddedFieldDefinition
-            # Zendesk ticket `type`: question / incident / problem / task; null if not set
-            path: [ticket_type]
-            value: "{{ record.get('type') or none }}"
-          - type: AddedFieldDefinition
-            path: [tags]
-            # `(... or [])` not `.get(k, [])` — same trap as metric_set below:
-            # a present-but-null `tags` makes .get return None, and
-            # `None | join` raises, failing the whole stream.
-            value: "{{ (record.get('tags') or []) | join(',') }}"
-          - type: AddedFieldDefinition
-            # solved_at lives in the embedded metric_set object; null when unresolved.
-            # `(... or {})` not `.get(k, {})`: Zendesk computes metric_set
-            # ASYNC, so the key is often present-but-null — .get(k, {}) returns
-            # None then, and the chained .get() throws "'None' has no attribute
-            # 'get'", failing the whole sync.
-            path: [solved_at]
-            value: "{{ (record.get('metric_set') or {}).get('solved_at') or none }}"
-          - type: AddedFieldDefinition
-            # Business-hours first-reply time: metric_set.reply_time_in_minutes.business × 60
-            # Returns integer seconds or None (null in Bronze) when no reply yet.
-            path: [first_reply_time_seconds]
-            value: "{% set v = ((record.get('metric_set') or {}).get('reply_time_in_minutes') or {}).get('business') %}{{ (v * 60) | int if v is not none else none }}"
-          - type: AddedFieldDefinition
-            # Calendar-hours first-reply time: metric_set.reply_time_in_minutes.calendar × 60
-            path: [first_reply_time_calendar_seconds]
-            value: "{% set v = ((record.get('metric_set') or {}).get('reply_time_in_minutes') or {}).get('calendar') %}{{ (v * 60) | int if v is not none else none }}"
-          - type: AddedFieldDefinition
-            # Business-hours full-resolution time: metric_set.full_resolution_time_in_minutes.business × 60
-            path: [full_resolution_time_seconds]
-            value: "{% set v = ((record.get('metric_set') or {}).get('full_resolution_time_in_minutes') or {}).get('business') %}{{ (v * 60) | int if v is not none else none }}"
-          - type: AddedFieldDefinition
-            # Calendar-hours full-resolution time
-            path: [full_resolution_time_calendar_seconds]
-            value: "{% set v = ((record.get('metric_set') or {}).get('full_resolution_time_in_minutes') or {}).get('calendar') %}{{ (v * 60) | int if v is not none else none }}"
-          - type: AddedFieldDefinition
-            path: [unique_key]
-            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
-          - type: AddedFieldDefinition
-            path: [metadata]
-            value: "{{ record | tojson }}"
+        fields: *stamp
 
-  # ── Stream 1b: support_ticket_ids (slim parent for the audit fan-out) ─
-  # Key-only mirror of support_tickets — emits ONLY ticket_id + the cursor
-  # field, NO `metadata` payload. This is the SubstreamPartitionRouter parent
-  # for support_ticket_events (NOT the heavyweight support_tickets stream).
-  #
-  # WHY (jira/confluence silent-hang, see jira jira_issue_keys): the CDK caches
-  # every PARENT record for a substream. With the full-payload support_tickets
-  # as parent (metadata = whole-ticket JSON), that cache balloons and the sync
-  # freezes at scale. Keeping the parent records tiny keeps the cache small;
-  # support_tickets stays the full-record emitter but is no longer a parent, so
-  # it is read once and not cached. Reconcile (ADR-0015) auto-selects this as a
-  # tiny bronze_zendesk.support_ticket_ids table (key + updated_at per ticket).
-  - &support_ticket_ids_stream
-    type: DeclarativeStream
-    name: support_ticket_ids
-    primary_key:
-      - ticket_id
+  - type: DeclarativeStream
+    name: zendesk_ticket_events
+    primary_key: [unique_key]
     schema_loader:
       type: InlineSchemaLoader
       schema:
         $schema: http://json-schema.org/schema#
         type: object
         additionalProperties: true
+        required: [unique_key]
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
-          unique_key: { type: string }
-          collected_at: { type: string }
-          data_source: { type: string }
-          ticket_id: { type: string }
-          updated_at: { type: string }
-        required:
-          - unique_key
+          <<: *base_properties
+          id: { type: integer }
+          ticket_id: { type: integer }
+          timestamp: { type: integer }
     retriever:
       type: SimpleRetriever
       requester:
-        <<: *base_requester
-        # No include=metric_sets — this stream only needs ids, keeping the
-        # parent payload (and the substream cache) minimal.
-        path: "incremental/tickets/cursor.json?start_time={{ stream_interval['start_time'] }}"
-        request_parameters:
-          per_page: "1000"
+        <<: *requester
+        path: "incremental/ticket_events.json?start_time={{ stream_interval['start_time'] }}&include=comment_events"
       record_selector:
         type: RecordSelector
-        extractor:
-          type: DpathExtractor
-          field_path: [tickets]
-      paginator:
-        type: DefaultPaginator
-        pagination_strategy:
-          type: CursorPagination
-          cursor_value: "{{ response.get('after_url', '') }}"
-          stop_condition: "{{ response.get('end_of_stream', False) == True }}"
-        page_token_option:
-          type: RequestPath
+        extractor: { type: DpathExtractor, field_path: [ticket_events] }
+      paginator: *export_time_paginator
+    incremental_sync:
+      type: DatetimeBasedCursor
+      cursor_field: timestamp
+      cursor_datetime_formats: ["%s"]
+      datetime_format: "%s"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_ticket_metric_events
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+          ticket_id: { type: integer }
+          time: { type: string }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "incremental/ticket_metric_events.json?start_time={{ stream_interval['start_time'] }}"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [ticket_metric_events] }
+      paginator: *export_time_paginator
+    incremental_sync:
+      type: DatetimeBasedCursor
+      cursor_field: time
+      cursor_datetime_formats: *iso_formats
+      datetime_format: "%s"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_users
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+          updated_at: { type: string }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "incremental/users/cursor.json?start_time={{ stream_interval['start_time'] }}&per_page=1000"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [users] }
+      paginator: *export_cursor_paginator
     incremental_sync:
       type: DatetimeBasedCursor
       cursor_field: updated_at
-      cursor_datetime_formats:
-        - "%Y-%m-%dT%H:%M:%SZ"
-        - "%Y-%m-%dT%H:%M:%S.%fZ"
+      cursor_datetime_formats: *iso_formats
       datetime_format: "%s"
-      lookback_window: "P1D"
-      start_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ config.get('start_date') or day_delta(-90, format='%Y-%m-%d') }}"
-        datetime_format: "%Y-%m-%d"
-      end_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
-        datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
     transformations:
+      - *payload
       - type: AddFields
-        fields: *standard_fields
-      - type: AddFields
-        fields:
-          - type: AddedFieldDefinition
-            path: [ticket_id]
-            value: "{{ record['id'] | string }}"
-          - type: AddedFieldDefinition
-            # keep the cursor field on the emitted record (incremental_dependency)
-            path: [updated_at]
-            value: "{{ record['updated_at'] }}"
-          - type: AddedFieldDefinition
-            path: [unique_key]
-            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
+        fields: *stamp
 
-  # ── Stream 2: support_agents ────────────────────────────────────────
-  # Full refresh — agent roster is small; Zendesk has no reliable
-  # incremental user endpoint on all plan tiers.
-  # Group names resolved via startup GET /api/v2/groups lookup.
-  #
-  # TODO(INSIGHT-459): add CustomTransformation for group_name resolution
-  # (requires startup groups fetch; currently group_name is NULL).
   - type: DeclarativeStream
-    name: support_agents
-    primary_key:
-      - agent_id
+    name: zendesk_organizations
+    primary_key: [unique_key]
     schema_loader:
       type: InlineSchemaLoader
       schema:
         $schema: http://json-schema.org/schema#
         type: object
         additionalProperties: true
+        required: [unique_key]
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
-          unique_key: { type: string }
-          collected_at: { type: string }
-          data_source: { type: string }
-          agent_id: { type: string }
-          email: { type: string }
-          display_name: { type: ["string", "null"] }
-          role: { type: ["string", "null"] }
-          group_id: { type: ["string", "null"] }
-          group_name: { type: ["string", "null"] }
-          is_active: { type: integer }
-        required:
-          - unique_key
-    retriever:
-      type: SimpleRetriever
-      requester:
-        <<: *base_requester
-        # role[]=agent&role[]=admin — CDK request_parameters doesn't support
-        # duplicate keys, so we embed the role filter directly in the path.
-        # This fetches agents, light_agents, and admins in one pass.
-        path: "users?role%5B%5D=agent&role%5B%5D=admin"
-        request_parameters:
-          # page[size], NOT per_page: per_page selects Zendesk's OFFSET
-          # pagination, whose response carries next_page and no `meta` object —
-          # the cursor paginator below would read an empty token and stop after
-          # one page, truncating the roster at 100 agents.
-          page[size]: "100"
-          # Zendesk lists meta.has_more as included on request for this
-          # endpoint; ask for it so the stop condition reads a real boundary.
-          include_boundary_indicators: "true"
-      record_selector:
-        type: RecordSelector
-        extractor:
-          type: DpathExtractor
-          field_path: [users]
-      paginator:
-        type: DefaultPaginator
-        pagination_strategy:
-          type: CursorPagination
-          cursor_value: "{{ response.get('meta', {}).get('after_cursor', '') }}"
-          # Stop on an explicit has_more=false, an empty page, or no cursor —
-          # never on a merely ABSENT has_more, which reads as "no more pages"
-          # and ends the read at one page. The CDK exposes no previous token to
-          # compare against, so a cursor Zendesk repeats is ended by the empty
-          # page a past-the-end cursor returns.
-          stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after_cursor') }}"
-        page_token_option:
-          type: RequestOption
-          field_name: "page[after]"
-          inject_into: request_parameter
-        # page_size_option removed — CursorPagination has no page_size;
-        # page[size]=100 is set statically in request_parameters above.
-    transformations:
-      - type: AddFields
-        fields: *standard_fields
-      - type: AddFields
-        fields:
-          - type: AddedFieldDefinition
-            path: [agent_id]
-            value: "{{ record['id'] | string }}"
-          - type: AddedFieldDefinition
-            # display_name from Zendesk user `name`; null if absent
-            path: [display_name]
-            value: "{{ record.get('name') or none }}"
-          - type: AddedFieldDefinition
-            path: [unique_key]
-            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
-          - type: AddedFieldDefinition
-            path: [group_id]
-            value: "{{ record['default_group_id'] | string if record.get('default_group_id') else none }}"
-          - type: AddedFieldDefinition
-            # group_name resolved in Phase 2 via CustomTransformation (GET /api/v2/groups lookup).
-            # NULL (not "") — Phase-1 intent is honest-NULL-until-Phase-2, and the
-            # schema declares it nullable; an empty string would flow into the
-            # silver agent dim as a non-null blank.
-            path: [group_name]
-            value: "{{ none }}"
-          - type: AddedFieldDefinition
-            # A Zendesk user carries BOTH flags. Suspended agents are listed
-            # with suspended=true; deactivated ones (active=false) drop out of
-            # the listing altogether, so this flag can only ever report
-            # suspension — a deactivated agent's last bronze row keeps
-            # is_active=1 (bronze is append-only). Marking agents absent from
-            # the latest extract is a silver-side follow-up.
-            # emit an integer (schema/Bronze DDL is Int64) — don't rely on the
-            # destination coercing the string '0'/'1'.
-            path: [is_active]
-            value: "{{ 1 if record.get('active') and not record.get('suspended') else 0 }}"
-            value_type: integer
-
-  # ── Stream 3: zendesk_satisfaction_ratings ──────────────────────────
-  # Separate incremental stream for CSAT ratings. Stored independently
-  # of support_tickets — preserves full rating history and avoids
-  # overwriting support_tickets on each rating update.
-  - type: DeclarativeStream
-    name: zendesk_satisfaction_ratings
-    primary_key:
-      - rating_id
-    schema_loader:
-      type: InlineSchemaLoader
-      schema:
-        $schema: http://json-schema.org/schema#
-        type: object
-        additionalProperties: true
-        properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
-          unique_key: { type: string }
-          collected_at: { type: string }
-          data_source: { type: string }
-          rating_id: { type: string }
-          ticket_id: { type: string }
-          requester_id: { type: ["string", "null"] }
-          assignee_id: { type: ["string", "null"] }
-          group_id: { type: ["string", "null"] }
-          score: { type: ["string", "null"] }
-          comment: { type: ["string", "null"] }
-          reason: { type: ["string", "null"] }
-          created_at: { type: string }
+          <<: *base_properties
+          id: { type: integer }
           updated_at: { type: string }
-        required:
-          - unique_key
     retriever:
       type: SimpleRetriever
       requester:
-        <<: *base_requester
-        path: "satisfaction_ratings"
-        request_parameters:
-          # Cursor pagination, not offset: Zendesk caps offset paging at 10,000
-          # records (page 100) and answers 400 beyond it, which would abort any
-          # backfill wider than that. sort_by/sort_order are not parameters this
-          # endpoint accepts (it takes `sort`).
-          page[size]: "100"
-          # Ask for meta.has_more explicitly, as support_agents does, so the
-          # stop condition reads a boundary rather than falling through to the
-          # cursor clauses.
-          include_boundary_indicators: "true"
+        <<: *requester
+        path: "incremental/organizations.json?start_time={{ stream_interval['start_time'] }}"
       record_selector:
         type: RecordSelector
-        extractor:
-          type: DpathExtractor
-          field_path: [satisfaction_ratings]
-      paginator:
-        type: DefaultPaginator
-        pagination_strategy:
-          type: CursorPagination
-          cursor_value: "{{ response.get('meta', {}).get('after_cursor', '') }}"
-          # Stop on an explicit has_more=false, an empty page, or no cursor —
-          # never on a merely ABSENT has_more, which reads as "no more pages"
-          # and ends the read at one page. The CDK exposes no previous token to
-          # compare against, so a cursor Zendesk repeats is ended by the empty
-          # page a past-the-end cursor returns.
-          stop_condition: "{{ response.get('meta', {}).get('has_more') == False or last_page_size == 0 or not response.get('meta', {}).get('after_cursor') }}"
-        page_token_option:
-          type: RequestOption
-          field_name: "page[after]"
-          inject_into: request_parameter
+        extractor: { type: DpathExtractor, field_path: [organizations] }
+      paginator: *export_time_paginator
     incremental_sync:
       type: DatetimeBasedCursor
-      # created_at, not updated_at: the start_time this cursor injects bounds
-      # ratings by creation time, so the state must advance on the same axis.
-      # A rating edited after it left the P1D lookback is not re-fetched.
+      cursor_field: updated_at
+      cursor_datetime_formats: *iso_formats
+      datetime_format: "%s"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_csat_ratings
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+          ticket_id: { type: ["integer", "null"] }
+          created_at: { type: string }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: satisfaction_ratings
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [satisfaction_ratings] }
+      paginator: *cursor_paginator
+    incremental_sync:
+      type: DatetimeBasedCursor
       cursor_field: created_at
-      cursor_datetime_formats:
-        - "%Y-%m-%dT%H:%M:%SZ"
-        - "%Y-%m-%dT%H:%M:%S.%fZ"
+      cursor_datetime_formats: *iso_formats
       datetime_format: "%s"
-      # Re-query a 1-day tail on every sync. Zendesk's incremental export is
-      # eventually-consistent at the cursor boundary, so without this a record
-      # whose updated_at lands at the edge is permanently skipped — and for a
-      # ticket that drops its ENTIRE audit activity (our only source of
-      # updates/comments/solved). Append-only RMT bronze + read-time dedup
-      # absorb the re-delivery, so the overlap is free of duplicates. (cf. jira
-      # #1316: use lookback_window, NOT a future end_datetime — the latter
-      # advances the cursor past the real query time and permanently skips rows.)
-      lookback_window: "P1D"
-      start_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ config.get('start_date') or day_delta(-90, format='%Y-%m-%d') }}"
-        datetime_format: "%Y-%m-%d"
-      end_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ now_utc().strftime('%Y-%m-%dT%H:%M:%SZ') }}"
-        datetime_format: "%Y-%m-%dT%H:%M:%SZ"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
       start_time_option:
         type: RequestOption
         field_name: start_time
         inject_into: request_parameter
     transformations:
+      - *payload
       - type: AddFields
-        fields: *standard_fields
-      - type: AddFields
-        fields:
-          - type: AddedFieldDefinition
-            path: [rating_id]
-            value: "{{ record['id'] | string }}"
-          - type: AddedFieldDefinition
-            path: [ticket_id]
-            value: "{{ record['ticket_id'] | string }}"
-          - type: AddedFieldDefinition
-            path: [requester_id]
-            value: "{{ record.get('requester_id') | string if record.get('requester_id') else None }}"
-          - type: AddedFieldDefinition
-            path: [assignee_id]
-            value: "{{ record.get('assignee_id') | string if record.get('assignee_id') else None }}"
-          - type: AddedFieldDefinition
-            path: [group_id]
-            value: "{{ record.get('group_id') | string if record.get('group_id') else None }}"
-          - type: AddedFieldDefinition
-            path: [reason]
-            # `| string` is load-bearing: reason_code is numeric and the CDK
-            # literal-evals a bare rendered value, so without it an int lands
-            # in a column the schema declares as a string.
-            # `or none` also turns reason_code 0 ("no reason") into NULL.
-            value: "{% set v = record.get('reason') or record.get('reason_code') or none %}{{ v | string if v is not none else none }}"
-          - type: AddedFieldDefinition
-            path: [unique_key]
-            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
+        fields: *stamp
 
-  # ── Stream 4: support_ticket_events ─────────────────────────────────
-  # Per-ticket audit log (Ticket Audits API) — the ONLY honest source of
-  # actor-attributed activity (updates / comments / solved). Each audit carries
-  # `author_id` (the ACTOR who made the change) and a nested `events` array. We
-  # land ONE Bronze row per audit with `events` as JSON; the Silver model
-  # `zendesk__support_event` explodes + classifies it (one row per event), so a
-  # single audit can legitimately yield both a public_comment and a solved.
-  #
-  # SubstreamPartitionRouter fans out over the SLIM support_ticket_ids parent
-  # (key-only — never the heavyweight support_tickets stream; see Stream 1b for
-  # the cache-bloat rationale) — one GET tickets/{id}/audits.json per ticket.
-  # Re-delivery is deduped downstream by unique_key (= audit id). No per-audit
-  # cursor: incremental_dependency=true means the parent's updated_at cursor
-  # bounds which tickets are (re)visited each run.
   - type: DeclarativeStream
-    name: support_ticket_events
-    primary_key:
-      - audit_id
+    name: zendesk_survey_responses
+    primary_key: [unique_key]
     schema_loader:
       type: InlineSchemaLoader
       schema:
         $schema: http://json-schema.org/schema#
         type: object
         additionalProperties: true
+        required: [unique_key]
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
-          unique_key: { type: string }
-          collected_at: { type: string }
-          data_source: { type: string }
-          audit_id: { type: string }
-          ticket_id: { type: string }
-          author_id: { type: ["string", "null"] }
-          created_at: { type: string }
-          events: { type: string }
-        required:
-          - unique_key
+          <<: *base_properties
+          id: { type: string }
     retriever:
       type: SimpleRetriever
       requester:
-        <<: *base_requester
-        path: "tickets/{{ stream_partition.ticket_id }}/audits.json"
+        <<: *requester
+        path: guide/survey_responses
+        error_handler: *optional_product_error_handler
         request_parameters:
-          per_page: "100"
-        # Deleted tickets still surface in the incremental ticket export
-        # (Zendesk reports deletions there with status=deleted), but their
-        # audits endpoint returns 404 RecordNotFound. The SubstreamPartitionRouter
-        # fans out to every parent ticket, so without IGNORE-404 a single
-        # deleted ticket fails the entire sync. 429/503 → RATE_LIMITED with
-        # Retry-After backoff: this substream issues one request per ticket, so
-        # it is the most rate-limit-prone stream.
-        # The shared handler first (429/503 retry on Retry-After, 401/403
-        # fail); the 404 rule is this stream's only addition.
-        error_handler:
-          type: CompositeErrorHandler
-          error_handlers:
-            - *base_error_handler
-            - type: DefaultErrorHandler
-              response_filters:
-                - type: HttpResponseFilter
-                  action: IGNORE
-                  http_codes: [404]
+          page[size]: "50"
+          filter[created_at_start]: "{{ stream_interval['start_time'] }}"
       record_selector:
         type: RecordSelector
-        extractor:
-          type: DpathExtractor
-          field_path: [audits]
+        extractor: { type: DpathExtractor, field_path: [survey_responses] }
+      paginator: *cursor_paginator
+    incremental_sync:
+      type: DatetimeBasedCursor
+      cursor_field: updated_at
+      cursor_datetime_formats: *iso_formats
+      datetime_format: "%ms"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+    transformations:
+      - *payload
+      - type: AddFields
+        fields:
+          - type: AddedFieldDefinition
+            path: [updated_at]
+            value: "{{ (record.get('answers') or [{}]) | map(attribute='updated_at') | select | max }}"
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_groups
+    primary_key: [unique_key]
+    schema_loader: &id_schema
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: groups
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [groups] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_group_memberships
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: group_memberships
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [group_memberships] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_ticket_fields
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: ticket_fields
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [ticket_fields] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_ticket_forms
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: ticket_forms
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [ticket_forms] }
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_custom_statuses
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: custom_statuses
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [custom_statuses] }
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_brands
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: brands
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [brands] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_sla_policies
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: slas/policies
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [sla_policies] }
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_schedules
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: business_hours/schedules
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [schedules] }
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_deleted_tickets
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: deleted_tickets
+        request_parameters:
+          page[size]: "100"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [deleted_tickets] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  - type: DeclarativeStream
+    name: zendesk_kb_articles
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+          updated_at: { type: string }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "help_center/incremental/articles.json?start_time={{ stream_interval['start_time'] }}"
+        error_handler: *optional_product_error_handler
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [articles] }
+      paginator: *export_time_paginator
+    incremental_sync:
+      type: DatetimeBasedCursor
+      cursor_field: updated_at
+      cursor_datetime_formats: *iso_formats
+      datetime_format: "%s"
+      lookback_window: *lookback
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  # A merge is named only in the audits of the merged ticket (DESIGN.md §6).
+  - type: DeclarativeStream
+    name: zendesk_merge_audits
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          id: { type: integer }
+          ticket_id: { type: integer }
+          created_at: { type: string }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "tickets/{{ stream_partition['ticket_id'] }}/audits.json"
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [audits] }
+        record_filter:
+          type: RecordFilter
+          condition: "{{ ((record.get('via') or {}).get('source') or {}).get('rel') == 'merge' }}"
       paginator:
         type: DefaultPaginator
         pagination_strategy:
           type: CursorPagination
-          cursor_value: "{{ response.get('next_page', '') }}"
-          stop_condition: "{{ response.get('next_page') is none }}"
+          cursor_value: "{{ response.get('next_page') or '' }}"
+          stop_condition: "{{ not response.get('next_page') }}"
         page_token_option:
           type: RequestPath
       partition_router:
         type: SubstreamPartitionRouter
         parent_stream_configs:
           - type: ParentStreamConfig
-            stream: *support_ticket_ids_stream
-            parent_key: ticket_id
+            parent_key: id
             partition_field: ticket_id
-            # the parent's updated_at cursor drives which tickets are revisited
             incremental_dependency: true
-    # Formal cursor: the audits endpoint accepts no time filter (no request
-    # option is injected below) and nothing is dropped client-side — every
-    # audit of every enumerated ticket is emitted. The cursor exists to make
-    # the stream STATEFUL, which is the only thing that lets
-    # incremental_dependency persist the parent's updated_at as parent_state.
-    # Without it the CDK reports full_refresh only, reconcile assigns
-    # full_refresh, no state survives the run, and every sync re-enumerates the
-    # whole start_date window — one audits request per ticket in it, nightly,
-    # out of the account-wide rate budget. (Same idiom as zoom
-    # meeting_participants and github issue_comments.)
+            stream:
+              type: DeclarativeStream
+              name: _merged_ticket_ids
+              primary_key: [id]
+              schema_loader:
+                type: InlineSchemaLoader
+                schema:
+                  $schema: http://json-schema.org/schema#
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    id: { type: integer }
+                    updated_at: { type: string }
+              retriever:
+                type: SimpleRetriever
+                requester:
+                  <<: *requester
+                  path: search/export.json
+                  request_parameters:
+                    query: "tags:closed_by_merge updated>={{ stream_interval['start_time'] }}"
+                    filter[type]: ticket
+                    page[size]: "1000"
+                record_selector:
+                  type: RecordSelector
+                  extractor: { type: DpathExtractor, field_path: [results] }
+                paginator: *cursor_paginator
+              incremental_sync:
+                type: DatetimeBasedCursor
+                cursor_field: updated_at
+                cursor_datetime_formats: *iso_formats
+                datetime_format: "%Y-%m-%d"
+                lookback_window: *lookback
+                start_datetime: *start_datetime
+                end_datetime: *end_datetime
     incremental_sync:
       type: DatetimeBasedCursor
       cursor_field: created_at
-      cursor_datetime_formats:
-        - "%Y-%m-%dT%H:%M:%SZ"
-        - "%Y-%m-%dT%H:%M:%S.%fZ"
+      cursor_datetime_formats: *iso_formats
       datetime_format: "%Y-%m-%dT%H:%M:%SZ"
-      start_datetime:
-        type: MinMaxDatetime
-        datetime: "{{ config.get('start_date') or day_delta(-90, format='%Y-%m-%d') }}"
-        datetime_format: "%Y-%m-%d"
+      start_datetime: *start_datetime
+      end_datetime: *end_datetime
+      is_client_side_incremental: true
     transformations:
+      - *payload
       - type: AddFields
-        fields: *standard_fields
+        fields: *stamp
+
+
+  - type: DeclarativeStream
+    name: zendesk_jira_links
+    primary_key: [unique_key]
+    schema_loader: *id_schema
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: jira/links
+        request_parameters:
+          page[size]: "1000"
+        error_handler: *optional_integration_error_handler
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [links] }
+      paginator: *cursor_paginator
+    transformations:
+      - *payload
+      - type: AddFields
+        fields: *stamp
+
+  # V2 links carry no id of their own: a link is the ticket and issue pair.
+  # An unset external id reads a path Zendesk answers with 404: no records.
+  - type: DeclarativeStream
+    name: zendesk_jira_links_v2
+    primary_key: [unique_key]
+    schema_loader:
+      type: InlineSchemaLoader
+      schema:
+        $schema: http://json-schema.org/schema#
+        type: object
+        additionalProperties: true
+        required: [unique_key]
+        properties:
+          <<: *base_properties
+          ticket_id: { type: [string, "null"] }
+          issue_id: { type: [string, "null"] }
+    retriever:
+      type: SimpleRetriever
+      requester:
+        <<: *requester
+        path: "integrations/jira/{{ config.get('zendesk_jira_external_id') or 'not-configured' }}/links"
+        request_parameters:
+          page[size]: "100"
+        error_handler: *optional_integration_error_handler
+      record_selector:
+        type: RecordSelector
+        extractor: { type: DpathExtractor, field_path: [links] }
+      paginator: *v2_cursor_paginator
+    transformations:
+      - *payload
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [audit_id]
-            value: "{{ record['id'] | string }}"
+            path: [tenant_id]
+            value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [ticket_id]
-            value: "{{ record['ticket_id'] | string }}"
-          - type: AddedFieldDefinition
-            # actor of the audit (who made the change) — the attribution key
-            path: [author_id]
-            value: "{{ record['author_id'] | string if record.get('author_id') else none }}"
-          - type: AddedFieldDefinition
-            # nested events[] kept as JSON; Silver explodes + classifies them.
-            # value_type is load-bearing: the CDK literal-evals the rendered
-            # value, and `[]` (or any events array holding no JSON literal the
-            # Python parser rejects) would come back as a real list against a
-            # String column. Pinning the type keeps every audit's events a
-            # string, empty or not.
-            path: [events]
-            value: "{{ (record.get('events') or []) | tojson }}"
-            value_type: string
+            path: [source_id]
+            value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
-            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
+            value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['ticket_id'] }}-{{ record['issue_id'] }}"
 
-# default_concurrency MUST be >= 2 (jira's hard-won lesson): with 1 worker the
-# concurrent CDK self-deadlocks once a sync generates ~10k partitions — the
-# lone worker spins on generate_partitions (futures limit) while the
-# partition-read futures it awaits have no worker to run them (CPU-busy,
-# zero records, for hours). The support_ticket_events audit fan-out is exactly
-# that shape (one partition per ticket), so this is required, not optional.
 concurrency_level:
   type: ConcurrencyLevel
   default_concurrency: 4
@@ -729,57 +830,64 @@ spec:
       - insight_tenant_id
       - insight_source_id
       - zendesk_subdomain
-      - zendesk_email
-      - zendesk_api_token
+      - zendesk_client_id
+      - zendesk_secret
     properties:
       insight_tenant_id:
         type: string
         title: Insight Tenant ID
-        description: Tenant isolation identifier, injected as `tenant_id` on every record.
         order: 0
       insight_source_id:
         type: string
         title: Source Instance ID
-        description: Connector instance identifier (e.g. `zendesk-main`). Set by the reconcile loop from the K8s Secret annotation `insight.cyberfabric.com/source-id`.
-        default: ""
         order: 1
       zendesk_subdomain:
         type: string
-        title: Zendesk Subdomain
-        description: |
-          Your Zendesk subdomain — the `{subdomain}` part of `{subdomain}.zendesk.com`.
-          Example: if your Zendesk URL is `acme.zendesk.com`, enter `acme`.
+        title: Zendesk subdomain
+        description: The `{subdomain}` of `{subdomain}.zendesk.com`.
         order: 2
-      zendesk_email:
+      zendesk_client_id:
         type: string
-        title: Agent Email
-        description: |
-          Email of the Zendesk agent or admin associated with the API token.
-          Used as the Basic Auth username in the form `{email}/token`.
+        title: OAuth client identifier
+        description: Identifier of a confidential OAuth client created by an administrator, allowed the `read` scope.
         order: 3
-      zendesk_api_token:
+      zendesk_secret:
         type: string
-        title: API Token
+        title: OAuth client secret
         airbyte_secret: true
-        description: |
-          Zendesk API token. Created under Admin → Apps & Integrations → Zendesk API.
-          Requires Token Access to be enabled on the account.
         order: 4
-      start_date:
+      zendesk_start_date:
         type: string
-        title: Start Date
-        description: |
-          Earliest date for historical backfill (YYYY-MM-DD). Default: 90 days ago.
-          First run fetches all tickets and ratings updated since this date.
-          Example: "2024-01-01" for a full 2024+ backfill.
-        default: ""
+        title: Start date
+        description: Earliest day to read (YYYY-MM-DD). Empty reads the whole account.
+        pattern: "^(\\d{4}-\\d{2}-\\d{2})?$"
         order: 5
+      zendesk_jira_external_id:
+        type: string
+        title: Jira integration V2 external ID
+        description: Only for an account on the Jira integration V2. Copy it from Admin Center, Apps and integrations, Integrations, Jira, Edit. Empty skips the V2 links.
+        order: 6
     additionalProperties: true
 
 metadata:
   autoImportSchema:
-    support_tickets: true
-    support_ticket_ids: true
-    support_agents: true
-    zendesk_satisfaction_ratings: true
-    support_ticket_events: true
+    zendesk_tickets: true
+    zendesk_ticket_events: true
+    zendesk_ticket_metric_events: true
+    zendesk_users: true
+    zendesk_organizations: true
+    zendesk_csat_ratings: true
+    zendesk_survey_responses: true
+    zendesk_groups: true
+    zendesk_group_memberships: true
+    zendesk_ticket_fields: true
+    zendesk_ticket_forms: true
+    zendesk_custom_statuses: true
+    zendesk_brands: true
+    zendesk_sla_policies: true
+    zendesk_schedules: true
+    zendesk_deleted_tickets: true
+    zendesk_kb_articles: true
+    zendesk_jira_links: true
+    zendesk_jira_links_v2: true
+    zendesk_merge_audits: true

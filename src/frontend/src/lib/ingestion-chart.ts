@@ -102,6 +102,10 @@ export function totalsByKey(
     .sort((a, b) => b.rows - a.rows || a.key.localeCompare(b.key));
 }
 
+export function logDomain(peak: number): [number, number] {
+  return [LOG_FLOOR, Math.max(peak, 1)];
+}
+
 // WORKAROUND: Recharts log ticks include the fractional LOG_FLOOR, printing 0.5 on a whole-row axis.
 export function logTicks(maxValue: number): number[] {
   const ticks = [1];

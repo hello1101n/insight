@@ -33,7 +33,7 @@ async function enableMocking(): Promise<void> {
 
 initSentry(router);
 
-if (!consumeOverrideParam()) bootstrap();
+if (consumeOverrideParam() === "absent") bootstrap();
 
 function bootstrap(): void {
   const authError = consumeAuthErrorParam();

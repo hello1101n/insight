@@ -19,6 +19,7 @@ import {
   formatRecords,
   formatStarted,
   instanceKey,
+  panelIdFor,
 } from "@/lib/portal/connector-health";
 
 const MINUTE = 60_000;
@@ -118,6 +119,13 @@ describe("which installation of a connector a row is", () => {
       instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" }),
     );
   });
+
+  it.each([
+    [{ connector: "a_b", tenant_id: "c" }, { connector: "a", tenant_id: "b_c" }],
+    [{ connector: "a%5Fb", tenant_id: "c" }, { connector: "a_b", tenant_id: "c" }],
+  ])("panel ids stay distinct when keys differ only by separator or underscore: %o vs %o", (first, second) => {
+    expect(panelIdFor(first)).not.toBe(panelIdFor(second));
+  });
 });
 
 describe("what a row says", () => {
@@ -156,6 +164,10 @@ describe("what a row says", () => {
         label,
       );
     }
+  });
+
+  it.each(["renamed_word", "constructor"])("reads the unrecognised status %s as state unknown", (status) => {
+    expect(describeSync(sync({ status })).state).toBe("state_unknown");
   });
 
   it("never says a connector is delivering", () => {

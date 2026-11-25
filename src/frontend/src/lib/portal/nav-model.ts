@@ -12,7 +12,6 @@ import {
   Filter,
   Database,
   Fingerprint,
-  FlaskConical,
   GitPullRequest,
   LayoutGrid,
   Layers,
@@ -171,7 +170,6 @@ export interface PaneItem {
   badge?: { text: string; tone: "warn" | "new" | "error" };
   readiness?: Readiness;
   adminOnly?: boolean;
-  previewsGated?: boolean;
   unbuilt?: boolean;
 }
 
@@ -297,13 +295,19 @@ export const STARTER_DASHBOARDS: PaneItem = {
   unbuilt: true,
 };
 
-export const PEOPLE_ITEMS: readonly PaneItem[] = [
+type PeopleItems = readonly [
+  PaneItem & { id: "roster" },
+  PaneItem & { id: "employees" },
+  PaneItem & { id: "metrics" },
+];
+
+export const PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.my_team" }, icon: Users },
   { id: "employees", label: { key: "nav.items.roster_by_role" }, icon: List },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
 ];
 
-const FLAT_PEOPLE_ITEMS: readonly PaneItem[] = [
+const FLAT_PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.overview" }, icon: LayoutGrid },
   { id: "employees", label: { key: "nav.items.roster" }, icon: Users },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
@@ -321,7 +325,6 @@ export function peopleItemsFor(
 
 export interface ManageGates {
   isAdmin: boolean;
-  canManagePreviews: boolean;
 }
 
 export function manageGroupsFor(
@@ -334,11 +337,21 @@ export function manageGroupsFor(
       .filter(
         (item) =>
           (!item.adminOnly || gates.isAdmin) &&
-          (!item.previewsGated || gates.canManagePreviews) &&
           !itemHidden("manage", item.id, policy),
       )
       .map((item) => withConfigReadiness("manage", item, policy)),
   })).filter((group) => group.items.length > 0);
+}
+
+export function manageLandingItem(
+  gates: ManageGates,
+  policy: InstanceNavPolicy = navPolicy(),
+): string | null {
+  return (
+    manageGroupsFor(gates, policy)
+      .flatMap((group) => group.items)
+      .find((item) => !item.unbuilt && item.readiness == null)?.id ?? null
+  );
 }
 
 export const MANAGE_GROUPS: readonly PaneGroup[] = [
@@ -372,7 +385,6 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
     label: { key: "nav.groups.platform" },
     items: [
       { id: "ingestion", label: { key: "nav.items.ingestion" }, icon: Database, adminOnly: true },
-      { id: "previews", label: { key: "nav.items.previews" }, icon: FlaskConical, previewsGated: true },
       { id: "ai-assistant", label: { key: "nav.items.ai_assistant" }, icon: Sparkles },
       { id: "whats-new", label: { key: "whats_new.nav_label" }, icon: Megaphone },
       { id: "platform-usage", label: { key: "nav.items.platform_usage" }, icon: Activity, adminOnly: true },
@@ -406,5 +418,5 @@ export function resolveZoneItem(
   const live = (i: PaneItem) => !itemPlanned(zoneId, i.id, policy);
   const items = zoneItems(zoneId);
   if (item && items.some((i) => i.id === item && shown(i))) return item;
-  return items.find((i) => live(i) && shown(i) && !i.adminOnly && !i.previewsGated)?.id ?? null;
+  return items.find((i) => live(i) && shown(i) && !i.adminOnly)?.id ?? null;
 }

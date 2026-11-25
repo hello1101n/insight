@@ -30,7 +30,7 @@ import { useAutoLoadOnScroll } from "@/hooks/use-auto-load-on-scroll";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { accountKey, itemKey } from "@/lib/identities/account-key";
 import { matchesAccountSearch } from "@/lib/identities/account-search";
-import { KIND_SEARCH_MATCH } from "@/lib/identities/cases";
+import { CONSOLE_SEARCH_MATCH_KIND } from "@/lib/identities/cases";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { activatesRow, activatesRowByKey } from "@/lib/identities/row-activation";
 import { formatSources, normalizeSources, parseSources } from "@/lib/identities/sources";
@@ -74,6 +74,20 @@ function accountLabel(item: {
   );
 }
 
+function caseRowOf(match: AccountMatch): CaseRow {
+  return {
+    kind: CONSOLE_SEARCH_MATCH_KIND,
+    source: match.source,
+    source_id: match.source_id,
+    account_id: match.account_id,
+    email: match.email,
+    username: match.username,
+    display_name: match.display_name,
+    candidates: [],
+    holder: match.person ?? null,
+  };
+}
+
 export function AccountSearchView() {
   const { t } = useTranslation();
   const { acct, src } = usePortalSearch();
@@ -98,10 +112,11 @@ export function AccountSearchView() {
     : [];
   const loading = search.isFetching && !search.isFetchingNextPage;
   const asked = debounced.trim() !== "" && lists;
-  const stale = query !== debounced || search.isPlaceholderData;
+  const answersPreviousTerm = query !== debounced || search.isPlaceholderData;
+  const unreadPage = lists && search.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
-    hasNextPage: search.hasNextPage,
+    hasNextPage: unreadPage,
     isFetchingNextPage: search.isFetchingNextPage,
     fetchNextPage: () => void search.fetchNextPage(),
     root: scroller,
@@ -123,17 +138,7 @@ export function AccountSearchView() {
     attention.data.truncated !== true &&
     attention.data.items_truncated !== true;
   const walk = unmatched.map(itemKey);
-  const listed: CaseRow[] = items.map((m) => ({
-    kind: KIND_SEARCH_MATCH,
-    source: m.source,
-    source_id: m.source_id,
-    account_id: m.account_id,
-    email: m.email,
-    username: m.username,
-    display_name: m.display_name,
-    candidates: [],
-    holder: m.person ?? null,
-  }));
+  const listed = items.map(caseRowOf);
   const openable: CaseRow[] = [
     ...unmatchedAll,
     ...listed.filter((row) => !queued.has(itemKey(row))),
@@ -149,8 +154,8 @@ export function AccountSearchView() {
   const showAccounts =
     search.isError ||
     items.length > 0 ||
-    (lists && search.hasNextPage) ||
-    (!loading && !stale);
+    unreadPage ||
+    (!loading && !answersPreviousTerm);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
@@ -258,7 +263,10 @@ export function AccountSearchView() {
                 />
               ) : null}
 
-              {!loading && !stale && items.length === 0 && !search.isError ? (
+              {!loading &&
+              !answersPreviousTerm &&
+              items.length === 0 &&
+              !search.isError ? (
                 <Empty className="mx-auto">
                   <EmptyHeader>
                     {asked ? null : (
@@ -284,7 +292,7 @@ export function AccountSearchView() {
                 </Empty>
               ) : null}
 
-              {items.length > 0 || (lists && search.hasNextPage) ? (
+              {items.length > 0 || unreadPage ? (
                 <Card>
                   <CardContent className="flex flex-col gap-1">
                     {items.map((item) => (
@@ -298,7 +306,7 @@ export function AccountSearchView() {
                         onOpen={() => setAcct(accountKey(item))}
                       />
                     ))}
-                    {search.hasNextPage ? (
+                    {unreadPage ? (
                       <div
                         ref={loadMore}
                         aria-live="polite"

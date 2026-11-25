@@ -1,8 +1,0 @@
-{{- if .Values.experiments.manageNamespace }}
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ .Values.experiments.namespace }}
-  labels:
-    {{- include "insight-previews.labels" . | nindent 4 }}
-{{- end }}

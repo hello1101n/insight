@@ -5341,43 +5341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "previews"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "cf-gears-api-gateway",
- "cf-gears-authn-resolver",
- "cf-gears-authz-resolver",
- "cf-gears-grpc-hub",
- "cf-gears-oidc-authn-plugin",
- "cf-gears-service-discovery",
- "cf-gears-single-tenant-tr-plugin",
- "cf-gears-static-authz-plugin",
- "cf-gears-tenant-resolver",
- "cf-gears-toolkit",
- "cf-gears-toolkit-canonical-errors",
- "cf-gears-toolkit-security",
- "cf-gears-types-registry",
- "chrono",
- "clap",
- "insight-http-client",
- "insight-log-context",
- "insight-openapi",
- "k8s-openapi",
- "kube",
- "regex-lite",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
 name = "primefield"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5918,12 +5881,6 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
-
-[[package]]
-name = "regex-lite"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "regex-syntax"

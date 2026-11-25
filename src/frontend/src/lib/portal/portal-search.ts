@@ -55,8 +55,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const METRIC_KEY = /^(none|[a-z][a-z0-9_]*\.[a-z0-9_.]+)$/;
 const PERSON_ID = /^[0-9a-z-]+$/;
 
-const MAX_SOURCES = 20;
-const MAX_SOURCE_CHARS = 30;
+const IDENTITY_MAX_SOURCES = 20;
+const IDENTITY_MAX_SOURCE_CHARS = 30;
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v !== "" ? v : undefined;
@@ -116,8 +116,8 @@ export function validateIdentitiesSearch(raw: Record<string, unknown>): Identiti
     acct: str(raw.acct),
     src: formatSources(
       parseSources(str(raw.src))
-        .filter((source) => source.length <= MAX_SOURCE_CHARS)
-        .slice(0, MAX_SOURCES),
+        .filter((source) => source.length <= IDENTITY_MAX_SOURCE_CHARS)
+        .slice(0, IDENTITY_MAX_SOURCES),
     ),
     person: str(raw.person)?.toLowerCase(),
     find: str(raw.find),

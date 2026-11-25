@@ -6,13 +6,11 @@ export type Session = {
   tenantId: string;
   roles: string[];
   csrfToken: string;
-  expiresAt: number;
-  refreshAt: number;
-  experimentsEnabled: boolean;
+  expiresAt: number | null;
+  refreshAt: number | null;
   impersonatorEmail: string | null;
 };
 
-export type AuthSnapshot = {
-  status: AuthStatus;
-  session: Session | null;
-};
+export type AuthSnapshot =
+  | { status: "authenticated"; session: Session }
+  | { status: "loading" | "unauthenticated"; session: null };

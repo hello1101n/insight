@@ -13,7 +13,9 @@ export function consumeAuthErrorParam(): AuthError | null {
   url.searchParams.delete("auth_error");
   window.history.replaceState(null, "", url.pathname + url.search + url.hash);
   if (!code) return null;
-  const attempts = readAttempts() + 1;
+  const previous = readAttempts();
+  if (previous === null) return { code, autoRetry: false };
+  const attempts = previous + 1;
   const counted = writeAttempts(attempts);
   return {
     code,
@@ -30,12 +32,12 @@ export function clearAuthErrorAttempts(): void {
   }
 }
 
-function readAttempts(): number {
+function readAttempts(): number | null {
   try {
     const parsed = Number(sessionStorage.getItem(ATTEMPTS_KEY) ?? "0");
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   } catch {
-    return MAX_AUTO_RETRIES;
+    return null;
   }
 }
 

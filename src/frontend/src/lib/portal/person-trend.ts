@@ -5,6 +5,7 @@ import {
   forEntity,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
+import { mondayFirstWeekday } from "@/lib/portal/day-hour-matrix";
 
 export const TREND_BUCKETS = 8;
 
@@ -33,7 +34,7 @@ export function runningBucketStart(
   if (bucket === "month") return `${today.slice(0, 7)}-01`;
   if (bucket === "week") {
     const d = new Date(`${today}T00:00:00Z`);
-    const back = (d.getUTCDay() + 6) % 7;
+    const back = mondayFirstWeekday(d);
     return new Date(d.getTime() - back * 86_400_000).toISOString().slice(0, 10);
   }
   return today;

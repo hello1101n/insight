@@ -25,7 +25,7 @@ import {
   datasetQuery,
   datasetRecordsQuery,
   metricQuery,
-  PREVIEW_ROWS,
+  ASSUMED_FIRST_PAGE_ROWS,
 } from "@/queries/custom";
 import { TEXT_BODY, TEXT_HEADING, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
@@ -176,11 +176,11 @@ function Records({
     serialize: (value) => JSON.stringify(value),
   });
 
-  const [stride, setStride] = useState(PREVIEW_ROWS);
+  const [servedPageSize, setServedPageSize] = useState(ASSUMED_FIRST_PAGE_ROWS);
 
   const records = useQuery(
     datasetRecordsQuery(name, {
-      offset: page * stride,
+      offset: page * servedPageSize,
       orderBy: ordering.by,
       descending: ordering.descending,
     })
@@ -188,7 +188,7 @@ function Records({
 
   const waiting = records.isPlaceholderData;
   const held = records.data?.limit;
-  if (held !== undefined && held !== stride) setStride(held);
+  if (held !== undefined && held !== servedPageSize) setServedPageSize(held);
 
   const order = (next: Ordering) => {
     setOrdering(next);
@@ -233,7 +233,7 @@ function Records({
             />
             <Paging
               page={page}
-              stride={stride}
+              servedPageSize={servedPageSize}
               held={records.data.records.length}
               total={records.data.total}
               waiting={waiting}
@@ -248,21 +248,21 @@ function Records({
 
 function Paging({
   page,
-  stride,
+  servedPageSize,
   held,
   total,
   waiting,
   onPage,
 }: {
   page: number;
-  stride: number;
+  servedPageSize: number;
   held: number;
   total: number;
   waiting: boolean;
   onPage: (page: number) => void;
 }) {
-  const first = page * stride + 1;
-  const last = page * stride + held;
+  const first = page * servedPageSize + 1;
+  const last = page * servedPageSize + held;
 
   return (
     <div className="flex flex-wrap items-center gap-2">

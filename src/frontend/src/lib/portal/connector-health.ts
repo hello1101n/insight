@@ -140,8 +140,12 @@ const NEVER_SYNCED: ConnectorStateView = {
   tone: "idle",
 };
 
-function stateOf(status: string | undefined): ConnectorStateView {
-  const view = STATE[status as SyncStatus] ?? STATE.unknown;
+function parseSyncStatus(word: string): SyncStatus {
+  return Object.hasOwn(STATE, word) ? (word as SyncStatus) : "unknown";
+}
+
+function stateOf(status: string): ConnectorStateView {
+  const view = STATE[parseSyncStatus(status)];
   return { ...view, label: i18n.t(`connectors.${view.state}`) };
 }
 
@@ -287,6 +291,11 @@ export function instanceKey(row: ConnectorInstanceRef): string {
   return [row.connector, row.tenant_id ?? "", row.source_id ?? ""]
     .map(encodeURIComponent)
     .join("/");
+}
+
+export function panelIdFor(row: ConnectorInstanceRef): string {
+  const id = instanceKey(row).replaceAll("_", "%5F").replaceAll("/", "_");
+  return `connector-syncs-${id}`;
 }
 
 export function formatDuration(durationMs: number | null | undefined): string {

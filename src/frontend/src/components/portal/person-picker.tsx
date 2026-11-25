@@ -41,14 +41,7 @@ export function PersonPicker({
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState(initialQuery);
-  const debounced = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
-  const settled = useRef(onSettled);
-  useEffect(() => {
-    settled.current = onSettled;
-  }, [onSettled]);
-  useEffect(() => {
-    settled.current?.(debounced);
-  }, [debounced]);
+  const debounced = useDebouncedTerms(query, onSettled);
 
   const intent = browseWhenEmpty ? "browse" : "match";
   const asked = listsAnyone(debounced, intent);
@@ -66,7 +59,7 @@ export function PersonPicker({
         )
     : [];
   const loading = list.isFetching && !list.isFetchingNextPage;
-  const behind = query !== debounced || list.isPlaceholderData;
+  const answersPreviousTerm = query !== debounced || list.isPlaceholderData;
   const exhausted = !list.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
@@ -105,7 +98,7 @@ export function PersonPicker({
       list.data &&
       results.length === 0 &&
       !loading &&
-      !behind &&
+      !answersPreviousTerm &&
       exhausted ? (
         <p className="text-sm text-muted-foreground">
           {t("identities.picker.no_matches")}
@@ -122,8 +115,11 @@ export function PersonPicker({
             )}
           >
             <ul
-              aria-busy={behind}
-              className={cn("flex flex-col gap-1", behind && "opacity-60")}
+              aria-busy={answersPreviousTerm}
+              className={cn(
+                "flex flex-col gap-1",
+                answersPreviousTerm && "opacity-60"
+              )}
             >
               {results.map((person) => (
                 <li key={person.person_id}>
@@ -166,6 +162,21 @@ export function PersonPicker({
       ) : null}
     </div>
   );
+}
+
+function useDebouncedTerms(
+  query: string,
+  onSettled: ((query: string) => void) | undefined
+): string {
+  const debounced = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const settled = useRef(onSettled);
+  useEffect(() => {
+    settled.current = onSettled;
+  }, [onSettled]);
+  useEffect(() => {
+    settled.current?.(debounced);
+  }, [debounced]);
+  return debounced;
 }
 
 function ListShell({

@@ -21,6 +21,10 @@ export interface MetricEvidenceSelection {
   display_dimensions: string[];
 }
 
+export interface SingleEntityEvidenceSelection extends MetricEvidenceSelection {
+  entity: Exclude<MetricEvidenceSelection["entity"], { type: "persons" }>;
+}
+
 export type MetricEvidenceSortDirection = "asc" | "desc";
 
 export interface MetricEvidenceSort {
@@ -166,7 +170,7 @@ export function evidenceSelection(
   period?: { from: string; to: string },
   filters?: MetricDimensionFilter[],
   displayDimensions: string[] = []
-): MetricEvidenceSelection | null {
+): SingleEntityEvidenceSelection | null {
   if (!canonical) return null;
   const entity =
     canonical.entity.type === "tenant"

@@ -16,9 +16,11 @@ import {
   grantPersonRole,
   listPeople,
   listPersonRoles,
+  listRoleHolders,
   listSources,
   mergePersons,
   revokePersonRole,
+  ROLE_HOLDERS_MAX,
   searchAccounts,
   searchPersons,
 } from "./identity-client";
@@ -600,6 +602,36 @@ describe("listPersonRoles", () => {
     );
 
     await expect(listPersonRoles("p-1")).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("listRoleHolders", () => {
+  const ADMIN = "a4d11000-0000-4000-8000-000000000001";
+
+  function assignments(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      person_role_id: `role-${index}`,
+      person_id: `019E27BC-0000-7000-8000-${String(index).padStart(12, "0")}`,
+      role_id: ADMIN,
+    }));
+  }
+
+  it("names every holder, normalized, when the listing ends inside its page", async () => {
+    const rows = assignments(ROLE_HOLDERS_MAX - 1);
+    mockFetch.mockResolvedValueOnce(response({ items: rows }));
+
+    await expect(listRoleHolders(ADMIN)).resolves.toEqual({
+      complete: true,
+      personIds: new Set(rows.map((row) => row.person_id.toLowerCase())),
+    });
+  });
+
+  it("reports a listing that filled its one page as partial", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({ items: assignments(ROLE_HOLDERS_MAX) })
+    );
+
+    await expect(listRoleHolders(ADMIN)).resolves.toEqual({ complete: false });
   });
 });
 

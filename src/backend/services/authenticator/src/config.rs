@@ -237,7 +237,6 @@ pub struct AuthenticatorConfig {
     pub oidc_scopes: Vec<String>,
     pub default_return_to: String,
     pub return_to_prefix: String,
-    pub experiments_enabled: bool,
 
     pub csrf_origins: Vec<String>,
     pub janitor_interval_seconds: u64,
@@ -318,7 +317,6 @@ impl Default for AuthenticatorConfig {
             ],
             default_return_to: "/".to_owned(),
             return_to_prefix: String::new(),
-            experiments_enabled: false,
             csrf_origins: Vec::new(),
             janitor_interval_seconds: 30,
             rate_limit: RateLimitConfig::default(),
@@ -535,7 +533,7 @@ mod tests {
 
     #[test]
     fn return_to_prefix_must_be_site_relative_and_boundaried() {
-        for ok in ["", "/exp/"] {
+        for ok in ["", "/app/"] {
             let cfg = AuthenticatorConfig {
                 return_to_prefix: ok.to_owned(),
                 ..valid_config()
@@ -543,7 +541,7 @@ mod tests {
             assert!(cfg.validate().is_ok(), "should accept prefix {ok:?}");
         }
 
-        for bad in ["/exp", "exp/", "//evil/", "https://evil/"] {
+        for bad in ["/app", "app/", "//evil/", "https://evil/"] {
             let cfg = AuthenticatorConfig {
                 return_to_prefix: bad.to_owned(),
                 ..valid_config()

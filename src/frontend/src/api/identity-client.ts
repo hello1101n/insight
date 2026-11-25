@@ -237,6 +237,18 @@ export interface WireAccountRef {
   id: string;
 }
 
+export function toWireAccountRef(account: {
+  source: string;
+  source_id: string;
+  account_id: string;
+}): WireAccountRef {
+  return {
+    source: account.source,
+    source_id: account.source_id,
+    id: account.account_id,
+  };
+}
+
 export interface CorrectionItemResult {
   source: string;
   source_id: string;
@@ -610,10 +622,9 @@ export async function listPersonRoles(
 
 export const ROLE_HOLDERS_MAX = 500;
 
-export interface RoleHolders {
-  personIds: ReadonlySet<string>;
-  complete: boolean;
-}
+export type RoleHolders =
+  | { complete: true; personIds: ReadonlySet<string> }
+  | { complete: false };
 
 export async function listRoleHolders(
   roleId: string,
@@ -642,12 +653,13 @@ export async function listRoleHolders(
     });
   }
   const assignments = held.items as PersonRole[];
+  if (assignments.length >= ROLE_HOLDERS_MAX) return { complete: false };
 
   return {
+    complete: true,
     personIds: new Set(
       assignments.map((role) => normalizePersonId(role.person_id))
     ),
-    complete: assignments.length < ROLE_HOLDERS_MAX,
   };
 }
 

@@ -39,7 +39,6 @@ export const MANAGE_SURFACES: SlugTable = [
   ["access", "access"],
   ["groups", "group-mgmt"],
   ["ingestion", "ingestion"],
-  ["previews", "previews"],
   ["assistant", "ai-assistant"],
   ["news", "whats-new"],
   ["usage", "platform-usage"],

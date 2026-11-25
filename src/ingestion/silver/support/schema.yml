@@ -1,47 +1,409 @@
 version: 2
-
 models:
-  - name: class_support_activity
-    description: >
-      Unified daily support activity per person across all support vendors
-      (Zendesk today). Grain: person_key × date. Sits next to
-      class_collab_*_activity for cross-system comparison.
-
-      Aggregation guidance for Gold:
-        • Activity counts (updates, public_comments, private_comments, solved)
-          are actor-attributed and independent — sum freely. For Zendesk these
-          are live: the support_ticket_events (Ticket Audits) stream is shipped
-          and feeds zendesk__support_event / zendesk__support_activity. They
-          remain honest NULL only for vendors whose Ticket Audits stream is not
-          yet wired.
-        • csat_good / csat_total are assignee-attributed QUALITY signals, not
-          activity — surface as a ratio (Σgood/Σtotal), never added to counts.
+  - name: class_support_ticket_field_history
+    description: 'Ticket history: one row per field an update set, plus availability events (DESIGN.md §5).'
     columns:
       - name: unique_key
-        tests: [unique, not_null]
-      - name: person_key
-        description: lower(email).
-        tests: [not_null]
-      - name: data_source
+        description: '`{tenant}-{source}-{native key}`'
         tests:
-          - accepted_values: { values: ['zendesk'] }
-
-  - name: dim_support_agent
-    description: Cross-vendor support-agent dimension (agent → person via lower(email)).
+          - not_null
+          - unique
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: event_id
+        description: Update id; shared by every field one update set
+        tests:
+          - not_null
+      - name: event_kind
+        description: How the row arose
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - initial
+                  - change
+                  - availability
+      - name: field_id
+        description: '`status`, `priority`, `group_id`, `assignee_id`, `tags`, a custom field id, or `availability`'
+        tests:
+          - not_null
+      - name: field_cardinality
+        description: '`single`, or `multi` for tags and multi-select fields'
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - single
+                  - multi
+      - name: value
+        description: New value as JSON; the whole set for a multi-value field
+      - name: previous_value
+        description: Value before the event as JSON; NULL where the vendor gives none
+      - name: event_at
+        description: Update time
+        tests:
+          - not_null
+      - name: event_order
+        description: 'Total order within a ticket: time, update id, child event'
+        tests:
+          - not_null
+      - name: actor_id
+        description: Author of the update; -1 is Zendesk itself
+      - name: actor_kind
+        description: Author kind
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - agent
+                  - end_user
+                  - system
+      - name: channel
+        description: '`via` of the update'
+  - name: class_support_tickets
+    description: Tickets, current state.
     columns:
       - name: unique_key
-        tests: [unique, not_null]
-      - name: person_key
-        tests: [not_null]
-      - name: data_source
+        description: '`{tenant}-{source}-{native key}`'
         tests:
-          - accepted_values: { values: ['zendesk'] }
-
-  - name: dim_support_ticket
-    description: Cross-vendor ticket dimension (context only — not for attribution).
+          - not_null
+          - unique
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: support_type
+        description: '`agent` or `ai_agent`'
+      - name: status_raw
+        description: Vendor status
+      - name: status
+        description: Canonical status
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - new
+                  - open
+                  - pending
+                  - on_hold
+                  - solved
+                  - closed
+      - name: requester_id
+        description: External requester; never resolved to a person
+      - name: assignee_id
+        description: Agent owning the ticket now
+      - name: availability
+        description: Whether the ticket still stands on its own
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - present
+                  - merged
+                  - deleted
+      - name: merged_into_id
+        description: Target of the merge that closed this ticket
+      - name: custom_attrs
+        description: Custom field id → value, as a JSON object
+  - name: class_support_interactions
+    description: 'One comment on a ticket: a reply to the customer or an internal note.'
     columns:
       - name: unique_key
-        tests: [unique, not_null]
-      - name: data_source
+        description: '`{tenant}-{source}-{native key}`'
         tests:
-          - accepted_values: { values: ['zendesk'] }
+          - not_null
+          - unique
+      - name: interaction_id
+        description: Comment id
+        tests:
+          - not_null
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: author_kind
+        description: Writer kind
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - agent
+                  - end_user
+                  - system
+      - name: is_public
+        description: 1 for a reply the customer sees, 0 for an internal note
+        tests:
+          - not_null
+      - name: occurred_at
+        description: Time
+        tests:
+          - not_null
+  - name: class_support_sla_events
+    description: SLA metric lifecycle per ticket.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: metric
+        description: Canonical SLA metric
+        tests:
+          - not_null
+      - name: instance_id
+        description: Repeat number of the metric on the ticket
+      - name: event_type
+        description: '`apply`, `activate`, `pause`, `fulfill`, `breach`, `measure`, `update_status`'
+        tests:
+          - not_null
+      - name: is_cancelled
+        description: 'The vendor''s `deleted` flag: an event later withdrawn'
+      - name: target_minutes
+        description: Target in force; on `apply` only
+      - name: policy_id
+        description: Applied policy; on `apply` only
+      - name: occurred_at
+        description: Time; a breach is stamped when the target runs out
+        tests:
+          - not_null
+  - name: class_support_sla_policies
+    description: SLA targets per policy, metric and priority.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: policy_id
+        description: Policy
+        tests:
+          - not_null
+      - name: metric
+        description: Canonical SLA metric
+        tests:
+          - not_null
+      - name: priority
+        description: Ticket priority the target applies to
+        tests:
+          - not_null
+      - name: target_minutes
+        description: Target
+        tests:
+          - not_null
+  - name: class_support_satisfaction
+    description: Customer ratings from both CSAT generations, one score vocabulary.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: rating_id
+        description: Native id of the rating or survey response
+        tests:
+          - not_null
+      - name: survey_kind
+        description: CSAT generation
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - legacy
+                  - survey
+      - name: ticket_id
+        description: Rated ticket
+      - name: score
+        description: Canonical score
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - good
+                  - neutral
+                  - bad
+                  - offered
+      - name: assignee_id
+        description: Owner when rated; for a survey response, folded from the ticket's history
+      - name: rated_at
+        description: Time
+        tests:
+          - not_null
+  - name: class_support_agents
+    description: Zendesk users with an agent or admin role.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: agent_id
+        description: Native user id
+        tests:
+          - not_null
+      - name: email
+        description: Lowercased email; the identity key
+  - name: class_support_groups
+    description: Agent groups.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: group_id
+        description: Native group id
+        tests:
+          - not_null
+  - name: class_support_group_memberships
+    description: Agent membership in groups, as intervals.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: agent_id
+        description: Native user id
+        tests:
+          - not_null
+      - name: group_id
+        description: Native group id
+        tests:
+          - not_null
+      - name: valid_from
+        description: Membership creation
+  - name: class_support_customers
+    description: Requesters and organizations; never resolved to a person.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: Native id
+        tests:
+          - not_null
+      - name: kind
+        description: '`user` or `organization`'
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - user
+                  - organization
+  - name: class_support_field_definitions
+    description: Ticket field definitions.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: field_id
+        description: Native field id
+        tests:
+          - not_null
+      - name: type
+        description: Vendor field type
+        tests:
+          - not_null
+      - name: field_cardinality
+        description: '`single` or `multi`'
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - single
+                  - multi
+  - name: class_support_schedules
+    description: Business-hours schedules.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: schedule_id
+        description: Native schedule id
+        tests:
+          - not_null
+      - name: time_zone
+        description: Time zone of the intervals
+  - name: class_support_kb_articles
+    description: Knowledge-base article events.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{native key}`'
+        tests:
+          - not_null
+          - unique
+      - name: article_id
+        description: Native article id
+        tests:
+          - not_null
+      - name: event_type
+        description: Event
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - created
+                  - updated
+      - name: occurred_at
+        description: Time
+        tests:
+          - not_null
+  - name: class_support_ticket_issue_links
+    description: Links from a ticket to a tracker issue, one row per ticket, issue and way the link was found.
+    columns:
+      - name: unique_key
+        description: '`{tenant}-{source}-{tracker}-{found_by}-{ticket}-{issue}`'
+        tests:
+          - not_null
+          - unique
+      - name: ticket_id
+        description: Native ticket id
+        tests:
+          - not_null
+      - name: tracker
+        description: Tracker of the issue
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - jira
+      - name: issue_id
+        description: Immutable issue id in the tracker; the join key to task tracking
+        tests:
+          - not_null
+      - name: issue_key
+        description: Issue key as the integration last reported it; display only, it changes when the issue moves
+      - name: found_by
+        description: Where the link came from
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - integration
+                  - integration_v2
+      - name: linked_at
+        description: Link creation; NULL for the Jira integration V2, which reports no time
+      - name: last_seen_at
+        description: Last sync that listed the link; older than the latest sync means Zendesk removed it
+        tests:
+          - not_null

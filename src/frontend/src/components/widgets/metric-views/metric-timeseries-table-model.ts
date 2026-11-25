@@ -5,6 +5,10 @@ import type {
 } from "@/lib/metrics/timeseries-table";
 import type { MetricTimeseriesModel } from "@/components/widgets/metric-views/metric-timeseries-model";
 
+export const EDGE_SLACK_PX = 1;
+
+export const GUTTER_PX = 48;
+
 type MetricTimeseriesTablePart =
   | {
       kind: "metric";
@@ -89,4 +93,14 @@ export function resolveMetricTimeseriesTableColumns(
   });
 
   return columns.length > 0 ? columns : defaultColumns(model.metrics);
+}
+
+export function gutterState(
+  wrapperWidth: number,
+  naturalWidth: number,
+  scrollsDown: boolean
+): { start: boolean; end: boolean } {
+  const roomAcross = wrapperWidth - (scrollsDown ? GUTTER_PX : 0);
+  const scrollsAcross = naturalWidth > roomAcross + EDGE_SLACK_PX;
+  return { start: scrollsAcross, end: scrollsAcross || scrollsDown };
 }

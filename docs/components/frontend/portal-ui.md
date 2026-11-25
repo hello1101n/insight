@@ -154,7 +154,7 @@ As the services allow: create / rename / delete folders; put a dashboard in fold
 
 - **Data**: Connectors, Data exclusions, Org snapshots.
 - **People & access**: Identities · roles & taxonomy, Access, Group management.
-- **Platform**: Ingestion, Previews, AI assistant config, What's new, Platform usage, MCP servers, Config & setup, Scorecard management.
+- **Platform**: Ingestion, AI assistant config, What's new, Platform usage, MCP servers, Config & setup, Scorecard management.
 - Items shown only to people who may use them.
 - Connectors: per connector: state, last sync, records reported, recent syncs. Never read ≠ read with nothing recorded.
 - Ingestion: row arrival rate, overall and per connector.

@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { AnalyticsApiError } from "@/api/analytics-client";
 import {
   queryMetricDrilldown,
   type MetricEvidenceSelection,
 } from "@/api/metric-drilldown-client";
 import { sessionAuthorizationScope } from "@/auth/session-scope";
 import { useAuth } from "@/auth/use-auth";
+import { retryServerFailureOnce } from "@/queries/retry-server-failure-once";
 
 export const DETAIL_LIMIT = 200;
 
@@ -26,8 +26,6 @@ export function useMetricDetail(
       );
     },
     enabled: enabled && sessionScope != null && selection != null,
-    retry: (failureCount, error) =>
-      failureCount < 1 &&
-      (!(error instanceof AnalyticsApiError) || error.status >= 500),
+    retry: retryServerFailureOnce,
   });
 }

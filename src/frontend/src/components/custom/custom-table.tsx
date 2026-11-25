@@ -3,7 +3,11 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 
 import type { MetricResult } from "@/api/custom-client";
 import { groupedNumber, unitFor } from "@/components/custom/chart-format";
-import { nextOrder, ordered, type RowOrder } from "@/lib/custom/row-order";
+import {
+  nextOrder,
+  orderedThenCapped,
+  type RowOrder,
+} from "@/lib/custom/row-order";
 import { TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 import {
@@ -90,7 +94,7 @@ function Sortable({
 
 export function CustomTable({ result }: CustomTableProps) {
   const [order, setOrder] = useState<RowOrder | undefined>(undefined);
-  const rows = ordered(result.rows, order).slice(0, SHOWN);
+  const rows = orderedThenCapped(result.rows, order, SHOWN);
 
   return (
     <>

@@ -39,9 +39,8 @@ import {
   TruncatedCell,
   VirtualTable,
 } from "@/components/portal/usage-table";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useSearchNeedle } from "@/hooks/use-search-needle";
 import { useUsageOrder } from "@/hooks/use-usage-order";
-import { SEARCH_DEBOUNCE_MS } from "@/queries/identity-resolution";
 import {
   useUsageActions,
   useUsagePages,
@@ -66,6 +65,14 @@ function utcToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function slideToUtcToday(
+  resolved: { from: string; to: string },
+  today: string
+): UsageRange {
+  const shift = daysBetween(resolved.to, today);
+  return { since: addDays(resolved.from, shift), until: addDays(resolved.to, shift) };
+}
+
 function fillRange(days: UsageDay[], range: UsageRange): UsageDay[] {
   if (!range.since || !range.until) return days;
   const counted = new Map(days.map((d) => [d.day, d]));
@@ -86,8 +93,7 @@ export function PlatformUsage() {
   const range = useMemo(() => {
     const resolved = resolveDateRange(period, customRange);
     if (customRange) return { since: resolved.from, until: resolved.to };
-    const shift = daysBetween(resolved.to, utcToday());
-    return { since: addDays(resolved.from, shift), until: addDays(resolved.to, shift) };
+    return slideToUtcToday(resolved, utcToday());
   }, [period, customRange]);
   const plottedRange = useMemo(() => ({ from: range.since, to: range.until }), [range]);
   const choosePeriod = (next: PeriodValue) => {
@@ -255,9 +261,7 @@ function VisitorSearch({
 function PeopleTable({ range }: { range: UsageRange }) {
   const order = useUsageOrder<UsagePeopleSort>("visits");
   const [typed, setTyped] = useState("");
-  const trimmed = typed.trim();
-  const debounced = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
-  const search = trimmed === "" ? "" : debounced;
+  const search = useSearchNeedle(typed);
   const people = useUsagePeople(range, order.chosen, search);
 
   return (

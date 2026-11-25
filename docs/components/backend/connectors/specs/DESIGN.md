@@ -69,7 +69,7 @@ database. Version 1 keeps the parts of that work that were sound and changes whe
 | D4 the minimal service plus changing schedules | exactly that |
 | D5–D7 reconcile and history move into the service | re-scoped by the product owner to Phase 2 |
 | D8 everything connector-related that exists today moves | the health, syncs and intensity routes move first, unchanged |
-| D9 Rust on Gears; D10 the name `connectors` | a Gears host like analytics and previews |
+| D9 Rust on Gears; D10 the name `connectors` | a Gears host like analytics |
 | Save outcome | a save confirms the target, restores after a client refusal or a successfully fenced unchanged job, or keeps an unconfirmed request with an explicit status |
 
 ### 1.2 Goals, Non-Goals and Anti-Goals

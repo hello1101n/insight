@@ -61,7 +61,7 @@ interface CardFrameProps {
   open: LinkOptions;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   facts: ReactNode[];
-  squeezed?: number;
+  truncatedFactIndex?: number;
   updatedAt?: string;
   menu: ReactNode;
   control?: ReactNode;
@@ -72,7 +72,7 @@ export function CardFrame({
   open,
   icon: Icon,
   facts,
-  squeezed = 0,
+  truncatedFactIndex = 0,
   updatedAt,
   menu,
   control,
@@ -107,7 +107,7 @@ export function CardFrame({
                 key={index}
                 className={cn(
                   "not-first:before:me-1.5 not-first:before:content-['·']",
-                  index === squeezed ? "min-w-0 truncate" : "shrink-0"
+                  index === truncatedFactIndex ? "min-w-0 truncate" : "shrink-0"
                 )}
               >
                 {part}
