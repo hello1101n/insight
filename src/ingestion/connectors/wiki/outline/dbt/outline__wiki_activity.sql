@@ -44,7 +44,7 @@
 
 WITH revisions AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         page_id,
         nullIf(author_id, '')                                                 AS author_id,
@@ -131,7 +131,7 @@ agg AS (
 
 users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         user_id,
         lower(trim(email))                                                  AS email
@@ -144,7 +144,7 @@ SELECT
     a.insight_tenant_id                                                             AS insight_tenant_id,
     a.source_id                                                             AS source_id,
     CAST(concat(
-        coalesce(a.insight_tenant_id, ''), '-',
+        a.insight_tenant_id, '-',
         coalesce(a.source_id, ''), '-',
         a.author_id, '-',
         toString(a.day)

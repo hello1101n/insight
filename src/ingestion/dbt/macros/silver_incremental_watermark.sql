@@ -30,14 +30,17 @@
 {% macro silver_incremental_watermark(source_keys, alias='candidate', always_reread=none) %}
 {%- if is_incremental() %}
 LEFT JOIN (
+    {#- INVARIANT: grouped by the NULL-safe key the join compares, so a NULL and an
+        '' key share one watermark row and a candidate never matches two. #}
     SELECT
-        {{ source_keys | join(',\n        ') }},
-        max(_version) AS max_version
+        {% for key in source_keys %}ifNull(toString({{ key }}), '') AS _watermark_key_{{ loop.index }},
+        {% endfor %}max(_version) AS max_version
     FROM {{ this }}
     GROUP BY
-        {{ source_keys | join(',\n        ') }}
+        {% for key in source_keys %}_watermark_key_{{ loop.index }}{{ ',' if not loop.last }}
+        {% endfor %}
 ) AS watermarks
-    ON {% for key in source_keys %}{% if not loop.first %}   AND {% endif %}ifNull(toString({{ alias }}.{{ key }}), '') = ifNull(toString(watermarks.{{ key }}), '')
+    ON {% for key in source_keys %}{% if not loop.first %}   AND {% endif %}ifNull(toString({{ alias }}.{{ key }}), '') = watermarks._watermark_key_{{ loop.index }}
     {% endfor %}
 WHERE {% if always_reread %}({{ always_reread }})
    OR {% endif %}{{ alias }}._version > coalesce(watermarks.max_version, 0)

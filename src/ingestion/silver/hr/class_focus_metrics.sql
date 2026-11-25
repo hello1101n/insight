@@ -10,11 +10,11 @@
 ) }}
 
 SELECT
-    ma.insight_tenant_id                                                    AS insight_tenant_id,
+    ifNull(ma.insight_tenant_id, '')                                        AS insight_tenant_id,
     ma.person_key                                                   AS email,
     ma.date                                                         AS day,
     concat(
-        ma.insight_tenant_id, '-',
+        ifNull(ma.insight_tenant_id, ''), '-',
         ma.person_key, '-',
         toString(ma.date)
     )                                                               AS unique_key,
