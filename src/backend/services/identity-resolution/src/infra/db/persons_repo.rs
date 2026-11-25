@@ -7,6 +7,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use super::entities::persons;
+use super::sql_named::bind_named;
 use crate::domain::person_card::{self, CARD_VALUE_TYPES, PersonCard};
 use crate::domain::profile::SAFE_PROFILE_ATTRIBUTE_TYPES;
 use crate::domain::provenance::UNCONFIRMED_MINT_REASONS;
@@ -125,9 +126,9 @@ pub async fn resolve_person_ids_by_roster_email(
             SELECT DISTINCT insight_source_id, person_id
             FROM persons
             WHERE value_type = 'email'
-              AND insight_tenant_id = ?
-              AND insight_source_type = ?
-              AND value_id = ?
+              AND insight_tenant_id = @tenant_id
+              AND insight_source_type = @source_type
+              AND value_id = @email
         ),
         current_address AS (
             SELECT
@@ -144,8 +145,8 @@ pub async fn resolve_person_ids_by_roster_email(
               ON a.insight_source_id = p.insight_source_id
              AND a.person_id = p.person_id
             WHERE p.value_type = 'email'
-              AND p.insight_tenant_id = ?
-              AND p.insight_source_type = ?
+              AND p.insight_tenant_id = @tenant_id
+              AND p.insight_source_type = @source_type
         ),
         bindings AS (
             SELECT
@@ -156,14 +157,14 @@ pub async fn resolve_person_ids_by_roster_email(
                 ) AS rn
             FROM persons
             WHERE value_type = 'id'
-              AND insight_tenant_id = ?
-              AND insight_source_type = ?
+              AND insight_tenant_id = @tenant_id
+              AND insight_source_type = @source_type
         )
         SELECT c.person_id
         FROM current_address c
         WHERE c.rn = 1
-          AND c.value_id = ?
-          AND c.person_id != ?
+          AND c.value_id = @email
+          AND c.person_id != @excluded_person
           AND EXISTS (
               SELECT 1 FROM bindings b
               WHERE b.rn = 1 AND b.person_id = c.person_id
@@ -172,24 +173,19 @@ pub async fn resolve_person_ids_by_roster_email(
         ORDER BY MAX(c.created_at) DESC, MAX(c.id) DESC
     ";
 
-    let tenant_bytes = tenant_id.as_bytes().to_vec();
-    let source = roster_source_type.trim().to_owned();
-    let address = email.trim().to_owned();
-    let stmt = Statement::from_sql_and_values(
-        DbBackend::MySql,
+    let (sql, values) = bind_named(
         SQL,
-        [
-            tenant_bytes.clone().into(),
-            source.clone().into(),
-            address.clone().into(),
-            tenant_bytes.clone().into(),
-            source.clone().into(),
-            tenant_bytes.into(),
-            source.into(),
-            address.into(),
-            EXCLUDED_PERSON.as_bytes().to_vec().into(),
+        &[
+            ("tenant_id", tenant_id.as_bytes().to_vec().into()),
+            ("source_type", roster_source_type.trim().into()),
+            ("email", email.trim().into()),
+            (
+                "excluded_person",
+                EXCLUDED_PERSON.as_bytes().to_vec().into(),
+            ),
         ],
-    );
+    )?;
+    let stmt = Statement::from_sql_and_values(DbBackend::MySql, &sql, values);
 
     person_ids_from_rows(db.query_all_raw(stmt).await?)
 }
