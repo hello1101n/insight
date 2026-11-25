@@ -207,6 +207,7 @@ export interface DashboardWidget {
   body: Widget;
   clock?: EffectiveClock | null;
   percents?: string[];
+  units?: Partial<Record<string, DurationUnit>>;
 }
 
 export type GrantLevel = "viewer" | "editor";

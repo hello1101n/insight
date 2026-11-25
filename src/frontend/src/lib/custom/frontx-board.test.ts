@@ -526,12 +526,13 @@ function drawnData(
   body: Widget,
   percents: string[],
   answer: MetricResult,
-  range?: string
+  range?: string,
+  units?: DashboardWidget["units"]
 ) {
   const board = frontxBoard(
     "board",
     read([{ widget: "w" }]),
-    [{ ...widget("w", body), percents }],
+    [{ ...widget("w", body), percents, units }],
     range
   );
   const [cell] = dashboardOf(board).layout.cells;
@@ -858,6 +859,128 @@ describe("frontxBoard percent columns", () => {
       },
     });
   });
+});
+
+describe("frontxBoard duration columns", () => {
+  const LEAD: Widget = { type: "stat", metric: "m", value: "lead" };
+  const MINUTES = { value_type: "duration", unit: "min" } as const;
+
+  it("shows a duration stat in its unit, as the number it is", () => {
+    const { format, data } = drawnData(
+      LEAD,
+      [],
+      { columns: ["lead"], rows: [[52]] },
+      undefined,
+      { lead: "h" }
+    );
+
+    expect({ format, data }).toEqual({
+      format: { value_type: "duration", unit: "h" },
+      data: { value: 52 },
+    });
+    expect(formatValue(52, format, "en")).toBe("52 hr");
+  });
+
+  it.each<[string, Widget, MetricResult, unknown]>([
+    [
+      "line",
+      { type: "line", metric: "m", x: "bucket", y: "wait" },
+      { columns: ["bucket", "wait"], rows: [["2026-10-01", 50]] },
+      { series: [{ name: "wait", points: [{ x: "Oct 1", y: 50 }] }] },
+    ],
+    [
+      "bar with a series column",
+      { type: "bar", metric: "m", x: "team", y: "wait", series: "outcome" },
+      { columns: ["team", "outcome", "wait"], rows: [["Atlas", "ok", 25]] },
+      { series: [{ name: "ok", points: [{ x: "Atlas", y: 25 }] }] },
+    ],
+    [
+      "pie",
+      { type: "pie", metric: "m", label: "state", value: "wait" },
+      { columns: ["state", "wait"], rows: [["open", 75]] },
+      { slices: [{ label: "open", value: 75 }] },
+    ],
+    [
+      "heatmap",
+      { type: "heatmap", metric: "m", x: "team", y: "day", value: "wait" },
+      { columns: ["team", "day", "wait"], rows: [["Atlas", "Mon", 5]] },
+      { rows: [{ x: "Atlas", y: "Mon", value: 5 }] },
+    ],
+    [
+      "treemap",
+      { type: "treemap", metric: "m", label: "repo", value: "wait" },
+      { columns: ["repo", "wait"], rows: [["api", 9]] },
+      { items: [{ label: "api", value: 9, group: null }] },
+    ],
+  ])(
+    "formats a %s duration in its unit and keeps the number",
+    (kind, body, answer, data) => {
+      expect(
+        drawnData(body, [], answer, undefined, { wait: "min" }),
+        kind
+      ).toEqual({ format: MINUTES, data });
+    }
+  );
+
+  it("gives a duration table column its unit, and leaves the others", () => {
+    const table: Widget = {
+      type: "table",
+      metric: "m",
+      columns: ["team", "wait", "rate"],
+    };
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", table), percents: ["rate"], units: { wait: "s" } },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+
+    expect(cell.widget.render).toEqual({
+      columns: [
+        { key: "c0", title: "team", width: 76 },
+        {
+          key: "c1",
+          title: "wait",
+          width: 76,
+          value_format: { value_type: "duration", unit: "s" },
+        },
+        {
+          key: "c2",
+          title: "rate",
+          width: 76,
+          value_format: { value_type: "percent", decimals: 1 },
+        },
+      ],
+    });
+    expect(
+      drawnData(table, ["rate"], {
+        columns: ["team", "wait", "rate"],
+        rows: [["Atlas", 340, 12.5]],
+      }).data
+    ).toEqual({ rows: [["Atlas", 340, 0.125]], total_rows: 1 });
+  });
+
+  it.each<[string, DashboardWidget["units"], unknown]>([
+    ["every column in one unit", { a: "min", b: "min" }, MINUTES],
+    ["columns in two units", { a: "min", b: "h" }, undefined],
+    ["one column without a unit", { a: "min" }, undefined],
+  ])(
+    "shows a funnel and a scatter as durations only for %s",
+    (_, units, format) => {
+      const funnel: Widget = {
+        type: "funnel",
+        metric: "m",
+        stages: ["a", "b"],
+      };
+      const scatter: Widget = { type: "scatter", metric: "m", x: "a", y: "b" };
+      const answer = { columns: ["a", "b"], rows: [[1, 2]] };
+
+      for (const body of [funnel, scatter]) {
+        expect(
+          drawnData(body, [], answer, undefined, units).format,
+          body.type
+        ).toEqual(format);
+      }
+    }
+  );
 });
 
 describe("frontxBoard options", () => {

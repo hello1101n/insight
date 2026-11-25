@@ -71,11 +71,32 @@ const number = (row: string, at: string, percent = false, round = false) => {
   return `(${row}[${at}] == null ? dyn(null) : dyn(${round ? rounded(value) : value}${percent ? " / 100.0" : ""}))`;
 };
 
+type ValueFormat = NonNullable<WidgetInstance["value_format"]>;
+
+type FormatOf = (...columns: string[]) => ValueFormat | undefined;
+
 const PERCENT = { value_type: "percent" } as const;
 
 const PREVIOUS_PERIOD = "Previous period";
 
 const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
+
+const isPercent = (format: ValueFormat | undefined) =>
+  format?.value_type === "percent";
+
+const formatted = (format: ValueFormat | undefined) =>
+  format ? { value_format: format } : {};
+
+// INVARIANT: FrontX fixes a cell's format when it builds the board, so the format comes from the listed widget, not the run.
+function formatOf({ percents = [], units = {} }: DashboardWidget): FormatOf {
+  return (...columns) => {
+    if (columns.every((name) => percents.includes(name))) return PERCENT;
+
+    const unit = units[columns[0]];
+    if (!unit || columns.some((name) => units[name] !== unit)) return undefined;
+    return { value_type: "duration", unit };
+  };
+}
 
 // WORKAROUND: a FrontX grid column with no width takes 160 px, so a table of a few short columns scrolls sideways.
 // INVARIANT: the kit table header takes at most 7 px a letter, 32 px of padding and 16 px for the sort mark.
@@ -139,14 +160,14 @@ interface Note {
 function chart(
   x: string,
   y: string,
-  percent: boolean,
+  format: ValueFormat | undefined,
   render: Record<string, unknown>,
   series: (point: string, value: string) => string
 ): Drawn {
-  const point = `{'x': ${shortDate("r[x]")}, 'y': ${number("r", "y", percent)}}`;
+  const point = `{'x': ${shortDate("r[x]")}, 'y': ${number("r", "y", isPercent(format))}}`;
 
   return {
-    ...(percent ? { value_format: PERCENT } : {}),
+    ...formatted(format),
     type: "cartesian_chart",
     render: {
       ...render,
@@ -160,13 +181,13 @@ function chart(
 function oneSeries(
   widget: { x: string; y: string },
   kind: string,
-  percent: boolean,
+  format: ValueFormat | undefined,
   render: Record<string, unknown> = {}
 ): Drawn {
   return chart(
     widget.x,
     widget.y,
-    percent,
+    format,
     {
       ...render,
       series: [{ name: widget.y, type: kind }],
@@ -180,7 +201,7 @@ function oneSeries(
 // WORKAROUND: a FrontX series that the render does not name draws as bars, and only the data names a series value.
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
-  percent: boolean,
+  format: ValueFormat | undefined,
   render: Record<string, unknown> = {}
 ): Drawn {
   const values = `response.distinct[${cel(widget.series)}]`;
@@ -189,7 +210,7 @@ function seriesPerValue(
   return chart(
     widget.x,
     widget.y,
-    percent,
+    format,
     {
       ...render,
       legend_position: "bottom",
@@ -233,40 +254,42 @@ function treemapName(value: string, most: number, blank: string): string {
 
 function heatmap(
   widget: Widget & { type: "heatmap" },
-  percent: boolean,
+  format: ValueFormat | undefined,
   daily: boolean
 ): Drawn {
-  const format = percent ? { value_format: PERCENT } : {};
-  const value = number("r", "v", percent);
+  const value = number("r", "v", isPercent(format));
 
   if (widget.y !== undefined) {
     return {
-      ...format,
+      ...formatted(format),
       type: "heatmap",
       render: {},
       transform: `cel.bind(x, ${column(widget.x)}, cel.bind(w, ${spansYears}, cel.bind(y, ${column(widget.y)}, cel.bind(v, ${column(widget.value)}, {'rows': response.rows.map(r, {'x': ${shortDate("r[x]")}, 'y': r[y], 'value': ${value}})}))))`,
     };
   }
   if (!daily) {
-    return oneSeries({ x: widget.x, y: widget.value }, "bar", percent, {
+    return oneSeries({ x: widget.x, y: widget.value }, "bar", format, {
       value_labels: "never",
     });
   }
 
   return {
-    ...format,
+    ...formatted(format),
     type: "heatmap",
     render: { mode: "calendar" },
     transform: `cel.bind(x, ${column(widget.x)}, cel.bind(v, ${column(widget.value)}, {'rows': response.rows.filter(r, ${isDate("r[x]")}).map(r, {'x': r[x].substring(0, 10), 'value': ${value}})}))`,
   };
 }
 
-function funnel(stages: readonly string[], percent: boolean): Drawn {
+function funnel(
+  stages: readonly string[],
+  format: ValueFormat | undefined
+): Drawn {
   const stage = (name: string) =>
-    `{'label': ${cel(name.length > FUNNEL_LABEL ? `${name.slice(0, FUNNEL_LABEL - 1)}…` : name)}, 'value': size(response.rows) == 0 ? dyn(null) : cel.bind(v, ${column(name)}, ${number("response.rows[0]", "v", percent)})}`;
+    `{'label': ${cel(name.length > FUNNEL_LABEL ? `${name.slice(0, FUNNEL_LABEL - 1)}…` : name)}, 'value': size(response.rows) == 0 ? dyn(null) : cel.bind(v, ${column(name)}, ${number("response.rows[0]", "v", isPercent(format))})}`;
 
   return {
-    ...(percent ? { value_format: PERCENT } : {}),
+    ...formatted(format),
     type: "funnel_chart",
     render: {},
     transform: `{'stages': [${stages.map(stage).join(", ")}]}`,
@@ -275,17 +298,17 @@ function funnel(stages: readonly string[], percent: boolean): Drawn {
 
 function treemap(
   widget: Widget & { type: "treemap" },
-  percent: boolean
+  format: ValueFormat | undefined
 ): Drawn {
   const group =
     widget.group === undefined
       ? "null"
       : `cel.bind(g, ${column(widget.group)}, ${treemapName("r[g]", TREEMAP_GROUP, "dyn(null)")})`;
-  const item = `{'label': ${treemapName("r[l]", TREEMAP_LABEL, cel(NO_NAME))}, 'value': ${number("r", "v", percent)}, 'group': ${group}}`;
+  const item = `{'label': ${treemapName("r[l]", TREEMAP_LABEL, cel(NO_NAME))}, 'value': ${number("r", "v", isPercent(format))}, 'group': ${group}}`;
   const empty = `[{'label': ${cel(NO_NAME)}, 'value': null, 'group': null}]`;
 
   return {
-    ...(percent ? { value_format: PERCENT } : {}),
+    ...formatted(format),
     type: "treemap_chart",
     render: {},
     transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, cel.bind(items, response.shownRows.map(r, ${item}), {'items': size(items) == 0 ? ${empty} : items})))`,
@@ -295,13 +318,13 @@ function treemap(
 // INVARIANT: no chart sets drill_down; a scatter names no point, since FrontX scatter data has no label.
 function scatter(
   widget: Widget & { type: "scatter" },
-  percent: (name: string) => boolean
+  format: ValueFormat | undefined
 ): Drawn | Note {
   if (widget.series !== undefined) return { note: NEEDS_PLANNED_OFF };
 
-  const both = percent(widget.x) && percent(widget.y);
+  const percent = isPercent(format);
   const coordinate = (name: string) =>
-    `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${both ? " / 100.0" : ""}))`;
+    `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${percent ? " / 100.0" : ""}))`;
   const size =
     widget.size === undefined
       ? ""
@@ -313,7 +336,7 @@ function scatter(
       : `cel.bind(s, ${column(widget.size)}, ${body})`;
 
   return {
-    ...(both ? { value_format: PERCENT } : {}),
+    ...formatted(format),
     type: "cartesian_chart",
     render: {
       series: [{ name: widget.y, type: "scatter" }],
@@ -326,15 +349,13 @@ function scatter(
   };
 }
 
-function drawn(
-  widget: Widget,
-  percents: readonly string[],
-  daily: boolean
-): Drawn | Note {
-  const percent = (name: string) => percents.includes(name);
-
+function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
   switch (widget.type) {
-    case "table":
+    case "table": {
+      const formats = widget.columns.map((name) => {
+        const shown = format(name);
+        return isPercent(shown) ? PERCENT_COLUMN : shown;
+      });
       return {
         type: "grid",
         render: {
@@ -342,52 +363,52 @@ function drawn(
             key: `c${index}`,
             title: name,
             width: columnWidth(name),
-            ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
+            ...formatted(formats[index]),
           })),
         },
-        transform: `{'rows': response.shownRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
+        transform: `{'rows': response.shownRows.map(r, [${widget.columns.map((name, index) => (isPercent(formats[index]) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
       };
+    }
     case "line":
     case "area": {
-      const lines = targetLines(widget.target, percent(widget.y));
+      const shown = format(widget.y);
+      const lines = targetLines(widget.target, isPercent(shown));
       if (!widget.series) {
-        return oneSeries(widget, widget.type, percent(widget.y), lines);
+        return oneSeries(widget, widget.type, shown, lines);
       }
       // INVARIANT: lines by series as bars side by side do not read as lines, and stacked bars keep an area's stack.
       if (widget.type === "line") return { note: NEEDS_PLANNED_OFF };
-      return seriesPerValue(
-        { ...widget, series: widget.series },
-        percent(widget.y),
-        lines
-      );
+      return seriesPerValue({ ...widget, series: widget.series }, shown, lines);
     }
     case "bar": {
+      const shown = format(widget.y);
       const share = widget.series !== undefined && widget.stack === "percent";
       const render = {
         ...(widget.horizontal ? { orientation: "horizontal" } : {}),
         ...(share ? { stack_mode: "percent" } : {}),
-        ...targetLines(widget.target, percent(widget.y) || share),
+        ...targetLines(widget.target, isPercent(shown) || share),
       };
       if (widget.series) {
         return seriesPerValue(
           { ...widget, series: widget.series },
-          percent(widget.y),
+          shown,
           render
         );
       }
-      return oneSeries(widget, "bar", percent(widget.y), {
+      return oneSeries(widget, "bar", shown, {
         ...render,
         value_labels: widget.labels ? "always" : "never",
       });
     }
     case "stat": {
-      const shown = percent(widget.value);
+      const shown = format(widget.value);
+      const percent = isPercent(shown);
       const reference = widget.compare
-        ? `, 'reference_value': ${previousFigure(widget.value, shown)}`
+        ? `, 'reference_value': ${previousFigure(widget.value, percent)}`
         : "";
       return {
         type: "metric_card",
-        ...(shown ? { value_format: PERCENT } : {}),
+        ...formatted(shown),
         render: {
           value_label: widget.label ?? widget.value,
           ...(widget.compare
@@ -397,27 +418,29 @@ function drawn(
               }
             : {}),
         },
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", shown, true)}${reference}}))`,
+        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent, true)}${reference}}))`,
       };
     }
-    case "pie":
+    case "pie": {
+      const shown = format(widget.value);
       return {
         type: "pie_chart",
-        ...(percent(widget.value) ? { value_format: PERCENT } : {}),
+        ...formatted(shown),
         render: {
           radius: ["80%"],
           legend_position: "bottom",
         },
-        transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
+        transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", isPercent(shown))}})}))`,
       };
+    }
     case "heatmap":
-      return heatmap(widget, percent(widget.value), daily);
+      return heatmap(widget, format(widget.value), daily);
     case "funnel":
-      return funnel(widget.stages, widget.stages.every(percent));
+      return funnel(widget.stages, format(...widget.stages));
     case "treemap":
-      return treemap(widget, percent(widget.value));
+      return treemap(widget, format(widget.value));
     case "scatter":
-      return scatter(widget, percent);
+      return scatter(widget, format(widget.x, widget.y));
     default:
       return { note: UNKNOWN };
   }
@@ -570,7 +593,7 @@ export function frontxBoard(
     const widget = byId.get(item.widget);
     if (!widget) return [noteCell(id, key, GONE)];
 
-    const shape = drawn(widget.body, widget.percents ?? [], daily);
+    const shape = drawn(widget.body, formatOf(widget), daily);
     if ("note" in shape) {
       return [noteCell(id, key, shape.note, widget.body.title ?? widget.name)];
     }

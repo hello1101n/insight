@@ -99,7 +99,7 @@ const MISNAMED = new Set(["edge-missing-column"]);
 
 describe("example dashboard mocks", () => {
   it.each(Object.keys(EXAMPLE_DASHBOARDS))(
-    "%s runs every widget it draws with the columns and percents the widget names",
+    "%s runs every widget it draws with the columns, percents and units the widget names",
     async (board) => {
       const listed = (await (
         await call(`/dashboards/${board}/widgets`)
@@ -118,12 +118,14 @@ describe("example dashboard mocks", () => {
         const answer = (await ran.json()) as {
           columns: string[];
           percents?: string[];
+          units?: DashboardWidget["units"];
         };
         const missing = drawnColumns(widget.body).filter(
           (name) => !answer.columns.includes(name)
         );
         expect(missing.length > 0, widget.id).toBe(MISNAMED.has(widget.id));
         expect(answer.percents, widget.id).toEqual(widget.percents);
+        expect(answer.units, widget.id).toEqual(widget.units);
       }
     }
   );

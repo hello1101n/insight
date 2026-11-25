@@ -452,10 +452,11 @@ export const dashboardHandlers = [
       if ("status" in answer) {
         return HttpResponse.json(answer.body, { status: answer.status });
       }
-      const percents = widgets[widget]?.percents;
+      const { percents, units } = widgets[widget];
       return HttpResponse.json({
         ...answer.result,
         ...(percents ? { percents } : {}),
+        ...(units ? { units } : {}),
       });
     }
   ),

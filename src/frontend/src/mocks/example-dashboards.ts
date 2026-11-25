@@ -430,13 +430,18 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     },
     { clock, percents: ["rate"] }
   ),
-  widget("ct-lead-time", "Lead time", {
-    type: "stat",
-    metric: "ct",
-    value: "lead_hours",
-    label: "median, commit to deploy",
-    compare: { better: "lower" },
-  }),
+  widget(
+    "ct-lead-time",
+    "Lead time",
+    {
+      type: "stat",
+      metric: "ct",
+      value: "lead_hours",
+      label: "median, commit to deploy",
+      compare: { better: "lower" },
+    },
+    { clock, units: { lead_hours: "h" } }
+  ),
   widget("ct-reviews", "Reviews", {
     type: "stat",
     metric: "ct",
@@ -487,14 +492,19 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     y: "open",
     target: { value: 25 },
   }),
-  widget("ct-review-wait", "Review wait by team", {
-    type: "bar",
-    metric: "ct",
-    x: "team",
-    y: "wait_hours",
-    horizontal: true,
-    target: { value: 24, label: "SLA" },
-  }),
+  widget(
+    "ct-review-wait",
+    "Review wait by team",
+    {
+      type: "bar",
+      metric: "ct",
+      x: "team",
+      y: "wait_hours",
+      horizontal: true,
+      target: { value: 24, label: "SLA" },
+    },
+    { clock, units: { wait_hours: "h" } }
+  ),
   widget("ct-deploys-by-team", "Deploys per day by team", {
     type: "line",
     metric: "ct",
@@ -541,34 +551,48 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     label: "service",
     value: "deploys",
   }),
-  widget("mt-pr-size", "Pull request size and review time", {
-    type: "scatter",
-    metric: "mt",
-    x: "lines_changed",
-    y: "review_hours",
-    size: "comments",
-    label: "pull_request",
-  }),
-  widget("mt-pr-size-by-team", "Pull request size and review time by team", {
-    type: "scatter",
-    metric: "mt",
-    x: "lines_changed",
-    y: "review_hours",
-    series: "team",
-    label: "pull_request",
-  }),
-  widget("mt-stage-timings", "Stage timings", {
-    type: "table",
-    metric: "mt",
-    columns: ["stage", "p50", "p95", "queued", "runs"],
-  }),
-  widget("mt-lead-by-team", "Lead time by team", {
-    type: "bar",
-    metric: "mt",
-    x: "team",
-    y: "lead_hours",
-    labels: true,
-  }),
+  widget(
+    "mt-pr-size",
+    "Pull request size and review time",
+    {
+      type: "scatter",
+      metric: "mt",
+      x: "lines_changed",
+      y: "review_hours",
+      size: "comments",
+      label: "pull_request",
+    },
+    { clock, units: { review_hours: "h" } }
+  ),
+  widget(
+    "mt-pr-size-by-team",
+    "Pull request size and review time by team",
+    {
+      type: "scatter",
+      metric: "mt",
+      x: "lines_changed",
+      y: "review_hours",
+      series: "team",
+      label: "pull_request",
+    },
+    { clock, units: { review_hours: "h" } }
+  ),
+  widget(
+    "mt-stage-timings",
+    "Stage timings",
+    {
+      type: "table",
+      metric: "mt",
+      columns: ["stage", "p50", "p95", "queued", "runs"],
+    },
+    { clock, units: { p50: "min", p95: "min", queued: "s" } }
+  ),
+  widget(
+    "mt-lead-by-team",
+    "Lead time by team",
+    { type: "bar", metric: "mt", x: "team", y: "lead_hours", labels: true },
+    { clock, units: { lead_hours: "h" } }
+  ),
 ];
 
 export const EXAMPLE_DASHBOARDS: Record<string, ExampleDashboard> = {
@@ -793,12 +817,8 @@ function pipelineRun(i: number): unknown[] {
   ];
 }
 
-const result = (
-  columns: string[],
-  rows: unknown[][],
-  units?: MetricResult["units"]
-): ExampleAnswer => ({
-  result: { columns, rows, ...(units ? { units } : {}) },
+const result = (columns: string[], rows: unknown[][]): ExampleAnswer => ({
+  result: { columns, rows },
 });
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -1108,9 +1128,7 @@ export function exampleRun(
     case "ct-failure-rate":
       return result(["rate"], [[round1((12 + days / 37.5) / earlier)]]);
     case "ct-lead-time":
-      return result(["lead_hours"], [[round1((30 + days / 3) * earlier)]], {
-        lead_hours: "h",
-      });
+      return result(["lead_hours"], [[round1((30 + days / 3) * earlier)]]);
     case "ct-reviews":
       return result(["reviews"], [[Math.round(days * 9 * (2 - earlier))]]);
     case "ct-services":
@@ -1153,8 +1171,7 @@ export function exampleRun(
     case "ct-review-wait":
       return result(
         ["team", "wait_hours"],
-        SIX_TEAMS.map((team, i) => [team, round1(6 + i * 7.5)]),
-        { wait_hours: "h" }
+        SIX_TEAMS.map((team, i) => [team, round1(6 + i * 7.5)])
       );
     case "ct-deploys-by-team":
       return result(
@@ -1234,8 +1251,7 @@ export function exampleRun(
           20 + ((i * 97) % 900),
           round1(1 + ((i * 37) % 60) / 2.5),
           (i * 7) % 15,
-        ]),
-        { review_hours: "h" }
+        ])
       );
     case "mt-stage-timings":
       return result(
@@ -1246,14 +1262,12 @@ export function exampleRun(
           round1(2.5 + i * 9.4),
           45 + i * 140,
           Math.round(days * 40 * (1 - i / 10)),
-        ]),
-        { p50: "min", p95: "min", queued: "s" }
+        ])
       );
     case "mt-lead-by-team":
       return result(
         ["team", "lead_hours"],
-        SIX_TEAMS.map((team, i) => [team, round1(14 + i * 9.7)]),
-        { lead_hours: "h" }
+        SIX_TEAMS.map((team, i) => [team, round1(14 + i * 9.7)])
       );
     default:
       return undefined;
