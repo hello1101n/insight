@@ -32,10 +32,10 @@
 -- otherwise produce a negative residual.
 
 SELECT
-    u.insight_tenant_id AS insight_tenant_id,
+    {{ bronze_tenant('u.insight_tenant_id') }} AS insight_tenant_id,
     u.insight_source_id,
     MD5(concat(
-        u.insight_tenant_id, '-',
+        insight_tenant_id, '-',
         u.insight_source_id, '-',
         coalesce(u.user_id, ''), '-',
         toString(toDate(parseDateTimeBestEffortOrNull(u.date)))
@@ -83,8 +83,8 @@ WHERE u.user_id IS NOT NULL
   -- INVARIANT: bots are never counted. Slackbot is USLACKBOT; the Members stream flags the others.
   AND u.user_id != 'USLACKBOT'
 {%- if members %}
-  AND (u.insight_tenant_id, u.insight_source_id, u.user_id) NOT IN (
-      SELECT insight_tenant_id, insight_source_id, user_id
+  AND (insight_tenant_id, u.insight_source_id, u.user_id) NOT IN (
+      SELECT {{ bronze_tenant() }}, insight_source_id, user_id
       FROM {{ source('bronze_slack', 'users') }} FINAL
       WHERE coalesce(is_bot, false)
   )

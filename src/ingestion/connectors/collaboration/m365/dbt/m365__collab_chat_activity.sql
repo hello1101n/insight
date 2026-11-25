@@ -16,7 +16,7 @@
 WITH newest_extract AS (
 
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id AS insight_source_id,
         MD5(concat(insight_tenant_id, '-', source_id, '-', lower(coalesce(userPrincipalName, '')), '-', toString(reportRefreshDate))) AS unique_key,
         lower(userPrincipalName) AS user_id,
