@@ -47,7 +47,7 @@ impl Surfaces<'_> {
             else {
                 continue;
             };
-            let (clock, compiled) = self.drawn_reading(&stored.body).await?;
+            let (clock, compiled) = self.drawn_reading(&named, &stored.body).await?;
             let (percents, units) = compiled
                 .map(|compiled| (compiled.percents().to_vec(), compiled.units().clone()))
                 .unwrap_or_default();
@@ -111,6 +111,7 @@ impl Surfaces<'_> {
 
     async fn drawn_reading(
         &self,
+        widget_id: &str,
         widget: &Value,
     ) -> Result<(Option<EffectiveClock>, Option<CompiledQuery>), CustomError> {
         let Some(metric) =
@@ -128,9 +129,21 @@ impl Surfaces<'_> {
         };
 
         let clock = self.clock_of(DefinitionKind::Metric, &body).await;
-        let compiled = kinds::metric::compiled(&body, self.definitions, self.datasets, self.over)
-            .await
-            .ok();
+        let compiling =
+            kinds::metric::compiled(&body, self.definitions, self.datasets, self.over).await;
+        let compiled = match compiling {
+            Ok(compiled) => Some(compiled),
+            Err(error) => {
+                tracing::warn!(
+                    widget_id,
+                    metric_id = metric.as_str(),
+                    error_kind = error.kind(),
+                    %error,
+                    "the metric of a listed widget did not compile; the list omits its percents and units"
+                );
+                None
+            }
+        };
 
         Ok((clock, compiled))
     }
