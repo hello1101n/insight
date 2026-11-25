@@ -40,9 +40,9 @@
 ) }}
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }}                                              AS insight_tenant_id,
     source_id,
-    CAST(concat(coalesce(insight_tenant_id, ''), '-', coalesce(source_id, ''), '-', coalesce(user_id, ''), '-', coalesce(date, '')) AS String)
+    CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(user_id, ''), '-', coalesce(date, '')) AS String)
                                                                        AS unique_key,
     lower(trim(user_email))                                            AS email,
     CAST(NULL AS Nullable(String))                                     AS api_key_id,

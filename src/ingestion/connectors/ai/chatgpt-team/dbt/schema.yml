@@ -70,7 +70,7 @@ models:
         tests: [not_null, unique]
       - name: insight_tenant_id
         description: "Tenant isolation key — required by the class contract."
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         description: "Connector instance that produced the row."
         tests: [not_null]
@@ -110,6 +110,14 @@ models:
         description: "RMT version — toUnixTimestamp64Milli(_airbyte_extracted_at) per ADR-0001"
         tests: [not_null]
 
+  - name: chatgpt_team__ai_credit_usage
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+
   - name: chatgpt_team__ai_assistant_usage
     description: >
       Bronze → Silver: ChatGPT Team per-user per-day chat usage →
@@ -126,7 +134,7 @@ models:
         tests: [not_null, unique]
       - name: insight_tenant_id
         description: "Tenant isolation key — required by the class contract."
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         description: "Connector instance that produced the row."
         tests: [not_null]
@@ -173,6 +181,9 @@ models:
     columns:
       - name: insight_tenant_id
         description: "Tenant isolation field"
+        tests:
+          - not_null
+          - not_empty
       - name: source_id
         description: "Connector instance identifier"
       - name: user_id
@@ -201,6 +212,11 @@ models:
       blanked while the seat is deactivated so the departure and the return both
       arrive as ordinary field changes.
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests: [not_null, unique]
       - name: user_id
