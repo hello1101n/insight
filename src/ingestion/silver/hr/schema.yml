@@ -156,6 +156,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "insight_tenant_id-email-day"
         tests:

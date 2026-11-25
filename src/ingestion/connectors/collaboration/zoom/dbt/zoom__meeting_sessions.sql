@@ -75,7 +75,7 @@ WITH stitched AS (
             ) AS gap_seconds
         FROM (
             SELECT
-                insight_tenant_id,
+                {{ bronze_tenant() }} AS insight_tenant_id,
                 source_id,
                 toString(id)                                            AS id,
                 uuid,
