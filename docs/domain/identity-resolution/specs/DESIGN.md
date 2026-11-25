@@ -335,7 +335,7 @@ Implemented behaviour (groups accounts by normalized current e-mail, then resolv
 - Branch 2b — `LinkedByEmployeeId`: when the e-mail names no person, a group links to the person that its `employee_id` names. Only the roster source (`roster_source_type`) teaches an ID. An ID that two persons hold links nobody. The journal reason is `auto-seed-employee-id-link`.
 - Branch 3 — mint: a new person for a group with a new e-mail (at least one active profile); groups with no e-mail, or wholly closed, are skipped.
 - Writes observations via `INSERT IGNORE` (idempotent for re-emitted observations under the natural key, which includes `created_at` taken from `_synced_at`); rebuilds `org_chart` atomically.
-- Guards destructive/suspicious runs (no evidence for the configured tenant) with an explicit `--force` override; journals every run in `operations` (queued → running → completed/failed with summary counters).
+- Guards destructive/suspicious runs: no evidence for the configured tenant (overridable with an explicit `--force`), and `persons` already holding another tenant (never overridable); journals every run in `operations` (queued → running → completed/failed with summary counters).
 
 Hardening shipped with the manual-resolution feature (required by ADR-0003; not yet implemented):
 
@@ -759,9 +759,9 @@ Row 120 supersedes row 5 as the current `display_name` for person `p-1001` (late
 
 | Aspect | Value |
 |---|---|
-| Invocation | `identity-resolution seed` — one run (resolve + publish), then exit. Run by every connector ingestion pipeline and by the umbrella chart's 15-minute backstop CronJob; manually runnable for ad-hoc reseeds. `--busy-ok` / `--guard-ok` let the pipeline step and the backstop CronJob tolerate a held lock and an input-guard refusal; refusals surface in the operations journal |
+| Invocation | `identity-resolution seed` — one run (resolve + publish), then exit. Run by every connector ingestion pipeline and by the umbrella chart's 15-minute backstop CronJob; manually runnable for ad-hoc reseeds. `--busy-ok` / `--guard-ok` let the pipeline step and the backstop CronJob tolerate a held lock and an empty-input refusal; refusals surface in the operations journal. The tenant guard (`persons` already holds another tenant) is never tolerated: it exits 4 |
 | Concurrency | A run-lock guarantees a single active run; a concurrent invocation exits with a warning |
-| Guards | Suspicious inputs (no `identity_inputs` rows for the configured tenant) are refused unless the operator passes an explicit `--force`; the scheduled job itself never forces |
+| Guards | Suspicious inputs (no `identity_inputs` rows for the configured tenant) are refused unless the operator passes an explicit `--force`; the scheduled job itself never forces. A `persons` log that already holds a tenant other than the configured one is always refused: the append-only log could not undo a parallel person set |
 | Audit | Every run is journaled in `operations` (queued → running → completed/failed) with summary counters per mode, including `known_binding_conflicts` |
 | History | A one-shot Python seed performed the initial bootstrap and has since been removed; the Rust subcommand is the operative mechanism |
 

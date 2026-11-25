@@ -54,7 +54,8 @@ enum Commands {
     /// ClickHouse as its final step. Run by the Helm `CronJob`, by the
     /// ingestion pipeline, and manually via `kubectl create job
     /// --from=cronjob/...`. Exit codes: 0 ok / 1 failed (seed or publish) /
-    /// 2 another run holds the lock / 3 refused by an input guard.
+    /// 2 another run holds the lock / 3 refused by an input guard / 4 refused by
+    /// the tenant guard (`persons` holds another tenant).
     Seed {
         /// Seed mode; only `link-by-email` is implemented.
         #[arg(long, default_value = seed_runner::LINK_BY_EMAIL_MODE)]
@@ -66,10 +67,11 @@ enum Commands {
         /// together race their seed steps over the same inputs.
         #[arg(long)]
         busy_ok: bool,
-        /// Exit 0 when an input guard refuses the run: an empty
+        /// Exit 0 when the input guard refuses the run: an empty
         /// `identity_inputs` is legitimate where no connector emits identity
         /// claims. Refusals still surface as failed rows in the operations
-        /// journal (GET /v1/persons-seed?status=failed).
+        /// journal (GET /v1/persons-seed?status=failed). The tenant guard
+        /// always exits 4: a wrong tenant is never legitimate.
         #[arg(long)]
         guard_ok: bool,
     },
@@ -93,6 +95,7 @@ enum Commands {
 const EXIT_SEED_FAILED: i32 = 1;
 const EXIT_SEED_LOCK_BUSY: i32 = 2;
 const EXIT_SEED_GUARD: i32 = 3;
+const EXIT_SEED_WRONG_TENANT: i32 = 4;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -141,6 +144,10 @@ async fn main() -> Result<()> {
                 Err(seed_runner::SeedRunError::Guard(msg)) => {
                     tracing::error!(%msg, "persons-seed refused by input guard");
                     std::process::exit(EXIT_SEED_GUARD);
+                }
+                Err(seed_runner::SeedRunError::WrongTenant(msg)) => {
+                    tracing::error!(%msg, "persons-seed refused by tenant guard");
+                    std::process::exit(EXIT_SEED_WRONG_TENANT);
                 }
                 Err(seed_runner::SeedRunError::Failed(e)) => {
                     tracing::error!(error = %format!("{e:#}"), "persons-seed failed");

@@ -301,9 +301,12 @@ EOF
    ```
 
    The `grep` must print nothing. The CronJob runs the seed with `--guard-ok`,
-   which exits 0 when it refuses; a line naming `identity_inputs returned 0
-   rows for tenant <TENANT_UUID>` means the inputs still carry another tenant —
-   step 6 or step 7.1 did not take.
+   which exits 0 when the input guard refuses; a line naming `identity_inputs
+   returned 0 rows for tenant <TENANT_UUID>` means the inputs still carry
+   another tenant — step 6 or step 7.1 did not take. If `persons` holds a
+   tenant other than `<TENANT_UUID>`, the seed logs `tenant guard`, writes
+   nothing and exits 4 whatever its flags, so the job fails: the configured
+   tenant is not the one step 1 found.
 
 3. Everything downstream — each connector's silver and the gold it feeds —
    then every gold model once more, for a gold relation no installed

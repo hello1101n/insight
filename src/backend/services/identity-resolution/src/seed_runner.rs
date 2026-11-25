@@ -25,6 +25,9 @@ const ZOMBIE_CUTOFF_HOURS: i64 = 1;
 pub enum SeedRunError {
     LockBusy,
     Guard(String),
+    /// `persons` already holds another tenant: seeding would write a parallel
+    /// person set into the append-only log. Never tolerated by `--guard-ok`.
+    WrongTenant(String),
     Failed(anyhow::Error),
 }
 
@@ -132,6 +135,13 @@ async fn run_locked(
             }
             Err(SeedRunError::Guard(msg))
         }
+        Err(SeedRunError::WrongTenant(msg)) => {
+            tracing::error!(%operation_id, %msg, "persons-seed: refused by tenant guard");
+            if let Err(e) = ops_repo::fail(db, operation_id, &msg).await {
+                tracing::error!(error = %e, %operation_id, "fail update failed");
+            }
+            Err(SeedRunError::WrongTenant(msg))
+        }
         Err(e) => {
             if let Err(e2) =
                 ops_repo::fail(db, operation_id, "persons-seed failed; see job logs").await
@@ -171,6 +181,11 @@ async fn guarded_seed(
     }
 
     let run = async {
+        let other = seed_repo::other_tenant(db, tenant).await?;
+        if let Err(msg) = tenant_guard(tenant, other) {
+            return Err(SeedRunError::WrongTenant(msg));
+        }
+
         let rows = reader.stream(tenant).await?;
         tracing::info!(input_rows = rows.len(), "persons-seed: input streamed");
 
@@ -225,6 +240,20 @@ pub(crate) fn resolve_tenant(
     }
 }
 
+/// An install has one tenant: `persons` holding any other means the configured
+/// tenant is wrong, and the append-only log could not undo the seed's writes.
+/// A fresh install (empty `persons`) passes; `--force` does not override it.
+fn tenant_guard(tenant: Uuid, other: Option<Uuid>) -> Result<(), String> {
+    match other {
+        None => Ok(()),
+        Some(other) => Err(format!(
+            "tenant guard: persons already holds tenant {other}, not only the configured tenant \
+             {tenant} — seeding would write a parallel person set into the append-only log; \
+             set authenticator.oidc.defaultTenantId to the install's tenant"
+        )),
+    }
+}
+
 fn input_guards(input_rows: usize, tenant: Uuid, force: bool) -> Result<(), String> {
     if force || input_rows > 0 {
         return Ok(());
@@ -262,6 +291,23 @@ mod tests {
     #[test]
     fn a_tenant_with_inputs_passes_whatever_other_tenants_exist() {
         assert!(input_guards(10, tenant(), false).is_ok());
+    }
+
+    #[test]
+    fn another_tenant_in_persons_is_refused_and_named() -> anyhow::Result<()> {
+        let other = Uuid::from_u128(1);
+        let Err(err) = tenant_guard(tenant(), Some(other)) else {
+            anyhow::bail!("another tenant in persons must be refused");
+        };
+        assert!(err.starts_with("tenant guard"), "{err}");
+        assert!(err.contains(&other.to_string()), "{err}");
+        assert!(err.contains(&tenant().to_string()), "{err}");
+        Ok(())
+    }
+
+    #[test]
+    fn persons_empty_or_only_under_the_tenant_passes() {
+        assert!(tenant_guard(tenant(), None).is_ok());
     }
 
     #[tokio::test]
