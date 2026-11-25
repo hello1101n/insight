@@ -193,7 +193,6 @@ ARRAY JOIN
             tuple('runs_matched_commit', if(commit_known, toNullable(toFloat64(1)), NULL))
         ]
     ) AS measure
-WHERE insight_tenant_id IS NOT NULL
 
 UNION ALL
 
@@ -223,7 +222,6 @@ SELECT
         'env_kind', env_kind
     ) AS details
 FROM deployment_rows
-WHERE insight_tenant_id IS NOT NULL
 
 UNION ALL
 
@@ -267,6 +265,5 @@ FROM (
         coalesce(committer_date, date) AS commit_date
     FROM {{ ref('class_git_commits') }} FINAL
 )
-WHERE insight_tenant_id IS NOT NULL
-  AND commit_hash != ''
+WHERE commit_hash != ''
   AND commit_date IS NOT NULL

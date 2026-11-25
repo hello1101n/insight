@@ -162,7 +162,6 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM evidence_summaries
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src

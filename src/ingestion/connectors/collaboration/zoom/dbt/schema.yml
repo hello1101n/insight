@@ -28,6 +28,25 @@ sources:
           error_after: {count: 168, period: hour}
 
 models:
+  - name: zoom__users_snapshot
+    description: "SCD2 snapshot of bronze_zoom.users. A new version is written when a tracked user field changes."
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
+      - name: unique_key
+        tests:
+          - not_null
+
+  - name: zoom__users_fields_history
+    description: "Field-level change log derived from zoom__users_snapshot. One row per changed field per version transition."
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
+
   - name: zoom__meeting_sessions
     description: >
       Zoom meeting-session stitching → per (tenant, source, uuid)
@@ -45,6 +64,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -91,6 +111,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null

@@ -374,8 +374,7 @@ ARRAY JOIN arrayConcat(
         []
     )
 ) AS seat_measure
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -407,8 +406,7 @@ SELECT
         'covers_days', toString(covers_days)
     )                                           AS details
 FROM seat_day_step
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 UNION ALL
 
@@ -547,7 +545,6 @@ ARRAY JOIN [
     tuple('extra_usage_usd', toFloat64(usd_cents) / 100,
           'seat_month', toStartOfMonth(day))
 ] AS credit_measure
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND day IS NOT NULL
 ) AS src

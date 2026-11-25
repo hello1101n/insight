@@ -30,9 +30,10 @@ models:
       fallback. Bots and proven guests are left out. Feeds slack__users_snapshot.
     columns:
       - name: insight_tenant_id
-        description: "The raw tenant string from bronze insight_tenant_id."
+        description: "The canonical tenant UUID, checked by bronze_tenant(); never NULL or empty."
         tests:
           - not_null
+          - not_empty
       - name: source_id
         description: "The raw source string from bronze insight_source_id."
         tests:
@@ -56,6 +57,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -72,6 +74,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -106,6 +109,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null
@@ -143,6 +147,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null

@@ -24,7 +24,7 @@
 
 WITH pages AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         unique_key,
         page_id,
@@ -49,7 +49,7 @@ WITH pages AS (
 
 spaces AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         space_id,
         name                                                                AS space_name,
@@ -61,7 +61,7 @@ spaces AS (
 {%- if jira_user %}
 , users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         account_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_jira', 'jira_user') }}

@@ -419,8 +419,7 @@ SELECT
         'title', ifNull(title, '')
     ) AS details
 FROM issue_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -450,8 +449,7 @@ SELECT
         'type', ifNull(arrayFirst(dimension -> dimension.1 = 'type', type_dimensions).3, '')
     ) AS details
 FROM issue_item_evidence
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -492,8 +490,7 @@ ARRAY JOIN arrayConcat(
         []
     )
 ) AS issue_measure
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -531,7 +528,6 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM ({{ sum_measure('logged_hours', 'logged_work', 'worklog_seconds / 3600.0', 'no_dimensions', where='worklog_seconds > 0', keys=account_keys) }})
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src

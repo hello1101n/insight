@@ -28,7 +28,7 @@
 
 WITH pages AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         unique_key,
         page_id,
@@ -55,7 +55,7 @@ WITH pages AS (
 
 spaces AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         space_id,
         name                                                                AS space_name,
@@ -66,7 +66,7 @@ spaces AS (
 
 users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         user_id,
         lower(trim(email))                                                  AS email
