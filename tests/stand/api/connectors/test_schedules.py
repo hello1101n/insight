@@ -11,6 +11,7 @@ from ..schemas.connectors import ScheduleResponse
 
 UNKNOWN = connectors_path(f"/v1/connectors/{SOME_CONNECTOR}/{SOME_SOURCE_ID}/schedule")
 DISABLED = "cluster connection is unavailable"
+BODIES = {"PUT": {"crons": ["0 6 * * *"]}, "PATCH": {"dbt_cpu_millis": 500}}
 
 
 @pytest.fixture(scope="module")
@@ -124,7 +125,7 @@ def test_put_requires_json(admin_operator_session: PersonaSession, schedule_path
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
-@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+@pytest.mark.parametrize("method", ["GET", "PUT", "PATCH", "DELETE"])
 def test_an_unconfigured_instance_is_not_found(
     admin_operator_session: PersonaSession, method: str
 ) -> None:
@@ -132,14 +133,14 @@ def test_an_unconfigured_instance_is_not_found(
         method,
         UNKNOWN,
         headers={"If-Match": '"0"'},
-        json_body={"crons": ["0 6 * * *"]} if method == "PUT" else None,
+        json_body=BODIES.get(method),
     )
     assert response.status_code == 404, response.text
     assert response.parse(ProblemDocument).status == 404
 
 
 @pytest.mark.security
-@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+@pytest.mark.parametrize("method", ["GET", "PUT", "PATCH", "DELETE"])
 def test_a_non_admin_cannot_read_or_edit_a_schedule(
     lead_session: PersonaSession, method: str
 ) -> None:
@@ -147,7 +148,7 @@ def test_a_non_admin_cannot_read_or_edit_a_schedule(
         method,
         UNKNOWN,
         headers={"If-Match": '"0"'},
-        json_body={"crons": ["0 6 * * *"]} if method == "PUT" else None,
+        json_body=BODIES.get(method),
     )
     assert response.status_code == 403, response.text
     assert response.parse(ProblemDocument).status == 403
@@ -155,7 +156,7 @@ def test_a_non_admin_cannot_read_or_edit_a_schedule(
 
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.reliability
-@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+@pytest.mark.parametrize("method", ["GET", "PUT", "PATCH", "DELETE"])
 def test_invalid_instance_names_are_rejected(
     admin_operator_session: PersonaSession, method: str
 ) -> None:
@@ -163,7 +164,7 @@ def test_invalid_instance_names_are_rejected(
         method,
         connectors_path("/v1/connectors/INVALID/main/schedule"),
         headers={"If-Match": '"0"'},
-        json_body={"crons": ["0 6 * * *"]} if method == "PUT" else None,
+        json_body=BODIES.get(method),
     )
     assert response.status_code == 400, response.text
     assert response.parse(ProblemDocument).status == 400
