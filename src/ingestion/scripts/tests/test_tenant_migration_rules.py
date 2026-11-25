@@ -121,3 +121,12 @@ def test_an_unreachable_clickhouse_is_reported_as_an_error_not_a_traceback(
 
     assert main(["plan"]) == 2
     assert "unreachable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("engine", ["ReplicatedReplacingMergeTree", "ReplicatedMergeTree"])
+@pytest.mark.parametrize("database", ["bronze_example", "staging", "ingestion_history"])
+def test_a_replicated_table_stops_the_migration_before_anything_changes(engine: str, database: str) -> None:
+    columns = [("unique_key", "String"), ("tenant_id", STRING), ("source_id", STRING)]
+
+    with pytest.raises(InventoryError, match="replicated .* single-node ClickHouse only; nothing was changed"):
+        classify(database, "t", engine, columns, history=True)

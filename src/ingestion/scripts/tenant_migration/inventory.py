@@ -110,6 +110,12 @@ def history_relations() -> list[tuple[str, str]]:
 def classify(database: str, name: str, engine: str, columns: list[tuple[str, str]], *, history: bool) -> Table | None:
     """The table as the migration reads it; None when it has nothing to migrate."""
     rel = Relation(database, name)
+    if engine.startswith("Replicated"):
+        # SAFETY: a copy made from SHOW CREATE would claim the original's Keeper path, or
+        # leave its replicas behind. Every install runs a single-node ClickHouse; refuse.
+        raise InventoryError(
+            f"{rel}: engine {engine} is replicated — the cutover supports a single-node ClickHouse only; nothing was changed"
+        )
     types = dict(columns)
     tenants = [c for c in (OLD_TENANT_COLUMN, TENANT_COLUMN) if c in types]
     if len(tenants) == 2:

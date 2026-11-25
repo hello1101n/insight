@@ -327,6 +327,7 @@ def test_an_interrupt_mid_run_puts_every_table_back(warehouse: ClickHouse) -> No
     class Interrupted(Failing):
         def execute(self, sql: str, *, fmt: str | None = None) -> str:
             if sql.lstrip().startswith("EXCHANGE TABLES") and len(self.seen) == 2:
+                self.seen.append("interrupted")  # the signal arrives once
                 raise KeyboardInterrupt("stopped by signal 15")
             if sql.lstrip().startswith("EXCHANGE TABLES"):
                 self.seen.append(sql)
@@ -384,3 +385,26 @@ def test_the_command_line_refuses_a_missing_or_malformed_tenant(
 def test_the_command_line_takes_no_tenant_flag(warehouse: ClickHouse) -> None:
     with pytest.raises(SystemExit):
         main(["apply", "--tenant", NEW])
+
+
+def test_a_replicated_table_in_scope_fails_plan_and_apply_before_anything_changes(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A single node has no Keeper, so the discovered engine name is what is faked here."""
+    before = _fingerprint(warehouse)
+    real_rows = ClickHouse.rows
+
+    def replicated(self: ClickHouse, sql: str) -> list[list[str]]:
+        rows = real_rows(self, sql)
+        if "FROM system.tables AS t" in sql:
+            return [[r[0], r[1], "Replicated" + r[2] if r[1] == "items" else r[2], *r[3:]] for r in rows]
+        return rows
+
+    monkeypatch.setattr(ClickHouse, "rows", replicated)
+
+    assert main(["plan"]) == 2
+    assert main(["apply"]) == 2
+    assert "bronze_example.items: engine ReplicatedReplacingMergeTree is replicated" in capsys.readouterr().err
+    monkeypatch.setattr(ClickHouse, "rows", real_rows)
+    assert _fingerprint(warehouse) == before
+    assert _work_tables(warehouse) == []
