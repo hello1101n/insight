@@ -47,7 +47,7 @@ only the models it reads with `case.build("<selector>")`, ancestors included
 The scenarios cover two tenants sharing one source's ticket, stage, owner,
 property and contact ids: ticket status from the stage, merges, custom
 properties, the event order and actors of the ticket history, which contacts
-are support customers, and the support classes. A bronze row without a tenant
-still builds, and the `not_empty` test on the tenant of each support model that
-reads it reports the row; the two that a CRM staging model drops first are
-marked as expected failures.
+are support customers, and the support classes. A bronze row without a valid
+tenant fails the build of the CRM staging model that reads it; with
+`--vars '{bronze_tenant_on_invalid: warn}'` it builds, and the `not_empty` test on
+the tenant of each support model that reads it reports the row.

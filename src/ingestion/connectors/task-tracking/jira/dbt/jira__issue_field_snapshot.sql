@@ -52,7 +52,7 @@
 -- One row per (issue, field key present in the issue JSON).
 WITH unpivoted AS (
     SELECT
-        i.insight_tenant_id                                                   AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}                    AS insight_tenant_id,
         CAST(i.source_id AS String)                                   AS insight_source_id,
         CAST(i.jira_id AS String)                                     AS issue_id,
         COALESCE(toString(i.id_readable), '')                         AS id_readable,
@@ -106,7 +106,7 @@ classified AS (
 
 SELECT
     CAST(concat(
-        ifNull(insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         insight_source_id, '-',
         issue_id, '-',
         field_id

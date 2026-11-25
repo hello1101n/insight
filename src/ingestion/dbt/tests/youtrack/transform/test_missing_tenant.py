@@ -1,7 +1,8 @@
-"""A bronze row without a tenant builds, and the tenant tests on its models report it.
+"""What a bronze row without a valid tenant does to the models that read it.
 
-A key reads the tenant through `ifNull(insight_tenant_id, '')`, so a missing one never makes
-a sort key Nullable; `not_null` and `not_empty` on each model's tenant are the guard.
+Every YouTrack model reads its Bronze tenant through `bronze_tenant()`, so a NULL, empty or
+non-UUID tenant fails the build, naming the model; with `bronze_tenant_on_invalid: warn` the
+row is kept with an empty tenant and `not_empty` on each model's tenant reports it.
 """
 
 from __future__ import annotations
@@ -81,15 +82,17 @@ FLAGGED_BY_STREAM: dict[str, set[str]] = {
         "not_empty_youtrack__activity_order_insight_tenant_id",
         "not_empty_youtrack__field_states_insight_tenant_id",
     },
-    "youtrack_comments": {"not_null_youtrack__lifecycle_events_insight_tenant_id"},
-    "youtrack_custom_fields": {"not_null_youtrack__field_type_history_insight_tenant_id"},
+    "youtrack_comments": {"not_empty_youtrack__lifecycle_events_insight_tenant_id"},
+    "youtrack_custom_fields": {"not_empty_youtrack__field_type_history_insight_tenant_id"},
     "youtrack_issues": {
         "not_empty_youtrack__issues_insight_tenant_id",
         "not_empty_youtrack__issue_field_snapshot_insight_tenant_id",
         "not_empty_youtrack__long_text_fields_insight_tenant_id",
     },
-    "youtrack_work_items": {"not_null_youtrack__lifecycle_events_insight_tenant_id"},
+    "youtrack_work_items": {"not_empty_youtrack__lifecycle_events_insight_tenant_id"},
 }
+GUARD = "insight_tenant_id is NULL, empty or not a UUID"
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
 
 
 def test_the_tenant_tests_pass_over_rows_that_carry_a_tenant(case: Warehouse) -> None:
@@ -101,12 +104,27 @@ def test_the_tenant_tests_pass_over_rows_that_carry_a_tenant(case: Warehouse) ->
     assert case.failing_tests(TENANT_TESTS) == set(), "no tenant test should fail while every row carries a tenant"
 
 
+@pytest.mark.parametrize("tenant", [None, "", "not-a-uuid"])
 @pytest.mark.parametrize("stream", sorted(TENANTLESS_ROWS))
-def test_a_bronze_row_without_a_tenant_builds_and_the_tenant_tests_report_it(case: Warehouse, stream: str) -> None:
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build(case: Warehouse, stream: str, tenant: str | None) -> None:
+    case.issue([])
+    row = {**TENANTLESS_ROWS[stream], "insight_tenant_id": tenant, "unique_key": f"{SOURCE}-no-tenant-{stream}"}
+    case.insert(stream, row)
+
+    success, log = case.dbt_status("run", "--select", "tag:youtrack")
+
+    assert not success, f"a {stream} row with a tenant of {tenant!r} should fail the build"
+    assert GUARD in log, f"the failure should name the model and the problem:\n{log}"
+
+
+@pytest.mark.parametrize("stream", sorted(TENANTLESS_ROWS))
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_tests_report_it(
+    case: Warehouse, stream: str
+) -> None:
     case.issue([])
     row = {**TENANTLESS_ROWS[stream], "insight_tenant_id": None, "unique_key": f"{SOURCE}-no-tenant-{stream}"}
     case.insert(stream, row)
-    case.build()
+    case.dbt("run", "--select", "tag:youtrack", *WARN)
 
     failing = case.failing_tests(TENANT_TESTS)
     assert FLAGGED_BY_STREAM[stream] <= failing, f"the tenant tests should report the {stream} row: {sorted(failing)}"

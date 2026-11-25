@@ -11,7 +11,7 @@
 WITH src AS (
     {% for tbl in hubspot_bronze_tables('tickets') %}
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
         source_id                                       AS insight_source_id,
         unique_key,
         'hubspot'                                       AS data_source,

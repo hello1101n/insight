@@ -12,7 +12,7 @@
 -- time versions the row; the connector re-reads every definition each sync.
 WITH src AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
         source_id,
         unique_key,
         objectType                                      AS object_type,

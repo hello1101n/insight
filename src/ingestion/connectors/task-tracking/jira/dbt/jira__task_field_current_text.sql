@@ -26,7 +26,7 @@ WITH long_text_fields AS (
 
 current_bodies AS (
     SELECT
-        i.insight_tenant_id                                       AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
         CAST(i.source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         kv.1                                              AS field_id,
@@ -34,7 +34,7 @@ current_bodies AS (
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
-        ON f.insight_tenant_id = i.insight_tenant_id
+        ON f.insight_tenant_id = {{ bronze_tenant('i.insight_tenant_id') }}
        AND f.insight_source_id = CAST(i.source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
@@ -47,8 +47,8 @@ current_bodies AS (
 )
 
 SELECT
-    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-jira-', issue_id, '-', field_id) AS unique_key,
-    ifNull(insight_tenant_id, '')                                 AS insight_tenant_id,
+    concat(insight_tenant_id, '-', insight_source_id, '-jira-', issue_id, '-', field_id) AS unique_key,
+    insight_tenant_id                                     AS insight_tenant_id,
     insight_source_id,
     CAST('jira' AS String)                                AS data_source,
     issue_id,

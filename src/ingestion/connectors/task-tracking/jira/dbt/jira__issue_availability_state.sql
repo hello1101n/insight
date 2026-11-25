@@ -34,7 +34,7 @@
 WITH census AS (
     SELECT
         unique_key,
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                AS insight_tenant_id,
         source_id,
         jira_id,
         project_key,
@@ -65,7 +65,7 @@ known AS (
     SELECT
         concat(ifNull(insight_tenant_id, ''), '-', CAST(source_id AS String), '-',
                CAST(jira_id AS String))                      AS unique_key,
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                AS insight_tenant_id,
         source_id,
         jira_id,
         project_key,
@@ -79,7 +79,7 @@ known AS (
     SELECT
         concat(ifNull(insight_tenant_id, ''), '-', CAST(source_id AS String), '-',
                CAST(jira_id AS String))                      AS unique_key,
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                AS insight_tenant_id,
         source_id,
         jira_id,
         splitByChar('-', assumeNotNull(id_readable))[1]      AS project_key,
