@@ -24,7 +24,9 @@ TENANT_MODELS = (
     "youtrack__long_text_fields",
     "youtrack__projects",
 )
-TENANT_TESTS = tuple(f"{test}_{model}_tenant_id" for model in TENANT_MODELS for test in ("not_null", "not_empty"))
+TENANT_TESTS = tuple(
+    f"{test}_{model}_insight_tenant_id" for model in TENANT_MODELS for test in ("not_null", "not_empty")
+)
 SORT_KEYED = (
     "youtrack__activities",
     "youtrack__activity_order",
