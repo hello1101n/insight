@@ -17,7 +17,9 @@ use crate::domain::kinds::metric::CompileAgainst;
 use crate::domain::kinds::metric::answerable::EffectiveClock;
 use crate::domain::kinds::widget::WidgetError;
 use crate::domain::kinds::{self, KindError};
-use crate::domain::query::metric_query::{MetricQuery, MetricQueryError, MetricRunError, People};
+use crate::domain::query::composite::{Composite, CompositeError};
+use crate::domain::query::metric::Metric;
+use crate::domain::query::metric_query::{MetricQueryError, MetricRunError, People};
 use crate::domain::query::time_window::WindowError;
 use crate::domain::violation::Violation;
 
@@ -47,6 +49,8 @@ pub(crate) enum CustomError {
     #[error(transparent)]
     Compile(MetricQueryError),
     #[error(transparent)]
+    Composite(CompositeError),
+    #[error(transparent)]
     Run(MetricRunError),
     #[error(transparent)]
     Store(DefinitionStoreError),
@@ -66,6 +70,7 @@ impl From<KindError> for CustomError {
             KindError::Widget(source) => Self::Widget(source),
             KindError::Body(source) => Self::Body(source),
             KindError::Compile(source) => Self::Compile(source),
+            KindError::Composite(source) => Self::Composite(source),
             KindError::Range(source) => Self::Range(source),
             KindError::Store(source) => Self::Store(source),
             KindError::DatasetNotReady(named) => Self::DatasetNotReady(named),
@@ -87,7 +92,8 @@ impl CustomError {
             | Self::Range(_)
             | Self::DatasetNotReady(_)
             | Self::Unanswerable(_)
-            | Self::Compile(_) => true,
+            | Self::Compile(_)
+            | Self::Composite(_) => true,
             Self::Run(_) | Self::Store(_) | Self::Datasets(_) => false,
         }
     }
@@ -346,7 +352,10 @@ impl<'a> Surfaces<'a> {
             DefinitionKind::Widget | DefinitionKind::Dashboard => return None,
         }
 
-        let metric: MetricQuery = serde_json::from_value(body.clone()).ok()?;
+        let metric = match Metric::parse(body.clone()).ok()? {
+            Metric::Query(query) => query,
+            Metric::Composite(composite) => return self.composite_clock(&composite).await,
+        };
         let Some(named) = metric.dataset() else {
             return EffectiveClock::of_table(&metric);
         };
@@ -360,6 +369,20 @@ impl<'a> Surfaces<'a> {
         };
 
         EffectiveClock::of(&metric, &ready.declaration)
+    }
+
+    async fn composite_clock(&self, composite: &Composite) -> Option<EffectiveClock> {
+        let read =
+            kinds::metric::composite::children(composite, self.definitions, self.datasets).await;
+        let error = match read {
+            Ok(children) => return children.clock(),
+            Err(error) => CustomError::from(error),
+        };
+
+        if !error.is_about_the_caller() {
+            tracing::error!(error = ?error, "could not read the metrics a composite combines");
+        }
+        None
     }
 
     pub(crate) async fn delete(

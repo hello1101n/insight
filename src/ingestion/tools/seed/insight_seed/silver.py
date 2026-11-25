@@ -239,6 +239,9 @@ CRM_CHAIN_SELECT = (
     "hubspot__crm_users+",
     "hubspot__crm_deals+",
     "hubspot__crm_activities+",
+    "hubspot__crm_field_history",
+    "hubspot__crm_pipeline_stages",
+    "hubspot__crm_tickets",
 )
 
 # The bronze-derived git chain.
