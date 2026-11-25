@@ -39,8 +39,6 @@ export default defineConfig(({ mode }) => {
       frontxWidgets(),
     ],
     resolve: {
-      // WORKAROUND: the FrontX template keeps its own React in its node_modules; the page must run one.
-      dedupe: ["react", "react-dom"],
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
