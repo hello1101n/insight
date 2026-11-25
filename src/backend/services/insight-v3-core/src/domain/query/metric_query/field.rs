@@ -12,15 +12,21 @@ use crate::domain::kinds::dataset::declaration::FieldType as DeclaredType;
 pub(super) const MAX_IDENTIFIER_CHARS: usize = 128;
 
 #[derive(Debug, Deserialize)]
-pub(super) struct OrderBy {
-    pub(super) field: String,
+pub(crate) struct OrderBy {
+    pub(crate) field: String,
     #[serde(default)]
-    pub(super) direction: Direction,
+    pub(crate) direction: Direction,
+}
+
+impl OrderBy {
+    pub(crate) fn descending(&self) -> bool {
+        matches!(self.direction, Direction::Desc)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(super) enum Direction {
+pub(crate) enum Direction {
     #[default]
     Asc,
     Desc,
@@ -250,13 +256,7 @@ impl Field {
             }
         }
 
-        let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
-
-        Ok(Some(if self.percent {
-            format!("(100 * {division})")
-        } else {
-            division
-        }))
+        Ok(Some(ratio_sql(numerator, denominator, self.percent)))
     }
 
     pub(super) fn aggregated_if(&self, read: String, condition: Option<String>) -> String {
@@ -265,6 +265,16 @@ impl Field {
             (Some(agg), None) => format!("{}({read})", agg.sql()),
             (None, _) => read,
         }
+    }
+}
+
+pub(crate) fn ratio_sql(numerator: &str, denominator: &str, percent: bool) -> String {
+    let division = format!("(`{numerator}` / nullIf(`{denominator}`, 0))");
+
+    if percent {
+        format!("(100 * {division})")
+    } else {
+        division
     }
 }
 
@@ -389,7 +399,7 @@ impl Agg {
     }
 }
 
-pub(super) fn is_identifier(value: &str) -> bool {
+pub(crate) fn is_identifier(value: &str) -> bool {
     !value.is_empty()
         && value.chars().count() <= MAX_IDENTIFIER_CHARS
         && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
