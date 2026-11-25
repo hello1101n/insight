@@ -943,6 +943,9 @@ services:
       # analytics catalogue tables is a per-stand fact. Here it is a database of
       # its own; a chart-deployed stand keeps them in `mariadb.database`.
       MARIADB_ANALYTICS_DB: "${MARIADB_ANALYTICS_DB:-analytics}"
+      # The insight-v3-core database. When it is set, the `analytics` step seeds
+      # the custom catalogue of metrics, widgets and dashboards into it.
+      MARIADB_V3_DB: "${MARIADB_V3_DB:-insight_v3}"
       # The second-tenant refusal fixture. ON here because tests/stand asserts
       # cross-tenant refusal against it; a cluster stand turns it off, where a
       # second tenant would abort identity-resolution's scheduled projection.

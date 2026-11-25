@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `3bb20dc50ae185f3` |
+| seed_revision | `7e27a58b0d7d99ff` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -97,8 +97,13 @@ renaming one breaks every test that declares it.
 | capability | value |
 |---|---|
 | `connector_schedules` | no |
+| `custom_catalogue` | yes |
 | `idp` | keycloak |
 | `ingestion` | no |
+| `portal_dashboards` | yes |
+| `portal_datasets` | yes |
+| `portal_metrics` | yes |
+| `portal_widgets` | yes |
 | `service_principals` | yes |
 
 `ingestion: no` — compose seeds the silver and gold layers directly; no
@@ -119,3 +124,38 @@ a reason.
 rendered against a canonical environment, so it shows the default rather
 than your stand's value — read `manifest.json` for what is actually
 running.
+
+`custom_catalogue: yes` — the `analytics` step wrote the custom catalogue
+below into the insight-v3-core database that `MARIADB_V3_DB` names. The
+four `portal_*` capabilities follow it: each catalogue page has at least
+one seeded definition to open. A stand without that variable reports `no`
+for all five, and the tests that need them skip with a reason.
+
+## Custom catalogue
+
+Seeded dashboards, by the stable key a test declares. Each board tests one
+thing a dashboard renderer must get right. The admin operator owns every
+board, so sign in as `admin_operator` to see all of them. The CEO sees
+only the shared board. Open a board at its path on the stand.
+
+| key | name | path | widgets | covers |
+|---|---|---|---|---|
+| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 8 | line, area, bar, bar with labels, stacked bar, pie, stat and table, with time ranges |
+| `headings_and_texts` | Stand: headings and texts | `/dashboards/stand-headings-and-texts` | 2 | headings, texts, a long heading, and text with markdown-like characters |
+| `no_time_range` | Stand: no time range, widgets with and without a clock | `/dashboards/stand-no-time-range` | 4 | a board without time ranges; clocked and clockless widgets run over all rows |
+| `percents` | Stand: percent stat and percent column | `/dashboards/stand-percents` | 4 | a percent stat, a percent table column, a percent line and percent bars |
+| `large_table` | Stand: table over 500 rows | `/dashboards/stand-large-table` | 1 | a table widget whose metric answers 1000 rows |
+| `many_categories` | Stand: many categories and long labels | `/dashboards/stand-many-categories` | 3 | a bar over more than 50 categories, and bars and a table over long labels |
+| `dates_over_a_year` | Stand: dates over more than one year | `/dashboards/stand-dates-over-a-year` | 3 | monthly buckets over the whole data window, which spans more than one year |
+| `null_values` | Stand: null values | `/dashboards/stand-null-values` | 5 | null category labels, null ratios, a null stat and null table cells |
+| `empty_results` | Stand: empty results | `/dashboards/stand-empty-results` | 5 | a line, bars, a pie, a table and a stat over a metric with no rows |
+| `failing_widget` | Stand: a widget that fails | `/dashboards/stand-failing-widget` | 2 | a widget whose metric reads a column the table does not have, beside one that works |
+| `large_board` | Stand: large board with 18 widgets | `/dashboards/stand-large-board` | 18 | one board with 18 widgets of every type, under headings |
+| `in_folder` | Stand: board in a folder | `/dashboards/stand-in-folder` | 2 | a board filed in the folder `Stand folder` |
+| `shared` | Stand: board shared with the CEO | `/dashboards/stand-shared` | 2 | a board the admin operator owns and shares with the CEO as a viewer |
+| `starred` | Stand: starred board | `/dashboards/stand-starred` | 2 | a board the admin operator has starred |
+| `dataset_widgets` | Stand: widgets over a dataset | `/dashboards/stand-dataset-widgets` | 2 | bars and a table over a metric that reads the seeded dataset |
+
+The folder is `Stand folder` and the dataset is `stand_sample_records`. A
+failing widget fails on purpose: its metric reads a column that the table
+does not have. No metric value in the catalogue is an expected value.

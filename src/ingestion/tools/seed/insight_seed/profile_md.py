@@ -176,9 +176,52 @@ def render_profile(doc: manifest.Manifest) -> str:
         "than your stand's value — read `manifest.json` for what is actually",
         "running.",
         "",
+        "`custom_catalogue: yes` — the `analytics` step wrote the custom catalogue",
+        "below into the insight-v3-core database that `MARIADB_V3_DB` names. The",
+        "four `portal_*` capabilities follow it: each catalogue page has at least",
+        "one seeded definition to open. A stand without that variable reports `no`",
+        "for all five, and the tests that need them skip with a reason.",
+        "",
     ]
+    lines += _catalogue(doc.get("custom_catalogue"))
 
     return "\n".join(lines)
+
+
+def _catalogue(doc: Any) -> list[str]:
+    if not doc:
+        return []
+
+    lines = [
+        "## Custom catalogue",
+        "",
+        "Seeded dashboards, by the stable key a test declares. Each board tests one",
+        "thing a dashboard renderer must get right. The admin operator owns every",
+        "board, so sign in as `admin_operator` to see all of them. The CEO sees",
+        "only the shared board. Open a board at its path on the stand.",
+        "",
+    ]
+    lines += _table(
+        ["key", "name", "path", "widgets", "covers"],
+        [
+            [
+                f"`{key}`",
+                board["name"],
+                f"`{board['path']}`",
+                str(len(board["widgets"])),
+                board["covers"],
+            ]
+            for key, board in doc["dashboards"].items()
+        ],
+    )
+    lines += [
+        "",
+        f"The folder is `{doc['folder']}` and the dataset is `{doc['dataset']}`. A",
+        "failing widget fails on purpose: its metric reads a column that the table",
+        "does not have. No metric value in the catalogue is an expected value.",
+        "",
+    ]
+    return lines
 
 
 def write_profile(doc: manifest.Manifest, path: Path | None = None) -> Path:

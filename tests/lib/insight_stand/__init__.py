@@ -37,6 +37,7 @@ from .api import (
     connectors_path,
     identity_path,
 )
+from .custom_catalogue import CustomBoard, CustomCatalogue, CustomWidget
 from .errors import (
     LoginNotCompletedError,
     ManifestError,
@@ -152,6 +153,9 @@ __all__: Sequence[str] = (
     "ApiClient",
     "ApiResponse",
     "Capabilities",
+    "CustomBoard",
+    "CustomCatalogue",
+    "CustomWidget",
     "GoldenMetrics",
     "GoldenTaskTotals",
     "GoldenTasks",

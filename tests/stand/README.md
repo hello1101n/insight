@@ -202,9 +202,12 @@ smoke tests skip with a reason naming the missing fixtures.
 ```
 
 Any `portal_*` definition capability implies `custom_catalogue` and promises an
-existing definition readable by the test's persona. The seed creates no custom
-definitions, and a seeded stand's manifest advertises none of these capabilities,
-so it skips those pages. A stand that has them declares them in its manifest.
+existing definition readable by the test's persona. The seed writes the custom
+catalogue when `MARIADB_V3_DB` names the insight-v3-core database, and the
+compose stack sets it. The manifest then declares all five capabilities and
+lists the seeded boards under `custom_catalogue`, by a stable key. A stand
+without that variable declares none of them, and the tests for those pages skip.
+[`PROFILE.md`](../../src/ingestion/tools/seed/PROFILE.md) lists the boards.
 To collect without a stand, supply a synthetic manifest and
 `--base-url https://example.com`.
 
