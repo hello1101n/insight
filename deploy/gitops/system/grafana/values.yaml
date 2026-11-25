@@ -12243,18 +12243,19 @@ alerting:
               -- INVARIANT: recorded_at is part of unique_key, so a retraction is a
               -- NEWER row — filter is_deleted after the LIMIT 1 BY pick, never before.
               WITH role_bindings AS (
-                  SELECT insight_source_id, data_source, field_id, role
+                  SELECT insight_tenant_id, insight_source_id, data_source, field_id, role
                   FROM (
-                      SELECT insight_source_id, data_source, field_id, role, is_deleted
+                      SELECT insight_tenant_id, insight_source_id, data_source, field_id, role, is_deleted
                       FROM config.task_field_roles FINAL
                       WHERE valid_from <= now64(3)
                       ORDER BY valid_from DESC, recorded_at DESC
-                      LIMIT 1 BY insight_source_id, data_source, field_id
+                      LIMIT 1 BY insight_tenant_id, insight_source_id, data_source, field_id
                   )
                   WHERE is_deleted = 0
               ),
               hist AS (
-                  SELECT fh.insight_source_id AS insight_source_id, fh.data_source AS data_source,
+                  SELECT fh.insight_tenant_id AS insight_tenant_id,
+                      fh.insight_source_id AS insight_source_id, fh.data_source AS data_source,
                       fh.issue_id AS issue_id, fh.event_at AS event_at, fh.value_ids[1] AS value_id,
                       fh.event_order AS ord,
                       -- Authored binding wins; Jira's system fields carry their built-in
@@ -12265,72 +12266,64 @@ alerting:
                                         fh.field_id, ''))) AS role
                   FROM silver.class_task_field_history AS fh FINAL
                   LEFT JOIN role_bindings AS b
-                      ON b.insight_source_id = fh.insight_source_id
+                      ON b.insight_tenant_id = fh.insight_tenant_id AND b.insight_source_id = fh.insight_source_id
                       AND b.data_source = fh.data_source AND b.field_id = fh.field_id
                   WHERE fh.delta_action = 'set'
                     AND (fh.field_id IN ('status', 'issuetype', 'availability')
                          OR ifNull(toString(b.role), '') IN ('status', 'issuetype'))
               ),
               issues AS (
-                  SELECT h.insight_source_id AS insight_source_id, any(h.data_source) AS data_source,
+                  SELECT h.insight_tenant_id AS insight_tenant_id,
+                      h.insight_source_id AS insight_source_id, any(h.data_source) AS data_source,
                       h.issue_id AS issue_id,
                       maxIf(h.event_at, h.role = 'status' AND toString(st.status_category) = 'done') AS close_at,
                       argMaxIf(h.value_id, h.ord, h.role = 'issuetype') AS issue_type_id,
                       argMaxIf(h.value_id, h.ord, h.role = 'availability') AS availability
                   FROM hist AS h
                   LEFT JOIN silver.class_task_statuses AS st FINAL
-                      ON st.insight_source_id = h.insight_source_id AND st.status_id = h.value_id
-                  GROUP BY h.insight_source_id, h.issue_id
+                      ON st.insight_tenant_id = h.insight_tenant_id AND st.insight_source_id = h.insight_source_id
+                      AND st.status_id = h.value_id
+                  GROUP BY h.insight_tenant_id, h.insight_source_id, h.issue_id
                   HAVING close_at >= now() - INTERVAL 7 DAY
                      AND availability NOT IN ('deleted', 'trashed')
-              ),
-              src_tenant AS (
-                  SELECT insight_source_id, ifNull(any(tenant_id), '') AS tenant_id
-                  FROM silver.class_task_users FINAL
-                  GROUP BY insight_source_id
               ),
               -- Bitemporal latest row per key FIRST, the tombstone/domain filter
               -- AFTER, exactly as gold does it: unique_key includes recorded_at,
               -- so a retraction or a typo is a NEWER separate row and filtering
               -- before LIMIT 1 BY would resurrect the older live decision.
               kind_map AS (
-                  SELECT tenant_id, insight_source_id, source_key, target_value
+                  SELECT insight_tenant_id, insight_source_id, source_key, target_value
                   FROM (
-                      SELECT tenant_id, insight_source_id, source_key, target_value, is_deleted
+                      SELECT insight_tenant_id, insight_source_id, source_key, target_value, is_deleted
                       FROM config.field_value_map FINAL
                       WHERE field = 'issue_type' AND valid_from <= now64(3)
                       ORDER BY valid_from DESC, recorded_at DESC
-                      LIMIT 1 BY tenant_id, insight_source_id, source_key
+                      LIMIT 1 BY insight_tenant_id, insight_source_id, source_key
                   )
                   WHERE is_deleted = 0 AND target_value IN ('bug', 'task', 'unknown')
               ),
               kind_default AS (
-                  SELECT tenant_id, insight_source_id, default_value
+                  SELECT insight_tenant_id, insight_source_id, default_value
                   FROM (
-                      SELECT tenant_id, insight_source_id, default_value, is_deleted
+                      SELECT insight_tenant_id, insight_source_id, default_value, is_deleted
                       FROM config.field_value_defaults FINAL
                       WHERE field = 'issue_type' AND valid_from <= now64(3)
                       ORDER BY valid_from DESC, recorded_at DESC
-                      LIMIT 1 BY tenant_id, insight_source_id
+                      LIMIT 1 BY insight_tenant_id, insight_source_id
                   )
                   WHERE is_deleted = 0 AND default_value IN ('bug', 'task', 'unknown')
-              ),
-              issues_t AS (
-                  SELECT i.*, ifNull(nullIf(toString(t.tenant_id), ''), '') AS tenant_id
-                  FROM issues AS i
-                  LEFT JOIN src_tenant AS t ON t.insight_source_id = i.insight_source_id
               )
-              SELECT if(i.tenant_id = '', 'unknown', i.tenant_id) AS tenant, i.data_source AS data_source,
+              SELECT i.insight_tenant_id AS tenant, i.data_source AS data_source,
                   i.insight_source_id AS insight_source_id,
                   round(100 * countIf(coalesce(nullIf(toString(m.target_value), ''),
                                                nullIf(toString(d.default_value), ''),
                                                'unknown') = 'unknown') / count(), 2) AS unclassified_pct
-              FROM issues_t AS i
+              FROM issues AS i
               LEFT JOIN kind_map AS m
-                  ON m.tenant_id = i.tenant_id AND m.insight_source_id = i.insight_source_id
+                  ON m.insight_tenant_id = i.insight_tenant_id AND m.insight_source_id = i.insight_source_id
                   AND m.source_key = i.issue_type_id
               LEFT JOIN kind_default AS d
-                  ON d.tenant_id = i.tenant_id AND d.insight_source_id = i.insight_source_id
+                  ON d.insight_tenant_id = i.insight_tenant_id AND d.insight_source_id = i.insight_source_id
               GROUP BY tenant, data_source, insight_source_id
               HAVING count() >= 50
         - refId: C
@@ -12371,7 +12364,7 @@ alerting:
             final_close_at >= now() - INTERVAL 7 DAY GROUP BY 1, 2 ORDER BY 3 DESC
 
             Fix a type with NO row: add it to environments/<env>/clickhouse/field-value-map/*.tsv and
-            redeploy. The loader is insert-only and anti-joins on (tenant_id, insight_source_id,
+            redeploy. The loader is insert-only and anti-joins on (insight_tenant_id, insight_source_id,
             data_source, field, source_key), so a type already stored as 'unknown' holds a decision and
             its TSV line is skipped — editing it is a no-op. Superseding a stored decision takes a new
             row with a later recorded_at, which no tooling writes today: a direct INSERT into ClickHouse.
@@ -12400,27 +12393,22 @@ alerting:
               -- INVARIANT: recorded_at is part of unique_key, so a retraction is a
               -- NEWER row — filter is_deleted after the LIMIT 1 BY pick, never before.
               WITH role_bindings AS (
-                  SELECT insight_source_id, data_source, field_id, role
+                  SELECT insight_tenant_id, insight_source_id, data_source, field_id, role
                   FROM (
-                      SELECT insight_source_id, data_source, field_id, role, is_deleted
+                      SELECT insight_tenant_id, insight_source_id, data_source, field_id, role, is_deleted
                       FROM config.task_field_roles FINAL
                       WHERE valid_from <= now64(3)
                       ORDER BY valid_from DESC, recorded_at DESC
-                      LIMIT 1 BY insight_source_id, data_source, field_id
+                      LIMIT 1 BY insight_tenant_id, insight_source_id, data_source, field_id
                   )
                   WHERE is_deleted = 0
               ),
               observed AS (
-                  SELECT DISTINCT insight_source_id, data_source
+                  SELECT DISTINCT insight_tenant_id, insight_source_id, data_source
                   FROM silver.class_task_field_history FINAL
               ),
-              src_tenant AS (
-                  SELECT insight_source_id, ifNull(any(tenant_id), '') AS tenant_id
-                  FROM silver.class_task_users FINAL
-                  GROUP BY insight_source_id
-              ),
               authored_roles AS (
-                  SELECT insight_source_id, data_source, role
+                  SELECT insight_tenant_id, insight_source_id, data_source, role
                   FROM role_bindings
                   WHERE role IN ('issuetype', 'resolution')
               ),
@@ -12428,45 +12416,39 @@ alerting:
               -- there without an authored row; every other vendor binds them itself.
               -- A field nothing binds is not standardized and needs no default.
               bound AS (
-                  SELECT DISTINCT o.insight_source_id AS insight_source_id,
+                  SELECT DISTINCT o.insight_tenant_id AS insight_tenant_id, o.insight_source_id AS insight_source_id,
                       o.data_source AS data_source, f.2 AS field
                   FROM observed AS o
                   ARRAY JOIN [tuple('issuetype', 'issue_type'), tuple('resolution', 'resolution')] AS f
                   LEFT JOIN authored_roles AS a
-                      ON a.insight_source_id = o.insight_source_id
+                      ON a.insight_tenant_id = o.insight_tenant_id AND a.insight_source_id = o.insight_source_id
                       AND a.data_source = o.data_source AND a.role = f.1
                   WHERE o.data_source = 'jira' OR ifNull(toString(a.role), '') != ''
-              ),
-              bound_t AS (
-                  SELECT b.insight_source_id AS insight_source_id, b.data_source AS data_source,
-                      b.field AS field, ifNull(nullIf(toString(t.tenant_id), ''), '') AS tenant_id
-                  FROM bound AS b
-                  LEFT JOIN src_tenant AS t ON t.insight_source_id = b.insight_source_id
               ),
               -- INVARIANT: recorded_at is part of unique_key, so a retraction is a
               -- NEWER row — filter is_deleted after the LIMIT 1 BY pick, never before.
               -- A default outside the field's domain never reaches gold, so it counts as
               -- missing here; assert_field_values_are_canonical reports the value itself.
               defaults AS (
-                  SELECT tenant_id, insight_source_id, field
+                  SELECT insight_tenant_id, insight_source_id, field
                   FROM (
-                      SELECT tenant_id, insight_source_id, field, default_value, is_deleted
+                      SELECT insight_tenant_id, insight_source_id, field, default_value, is_deleted
                       FROM config.field_value_defaults FINAL
                       WHERE field IN ('issue_type', 'resolution') AND valid_from <= now64(3)
                       ORDER BY valid_from DESC, recorded_at DESC
-                      LIMIT 1 BY tenant_id, insight_source_id, field
+                      LIMIT 1 BY insight_tenant_id, insight_source_id, field
                   )
                   WHERE is_deleted = 0
                     AND ((field = 'issue_type' AND default_value IN ('bug', 'task', 'unknown'))
                          OR (field = 'resolution'
                              AND default_value IN ('fixed', 'duplicate', 'wontfix', 'unknown')))
               )
-              SELECT if(i.tenant_id = '', 'unknown', i.tenant_id) AS tenant,
+              SELECT i.insight_tenant_id AS tenant,
                   i.data_source AS data_source, i.insight_source_id AS insight_source_id,
                   i.field AS field, toUInt8(1) AS missing_default
-              FROM bound_t AS i
+              FROM bound AS i
               LEFT ANTI JOIN defaults AS d
-                  ON d.tenant_id = i.tenant_id AND d.insight_source_id = i.insight_source_id
+                  ON d.insight_tenant_id = i.insight_tenant_id AND d.insight_source_id = i.insight_source_id
                   AND d.field = i.field
         - refId: C
           relativeTimeRange:

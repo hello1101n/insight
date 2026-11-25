@@ -12,14 +12,14 @@
 -- meeting row gets its triple back from `account_keys` by its opaque key.
 WITH account_keys AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
         account_id
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             {{ account_entity_key('account_source_type', 'account_source_id', 'account_id') }} AS entity_id,
             account_source_type,
             account_source_id,
@@ -29,7 +29,7 @@ WITH account_keys AS (
     )
 )
 SELECT
-    src.tenant_id,
+    src.insight_tenant_id,
     src.source_key,
     src.entity_type,
     if(
@@ -60,7 +60,7 @@ chat_source AS (
     -- INVARIANT: a chat row with an email keeps the email as entity_id, so its
     -- days still meet the meeting days of that address in the derived measures.
     SELECT
-        tenant_id,
+        insight_tenant_id,
         if(
             person_key LIKE '%@%',
             {{ normalized_email('person_key') }},
@@ -86,7 +86,7 @@ chat_source AS (
 ),
 meeting_source AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         if(
             account_source_type = 'email',
             {{ normalized_email('person_key') }},
@@ -141,7 +141,7 @@ meeting_source AS (
 ),
 email_source AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         {{ normalized_email('person_key') }} AS entity_id,
         date AS metric_date,
         sent_count,
@@ -159,7 +159,7 @@ email_source AS (
 ),
 document_source AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         {{ normalized_email('person_key') }} AS entity_id,
         date AS metric_date,
         viewed_or_edited_count,
@@ -185,16 +185,16 @@ document_source AS (
 ),
 working_hours_source AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         {{ normalized_email('email') }} AS entity_id,
         max(working_hours_per_day) AS working_hours_per_day
     FROM {{ ref('class_hr_working_hours') }} FINAL
     WHERE email LIKE '%@%'
-    GROUP BY tenant_id, entity_id
+    GROUP BY insight_tenant_id, entity_id
 ),
 deliberate_activity AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         row_account_source_type,
         row_account_source_id,
@@ -206,23 +206,23 @@ deliberate_activity AS (
             AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS tool_dimensions
     FROM (
-        SELECT DISTINCT tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
+        SELECT DISTINCT insight_tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
         FROM (
-            SELECT tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
+            SELECT insight_tenant_id, entity_id, row_account_source_type, row_account_source_id, row_account_id, metric_date, tool_value
             FROM chat_source
             WHERE total_chat_messages > 0
             UNION ALL
-            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
+            SELECT insight_tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM email_source
             WHERE sent_count > 0
             UNION ALL
-            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
+            SELECT insight_tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM document_source
             WHERE viewed_or_edited_count > 0
                OR shared_internally_count > 0
                OR shared_externally_count > 0
             UNION ALL
-            SELECT tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
+            SELECT insight_tenant_id, entity_id, '' AS row_account_source_type, '' AS row_account_source_id, '' AS row_account_id, metric_date, tool_value
             FROM meeting_source
             WHERE meetings_and_calls_attended > 0
         )
@@ -232,25 +232,25 @@ meeting_covered_days AS (
     -- INVARIANT: an address no meeting source ever reported has unknown meeting time,
     -- so its days are neither meeting-free nor focus days.
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date
     FROM deliberate_activity
-    WHERE (tenant_id, entity_id) IN (
-        SELECT DISTINCT tenant_id, entity_id
+    WHERE (insight_tenant_id, entity_id) IN (
+        SELECT DISTINCT insight_tenant_id, entity_id
         FROM meeting_source
     )
 ),
 meeting_free_source AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         if(sum(meeting_seconds) = 0, 1, 0) AS meeting_free_flag,
         CAST([] AS Array(Tuple(key String, value String, label Nullable(String)))) AS no_dimensions
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             entity_id,
             metric_date,
             0 AS meeting_seconds,
@@ -258,7 +258,7 @@ meeting_free_source AS (
         FROM meeting_covered_days
         UNION ALL
         SELECT
-            tenant_id,
+            insight_tenant_id,
             entity_id,
             metric_date,
             ifNull(audio_duration_seconds, 0)
@@ -267,12 +267,12 @@ meeting_free_source AS (
             0 AS is_active
         FROM meeting_source
     )
-    GROUP BY tenant_id, entity_id, metric_date
+    GROUP BY insight_tenant_id, entity_id, metric_date
     HAVING max(is_active) = 1
 ),
 workday_source AS (
     SELECT
-        active_days.tenant_id AS tenant_id,
+        active_days.insight_tenant_id AS insight_tenant_id,
         active_days.entity_id AS entity_id,
         active_days.metric_date AS metric_date,
         -- WORKAROUND: under join_use_nulls=0 an unmatched LEFT JOIN yields 0, not NULL.
@@ -282,7 +282,7 @@ workday_source AS (
     FROM meeting_covered_days AS active_days
     LEFT JOIN (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             entity_id,
             metric_date,
             sum(greatest(
@@ -291,13 +291,13 @@ workday_source AS (
                 ifNull(screen_share_duration_seconds, 0)
             )) / 3600.0 AS meeting_hours
         FROM meeting_source
-        GROUP BY tenant_id, entity_id, metric_date
+        GROUP BY insight_tenant_id, entity_id, metric_date
     ) AS meetings
-        ON meetings.tenant_id = active_days.tenant_id
+        ON meetings.insight_tenant_id = active_days.insight_tenant_id
        AND meetings.entity_id = active_days.entity_id
        AND meetings.metric_date = active_days.metric_date
     LEFT JOIN working_hours_source AS hours
-        ON hours.tenant_id = active_days.tenant_id
+        ON hours.insight_tenant_id = active_days.insight_tenant_id
        AND hours.entity_id = active_days.entity_id
 ),
 chat_value_measures AS (
@@ -370,7 +370,7 @@ value_measures AS (
 ),
 active_day_grain AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         row_account_source_type,
         row_account_source_id,
@@ -381,7 +381,7 @@ active_day_grain AS (
 ),
 chat_active_day_grain AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         row_account_source_type,
         row_account_source_id,
@@ -422,7 +422,7 @@ attendance_measures AS (
     -- addresses per subject (`alias_collapse: max` on meetings_attended), so a
     -- shared meeting folds to one and distinct subjects still add up.
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         'meetings_attended' AS measure_key,
@@ -438,7 +438,7 @@ attendance_measures AS (
     UNION ALL
 
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         measure_key,
@@ -458,7 +458,7 @@ subject_measures AS (
     {{ distinct_measure('chat_active_day', 'chat_active_day_grain', 'metric_date', 'tool_dimensions', keys=row_account_keys) }}
 )
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -487,14 +487,14 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM value_measures
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -521,14 +521,14 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM chat_value_measures
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -555,14 +555,14 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM subject_measures
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'collab' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -587,10 +587,10 @@ SELECT
     dimensions,
     details
 FROM attendance_measures
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src
 LEFT JOIN account_keys AS acc
-    ON acc.tenant_id = src.tenant_id
+    ON acc.insight_tenant_id = src.insight_tenant_id
    AND acc.entity_id = src.entity_id

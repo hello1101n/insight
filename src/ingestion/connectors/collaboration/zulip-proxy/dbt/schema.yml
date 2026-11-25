@@ -47,7 +47,7 @@ models:
       (direct/group/channel) are NULL — the proxy only exposes aggregated
       totals per sender per bucket.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id

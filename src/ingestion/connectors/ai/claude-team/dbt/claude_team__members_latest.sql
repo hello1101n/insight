@@ -22,7 +22,7 @@
 -- email is kept — the account stays bindable by hand.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     JSONExtractString(COALESCE(toString(account), '{}'), 'uuid')          AS account_uuid,

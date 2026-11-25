@@ -5,7 +5,7 @@ templates:
     _airbyte_extracted_at: "2026-12-10T00:00:00Z"
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: "claude-team-test"
     unique_key: null
     collected_at: "2026-12-10T00:00:00Z"

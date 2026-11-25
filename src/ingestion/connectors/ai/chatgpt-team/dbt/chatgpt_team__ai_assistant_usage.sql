@@ -36,9 +36,9 @@ WITH roster_seat_type AS (
     -- the usage row the fallback: the roster leaves seat_type null for some
     -- members, and the usage row is the only other place the tier appears.
     -- Column names are prefixed so the join below stays unambiguous against
-    -- the activity row's own tenant_id / source_id / email / seat_type.
+    -- the activity row's own insight_tenant_id / source_id / email / seat_type.
     SELECT
-        coalesce(tenant_id, '')                                     AS r_tenant_id,
+        coalesce(insight_tenant_id, '')                                     AS r_tenant_id,
         coalesce(source_id, '')                                     AS r_source_id,
         lower(trim(email))                                          AS r_email,
         nullIf(trim(coalesce(seat_type, '')), '')                   AS r_seat_type
@@ -51,9 +51,9 @@ WITH roster_seat_type AS (
 )
 
 SELECT
-    tenant_id                                                       AS insight_tenant_id,
+    insight_tenant_id,
     source_id,
-    CAST(concat(coalesce(tenant_id, ''), '-', coalesce(source_id, ''), '-', lower(trim(coalesce(email, ''))), '-', coalesce(date, ''), '-chat') AS String)
+    CAST(concat(coalesce(insight_tenant_id, ''), '-', coalesce(source_id, ''), '-', lower(trim(coalesce(email, ''))), '-', coalesce(date, ''), '-chat') AS String)
                                                                     AS unique_key,
     lower(trim(email))                                              AS email,
     toDate(date)                                                    AS day,
@@ -103,10 +103,10 @@ FROM (
     ORDER BY _airbyte_extracted_at DESC
     -- Dedup on the SAME normalized key the unique_key uses (lower(trim(email))),
     -- else two case-variant spellings collide on unique_key (unique-test fail).
-    LIMIT 1 BY tenant_id, source_id, lower(trim(email)), date
+    LIMIT 1 BY insight_tenant_id, source_id, lower(trim(email)), date
 ) AS activity
 LEFT JOIN roster_seat_type AS roster
-       ON roster.r_tenant_id = coalesce(activity.tenant_id, '')
+       ON roster.r_tenant_id = coalesce(activity.insight_tenant_id, '')
       AND roster.r_source_id = coalesce(activity.source_id, '')
       AND roster.r_email = lower(trim(activity.email))
 WHERE email IS NOT NULL
@@ -125,7 +125,7 @@ WHERE email IS NOT NULL
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
   -- the day window keeps re-deriving recent days whose joined streams arrive late.
   AND (
-      toDate(date) > {{ instance_incremental_watermark('day', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+      toDate(date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
+      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
   )
 {% endif %}

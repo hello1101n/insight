@@ -11,7 +11,7 @@
 -- one request per page of pull requests; the REST list carries neither.
 WITH diff_stats AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         repo_full_name,
         pull_number,
@@ -25,7 +25,7 @@ WITH diff_stats AS (
     FROM {{ source('bronze_github', 'pull_request_diff_stats') }} FINAL
 )
 SELECT
-    pr.tenant_id AS tenant_id,
+    pr.insight_tenant_id AS insight_tenant_id,
     pr.source_id AS source_id,
     pr.unique_key AS unique_key,
     splitByChar('/', COALESCE(pr.repo_full_name, ''))[1] AS project_key,
@@ -82,7 +82,7 @@ SELECT
     ) AS _airbyte_extracted_at
 FROM {{ source('bronze_github', 'pull_requests') }} AS pr FINAL
 LEFT JOIN diff_stats AS ds
-    ON ds.tenant_id = pr.tenant_id
+    ON ds.insight_tenant_id = pr.insight_tenant_id
     AND ds.source_id = pr.source_id
     AND ds.repo_full_name = pr.repo_full_name
     AND ds.pull_number = pr.number
@@ -90,5 +90,5 @@ LEFT JOIN diff_stats AS ds
 WHERE greatest(
     pr._airbyte_extracted_at,
     COALESCE(ds._airbyte_extracted_at, pr._airbyte_extracted_at)
-) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.tenant_id', 'pr.source_id']) }}
+) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.insight_tenant_id', 'pr.source_id']) }}
 {% endif %}

@@ -55,7 +55,7 @@ def test_a_user_maps_to_the_shared_directory_shape() -> None:
 
     assert record["id"] == GUID
     assert record["unique_key"] == f"{TENANT}-{SOURCE}-{GUID}"
-    assert record["tenant_id"] == TENANT
+    assert record["insight_tenant_id"] == TENANT
     assert record["mail"] == "alice@example.com"
     assert record["proxyAddresses"] == ["SMTP:alice@example.com", "smtp:a.alpha@example.com"]
     assert record["surname"] == "Alpha"
@@ -138,4 +138,4 @@ def test_the_schema_requires_the_key_and_the_guid() -> None:
     schema = _stream().get_json_schema()
 
     assert schema["required"] == ["unique_key", "id"]
-    assert "tenant_id" in schema["properties"]
+    assert "insight_tenant_id" in schema["properties"]

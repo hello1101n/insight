@@ -64,6 +64,8 @@
         {%- if not loop.last %} UNION ALL {% endif %}
       {%- endfor %}
       ) AS _ubt
+      {#- A NULL unique_key (a NULL tenant or key part) collapses or vanishes in the dedup below. #}
+      WHERE {{ tenant_guard_fail('unique_key IS NULL', 'unique_key is NULL before dedup') }} = 0
       {% if dedup_version_col %}
       {# One row per unique_key, latest version wins. #}
       QUALIFY ROW_NUMBER() OVER (PARTITION BY unique_key ORDER BY {{ dedup_version_col }} DESC) = 1

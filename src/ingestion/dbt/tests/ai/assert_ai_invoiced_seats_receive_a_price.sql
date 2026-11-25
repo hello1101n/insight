@@ -7,7 +7,7 @@
         'domain': 'ai',
         'category': 'coverage',
         'tier': 'error',
-        'remediation': 'A row here is a month whose vendor invoice priced a seat while some seat got no fee, so that money sits on the ledger and ai.seat_cost serves nothing for those people. The finding column says which of the two states it is, and they are fixed in different places. no_tiered_seats: the invoice priced seats and the month holds no seat a fee can reach, so no binding can help. Check whether seat rows arrived for that month at all and whether they carry ceiling and tier data: absent rows point at the seat connector and its last sync, while rows present without a ceiling point at what the vendor reported for them, since the ceiling is what makes a seat priceable. unpriced_seats is 0 there because there is no seat to count. seats_unpriced: that many seats of this tier exist and took no fee, so the binding is what is missing or wrong. Add or correct a row in config.ai_seat_tier_map, which dbt does not own, naming tenant_id, the invoice connector instance in insight_source_id, the class source, the vendor catalogue identifier in tier_ref, and the seat_tier those seats carry. Where the count is short of the tier total rather than equal to it, a SECOND seat population is the one left out: the tenant runs two connector instances, and each needs its own row naming its population in seat_source_id — an unbound price reaches neither. In neither state is the transformation at fault: gold declines to price a seat it cannot attribute rather than guessing. A month whose only priced tier is unambiguous needs no binding at all, and for such an installation an empty map is the correct state.'
+        'remediation': 'A row here is a month whose vendor invoice priced a seat while some seat got no fee, so that money sits on the ledger and ai.seat_cost serves nothing for those people. The finding column says which of the two states it is, and they are fixed in different places. no_tiered_seats: the invoice priced seats and the month holds no seat a fee can reach, so no binding can help. Check whether seat rows arrived for that month at all and whether they carry ceiling and tier data: absent rows point at the seat connector and its last sync, while rows present without a ceiling point at what the vendor reported for them, since the ceiling is what makes a seat priceable. unpriced_seats is 0 there because there is no seat to count. seats_unpriced: that many seats of this tier exist and took no fee, so the binding is what is missing or wrong. Add or correct a row in config.ai_seat_tier_map, which dbt does not own, naming insight_tenant_id, the invoice connector instance in insight_source_id, the class source, the vendor catalogue identifier in tier_ref, and the seat_tier those seats carry. Where the count is short of the tier total rather than equal to it, a SECOND seat population is the one left out: the tenant runs two connector instances, and each needs its own row naming its population in seat_source_id — an unbound price reaches neither. In neither state is the transformation at fault: gold declines to price a seat it cannot attribute rather than guessing. A month whose only priced tier is unambiguous needs no binding at all, and for such an installation an empty map is the correct state.'
     }
 ) }}
 {#- Reports two observable states and deliberately does NOT reproduce the
@@ -40,14 +40,14 @@ WITH
 -- for another instance whose own invoice has not arrived yet.
 priced_populations AS (
     SELECT DISTINCT
-        invoice.insight_tenant_id               AS tenant_id,
+        invoice.insight_tenant_id               AS insight_tenant_id,
         invoice.source                          AS source,
         invoice.period_month                    AS period_month,
         coalesce(binding.seat_source_id, '')    AS seat_source_id
     FROM {{ ref('class_ai_invoice') }} AS invoice FINAL
     LEFT JOIN (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             source,
             tier_ref,
@@ -55,7 +55,7 @@ priced_populations AS (
         FROM {{ source('config', 'ai_seat_tier_map') }} FINAL
         WHERE is_deleted = 0
     ) AS binding
-        ON  binding.tenant_id = invoice.insight_tenant_id
+        ON  binding.insight_tenant_id = invoice.insight_tenant_id
         AND binding.insight_source_id = invoice.source_id
         AND binding.source = invoice.source
         AND binding.tier_ref = invoice.tier_ref
@@ -78,7 +78,7 @@ priced_populations AS (
 -- carries, so the wrong filler here reports a seat that was in fact served.
 tiered_seats_per_population AS (
     SELECT
-        insight_tenant_id                       AS tenant_id,
+        insight_tenant_id,
         source,
         source_id,
         tool,
@@ -90,39 +90,39 @@ tiered_seats_per_population AS (
       AND email IS NOT NULL
       AND email != ''
       AND insight_tenant_id IS NOT NULL
-    GROUP BY tenant_id, source, source_id, tool, period_month, seat_tier
+    GROUP BY insight_tenant_id, source, source_id, tool, period_month, seat_tier
 ),
 
 tiered_seats AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source,
         tool,
         period_month,
         seat_tier,
         sum(seats)                              AS seats
     FROM tiered_seats_per_population
-    GROUP BY tenant_id, source, tool, period_month, seat_tier
+    GROUP BY insight_tenant_id, source, tool, period_month, seat_tier
 ),
 
 -- Seats of a population some invoice priced: a price bound to the population
 -- itself, or an unbound price, which may be the missing binding to report.
 priced_tiered_seats AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source,
         tool,
         period_month,
         seat_tier,
         sum(seats)                              AS seats
     FROM tiered_seats_per_population
-    WHERE (tenant_id, source, period_month, source_id) IN (
-            SELECT tenant_id, source, period_month, seat_source_id FROM priced_populations
+    WHERE (insight_tenant_id, source, period_month, source_id) IN (
+            SELECT insight_tenant_id, source, period_month, seat_source_id FROM priced_populations
         )
-       OR (tenant_id, source, period_month, '') IN (
-            SELECT tenant_id, source, period_month, seat_source_id FROM priced_populations
+       OR (insight_tenant_id, source, period_month, '') IN (
+            SELECT insight_tenant_id, source, period_month, seat_source_id FROM priced_populations
         )
-    GROUP BY tenant_id, source, tool, period_month, seat_tier
+    GROUP BY insight_tenant_id, source, tool, period_month, seat_tier
 ),
 
 -- COUNTED, not tested for existence. gold emits one seat-fee row per seat-month
@@ -138,21 +138,21 @@ priced_tiered_seats AS (
 -- A check keyed on that formula reports every seat the day it changes again.
 served_seats AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         arrayFirst(d -> d.1 = 'tool', dimensions).2      AS tool,
         metric_date                                      AS period_month,
         arrayFirst(d -> d.1 = 'seat_tier', dimensions).2 AS seat_tier,
         count()                                          AS served
     FROM {{ ref('ai_cost_metric_evidence') }}
     WHERE measure_key = 'seat_cost_usd'
-    GROUP BY tenant_id, tool, period_month, seat_tier
+    GROUP BY insight_tenant_id, tool, period_month, seat_tier
 ),
 
 -- The invoice priced a seat and its population holds none to price: the bound
 -- population itself, or any population for an unbound price.
 no_tiered_seats AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         source,
         period_month,
         'no_tiered_seats'                       AS finding,
@@ -163,12 +163,12 @@ no_tiered_seats AS (
     -- ClickHouse left join yields the column's default, which for a count is 0
     -- and would read as a real answer.
     WHERE (seat_source_id != ''
-           AND (tenant_id, source, period_month, seat_source_id) NOT IN (
-               SELECT tenant_id, source, period_month, source_id FROM tiered_seats_per_population
+           AND (insight_tenant_id, source, period_month, seat_source_id) NOT IN (
+               SELECT insight_tenant_id, source, period_month, source_id FROM tiered_seats_per_population
            ))
        OR (seat_source_id = ''
-           AND (tenant_id, source, period_month) NOT IN (
-               SELECT tenant_id, source, period_month FROM tiered_seats
+           AND (insight_tenant_id, source, period_month) NOT IN (
+               SELECT insight_tenant_id, source, period_month FROM tiered_seats
            ))
 ),
 
@@ -179,7 +179,7 @@ no_tiered_seats AS (
 -- beside one that was priced.
 seats_unpriced AS (
     SELECT
-        seat.tenant_id,
+        seat.insight_tenant_id,
         seat.source,
         seat.period_month,
         'seats_unpriced'                        AS finding,
@@ -189,7 +189,7 @@ seats_unpriced AS (
         toUInt64(seat.seats - coalesce(served.served, 0)) AS unpriced_seats
     FROM priced_tiered_seats AS seat
     LEFT JOIN served_seats AS served
-        ON  served.tenant_id = seat.tenant_id
+        ON  served.insight_tenant_id = seat.insight_tenant_id
         AND served.tool = seat.tool
         AND served.period_month = seat.period_month
         AND served.seat_tier = seat.seat_tier
@@ -198,8 +198,8 @@ seats_unpriced AS (
     WHERE seat.seats > coalesce(served.served, 0)
 )
 
-SELECT tenant_id, source, period_month, finding, seat_tier, unpriced_seats
+SELECT insight_tenant_id, source, period_month, finding, seat_tier, unpriced_seats
 FROM no_tiered_seats
 UNION ALL
-SELECT tenant_id, source, period_month, finding, seat_tier, unpriced_seats
+SELECT insight_tenant_id, source, period_month, finding, seat_tier, unpriced_seats
 FROM seats_unpriced

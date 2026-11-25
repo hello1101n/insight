@@ -6,7 +6,7 @@
 
 WITH snapshots AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         argMax(
             tuple(entries_json, window_start, window_end),
@@ -14,14 +14,14 @@ WITH snapshots AS (
         ) AS snapshot
     FROM {{ source('bamboohr', 'whos_out') }}
     WHERE entries_json IS NOT NULL
-      AND tenant_id IS NOT NULL
+      AND insight_tenant_id IS NOT NULL
       AND source_id IS NOT NULL
-    GROUP BY tenant_id, source_id
+    GROUP BY insight_tenant_id, source_id
 ),
 
 latest AS (
     SELECT
-        coalesce(tenant_id, '') AS insight_tenant_id,
+        coalesce(insight_tenant_id, '') AS insight_tenant_id,
         coalesce(source_id, '') AS account_source_id,
         toDateOrNull(snapshot.2) AS window_start,
         toDateOrNull(snapshot.3) AS window_end,

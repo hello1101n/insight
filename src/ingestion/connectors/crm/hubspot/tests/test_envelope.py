@@ -27,7 +27,7 @@ class TestEnvelope:
         assert out["id"] == "1"
         assert out["properties_amount"] == "10"
         assert "properties" not in out
-        assert out["tenant_id"] == "T"
+        assert out["insight_tenant_id"] == "T"
         assert out["source_id"] == "S"
         assert out["unique_key"] == "T-S-1"
         assert out["data_source"] == "hubspot"
@@ -88,10 +88,10 @@ class TestReservedNameCollision:
     def test_colliding_field_dropped_and_warned_once(self, caplog):
         seen: set = set()
         with caplog.at_level(logging.WARNING, logger="airbyte"):
-            out1 = wrap({"id": "1", "tenant_id": "EVIL"}, seen=seen)
-            out2 = wrap({"id": "2", "tenant_id": "EVIL"}, seen=seen)
-        assert out1["tenant_id"] == "T"  # envelope value wins
-        assert out2["tenant_id"] == "T"
+            out1 = wrap({"id": "1", "insight_tenant_id": "EVIL"}, seen=seen)
+            out2 = wrap({"id": "2", "insight_tenant_id": "EVIL"}, seen=seen)
+        assert out1["insight_tenant_id"] == "T"  # envelope value wins
+        assert out2["insight_tenant_id"] == "T"
         assert caplog.text.count("collides with Insight envelope field") == 1
 
     def test_warns_every_time_without_seen_set(self, caplog):
@@ -198,7 +198,7 @@ class TestInjectEnvelopeProperties:
         schema = {"type": "object", "properties": {"id": {"type": "string"}}}
         out = inject_envelope_properties(schema)
         assert out is schema  # mutates and returns the same mapping
-        for field in ("tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"):
+        for field in ("insight_tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"):
             assert field in schema["properties"], f"missing envelope field: {field}"
         assert "custom_fields" not in schema["properties"]
         assert schema["properties"]["id"] == {"type": "string"}

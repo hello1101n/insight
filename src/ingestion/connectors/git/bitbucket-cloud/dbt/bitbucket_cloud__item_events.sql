@@ -25,7 +25,7 @@
 -- with different values.
 WITH activity AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         unique_key,
         repo_full_name,
@@ -55,7 +55,7 @@ status_change AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,

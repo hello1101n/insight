@@ -8,7 +8,7 @@
 ) }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(full_name, ''))[1] AS project_key,

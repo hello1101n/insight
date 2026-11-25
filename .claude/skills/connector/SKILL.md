@@ -147,7 +147,7 @@ stringData:
 
 **Discovery**: reconcile (`reconcile-connectors.sh`) discovers Secrets by label `app.kubernetes.io/part-of=insight` and reads connector type from annotation `insight.cyberfabric.com/connector`.
 
-**Tenant**: reconcile sets `insight_tenant_id` from `INSIGHT_TENANT_ID`, which the chart's reconcile CronJob fills from `ingestion.reconcile.tenantId`; without it, reconcile falls back to `tenant_id` in the `insight-config` ConfigMap. The local runner's `connections/<tenant>.yaml` holds only `tenant_id` — no connector config, no credentials. `insight_source_id` is set from Secret annotation `insight.cyberfabric.com/source-id`.
+**Tenant**: reconcile sets `insight_tenant_id` from `INSIGHT_TENANT_ID`, which the chart's reconcile CronJob fills from `authenticator.oidc.defaultTenantId`; without it, reconcile falls back to `tenant_id` in the `insight-config` ConfigMap. The local runner's `connections/<tenant>.yaml` holds only `tenant_id` — no connector config, no credentials. `insight_source_id` is set from Secret annotation `insight.cyberfabric.com/source-id`.
 
 **Multi-instance**: Multiple Secrets with the same `connector` annotation create separate Airbyte sources (e.g., two M365 tenants).
 

@@ -42,7 +42,7 @@ models:
       stitching decision per uuid (a late-arriving session can
       re-cluster earlier sessions in the same chain).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -88,7 +88,7 @@ models:
       from the host on bronze_zoom.meetings. A day can carry organized
       meetings alone, when the host never joined.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: insight_source_id

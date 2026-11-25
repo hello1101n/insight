@@ -119,7 +119,9 @@ def test_tasks_census_keys_keep_the_derived_source_formula() -> None:
     )
     case = namespace(original, key="tasks/example", caller_email="lead@example.com")
     for row in case.seeded.bronze["bronze_jira.jira_issue_census"]:
-        assert row["unique_key"] == f"{row['tenant_id']}-{row['source_id']}-{row['jira_id']}"
+        assert (
+            row["unique_key"] == f"{row['insight_tenant_id']}-{row['source_id']}-{row['jira_id']}"
+        )
     for table, rows in case.seeded.bronze.items():
         if table.startswith("config."):
             assert all(row["insight_source_id"].startswith(case.prefix) for row in rows)

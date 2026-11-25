@@ -11,7 +11,7 @@
 -- from a vendor project to the class contract, and it does not exist yet.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     id AS project_id,

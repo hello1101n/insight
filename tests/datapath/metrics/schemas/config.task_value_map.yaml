@@ -5,7 +5,7 @@ schemas:
     type: object
     additionalProperties: false
     properties:
-      tenant_id: &id001
+      insight_tenant_id: &id001
         type: string
       insight_source_id: *id001
       data_source: *id001

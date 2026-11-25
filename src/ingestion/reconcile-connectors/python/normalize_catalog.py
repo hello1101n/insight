@@ -68,7 +68,7 @@ def normalize(discover_response: dict) -> dict:
         raise ValueError(
             f"streams without a {UNIQUE_KEY} schema property: {', '.join(sorted(keyless))} —"
             " every stream must carry the identity stamp"
-            f" (tenant_id, source_id, {UNIQUE_KEY})"
+            f" (insight_tenant_id, source_id, {UNIQUE_KEY})"
         )
 
     out_streams = []

@@ -17,7 +17,7 @@
 
 WITH authored AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         data_source,
         source_key,
@@ -27,12 +27,12 @@ WITH authored AS (
     FROM config.field_value_map FINAL
     WHERE field = 'issue_type'
       AND valid_from <= now64(3)
-    GROUP BY tenant_id, insight_source_id, data_source, source_key
+    GROUP BY insight_tenant_id, insight_source_id, data_source, source_key
     HAVING is_deleted = 0 AND display_name != ''
 )
 
 SELECT
-    a.tenant_id         AS tenant_id,
+    a.insight_tenant_id         AS insight_tenant_id,
     a.insight_source_id AS insight_source_id,
     a.data_source       AS data_source,
     a.source_key        AS source_key,
@@ -42,7 +42,8 @@ SELECT
     a.target_value      AS issue_kind
 FROM authored AS a
 INNER JOIN {{ ref('class_task_issuetypes') }} AS t FINAL
-    ON t.insight_source_id = a.insight_source_id
+    ON t.insight_tenant_id = a.insight_tenant_id
+    AND t.insight_source_id = a.insight_source_id
     AND t.data_source = a.data_source
     AND t.issue_type_id = a.source_key
 -- Either name clears the row: an operator records whichever the console showed.

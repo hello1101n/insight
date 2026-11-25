@@ -122,7 +122,7 @@ def _issue_key(case: CensusCase, updated: str, extracted_at: str) -> dict[str, A
         **_airbyte(extracted_at),
         "id": case.jira_id,
         "key": case.key,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{case.jira_id}",
         "id_readable": case.key,

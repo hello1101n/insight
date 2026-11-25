@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from tenant_migration import ddl
 from tenant_migration.clickhouse import ClickHouse
+from tenant_migration.inventory import OLD_TENANT_COLUMN, TENANT_COLUMN
 from tenant_migration.keys import Tenants
 
 JIRA_ISSUE_TABLES = ("jira_issue", "jira_issue_keys")
@@ -25,9 +26,11 @@ def jira_issues_keyed_by_issue_key(ch: ClickHouse) -> list[str]:
     for table in JIRA_ISSUE_TABLES:
         if not _exists(ch, "bronze_jira", table, "jira_id"):
             continue
+        # Before `apply` the column is still `tenant_id`; after it, `insight_tenant_id`.
+        tenant = TENANT_COLUMN if _exists(ch, "bronze_jira", table, TENANT_COLUMN) else OLD_TENANT_COLUMN
         stale = ch.scalar(
             f"SELECT count() FROM `bronze_jira`.`{table}` WHERE coalesce(unique_key, '') != "
-            "concat(coalesce(tenant_id, ''), '-', coalesce(source_id, ''), '-', coalesce(jira_id, ''))"
+            f"concat(coalesce({tenant}, ''), '-', coalesce(source_id, ''), '-', coalesce(jira_id, ''))"
         )
         if stale:
             pending.append(f"bronze_jira.{table}: {stale} row(s) keyed by the issue key")

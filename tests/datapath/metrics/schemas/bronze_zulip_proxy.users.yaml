@@ -17,6 +17,6 @@ schemas:
       role: {type: [number, "null"]}
       is_active: {type: [boolean, "null"]}
       recipient_id: {type: [number, "null"]}
-      tenant_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
       source_id: {type: [string, "null"]}
       unique_key: {type: string}

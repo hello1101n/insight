@@ -15,7 +15,7 @@
 -- seen on a feature branch stays 0 unless a later sync re-reads it, so a merge
 -- outside the connector's lookback_window never corrects it.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     arrayStringConcat(arrayPopBack(splitByChar('/', COALESCE(repo_path, ''))), '/') AS project_key,

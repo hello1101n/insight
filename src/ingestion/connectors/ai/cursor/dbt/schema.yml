@@ -158,7 +158,7 @@ models:
       SCD2 snapshot of Cursor team members. Appends a new row when
       name, role, or isRemoved changes.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -191,7 +191,7 @@ models:
         description: "Member ID (stable identifier)"
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id

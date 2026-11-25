@@ -34,7 +34,7 @@
 WITH
 issues AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         toString(id)                                            AS issue_id,
         concat(repo_full_name, '#', toString(number))           AS id_readable,
@@ -63,7 +63,7 @@ issues AS (
 -- field by the numeric id, a change event by the node id.
 field_catalogue AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         field_id,
         field_database_id,
@@ -76,7 +76,7 @@ field_catalogue AS (
 -- change, not after the field, so the event type is what carries it.
 events AS (
     SELECT
-        e.tenant_id                                             AS tenant_id,
+        e.insight_tenant_id                                             AS insight_tenant_id,
         e.source_id                                             AS source_id,
         e.repo_full_name                                        AS repo_full_name,
         e.item_number                                           AS number,
@@ -153,7 +153,7 @@ events AS (
 
 scoped_events AS (
     SELECT
-        i.tenant_id                                             AS tenant_id,
+        i.insight_tenant_id                                             AS insight_tenant_id,
         i.source_id                                             AS source_id,
         i.issue_id                                              AS issue_id,
         i.id_readable                                           AS id_readable,
@@ -168,7 +168,7 @@ scoped_events AS (
         ev._airbyte_extracted_at                                AS _airbyte_extracted_at
     FROM events AS ev
     INNER JOIN issues AS i
-        ON i.tenant_id = ev.tenant_id
+        ON i.insight_tenant_id = ev.insight_tenant_id
         AND i.source_id = ev.source_id
         AND i.repo_full_name = ev.repo_full_name
         AND i.number = ev.number
@@ -182,32 +182,32 @@ scoped_events AS (
 -- It is an opaque node id compared as text: reproducible, not chronological.
 tied_seconds AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         issue_id,
         event_at
     FROM scoped_events
-    GROUP BY tenant_id, source_id, issue_id, event_at
+    GROUP BY insight_tenant_id, source_id, issue_id, event_at
     HAVING min(event_id) != max(event_id)
 ),
 
 tied_fields AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         issue_id,
         event_at,
         field_id,
         arraySort(x -> x.1, groupUniqArray((event_id, prev_value_id, value_id)))  AS evs
     FROM scoped_events
-    WHERE (tenant_id, source_id, issue_id, event_at)
-          IN (SELECT tenant_id, source_id, issue_id, event_at FROM tied_seconds)
-    GROUP BY tenant_id, source_id, issue_id, event_at, field_id
+    WHERE (insight_tenant_id, source_id, issue_id, event_at)
+          IN (SELECT insight_tenant_id, source_id, issue_id, event_at FROM tied_seconds)
+    GROUP BY insight_tenant_id, source_id, issue_id, event_at, field_id
 ),
 
 tied_field_links AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         issue_id,
         event_at,
@@ -220,7 +220,7 @@ tied_field_links AS (
 
 tied_orders AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         issue_id,
         entries,
@@ -229,13 +229,13 @@ tied_orders AS (
                                                                 AS entry_order
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             source_id,
             issue_id,
             arraySort(arrayDistinct(arrayFlatten(groupArray(entries))))  AS entries,
             arrayDistinct(arrayFlatten(groupArray(links)))      AS links
         FROM tied_field_links
-        GROUP BY tenant_id, source_id, issue_id, event_at
+        GROUP BY insight_tenant_id, source_id, issue_id, event_at
     )
 ),
 
@@ -246,7 +246,7 @@ tied_orders AS (
     FROM (
         -- INVARIANT: the arrayJoin stays alone in its own SELECT list. Reading
         -- its elements beside it re-evaluates it per reference.
-        SELECT arrayJoin(arrayMap(k -> (tenant_id, source_id, issue_id,
+        SELECT arrayJoin(arrayMap(k -> (insight_tenant_id, source_id, issue_id,
                                         entries[entry_order[k]], toUInt32(k - 1)),
                                   range(1, length(entries) + 1)))  AS position
         FROM tied_orders
@@ -260,7 +260,7 @@ ranked_events AS (
     FROM scoped_events AS e
     LEFT JOIN (
         SELECT
-            position.1                                          AS tenant_id,
+            position.1                                          AS insight_tenant_id,
             position.2                                          AS source_id,
             position.3                                          AS issue_id,
             position.4                                          AS event_id,
@@ -270,7 +270,7 @@ ranked_events AS (
             SELECT arrayJoin(entry_positions) AS position
         )
     ) AS p
-        ON p.tenant_id = e.tenant_id
+        ON p.insight_tenant_id = e.insight_tenant_id
         AND p.source_id = e.source_id
         AND p.issue_id = e.issue_id
         AND p.event_id = e.event_id
@@ -281,7 +281,7 @@ ranked_events AS (
 -- value wins because it states the value at creation.
 snapshot_values AS (
     SELECT
-        i.tenant_id,
+        i.insight_tenant_id,
         i.source_id,
         i.issue_id,
         i.id_readable,
@@ -299,7 +299,7 @@ snapshot_values AS (
     -- The title, as a FIELD like any other: gold reads it through the `title`
     -- role, and a renamed issue has rename history.
     SELECT
-        i.tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
+        i.insight_tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
         i.author_login, i.author_id,
         'title'                                                 AS field_id,
         i.title                                                 AS value_id,
@@ -311,7 +311,7 @@ snapshot_values AS (
     UNION ALL
 
     SELECT
-        i.tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
+        i.insight_tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
         i.author_login, i.author_id,
         'assignees'                                             AS field_id,
         trimBoth(i.assignee_ids[1])                             AS value_id,
@@ -323,7 +323,7 @@ snapshot_values AS (
     UNION ALL
 
     SELECT
-        i.tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
+        i.insight_tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
         i.author_login, i.author_id,
         'type'                                                  AS field_id,
         i.issue_type_id                                         AS value_id,
@@ -337,7 +337,7 @@ snapshot_values AS (
     -- Native issue-field values, resolved from the numeric identifier the REST
     -- payload states to the node id the timeline states.
     SELECT
-        i.tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
+        i.insight_tenant_id, i.source_id, i.issue_id, i.id_readable, i.created_at,
         i.author_login, i.author_id,
         c.field_id                                              AS field_id,
         JSONExtractString(v, 'value')                           AS value_id,
@@ -346,7 +346,7 @@ snapshot_values AS (
     FROM issues AS i
     ARRAY JOIN JSONExtractArrayRaw(i.field_values_json)         AS v
     INNER JOIN field_catalogue AS c
-        ON c.tenant_id = i.tenant_id
+        ON c.insight_tenant_id = i.insight_tenant_id
         AND c.source_id = i.source_id
         AND c.field_database_id = JSONExtractString(v, 'issue_field_id')
     WHERE JSONExtractString(v, 'value') != ''
@@ -355,7 +355,7 @@ snapshot_values AS (
 -- The one rule: earliest event's previous value, else the snapshot value.
 initial_values AS (
     SELECT
-        s.tenant_id,
+        s.insight_tenant_id,
         s.source_id,
         s.issue_id,
         s.id_readable,
@@ -369,12 +369,12 @@ initial_values AS (
     FROM snapshot_values AS s
     LEFT JOIN (
         SELECT
-            tenant_id, source_id, issue_id, field_id,
+            insight_tenant_id, source_id, issue_id, field_id,
             argMin(prev_value_id, (event_at, entry_rank))       AS first_prev
         FROM ranked_events
-        GROUP BY tenant_id, source_id, issue_id, field_id
+        GROUP BY insight_tenant_id, source_id, issue_id, field_id
     ) AS e
-        ON e.tenant_id = s.tenant_id
+        ON e.insight_tenant_id = s.insight_tenant_id
         AND e.source_id = s.source_id
         AND e.issue_id = s.issue_id
         AND e.field_id = s.field_id
@@ -384,7 +384,7 @@ initial_values AS (
     -- A field the snapshot no longer carries but history changed still has a
     -- value at creation, and gold needs it to read the issue's whole life.
     SELECT
-        e.tenant_id, e.source_id, e.issue_id, e.id_readable,
+        e.insight_tenant_id, e.source_id, e.issue_id, e.id_readable,
         i.created_at, i.author_login, i.author_id,
         e.field_id,
         e.first_prev                                            AS value_id,
@@ -392,16 +392,16 @@ initial_values AS (
         e._airbyte_extracted_at
     FROM (
         SELECT
-            tenant_id, source_id, issue_id, id_readable, field_id,
+            insight_tenant_id, source_id, issue_id, id_readable, field_id,
             argMin(prev_value_id, (event_at, entry_rank))       AS first_prev,
             max(_airbyte_extracted_at)                          AS _airbyte_extracted_at
         FROM ranked_events
-        GROUP BY tenant_id, source_id, issue_id, id_readable, field_id
+        GROUP BY insight_tenant_id, source_id, issue_id, id_readable, field_id
     ) AS e
     INNER JOIN issues AS i
-        ON i.tenant_id = e.tenant_id AND i.source_id = e.source_id AND i.issue_id = e.issue_id
+        ON i.insight_tenant_id = e.insight_tenant_id AND i.source_id = e.source_id AND i.issue_id = e.issue_id
     LEFT ANTI JOIN snapshot_values AS s
-        ON s.tenant_id = e.tenant_id
+        ON s.insight_tenant_id = e.insight_tenant_id
         AND s.source_id = e.source_id
         AND s.issue_id = e.issue_id
         AND s.field_id = e.field_id
@@ -418,7 +418,7 @@ initial_values AS (
 -- else looks at it.
 creation_marker AS (
     SELECT
-        i.tenant_id,
+        i.insight_tenant_id,
         i.source_id,
         i.issue_id,
         i.id_readable,
@@ -437,7 +437,7 @@ creation_marker AS (
 
 initial_rows AS (
     SELECT
-        v.tenant_id,
+        v.insight_tenant_id,
         v.source_id,
         v.issue_id,
         v.id_readable,
@@ -445,7 +445,7 @@ initial_rows AS (
         toDateTime64(v.created_at, 3)                           AS event_at,
         'synthetic_initial'                                     AS event_kind,
         toUInt32(row_number() OVER (
-            PARTITION BY v.tenant_id, v.source_id, v.issue_id ORDER BY v.field_id
+            PARTITION BY v.insight_tenant_id, v.source_id, v.issue_id ORDER BY v.field_id
         ))                                                      AS _seq,
         _seq                                                    AS order_rank,
         v.author_id,
@@ -459,7 +459,7 @@ initial_rows AS (
 
 changelog_rows AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         issue_id,
         id_readable,
@@ -488,7 +488,8 @@ SELECT
     -- INVARIANT: keyed on `issue_id`, never on `id_readable` — a renamed repository
     -- changes the readable key, and a key built from it would store the issue's
     -- history a second time with nothing for RMT to collapse (#2741).
-    CAST(concat(source_id, '-github-', issue_id, '-', field_id, '-', event_id) AS String) AS unique_key,
+    CAST(concat(ifNull(insight_tenant_id, ''), '-', source_id, '-github-', issue_id, '-', field_id, '-', event_id) AS String) AS unique_key,
+    ifNull(insight_tenant_id, '')                                       AS insight_tenant_id,
     CAST(source_id AS String)                                   AS insight_source_id,
     CAST('github' AS String)                                    AS data_source,
     CAST(issue_id AS String)                                    AS issue_id,
@@ -531,14 +532,14 @@ SELECT
 FROM every_row
 LEFT JOIN (
     SELECT
-        tenant_id                                               AS origin_tenant_id,
+        insight_tenant_id                                               AS origin_tenant_id,
         source_id                                               AS origin_source_id,
         issue_id                                                AS origin_issue_id,
         CAST(toDateTime64(min(event_at), 3) AS Nullable(DateTime64(3)))  AS first_event_at
     FROM scoped_events
-    GROUP BY tenant_id, source_id, issue_id
+    GROUP BY insight_tenant_id, source_id, issue_id
 ) AS origin
-    ON origin.origin_tenant_id = every_row.tenant_id
+    ON origin.origin_tenant_id = every_row.insight_tenant_id
     AND origin.origin_source_id = every_row.source_id
     AND origin.origin_issue_id = every_row.issue_id
 WHERE event_at IS NOT NULL

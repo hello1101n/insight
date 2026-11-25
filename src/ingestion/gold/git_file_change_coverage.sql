@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'source_id'],
+    order_by=['insight_tenant_id', 'data_source', 'source_id'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -41,7 +41,7 @@
 -- INVARIANT: join_use_nulls=1 is what makes the membership test mean anything.
 -- file_change_rows is a count, so under the default setting an unmatched LEFT
 -- JOIN would fill it with 0 rather than NULL and every commit would read as
--- collected. tenant_id and source_id are Nullable on the class, so they join
+-- collected. insight_tenant_id and source_id are Nullable on the class, so they join
 -- null-safe — a plain `=` never matches NULL to NULL and would report a whole
 -- instance as uncollected.
 --
@@ -52,7 +52,7 @@
 
 WITH collected AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         data_source,
         source_id,
         project_key,
@@ -60,11 +60,11 @@ WITH collected AS (
         commit_hash,
         count() AS file_change_rows
     FROM {{ ref('class_git_file_changes') }} FINAL
-    GROUP BY tenant_id, data_source, source_id, project_key, repo_slug, commit_hash
+    GROUP BY insight_tenant_id, data_source, source_id, project_key, repo_slug, commit_hash
 ),
 classified AS (
     SELECT
-        commits.tenant_id AS tenant_id,
+        commits.insight_tenant_id AS insight_tenant_id,
         commits.data_source AS data_source,
         commits.source_id AS source_id,
         -- INVARIANT: the COMMITTER date, unlike the metrics. This panel asks
@@ -83,7 +83,7 @@ classified AS (
         collected.file_change_rows IS NOT NULL AS has_file_changes
     FROM {{ ref('class_git_commits') }} AS commits FINAL
     LEFT JOIN collected
-        ON collected.tenant_id IS NOT DISTINCT FROM commits.tenant_id
+        ON collected.insight_tenant_id IS NOT DISTINCT FROM commits.insight_tenant_id
         AND collected.data_source = commits.data_source
         AND collected.source_id IS NOT DISTINCT FROM commits.source_id
         AND collected.project_key = commits.project_key
@@ -93,7 +93,7 @@ classified AS (
       AND commits.date IS NOT NULL
 )
 SELECT
-    tenant_id,
+    insight_tenant_id,
     data_source,
     source_id,
     count() AS commits,
@@ -126,4 +126,4 @@ SELECT
     ) AS recent_collected_pct,
     sumIf(reported_size, size_class = 'requires' AND NOT has_file_changes) AS uncollected_lines
 FROM classified
-GROUP BY tenant_id, data_source, source_id
+GROUP BY insight_tenant_id, data_source, source_id
