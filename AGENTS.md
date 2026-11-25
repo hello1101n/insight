@@ -165,6 +165,15 @@ Tooling owns layout and correctness lints: rustfmt plus clippy pedantic (deny) i
 - Early return over nested conditionals: two levels of indentation inside a function body is the ceiling to aim for.
 - Name intermediates instead of nesting calls three deep; no expression so dense it needs re-reading.
 
+### Operations
+
+- Every new table, log and queue has a retention or a size limit.
+- Every wait has an end. A request that can never succeed fails at once.
+- Input limits come from what the system can run, not from the range of the type.
+- Kubernetes permissions are the narrowest that work. Use a namespace Role, and a ClusterRole only for cluster-scoped resources. Give write access only to the objects the workload owns.
+- Do not copy a secret into another object. If a hook needs a copy, delete the copy when the hook phase ends.
+- A gate that holds a queue logs which item holds it.
+
 ## Rust — backend workspace
 
 ### Rust structure
