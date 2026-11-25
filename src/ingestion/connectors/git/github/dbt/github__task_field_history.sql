@@ -34,7 +34,7 @@
 WITH
 issues AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         toString(id)                                            AS issue_id,
         concat(repo_full_name, '#', toString(number))           AS id_readable,
@@ -63,7 +63,7 @@ issues AS (
 -- field by the numeric id, a change event by the node id.
 field_catalogue AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         field_id,
         field_database_id,
@@ -76,7 +76,7 @@ field_catalogue AS (
 -- change, not after the field, so the event type is what carries it.
 events AS (
     SELECT
-        e.insight_tenant_id                                             AS insight_tenant_id,
+        {{ bronze_tenant('e.insight_tenant_id') }} AS insight_tenant_id,
         e.source_id                                             AS source_id,
         e.repo_full_name                                        AS repo_full_name,
         e.item_number                                           AS number,
@@ -488,8 +488,8 @@ SELECT
     -- INVARIANT: keyed on `issue_id`, never on `id_readable` — a renamed repository
     -- changes the readable key, and a key built from it would store the issue's
     -- history a second time with nothing for RMT to collapse (#2741).
-    CAST(concat(ifNull(insight_tenant_id, ''), '-', source_id, '-github-', issue_id, '-', field_id, '-', event_id) AS String) AS unique_key,
-    ifNull(insight_tenant_id, '')                                       AS insight_tenant_id,
+    CAST(concat(insight_tenant_id, '-', source_id, '-github-', issue_id, '-', field_id, '-', event_id) AS String) AS unique_key,
+    insight_tenant_id,
     CAST(source_id AS String)                                   AS insight_source_id,
     CAST('github' AS String)                                    AS data_source,
     CAST(issue_id AS String)                                    AS issue_id,

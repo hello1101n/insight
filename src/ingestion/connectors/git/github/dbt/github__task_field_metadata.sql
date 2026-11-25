@@ -22,7 +22,7 @@
 
 WITH issue_properties AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         arrayJoin([
             ('state',     'state',     0, 0),
@@ -50,7 +50,7 @@ declared AS (
 
 catalogued AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         COALESCE(field_id, '') AS field_id,
         COALESCE(field_name, '') AS field_name,
@@ -66,7 +66,7 @@ catalogued AS (
 -- would invite a binding that resolves nothing.
 board_status AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         concat('project_status:', COALESCE(project_id, ''))  AS field_id,
         'Status'                                             AS field_name,
@@ -95,8 +95,8 @@ every_field AS (
 )
 
 SELECT
-    CAST(concat(ifNull(insight_tenant_id, ''), ':', source_id, ':github:field:', field_id) AS Nullable(String)) AS unique_key,
-    ifNull(insight_tenant_id, '')                                   AS insight_tenant_id,
+    CAST(concat(insight_tenant_id, ':', source_id, ':github:field:', field_id) AS Nullable(String)) AS unique_key,
+    insight_tenant_id,
     CAST(COALESCE(source_id, '') AS String)                 AS insight_source_id,
     CAST('github' AS String)                                AS data_source,
     CAST(project_key AS Nullable(String))                   AS project_key,

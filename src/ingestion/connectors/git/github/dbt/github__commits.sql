@@ -15,7 +15,7 @@
 -- seen on a feature branch stays 0 unless a later sync re-reads it, so a merge
 -- outside the connector's lookback_window never corrects it.
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,

@@ -12,7 +12,7 @@
 -- A DiffNote carries a position, which is what makes a comment inline.
 WITH projects AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
@@ -21,7 +21,7 @@ WITH projects AS (
 )
 
 SELECT
-    n.insight_tenant_id AS insight_tenant_id,
+    {{ bronze_tenant('n.insight_tenant_id') }} AS insight_tenant_id,
     n.source_id AS source_id,
     n.unique_key AS unique_key,
     p.project_key AS project_key,
@@ -41,7 +41,7 @@ SELECT
     n._airbyte_extracted_at AS _airbyte_extracted_at
 FROM {{ source('bronze_gitlab', 'pull_request_notes') }} AS n FINAL
 INNER JOIN projects AS p
-    ON p.insight_tenant_id = n.insight_tenant_id
+    ON p.insight_tenant_id = {{ bronze_tenant('n.insight_tenant_id') }}
     AND p.source_id = n.source_id
     AND p.project_id = n.project_id
 WHERE NOT COALESCE(n.system, false)

@@ -13,7 +13,7 @@ WITH names AS (
     SELECT
         toString(id) AS account_id,
         COALESCE(name, '') AS name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.users.name' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -27,7 +27,7 @@ WITH names AS (
     SELECT
         toString(id) AS account_id,
         COALESCE(name, '') AS name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.group_members.name' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -41,7 +41,7 @@ WITH names AS (
     SELECT
         toString(author_account_id) AS account_id,
         COALESCE(author_name, '') AS name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.commit_authors.author_name' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -55,7 +55,7 @@ WITH names AS (
     SELECT
         toString(author_id) AS account_id,
         COALESCE(author_name, '') AS name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.pull_requests.author_name' AS observed_in,
         max(parseDateTimeBestEffortOrNull(updated_at)) AS seen_at

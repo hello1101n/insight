@@ -24,14 +24,14 @@ WITH bronze AS (
         FROM {{ this }}
         GROUP BY insight_tenant_id, source_id
     ) AS w
-        ON w.insight_tenant_id = b.insight_tenant_id AND w.source_id = b.source_id
+        ON w.insight_tenant_id = {{ bronze_tenant('b.insight_tenant_id') }} AND w.source_id = b.source_id
     WHERE b._airbyte_extracted_at > coalesce(w.watermark, toDateTime64(0, 3))
     {% endif %}
 ),
 
 env_values AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         toInt64(COALESCE(launch_id, 0)) AS launch_id,
         JSONExtractString(if(JSONType(coalesce(toString(variable), 'null')) = 'String', JSONExtractString(coalesce(toString(variable), 'null')), coalesce(toString(variable), 'null')), 'name') AS variable_name,
@@ -52,7 +52,7 @@ env AS (
 
 instance AS (
     SELECT
-        insight_tenant_id AS instance_tenant_id,
+        {{ bronze_tenant() }} AS instance_tenant_id,
         source_id AS instance_source_id,
         toInt64(COALESCE(id, 0)) AS instance_project_id,
         COALESCE(allure_url, '') AS base_url
@@ -61,7 +61,7 @@ instance AS (
 )
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     toInt64(COALESCE(id, 0)) AS test_result_id,
@@ -100,10 +100,10 @@ SELECT
     _airbyte_extracted_at
 FROM bronze
 LEFT JOIN env
-    ON env.env_tenant_id = bronze.insight_tenant_id
+    ON env.env_tenant_id = {{ bronze_tenant('bronze.insight_tenant_id') }}
     AND env.env_source_id = bronze.source_id
     AND env.env_launch_id = toInt64(COALESCE(bronze.launchId, 0))
 LEFT JOIN instance
-    ON instance.instance_tenant_id = bronze.insight_tenant_id
+    ON instance.instance_tenant_id = {{ bronze_tenant('bronze.insight_tenant_id') }}
     AND instance.instance_source_id = bronze.source_id
     AND instance.instance_project_id = toInt64(COALESCE(bronze.projectId, 0))
