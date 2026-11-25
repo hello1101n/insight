@@ -5,15 +5,26 @@ exists because an empty table hides everything that matters here — a column th
 insert omits, a NULL the reader cannot take, a frontier that stops a job from
 ever being re-read. Every one of those passes against zero rows.
 
-Skipped unless a server is offered, so CI stays dependency-free:
+Set `SWEEP_TEST_CH_URL` and a non-empty `SWEEP_TEST_CH_PASSWORD` to run this suite.
+`SWEEP_TEST_CH_USER` defaults to `default`. Use a disposable ClickHouse server.
+The tests truncate `ingestion_history.sync_events` and create and drop tables
+and databases.
 
     docker run -d --rm --name ch -p 38310:8123 \\
         -e CLICKHOUSE_USER=insight -e CLICKHOUSE_PASSWORD=insight \\
         clickhouse/clickhouse-server:25.7.5
-    src/ingestion/scripts/lib/ch-exec.sh < the migration, then
-    SWEEP_TEST_CH_URL=http://localhost:38310 \\
-    SWEEP_TEST_CH_USER=insight SWEEP_TEST_CH_PASSWORD=insight \\
-        pytest src/ingestion/reconcile-connectors/tests
+
+After ClickHouse accepts connections, run these commands from the repository root:
+
+    export SWEEP_TEST_CH_URL=http://localhost:38310
+    export SWEEP_TEST_CH_USER=insight SWEEP_TEST_CH_PASSWORD=insight
+    CLICKHOUSE_URL="$SWEEP_TEST_CH_URL" CLICKHOUSE_USER="$SWEEP_TEST_CH_USER" \\
+    CLICKHOUSE_PASSWORD="$SWEEP_TEST_CH_PASSWORD" bash -ec '
+        source src/ingestion/scripts/lib/ch-exec.sh
+        run_ch <<< "CREATE DATABASE IF NOT EXISTS ingestion_history;"
+        run_ch < src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql
+    '
+    pytest src/ingestion/reconcile-connectors/tests/test_sweep_against_clickhouse.py
 
 `SWEEP_TEST_CH_CLUSTER=<name>` says the server is a replicated warehouse reached
 through a round-robin endpoint (the cluster rig's): the sweep is then handed the
@@ -21,8 +32,6 @@ topology the reconcile CronWorkflow hands it, the fixtures take the engines and
 the cluster clause the deploy hook renders, and every statement here carries
 the session the ledger carries, so a fixture is on every replica before the
 sweep reads it and the sweep's rows before the assertions do.
-
-Run: pytest src/ingestion/reconcile-connectors/tests
 """
 
 from __future__ import annotations
@@ -50,7 +59,7 @@ from sweep.ledger import CLUSTER_SESSION_SETTINGS
 
 CH_URL = os.environ.get("SWEEP_TEST_CH_URL")
 CH_USER = os.environ.get("SWEEP_TEST_CH_USER", "default")  # RULE-DEFAULTS-OK: local throwaway server's own default user
-CH_PASSWORD = os.environ.get("SWEEP_TEST_CH_PASSWORD", "")  # RULE-DEFAULTS-OK: that user has no password
+CH_PASSWORD = os.environ.get("SWEEP_TEST_CH_PASSWORD")
 CH_CLUSTER = os.environ.get("SWEEP_TEST_CH_CLUSTER") or None
 
 #: The markers a migration spells its topology behind, rendered here the way
@@ -322,6 +331,8 @@ class TestSweptRowsLandAndResolve:
         own wiring, which an install without a server offered must not pay for
         only to skip every test that follows.
         """
+        if not CH_PASSWORD:
+            pytest.fail("SWEEP_TEST_CH_URL is set without a non-empty SWEEP_TEST_CH_PASSWORD.")
         from sweep import __main__ as entry
 
         cls.entry = entry
@@ -341,7 +352,7 @@ class TestSweptRowsLandAndResolve:
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
-    def _scratch_bronze_is_dropped(cls) -> Iterator[None]:
+    def _scratch_bronze_is_dropped(cls, _sweep_points_at_the_stubs: None) -> Iterator[None]:
         yield
         for database in SCRATCH_DATABASES:
             _query(f"DROP DATABASE IF EXISTS {database}{ON_CLUSTER}")
