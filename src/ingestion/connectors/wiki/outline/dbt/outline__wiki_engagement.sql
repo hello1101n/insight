@@ -35,7 +35,7 @@
 
 WITH comments AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         page_id,
         comment_id,
@@ -54,7 +54,7 @@ SELECT
     insight_tenant_id,
     source_id,
     CAST(concat(
-        coalesce(insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         coalesce(source_id, ''), '-',
         coalesce(page_id, ''), '-',
         toString(toDate(created_ts))

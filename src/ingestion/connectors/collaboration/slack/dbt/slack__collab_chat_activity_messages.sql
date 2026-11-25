@@ -19,7 +19,7 @@
 
 WITH posted AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         insight_source_id,
         user_id,
         toDate(parseDateTimeBestEffortOrNull(date)) AS day,
@@ -67,7 +67,7 @@ member_days AS (
 {% if members %}
 member_flags AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         insight_source_id,
         user_id,
         email,
@@ -111,13 +111,12 @@ counted_days AS (
       -- INVARIANT: the analytics file wins. A day it reports for a member is not counted again.
       AND (d.insight_tenant_id, d.insight_source_id, d.user_id, d.day) NOT IN (
           SELECT
-              insight_tenant_id,
+              {{ bronze_tenant() }},
               insight_source_id,
               user_id,
               toDate(parseDateTimeBestEffortOrNull(date))
           FROM {{ source('bronze_slack', 'users_details') }} FINAL
-          WHERE insight_tenant_id IS NOT NULL
-            AND insight_source_id IS NOT NULL
+          WHERE insight_source_id IS NOT NULL
             AND user_id IS NOT NULL
             AND parseDateTimeBestEffortOrNull(date) IS NOT NULL
       )

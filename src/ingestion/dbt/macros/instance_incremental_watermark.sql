@@ -35,5 +35,6 @@
 {%- endmacro %}
 
 {% macro _instance_key(keys) -%}
-concat({% for key in keys %}{% if not loop.first %}, '\x1f', {% endif %}ifNull(toString({{ key }}), ''){% endfor %})
+{#- A tenant key compares lowercased: `this` holds the bronze_tenant() form, Bronze may not. -#}
+concat({% for key in keys %}{% if not loop.first %}, '\x1f', {% endif %}{% if key.endswith('insight_tenant_id') %}lower(ifNull(toString({{ key }}), '')){% else %}ifNull(toString({{ key }}), ''){% endif %}{% endfor %})
 {%- endmacro %}

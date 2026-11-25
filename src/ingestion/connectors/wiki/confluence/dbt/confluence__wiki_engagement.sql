@@ -55,7 +55,7 @@
 WITH comments AS (
     -- footer top-level
     SELECT
-        insight_tenant_id, source_id, page_id, comment_id, author_id,
+        {{ bronze_tenant() }} AS insight_tenant_id, source_id, page_id, comment_id, author_id,
         parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3) AS created_ts,
         resolution_status,
         0 AS is_reply,
@@ -69,7 +69,7 @@ WITH comments AS (
 
     -- footer replies
     SELECT
-        insight_tenant_id, source_id, page_id, comment_id, author_id,
+        {{ bronze_tenant() }} AS insight_tenant_id, source_id, page_id, comment_id, author_id,
         parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3) AS created_ts,
         CAST(NULL AS Nullable(String)) AS resolution_status,
         1 AS is_reply,
@@ -83,7 +83,7 @@ WITH comments AS (
 
     -- inline top-level
     SELECT
-        insight_tenant_id, source_id, page_id, comment_id, author_id,
+        {{ bronze_tenant() }} AS insight_tenant_id, source_id, page_id, comment_id, author_id,
         parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3) AS created_ts,
         resolution_status,
         0 AS is_reply,
@@ -97,7 +97,7 @@ WITH comments AS (
 
     -- inline replies
     SELECT
-        insight_tenant_id, source_id, page_id, comment_id, author_id,
+        {{ bronze_tenant() }} AS insight_tenant_id, source_id, page_id, comment_id, author_id,
         parseDateTime64BestEffortOrNull(coalesce(created_at, ''), 3) AS created_ts,
         CAST(NULL AS Nullable(String)) AS resolution_status,
         1 AS is_reply,
@@ -112,7 +112,7 @@ SELECT
     insight_tenant_id,
     source_id,
     CAST(concat(
-        coalesce(insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         coalesce(source_id, ''), '-',
         coalesce(page_id, ''), '-',
         toString(toDate(created_ts))

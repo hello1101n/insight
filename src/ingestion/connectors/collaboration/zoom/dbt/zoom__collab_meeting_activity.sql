@@ -128,7 +128,7 @@ zoom_user_emails AS (
         any(email) AS user_email
     FROM (
         SELECT
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id,
             lowerUTF8(trim(display_name)) AS name_key,
             lower(email) AS email
@@ -163,7 +163,7 @@ deduped_participants AS (
         p.extracted_at AS extracted_at
     FROM (
         SELECT
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id,
             meeting_uuid,
             participant_uuid,
@@ -400,7 +400,7 @@ attended_days AS (
 
 hosted_sessions AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         uuid AS meeting_uuid,
         email AS host_email,

@@ -48,7 +48,7 @@
 
 WITH versions AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         page_id,
         author_id,
@@ -122,7 +122,7 @@ agg AS (
 {%- if jira_user %}
 , users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         account_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_jira', 'jira_user') }}
@@ -135,7 +135,7 @@ SELECT
     a.insight_tenant_id,
     a.source_id,
     CAST(concat(
-        coalesce(a.insight_tenant_id, ''), '-',
+        a.insight_tenant_id, '-',
         coalesce(a.source_id, ''), '-',
         a.author_id, '-',
         toString(a.day)

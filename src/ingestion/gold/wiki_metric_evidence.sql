@@ -119,8 +119,7 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM value_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -145,5 +144,4 @@ SELECT
         'title', coalesce(title, '')
     ) AS details
 FROM page_creations
-WHERE insight_tenant_id IS NOT NULL
 ) AS src

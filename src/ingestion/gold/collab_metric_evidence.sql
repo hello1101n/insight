@@ -487,8 +487,7 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM value_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -521,8 +520,7 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM chat_value_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -555,8 +553,7 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM subject_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -587,8 +584,7 @@ SELECT
     dimensions,
     details
 FROM attendance_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src
 LEFT JOIN account_keys AS acc
