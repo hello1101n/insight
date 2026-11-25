@@ -116,6 +116,10 @@ interface Drawn {
   value_format?: WidgetInstance["value_format"];
 }
 
+interface Note {
+  note: string;
+}
+
 // INVARIANT: no chart sets drill_down. With it, FrontX draws a "Show data" row inside the cell under the frame's own actions.
 function chart(
   x: string,
@@ -175,7 +179,7 @@ function seriesPerValue(
   );
 }
 
-function drawn(widget: Widget, percents: readonly string[]): Drawn {
+function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
   const percent = (name: string) => percents.includes(name);
 
   switch (widget.type) {
@@ -222,16 +226,18 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
         },
         transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
       };
+    default:
+      return { note: UNKNOWN };
   }
 }
 
 function widgetCell(
   dashboard: string,
   widget: DashboardWidget,
+  shape: Drawn,
   key: string,
   windowed: boolean
 ): DashboardCell {
-  const shape = drawn(widget.body, widget.percents ?? []);
   const title = widget.body.title ?? widget.name;
   const instance = (role: string): WidgetInstance => ({
     id: dataWidgetId(shape.type, `${dashboard}/${key}/${role}`),
@@ -265,11 +271,13 @@ const plain = (text: string) =>
 
 const GONE = plain("This widget is no longer on the dashboard.");
 
-function goneCell(dashboard: string, key: string): DashboardCell {
+const UNKNOWN = plain("Unknown widget type.");
+
+function noteCell(dashboard: string, key: string, body: string): DashboardCell {
   return {
     size: "medium",
     height: "low",
-    widget: { id: markdownId(`${dashboard}/${key}`), render: { body: GONE } },
+    widget: { id: markdownId(`${dashboard}/${key}`), render: { body } },
   };
 }
 
@@ -353,9 +361,12 @@ export function frontxBoard(
     if ("text" in item) return proseCells(id, key, item.text, plain(item.text));
 
     const widget = byId.get(item.widget);
-    if (!widget) return [goneCell(id, key)];
+    if (!widget) return [noteCell(id, key, GONE)];
 
-    const cell = widgetCell(id, widget, key, windowed);
+    const shape = drawn(widget.body, widget.percents ?? []);
+    if ("note" in shape) return [noteCell(id, key, shape.note)];
+
+    const cell = widgetCell(id, widget, shape, key, windowed);
     drawnWidgets.set(cell.widget.id, widget);
     if (cell.larger_view) drawnWidgets.set(cell.larger_view.id, widget);
     return [cell];

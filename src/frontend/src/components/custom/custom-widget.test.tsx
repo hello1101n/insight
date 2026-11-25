@@ -165,6 +165,17 @@ describe("<CustomWidget>", () => {
     expect(screen.getAllByRole("row")).toHaveLength(3);
   });
 
+  it("says the widget type is unknown for a type it does not draw", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "sankey", metric: "m" } as unknown as Widget}
+        result={result}
+      />
+    );
+
+    expect(screen.getByText("Unknown widget type.")).toBeInTheDocument();
+  });
+
   it("renders a line widget as a chart", () => {
     render(
       <CustomWidget

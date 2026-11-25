@@ -148,6 +148,27 @@ describe("frontxBoard", () => {
     expect(drawn[3].widget.id).toContain(".widget.metric_card.v1~");
   });
 
+  it("draws a widget of a type it does not know as a note, and still draws the rest of the board", () => {
+    const unknown = widget("odd", {
+      type: "sankey",
+      metric: "m",
+    } as unknown as Widget);
+    const board = frontxBoard(
+      "board",
+      read([{ widget: "odd" }, { widget: "line" }]),
+      [unknown, WIDGETS.line]
+    );
+    const [note, line] = dashboardOf(board).layout.cells;
+
+    expect(note.widget).toEqual({
+      id: expect.stringContaining(".widget.markdown_card.v1~"),
+      render: { body: String.raw`Unknown widget type\.` },
+    });
+    expect(note).not.toHaveProperty("larger_view");
+    expect(board.widgets.has(note.widget.id)).toBe(false);
+    expect(line.widget.id).toContain(".widget.cartesian_chart.v1~");
+  });
+
   it("writes a heading and a text as plain text, with their whitespace collapsed", () => {
     const [heading, text] = cells([
       { heading: "Q1 *goals* #1" },
