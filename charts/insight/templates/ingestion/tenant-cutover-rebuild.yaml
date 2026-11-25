@@ -1,0 +1,126 @@
+{{/*
+The background rebuild after a tenant cutover, submitted by the post-upgrade
+hook (templates/tenant-cutover-hooks.yaml) only when tenant_migration moved
+something. A full dbt refresh of every buildable model, in the order a sync
+uses — staging and the identity inputs, the identity seed, then everything
+else, gold included — through the dbt-run template. The history relations
+refuse the full refresh and run incrementally.
+
+The last step resumes the writers the pre-upgrade hook suspended: a sync
+started before the rebuild ends would read half-rebuilt relations. A failed
+step leaves them suspended and the state ConfigMap in place; the next deploy's
+post hook submits the rebuild again.
+*/}}
+{{- if and .Values.ingestion.templates.enabled .Values.ingestion.tenantCutover.enabled }}
+{{- $name := printf "%s-tenant-cutover" (include "insight.fullname" .) }}
+{{- $staging := "tag:staging +identity_inputs" }}
+{{- $stepDeadline := .Values.ingestion.tenantCutover.dbtStepDeadlineSeconds | toString }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: [cronworkflows]
+    verbs: [get, list, patch]
+  - apiGroups: ["batch"]
+    resources: [cronjobs]
+    verbs: [get, list, patch]
+  - apiGroups: ["batch"]
+    resources: [jobs]
+    verbs: [get, list, create]
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ $name }}]
+    verbs: [get, delete]
+  # The Argo executor writes step results through the pod's ServiceAccount.
+  - apiGroups: ["argoproj.io"]
+    resources: [workflowtaskresults]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: tenant-cutover-rebuild
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+spec:
+  serviceAccountName: {{ $name }}
+  entrypoint: rebuild
+  activeDeadlineSeconds: 43200
+  ttlStrategy:
+    secondsAfterSuccess: 604800
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  templates:
+    - name: rebuild
+      steps:
+        - - name: staging
+            templateRef: {name: dbt-run, template: run}
+            arguments:
+              parameters:
+                - {name: dbt_select, value: {{ $staging | quote }}}
+                - {name: dbt_full_refresh, value: "true"}
+                - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
+        - - name: identity-seed
+            template: cutover
+            arguments: {parameters: [{name: step, value: seed}]}
+        # An empty selection is the whole buildable graph; what step one built is left out.
+        - - name: everything-else
+            templateRef: {name: dbt-run, template: run}
+            arguments:
+              parameters:
+                - {name: dbt_select, value: ""}
+                - {name: dbt_exclude, value: {{ $staging | quote }}}
+                - {name: dbt_full_refresh, value: "true"}
+                - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
+        - - name: resume-writers
+            template: cutover
+            arguments: {parameters: [{name: step, value: resume}]}
+    - name: cutover
+      inputs:
+        parameters:
+          - name: step
+      container:
+        image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [bash, /ingestion/scripts/tenant-cutover.sh, {{ `"{{inputs.parameters.step}}"` }}]
+        env:
+          {{- include "insight.tenantCutover.env" . | nindent 10 }}
+{{- end }}

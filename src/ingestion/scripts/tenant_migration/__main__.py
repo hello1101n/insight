@@ -14,7 +14,7 @@ A table already in that shape is skipped.
 
 `plan` reads only; with --exit-code it exits 1 while any table is pending.
 `apply` migrates every pending table or none: on any failure it swaps back
-each table it already exchanged and exits 1. Run with every writer stopped
+each table it already exchanged and exits 2 (3 when that undo failed too). Run with every writer stopped
 (the chart's pre-upgrade hook does). `finalize` drops the backups, by hand,
 once the install is proven.
 
@@ -39,6 +39,8 @@ from tenant_migration.plan import TablePlan, render, survey
 TENANT_ENV = "INSIGHT_TENANT_ID"
 PENDING = 1
 FAILED = 2
+#: The run failed and some table could not be put back: writers must stay stopped.
+UNDO_FAILED = 3
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -81,6 +83,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         return run(args, ClickHouse.from_env())
+    except migration.UndoError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return UNDO_FAILED
     except (TenantError, ClickHouseError, InventoryError, DdlError, migration.MigrationError) as error:
         print(f"error: {error}", file=sys.stderr)
         return FAILED

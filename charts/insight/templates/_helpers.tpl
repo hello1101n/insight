@@ -429,3 +429,13 @@ Invoked from NOTES.txt so they fire on every install.
       key: {{ $key | quote }}
 {{- end }}
 {{- end -}}
+
+{{/* The env every tenant-cutover.sh step reads: where its state lives and the tenant. */}}
+{{- define "insight.tenantCutover.env" -}}
+- name: INSIGHT_NAMESPACE
+  value: {{ .Release.Namespace | quote }}
+- name: CUTOVER_CONFIGMAP
+  value: {{ printf "%s-tenant-cutover" (include "insight.fullname" .) | quote }}
+- name: INSIGHT_TENANT_ID
+  value: {{ include "insight.tenantId" . | quote }}
+{{- end -}}

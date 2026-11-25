@@ -33,6 +33,10 @@ class MigrationError(RuntimeError):
     pass
 
 
+class UndoError(MigrationError):
+    """The run failed and not every table could be put back."""
+
+
 @dataclass(frozen=True)
 class Copy:
     """A rewritten copy of `rel`, created under `rel{suffix}` with ClickHouse UUID `uuid`."""
@@ -162,7 +166,7 @@ def apply(ch: ClickHouse, plans: list[TablePlan], tenant: str) -> list[str]:
             ch.cancel_running()
         problems = undo(ch, copies)
         if problems:
-            raise MigrationError(
+            raise UndoError(
                 f"{error}; PUTTING THE ORIGINALS BACK FAILED for: {'; '.join(problems)} — "
                 f"each original is in <table>{BACKUP}* beside it"
             ) from error
