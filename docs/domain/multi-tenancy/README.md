@@ -1,6 +1,6 @@
 # Multi-tenancy
 
-In plain words: what it takes for one Insight install to serve many tenants, who manages what, and how people sign in. Tracking issue: [#4299](https://github.com/constructorfabric/insight/issues/4299).
+In plain words: what it takes for one Insight install to serve many tenants, who manages what, how people sign in, and how the data of one tenant stays away from other tenants. Tracking: design issue [#4299](https://github.com/constructorfabric/insight/issues/4299), gaps EPIC [#4376](https://github.com/constructorfabric/insight/issues/4376).
 
 ## TL;DR
 
@@ -10,27 +10,153 @@ In plain words: what it takes for one Insight install to serve many tenants, who
   - a **tenant admin** configures their own tenant: connectors and, where the identity provider cannot supply them, roles.
 - Every tenant has its own subdomain, for example `acme.insight.example`. Its sign-in page lists the identity providers that tenant uses, and the user picks one.
 - Every tenant signs in through an identity provider. Keycloak only brokers to those providers and stamps the tenant into the token.
-- Data isolation ([#3661](https://github.com/constructorfabric/insight/issues/3661)) must land before a second tenant exists in an install.
+- All tenants share the same warehouse tables. Every row has a tenant column.
+- Queries that our code writes add the tenant filter themselves.
+- Queries that users and the AI write go through one query compiler. The compiler parses the SQL, checks it, adds the tenant to every table, and writes new SQL. The original text never runs.
+- Bronze is an input for dbt only. No user, admin or AI query reads it.
+- Data isolation must land before a second tenant exists in an install.
 
 ## Where things stand
 
 - **The tenant is a chart value.** It is set by `authenticator.oidc.defaultTenantId`, plus copies under `global.tenantDefaultId` and `ingestion.reconcile.tenantId`. The Keycloak config job stamps that one value into every login.
 - **There is no tenant registry.** No table anywhere lists the tenants of an install.
 - **Connectors are K8s Secrets.** Someone with cluster access applies them, and the reconcile job turns them into Airbyte and Argo objects, stamping them with the install-wide tenant. There is no API or UI for creating a connector.
+- **Some paths run SQL that our code does not write, with no tenant scope:**
+
+| Path | Who can use it | Tenant scope today |
+|---|---|---|
+| analytics MCP `query_sql` | admin | none |
+| SQL API `POST /api/sql/query` | holder of the install-wide token | none |
+| saved queries `/v1/queries/{id}/run` | any signed-in user | a `{tenant}` parameter that the SQL can ignore |
+| custom metric `observation_sql` | any signed-in user | a filter on a `tenant_id` column that the user SQL itself produces; off today |
+| insight-v3-core metrics (MCP, UI, chat) | admins write, all users run | none; a metric can name any `database.table` |
+
+- **Most silver and gold tables have no correct tenant column yet** ([#2087](https://github.com/constructorfabric/insight/issues/2087)).
+- **The isolation PRs of [#3661](https://github.com/constructorfabric/insight/issues/3661) merged into `feature/tenant-cutover`, not into `main`.**
 
 ## What needs to be done
 
 ### 1. Data isolation
 
-Rows of different tenants never mix, and a service cannot read another tenant's rows:
+Rows of different tenants never mix, and no query can read the rows of another tenant.
 
-- one tenant value end to end;
-- one tenant column name from staging up;
-- tenant-scoped dbt;
-- row-level security in the warehouse, so a query that forgets the tenant filter still sees only its own tenant;
-- tenant-aware analytics, insight-v3-core and MariaDB.
+#### 1.1 Data
 
-This is the [#3661](https://github.com/constructorfabric/insight/issues/3661) series; [#3875](https://github.com/constructorfabric/insight/pull/3875) explains it. It is a hard prerequisite for everything below.
+- One tenant value end to end.
+- One tenant column, `insight_tenant_id`, in every staging, silver and gold table ([#2087](https://github.com/constructorfabric/insight/issues/2087)).
+- The sort key of each silver and gold table starts with `insight_tenant_id`, so a tenant filter reads only the rows of that tenant.
+- Tenant-scoped dbt.
+- Tenant-aware MariaDB through the gears ORM.
+
+#### 1.2 Who reads which layer
+
+```mermaid
+flowchart LR
+    C[Connectors] -->|write| B[(bronze)]
+    B -->|read| DBT[dbt]
+    DBT -->|write| S[(staging / silver / gold)]
+    S --> M[Predefined metrics<br/>analytics registry]
+    S --> Q[Query compiler]
+    M --> UI[UI and dashboards]
+    Q --> AI[AI chat, MCP, SQL API,<br/>saved queries, custom metrics]
+    B -. no query path .-x Q
+```
+
+- **Bronze** holds raw JSON payloads. It is dirty and noisy. Only dbt reads it.
+- **Predefined metrics** are queries that we write and review: the analytics registry. They add the tenant filter on every read, with no switch.
+- **The query compiler** handles every query that a user or the AI writes.
+
+#### 1.3 The query compiler
+
+The compiler is the one place where SQL from users and the AI enters the system.
+
+```mermaid
+flowchart TD
+    U[User question] --> AI[AI]
+    AI -->|SQL text| P[Parse<br/>sqlparser-rs, ClickHouse dialect]
+    H[User, MCP, SQL API,<br/>saved query, custom metric] -->|SQL text| P
+    P -->|syntax tree| CK{Check}
+    CAT[(Catalogue<br/>silver + gold, from dbt)] --> CK
+    AL[(Function allowlist)] --> CK
+    CK -->|reject with reason| AI
+    CK -->|pass| RW[Rewrite:<br/>add the tenant to every table]
+    SES[Session: tenant id] --> RW
+    RW --> PR[Print new SQL,<br/>bind values as parameters]
+    PR --> CH[(ClickHouse<br/>reader user: silver + gold only,<br/>readonly, limits)]
+    CH --> AI
+```
+
+1. **Parse.** The compiler parses the SQL text into a syntax tree. It rejects any syntax that it does not understand.
+2. **Check.** The compiler rejects the query when:
+   - a table is not in the catalogue;
+   - a column does not exist;
+   - the query names `insight_tenant_id`;
+   - a function is not on the allowlist.
+3. **Rewrite.** The compiler adds the tenant from the session to every table in the tree.
+4. **Print.** The compiler writes new SQL from the tree and binds all values as parameters.
+5. **Run.** A reader user runs the SQL. This user can read only silver and gold.
+
+**The catalogue** comes from dbt (`manifest.json` and `schema.yml`). It lists the silver and gold tables, their columns, types and descriptions, and optional relationships such as `person_id -> persons`. It does not show `insight_tenant_id` or technical columns (`_airbyte_*`, `unique_key`, `_version`). The dbt descriptions are also the documentation for the AI.
+
+**The function allowlist** fails closed. Only listed functions run. A new ClickHouse function stays blocked until we add it. The list does not contain functions that read data by name instead of by a table reference: table functions (`remote`, `url`, `file`, `s3`, `merge`, `cluster`, `dictionary`), `dictGet*` and `joinGet`.
+
+**A rejected query** returns a clear reason. The AI uses the reason to write a new query.
+
+#### 1.4 The tenant rewrite
+
+Every table reference becomes a subquery with the tenant filter. This covers `FROM`, `JOIN`, subqueries, `IN (SELECT ...)`, `WITH`, `ARRAY JOIN` and `UNION`, because SQL has no other way to name a table.
+
+The AI writes:
+
+```sql
+SELECT p.department, count() AS commits
+FROM silver.class_commits AS c
+JOIN silver.persons AS p ON p.person_id = c.person_id
+WHERE c.committed_at >= now() - INTERVAL 90 DAY
+GROUP BY p.department
+```
+
+The compiler runs:
+
+```sql
+SELECT p.department, count() AS commits
+FROM (SELECT * FROM silver.class_commits WHERE insight_tenant_id = {tenant:UUID}) AS c
+JOIN (SELECT * FROM silver.persons WHERE insight_tenant_id = {tenant:UUID}) AS p
+  ON p.person_id = c.person_id
+WHERE c.committed_at >= now() - INTERVAL {p1:UInt32} DAY
+GROUP BY p.department
+```
+
+#### 1.5 Where the tenant comes from
+
+The tenant always comes from the session. No request, query or tool argument can set it.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (acme.insight.example)
+    participant KC as Keycloak (broker)
+    participant GW as Gateway
+    participant SVC as Analytics / v3-core
+    participant QC as Query compiler
+    participant CH as ClickHouse
+
+    B->>KC: sign in through the tenant's identity provider
+    KC-->>B: token with tenant = acme (mapper value)
+    B->>GW: request with session cookie (bound to the host)
+    GW->>SVC: request + tenant from the session
+    SVC->>QC: SQL text + tenant
+    QC->>CH: new SQL, tenant bound as a parameter
+    CH-->>SVC: rows of acme only
+```
+
+#### 1.6 Changes to the current paths
+
+| Path | Change |
+|---|---|
+| analytics MCP `query_sql`, SQL API | Use the query compiler. Bronze is no longer readable. |
+| saved queries, custom metric `observation_sql` | Use the query compiler. Stop using the main analytics ClickHouse user. |
+| insight-v3-core metrics | Add the tenant rule. Remove `SELECT ON *.*` and the fallback to the admin client. |
+| predefined metrics (analytics registry) | No change: the tenant filter is always on. |
 
 ### 2. Tenant registry
 
@@ -50,26 +176,28 @@ An operator with cluster access manages the registry; there is no admin UI above
 - **The sign-in page is per tenant.** It shows that tenant's branding and the identity providers it uses (for example GitHub, Entra, Google), and the user picks one.
 - **Keycloak is a broker only.** It holds no users of its own. Each tenant's identity providers are registered in Keycloak separately, and each registration has a mapper with that tenant's id hardcoded. The tenant in the token always comes from that value, never from what the provider sends.
 - **One person in several tenants works naturally.** The same GitHub account signs in at `a.insight.example` and at `b.insight.example`. These are two registrations, two sessions and two tokens, each carrying its own tenant. The session cookie is bound to the host, so the sessions never mix.
-- Every subdomain needs DNS, a TLS certificate (a wildcard covers all of them) and its redirect URIs in Keycloak.
+- **DNS and TLS are set once per install, not per tenant.** A wildcard DNS record and a wildcard certificate (`*.insight.example`) cover all subdomains. A new tenant needs only its redirect URIs in Keycloak.
 
 ### 4. Tenant admin and connectors
 
 - **Users come from the identity provider.** Insight does not create, invite or remove users.
-- **Roles** are managed in Insight only where the identity provider cannot supply them.
-- An API and a UI let the tenant admin create connectors and their secrets. Tenant isolation covers the secrets too: one tenant's admin never sees another tenant's secrets. How the secrets are stored is still open.
+- **Roles** are managed in Insight only where the identity provider cannot supply them. How provider roles or groups map to Insight roles is an open question.
+- An API and a UI let the tenant admin create connectors and their secrets. Tenant isolation covers the secrets too: one tenant's admin never sees another tenant's secrets. How the secrets are stored and encrypted is still open.
 - Ingestion takes the tenant from each connector's record, never from an install-wide setting.
 - Connector health and similar views show the caller's tenant only.
 - Connectors run inside the cluster against URLs the tenant admin types in, so their egress has to be restricted (SSRF).
+- All tenants share the bronze tables. An Airbyte Clear or Refresh of one connector must not remove the rows of other tenants.
 
 ### 5. Tenant lifecycle
 
+- **Create:** the operator adds the registry record, registers the identity providers of the tenant in Keycloak, and adds the redirect URIs. This is one operation that can be verified.
 - **Suspend:** nobody can sign in, and syncs are paused.
 - **Delete:** remove the tenant's data in every layer and store, its connectors and their Airbyte and Argo objects, and its identity provider registrations in Keycloak. This is one operation that can be verified and produces a report.
 
 ### 6. Operations
 
 - **No tenant, no access.** Without a tenant there is no sign-in, so no connectors and no work that could write a record without a tenant. A request, job or record that reaches the system with an empty tenant is a fatal error, never something to fall back from.
-- Quotas and limits per tenant: connectors, sync frequency, query load ([#724](https://github.com/constructorfabric/insight/issues/724)).
+- Quotas and limits per tenant: connectors, sync frequency, query load ([#724](https://github.com/constructorfabric/insight/issues/724)). All tenants share one ClickHouse reader user, so the query compiler sets a quota key per tenant.
 - Audit of what tenant admins do.
 
 ## Not now
@@ -77,16 +205,34 @@ An operator with cluster access manages the registry; there is no admin UI above
 Each of these is a separate task, picked up once there is an explicit requirement:
 
 - **An admin UI above tenants.** For now, cluster access is that role.
-- **A tenant hierarchy:** a main tenant with subtenants, and their subtenants.
+- **A tenant hierarchy:** a main tenant with subtenants, and their subtenants. An organization with departments is one tenant. Departments are data inside that tenant.
 - **Users kept by Insight itself**, for a small organization without an identity provider of its own.
+- **Cells:** groups of 5 to 10 tenants, each group with its own ClickHouse and services, behind a router. The subdomain makes the routing simple. The first install is one cell.
+
+## Rejected options for data isolation
+
+| Option | Reason |
+|---|---|
+| A tenant filter in application code only | SQL that users and the AI write does not pass through it. |
+| A ClickHouse row policy keyed on a custom setting | The SQL text can change the setting. |
+| One ClickHouse user per tenant | It needs too many connections. |
+| One ClickHouse database and role per tenant | It needs about 480 tables per tenant and one dbt run per tenant. The role in each request is a fragile point. |
+| A new query language | It costs too much, and AI questions need more than a simple language gives. |
 
 ## Open questions
 
-- How are connector secrets stored, so that tenant isolation also holds for them?
+- How are connector secrets stored and encrypted, so that tenant isolation also holds for them?
+- How do roles or groups from an identity provider map to Insight roles?
+- Function allowlist: which functions go on it? A test on real AI queries shows how much the parser and the list block.
+- insight-v3-core: does it use the query compiler, or keep its own compiler with the tenant rule?
+- Relationships for the catalogue: do they come from dbt tests and meta, or from a separate file?
+- **Org chart and the AI.** The AI knows nothing about the org chart:
+  - Access: can a manager see only their own subtree inside the tenant? If yes, the compiler needs a second scope from the session, and tables without a person key need a rule.
+  - Answers: the catalogue must describe the org tables, and the AI must know the position of the user in the org chart.
 
 ## Order
 
-1. Data isolation (block 1) comes before a second tenant exists in an install.
+1. Data isolation (block 1) comes before a second tenant exists in an install. Its first step is the tenant column in every table ([#2087](https://github.com/constructorfabric/insight/issues/2087)).
 2. The registry and sign-in (blocks 2–3) can run in parallel with it. They touch the authenticator, identity and Keycloak, not dbt or the warehouse.
 3. Connectors (block 4) come after the registry and sign-in.
 4. Lifecycle and operations (blocks 5–6) come last.
