@@ -24,4 +24,4 @@ tar -C "$frontend/vendor/gears-frontx-templates" --exclude=node_modules -cf - . 
 cd "$stage/template-dashboard"
 npm ci --ignore-scripts --no-audit --no-fund
 # INVARIANT: The list names each widget type that src/lib/custom/frontx-board.ts writes.
-WIDGET_BUNDLES_OUT="$out" npm run build:widgets -- grid cartesian_chart metric_card pie_chart markdown_card
+WIDGET_BUNDLES_OUT="$out" npm run build:widgets -- grid cartesian_chart metric_card pie_chart markdown_card heatmap funnel_chart treemap_chart

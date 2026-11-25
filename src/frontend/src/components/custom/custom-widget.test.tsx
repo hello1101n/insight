@@ -92,6 +92,15 @@ vi.mock("recharts", async (importOriginal) => {
     BarChart: chart("bar-chart"),
     AreaChart: chart("area-chart"),
     PieChart: chart("pie-chart"),
+    ScatterChart: chart("scatter-chart"),
+    ZAxis: () => null,
+    Scatter: ({ name, data }: { name: string; data: unknown[] }) => (
+      <div
+        data-testid="scatter"
+        data-name={name}
+        data-points={JSON.stringify(data)}
+      />
+    ),
     CartesianGrid: () => null,
     Tooltip: () => null,
     Legend: ({
@@ -1008,5 +1017,158 @@ describe("<CustomWidget> options", () => {
     render(<CustomWidget widget={widget} result={BY_TEAM} />, { wrapper });
 
     expect(screen.getByRole("alert")).toHaveTextContent("draws region");
+  });
+});
+
+describe("<CustomWidget> new types", () => {
+  const chartData = (testId: string) =>
+    JSON.parse(screen.getByTestId(testId).dataset.chartData!) as Record<
+      string,
+      unknown
+    >[];
+
+  it("draws a heatmap as a table of its own columns", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "heatmap",
+          metric: "m",
+          x: "day",
+          y: "team",
+          value: "n",
+        }}
+        result={{
+          columns: ["n", "extra", "team", "day"],
+          rows: [[4, "x", "Atlas", "2026-11-03"]],
+        }}
+      />
+    );
+
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent)
+    ).toEqual(["#", "day", "team", "n"]);
+    expect(screen.getByRole("cell", { name: "Atlas" })).toBeInTheDocument();
+    expect(screen.queryByText("extra")).not.toBeInTheDocument();
+  });
+
+  it("draws a funnel as horizontal bars of its stages in the listed order, with their values", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "funnel",
+          metric: "m",
+          stages: ["opened", "reviewed", "merged"],
+        }}
+        result={{
+          columns: ["merged", "opened", "reviewed"],
+          rows: [[30, 100, 60]],
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("bar-chart")).toHaveAttribute(
+      "data-layout",
+      "vertical"
+    );
+    expect(chartData("bar-chart")).toEqual([
+      { stage: "opened", value: 100 },
+      { stage: "reviewed", value: 60 },
+      { stage: "merged", value: 30 },
+    ]);
+    expect(screen.getByTestId("label-list")).toBeInTheDocument();
+  });
+
+  it("draws a treemap as horizontal bars, largest first", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "treemap", metric: "m", label: "repo", value: "n" }}
+        result={{
+          columns: ["repo", "n"],
+          rows: [
+            ["web", 3],
+            ["api", null],
+            ["docs", 9],
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("bar-chart")).toHaveAttribute(
+      "data-layout",
+      "vertical"
+    );
+    expect(chartData("bar-chart").map((bar) => bar.repo)).toEqual([
+      "docs",
+      "web",
+      "api",
+    ]);
+  });
+
+  const SCATTER: Widget = {
+    type: "scatter",
+    metric: "m",
+    x: "size",
+    y: "hours",
+    series: "team",
+    label: "pr",
+  };
+
+  it("draws a small scatter as one group of named points per series value", () => {
+    render(
+      <CustomWidget
+        widget={SCATTER}
+        result={{
+          columns: ["pr", "team", "size", "hours"],
+          rows: [
+            ["pr-1", "Cobalt", 120, 5],
+            ["pr-2", "Atlas", 40, 2],
+            ["pr-3", "Atlas", null, 1],
+          ],
+        }}
+      />
+    );
+
+    const groups = screen.getAllByTestId("scatter");
+    expect(groups.map((group) => group.dataset.name)).toEqual([
+      "Atlas",
+      "Cobalt",
+    ]);
+    expect(JSON.parse(groups[0]!.dataset.points!)).toEqual([
+      { x: 40, y: 2, size: null, label: "pr-2" },
+    ]);
+  });
+
+  it("draws a scatter of more than 500 points as a table", () => {
+    render(
+      <CustomWidget
+        widget={SCATTER}
+        result={{
+          columns: ["pr", "team", "size", "hours"],
+          rows: Array.from({ length: 501 }, (_, index) => [
+            `pr-${index}`,
+            "Atlas",
+            index,
+            1,
+          ]),
+        }}
+      />
+    );
+
+    expect(screen.queryByTestId("scatter-chart")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent)
+    ).toEqual(["#", "size", "hours", "team", "pr"]);
+  });
+
+  it("names a missing column of a new type", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "funnel", metric: "m", stages: ["opened", "merged"] }}
+        result={{ columns: ["opened"], rows: [[3]] }}
+      />,
+      { wrapper }
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("draws merged");
   });
 });

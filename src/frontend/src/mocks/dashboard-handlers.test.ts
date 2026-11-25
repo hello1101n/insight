@@ -1,7 +1,8 @@
 import { setupServer } from "msw/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { DashboardWidget, Widget } from "@/api/custom-client";
+import type { DashboardWidget } from "@/api/custom-client";
+import { drawnColumns } from "@/lib/custom/draws-bucket";
 
 import { dashboardHandlers } from "./dashboard-handlers";
 import { EXAMPLE_DASHBOARDS } from "./example-dashboards";
@@ -89,22 +90,6 @@ describe("dashboard mocks", () => {
     expect(stranger.status).toBe(404);
   });
 });
-
-function drawnColumns(widget: Widget): string[] {
-  switch (widget.type) {
-    case "table":
-      return widget.columns;
-    case "line":
-    case "area":
-      return [widget.x, widget.y];
-    case "bar":
-      return [widget.x, widget.y, ...(widget.series ? [widget.series] : [])];
-    case "stat":
-      return [widget.value];
-    case "pie":
-      return [widget.label, widget.value];
-  }
-}
 
 const REFUSED: Record<string, number> = {
   "edge-failed": 500,

@@ -212,7 +212,7 @@ describe("FrontxBoard", () => {
       rows: [["2026-10-01", 3]],
       at: { bucket: 0, deploys: 1 },
       distinct: { bucket: ["2026-10-01"], deploys: [3] },
-      tableRows: [["2026-10-01", 3]],
+      shownRows: [["2026-10-01", 3]],
     });
   });
 

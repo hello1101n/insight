@@ -54,8 +54,44 @@ export interface PieWidget extends WidgetBase {
   value: string;
 }
 
+export interface HeatmapWidget extends WidgetBase {
+  type: "heatmap";
+  x: string;
+  y?: string;
+  value: string;
+}
+
+export interface FunnelWidget extends WidgetBase {
+  type: "funnel";
+  stages: string[];
+}
+
+export interface TreemapWidget extends WidgetBase {
+  type: "treemap";
+  label: string;
+  value: string;
+  group?: string;
+}
+
+export interface ScatterWidget extends WidgetBase {
+  type: "scatter";
+  x: string;
+  y: string;
+  size?: string;
+  series?: string;
+  label?: string;
+}
+
 export type Widget =
-  TableWidget | SeriesWidget | BarWidget | StatWidget | PieWidget;
+  | TableWidget
+  | SeriesWidget
+  | BarWidget
+  | StatWidget
+  | PieWidget
+  | HeatmapWidget
+  | FunnelWidget
+  | TreemapWidget
+  | ScatterWidget;
 
 export interface MetricRead {
   field?: string;

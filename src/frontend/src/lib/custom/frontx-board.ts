@@ -24,6 +24,7 @@ import {
 } from "@/api/custom-client";
 import { dashboardItems } from "@/lib/custom/dashboard-items";
 import { drawsBucket } from "@/lib/custom/draws-bucket";
+import { dailyBuckets } from "@/lib/custom/time-range";
 
 export interface FrontxBoard {
   dashboardId: string;
@@ -35,12 +36,22 @@ export interface FrontxBoard {
 export interface FrontxAnswer extends MetricResult {
   at: Record<string, number>;
   distinct: Record<string, unknown[]>;
-  tableRows: unknown[][];
+  shownRows: unknown[][];
   previous?: FrontxAnswer | null;
 }
 
 // INVARIANT: FrontX grid data holds at most 500 rows, and a longer list fails the cell.
 const TABLE_ROWS = 500;
+
+// INVARIANT: FrontX treemap data holds 1 to 60 items, labels of 1 to 80 characters and groups of 1 to 40.
+const TREEMAP_ITEMS = 60;
+const TREEMAP_LABEL = 80;
+const TREEMAP_GROUP = 40;
+
+// INVARIANT: a FrontX funnel stage label holds 1 to 80 characters.
+const FUNNEL_LABEL = 80;
+
+const NO_NAME = "—";
 
 const NAMESPACE = uuidv5("insight.custom.dashboards");
 
@@ -147,7 +158,7 @@ function chart(
 }
 
 function oneSeries(
-  widget: Widget & { x: string; y: string },
+  widget: { x: string; y: string },
   kind: string,
   percent: boolean,
   render: Record<string, unknown> = {}
@@ -213,7 +224,114 @@ function previousFigure(value: string, percent: boolean): string {
   return `(!has(${previous}) || ${previous} == null || size(${previous}.rows) == 0 ? dyn(null) : cel.bind(p, int(${previous}.at[${cel(value)}]), ${figure}))`;
 }
 
-function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
+const clipped = (text: string, most: number) =>
+  `(size(${text}) > ${most} ? ${text}.substring(0, ${most - 1}) + '…' : ${text})`;
+
+// INVARIANT: FrontX refuses an empty or too long treemap name, so a blank name is the dash and a long one ends in an ellipsis.
+function treemapName(value: string, most: number, blank: string): string {
+  return `(${value} == null || string(${value}) == '' ? ${blank} : dyn(${clipped(`string(${value})`, most)}))`;
+}
+
+function heatmap(
+  widget: Widget & { type: "heatmap" },
+  percent: boolean,
+  daily: boolean
+): Drawn {
+  const format = percent ? { value_format: PERCENT } : {};
+  const value = number("r", "v", percent);
+
+  if (widget.y !== undefined) {
+    return {
+      ...format,
+      type: "heatmap",
+      render: {},
+      transform: `cel.bind(x, ${column(widget.x)}, cel.bind(w, ${spansYears}, cel.bind(y, ${column(widget.y)}, cel.bind(v, ${column(widget.value)}, {'rows': response.rows.map(r, {'x': ${shortDate("r[x]")}, 'y': r[y], 'value': ${value}})}))))`,
+    };
+  }
+  if (!daily) {
+    return oneSeries({ x: widget.x, y: widget.value }, "bar", percent, {
+      value_labels: "never",
+    });
+  }
+
+  return {
+    ...format,
+    type: "heatmap",
+    render: { mode: "calendar" },
+    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(v, ${column(widget.value)}, {'rows': response.rows.filter(r, ${isDate("r[x]")}).map(r, {'x': r[x].substring(0, 10), 'value': ${value}})}))`,
+  };
+}
+
+function funnel(stages: readonly string[], percent: boolean): Drawn {
+  const stage = (name: string) =>
+    `{'label': ${cel(name.length > FUNNEL_LABEL ? `${name.slice(0, FUNNEL_LABEL - 1)}…` : name)}, 'value': size(response.rows) == 0 ? dyn(null) : cel.bind(v, ${column(name)}, ${number("response.rows[0]", "v", percent)})}`;
+
+  return {
+    ...(percent ? { value_format: PERCENT } : {}),
+    type: "funnel_chart",
+    render: {},
+    transform: `{'stages': [${stages.map(stage).join(", ")}]}`,
+  };
+}
+
+function treemap(
+  widget: Widget & { type: "treemap" },
+  percent: boolean
+): Drawn {
+  const group =
+    widget.group === undefined
+      ? "null"
+      : `cel.bind(g, ${column(widget.group)}, ${treemapName("r[g]", TREEMAP_GROUP, "dyn(null)")})`;
+  const item = `{'label': ${treemapName("r[l]", TREEMAP_LABEL, cel(NO_NAME))}, 'value': ${number("r", "v", percent)}, 'group': ${group}}`;
+  const empty = `[{'label': ${cel(NO_NAME)}, 'value': null, 'group': null}]`;
+
+  return {
+    ...(percent ? { value_format: PERCENT } : {}),
+    type: "treemap_chart",
+    render: {},
+    transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, cel.bind(items, response.shownRows.map(r, ${item}), {'items': size(items) == 0 ? ${empty} : items})))`,
+  };
+}
+
+// INVARIANT: no chart sets drill_down; a scatter names no point, since FrontX scatter data has no label.
+function scatter(
+  widget: Widget & { type: "scatter" },
+  percent: (name: string) => boolean
+): Drawn | Note {
+  if (widget.series !== undefined) return { note: NEEDS_PLANNED_OFF };
+
+  const both = percent(widget.x) && percent(widget.y);
+  const coordinate = (name: string) =>
+    `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${both ? " / 100.0" : ""}))`;
+  const size =
+    widget.size === undefined
+      ? ""
+      : `, 'size': (r[s] == null ? dyn(null) : dyn(double(r[s]) < 0.0 ? 0.0 : double(r[s])))`;
+  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y")}${size}}`;
+  const bound = (body: string) =>
+    widget.size === undefined
+      ? body
+      : `cel.bind(s, ${column(widget.size)}, ${body})`;
+
+  return {
+    ...(both ? { value_format: PERCENT } : {}),
+    type: "cartesian_chart",
+    render: {
+      series: [{ name: widget.y, type: "scatter" }],
+      x_axis: { type: "value" },
+      y_axis: { type: "value" },
+      legend_position: "none",
+      ...(widget.size === undefined ? {} : { size_label: widget.size }),
+    },
+    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, ${bound(`{'series': [{'name': ${cel(widget.y)}, 'points': response.rows.filter(r, r[x] != null && r[y] != null).map(r, ${point})}]}`)}))`,
+  };
+}
+
+function drawn(
+  widget: Widget,
+  percents: readonly string[],
+  daily: boolean
+): Drawn | Note {
   const percent = (name: string) => percents.includes(name);
 
   switch (widget.type) {
@@ -228,7 +346,7 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
             ...(percent(name) ? { value_format: PERCENT_COLUMN } : {}),
           })),
         },
-        transform: `{'rows': response.tableRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
+        transform: `{'rows': response.shownRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
       };
     case "line":
     case "area": {
@@ -293,6 +411,14 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
         },
         transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", percent(widget.value))}})}))`,
       };
+    case "heatmap":
+      return heatmap(widget, percent(widget.value), daily);
+    case "funnel":
+      return funnel(widget.stages, widget.stages.every(percent));
+    case "treemap":
+      return treemap(widget, percent(widget.value));
+    case "scatter":
+      return scatter(widget, percent);
     default:
       return { note: UNKNOWN };
   }
@@ -339,6 +465,10 @@ const plain = (text: string) =>
 const GONE = plain("This widget is no longer on the dashboard.");
 
 const UNKNOWN = plain("Unknown widget type.");
+
+const NEEDS_PLANNED_OFF = plain(
+  "Turn off Show planned sections to see this chart."
+);
 
 function noteCell(dashboard: string, key: string, body: string): DashboardCell {
   return {
@@ -411,10 +541,12 @@ function paired(cells: DashboardCell[]): DashboardCell[] {
 export function frontxBoard(
   id: string,
   read: DashboardRead,
-  widgets: DashboardWidget[]
+  widgets: DashboardWidget[],
+  range?: string
 ): FrontxBoard {
   const byId = new Map(widgets.map((widget) => [widget.id, widget]));
   const windowed = (read.body.time_ranges ?? []).length > 0;
+  const daily = dailyBuckets(range);
 
   const items = dashboardItems(read.body);
   const keys = itemKeys(items);
@@ -430,7 +562,7 @@ export function frontxBoard(
     const widget = byId.get(item.widget);
     if (!widget) return [noteCell(id, key, GONE)];
 
-    const shape = drawn(widget.body, widget.percents ?? []);
+    const shape = drawn(widget.body, widget.percents ?? [], daily);
     if ("note" in shape) return [noteCell(id, key, shape.note)];
 
     const cell = widgetCell(id, widget, shape, key, windowed);
@@ -463,9 +595,25 @@ export function frontxBoard(
   };
 }
 
+function largestRows(result: MetricResult, value: string): unknown[][] {
+  const at = result.columns.indexOf(value);
+  const size = (row: unknown[]) => {
+    const amount = Number(row[at]);
+    return row[at] == null || !Number.isFinite(amount) ? -Infinity : amount;
+  };
+
+  return result.rows
+    .toSorted((a, b) => size(b) - size(a))
+    .slice(0, TREEMAP_ITEMS);
+}
+
 // WORKAROUND: CEL has no list indexOf, no group function, no sort and no slice, so the answer carries
-// each column's position, its distinct values in the order the current stacked chart uses, and the rows a table shows.
-export function frontxAnswer(result: MetricResult): FrontxAnswer {
+// each column's position, its distinct values in the order the current stacked chart uses, and the rows a cell shows:
+// the first rows of a table, or the largest tiles of a treemap.
+export function frontxAnswer(
+  result: MetricResult,
+  widget: Widget
+): FrontxAnswer {
   const at = Object.fromEntries(
     result.columns.map((name, index) => [name, index])
   );
@@ -483,6 +631,9 @@ export function frontxAnswer(result: MetricResult): FrontxAnswer {
     ...result,
     at,
     distinct,
-    tableRows: result.rows.slice(0, TABLE_ROWS),
+    shownRows:
+      widget.type === "treemap"
+        ? largestRows(result, widget.value)
+        : result.rows.slice(0, TABLE_ROWS),
   };
 }

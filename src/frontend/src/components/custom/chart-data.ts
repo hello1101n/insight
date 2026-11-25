@@ -121,6 +121,52 @@ export function drawnSeries(
   };
 }
 
+export function projected(
+  result: MetricResult,
+  columns: readonly string[]
+): MetricResult {
+  const indexes = columns.map((column) => result.columns.indexOf(column));
+
+  return {
+    ...result,
+    columns: [...columns],
+    rows: result.rows.map((row) => indexes.map((at) => row[at])),
+  };
+}
+
+export const FUNNEL_STAGE = "stage";
+export const FUNNEL_VALUE = "value";
+
+// INVARIANT: each stage is a column of the one result row, in the listed order.
+export function funnelStages(
+  result: MetricResult,
+  stages: readonly string[]
+): MetricResult {
+  const [first] = projected(result, stages).rows;
+  const all = (marked: string[] | undefined) =>
+    stages.every((stage) => marked?.includes(stage));
+
+  return {
+    columns: [FUNNEL_STAGE, FUNNEL_VALUE],
+    rows: stages.map((stage, index) => [stage, first?.[index] ?? null]),
+    ...(all(result.percents) ? { percents: [FUNNEL_VALUE] } : {}),
+  };
+}
+
+export function largestFirst(
+  result: MetricResult,
+  label: string,
+  value: string
+): MetricResult {
+  const drawn = projected(result, [label, value]);
+  const size = (row: unknown[]) => {
+    const amount = Number(row[1]);
+    return row[1] == null || !Number.isFinite(amount) ? -Infinity : amount;
+  };
+
+  return { ...drawn, rows: drawn.rows.toSorted((a, b) => size(b) - size(a)) };
+}
+
 export function pointClick(
   onPointClick: (() => void) | undefined
 ): ((state: MouseHandlerDataParam) => void) | undefined {
@@ -133,3 +179,69 @@ export function pointClick(
 }
 
 export type { ChartConfig };
+
+export interface ScatterPoint {
+  x: number;
+  y: number;
+  size: number | null;
+  label: unknown;
+}
+
+export interface ScatterGroup {
+  key: string;
+  label: string;
+  points: ScatterPoint[];
+}
+
+export function scatterGroups(
+  result: MetricResult,
+  columns: {
+    x: string;
+    y: string;
+    size?: string;
+    series?: string;
+    label?: string;
+  }
+): ScatterGroup[] {
+  const at = (column: string | undefined) =>
+    column === undefined ? -1 : result.columns.indexOf(column);
+  const [xAt, yAt, sizeAt, seriesAt, labelAt] = [
+    at(columns.x),
+    at(columns.y),
+    at(columns.size),
+    at(columns.series),
+    at(columns.label),
+  ];
+  const groups = new Map<string, ScatterPoint[]>();
+
+  for (const row of result.rows) {
+    const x = finite(row[xAt]);
+    const y = finite(row[yAt]);
+    if (x === null || y === null) continue;
+
+    const name = seriesAt < 0 ? columns.y : String(row[seriesAt] ?? "—");
+    const points = groups.get(name) ?? [];
+    groups.set(name, points);
+    points.push({
+      x,
+      y,
+      size: sizeAt < 0 ? null : finite(row[sizeAt]),
+      label: labelAt < 0 ? undefined : row[labelAt],
+    });
+  }
+
+  return [...groups]
+    .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))
+    .map(([label, points], index) => ({
+      key: `scatter-${index}`,
+      label,
+      points,
+    }));
+}
+
+function finite(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   RANGE_PRESETS,
+  dailyBuckets,
   isRangeToken,
   rangeLabel,
   toInterval,
@@ -54,5 +55,24 @@ describe("toInterval", () => {
 
   it("has nothing to split out of a preset", () => {
     expect(toInterval("P30D")).toBeUndefined();
+  });
+});
+
+describe("dailyBuckets", () => {
+  it.each<[string | undefined, boolean]>([
+    ["P7D", true],
+    ["P30D", true],
+    ["PMC", true],
+    ["2026-10-01/2026-10-03", true],
+    ["2026-10-01/2026-11-01", true],
+    ["PDC", false],
+    ["PQC", false],
+    ["P1Y", false],
+    ["inf", false],
+    ["2026-10-01/2026-10-02", false],
+    ["2026-10-01/2026-11-02", false],
+    [undefined, false],
+  ])("buckets %s by day: %s", (range, daily) => {
+    expect(dailyBuckets(range)).toBe(daily);
   });
 });

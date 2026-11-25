@@ -479,6 +479,12 @@ describe("frontxBoard", () => {
   });
 });
 
+const TABLE_OF = (result?: MetricResult): Widget => ({
+  type: "table",
+  metric: "m",
+  columns: result?.columns ?? [],
+});
+
 describe("frontxAnswer", () => {
   it("adds each column's position and its distinct values in the order the current stacked chart uses", () => {
     const result: MetricResult = {
@@ -492,7 +498,7 @@ describe("frontxAnswer", () => {
       percents: ["runs"],
     };
 
-    expect(frontxAnswer(result)).toEqual({
+    expect(frontxAnswer(result, TABLE_OF(result))).toEqual({
       ...result,
       at: { team: 0, outcome: 1, runs: 2 },
       distinct: {
@@ -500,28 +506,36 @@ describe("frontxAnswer", () => {
         outcome: [null, "failed", "ok"],
         runs: [null, 1, 3, 10],
       },
-      tableRows: result.rows,
+      shownRows: result.rows,
     });
   });
 
   it("answers no rows with empty distinct values", () => {
-    expect(frontxAnswer({ columns: ["a"], rows: [] })).toEqual({
+    expect(frontxAnswer({ columns: ["a"], rows: [] }, TABLE_OF())).toEqual({
       columns: ["a"],
       rows: [],
       at: { a: 0 },
       distinct: { a: [] },
-      tableRows: [],
+      shownRows: [],
     });
   });
 });
 
-function drawnData(body: Widget, percents: string[], answer: MetricResult) {
-  const board = frontxBoard("board", read([{ widget: "w" }]), [
-    { ...widget("w", body), percents },
-  ]);
+function drawnData(
+  body: Widget,
+  percents: string[],
+  answer: MetricResult,
+  range?: string
+) {
+  const board = frontxBoard(
+    "board",
+    read([{ widget: "w" }]),
+    [{ ...widget("w", body), percents }],
+    range
+  );
   const [cell] = dashboardOf(board).layout.cells;
   const data = compileTransform(bound(cell).data.transform).evaluate({
-    response: frontxAnswer(answer),
+    response: frontxAnswer(answer, body),
   });
 
   return { format: cell.widget.value_format, data };
@@ -867,7 +881,7 @@ describe("frontxBoard options", () => {
       { ...widget("w", body), percents },
     ]);
     const [cell] = dashboardOf(board).layout.cells;
-    const answer = frontxAnswer(now);
+    const answer = frontxAnswer(now, body);
 
     return compileTransform(bound(cell).data.transform).evaluate({
       response: previous === undefined ? answer : { ...answer, previous },
@@ -896,7 +910,7 @@ describe("frontxBoard options", () => {
   it("leaves a stat that does not compare without a reference", () => {
     expect(renderOf(STAT)).toEqual({ value_label: "runs" });
     expect(
-      compared(STAT, [], frontxAnswer({ columns: ["n"], rows: [[100]] }))
+      compared(STAT, [], frontxAnswer({ columns: ["n"], rows: [[100]] }, STAT))
     ).toEqual({
       value: 125,
     });
@@ -906,13 +920,13 @@ describe("frontxBoard options", () => {
     [
       "the previous run's value",
       [],
-      frontxAnswer({ columns: ["n"], rows: [[100]] }),
+      frontxAnswer({ columns: ["n"], rows: [[100]] }, STAT),
       100,
     ],
     [
       "the previous run's fraction on a percent column",
       ["n"],
-      frontxAnswer({ columns: ["x", "n"], rows: [[0, 12.5]] }),
+      frontxAnswer({ columns: ["x", "n"], rows: [[0, 12.5]] }, STAT),
       0.125,
     ],
     ["no reference when the previous run failed", [], null, null],
@@ -920,7 +934,7 @@ describe("frontxBoard options", () => {
     [
       "no reference when the previous period has no rows",
       [],
-      frontxAnswer({ columns: ["n"], rows: [] }),
+      frontxAnswer({ columns: ["n"], rows: [] }, STAT),
       null,
     ],
   ])("gives a compared stat %s", (_, percents, previous, reference) => {
@@ -1035,6 +1049,266 @@ describe("frontxBoard options", () => {
         { name: "failed", points: [{ x: "Atlas", y: 1 }] },
         { name: "ok", points: [{ x: "Atlas", y: 3 }] },
       ],
+    });
+  });
+});
+
+describe("frontxBoard new types", () => {
+  function cellOf(body: Widget, range?: string) {
+    const board = frontxBoard(
+      "board",
+      read([{ widget: "w" }]),
+      [widget("w", body)],
+      range
+    );
+    return dashboardOf(board).layout.cells[0];
+  }
+
+  const typeOf = (cell: ReturnType<typeof cellOf>) =>
+    /\.widget\.([a-z_]+)\.v1~[0-9a-f-]{36}$/.exec(cell.widget.id)?.[1];
+
+  const MATRIX: Widget = {
+    type: "heatmap",
+    metric: "m",
+    x: "bucket",
+    y: "team",
+    value: "n",
+  };
+  const CALENDAR: Widget = {
+    type: "heatmap",
+    metric: "m",
+    x: "bucket",
+    value: "n",
+  };
+  const FUNNEL: Widget = {
+    type: "funnel",
+    metric: "m",
+    stages: ["opened", "reviewed", "merged"],
+  };
+  const TREEMAP: Widget = {
+    type: "treemap",
+    metric: "m",
+    label: "repo",
+    value: "n",
+  };
+  const SCATTER: Widget = {
+    type: "scatter",
+    metric: "m",
+    x: "size",
+    y: "hours",
+  };
+
+  it.each<[string, Widget, string | undefined, string]>([
+    ["a heatmap with a y column", MATRIX, "PQC", "heatmap"],
+    ["a calendar heatmap over daily buckets", CALENDAR, "P30D", "heatmap"],
+    [
+      "a calendar heatmap over wider buckets",
+      CALENDAR,
+      "PQC",
+      "cartesian_chart",
+    ],
+    [
+      "a calendar heatmap with no range",
+      CALENDAR,
+      undefined,
+      "cartesian_chart",
+    ],
+    ["a funnel", FUNNEL, undefined, "funnel_chart"],
+    ["a treemap", TREEMAP, undefined, "treemap_chart"],
+    ["a scatter", SCATTER, undefined, "cartesian_chart"],
+  ])("draws %s as a FrontX %s", (_, body, range, type) => {
+    expect(typeOf(cellOf(body, range))).toBe(type);
+  });
+
+  it("draws a heatmap with a y column as a matrix of x by y", () => {
+    const answer = {
+      columns: ["bucket", "team", "n"],
+      rows: [
+        ["2026-11-03 00:00:00", "Atlas", 4],
+        ["2026-11-04", "Borealis", null],
+      ],
+    };
+
+    expect(cellOf(MATRIX, "PQC").widget.render).toEqual({});
+    expect(drawnData(MATRIX, [], answer, "PQC")).toEqual({
+      format: undefined,
+      data: {
+        rows: [
+          { x: "Nov 3", y: "Atlas", value: 4 },
+          { x: "Nov 4", y: "Borealis", value: null },
+        ],
+      },
+    });
+  });
+
+  it("draws a calendar heatmap over daily buckets with one tile per dated row, as a fraction on a percent column", () => {
+    const answer = {
+      columns: ["bucket", "n"],
+      rows: [
+        ["2026-11-03 00:00:00", 40],
+        ["2026-11-04", 12.5],
+        [null, 3],
+        ["team", 3],
+      ],
+    };
+
+    expect(cellOf(CALENDAR, "P30D").widget.render).toEqual({
+      mode: "calendar",
+    });
+    expect(drawnData(CALENDAR, ["n"], answer, "P30D")).toEqual({
+      format: { value_type: "percent" },
+      data: {
+        rows: [
+          { x: "2026-11-03", value: 0.4 },
+          { x: "2026-11-04", value: 0.125 },
+        ],
+      },
+    });
+  });
+
+  it("draws a calendar heatmap over wider buckets as bars over time", () => {
+    const answer = {
+      columns: ["bucket", "n"],
+      rows: [["2026-11-02 00:00:00", 9]],
+    };
+
+    expect(cellOf(CALENDAR, "PQC").widget.render).toMatchObject({
+      series: [{ name: "n", type: "bar" }],
+      x_axis: { type: "category" },
+    });
+    expect(drawnData(CALENDAR, [], answer, "PQC").data).toEqual({
+      series: [{ name: "n", points: [{ x: "Nov 2", y: 9 }] }],
+    });
+  });
+
+  it("draws each listed column of a funnel's one row as a stage, in the listed order", () => {
+    const answer = {
+      columns: ["merged", "opened", "reviewed"],
+      rows: [[30, 100, null]],
+    };
+
+    expect(drawnData(FUNNEL, [], answer).data).toEqual({
+      stages: [
+        { label: "opened", value: 100 },
+        { label: "reviewed", value: null },
+        { label: "merged", value: 30 },
+      ],
+    });
+    expect(
+      drawnData(FUNNEL, [], { columns: answer.columns, rows: [] }).data
+    ).toEqual({
+      stages: [
+        { label: "opened", value: null },
+        { label: "reviewed", value: null },
+        { label: "merged", value: null },
+      ],
+    });
+  });
+
+  it("shows a funnel in percents only when every stage is a percent column", () => {
+    const answer = {
+      columns: ["opened", "reviewed", "merged"],
+      rows: [[90, 50, 25]],
+    };
+
+    expect(
+      drawnData(FUNNEL, ["opened", "reviewed", "merged"], answer)
+    ).toMatchObject({
+      format: { value_type: "percent" },
+      data: { stages: [{ value: 0.9 }, { value: 0.5 }, { value: 0.25 }] },
+    });
+    expect(drawnData(FUNNEL, ["opened"], answer).format).toBeUndefined();
+  });
+
+  it("draws the 60 largest rows of a treemap, largest first, each named and in its group", () => {
+    const rows = Array.from({ length: 70 }, (_, index) => [
+      `repo-${index}`,
+      index,
+      index % 2 ? "web" : null,
+    ]);
+    const body: Widget = { ...TREEMAP, group: "area" };
+    const { data } = drawnData(body, [], {
+      columns: ["repo", "n", "area"],
+      rows,
+    }) as {
+      data: { items: { label: string; value: number; group: unknown }[] };
+    };
+
+    expect(data.items).toHaveLength(60);
+    expect(data.items[0]).toEqual({
+      label: "repo-69",
+      value: 69,
+      group: "web",
+    });
+    expect(data.items[1]).toEqual({ label: "repo-68", value: 68, group: null });
+    expect(data.items.at(-1)?.value).toBe(10);
+  });
+
+  it("names a treemap tile with no name by a dash, and cuts a long name and group", () => {
+    const body: Widget = { ...TREEMAP, group: "area" };
+    const { data } = drawnData(body, [], {
+      columns: ["repo", "n", "area"],
+      rows: [
+        [null, 3, ""],
+        ["", 2, "g".repeat(41)],
+        ["r".repeat(81), 1, "web"],
+      ],
+    }) as { data: { items: { label: string; group: unknown }[] } };
+
+    expect(data.items.map((item) => [item.label, item.group])).toEqual([
+      ["—", null],
+      ["—", `${"g".repeat(39)}…`],
+      [`${"r".repeat(79)}…`, "web"],
+    ]);
+  });
+
+  it("draws a treemap with no rows as one empty tile, which FrontX shows as empty", () => {
+    expect(
+      drawnData(TREEMAP, [], { columns: ["repo", "n"], rows: [] }).data
+    ).toEqual({ items: [{ label: "—", value: null, group: null }] });
+  });
+
+  it("draws a scatter on value axes, with a point for each row that has both coordinates", () => {
+    const body: Widget = { ...SCATTER, size: "comments", label: "pr" };
+    const answer = {
+      columns: ["pr", "size", "hours", "comments"],
+      rows: [
+        ["pr-1", 120, 5.5, 3],
+        ["pr-2", "40", 2, -1],
+        ["pr-3", null, 1, 2],
+        ["pr-4", 10, 1, null],
+      ],
+    };
+
+    expect(cellOf(body).widget.render).toEqual({
+      series: [{ name: "hours", type: "scatter" }],
+      x_axis: { type: "value" },
+      y_axis: { type: "value" },
+      legend_position: "none",
+      size_label: "comments",
+    });
+    expect(drawnData(body, [], answer).data).toEqual({
+      series: [
+        {
+          name: "hours",
+          points: [
+            { x: 120, y: 5.5, size: 3 },
+            { x: 40, y: 2, size: 0 },
+            { x: 10, y: 1, size: null },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("draws a scatter by series as a note to turn off planned sections", () => {
+    const cell = cellOf({ ...SCATTER, series: "team" });
+
+    expect(cell.widget).toEqual({
+      id: expect.stringContaining(".widget.markdown_card.v1~"),
+      render: {
+        body: String.raw`Turn off Show planned sections to see this chart\.`,
+      },
     });
   });
 });

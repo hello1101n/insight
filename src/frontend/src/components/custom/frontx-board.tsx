@@ -82,9 +82,12 @@ const host: DashboardHost = {
         : undefined,
     ]);
 
-    const answer = frontxAnswer(result);
+    const answer = frontxAnswer(result, run.widget.body);
     if (earlier === undefined) return answer;
-    return { ...answer, previous: earlier && frontxAnswer(earlier) };
+    return {
+      ...answer,
+      previous: earlier && frontxAnswer(earlier, run.widget.body),
+    };
   },
 };
 
@@ -151,9 +154,9 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   }>();
   const board = useMemo(() => {
     if (!widgets.data) return undefined;
-    const drawn = frontxBoard(id, read, widgets.data);
+    const drawn = frontxBoard(id, read, widgets.data, range);
     return { ...drawn, id, key: JSON.stringify(drawn.file.instances) };
-  }, [id, read, widgets.data]);
+  }, [id, read, widgets.data, range]);
 
   // INVARIANT: a layout effect, so the shown file changes before the dashboard's own effect reads it.
   useLayoutEffect(() => {

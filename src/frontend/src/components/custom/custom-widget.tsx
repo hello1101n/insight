@@ -5,12 +5,24 @@ import { refusal } from "@/components/custom/refusal";
 import { CustomAreaChart } from "@/components/custom/custom-area-chart";
 import { CustomBarChart } from "@/components/custom/custom-bar-chart";
 import { CustomLineChart } from "@/components/custom/custom-line-chart";
+import {
+  FUNNEL_STAGE,
+  FUNNEL_VALUE,
+  funnelStages,
+  largestFirst,
+  projected,
+} from "@/components/custom/chart-data";
 import { CustomPieChart } from "@/components/custom/custom-pie-chart";
+import { CustomScatterChart } from "@/components/custom/custom-scatter-chart";
 import { CustomStat } from "@/components/custom/custom-stat";
 import { CustomTable } from "@/components/custom/custom-table";
+import { drawnColumns } from "@/lib/custom/draws-bucket";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { useIsAdmin } from "@/queries/identity-me";
+
+// INVARIANT: a scatter of more points than this draws as a table, which caps the rows it shows.
+const SCATTER_POINTS = 500;
 
 export interface CustomWidgetProps {
   widget: Widget;
@@ -86,97 +98,118 @@ export function CustomWidget({
     );
   }
 
+  const missing = missingColumnsNotice(
+    widget.metric,
+    drawnColumns(widget),
+    result
+  );
+  if (missing) return missing;
+
   switch (widget.type) {
     case "table":
-      return (
-        missingColumnsNotice(widget.metric, widget.columns, result) ?? (
-          <CustomTable result={result} />
-        )
-      );
+      return <CustomTable result={result} />;
     case "line":
       return (
-        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
-          <CustomLineChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            series={widget.series}
-            target={widget.target}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomLineChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          target={widget.target}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "bar":
       return (
-        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
-          <CustomBarChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            series={widget.series}
-            labels={widget.labels}
-            horizontal={widget.horizontal}
-            stack={widget.stack}
-            target={widget.target}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomBarChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          labels={widget.labels}
+          horizontal={widget.horizontal}
+          stack={widget.stack}
+          target={widget.target}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "area":
       return (
-        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
-          <CustomAreaChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            series={widget.series}
-            target={widget.target}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomAreaChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          target={widget.target}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "stat":
       return (
-        missingColumnsNotice(widget.metric, [widget.value], result) ?? (
-          <CustomStat
-            result={result}
-            value={widget.value}
-            label={widget.label}
-            compare={widget.compare}
-            previous={previous}
-          />
-        )
+        <CustomStat
+          result={result}
+          value={widget.value}
+          label={widget.label}
+          compare={widget.compare}
+          previous={previous}
+        />
       );
     case "pie":
       return (
-        missingColumnsNotice(
-          widget.metric,
-          [widget.label, widget.value],
-          result
-        ) ?? (
-          <CustomPieChart
-            result={result}
-            label={widget.label}
-            value={widget.value}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomPieChart
+          result={result}
+          label={widget.label}
+          value={widget.value}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "heatmap":
+      return <CustomTable result={projected(result, drawnColumns(widget))} />;
+    case "funnel":
+      return (
+        <CustomBarChart
+          result={funnelStages(result, widget.stages)}
+          x={FUNNEL_STAGE}
+          y={FUNNEL_VALUE}
+          horizontal
+          labels
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "treemap":
+      return (
+        <CustomBarChart
+          result={largestFirst(result, widget.label, widget.value)}
+          x={widget.label}
+          y={widget.value}
+          horizontal
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "scatter":
+      return result.rows.length > SCATTER_POINTS ? (
+        <CustomTable result={projected(result, drawnColumns(widget))} />
+      ) : (
+        <CustomScatterChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          size={widget.size}
+          series={widget.series}
+          label={widget.label}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     default:
       return <p>Unknown widget type.</p>;
   }
-}
-
-function seriesColumns(widget: {
-  x: string;
-  y: string;
-  series?: string;
-}): string[] {
-  return [widget.x, widget.y, ...(widget.series ? [widget.series] : [])];
 }
 
 function missingColumnsNotice(
