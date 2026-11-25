@@ -6,7 +6,10 @@ import type {
   CellFailureReport,
   DashboardHost,
 } from "@gears-frontx/frontx-dashboard-root";
-import type { Dashboard as FrontxDashboard } from "@gears-frontx/frontx-dashboard-root/contract";
+import type {
+  Dashboard as FrontxDashboard,
+  DashboardRequest,
+} from "@gears-frontx/frontx-dashboard-root/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -129,8 +132,12 @@ const runPath = (board: string) => `${dashboardWidgetPath(board, "w1")}/run`;
 const runs = () =>
   fetchWithAuth.mock.calls.filter(([, init]) => init?.method === "POST");
 
-async function hostOf(board: string, read = READ): Promise<DashboardHost> {
-  render(<FrontxBoard id={board} read={read} range={undefined} />, {
+async function hostOf(
+  board: string,
+  read = READ,
+  range?: string
+): Promise<DashboardHost> {
+  render(<FrontxBoard id={board} read={read} range={range} />, {
     wrapper,
   });
   await screen.findByTestId("frontx-dashboard");
@@ -311,6 +318,67 @@ describe("FrontxBoard", () => {
     expect(
       await screen.findByRole("dialog", { name: "Deploys" })
     ).toBeInTheDocument();
+  });
+
+  it("hides Details on a widget cell whose run the warehouse refused as busy, and shows it again when the run starts once more", async () => {
+    const host = await hostOf("board-b", READ, "P7D");
+    const dashboard = await shownDashboard(host);
+    const [cell] = dashboard.layout.cells;
+    const { request } = cell.widget.data as { request: DashboardRequest };
+    const run = () =>
+      host.request(
+        { ...request, body: { ...(request.body as object), range: "P7D" } },
+        new AbortController().signal
+      );
+    fetchWithAuth.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? json({ detail: "busy" }, 429)
+          : json({ items: WIDGETS })
+    );
+
+    await expect(run()).rejects.toMatchObject({ status: 429 });
+    expect(actionsOf(dashboard, cell.widget.id)).toEqual([]);
+    expect(actionsOf(dashboard, cell.larger_view!.id, "larger_view")).toEqual(
+      []
+    );
+
+    fetchWithAuth.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? json({ columns: ["bucket", "deploys"], rows: [["2026-10-01", 3]] })
+          : json({ items: WIDGETS })
+    );
+    const retried = run();
+    expect(
+      actionsOf(dashboard, cell.widget.id).map((action) => action.label)
+    ).toEqual(["Details"]);
+    await retried;
+    expect(
+      actionsOf(dashboard, cell.widget.id).map((action) => action.label)
+    ).toEqual(["Details"]);
+  });
+
+  it("keeps Details on a widget cell whose run failed for another reason", async () => {
+    const host = await hostOf("board-e");
+    const dashboard = await shownDashboard(host);
+    const [cell] = dashboard.layout.cells;
+    fetchWithAuth.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? json({ detail: "down" }, 500)
+          : json({ items: WIDGETS })
+    );
+
+    await expect(
+      host.request(
+        { method: "POST", path: runPath("board-e") },
+        new AbortController().signal
+      )
+    ).rejects.toMatchObject({ status: 500 });
+    expect(
+      actionsOf(dashboard, cell.widget.id).map((action) => action.label)
+    ).toEqual(["Details"]);
   });
 
   it("gives no action on a heading or a text cell", async () => {

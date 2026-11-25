@@ -17,10 +17,11 @@ import {
   type DashboardHost,
 } from "@gears-frontx/frontx-dashboard-root";
 
-import type {
-  DashboardRead,
-  DashboardWidget,
-  RunOptions,
+import {
+  isBusy,
+  type DashboardRead,
+  type DashboardWidget,
+  type RunOptions,
 } from "@/api/custom-client";
 import { runOptions } from "@/lib/custom/board-range";
 import {
@@ -164,6 +165,13 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   const details = ({ widgetId }: CellActionTarget): CellAction[] => {
     const widget = board.widgets.get(widgetId);
     if (!widget) return [];
+
+    const run = queryClient.getQueryState(
+      dashboardWidgetResultQuery(id, widget.id, runOptions(widget, range))
+        .queryKey
+    );
+    // INVARIANT: the drilldown sends no query to a warehouse that refused this widget's run as busy.
+    if (isBusy(run?.error)) return [];
 
     return [
       {
