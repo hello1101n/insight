@@ -1,0 +1,217 @@
+{{/*
+==============================================================================
+ Tenant cutover hooks (src/ingestion/scripts/tenant-cutover.sh)
+==============================================================================
+
+pre-install,pre-upgrade, weight 20 — after the hook RBAC (-5), the database
+hooks (5) and schedule-db-provision (15). Runs `tenant_migration plan`; when no
+table is pending (a fresh install, or one already cut over) it exits at once
+and suspends nothing. Otherwise it records every CronWorkflow's and the identity
+seed CronJob's suspend state in the ConfigMap <fullname>-tenant-cutover,
+suspends them, waits until no Workflow runs and no Airbyte job is active, and
+migrates. A failure puts every table and every writer back and fails the
+deploy; the previous release keeps running.
+
+post-install,post-upgrade, weight 400 — after clickhouse-migrate (200) and
+field-value-map (300). While the ConfigMap exists it submits one Workflow from
+the tenant-cutover-rebuild WorkflowTemplate and returns without waiting. That
+Workflow's last step resumes the writers and deletes the ConfigMap, so no sync
+runs before the rebuild ends.
+
+Deadlines fit a 3h helm --timeout: the pre hook is cut at 2h50m, which sends
+SIGTERM, and the migration puts the tables back before the pod goes.
+*/}}
+{{- if and .Values.ingestion.templates.enabled .Values.ingestion.toolboxImage .Values.ingestion.tenantCutover.enabled }}
+{{- $name := printf "%s-tenant-cutover-hook" (include "insight.fullname" .) }}
+{{- $airbyteNs := include "insight.airbyte.namespace" . }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: [cronworkflows]
+    verbs: [get, list, patch]
+  - apiGroups: ["argoproj.io"]
+    resources: [workflows]
+    verbs: [get, list, create]
+  - apiGroups: ["batch"]
+    resources: [cronjobs]
+    verbs: [get, list, patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ include "insight.fullname" . }}-tenant-cutover]
+    verbs: [get, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+# Airbyte's auth Secret, to count its active jobs (as airbyte-auth-rbac.yaml
+# grants reconcile; that binding is not a hook, so it may not exist yet).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}-airbyte-auth
+  namespace: {{ $airbyteNs }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ required "airbyte.authSecret.name is required" .Values.airbyte.authSecret.name | quote }}]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}-airbyte-auth
+  namespace: {{ $airbyteNs }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}-airbyte-auth
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "insight.fullname" . }}-tenant-cutover-pre
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+spec:
+  # No retry: a failed run has put everything back; a retry would only repeat it.
+  backoffLimit: 0
+  # 2h50m, inside a 3h helm --timeout: the pod gets SIGTERM and undoes the run.
+  activeDeadlineSeconds: 10200
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "insight.fullname" . }}-tenant-cutover
+        app.kubernetes.io/component: tenant-cutover
+    spec:
+      enableServiceLinks: false
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      # Room to swap back every table already exchanged.
+      terminationGracePeriodSeconds: 300
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: pre
+          image: {{ .Values.ingestion.toolboxImage | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [bash, /ingestion/scripts/tenant-cutover.sh, pre]
+          env:
+            {{- include "insight.tenantCutover.env" . | nindent 12 }}
+            - name: IDLE_TIMEOUT_SECONDS
+              value: {{ .Values.ingestion.tenantCutover.idleTimeoutSeconds | quote }}
+            - name: CLICKHOUSE_URL
+              value: {{ include "insight.clickhouse.url" . | quote }}
+            - name: CLICKHOUSE_USER
+              value: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
+                  key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+            - name: AIRBYTE_URL
+              value: {{ include "insight.airbyte.url" . | quote }}
+            - name: AIRBYTE_AUTH_SECRET_NAME
+              value: {{ .Values.airbyte.authSecret.name | quote }}
+            - name: AIRBYTE_AUTH_SECRET_NAMESPACE
+              value: {{ $airbyteNs | quote }}
+            - name: AIRBYTE_CLIENT_ID_KEY
+              value: {{ default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey | quote }}
+            - name: AIRBYTE_CLIENT_SECRET_KEY
+              value: {{ default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "insight.fullname" . }}-tenant-cutover-post
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "400"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "insight.fullname" . }}-tenant-cutover
+        app.kubernetes.io/component: tenant-cutover
+    spec:
+      enableServiceLinks: false
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: post
+          image: {{ .Values.ingestion.toolboxImage | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [bash, /ingestion/scripts/tenant-cutover.sh, post]
+          env:
+            {{- include "insight.tenantCutover.env" . | nindent 12 }}
+            - name: REBUILD_TEMPLATE
+              value: tenant-cutover-rebuild
+            - name: ARGO_INSTANCE_ID
+              value: {{ default "" .Values.ingestion.reconcile.argoInstanceId | quote }}
+{{- end }}

@@ -141,8 +141,8 @@ jobs:
         run: docker logs --tail 200 "${CLICKHOUSE_CONTAINER}" || true
 
   # The canonical-tenant cutover of deploy/TENANT_IDENTITY_UPGRADE.md, run on
-  # this tree: a warm state under a legacy tenant, the key migration with its
-  # rollback and restore, and the rebuild. Its own ClickHouse, so it shares no
+  # this tree: a warm state under a legacy tenant, the hook's migration (a
+  # failed run restoring exactly, then a successful one), and the rebuild. Its own ClickHouse, so it shares no
   # relation with the job above.
   tenant-cutover:
     name: Cut a warm installation over to the canonical tenant

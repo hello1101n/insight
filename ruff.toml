@@ -21,3 +21,4 @@ split-on-trailing-comma = false
 "src/ingestion/reconcile-connectors/python/*" = ["T201", "EXE001"]
 # The tenant migration is an operator CLI: its plan and its results are printed.
 "src/ingestion/scripts/tenant_migration/__main__.py" = ["T201"]
+"src/ingestion/scripts/tenant_migration/apply.py" = ["T201"]

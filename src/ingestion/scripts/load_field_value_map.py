@@ -48,6 +48,11 @@ one vendor value of a field, today the status lifecycle category:
 
     insight_tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  [note]
 
+The first column is the tenant. Its value is ignored: every row is written
+under the install's tenant, INSIGHT_TENANT_ID (authenticator.oidc.defaultTenantId),
+so a bundle written under a former tenant, or with the column left empty, loads
+as the install's. A header line may name it `insight_tenant_id` or `tenant_id`.
+
 The operator states business columns only. `valid_from` / `recorded_at` /
 `recorded_by` are the loader's, which is what makes a hand-written file unable
 to supersede a stored decision. `valid_from` is epoch: a seeded decision is the
@@ -55,6 +60,7 @@ baseline and applies to all history; a later correction is an operator INSERT
 with a real `valid_from`, and this loader never touches it.
 
 Required env (set by the Hook Job):
+    INSIGHT_TENANT_ID    the install's tenant, a lowercase UUID
     CLICKHOUSE_URL       e.g. http://ch-host:8123
     CLICKHOUSE_USER, CLICKHOUSE_PASSWORD
     CLICKHOUSE_CLUSTER_MODE  true -> every request carries the session a replicated
@@ -70,11 +76,12 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -276,8 +283,8 @@ def parse_task_values(files: Iterable[tuple[str, str]]) -> list[TaskValue]:
 def _rejection(fields: Sequence[str]) -> str | None:
     if not MIN_COLUMNS <= len(fields) <= MAX_COLUMNS:
         return f"expected {MIN_COLUMNS}-{MAX_COLUMNS} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:MIN_COLUMNS]):
-        return f"the first {MIN_COLUMNS} columns are all required"
+    if any(value == "" for value in fields[1:MIN_COLUMNS]):
+        return f"columns 2-{MIN_COLUMNS} are all required"
 
     # A typo passes every later gate silently: the consumer models filter on the
     # canonical domain, so an unknown spelling reads as an absent decision.
@@ -287,8 +294,8 @@ def _rejection(fields: Sequence[str]) -> str | None:
 def _defaults_rejection(fields: Sequence[str]) -> str | None:
     if len(fields) != len(DEFAULTS_COLUMNS):
         return f"expected {len(DEFAULTS_COLUMNS)} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields):
-        return f"all {len(DEFAULTS_COLUMNS)} columns are required"
+    if any(value == "" for value in fields[1:]):
+        return f"columns 2-{len(DEFAULTS_COLUMNS)} are all required"
 
     return _domain_problem(field=fields[2], value=fields[3], value_column="default_value")
 
@@ -297,8 +304,8 @@ def _roles_rejection(fields: Sequence[str]) -> str | None:
     required = len(ROLE_KEY_COLUMNS) + len(ROLE_VALUE_COLUMNS) - 1
     if not required <= len(fields) <= required + 1:
         return f"expected {required}-{required + 1} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:required]):
-        return f"the first {required} columns are all required"
+    if any(value == "" for value in fields[1:required]):
+        return f"columns 2-{required} are all required"
     role, precedence, value_unit, multiplier = fields[4:8]
     if role not in ROLES:
         return f"role {role!r} is not one of {', '.join(sorted(ROLES))}"
@@ -319,8 +326,8 @@ def _task_values_rejection(fields: Sequence[str]) -> str | None:
     required = len(VALUE_KEY_COLUMNS) + len(VALUE_VALUE_COLUMNS) - 1
     if not required <= len(fields) <= required + 1:
         return f"expected {required}-{required + 1} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:required]):
-        return f"the first {required} columns are all required"
+    if any(value == "" for value in fields[1:required]):
+        return f"columns 2-{required} are all required"
     if fields[6] not in TASK_VALUE_DOMAIN:
         return f"canonical_value {fields[6]!r} is not one of {', '.join(sorted(TASK_VALUE_DOMAIN))}"
     return None
@@ -380,6 +387,22 @@ def read_task_config(directory: Path) -> tuple[list[Role], list[TaskValue]]:
     if errors:
         raise MappingFileError("\n".join(errors))
     return roles, values
+
+
+TENANT_ENV = "INSIGHT_TENANT_ID"
+TENANT_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def install_tenant() -> str:
+    """The install's tenant; every row is written under it, whatever the bundle's first column says."""
+    tenant = os.environ.get(TENANT_ENV) or ""
+    if not TENANT_UUID.match(tenant):
+        raise MappingFileError(f"{TENANT_ENV} must be the install's tenant as a lowercase UUID, got {tenant!r}")
+    return tenant
+
+
+def stamp[RowT](rows: Iterable[RowT], tenant: str) -> list[RowT]:
+    return [replace(row, tenant_id=tenant) for row in rows]  # type: ignore[type-var]
 
 
 def deduplicate[RowT: Keyed](rows: Iterable[RowT]) -> list[RowT]:
@@ -689,6 +712,7 @@ def main() -> int:
         return 0
 
     try:
+        tenant = install_tenant()
         mappings, defaults = read_bundle(directory)
         roles, values = read_task_config(directory)
     except MappingFileError as error:
@@ -699,6 +723,7 @@ def main() -> int:
         LOG.warning("no data rows — nothing to load", extra={"dir": str(directory)})
         return 0
 
+    mappings, defaults, roles, values = (stamp(rows, tenant) for rows in (mappings, defaults, roles, values))
     execute, fetch_rows = _http_client()
     inserted = load(mappings, recorded_by=recorded_by, execute=execute, fetch_rows=fetch_rows)
     defaults_inserted = load_defaults(defaults, recorded_by=recorded_by, execute=execute, fetch_rows=fetch_rows)
