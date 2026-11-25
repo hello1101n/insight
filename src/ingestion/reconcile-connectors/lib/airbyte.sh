@@ -13,8 +13,6 @@
 #   - Strict mode is set so `bash lib/airbyte.sh` syntax-checks cleanly,
 #     but every entry point checks BASH_SOURCE so re-sourcing doesn't trip
 #     callers that already enabled strict mode.
-#   - All HTTP calls use `curl --fail-with-body --silent --show-error` so
-#     4xx/5xx bodies surface to stderr but the bearer token never does.
 #   - JSON payloads are passed via heredocs to avoid shell-quoting bugs.
 #   - All functions use lowercase names with the `ab_` prefix.
 #   - Sensitive values (token, secret config) MUST NOT be echoed.
@@ -48,6 +46,7 @@
 
 _AIRBYTE_LIB_DIR="$( cd "$(dirname "${BASH_SOURCE[0]}")" && pwd )"
 _AIRBYTE_PY_DIR="$( cd "${_AIRBYTE_LIB_DIR}/../python" && pwd )"
+source "${_AIRBYTE_LIB_DIR}/destination-credentials.sh"
 
 # ---------------------------------------------------------------------------
 # ab_get_token — print bearer token to stdout.
@@ -138,15 +137,7 @@ ab_get_token() {
   printf '%s' "$token"
 }
 
-# ---------------------------------------------------------------------------
-# ab__curl — internal helper. Wraps curl with auth + JSON content type.
-# Args: METHOD PATH [BODY_JSON_OR_EMPTY]
-# Echoes response body on stdout. Token never appears in argv.
-# ---------------------------------------------------------------------------
-ab__curl() {
-  local method="$1"
-  local path="$2"
-  local body="${3:-}"
+ab__token_for_request() {
   local token
   # Bail out cleanly when the auth flow can't reach Airbyte. Without
   # this guard every downstream parser (json.load, jq) chokes on an
@@ -162,22 +153,61 @@ ab__curl() {
       "${AIRBYTE_URL:-<unset>}" >&2
     return 1
   fi
+  printf '%s' "${token}"
+}
+
+ab__curl() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local write_out="${4:-}"
+  local token="${5:-}"
+  if [[ -z "${token}" ]]; then
+    token="$(ab__token_for_request)" || return 1
+  fi
   local url="${AIRBYTE_URL%/}${path}"
+  if [[ -n "${write_out}" ]]; then
+    set -- --write-out "${write_out}"
+  else
+    set -- --fail-with-body
+  fi
   if [[ -n "${body}" ]]; then
     printf '%s' "${body}" \
-      | curl --fail-with-body --silent --show-error \
+      | curl --silent --show-error "$@" \
           -X "${method}" \
           -H "Authorization: Bearer ${token}" \
           -H "Content-Type: application/json" \
           --data-binary @- \
           "${url}"
   else
-    curl --fail-with-body --silent --show-error \
+    curl --silent --show-error "$@" \
       -X "${method}" \
       -H "Authorization: Bearer ${token}" \
       -H "Content-Type: application/json" \
       "${url}"
   fi
+}
+
+ab__destination_write() {
+  local operation="$1" destination="$2" body="$3" token response="" status transfer=0
+  if token="$(ab__token_for_request)"; then
+    response="$(ab__curl POST "/api/v1/destinations/${operation}" "${body}" $'\n%{http_code}' "${token}")" || transfer=$?
+  fi
+
+  status="${response##*$'\n'}"
+  if [[ "${response}" == *$'\n'* && "${status}" =~ ^[0-9]{3}$ ]]; then
+    response="${response%$'\n'*}"
+  else
+    status=000
+  fi
+  if [[ "${transfer}" -eq 0 && "${status}" == 2[0-9][0-9] ]]; then
+    printf '%s' "${response}"
+    return 0
+  fi
+
+  printf '%s\0%s\0%s' "${body}" "${token}" "${response}" \
+    | python3 "${_AIRBYTE_PY_DIR}/destination_write_error.py" "${operation}" "${destination}" "${status}" >&2
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -557,15 +587,15 @@ ab_create_source() {
   local name="$3"
   local config_json="$4"
   local body
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "workspaceId": sys.argv[1],
   "sourceDefinitionId": sys.argv[2],
   "name": sys.argv[3],
-  "connectionConfiguration": json.loads(sys.argv[4]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${workspace_id}" "${definition_id}" "${name}" "${config_json}")
+' "${workspace_id}" "${definition_id}" "${name}")
   ab__curl POST /api/v1/sources/create "${body}"
 }
 
@@ -578,16 +608,16 @@ ab_update_source() {
   local config_json="$2"
   local name="${3:-}"
   local body
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 payload = {
   "sourceId": sys.argv[1],
-  "connectionConfiguration": json.loads(sys.argv[2]),
+  "connectionConfiguration": json.load(sys.stdin),
 }
-if len(sys.argv) > 3 and sys.argv[3]:
-    payload["name"] = sys.argv[3]
+if sys.argv[2]:
+    payload["name"] = sys.argv[2]
 print(json.dumps(payload))
-' "${source_id}" "${config_json}" "${name}")
+' "${source_id}" "${name}")
   ab__curl POST /api/v1/sources/update "${body}"
 }
 
@@ -765,83 +795,78 @@ ab_destination_version() {
 # Converges the destination named <name> on <config_json> and echoes its
 # destinationId: created when absent, updated through destinations/update
 # when its stored connectionConfiguration differs. Airbyte lists a secret as
-# "**********", so the comparison skips every key it returns masked: a
-# rotated password alone is not seen, every other key is — which is what lets
-# a topology flag flipped on an installed system reach Airbyte. One decision
-# line on stderr per call.
+# "**********". A dedicated sync account uses the Secret revision to detect drift.
+# Other masked values are skipped. One decision line goes to stderr per call.
 # ---------------------------------------------------------------------------
 ab_ensure_destination() {
   local name="$1"
   local definition_id="$2"
   local config_json="$3"
   local workspace_id
-  workspace_id="$(ab_workspace_id)"
+  workspace_id="$(ab_workspace_id)" || return 1
 
   local list_resp found
   list_resp="$(ab__curl POST /api/v1/destinations/list \
-    "$(printf '{"workspaceId":"%s"}' "${workspace_id}")")"
+    "$(printf '{"workspaceId":"%s"}' "${workspace_id}")")" || return 1
   # "<destinationId>\t<drifted keys>" for the named destination, or nothing.
-  found="$(printf '%s' "${list_resp}" | python3 -c '
-import sys, json
-target, desired = sys.argv[1], json.loads(sys.argv[2])
-MASK = "**********"
-for d in json.load(sys.stdin).get("destinations", []):
-    if d.get("name") != target:
-        continue
-    current = d.get("connectionConfiguration") or {}
-    masked = {k for k, v in current.items() if v == MASK}
-    drift = sorted(k for k in set(current) | set(desired)
-                   if k not in masked and current.get(k, MASK) != desired.get(k, MASK))
-    print(d["destinationId"] + "\t" + " ".join(drift))
-    break
-' "${name}" "${config_json}")"
+  found="$(printf '%s\0%s' "$config_json" "$list_resp" \
+    | python3 "${_AIRBYTE_PY_DIR}/destination_credentials.py" drift "${name}")" || return $?
 
   local body resp dest_id
   if [[ -n "${found}" ]]; then
     local existing_id drift
     IFS=$'\t' read -r existing_id drift <<<"${found}"
+    local credentials_changed=false
+    if ab_destination_write_attempted "${existing_id}"; then
+      ab_destination_write_succeeded "${existing_id}" || return 1
+      if [[ -n "${drift}" ]]; then
+        printf 'Airbyte destination configuration for %s needs another reconcile pass.\n' "${existing_id}" >&2
+        return 1
+      fi
+      printf '%s' "${existing_id}"
+      return 0
+    fi
+    if [[ " ${drift} " == *" username "* || " ${drift} " == *" password "* ]] \
+      || ! ab_destination_credentials_current "${existing_id}"; then
+      credentials_changed=true
+      drift="${drift:+${drift} }password"
+    elif [[ -n "${drift}" ]]; then
+      config_json="$(jq -c '.password = "**********"' <<<"${config_json}")" || return 1
+    fi
     if [[ -z "${drift}" ]]; then
       printf 'ab_ensure_destination: destination "%s" (%s) already carries the composed configuration\n' \
         "${name}" "${existing_id}" >&2
       printf '%s' "${existing_id}"
       return 0
     fi
-    body=$(python3 -c '
+    body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "destinationId": sys.argv[1],
   "name": sys.argv[2],
-  "connectionConfiguration": json.loads(sys.argv[3]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${existing_id}" "${name}" "${config_json}")
-    if ! resp="$(ab__curl POST /api/v1/destinations/update "${body}")"; then
-      printf 'ab_ensure_destination: destinations/update failed for "%s" (%s; drifted: %s).\nAirbyte response: %s\n' \
-        "${name}" "${existing_id}" "${drift}" "${resp}" >&2
-      return 1
-    fi
+' "${existing_id}" "${name}")
+    ab_destination_update_once "${existing_id}" "${body}" "${credentials_changed}" || return 1
     printf 'ab_ensure_destination: destination "%s" (%s) updated: %s\n' \
       "${name}" "${existing_id}" "${drift}" >&2
     printf '%s' "${existing_id}"
     return 0
   fi
 
-  body=$(python3 -c '
+  body=$(printf '%s' "$config_json" | python3 -c '
 import sys, json
 print(json.dumps({
   "workspaceId": sys.argv[1],
   "destinationDefinitionId": sys.argv[2],
   "name": sys.argv[3],
-  "connectionConfiguration": json.loads(sys.argv[4]),
+  "connectionConfiguration": json.load(sys.stdin),
 }))
-' "${workspace_id}" "${definition_id}" "${name}" "${config_json}")
+' "${workspace_id}" "${definition_id}" "${name}")
   # Capture the response so a non-2xx (e.g. 422 schema-validation) surfaces
   # the Airbyte error body — which names the offending config field — instead
   # of a bare `KeyError: 'destinationId'` from piping straight into the parser.
-  if ! resp="$(ab__curl POST /api/v1/destinations/create "${body}")"; then
-    printf 'ab_ensure_destination: destinations/create failed for "%s" (definitionId %s).\nAirbyte response: %s\n' \
-      "${name}" "${definition_id}" "${resp}" >&2
-    return 1
-  fi
+  resp="$(ab__destination_write create "${name}" "${body}")" || return 1
   dest_id="$(printf '%s' "${resp}" | python3 -c 'import sys, json
 try:
     print(json.load(sys.stdin)["destinationId"])
@@ -849,12 +874,34 @@ except Exception:
     sys.exit(1)
 ')"
   if [[ -z "${dest_id}" ]]; then
-    printf 'ab_ensure_destination: destinations/create returned no destinationId for "%s".\nAirbyte response: %s\n' \
-      "${name}" "${resp}" >&2
+    printf 'Airbyte destination creation returned no ID for "%s".\n' "${name}" >&2
     return 1
   fi
+  ab_destination_mark_attempt "${dest_id}" || return 1
+  ab_destination_record_write "${dest_id}" true || return 1
   printf 'ab_ensure_destination: destination "%s" (%s) created\n' "${name}" "${dest_id}" >&2
   printf '%s' "${dest_id}"
+}
+
+ab_converge_destination_credentials() {
+  local id="$1" request response update status
+  if ab_destination_write_attempted "${id}"; then
+    ab_destination_write_succeeded "${id}"
+    return
+  fi
+  if ab_destination_credentials_current "${id}"; then
+    return 0
+  fi
+  request="$(printf '{"destinationId":"%s"}' "${id}")"
+  response="$(ab__curl POST /api/v1/destinations/get "${request}")" || return 1
+  update="$(printf '%s' "${response}" | python3 "${_AIRBYTE_PY_DIR}/destination_credentials.py" update "${id}")" || {
+    status=$?
+    if [[ "${status}" -eq 3 ]]; then
+      printf '%s' "${update}"
+    fi
+    return "${status}"
+  }
+  ab_destination_update_once "${id}" "${update}" true
 }
 
 # ---------------------------------------------------------------------------

@@ -678,10 +678,11 @@ write_k8s_local() {
   # invalid manifests and break the seal step. Defaults (insight-local /
   # root-local) are safe but we don't want the path to diverge per input.
   yaml_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
-  local mdb_root_esc mdb_pass_esc ch_pass_esc
+  local mdb_root_esc mdb_pass_esc ch_pass_esc ch_sync_pass
   mdb_root_esc=$(yaml_escape "$MARIADB_ROOT_PASSWORD")
   mdb_pass_esc=$(yaml_escape "$MARIADB_PASSWORD")
   ch_pass_esc=$(yaml_escape  "$CLICKHOUSE_PASSWORD")
+  ch_sync_pass=$(openssl rand -hex 16)
   (umask 077; cat > "$secrets_store_out" <<EOF
 ##
 ## secrets-store.yaml — local cleartext store consumed by
@@ -735,6 +736,7 @@ insight-local-insight-db-creds: |
     mariadb-root-password: "$mdb_root_esc"
     mariadb-password:      "$mdb_pass_esc"
     clickhouse-password:   "$ch_pass_esc"
+    clickhouse-sync-password: "$ch_sync_pass"
     redis-password:        "redis-local"
 
 insight-local-insight-v3-core-token: |

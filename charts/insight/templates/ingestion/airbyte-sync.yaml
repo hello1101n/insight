@@ -1,3 +1,17 @@
+{{- define "insight.airbyteCapacity.env" -}}
+- name: AIRBYTE_CAPACITY_CHECK_ENABLED
+  value: "true"
+- name: AIRBYTE_CAPACITY_LEASE
+  value: {{ printf "%s-airbyte-capacity" (include "insight.fullname" .) | quote }}
+- name: AIRBYTE_CAPACITY_NAMESPACES
+  value: {{ include "insight.airbyteCapacity.namespaces" . | quote }}
+- name: AIRBYTE_CAPACITY_SETTINGS
+  value: {{ omit .Values.ingestion.airbyteSync.capacityCheck "enabled" "podNamespaces" | toJson | quote }}
+- name: POD_UID
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.uid
+{{- end -}}
 {{- if .Values.ingestion.templates.enabled }}
 {{- /*
 Argo parameter references ({{inputs.parameters.foo}}, {{steps.x.outputs.result}})
@@ -40,6 +54,7 @@ spec:
     - name: main
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_name
           - name: airbyte_url
       steps:
@@ -55,6 +70,7 @@ spec:
             template: sync
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: connection_id
                   value: {{ `"{{steps.resolve-connection-by-name.outputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
@@ -96,13 +112,15 @@ spec:
             value: {{ default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey | quote }}
           - name: AIRBYTE_CLIENT_SECRET_KEY
             value: {{ default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey | quote }}
+          - name: CONNECTION_NAME
+            value: {{ `"{{inputs.parameters.connection_name}}"` }}
           - name: CONNECTORS_DIR
             value: "/ingestion/connectors"
         source: |
           set -euo pipefail
           source /ingestion/reconcile-connectors/lib/airbyte.sh
           source /ingestion/reconcile-connectors/lib/argo.sh
-          name='{{ `{{inputs.parameters.connection_name}}` }}'
+          name="$CONNECTION_NAME"
           if ! id="$(argo_resolve_connection_id_by_name "$name")"; then
             echo "ERROR: connection name not found: $name" >&2
             exit 1
@@ -112,6 +130,7 @@ spec:
     - name: sync
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_id
           - name: airbyte_url
       steps:
@@ -119,6 +138,7 @@ spec:
             template: trigger-sync
             arguments:
               parameters:
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
                 - name: connection_id
                   value: {{ `"{{inputs.parameters.connection_id}}"` }}
                 - name: airbyte_url
@@ -127,23 +147,39 @@ spec:
             template: poll-job
             arguments:
               parameters:
+                {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+                {{- include "insight.syncResources.argument" . | nindent 16 }}
+                {{- end }}
+                - name: connection_id
+                  value: {{ `"{{inputs.parameters.connection_id}}"` }}
                 - name: job_id
                   value: {{ `"{{steps.trigger.outputs.result}}"` }}
+                - name: trigger_launch_evidence
+                  value: {{ `"{{steps.trigger.outputs.parameters.airbyte-launch-evidence}}"` }}
                 - name: airbyte_url
                   value: {{ `"{{inputs.parameters.airbyte_url}}"` }}
 
     - name: trigger-sync
+      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
       retryStrategy:
         limit: 3
-        retryPolicy: OnError
+        retryPolicy: Always
+        expression: "lastRetry.exitCode != '42' && lastRetry.exitCode != '43' && lastRetry.exitCode != '44'{{ if .Values.ingestion.airbyteSync.capacityCheck.enabled }} && lastRetry.exitCode != '45' && lastRetry.exitCode != '46' && lastRetry.exitCode != '47'{{ end }}"
         backoff:
           duration: "30s"
           factor: 2
-          maxDuration: "5m"
+          cap: "5m"
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
           - name: connection_id
           - name: airbyte_url
+      outputs:
+        parameters:
+          - name: airbyte-launch-evidence
+            valueFrom:
+              path: /tmp/airbyte-launch-evidence.json
+              default: ""
       container:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
         # IfNotPresent so dev clusters use the locally-built toolbox image loaded
@@ -151,6 +187,11 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_trigger.py]
         env:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.airbyteCapacity.env" . | nindent 10 }}
+          {{- end }}
+          - name: SYNC_RESOURCES
+            value: {{ `"{{inputs.parameters.sync_resources}}"` }}
           # OAuth client_credentials against /api/v1/applications/token. The
           # legacy self-minted HMAC JWT is rejected by Airbyte 1.7+ (the
           # request hangs ~5 min then RST). Per ADR-0013, every workflow
@@ -170,6 +211,18 @@ spec:
             value: {{ default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey | quote }}
           - name: AIRBYTE_CLIENT_SECRET_KEY
             value: {{ default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey | quote }}
+          - name: WORKFLOW_NAME
+            value: {{ `"{{workflow.name}}"` }}
+          - name: WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: WORKFLOW_NAMESPACE
+            value: {{ .Release.Namespace | quote }}
+          - name: LAUNCH_CONFIRMATION_SECONDS
+            value: {{ required "ingestion.airbyteSync.launchConfirmationSeconds is required" .Values.ingestion.airbyteSync.launchConfirmationSeconds | quote }}
+          - name: LAUNCH_UNREADABLE_SECONDS
+            value: {{ required "ingestion.airbyteSync.launchUnreadableSeconds is required" .Values.ingestion.airbyteSync.launchUnreadableSeconds | quote }}
+          - name: AIRBYTE_LAUNCH_EVIDENCE_PATH
+            value: /tmp/airbyte-launch-evidence.json
           - name: CONNECTION_ID
             value: {{ `"{{inputs.parameters.connection_id}}"` }}
           - name: AIRBYTE_URL
@@ -182,17 +235,33 @@ spec:
                 key: INSIGHT_LOG_LEVEL
 
     - name: poll-job
+      serviceAccountName: {{ include "insight.fullname" . }}-airbyte-trigger
       retryStrategy:
         limit: 3
         retryPolicy: OnError
         backoff:
           duration: "30s"
           factor: 2
-          maxDuration: "5m"
+          cap: "5m"
       inputs:
         parameters:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.syncResources.input" . | nindent 10 }}
+          {{- end }}
+          - name: connection_id
           - name: job_id
+          - name: trigger_launch_evidence
           - name: airbyte_url
+      outputs:
+        parameters:
+          - name: airbyte-launch-evidence
+            valueFrom:
+              path: /tmp/airbyte-launch-evidence.json
+              default: ""
+          - name: airbyte-evidence
+            valueFrom:
+              path: /tmp/airbyte-evidence.json
+              default: ""
       # INVARIANT: Airbyte owns job deadlines; stopping this pod does not cancel its job.
       container:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
@@ -201,6 +270,11 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [python3, /ingestion/scripts/airbyte_sync_poll.py]
         env:
+          {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+          {{- include "insight.airbyteCapacity.env" . | nindent 10 }}
+          - name: SYNC_RESOURCES
+            value: {{ `"{{inputs.parameters.sync_resources}}"` }}
+          {{- end }}
           # Same K8s-API credential read as trigger-sync (see the comment
           # there): the auth Secret may live in Airbyte's own namespace.
           # Read per poll iteration, so a rotated credential is picked up
@@ -213,6 +287,24 @@ spec:
             value: {{ default "instance-admin-client-id" .Values.airbyte.authSecret.clientIdKey | quote }}
           - name: AIRBYTE_CLIENT_SECRET_KEY
             value: {{ default "instance-admin-client-secret" .Values.airbyte.authSecret.clientSecretKey | quote }}
+          - name: AIRBYTE_EVIDENCE_PATH
+            value: /tmp/airbyte-evidence.json
+          - name: WORKFLOW_NAME
+            value: {{ `"{{workflow.name}}"` }}
+          - name: WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: WORKFLOW_NAMESPACE
+            value: {{ .Release.Namespace | quote }}
+          - name: LAUNCH_CONFIRMATION_SECONDS
+            value: {{ required "ingestion.airbyteSync.launchConfirmationSeconds is required" .Values.ingestion.airbyteSync.launchConfirmationSeconds | quote }}
+          - name: LAUNCH_UNREADABLE_SECONDS
+            value: {{ required "ingestion.airbyteSync.launchUnreadableSeconds is required" .Values.ingestion.airbyteSync.launchUnreadableSeconds | quote }}
+          - name: AIRBYTE_LAUNCH_EVIDENCE_PATH
+            value: /tmp/airbyte-launch-evidence.json
+          - name: CONNECTION_ID
+            value: {{ `"{{inputs.parameters.connection_id}}"` }}
+          - name: TRIGGER_LAUNCH_EVIDENCE
+            value: {{ `"{{inputs.parameters.trigger_launch_evidence}}"` }}
           - name: JOB_ID
             value: {{ `"{{inputs.parameters.job_id}}"` }}
           - name: AIRBYTE_URL
@@ -220,7 +312,7 @@ spec:
           - name: POLL_INTERVAL_SECONDS
             value: {{ default 30  .Values.ingestion.airbyteSync.pollIntervalSeconds | quote }}
           - name: STATUS_UNREADABLE_THRESHOLD_SECONDS
-            value: {{ default 1800 .Values.ingestion.airbyteSync.statusUnreadableThresholdSeconds | quote }}
+            value: {{ .Values.ingestion.airbyteSync.statusUnreadableThresholdSeconds | quote }}
           # Install-wide log level knob from the platform ConfigMap (#3191).
           - name: INSIGHT_LOG_LEVEL
             valueFrom:

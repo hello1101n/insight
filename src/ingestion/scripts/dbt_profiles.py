@@ -76,6 +76,24 @@ def session_settings(*, correlated_subqueries: bool) -> dict[str, object]:
     table's DDL rather than the session.
     """
     settings: dict[str, object] = {}
+    uid = os.environ.get("DBT_WORKFLOW_UID")
+    stage = os.environ.get("DBT_STAGE_NAME")
+    pod = os.environ.get("DBT_POD_UID")
+    if uid and stage and pod:
+        settings["log_comment"] = f"insight:sync={uid}:stage={stage}:pod={pod}"
+
+    cap = os.environ.get("DBT_QUERY_MEMORY_BYTES")
+    if cap:
+        memory = int(cap)
+        if not 2 <= memory <= 2**53 - 1:
+            raise ValueError("DBT_QUERY_MEMORY_BYTES is outside the supported range")
+        settings.update(
+            max_memory_usage=memory,
+            max_bytes_before_external_group_by=memory // 2,
+            max_bytes_before_external_sort=memory // 2,
+            max_bytes_ratio_before_external_group_by=0,
+            max_bytes_ratio_before_external_sort=0,
+        )
 
     if correlated_subqueries:
         # Correlated subqueries (LEFT ANTI JOIN in the identity seed models)

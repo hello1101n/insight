@@ -136,7 +136,7 @@ impl ClickHouseIdentityPersonsWriter {
         if !user.is_empty() {
             config = config.with_auth(user, password);
         }
-        Self::new(Client::new(config))
+        Self::new(super::tag_seed_queries(Client::new(config)))
     }
 
     async fn target_state(&self) -> anyhow::Result<Target> {

@@ -1,12 +1,12 @@
 {{ config(
     materialized='table',
     schema='staging',
-    query_settings={
+    query_settings=instance_query_settings({
         'max_bytes_before_external_group_by': 268435456,
         'max_bytes_ratio_before_external_group_by': 0,
         'max_block_size': 8192,
         'max_threads': 4,
-    },
+    }),
     tags=['bamboohr', 'silver']
 ) }}
 

@@ -43,6 +43,12 @@ impl Client {
         Self { inner, config }
     }
 
+    #[must_use]
+    pub fn with_log_comment(mut self, comment: String) -> Self {
+        self.inner = self.inner.with_setting("log_comment", comment);
+        self
+    }
+
     /// Use bind parameters (`?`) for all user-supplied values.
     /// **Never** interpolate values into the SQL string.
     pub fn query(&self, sql: &str) -> clickhouse::query::Query {
@@ -461,6 +467,26 @@ mod tests {
     #[derive(Debug, serde::Serialize, serde::Deserialize, clickhouse::Row)]
     struct IdRow {
         id: u64,
+    }
+
+    #[tokio::test]
+    async fn with_log_comment_tags_every_query() -> Result<(), Box<dyn std::error::Error>> {
+        let capture = test_support::Capture::start().await?;
+        let client = Client::new(Config::new(capture.url(), "identity"))
+            .with_log_comment("insight:sync=example:stage=example".to_owned());
+
+        client
+            .query("SELECT id FROM t")
+            .fetch_all::<IdRow>()
+            .await?;
+
+        let received = capture.received();
+        assert_eq!(received.len(), 1);
+        assert_eq!(
+            received[0].pair("log_comment"),
+            Some("insight:sync=example:stage=example")
+        );
+        Ok(())
     }
 
     async fn recorded(

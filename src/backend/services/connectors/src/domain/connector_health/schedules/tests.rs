@@ -23,6 +23,8 @@ pub(super) fn response() -> ConnectorHealthResponse {
             schedule: None,
             schedule_request: None,
             last_sync: None,
+            latest_run: None,
+            last_successful_run: None,
         });
     }
     response

@@ -343,8 +343,8 @@ class TestSweptRowsLandAndResolve:
                 "RECONCILE_DEST_CLICKHOUSE_PROTOCOL": ("https" if CH_URL.startswith("https") else "http"),
                 "RECONCILE_DEST_CLICKHOUSE_HOST": CH_URL.split("//", 1)[1].split(":")[0],
                 "RECONCILE_DEST_CLICKHOUSE_PORT": CH_URL.rsplit(":", 1)[1],
-                "RECONCILE_DEST_CLICKHOUSE_USERNAME": CH_USER,
-                "RECONCILE_DEST_CLICKHOUSE_PASSWORD": CH_PASSWORD,
+                "RECONCILE_SWEEP_CLICKHOUSE_USERNAME": CH_USER,
+                "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD": CH_PASSWORD,
                 "RECONCILE_DEST_CLICKHOUSE_CLUSTER_MODE": "true" if CH_CLUSTER else "false",
                 "RECONCILE_DEST_CLICKHOUSE_CLUSTER_NAME": CH_CLUSTER or "",
             }
