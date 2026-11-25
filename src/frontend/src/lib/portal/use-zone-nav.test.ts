@@ -1,8 +1,3 @@
-/**
- * Which zones the rail offers. The gate is not "does this viewer manage
- * anyone" but "do the org zones have a cohort" — a member of an organisation
- * with no reporting lines has one, and used to be shown their own page alone.
- */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,8 +13,8 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
 }));
 vi.mock("@/auth", () => ({ useViewer: () => ({ personId: "me-1" }) }));
-vi.mock("@/lib/portal/use-active-zone", () => ({
-  useActiveZone: () => ({ activeZone: "person", activePerson: "p-1" }),
+vi.mock("@/lib/portal/use-nav-location", () => ({
+  useNavLocation: () => ({ zone: "person", item: null, person: "p-1", dir: "", lens: "" }),
 }));
 vi.mock("@/lib/portal/use-viewer-reach", () => ({
   useViewerReach: () => ({
@@ -75,7 +70,6 @@ describe("useZoneNav", () => {
   });
 
   it("offers the org zones once the viewer has a cohort", () => {
-    // The flat-organisation case: no reports, and still an organisation.
     mocks.canSeeOthers = true;
 
     const ids = zoneIds();
@@ -107,7 +101,7 @@ describe("useZoneNav", () => {
 
     expect(mocks.navigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/ic/$person/personal",
+        to: "/people/$person",
         params: { person: "me-1" },
       })
     );

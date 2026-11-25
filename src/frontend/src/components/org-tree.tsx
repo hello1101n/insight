@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, User, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -8,10 +8,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@gears-frontx/ui-kit";
 import { personName } from "@/lib/identities/person-display";
 import { usePortalNavActions } from "@/lib/portal/portal-nav";
-import { personIdFromPath } from "@/lib/metrics/entity";
 import {
   filterOrgTree,
   type OrgTreeFilter,
@@ -23,8 +22,6 @@ import type { IdentityPerson } from "@/types/insight";
 
 const UNNAMED_PERSON = "Unnamed person";
 
-// Person ids, not emails: the identity cutover made the id the key the route
-// segment, `?scope=` and the metric entity ids all carry.
 function personIdEq(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
@@ -46,7 +43,6 @@ function PersonNode({
   node: IdentityPerson;
   depth: number;
   activePersonId: string | null;
-  /** Lead (has reports) links to their team roster instead of their own page. */
   leadsToTeam: boolean;
   filter: OrgTreeFilter | null;
   expansionOverrides: ReadonlyMap<string, boolean>;
@@ -62,26 +58,21 @@ function PersonNode({
     hasReports && activePersonId
       ? node.subordinates.some((s) => containsPerson(s, activePersonId))
       : false;
-  // While filtering, the chain to a match is what the reader asked to see, so
-  // it opens regardless of where they happen to be standing.
   const defaultOpen = depth === 0 || isActive || hasActiveDescendant;
   const open = filter
     ? true
     : (expansionOverrides.get(node.person_id) ?? defaultOpen);
   const label = personName(node) ?? UNNAMED_PERSON;
-  // A lead's name lands on their team; an IC's on their own page. (The two
-  // literal `to`s keep the typed router happy vs. a computed path.) Drilling
-  // into a lead also *sets the org scope* (design §6) so the topbar badge and
-  // every org zone follow the node you just clicked.
+  // WORKAROUND: two literal `to`s, since the typed router rejects a computed path.
   const link =
     hasReports && leadsToTeam ? (
       <Link
-        to="/ic/$person/team"
+        to="/people/$person/team"
         params={{ person: node.person_id }}
         onClick={() => setScope({ root: node.person_id })}
       />
     ) : (
-      <Link to="/ic/$person/personal" params={{ person: node.person_id }} />
+      <Link to="/people/$person" params={{ person: node.person_id }} />
     );
   return (
     <>
@@ -103,7 +94,7 @@ function PersonNode({
                 type="button"
                 aria-expanded={open}
                 aria-label={`${open ? "Collapse" : "Expand"} ${label}`}
-                className="w-8 shrink-0 justify-center p-0 text-muted-foreground"
+                className="w-8 shrink-0 justify-center"
                 onClick={() => onExpandedChange(node.person_id, !open)}
               >
                 {open ? <ChevronDown /> : <ChevronRight />}
@@ -115,7 +106,7 @@ function PersonNode({
           <SidebarMenuButton
             isActive={isActive}
             render={link}
-            className="min-w-0 flex-1 ps-2"
+            className="min-w-0 flex-1"
           >
             {hasReports ? <Users /> : <User />}
             <span className="truncate">{label}</span>
@@ -140,11 +131,6 @@ function PersonNode({
   );
 }
 
-/**
- * The same navigation for an organisation with no reporting lines: one flat
- * list, in label order, scrolling in the pane exactly as the chart does. There
- * is no chart to draw and no depth to indent, so a row carries no chevron.
- */
 function RosterList({
   query,
   roster,
@@ -152,14 +138,7 @@ function RosterList({
   query: string;
   roster: readonly PeopleListItem[];
 }) {
-  const { personId: viewerPersonId } = useViewer();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const activePersonId = useMemo(() => {
-    const fromPath = personIdFromPath(pathname);
-    if (fromPath) return fromPath;
-    if (pathname === "/" && viewerPersonId) return viewerPersonId;
-    return null;
-  }, [pathname, viewerPersonId]);
+  const activePersonId = useRoutePerson();
 
   const listed = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -183,9 +162,7 @@ function RosterList({
   }
 
   return (
-    // Padding INSIDE the scroll region the pane owns, so the first and last
-    // names clear its edges instead of touching them.
-    <SidebarMenu className="pb-2">
+    <SidebarMenu>
       {listed.map(({ person, label }) => (
         <SidebarMenuItem key={person.person_id}>
           <SidebarMenuButton
@@ -196,7 +173,7 @@ function RosterList({
             }
             render={
               <Link
-                to="/ic/$person/personal"
+                to="/people/$person"
                 params={{ person: person.person_id }}
               />
             }
@@ -211,7 +188,6 @@ function RosterList({
   );
 }
 
-/** Recursive org-chart navigation, rooted at the viewer. */
 export function OrgTree({
   leadsToTeam = false,
   query = "",
@@ -223,13 +199,7 @@ export function OrgTree({
     () => (viewerPersonId ? rosterTree(roster, viewerPersonId) : null),
     [roster, viewerPersonId]
   );
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const activePersonId = useMemo(() => {
-    const fromPath = personIdFromPath(pathname);
-    if (fromPath) return fromPath;
-    if (pathname === "/" && viewerPersonId) return viewerPersonId;
-    return null;
-  }, [pathname, viewerPersonId]);
+  const activePersonId = useRoutePerson();
   const filter = useMemo(() => filterOrgTree(viewer, query), [viewer, query]);
   const [expansionOverrides, setExpansionOverrides] = useState<
     ReadonlyMap<string, boolean>
@@ -266,4 +236,9 @@ export function OrgTree({
       />
     </SidebarMenu>
   );
+}
+
+function useRoutePerson(): string | null {
+  const { person } = useParams({ strict: false }) as { person?: string };
+  return person ?? null;
 }

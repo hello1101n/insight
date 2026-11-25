@@ -12,12 +12,6 @@ import {
   type MetricEvidenceSelection,
 } from "@/api/metric-drilldown-client";
 
-/**
- * The peer story ranks a collection's metrics by how far the person sits
- * from their cohort: outliers (top/bottom quartile) ordered by severity,
- * everything else folded as supporting. Pure data — layout lives in
- * `components/widgets/metric-views/peer-story.tsx`.
- */
 export type PeerStoryEntry = {
   key: string;
   label: string;
@@ -27,7 +21,6 @@ export type PeerStoryEntry = {
   format: MetricFormat;
   higherIsBetter: boolean;
   neutral: boolean;
-  /** False when the person has no observations (zero-filled own total). */
   observed: boolean;
   stats: PeerStats | null;
   status: PeerStatusWithNeutral;
@@ -65,12 +58,6 @@ function toStoryEntry(
   };
 }
 
-/**
- * Entries in collection order; metrics without a period value drop out.
- * All eligibility (observed / suppressed / flat pool / neutral direction)
- * and both judgments come from `derivePeerStanding` — the story only lays
- * the results out.
- */
 export function buildPeerStoryEntries(
   collection: MetricCollectionConfig,
   byKey: Map<string, NormalizedMetricResult>,
@@ -85,11 +72,6 @@ export function buildPeerStoryEntries(
   });
 }
 
-/**
- * The most severe bottom-quartile entry — a person's headline weak spot, or
- * `null` when nothing ranks below the pack. Distinct from a peer-story hero,
- * which can be a top-quartile strength; this is always a weakness.
- */
 export function worstEntry(entries: PeerStoryEntry[]): PeerStoryEntry | null {
   return (
     entries

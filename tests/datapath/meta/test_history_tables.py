@@ -76,7 +76,7 @@ REBUILDABLE_APPEND_MODELS = frozenset(
         "ms_entra__person_attribute_claims",
         "outline__identity_inputs",
         "seed_identity_inputs_from_cursor",
-        "zoom__collab_meeting_activity",
+        "slack__identity_inputs",
         "zoom__guest_identity_inputs",
         "zoom__identity_inputs",
         "zoom__meeting_sessions",

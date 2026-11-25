@@ -83,9 +83,6 @@ describe("sectionStandingPhrase", () => {
   });
 
   it("names the set it counted, since the card shows fewer rows than that", () => {
-    // A bare "4 ahead of peers" over four rows with no green mark on any of
-    // them read as a claim about those rows, and the reader had no way to see
-    // that the badge was counting the whole section.
     expect(sectionStandingPhrase(counts({ bottom: 5, inPack: 7 }))).toBe(
       "5 of 12 behind peers",
     );

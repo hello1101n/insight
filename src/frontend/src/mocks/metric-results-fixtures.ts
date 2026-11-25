@@ -6,19 +6,6 @@ import type {
   SumMetricResult,
 } from "@/api/metric-results-client";
 
-/**
- * Canonical wire fixtures for `POST /v1/metric-results`, mirroring the
- * backend's serde wire-shape test
- * (`metric_result_wire_shape_is_flat_with_computation_tag` in
- * `services/analytics/src/domain/metric_results/builder.rs`): the envelope is
- * flat, the `computation` tag carries only executable fields (`scale` on
- * ratio), `unit` is `null` when absent, dimension tuple labels are optional,
- * and every requested view is echoed — empty `values`, never absent views.
- *
- * Single source of truth for the MSW handler and unit tests. If the backend
- * DTO changes shape, update here and nowhere else.
- */
-
 export const SUM_METRIC_FIXTURE: SumMetricResult = {
   metric_key: "ai.accepted_lines",
   label: "Accepted lines",
@@ -33,8 +20,6 @@ export const SUM_METRIC_FIXTURE: SumMetricResult = {
       view: "period",
       values: [
         { entity_id: "alice@example.com", value: 1240 },
-        // Period views zero-fill sums for requested entities without rows;
-        // "unmeasured" is signaled by the peer view's null target_value.
         { entity_id: "bob@example.com", value: 0 },
       ],
     },
@@ -160,7 +145,6 @@ export const MEDIAN_METRIC_FIXTURE: MedianMetricResult = {
       view: "period",
       values: [
         { entity_id: "alice@example.com", value: 18.5 },
-        // Medians are never zero-filled: an unmeasured entity is null.
         { entity_id: "bob@example.com", value: null },
       ],
     },
@@ -211,15 +195,6 @@ export const METRIC_RESULTS_RESPONSE_FIXTURE: MetricResultsResponse = {
   metrics: [SUM_METRIC_FIXTURE, RATIO_METRIC_FIXTURE, MEDIAN_METRIC_FIXTURE],
 };
 
-/**
- * Collaboration metric metadata for the MSW factory. Only meta is consumed
- * (the factory strips `views` and synthesizes them per request), so `views`
- * here is a minimal placeholder. Covers the collab metrics whose
- * format/direction/computation differ from the factory's sum/integer/
- * higher-is-better default; the rest synthesize correctly without a fixture.
- * Kept out of `METRIC_RESULTS_RESPONSE_FIXTURE` so that canonical response
- * fixture stays stable.
- */
 export const COLLAB_METRIC_FIXTURES: MetricResult[] = [
   {
     metric_key: "collab.messages_sent",
@@ -280,6 +255,17 @@ export const COLLAB_METRIC_FIXTURES: MetricResult[] = [
     ],
   },
   {
+    metric_key: "collab.chat_active_days",
+    label: "Chat Active Days",
+    unit: "days",
+    format: "integer",
+    direction: "neutral",
+    computation: "distinct_count",
+    views: [
+      { view: "period", values: [{ entity_id: "alice@example.com", value: 12 }] },
+    ],
+  },
+  {
     metric_key: "collab.active_days",
     label: "Active Days",
     unit: "days",
@@ -303,15 +289,6 @@ export const COLLAB_METRIC_FIXTURES: MetricResult[] = [
   },
 ];
 
-/**
- * Task-delivery metric metadata for the MSW factory. Only meta is consumed
- * (the factory strips `views` and synthesizes them per request), so `views`
- * here is a minimal placeholder. Covers the task metrics whose
- * format/direction/computation differ from the factory's sum/integer/
- * higher-is-better default; the rest synthesize correctly without a fixture.
- * Kept out of `METRIC_RESULTS_RESPONSE_FIXTURE` so that canonical response
- * fixture stays stable.
- */
 export const TASK_METRIC_FIXTURES: MetricResult[] = [
   {
     metric_key: "tasks.resolution_time",

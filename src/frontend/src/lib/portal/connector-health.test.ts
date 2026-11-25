@@ -1,11 +1,3 @@
-/**
- * What the page claims, and what it refuses to claim.
- *
- * The rules under test are the ones a reader would otherwise have to infer
- * from cells: that configuration is read before the sync outcome, that an
- * unmeasured value never prints as a zero, and that the page stops presenting
- * its own facts as current once recording has plainly stopped.
- */
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -27,12 +19,13 @@ import {
   formatRecords,
   formatStarted,
   instanceKey,
+  panelIdFor,
 } from "@/lib/portal/connector-health";
 
 const MINUTE = 60_000;
 
 describe("the recorded schedule", () => {
-  it.each(["annotation", "descriptor", "default"] as const)(
+  it.each(["api", "annotation", "descriptor", "default"] as const)(
     "keeps the muted schedule line independent of %s origin",
     (origin) => {
       const schedule = { crons: ["0 22 * * *"], origin, suspended: false };
@@ -90,8 +83,6 @@ describe("which installation of a connector a row is", () => {
   });
 
   it("prints absence as absence rather than naming an instance nobody recorded", () => {
-    // History recorded before the ledger carried the identity that no single
-    // installation could be shown to own.
     expect(describeInstance({})).toBe(UNMEASURED);
     expect(describeInstance({ tenant_id: null, source_id: null })).toBe(UNMEASURED);
   });
@@ -101,8 +92,6 @@ describe("which installation of a connector a row is", () => {
   });
 
   it("keys two installations of one connector apart", () => {
-    // Keyed on the name alone they collide: React reuses one row's node for
-    // the other, and opening one row opens the other's history.
     const first = instanceKey({
       connector: "claude-team",
       tenant_id: "acme",
@@ -124,15 +113,18 @@ describe("which installation of a connector a row is", () => {
   });
 
   it("keys two identities apart when one carries the separator", () => {
-    // Nothing constrains what the ledger recorded: the tenant comes from a
-    // chart value and the source id from an annotation, and neither is parsed
-    // on the way in. Joined raw, these two are one key — the rows would share a
-    // React node, a cache entry and a disclosure.
     expect(
       instanceKey({ connector: "alpha", tenant_id: "acme/main", source_id: "" }),
     ).not.toBe(
       instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" }),
     );
+  });
+
+  it.each([
+    [{ connector: "a_b", tenant_id: "c" }, { connector: "a", tenant_id: "b_c" }],
+    [{ connector: "a%5Fb", tenant_id: "c" }, { connector: "a_b", tenant_id: "c" }],
+  ])("panel ids stay distinct when keys differ only by separator or underscore: %o vs %o", (first, second) => {
+    expect(panelIdFor(first)).not.toBe(panelIdFor(second));
   });
 });
 
@@ -174,6 +166,10 @@ describe("what a row says", () => {
     }
   });
 
+  it.each(["renamed_word", "constructor"])("reads the unrecognised status %s as state unknown", (status) => {
+    expect(describeSync(sync({ status })).state).toBe("state_unknown");
+  });
+
   it("never says a connector is delivering", () => {
     const statuses: SyncStatus[] = [
       "pending",
@@ -193,8 +189,6 @@ describe("what a row says", () => {
   });
 
   it("reads configuration before the sync outcome", () => {
-    // A connector taken out of configuration is a decision, not a fault, even
-    // when the last thing it did was fail.
     const removed = describeConnector(
       row({ configured: false, last_sync: sync({ status: "failed" }) }),
     );
@@ -219,8 +213,6 @@ describe("what a row says", () => {
   });
 
   it("keeps queued apart from syncing", () => {
-    // Merging them makes a row say "syncing" beside a start of "—", and erases
-    // the only signal separating "not picked up" from "running now".
     const queued = describeConnector(row({ last_sync: sync({ status: "pending" }) }));
     const running = describeConnector(row({ last_sync: sync({ status: "running" }) }));
     expect(queued.state).not.toBe(running.state);
@@ -228,9 +220,6 @@ describe("what a row says", () => {
   });
 
   it("reads a status this build has never heard of as unreadable", () => {
-    // The contract types status as a bare string, so the mover's vocabulary can
-    // grow without this build changing. That must not crash and must not be
-    // filed as quiet.
     const view = describeConnector(
       row({ last_sync: sync({ status: "materialising" as never }) }),
     );
@@ -263,8 +252,6 @@ describe("how long a sync has been going", () => {
   });
 
   it("a running sync ignores a recorded duration rather than printing it", () => {
-    // Rows written before the recorder stopped storing one still hold the
-    // mover's zero here, and printing it says a running sync took no time.
     const view = describeDuration(
       sync({
         status: "running",
@@ -277,7 +264,6 @@ describe("how long a sync has been going", () => {
   });
 
   it("a queued sync has no start to measure from, so it prints absence", () => {
-    // Not "0 s so far": nothing has begun, and a span from nothing is invented.
     const view = describeDuration(
       sync({ status: "pending", started_at: null, duration_ms: null }),
       AS_OF,
@@ -291,8 +277,6 @@ describe("how long a sync has been going", () => {
   });
 
   it("a start ahead of the answer's own clock prints absence", () => {
-    // Two clocks that disagree can date nothing, and "0 s so far" would be the
-    // page asserting a measurement neither of them supports.
     const view = describeDuration(
       sync({ status: "running", started_at: "2026-01-15T10:00:00.000Z" }),
       AS_OF,
@@ -301,8 +285,6 @@ describe("how long a sync has been going", () => {
   });
 
   it("a status this build cannot read is not treated as running", () => {
-    // An unreadable word may well name a finished sync, and the measurement it
-    // carries is the only account of it there is.
     const view = describeDuration(sync({ status: "borked", duration_ms: 142_000 }), AS_OF);
     expect(view).toEqual({ text: "2m 22s", inFlight: false });
   });
@@ -314,9 +296,6 @@ describe("how long a sync has been going", () => {
 });
 
 describe("a contract-legal response with absent keys", () => {
-  // Every nullable field is optional in the generated contract, so the key can
-  // be missing rather than null. Typing them as `T | null` let `tsc` believe
-  // otherwise, and the page threw on a legal response.
   it("a row with no last_sync key reads as never synced", () => {
     const view = describeConnector({ connector: "a", configured: true });
     expect(view.state).toBe("never_synced");
@@ -365,8 +344,6 @@ describe("an unmeasured value is not a zero", () => {
   });
 
   it("never carries sixty of the unit below", () => {
-    // Rounding each unit independently produces `1m 60s` and `60.0 s`, neither
-    // of which is a duration.
     expect(formatDuration(119_600)).toBe("2m 0s");
     expect(formatDuration(59_950)).toBe("1m 0s");
     expect(formatDuration(3_599_600)).toBe("1h 0m");
@@ -379,8 +356,6 @@ describe("an unmeasured value is not a zero", () => {
   });
 
   it("refuses a stamp that is not a real timestamp", () => {
-    // `Date.parse` reads "2026" and "0" as dates, so a truncated stamp would
-    // render as a confident absolute time.
     for (const junk of ["2026", "0", "yesterday", "2026-13-45T99:99:99Z"]) {
       expect(formatStarted(junk)).toBe(UNMEASURED);
     }
@@ -412,8 +387,6 @@ describe("what the page says about its own freshness", () => {
 
   it("tolerates one missed read but not three", () => {
     const interval = 15 * MINUTE;
-    // Just inside the threshold, and just past it — the boundary the multiplier
-    // actually decides, rather than a value nowhere near it.
     expect(
       describeRecording(
         summary({ checked_at: checkedAgo(interval * STALE_AFTER_INTERVALS) }),
@@ -427,10 +400,6 @@ describe("what the page says about its own freshness", () => {
   });
 
   it("states the age without claiming a stop it cannot support", () => {
-    // With no measured interval there is no cadence to be late against.
-    // Inventing a threshold here would have the page conclude something
-    // nothing in the record says — so it reports the age and says the cadence
-    // is unknown.
     const view = describeRecording(
       summary({ typical_read_interval_ms: null, checked_at: checkedAgo(6 * 60 * MINUTE) }),
     );
@@ -441,8 +410,6 @@ describe("what the page says about its own freshness", () => {
   });
 
   it("treats a zero measured interval as no measurement at all", () => {
-    // Two ticks inside one millisecond make the median zero, which is not a
-    // cadence either.
     const view = describeRecording(
       summary({ typical_read_interval_ms: 0, checked_at: checkedAgo(6 * 60 * MINUTE) }),
     );
@@ -457,8 +424,6 @@ describe("what the page says about its own freshness", () => {
   });
 
   it("does not cry stopped because a burst shortened the interval", () => {
-    // A restart loop or a manual tick drags the median down; multiplying that
-    // by three would flag a live install.
     const view = describeRecording(
       summary({ typical_read_interval_ms: 1_000, checked_at: checkedAgo(5 * MINUTE) }),
     );
@@ -466,7 +431,6 @@ describe("what the page says about its own freshness", () => {
   });
 
   it("does not let a long measured interval hide a stopped recorder", () => {
-    // Clamped to an hour, so three of them is three hours.
     const view = describeRecording(
       summary({
         typical_read_interval_ms: 30 * 24 * 60 * MINUTE,
@@ -477,8 +441,6 @@ describe("what the page says about its own freshness", () => {
   });
 
   it("dates nothing when the two clocks disagree", () => {
-    // `checked_at` after `as_of` means neither stamp can date the page.
-    // Reporting "just now" there asserts a freshness with no basis.
     const view = describeRecording(
       summary({ checked_at: "2026-01-16T00:00:00.000Z" }),
     );

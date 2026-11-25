@@ -1,19 +1,12 @@
 import { useTranslation } from "react-i18next";
 
 import { clearAuthErrorAttempts, signIn } from "@/auth";
-import { Button } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, Card, CardContent } from "@gears-frontx/ui-kit";
 
 type LoginErrorProps = {
-  /** The authenticator's `auth_error` reason code (insight#2032). */
   code: string;
 };
 
-/**
- * Full-page stop after a failed login that auto-retry did not fix (or must
- * not attempt — `access_denied`). Rendered by the boot sequence instead of
- * the router, so it depends on nothing but the auth module and i18n.
- */
 export function LoginError({ code }: LoginErrorProps): React.ReactElement {
   const { t } = useTranslation();
   return (

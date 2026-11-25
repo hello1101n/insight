@@ -134,8 +134,6 @@ describe("<CustomTable>", () => {
     expect(drawn()).toEqual(["9", "2", "10"]);
   });
 
-  // The cap is a drawing limit, so ordering has to happen over everything or
-  // it only shuffles the first page.
   it("orders the whole result before it caps what it draws", async () => {
     const user = userEvent.setup();
     render(
@@ -153,8 +151,6 @@ describe("<CustomTable>", () => {
     expect(first?.querySelectorAll("td")[1]?.textContent).toBe("1");
   });
 
-  // The arrow appears in a slot that is there either way: a header that grew
-  // when it was ordered by shifted every column beside it.
   it("keeps the same room for the arrow whether or not a column is ordered by", async () => {
     const user = userEvent.setup();
     render(
@@ -172,8 +168,6 @@ describe("<CustomTable>", () => {
     expect(slots()).toEqual([0, 1, 1]);
   });
 
-  // A widget card opens the drilldown on any click inside it. A header is
-  // a control of its own: ordering the rows must not also open the dialog.
   it("keeps a header click and its Enter from reaching what encloses the table", async () => {
     const user = userEvent.setup();
     const opened = vi.fn();
@@ -192,8 +186,6 @@ describe("<CustomTable>", () => {
     ).toBeInTheDocument();
   });
 
-  // A long result scrolls inside whatever holds the table. The header has to
-  // stay in view there, or the columns can only be re-ordered from the top.
   it("keeps its header in view while the rows scroll past it", () => {
     render(<CustomTable result={{ columns: ["runs"], rows: [[9]] }} />);
 
@@ -202,7 +194,6 @@ describe("<CustomTable>", () => {
     expect(header.className).toContain("top-0");
   });
 
-  // A cell the warehouse left empty is empty, not the word "null".
   it("writes a missing value as a dash rather than as the word null", () => {
     render(
       <CustomTable result={{ columns: ["author"], rows: [[null]] }} />

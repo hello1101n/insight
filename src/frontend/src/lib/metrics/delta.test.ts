@@ -19,7 +19,6 @@ describe("computeDelta", () => {
   });
 
   it("computes percentage-point change for percent-formatted ratios", () => {
-    // 77% acceptance vs 72% last period is +5 pp, not +6.9%.
     const delta = computeDelta(77.04, 72.04, "ratio", "percent");
     expect(delta?.kind).toBe("pp_change");
     expect(delta?.value).toBeCloseTo(5);
@@ -57,7 +56,6 @@ describe("formatTileDelta", () => {
   });
 
   it("switches a runaway increase to a multiple at the shared threshold", () => {
-    // 278 tasks vs 5 last period is +5460% — unreadable as a percent.
     expect(formatTileDelta({ kind: "percent_change", value: 5460 })).toBe(
       "56×"
     );
@@ -82,8 +80,6 @@ describe("formatTileDelta", () => {
 
 describe("deltaStatus deadband", () => {
   it("withholds the colour from a move too small to mean anything", () => {
-    // The number is still shown; only the alarm is withheld. A badge that
-    // paints -1% in the same red as -70% teaches the reader to ignore red.
     expect(
       deltaStatus({ kind: "percent_change", value: -1 }, "higher_is_better")
     ).toBe("neutral");

@@ -286,8 +286,8 @@ def seed_slack_users_details(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "date",
         "team_id",
         "user_id",
@@ -312,6 +312,8 @@ def seed_slack_users_details(
                     cols,
                     {
                         **_envelope(SLACK_SOURCE_ID, tenant_uuid),
+                        "insight_tenant_id": tenant_uuid,
+                        "insight_source_id": SLACK_SOURCE_ID,
                         "_airbyte_raw_id": deterministic_uuid("collab.slack.raw", key),
                         "unique_key": key,
                         "date": day.isoformat(),

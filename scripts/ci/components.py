@@ -138,19 +138,23 @@ COMPONENTS = [
         # own component); `triggered_by` is the registry's co-trigger for this.
         "triggered_by": ["insight-clickhouse", "insight-migration"],
     },
-    # cover=False (mirrors identity-resolution): the crate is a thin HTTP
-    # shell over the Kubernetes API — the pure domain (object builders,
-    # slug/tag validation, TTL/status rules) is unit-tested, but the kube I/O
-    # and host wiring need a cluster, so coverage would gate far below the 80%
-    # line. fmt + clippy + tests still run and gate the pipeline.
     {
-        "name": "previews",
+        "name": "connectors",
         "lang": "rust",
         "root": "src/backend",
-        "package": "previews",
+        "package": "connectors",
+        "live_db": True,
+        "live_db_name": "connectors",
+        "live_ch": True,
+        "include_ignored": True,
         "cover": False,
-        "paths": ["src/backend/services/previews", "docs/components/backend/previews/openapi.json"],
         "drift_test": True,
+        "paths": [
+            "src/backend/services/connectors",
+            "docs/components/backend/connectors/openapi.json",
+            "src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql",
+        ],
+        "triggered_by": ["insight-clickhouse", "insight-migration"],
     },
     # git-cli-proxy shells out to the git CLI; its integration tests build
     # fixture repos with `git init` + file:// origins in tempdirs (hermetic —
@@ -303,6 +307,7 @@ COMPONENTS = [
             "src/ingestion/connectors/dev-portal/compass",
             "src/ingestion/connectors/quality/allure",
             "src/ingestion/connectors/support/zendesk",
+            "src/ingestion/connectors/testing/mock",
         ],
     },
     # The sample-data seeder. Its pytest suite otherwise runs only inside the

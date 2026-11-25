@@ -1,20 +1,20 @@
 import { format } from "date-fns";
-import type { MouseHandlerDataParam } from "recharts";
-
 import {
   BarChart,
   CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartLine,
-  ChartTooltip,
-  ChartTooltipContent,
   LineChart,
+  type MouseHandlerDataParam,
   ReferenceArea,
   XAxis,
-  YAxis,
+} from "recharts";
+import {
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, ChartLine, YAxis } from "@/components/chart-series";
 import {
   buildMetricTimeseriesChartModel,
   commonNullRuns,
@@ -30,7 +30,6 @@ export interface MetricTimeseriesChartProps {
   model: MetricTimeseriesModel;
   selectedMetricKey: string;
   multiMetric?: MetricTimeseriesChartConfig["multiMetric"];
-  /** `columnKey` null drills the whole bucket, narrowed by no dimension value. */
   onEvidence?: (
     metricKey: string,
     columnKey: string | null,
@@ -42,6 +41,11 @@ function dateLabel(value: string, pattern: string): string {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return value;
   return format(new Date(year, month - 1, day), pattern);
+}
+
+function landedOnSegment(event: { target: EventTarget | null }): boolean {
+  const target = event.target as Element | null;
+  return target?.closest?.(".recharts-bar-rectangle") != null;
 }
 
 function TimeseriesXAxis({
@@ -140,8 +144,6 @@ export function MetricTimeseriesChart({
       />
     </>
   );
-  // Recharts reports no active bucket as null, and `Number(null)` is 0 — which
-  // would read as the first bucket rather than as "none".
   const bucketAt = (index: MouseHandlerDataParam["activeTooltipIndex"]) =>
     index == null ? undefined : data[Number(index)]?.bucketStart;
   const openBucketFrom = (bucketStart: string) =>
@@ -157,25 +159,17 @@ export function MetricTimeseriesChart({
     const column = model.columns.find(
       (candidate) => candidate.key === series.columnKey
     );
-    // The remainder gathers the dimension values that missed the top N, so no
-    // filter selects it: clicking it reads as clicking past every segment.
     if (column && !column.remainder) {
       onEvidence?.(series.metricKey, series.columnKey, bucketStart);
     } else {
       openBucketFrom(bucketStart);
     }
   };
-  /**
-   * The column outside its drawn segments. A click on a segment reaches here
-   * too, and asking the event where it landed is what keeps both from
-   * answering it — no assumption about which handler runs first.
-   */
   const openBucket = (
     state: MouseHandlerDataParam,
     event: { target: EventTarget | null }
   ) => {
-    const target = event.target as Element | null;
-    if (target?.closest?.(".recharts-bar-rectangle")) return;
+    if (landedOnSegment(event)) return;
 
     const bucketStart = bucketAt(state.activeTooltipIndex);
     if (bucketStart) openBucketFrom(bucketStart);
@@ -243,11 +237,6 @@ export function MetricTimeseriesChart({
                 dataKey={series.key}
                 stroke={`var(--color-${series.key})`}
                 strokeWidth={2}
-                // No local `dot`: ChartLine's AdaptiveDot generalises what the
-                // local IsolatedPoint did (always mark a reading whose
-                // neighbours are null) across every chart. `connectNulls` is a
-                // separate concern and stays — a gap must read as a gap, not as
-                // a straight line drawn across it.
                 connectNulls={false}
                 name={series.label}
               />

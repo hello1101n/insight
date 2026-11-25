@@ -1,4 +1,3 @@
-/** What a keystroke leaves in a text control: the text and the selection. */
 export interface Typed {
   text: string;
   start: number;
@@ -7,7 +6,6 @@ export interface Typed {
 
 const INDENT = "  ";
 
-/** Tab: indent the selected lines, or put an indent at the caret. */
 export function indent(text: string, start: number, end: number): Typed {
   if (start === end || !text.slice(start, end).includes("\n")) {
     const next = text.slice(0, start) + INDENT + text.slice(end);
@@ -26,7 +24,6 @@ export function indent(text: string, start: number, end: number): Typed {
   return { text: next, start: from, end: from + shifted.length };
 }
 
-/** Shift+Tab: take one indent off every selected line that has one. */
 export function outdent(text: string, start: number, end: number): Typed {
   const [from, to] = lineSpan(text, start, end);
   const lines = text.slice(from, to).split("\n");
@@ -43,7 +40,6 @@ export function outdent(text: string, start: number, end: number): Typed {
   };
 }
 
-/** Enter: a new line indented as far as the one it leaves. */
 export function newline(text: string, start: number, end: number): Typed {
   const lineStart = text.lastIndexOf("\n", start - 1) + 1;
   const lead = text.slice(lineStart, start).match(/^[ \t]*/)?.[0] ?? "";
@@ -54,7 +50,6 @@ export function newline(text: string, start: number, end: number): Typed {
   return { text: next, start: caret, end: caret };
 }
 
-/** The span of whole lines the selection touches. */
 function lineSpan(text: string, start: number, end: number): [number, number] {
   const from = text.lastIndexOf("\n", start - 1) + 1;
   const after = text.indexOf("\n", Math.max(end - 1, start));

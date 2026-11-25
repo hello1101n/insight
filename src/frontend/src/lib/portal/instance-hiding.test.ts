@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import i18n from "@/i18n";
+import { resolveText } from "@/i18n/localized-text";
+
 import { GROUPS, visibleGroups } from "@/lib/insight/groups";
 import {
   overviewCardDirections,
@@ -30,7 +33,7 @@ function planned(paths: string[]) {
 }
 
 function adminManageItems(policy: ReturnType<typeof parseNavPolicy>) {
-  return manageGroupsFor({ isAdmin: true, canManagePreviews: true }, policy).flatMap(
+  return manageGroupsFor({ isAdmin: true }, policy).flatMap(
     (group) => group.items,
   );
 }
@@ -48,10 +51,14 @@ describe("zoneSections under nav.hide", () => {
   });
 
   it("drops a group whose every item is hidden", () => {
-    const cost = zoneSections("aicost").find((g) => g.label === "Cost")!;
+    const cost = zoneSections("aicost").find(
+      (g) => g.label !== undefined && resolveText(i18n.t, g.label) === "Cost",
+    )!;
     const policy = hide(cost.items.map((i) => `zone:aicost/item:${i.id}`));
 
-    const labels = zoneSections("aicost", policy).map((g) => g.label);
+    const labels = zoneSections("aicost", policy).map((g) =>
+      g.label === undefined ? undefined : resolveText(i18n.t, g.label),
+    );
 
     expect(labels).not.toContain("Cost");
   });
@@ -257,8 +264,6 @@ describe("landing under nav.hide", () => {
 });
 
 describe("metric gating across the surfaces a metric reaches", () => {
-  // The shape an install takes when a metric family is declared but not yet
-  // trusted: the family and three individual keys under the reader's toggle.
   const policy = planned([
     "metric:ai.*",
     "metric:tasks.resolution_time",

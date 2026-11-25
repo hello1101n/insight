@@ -1,11 +1,6 @@
 import { Spinner } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 
-/**
- * The one loading state for dashboards and drilldowns: a single centered
- * spinner over the whole surface while its queries load. Widgets never show
- * their own loaders — the screen swaps between this and fully-loaded content.
- */
 export function CenteredSpinner({
   className,
   "data-testid": testId,
@@ -14,12 +9,11 @@ export function CenteredSpinner({
   "data-testid"?: string;
 }) {
   return (
-    // The Spinner itself announces the status role; the wrapper only centers.
     <div
       data-testid={testId}
       className={cn("flex items-center justify-center", className)}
     >
-      <Spinner className="size-12 text-muted-foreground" />
+      <Spinner size="lg" />
     </div>
   );
 }

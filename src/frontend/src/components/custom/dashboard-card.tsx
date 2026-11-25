@@ -6,7 +6,7 @@ import type { DashboardListed } from "@/api/custom-client";
 import { DashboardByline } from "@/components/custom/dashboard-byline";
 import { DashboardMenu } from "@/components/custom/dashboard-menu";
 import { DashboardTags } from "@/components/custom/dashboard-tags";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { dashboardQuery, dashboardTagsQuery } from "@/queries/custom";
 import { TEXT_NAME } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardListed }) {
       <CardContent className="flex flex-1 gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Link
-            to="/portal/custom/$name"
+            to="/dashboards/$name"
             params={{ name: id }}
             className="flex min-w-0 items-start gap-3 transition-opacity hover:opacity-80"
           >
@@ -58,7 +58,7 @@ export function DashboardCard({ dashboard }: { dashboard: DashboardListed }) {
             access={access}
           />
           <Link
-            to="/portal/custom/$name"
+            to="/dashboards/$name"
             params={{ name: id }}
             aria-label={`Open ${name}`}
             className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"

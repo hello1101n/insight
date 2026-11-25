@@ -63,6 +63,16 @@ Contract per dep (all infra is external — out-of-chart L2):
 {{- required "clickhouse.database is required" .Values.clickhouse.database -}}
 {{- end -}}
 
+{{- define "insight.clickhouse.destinationDatabase" -}}
+{{- if .Values.ingestion.reconcile.destinationDatabase -}}
+{{- .Values.ingestion.reconcile.destinationDatabase -}}
+{{- else if .Values.clickhouse.clusterMode -}}
+default
+{{- else -}}
+{{- include "insight.clickhouse.database" . -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Wire protocol (http|https) for the Bronze ClickHouse destination.
      Defaults to plain HTTP (matching the http:// in insight.clickhouse.url
      above); override clickhouse.protocol for a TLS CH. */}}
@@ -360,4 +370,34 @@ Invoked from NOTES.txt so they fire on every install.
       {{- end -}}
     {{- end -}}
   {{- end -}}
+{{- end -}}
+
+{{- define "insight.connectorSchedulesUsername" -}}
+{{- $name := .Values.global.connectorSchedules.database.username -}}
+{{- if not $name -}}
+{{- $name = printf "insight_schedule_%s" (dig "connectors" "databaseName" "connectors" .Values.AsMap) -}}
+{{- if gt (len $name) 80 -}}
+{{- $name = printf "%s_%s" (trunc 67 $name) (trunc 12 (sha256sum $name)) -}}
+{{- end -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-zA-Z0-9_]{1,80}$" $name) -}}
+{{- fail "global.connectorSchedules.database.username must contain 1 to 80 letters, digits or underscores" -}}
+{{- end -}}
+{{- $name -}}
+{{- end -}}
+
+{{- define "insight.connectorSchedulesEnv" -}}
+- name: CONNECTOR_SCHEDULES_DB_HOST
+  value: {{ include "insight.mariadb.host" . | quote }}
+- name: CONNECTOR_SCHEDULES_DB_PORT
+  value: {{ include "insight.mariadb.port" . | quote }}
+- name: CONNECTOR_SCHEDULES_DB_NAME
+  value: {{ dig "connectors" "databaseName" "connectors" .Values.AsMap | quote }}
+{{- range $env, $key := dict "USER" .Values.global.connectorSchedules.database.userKey "PASSWORD" .Values.global.connectorSchedules.database.passwordKey }}
+- name: CONNECTOR_SCHEDULES_DB_{{ $env }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $.Values.global.connectorSchedules.database.secretName | quote }}
+      key: {{ $key | quote }}
+{{- end }}
 {{- end -}}

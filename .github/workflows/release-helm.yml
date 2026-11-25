@@ -27,7 +27,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/constructorfabric
+  IMAGE_PREFIX: ghcr.io/hello1101n
 
 jobs:
   package-chart:
@@ -44,7 +44,7 @@ jobs:
       && (fromJSON(inputs.build_results).merge-identity-resolution.result == 'success' || fromJSON(inputs.build_results).merge-identity-resolution.result == 'skipped')
       && (fromJSON(inputs.build_results).merge-git-cli-proxy.result == 'success' || fromJSON(inputs.build_results).merge-git-cli-proxy.result == 'skipped')
       && (fromJSON(inputs.build_results).merge-insight-v3-core.result == 'success' || fromJSON(inputs.build_results).merge-insight-v3-core.result == 'skipped')
-      && (fromJSON(inputs.build_results).merge-previews.result      == 'success' || fromJSON(inputs.build_results).merge-previews.result      == 'skipped')
+      && (fromJSON(inputs.build_results).merge-connectors.result      == 'success' || fromJSON(inputs.build_results).merge-connectors.result      == 'skipped')
       && (fromJSON(inputs.build_results).merge-frontend.result      == 'success' || fromJSON(inputs.build_results).merge-frontend.result      == 'skipped')
       && (fromJSON(inputs.build_results).merge-toolbox.result       == 'success' || fromJSON(inputs.build_results).merge-toolbox.result       == 'skipped')
       && (fromJSON(inputs.build_results).merge-seed.result          == 'success' || fromJSON(inputs.build_results).merge-seed.result          == 'skipped')
@@ -62,7 +62,7 @@ jobs:
         || fromJSON(inputs.build_results).changes.outputs.identity_resolution == 'true'
         || fromJSON(inputs.build_results).changes.outputs.insight_v3_core == 'true'
         || fromJSON(inputs.build_results).changes.outputs.git_cli_proxy == 'true'
-        || fromJSON(inputs.build_results).changes.outputs.previews     == 'true'
+        || fromJSON(inputs.build_results).changes.outputs.connectors     == 'true'
         || fromJSON(inputs.build_results).changes.outputs.frontend     == 'true'
         || fromJSON(inputs.build_results).changes.outputs.toolbox      == 'true'
         || fromJSON(inputs.build_results).changes.outputs.seed         == 'true'
@@ -103,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          chart="oci://ghcr.io/constructorfabric/charts/insight"
+          chart="oci://ghcr.io/hello1101n/charts/insight"
           version="$(gh api "repos/$GITHUB_REPOSITORY/contents/deploy/gitops/.insight-version?ref=main" \
             --jq '.content' | base64 --decode | tr -d '[:space:]')"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Invalid published chart version recorded on main.'; exit 1; }
@@ -134,7 +134,7 @@ jobs:
           IDENTITY_RESOLUTION: ${{ fromJSON(inputs.build_results).changes.outputs.identity_resolution }}
           INSIGHT_V3_CORE: ${{ fromJSON(inputs.build_results).changes.outputs.insight_v3_core }}
           GIT_CLI_PROXY: ${{ fromJSON(inputs.build_results).changes.outputs.git_cli_proxy }}
-          PREVIEWS: ${{ fromJSON(inputs.build_results).changes.outputs.previews }}
+          CONNECTORS: ${{ fromJSON(inputs.build_results).changes.outputs.connectors }}
           FRONTEND: ${{ fromJSON(inputs.build_results).changes.outputs.frontend }}
         run: .github/workflows/scripts/bump-service-appversions.sh
 
@@ -194,7 +194,7 @@ jobs:
             src/backend/services/identity-resolution/helm/Chart.yaml \
             src/backend/services/insight-v3-core/helm/Chart.yaml \
             src/backend/services/git-cli-proxy/helm/Chart.yaml \
-            src/backend/services/previews/helm/Chart.yaml \
+            src/backend/services/connectors/helm/Chart.yaml \
             src/frontend/helm/Chart.yaml \
             | grep -Ev '^(---|null)$' \
             | sort -V | tail -1)
@@ -408,13 +408,14 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
       - name: Helm push
         id: helm_push
         if: steps.queue.outputs.clear == 'true' && steps.current.outputs.matches == 'true'
         run: |
           set -euo pipefail
           OUT="$(helm push "dist/insight-${{ needs.package-chart.outputs.version }}.tgz" \
-            oci://ghcr.io/constructorfabric/charts 2>&1)"
+            oci://ghcr.io/hello1101n/charts 2>&1)"
           echo "$OUT"
           # helm push prints "Digest: sha256:..." — that digest is the chart's
           # OCI manifest identity, which the attestation below binds to.
@@ -438,13 +439,13 @@ jobs:
 
       # Keyless SLSA provenance for the umbrella chart OCI artifact — same
       # contract as the image attestations (see backend-analytics). Verify:
-      #   gh attestation verify oci://ghcr.io/constructorfabric/charts/insight:<ver> \
+      #   gh attestation verify oci://ghcr.io/hello1101n/charts/insight:<ver> \
       #     --repo constructorfabric/insight
       - name: Attest chart provenance
         if: steps.queue.outputs.clear == 'true' && steps.current.outputs.matches == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-name: ghcr.io/constructorfabric/charts/insight
+          subject-name: ghcr.io/hello1101n/charts/insight
           subject-digest: ${{ steps.helm_push.outputs.digest }}
           push-to-registry: true
 
@@ -508,7 +509,7 @@ jobs:
       && (fromJSON(inputs.build_results).merge-identity-resolution.result == 'success' || fromJSON(inputs.build_results).merge-identity-resolution.result == 'skipped')
       && (fromJSON(inputs.build_results).merge-git-cli-proxy.result == 'success' || fromJSON(inputs.build_results).merge-git-cli-proxy.result == 'skipped')
       && (fromJSON(inputs.build_results).merge-insight-v3-core.result == 'success' || fromJSON(inputs.build_results).merge-insight-v3-core.result == 'skipped')
-      && (fromJSON(inputs.build_results).merge-previews.result      == 'success' || fromJSON(inputs.build_results).merge-previews.result      == 'skipped')
+      && (fromJSON(inputs.build_results).merge-connectors.result      == 'success' || fromJSON(inputs.build_results).merge-connectors.result      == 'skipped')
       && (fromJSON(inputs.build_results).merge-frontend.result      == 'success' || fromJSON(inputs.build_results).merge-frontend.result      == 'skipped')
       && (fromJSON(inputs.build_results).merge-toolbox.result       == 'success' || fromJSON(inputs.build_results).merge-toolbox.result       == 'skipped')
       && (fromJSON(inputs.build_results).merge-seed.result          == 'success' || fromJSON(inputs.build_results).merge-seed.result          == 'skipped')
@@ -526,7 +527,7 @@ jobs:
         || fromJSON(inputs.build_results).changes.outputs.identity_resolution == 'true'
         || fromJSON(inputs.build_results).changes.outputs.insight_v3_core == 'true'
         || fromJSON(inputs.build_results).changes.outputs.git_cli_proxy == 'true'
-        || fromJSON(inputs.build_results).changes.outputs.previews     == 'true'
+        || fromJSON(inputs.build_results).changes.outputs.connectors     == 'true'
         || fromJSON(inputs.build_results).changes.outputs.frontend     == 'true'
         || fromJSON(inputs.build_results).changes.outputs.toolbox      == 'true'
         || fromJSON(inputs.build_results).changes.outputs.seed         == 'true'
@@ -607,7 +608,7 @@ jobs:
           IDENTITY_RESOLUTION: ${{ fromJSON(inputs.build_results).changes.outputs.identity_resolution }}
           INSIGHT_V3_CORE: ${{ fromJSON(inputs.build_results).changes.outputs.insight_v3_core }}
           GIT_CLI_PROXY: ${{ fromJSON(inputs.build_results).changes.outputs.git_cli_proxy }}
-          PREVIEWS: ${{ fromJSON(inputs.build_results).changes.outputs.previews }}
+          CONNECTORS: ${{ fromJSON(inputs.build_results).changes.outputs.connectors }}
           FRONTEND: ${{ fromJSON(inputs.build_results).changes.outputs.frontend }}
         run: .github/workflows/scripts/bump-service-appversions.sh
 
@@ -665,7 +666,7 @@ jobs:
             src/backend/services/identity-resolution/helm/Chart.yaml \
             src/backend/services/insight-v3-core/helm/Chart.yaml \
             src/backend/services/git-cli-proxy/helm/Chart.yaml \
-            src/backend/services/previews/helm/Chart.yaml \
+            src/backend/services/connectors/helm/Chart.yaml \
             src/frontend/helm/Chart.yaml \
             | grep -Ev '^(---|null)$' \
             | sort -V | tail -1)
@@ -720,13 +721,14 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
+      # TEMPORARY: ghcr.io/hello1101n hosts Insight while GitHub blocks the constructorfabric org. Insight will move to another registry soon.
       - name: Helm push
         id: helm_push
         if: steps.queue.outputs.clear == 'true'
         run: |
           set -euo pipefail
           OUT="$(helm push "dist/insight-${{ steps.umbrella.outputs.version }}.tgz" \
-            oci://ghcr.io/constructorfabric/charts 2>&1)"
+            oci://ghcr.io/hello1101n/charts 2>&1)"
           echo "$OUT"
           # helm push prints "Digest: sha256:..." — that digest is the chart's
           # OCI manifest identity, which the attestation below binds to.
@@ -750,13 +752,13 @@ jobs:
 
       # Keyless SLSA provenance for the umbrella chart OCI artifact — same
       # contract as the image attestations (see backend-analytics). Verify:
-      #   gh attestation verify oci://ghcr.io/constructorfabric/charts/insight:<ver> \
+      #   gh attestation verify oci://ghcr.io/hello1101n/charts/insight:<ver> \
       #     --repo constructorfabric/insight
       - name: Attest chart provenance
         if: steps.queue.outputs.clear == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-name: ghcr.io/constructorfabric/charts/insight
+          subject-name: ghcr.io/hello1101n/charts/insight
           subject-digest: ${{ steps.helm_push.outputs.digest }}
           push-to-registry: true
 
@@ -779,7 +781,7 @@ jobs:
                   src/backend/services/identity-resolution/helm/Chart.yaml \
                   src/backend/services/insight-v3-core/helm/Chart.yaml \
                   src/backend/services/git-cli-proxy/helm/Chart.yaml \
-                  src/backend/services/previews/helm/Chart.yaml \
+                  src/backend/services/connectors/helm/Chart.yaml \
                   src/frontend/helm/Chart.yaml \
                   deploy/gitops/.insight-version
           # Sample gitops starter under docs/deploy — pin moves with the

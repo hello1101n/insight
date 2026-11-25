@@ -1,9 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { MetricHelpTooltip } from "@/components/widgets/metric-help-tooltip";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import type { AttentionItem } from "@/lib/insight/attention";
 import type { GroupId } from "@/lib/insight/groups";
 import { PEER_TEXT } from "@/lib/peers";
@@ -27,15 +26,9 @@ function findingBadge(item: AttentionItem): string {
 export interface IcNeedsAttentionProps {
   items: AttentionItem[];
   onOpenGroup: (id: GroupId) => void;
-  /** False where the page title already names the list. */
   titled?: boolean;
 }
 
-/**
- * Cross-group "needs attention" surface. Items arrive precomputed from the
- * per-source selectors in `lib/insight/attention.ts`; this component only
- * ranks (relGap descending), collapses, and renders.
- */
 export function IcNeedsAttention({
   items,
   onOpenGroup,
@@ -43,14 +36,7 @@ export function IcNeedsAttention({
 }: IcNeedsAttentionProps) {
   const { t } = useTranslation();
   const [showAll, setShowAll] = useState(false);
-  const describedBy = useId();
 
-  // Furthest outside the cohort's own spread first, percent-of-median only to
-  // break a tie. Ordering by percentage put a metric whose cohort median is
-  // two above one whose median is two hundred, for the same one-unit slip.
-  // Ordering and deduplication belong with the rule that produced the items
-  // (`orderAttentionItems`), not with the view: which of two rows says a thing
-  // more strongly is a question about the finding, not about the pixels.
   const attentionAll = items;
 
   if (attentionAll.length === 0) return null;
@@ -66,27 +52,10 @@ export function IcNeedsAttention({
       {titled ? (
         <h2 className={cn("mb-3", TEXT_EYEBROW)}>{t("worth_a_look.title")}</h2>
       ) : null}
-      <Card data-size="sm">
-        <CardContent className="text-sm">
-          {/* One column, not two. Six columns of content inside half the
-              content width truncated the two things a row exists to say — the
-              metric's name and its unit — and a name cut to "Messages per
-              Activ…" is not a shorter name. The block rarely runs long enough
-              for the height to matter. */}
-          {/* The COLUMNS belong to the list, not to a row: sized per row, they
-              lined up only with themselves, and four rows put four values at
-              four different x-positions. One grid here, and each row a subgrid
-              of it, so the widths are decided once by the widest content and
-              every row obeys them — while the row stays a real button with its
-              own padding and hover. */}
+      <Card size="sm">
+        <CardContent>
           <ul className="flex flex-col gap-y-1 sm:grid sm:grid-cols-[minmax(0,max-content)_auto_auto_auto_minmax(0,1fr)_auto]">
-            {visible.map((item, index) => {
-              const description = [item.help?.description, item.help?.explanation]
-                .filter(Boolean)
-                .join(". ");
-              const descriptionId = `${describedBy}-${index}`;
-
-              return (
+            {visible.map((item) => (
               <li
                 key={`${item.group}-${item.key}`}
                 className="sm:col-span-full sm:grid sm:grid-cols-subgrid"
@@ -94,39 +63,20 @@ export function IcNeedsAttention({
                   <button
                     type="button"
                     onClick={() => onOpenGroup(item.group)}
-                    aria-describedby={description ? descriptionId : undefined}
-                    /* Content-sized columns, not fixed ones. Fixed widths
-                       decide what dies under width pressure before knowing
-                       what is in them: the unit column held its full width
-                       while metric names collapsed to "Em…" and the
-                       comparison — the number the row exists for — was
-                       squeezed to nothing. Only the comparison flexes now, so
-                       it is the last thing to be cut, and the name and the
-                       value keep the width they need.
-
-                       Below `sm` the row becomes two lines instead: at 390px
-                       there is no arrangement of six columns that leaves a
-                       name legible. */
                     className="-mx-2 flex w-[calc(100%+1rem)] flex-col gap-x-2 rounded px-2 py-1 text-left text-sm transition-colors hover:bg-muted sm:col-span-full sm:grid sm:w-auto sm:grid-cols-subgrid sm:items-baseline"
                   >
                     <span className="flex min-w-0 items-baseline gap-2 sm:contents">
-                      <MetricHelpTooltip help={item.help}>
-                        <span className={cn("min-w-0 cursor-help truncate", TEXT_NAME)}>
-                          {item.label}
-                        </span>
-                      </MetricHelpTooltip>
-                      {/* Beside the name, not stranded at the far edge of the
-                          row: it says what KIND of finding this name is, and
-                          half a row away it was read as a fifth number. */}
+                      <span
+                        className={cn("min-w-0 truncate", TEXT_NAME)}
+                        title={item.label}
+                      >
+                        {item.label}
+                      </span>
                       <span className={cn("shrink-0 justify-self-start rounded border px-1.5 whitespace-nowrap", TEXT_LABEL)}>
                         {findingBadge(item)}
                       </span>
                     </span>
                     <span className="flex items-baseline gap-2 sm:contents">
-                      {/* Digits right, unit left: the numbers line up on their
-                          last figure AND the units start together, so neither
-                          column is ragged. One cell of "143 lines" could only
-                          give one of the two. */}
                       <span
                         className={cn(
                           "text-right tabular-nums sm:justify-self-end",
@@ -152,22 +102,13 @@ export function IcNeedsAttention({
                         ) : null}
                       </span>
                     </span>
-                    {/* Same standing affordance as every other openable surface:
-                        a row that only reacts to hover is indistinguishable from
-                        a line of text until the mouse happens to cross it. */}
                     <ChevronRight
                       className="size-3.5 shrink-0 self-center text-muted-foreground"
                       aria-hidden
                     />
                   </button>
-                  {description ? (
-                    <span id={descriptionId} className="sr-only">
-                      {description}
-                    </span>
-                  ) : null}
               </li>
-              );
-            })}
+            ))}
             {shouldCollapse ? (
               <li className="sm:col-span-full">
                 <button

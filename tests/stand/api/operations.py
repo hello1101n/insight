@@ -1,7 +1,7 @@
 """Every operation the stand serves behind the gateway, named once.
 
 Read from the route tables in
-`src/backend/services/{analytics,identity-resolution}/src/api/`, not from the
+`src/backend/services/{analytics,connectors,identity-resolution}/src/api/`, not from the
 committed OpenAPI documents: the catalogue must list what the gateway ROUTES,
 which includes the `/internal/*` S2S pair that is deliberately outside the
 generated document.
@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from insight_stand import analytics_path, identity_path
+from insight_stand import analytics_path, connectors_path, identity_path
 
 # Concrete stand-ins for path parameters. The 401 sweep runs before any
 # authentication, so the gateway never reaches a handler and these are never
@@ -40,6 +40,7 @@ SOME_ACCOUNT_ID: Final[str] = "stand-in-account"
 #: hyphens and refuses anything else, so a stand-in outside that shape would be
 #: refused before the gate under test was reached.
 SOME_CONNECTOR: Final[str] = "stand-in-connector"
+SOME_SOURCE_ID: Final[str] = "stand-in-source"
 
 #: Stand-in for `{metric_key}`, which is a dotted `family.name` string rather
 #: than a UUID. Kept a DOTTED key on purpose: the literal `export`/`import`
@@ -60,7 +61,7 @@ _PARAMETERS: Final[dict[str, str]] = {
 
 
 def _templated(path: str) -> str:
-    """`/v1/queries/01900000-…` -> `/v1/queries/{id}`."""
+    """`/v1/people/01900000-…` -> `/v1/people/{id}`."""
     return "/".join(_PARAMETERS.get(segment, segment) for segment in path.split("/"))
 
 
@@ -70,7 +71,7 @@ class Operation:
 
     Carries BOTH forms. `path` is the concrete url the sweep calls; `template`
     is what the operation is, and it is what the coverage gate groups by. A
-    test updating a real saved query records a url containing that query's id,
+    test updating a real metric records a url containing that metric's key,
     which matches the stand-in nowhere — so without the template the gate sees
     only the sweep's call against the catalogued url and reports an exercised
     operation as swept-only.
@@ -78,12 +79,12 @@ class Operation:
 
     method: str
     path: str
-    #: `analytics` | `identity` — which service answers, per routes.yaml.
+    #: `analytics` | `connectors` | `identity` — which service answers, per routes.yaml.
     service: str
 
     @property
     def label(self) -> str:
-        """`GET /api/analytics/v1/queries`, for a readable parametrize id."""
+        """`GET /api/analytics/v1/metrics`, for a readable parametrize id."""
         return f"{self.method} {self.path}"
 
     @property
@@ -99,14 +100,8 @@ def _i(method: str, suffix: str) -> Operation:
     return Operation(method=method, path=identity_path(suffix), service="identity")
 
 
-#: analytics — 26 operations.
+#: analytics — 20 operations.
 ANALYTICS_OPERATIONS: Final[tuple[Operation, ...]] = (
-    _a("GET", "/v1/queries"),
-    _a("POST", "/v1/queries"),
-    _a("GET", f"/v1/queries/{SOME_ID}"),
-    _a("PUT", f"/v1/queries/{SOME_ID}"),
-    _a("DELETE", f"/v1/queries/{SOME_ID}"),
-    _a("POST", f"/v1/queries/{SOME_ID}/run"),
     _a("GET", "/v1/metric-definitions"),
     _a("POST", "/v1/metric-results"),
     _a("POST", "/v1/reports/preview"),
@@ -136,19 +131,10 @@ ANALYTICS_OPERATIONS: Final[tuple[Operation, ...]] = (
     _a("GET", "/v1/usage/people"),
     _a("GET", "/v1/usage/pages"),
     _a("GET", "/v1/usage/actions"),
-    # Ingestion intensity (ops). `.authenticated()` at the edge; the admin gate
-    # is inside the handler, so it is invisible here and asserted in
-    # test_ingestion.py.
-    _a("GET", "/v1/ingestion/intensity"),
     # Product feedback. The listing's admin gate is inside the handler, so it is
     # invisible here and asserted in test_feedback.py.
     _a("POST", "/v1/feedback"),
     _a("GET", "/v1/feedback"),
-    # Connector health. Both are `.authenticated()` at the edge with the
-    # operator gate inside the handler, so the refusal is invisible here and
-    # asserted in test_connector_health.py.
-    _a("GET", "/v1/connector-health"),
-    _a("GET", f"/v1/connector-health/{SOME_CONNECTOR}/syncs"),
 )
 
 #: identity-resolution — 32 operations. `/health` and `/healthz` are the host
@@ -195,7 +181,31 @@ IDENTITY_OPERATIONS: Final[tuple[Operation, ...]] = (
     _i("POST", "/v1/visible-persons"),
 )
 
-ALL_OPERATIONS: Final[tuple[Operation, ...]] = ANALYTICS_OPERATIONS + IDENTITY_OPERATIONS
+CONNECTORS_OPERATIONS: Final[tuple[Operation, ...]] = tuple(
+    Operation(method="GET", path=connectors_path(suffix), service="connectors")
+    for suffix in (
+        # Connector health. Both are `.authenticated()` at the edge with the
+        # operator gate inside the handler, so the refusal is invisible here and
+        # asserted in test_connector_health.py.
+        "/v1/connector-health",
+        f"/v1/connector-health/{SOME_CONNECTOR}/syncs",
+        # Ingestion intensity (ops). `.authenticated()` at the edge; the admin gate
+        # is inside the handler, so it is invisible here and asserted in
+        # test_ingestion.py.
+        "/v1/ingestion/intensity",
+    )
+) + tuple(
+    Operation(
+        method,
+        connectors_path(f"/v1/connectors/{SOME_CONNECTOR}/{SOME_SOURCE_ID}/schedule"),
+        "connectors",
+    )
+    for method in ("GET", "PUT", "DELETE")
+)
+
+ALL_OPERATIONS: Final[tuple[Operation, ...]] = (
+    ANALYTICS_OPERATIONS + CONNECTORS_OPERATIONS + IDENTITY_OPERATIONS
+)
 
 #: Suffixes of the identity operations behind `require_admin`, enumerated
 #: exactly — a substring rule would silently classify future routes (and

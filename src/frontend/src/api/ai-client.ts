@@ -1,12 +1,3 @@
-/**
- * Wire types + fetch wrappers for the AI assistant API (`/v1/ai/*`).
- *
- * Two switches decide whether any of this is reachable: the deployment's own
- * (`getAiConfig`) and whether the caller has stored a key
- * (`getAiCredentialStatus`). The key itself is write-only — the server returns
- * its last four characters and nothing more.
- */
-
 import { AnalyticsApiError } from "@/api/analytics-client";
 import { fetchWithAuth } from "@/api/fetch-with-auth";
 
@@ -20,15 +11,12 @@ export type ContextScope = "tenant" | "person";
 export interface AiConfig {
   enabled: boolean;
   model: string;
-  /** The stand pays with its own key, so nobody stores one. */
   stand_key?: boolean;
-  /** Only admins may ask for an explanation here. */
   admin_only?: boolean;
 }
 
 export interface AiCredentialStatus {
   configured: boolean;
-  /** Last four characters of the stored key; empty when none is stored. */
   hint: string;
 }
 
@@ -62,14 +50,11 @@ export interface UpdateContextRequest {
 
 export type SnapshotScope = "person" | "organisation";
 
-/** One line of a chart, as it is drawn. */
 export interface SnapshotSeries {
   label: string;
-  /** Readings per bucket, oldest first; a gap is null. */
   points: (number | null)[];
 }
 
-/** The reading as it is on screen — what the model is asked to explain. */
 export interface MetricSnapshot {
   metric_key: string;
   label: string;
@@ -82,9 +67,7 @@ export interface MetricSnapshot {
   help: string;
   trend: (number | null)[];
   scope?: SnapshotScope;
-  /** Bucket start dates the series are indexed by, oldest first. */
   bucket_starts?: string[];
-  /** The chart's lines, when the reading is a chart rather than a tile. */
   series?: SnapshotSeries[];
 }
 

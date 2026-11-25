@@ -37,27 +37,47 @@ import { CurrentValue } from "./current-value";
 import type { AlertMetric } from "./use-alert-metric";
 import type { AlertPreviewState } from "./use-alert-preview";
 
-/** The window value meaning no window, since a kit select takes no empty value. */
+// WORKAROUND: a kit select takes no empty value.
 const ALL_TIME = "all-time";
 
-/** The service resolves every calendar window against a UTC clock. */
 const UTC_NOTE = "Days, months and quarters end at midnight UTC.";
 
-/** The windows bounded by calendar days rather than counted back from now. */
 const CALENDAR_WINDOWS = new Set(["PDC", "PMC", "PQC"]);
 
-/** The windows a rule may name: the presets, and the one it already has. */
+const PRESETS_BESIDE_ALL_TIME = RANGE_PRESETS.filter(
+  ({ token }) => token !== "inf"
+).map(({ token, label }) => ({ value: token, label }));
+
 function windowOptions(current: string) {
-  // INVARIANT: "inf" reads every dated row, which "All time" already offers.
-  const presets = RANGE_PRESETS.filter(({ token }) => token !== "inf").map(
-    ({ token, label }) => ({ value: token, label })
-  );
-  const known = current === "" || presets.some((one) => one.value === current);
+  const known =
+    current === "" ||
+    PRESETS_BESIDE_ALL_TIME.some((one) => one.value === current);
 
   return [
     { value: ALL_TIME, label: "All time" },
-    ...presets,
+    ...PRESETS_BESIDE_ALL_TIME,
     ...(known ? [] : [{ value: current, label: rangeLabel(current) }]),
+  ];
+}
+
+function useDropWindowWhenUndated(
+  windowed: boolean,
+  range: string,
+  onChange: (patch: AlertDocument) => void
+) {
+  useEffect(() => {
+    if (!windowed && range !== "") onChange({ range: null });
+  }, [windowed, range, onChange]);
+}
+
+function offeredColumns(
+  columns: readonly string[],
+  grouped: ReadonlySet<string>,
+  context: readonly string[]
+): string[] {
+  return [
+    ...columns.filter((column) => !grouped.has(column)),
+    ...context.filter((column) => !columns.includes(column)),
   ];
 }
 
@@ -78,7 +98,7 @@ function ContextColumnChoice({
     <Field
       orientation="horizontal"
       data-disabled={disabled}
-      className="w-auto gap-2"
+      className="w-auto"
     >
       <Checkbox
         id={id}
@@ -86,7 +106,7 @@ function ContextColumnChoice({
         disabled={disabled}
         onCheckedChange={onToggle}
       />
-      <FieldLabel htmlFor={id} className="font-mono font-normal">
+      <FieldLabel htmlFor={id} className="font-mono">
         {column}
       </FieldLabel>
     </Field>
@@ -119,11 +139,7 @@ export function AlertFields({
   const destination = textOf(document, "destination");
   const tested = conditionColumns(document.condition);
 
-  // INVARIANT: a metric that lost its date refuses the window its alert still
-  // holds, and the hidden select cannot clear it.
-  useEffect(() => {
-    if (!windowed && range !== "") onChange({ range: null });
-  }, [windowed, range, onChange]);
+  useDropWindowWhenUndated(windowed, range, onChange);
 
   const windowHint = CALENDAR_WINDOWS.has(range) ? UTC_NOTE : undefined;
   const metricProblem =
@@ -134,14 +150,8 @@ export function AlertFields({
   const columns = definition?.fields.map((field) => field.as_name) ?? [];
   const grouped = new Set(definition?.group_by ?? []);
   const context = contextColumnsOf(document) ?? [];
-  // INVARIANT: a column the metric no longer answers stays listed while the
-  // rule names it, so an edit does not drop it unseen.
-  const offered = [
-    ...columns.filter((column) => !grouped.has(column)),
-    ...context.filter((column) => !columns.includes(column)),
-  ];
+  const offered = offeredColumns(columns, grouped, context);
   const chosen = metric !== "" && picked.settled;
-  // INVARIANT: a metric that cannot be read never hides the window a rule holds.
   const showWindow = stored
     ? Boolean(stored.clock)
     : read.isError && range !== "";
@@ -158,7 +168,7 @@ export function AlertFields({
           id="alert-name"
           {...describing("alert-name", { said: errors.name, required: true })}
           value={textOf(document, "name")}
-          className="h-9 w-full"
+          className="w-full"
           onChange={(event) => onChange({ name: event.target.value })}
         />
       </Row>
@@ -180,7 +190,6 @@ export function AlertFields({
               <Button
                 type="button"
                 variant="link"
-                className="h-auto px-0 py-1"
                 onClick={() => void read.refetch()}
               >
                 Retry
@@ -237,16 +246,12 @@ export function AlertFields({
       {chosen && (offered.length > 0 || errors.context_columns) ? (
         <FieldSet
           tabIndex={-1}
-          className="gap-2 outline-none"
           aria-invalid={errors.context_columns ? true : undefined}
           aria-describedby={
             errors.context_columns ? "alert-context-columns-said" : undefined
           }
         >
-          <FieldLegend
-            variant="label"
-            className={cn(TEXT_LABEL, "mb-1 font-medium")}
-          >
+          <FieldLegend variant="label" className="mb-1">
             Show in notification
           </FieldLegend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">

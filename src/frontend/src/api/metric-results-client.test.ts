@@ -34,8 +34,6 @@ describe("queryMetricResults", () => {
   beforeEach(() => mockFetch.mockReset());
 
   it("refuses an empty entity list instead of letting the server 400", async () => {
-    // The backend answers `entity.ids must not be empty`; a caller that got
-    // here has a gating bug, and a network error hides that.
     await expect(
       queryMetricResults({ ...REQUEST, entity: { type: "person", ids: [] } }),
     ).rejects.toThrow(/empty entity list/);

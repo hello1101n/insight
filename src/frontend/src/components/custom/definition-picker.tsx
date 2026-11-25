@@ -14,6 +14,7 @@ import { refusal } from "@/components/custom/refusal";
 import { useAutoLoadOnScroll } from "@/hooks/use-auto-load-on-scroll";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import type { Describing } from "@/lib/custom/editor/aria";
+import { withoutPagingRepeats } from "@/lib/paging";
 import { TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 import {
@@ -23,7 +24,6 @@ import {
   widgetQuery,
 } from "@/queries/custom";
 
-/** Long enough that a word is typed before the service is asked. */
 const SEARCH_DEBOUNCE_MS = 300;
 
 const NOUN: Record<DefinitionKind, { one: string; many: string }> = {
@@ -50,14 +50,11 @@ export function DefinitionPicker({
   const searching = useDebouncedValue(typed, SEARCH_DEBOUNCE_MS).trim();
   const found = useInfiniteQuery(definitionPagesQuery(kind, searching));
   const chosenName = useStoredName(kind, value);
-  // INVARIANT: pages are read by offset, so a definition saved between two
-  // reads shifts the next page and repeats one; each id is one option.
-  const labels = new Map(
-    found.data?.pages.flatMap((page) =>
-      page.items.map((item) => [item.id, item.name] as const)
-    )
+  const items = withoutPagingRepeats(
+    found.data?.pages.flatMap((page) => page.items) ?? []
   );
-  const ids = [...labels.keys()];
+  const labels = new Map(items.map((item) => [item.id, item.name] as const));
+  const ids = items.map((item) => item.id);
   const labelOf = (option: string) =>
     labels.get(option) ?? (option === value ? chosenName : option);
   const list = useRef<HTMLDivElement>(null);
@@ -81,7 +78,7 @@ export function DefinitionPicker({
         id={id}
         {...describe}
         placeholder={`Search ${noun.many}`}
-        className="h-9 w-full"
+        className="w-full"
       />
       <ComboboxContent>
         {/* WORKAROUND: the kit pads the empty part even while it hides its

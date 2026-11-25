@@ -156,7 +156,11 @@ pub(crate) fn router(
                 .with_max_request_body_bytes(MAX_REQUEST_BODY_BYTES)
                 .with_cancellation_token(cancellation_token),
         );
-    let auth = TokenVerifier::new(&config.public_url, config.allow_insecure_private_network)?;
+    let auth = TokenVerifier::new(
+        &config.public_url,
+        &config.jwks_url,
+        config.allow_insecure_private_network,
+    )?;
     Ok(Router::new()
         .nest_service("/mcp", service)
         .layer(middleware::from_fn_with_state(auth, authenticate)))
@@ -185,10 +189,18 @@ async fn authenticate(
 }
 
 impl TokenVerifier {
-    fn new(public_url: &str, allow_insecure_private_network: bool) -> anyhow::Result<Self> {
+    fn new(
+        public_url: &str,
+        jwks_url: &str,
+        allow_insecure_private_network: bool,
+    ) -> anyhow::Result<Self> {
         validate_public_url(public_url, allow_insecure_private_network)?;
         let issuer = public_url.trim_end_matches('/').to_owned();
-        let client = reqwest::Client::builder()
+        let jwks_url = match jwks_url.trim() {
+            "" => format!("{issuer}/.well-known/jwks.json"),
+            configured => configured.to_owned(),
+        };
+        let client = insight_http_client::client_builder()?
             .connect_timeout(Duration::from_secs(3))
             .timeout(Duration::from_secs(5))
             .build()?;
@@ -196,7 +208,7 @@ impl TokenVerifier {
             inner: Arc::new(TokenVerifierInner {
                 audience: format!("{issuer}/mcp"),
                 resource_metadata: format!("{issuer}/.well-known/oauth-protected-resource/mcp"),
-                jwks_url: format!("{issuer}/.well-known/jwks.json"),
+                jwks_url,
                 issuer,
                 client,
                 jwks: RwLock::new(None),

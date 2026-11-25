@@ -12,7 +12,6 @@ import {
   Filter,
   Database,
   Fingerprint,
-  FlaskConical,
   GitPullRequest,
   LayoutGrid,
   Layers,
@@ -46,17 +45,6 @@ import {
 } from "./nav-policy";
 
 
-/**
- * Portal navigation model (Phase 1 buildout — mirrors the design mockup).
- *
- * This is the static composition the mockup demonstrates. Directions, their
- * lenses and the connector chips are hand-declared here for now; a later phase
- * derives them from the Analytics API metric catalog (see _work/portal-nav/SPEC.md).
- * Meaning stays server-owned; this file only carries structure + presentation.
- */
-
-/* ── Rail zones ──────────────────────────────────────────────────────── */
-
 export type ZoneKind =
   | "person"
   | "directions"
@@ -69,22 +57,21 @@ export type Readiness = "planned";
 
 export interface Zone {
   id: string;
-  label: string;
+  label: DisplayText;
   kind: ZoneKind;
 }
 
 export const ZONES: readonly Zone[] = [
-  { id: "overview", label: "Overview", kind: "theme" },
-  { id: "directions", label: "Directions", kind: "directions" },
-  { id: "person", label: "Person", kind: "person" },
-  { id: "people", label: "People", kind: "people" },
-  { id: "aicost", label: "AI & Cost", kind: "theme" },
-  { id: "reports", label: "Reports", kind: "theme" },
-  { id: "custom", label: "Dashboards", kind: "custom" },
-  { id: "manage", label: "Manage", kind: "manage" },
+  { id: "overview", label: { key: "nav.zones.overview" }, kind: "theme" },
+  { id: "directions", label: { key: "nav.zones.directions" }, kind: "directions" },
+  { id: "person", label: { key: "nav.zones.person" }, kind: "person" },
+  { id: "people", label: { key: "nav.zones.people" }, kind: "people" },
+  { id: "aicost", label: { key: "nav.zones.aicost" }, kind: "theme" },
+  { id: "reports", label: { key: "nav.zones.reports" }, kind: "theme" },
+  { id: "custom", label: { key: "nav.zones.custom" }, kind: "custom" },
+  { id: "manage", label: { key: "nav.zones.manage" }, kind: "manage" },
 ];
 
-/** Zones every viewer may open: Home, their own page, Reports and Dashboards. */
 export const ZONES_FOR_EVERYONE: ReadonlySet<string> = new Set([
   "overview",
   "person",
@@ -100,7 +87,6 @@ export function zoneIsPlanned(zone: Zone, policy: InstanceNavPolicy = navPolicy(
   );
 }
 
-/** The zone a URL names, or undefined for an id no longer in the rail. */
 export function lensSlug(lens: string): string {
   return lens
     .toLowerCase()
@@ -117,13 +103,11 @@ export function zoneById(id: string | null): Zone | undefined {
   return ZONES.find((z) => z.id === id);
 }
 
-/* ── Directions (catalog-driven family list) ─────────────────────────── */
-
 export type DirectionSource = "semantic" | "bullet";
 
 export interface Direction {
   id: string;
-  name: string;
+  name: DisplayText;
   icon: LucideIcon;
   source: DirectionSource;
   lenses: readonly string[];
@@ -132,7 +116,7 @@ export interface Direction {
 export const DIRECTIONS: readonly Direction[] = [
   {
     id: "dev",
-    name: "Development",
+    name: { key: "nav.directions.dev" },
     icon: GitPullRequest,
     source: "semantic",
     lenses: [
@@ -151,35 +135,33 @@ export const DIRECTIONS: readonly Direction[] = [
   },
   {
     id: "collab",
-    name: "Collaboration",
+    name: { key: "nav.directions.collab" },
     icon: MessageSquare,
     source: "semantic",
     lenses: ["Overview", "Messaging", "Meetings", "Email", "Time outside meetings", "Files & sharing"],
   },
   {
     id: "wiki",
-    name: "Knowledge / Wiki",
+    name: { key: "nav.directions.wiki" },
     icon: BookOpen,
     source: "semantic",
     lenses: ["Overview", "Authoring", "Edits & comments", "Active authors"],
   },
   {
     id: "sales",
-    name: "Sales / CRM",
+    name: { key: "nav.directions.sales" },
     icon: DollarSign,
     source: "bullet",
     lenses: ["Pipeline", "Deal flow", "Activity", "Velocity & quality"],
   },
   {
     id: "support",
-    name: "Support",
+    name: { key: "nav.directions.support" },
     icon: Ticket,
     source: "bullet",
     lenses: ["Tickets", "CSAT", "Knowledge base", "Comments & updates"],
   },
 ];
-
-/* ── Theme-zone section lists ────────────────────────────────────────── */
 
 export interface PaneItem {
   id: string;
@@ -187,36 +169,18 @@ export interface PaneItem {
   icon: LucideIcon;
   badge?: { text: string; tone: "warn" | "new" | "error" };
   readiness?: Readiness;
-  /**
-   * Rendered only for viewers holding the active `admin` identity role
-   * (`useIsAdmin`) — a UI courtesy over the server-side gate, which refuses
-   * regardless of what the frontend draws.
-   */
   adminOnly?: boolean;
-  /**
-   * Rendered only when the previews gate passes (`usePreviewsGate`) — the
-   * same courtesy-over-server-gate doctrine as `adminOnly`.
-   */
-  previewsGated?: boolean;
   unbuilt?: boolean;
 }
 
 export interface PaneGroup {
-  label?: string;
+  label?: DisplayText;
   icon?: LucideIcon;
   items: readonly PaneItem[];
 }
 
-/** The label the pane uses for the demoted group of planned entries. */
-export const PLANNED_GROUP_LABEL = "Planned";
+export const PLANNED_GROUP_LABEL: DisplayText = { key: "nav.groups.planned" };
 
-/**
- * Split entries into the views a reader can open and the marked ones that
- * belong under the demoted "Planned" group. Nothing marked survives
- * `showPlanned: false` — a reader who turned planned sections off is asking
- * for navigation that only lists what renders. An `unbuilt` entry stays among
- * the live ones, under the same switch.
- */
 export function partitionByReadiness<
   T extends { readiness?: Readiness; unbuilt?: boolean },
 >(entries: readonly T[], showPlanned: boolean): { live: T[]; planned: T[] } {
@@ -264,40 +228,40 @@ export function zoneSections(
 export const ZONE_SECTIONS: Record<string, readonly PaneGroup[]> = {
   overview: [
     {
-      label: "Themes",
+      label: { key: "nav.groups.themes" },
       items: [
-        { id: "at-a-glance", label: "At a glance", icon: LayoutGrid },
-        { id: "by-direction", label: "By direction", icon: Layers },
+        { id: "at-a-glance", label: { key: "nav.items.at_a_glance" }, icon: LayoutGrid },
+        { id: "by-direction", label: { key: "nav.items.by_direction" }, icon: Layers },
         { id: "attention", label: { key: "worth_a_look.title" }, icon: Eye },
       ],
     },
   ],
   aicost: [
     {
-      items: [{ id: "overview", label: "Overview", icon: LayoutGrid }],
+      items: [{ id: "overview", label: { key: "nav.items.overview" }, icon: LayoutGrid }],
     },
     {
-      label: "AI adoption",
+      label: { key: "common.sections.ai_adoption" },
       icon: Bot,
       items: [
-        { id: "adoption-funnel", label: "Adoption funnel", icon: Activity },
-        { id: "by-unit-role", label: "By unit / role", icon: Layers },
-        { id: "per-tool", label: "Per-tool", icon: Sparkles },
-        { id: "autofix", label: "Autofix", icon: Activity },
-        { id: "ai-audit", label: "AI Audit", icon: Radar },
+        { id: "adoption-funnel", label: { key: "nav.items.adoption_funnel" }, icon: Activity },
+        { id: "by-unit-role", label: { key: "nav.items.by_unit_role" }, icon: Layers },
+        { id: "per-tool", label: { key: "nav.items.per_tool" }, icon: Sparkles },
+        { id: "autofix", label: { key: "nav.items.autofix" }, icon: Activity },
+        { id: "ai-audit", label: { key: "nav.items.ai_audit" }, icon: Radar },
       ],
     },
     {
-      label: "Cost",
+      label: { key: "nav.groups.cost" },
       icon: DollarSign,
       items: [
-        { id: "spend-by-tool", label: "Spend by tool", icon: DollarSign },
-        { id: "cost-by-unit", label: "Cost by unit / user", icon: Users },
-        { id: "idle-seats", label: "Idle seats", icon: Clock },
-        { id: "credits", label: "Credits burn-down", icon: TrendingUp },
+        { id: "spend-by-tool", label: { key: "nav.items.spend_by_tool" }, icon: DollarSign },
+        { id: "cost-by-unit", label: { key: "nav.items.cost_by_unit" }, icon: Users },
+        { id: "idle-seats", label: { key: "nav.items.idle_seats" }, icon: Clock },
+        { id: "credits", label: { key: "nav.items.credits" }, icon: TrendingUp },
         {
           id: "ai-pricing",
-          label: "AI pricing",
+          label: { key: "nav.items.ai_pricing" },
           icon: DollarSign,
           badge: { text: "ai.cost", tone: "error" },
         },
@@ -306,50 +270,47 @@ export const ZONE_SECTIONS: Record<string, readonly PaneGroup[]> = {
   ],
   reports: [
     {
-      items: [{ id: "report-builder", label: "Report builder", icon: FileSpreadsheet }],
+      items: [{ id: "report-builder", label: { key: "nav.items.report_builder" }, icon: FileSpreadsheet }],
     },
     {
       label: PLANNED_GROUP_LABEL,
       items: [
-        { id: "snapshots", label: "Snapshots", icon: FileText, unbuilt: true },
-        { id: "export", label: "Export PDF / HTML", icon: Share2, unbuilt: true },
-        { id: "templates", label: "Templates", icon: Copy, unbuilt: true },
+        { id: "snapshots", label: { key: "nav.items.snapshots" }, icon: FileText, unbuilt: true },
+        { id: "export", label: { key: "nav.items.export_pdf" }, icon: Share2, unbuilt: true },
+        { id: "templates", label: { key: "nav.items.templates" }, icon: Copy, unbuilt: true },
       ],
     },
   ],
 };
 
 export const DASHBOARD_BROWSE_PLANNED: readonly PaneItem[] = [
-  { id: "starred", label: "Starred", icon: Star, unbuilt: true },
-  { id: "starter", label: "Starter", icon: Sparkles, unbuilt: true },
+  { id: "starred", label: { key: "nav.items.starred" }, icon: Star, unbuilt: true },
+  { id: "starter", label: { key: "nav.items.starter" }, icon: Sparkles, unbuilt: true },
 ];
 
 export const STARTER_DASHBOARDS: PaneItem = {
   id: "starter-dashboards",
-  label: "Starter dashboards",
+  label: { key: "nav.items.starter_dashboards" },
   icon: Sparkles,
   unbuilt: true,
 };
 
-/* ── People zone ─────────────────────────────────────────────────────── */
-
-export const PEOPLE_ITEMS: readonly PaneItem[] = [
-  { id: "roster", label: "My team", icon: Users },
-  { id: "employees", label: "Roster · by role", icon: List },
-  { id: "metrics", label: "Metrics view", icon: Table2 },
+type PeopleItems = readonly [
+  PaneItem & { id: "roster" },
+  PaneItem & { id: "employees" },
+  PaneItem & { id: "metrics" },
 ];
 
-/**
- * The same two views under names a flat organisation can use: there is no
- * employees-versus-roster distinction to draw.
- *
- * INVARIANT: the ids match {@link PEOPLE_ITEMS} — the pane routes on them, so a
- * new People view has to be named for both shapes rather than one.
- */
-const FLAT_PEOPLE_ITEMS: readonly PaneItem[] = [
-  { id: "roster", label: "Overview", icon: LayoutGrid },
-  { id: "employees", label: "Roster", icon: Users },
-  { id: "metrics", label: "Metrics view", icon: Table2 },
+export const PEOPLE_ITEMS: PeopleItems = [
+  { id: "roster", label: { key: "nav.items.my_team" }, icon: Users },
+  { id: "employees", label: { key: "nav.items.roster_by_role" }, icon: List },
+  { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
+];
+
+const FLAT_PEOPLE_ITEMS: PeopleItems = [
+  { id: "roster", label: { key: "nav.items.overview" }, icon: LayoutGrid },
+  { id: "employees", label: { key: "nav.items.roster" }, icon: Users },
+  { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
 ];
 
 export function peopleItemsFor(
@@ -362,15 +323,10 @@ export function peopleItemsFor(
     .map((item) => withConfigReadiness("people", item, policy));
 }
 
-/* ── Manage zone ─────────────────────────────────────────────────────── */
-
-/** The viewer facts that decide which gated Manage surfaces exist for them. */
 export interface ManageGates {
   isAdmin: boolean;
-  canManagePreviews: boolean;
 }
 
-/** The Manage pane for one viewer: gated surfaces drop for everyone else. */
 export function manageGroupsFor(
   gates: ManageGates,
   policy: InstanceNavPolicy = navPolicy(),
@@ -381,51 +337,60 @@ export function manageGroupsFor(
       .filter(
         (item) =>
           (!item.adminOnly || gates.isAdmin) &&
-          (!item.previewsGated || gates.canManagePreviews) &&
           !itemHidden("manage", item.id, policy),
       )
       .map((item) => withConfigReadiness("manage", item, policy)),
   })).filter((group) => group.items.length > 0);
 }
 
+export function manageLandingItem(
+  gates: ManageGates,
+  policy: InstanceNavPolicy = navPolicy(),
+): string | null {
+  return (
+    manageGroupsFor(gates, policy)
+      .flatMap((group) => group.items)
+      .find((item) => !item.unbuilt && item.readiness == null)?.id ?? null
+  );
+}
+
 export const MANAGE_GROUPS: readonly PaneGroup[] = [
   {
-    label: "Data",
+    label: { key: "nav.groups.data" },
     items: [
       {
         id: "connector-health",
-        label: "Sources & connectors",
+        label: { key: "nav.items.connectors" },
         icon: Plug,
         adminOnly: true,
       },
-      { id: "exclusions", label: "Data exclusions", icon: Filter, unbuilt: true },
-      { id: "snapshots", label: "Org snapshots", icon: Clock, unbuilt: true },
+      { id: "exclusions", label: { key: "nav.items.data_exclusions" }, icon: Filter, unbuilt: true },
+      { id: "snapshots", label: { key: "nav.items.org_snapshots" }, icon: Clock, unbuilt: true },
     ],
   },
   {
-    label: "People & access",
+    label: { key: "nav.groups.people_access" },
     items: [
       {
         id: "identities",
-        label: "Identities · roles & taxonomy",
+        label: { key: "nav.items.identities" },
         icon: Fingerprint,
         adminOnly: true,
       },
-      { id: "access", label: "Access", icon: Lock, unbuilt: true },
-      { id: "group-mgmt", label: "Group management", icon: Users, unbuilt: true },
+      { id: "access", label: { key: "nav.items.access" }, icon: Lock, unbuilt: true },
+      { id: "group-mgmt", label: { key: "nav.items.group_mgmt" }, icon: Users, unbuilt: true },
     ],
   },
   {
-    label: "Platform",
+    label: { key: "nav.groups.platform" },
     items: [
-      { id: "ingestion", label: "Ingestion", icon: Database, adminOnly: true },
-      { id: "previews", label: "Previews", icon: FlaskConical, previewsGated: true },
-      { id: "ai-assistant", label: "AI assistant config", icon: Sparkles },
-      { id: "whats-new", label: "What's new", icon: Megaphone },
-      { id: "platform-usage", label: "Platform usage", icon: Activity, adminOnly: true },
-      { id: "mcp", label: "MCP servers", icon: Server, unbuilt: true },
-      { id: "config", label: "Config & setup", icon: Settings2, unbuilt: true },
-      { id: "scorecard-mgmt", label: "Scorecard management", icon: BarChart3, unbuilt: true },
+      { id: "ingestion", label: { key: "nav.items.ingestion" }, icon: Database, adminOnly: true },
+      { id: "ai-assistant", label: { key: "nav.items.ai_assistant" }, icon: Sparkles },
+      { id: "whats-new", label: { key: "whats_new.nav_label" }, icon: Megaphone },
+      { id: "platform-usage", label: { key: "nav.items.platform_usage" }, icon: Activity, adminOnly: true },
+      { id: "mcp", label: { key: "nav.items.mcp" }, icon: Server, unbuilt: true },
+      { id: "config", label: { key: "nav.items.config" }, icon: Settings2, unbuilt: true },
+      { id: "scorecard-mgmt", label: { key: "nav.items.scorecard" }, icon: BarChart3, unbuilt: true },
     ],
   },
 ];
@@ -433,8 +398,6 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
 export const MANAGE_ITEMS: readonly PaneItem[] = MANAGE_GROUPS.flatMap(
   (group) => group.items,
 );
-
-/* ── Zone item resolution ────────────────────────────────────────────── */
 
 export function zoneItems(zoneId: string): readonly PaneItem[] {
   if (zoneId === "people") return PEOPLE_ITEMS;
@@ -455,5 +418,5 @@ export function resolveZoneItem(
   const live = (i: PaneItem) => !itemPlanned(zoneId, i.id, policy);
   const items = zoneItems(zoneId);
   if (item && items.some((i) => i.id === item && shown(i))) return item;
-  return items.find((i) => live(i) && shown(i) && !i.adminOnly && !i.previewsGated)?.id ?? null;
+  return items.find((i) => live(i) && shown(i) && !i.adminOnly)?.id ?? null;
 }

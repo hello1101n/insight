@@ -2,7 +2,7 @@
 
 The real deployment surface for [Insight](https://github.com/constructorfabric/insight)
 on Kubernetes. The umbrella Helm chart is published from the public
-Insight repo to `oci://ghcr.io/constructorfabric/charts/insight` per
+Insight repo to `oci://ghcr.io/hello1101n/charts/insight` per
 merge to `main`; this directory holds everything else — values
 overlays, sealed-secret manifests, the Makefile, and a few helper
 scripts.
@@ -15,6 +15,39 @@ when you go past sandbox, and you have a working gitops setup.
 
 > Below is the operator-facing summary; the linked docs go deeper into
 > rationale (DESIGN, PRD, ADR).
+
+## Connector schedule requests
+
+With `ingestion.templates.enabled: true`, reconcile runs and reads schedule
+requests from the connectors service's MariaDB database with its own account.
+
+The provisioning hook creates the schedule-account Secret at runtime in both Helm
+and GitOps modes, using a cryptographically random password. Upgrades reuse the
+existing credentials and reapply the account's grants. A supplied Secret takes
+precedence and the hook never updates it. If creation races with another writer,
+the hook rereads the Secret and provisions with the winning credentials.
+Chart values under `global.connectorSchedules.database` select the Secret name,
+initial username and username/password keys. No schedule password needs to be
+supplied for GitOps upgrades. `connectors.databaseName` selects the database
+(default `connectors`). With ingestion templates disabled, the hook and reconcile
+CronWorkflow are absent.
+
+The hook reads MariaDB admin credentials from `insight-db-creds`. Its dedicated
+ServiceAccount can get and patch only the named schedule Secret and create Secrets in the
+release namespace. Kubernetes RBAC cannot restrict `create` by resource name;
+the Role grants no update, delete or list access. Created Secrets carry
+release labels and persist independently of the hook Job. Reconcile's required
+`secretKeyRef` entries keep its container waiting in `CreateContainerConfigError`
+if its first pass precedes Secret creation. Kubelet retries container startup
+once the Secret exists, within the workflow's 1800-second deadline; later cron
+passes retry if that deadline expires. Only the dedicated credentials reach reconcile.
+
+The idempotent account hook runs at weight 15, after the connectors service's
+migration at 10. Its default role permits exactly SELECT on
+`<connectors.databaseName>.connector_schedule_requests_v1`. An external database
+administrator must allow the provisioning account to create this account and
+role, or provision the equivalent grants before deployment. The runtime account
+needs no base-table, write or DDL privileges.
 
 ## What's in this directory
 
@@ -341,7 +374,7 @@ real `*.yaml` siblings beside them, safe to commit.
 ## Chart-pin flow (L3)
 
 1. The public Insight repo's CI publishes umbrella chart versions to
-   `oci://ghcr.io/constructorfabric/charts/insight:<semver>` per merge to
+   `oci://ghcr.io/hello1101n/charts/insight:<semver>` per merge to
    `main`.
 2. The `.insight-version` file in this repo pins one semver. Bump it
    to promote a new chart version. The Makefile reads it as
@@ -364,7 +397,7 @@ A standalone deployment repo has to wire its own bump; the pattern is:
 1. List semver tags at the chart registry on a cron schedule (e.g.
    hourly):
    ```bash
-   skopeo list-tags docker://ghcr.io/constructorfabric/charts/insight \
+   skopeo list-tags docker://ghcr.io/hello1101n/charts/insight \
      | jq -r '.Tags[]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
    ```
 2. If the highest tag is newer than `.insight-version`, write it and
@@ -422,9 +455,8 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
-                # Substituted from inventory.yaml `namespaces.*` at apply time;
-                # the previews namespace carries the per-experiment HTTPRoutes.
-                values: [${NS_APP}, ${NS_INFRA}, ${NS_PREVIEWS}]
+                # Substituted from inventory.yaml `namespaces.*` at apply time.
+                values: [${NS_APP}, ${NS_INFRA}]
 ```
 
 cert-manager (installed with `config.enableGatewayAPI=true`) watches

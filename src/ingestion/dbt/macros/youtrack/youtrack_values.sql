@@ -30,6 +30,16 @@
           if({{ expr }} IN ('null', ''), CAST([] AS Array(String)), [{{ expr }}])))))
 {%- endmacro %}
 
+{#- WORKAROUND: a text change can arrive as an array of string fragments rather
+    than one string; they are one value, not a set, so they are joined. -#}
+{% macro youtrack_text_values(expr) -%}
+    if(JSONType({{ expr }}) = 'Array' AND arrayAll(v -> JSONType(v) = 'String', JSONExtractArrayRaw({{ expr }})),
+       arrayFilter(p -> p.1 != '', [(
+           arrayStringConcat(arrayMap(v -> JSONExtractString(v), JSONExtractArrayRaw({{ expr }})), '\n'),
+           arrayStringConcat(arrayMap(v -> JSONExtractString(v), JSONExtractArrayRaw({{ expr }})), '\n'))]),
+       {{ youtrack_values(expr) }})
+{%- endmacro %}
+
 {% macro youtrack_project_values(expr) -%}
     if({{ expr }} IN ('null', ''), CAST([] AS Array(Tuple(String, String))), [(
         JSONExtractString({{ expr }}, 'project', 'id'),

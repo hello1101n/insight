@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import {
   dimensionColorSeed,
   dimensionLabel,
@@ -29,17 +29,6 @@ export interface MetricSummaryCardProps {
   entityId: string;
 }
 
-/**
- * Modality headline card: period total, plus a collapsible
- * proportional breakdown over the metric's dimension groups (ribbon +
- * legend). The breakdown section renders only when at least two groups have
- * data — a single-source metric reads as a plain summary card.
- *
- * No standing and no colour. The card says how much of a modality there was
- * and what it was made of; whether that is good is a judgment the section
- * around it deliberately does not make, and a coloured card makes it anyway
- * — louder than any sentence next to it.
- */
 export function MetricSummaryCard({
   metric,
   entityId,
@@ -57,10 +46,6 @@ export function MetricSummaryCard({
 
   const data = forEntity(metric, entityId);
   const value = data.value;
-  // Eligibility (observed / suppressed / flat pool / neutral direction) and
-  // the quartile rank come from the shared standing derivation — same
-  // verdict as the KPI tiles and the peer story by construction: red means
-  // bottom quartile, in-pack is normal and stays uncolored.
 
   const rows = data.breakdown
     .filter((row) => (row.value ?? 0) > 0)
@@ -91,8 +76,8 @@ export function MetricSummaryCard({
       <CardContent className="flex h-full flex-col gap-3">
         <MetricName
           metric={metric}
-          focusable
-          className="truncate pr-8 text-sm font-semibold"
+          truncate
+          className="pr-8 text-sm font-semibold"
         />
         <span className="flex items-baseline gap-1 tabular-nums">
           <span className={TEXT_FIGURE}>

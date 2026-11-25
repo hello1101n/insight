@@ -38,6 +38,45 @@ WITH
 -- only thing that can say which seats an invoice billed is the operator's
 -- binding. `invoice_sources` counts the instances that priced anything, which is
 -- what tells an unscoped price whether it is the tenant's only one.
+priced_lines AS (
+    SELECT
+        invoice.insight_tenant_id               AS tenant_id,
+        invoice.source                          AS source,
+        invoice.period_month                    AS period_month,
+        invoice.source_id                       AS invoice_source_id,
+        -- The seat connector instance this price applies to. Empty when the
+        -- binding names none, which only a single-instance tenant can use.
+        coalesce(binding.seat_source_id, '')    AS seat_source_id,
+        -- What a seat would call this line's tier, per the operator's
+        -- binding. Unbound leaves it empty, and no seat tier is empty, so an
+        -- unrecognised plan prices nothing rather than pricing a guess.
+        coalesce(binding.seat_tier, '')         AS tier,
+        invoice.seat_unit_cents                 AS price,
+        -- The instant the line billed every seat at the tier it held then.
+        toDateTime(toInt64OrNull(
+            JSONExtractString(invoice.invoice_metrics_json, 'period_start_ts')
+        ))                                      AS billed_at
+    FROM {{ ref('class_ai_invoice') }} AS invoice FINAL
+    LEFT JOIN (
+        SELECT
+            tenant_id,
+            insight_source_id,
+            source,
+            tier_ref,
+            seat_source_id,
+            seat_tier
+        FROM {{ source('config', 'ai_seat_tier_map') }} FINAL
+        WHERE is_deleted = 0
+    ) AS binding
+        ON  binding.tenant_id = invoice.insight_tenant_id
+        AND binding.insight_source_id = invoice.source_id
+        AND binding.source = invoice.source
+        AND binding.tier_ref = invoice.tier_ref
+    WHERE invoice.line_id IS NOT NULL
+      AND invoice.category = 'subscriptions'
+      AND invoice.is_proration = 0
+      AND invoice.seat_unit_cents IS NOT NULL
+),
 month_seat_prices AS (
     SELECT
         tenant_id,
@@ -45,43 +84,51 @@ month_seat_prices AS (
         period_month,
         groupUniqArray(tuple(seat_source_id, tier, price)) AS scoped_prices,
         uniqExact(invoice_source_id)            AS invoice_sources
-    FROM (
-        SELECT
-            invoice.insight_tenant_id           AS tenant_id,
-            invoice.source                      AS source,
-            invoice.period_month                AS period_month,
-            invoice.source_id                   AS invoice_source_id,
-            -- The seat connector instance this price applies to. Empty when the
-            -- binding names none, which only a single-instance tenant can use.
-            coalesce(binding.seat_source_id, '') AS seat_source_id,
-            -- What a seat would call this line's tier, per the operator's
-            -- binding. Unbound leaves it empty, and no seat tier is empty, so an
-            -- unrecognised plan prices nothing rather than pricing a guess.
-            coalesce(binding.seat_tier, '')      AS tier,
-            invoice.seat_unit_cents             AS price
-        FROM {{ ref('class_ai_invoice') }} AS invoice FINAL
-        LEFT JOIN (
-            SELECT
-                tenant_id,
-                insight_source_id,
-                source,
-                tier_ref,
-                seat_source_id,
-                seat_tier
-            FROM {{ source('config', 'ai_seat_tier_map') }} FINAL
-            WHERE is_deleted = 0
-        ) AS binding
-            ON  binding.tenant_id = invoice.insight_tenant_id
-            AND binding.insight_source_id = invoice.source_id
-            AND binding.source = invoice.source
-            AND binding.tier_ref = invoice.tier_ref
-        WHERE invoice.line_id IS NOT NULL
-          AND invoice.category = 'subscriptions'
-          AND invoice.is_proration = 0
-          AND invoice.seat_unit_cents IS NOT NULL
-        GROUP BY tenant_id, source, period_month, invoice_source_id, seat_source_id, tier, price
-    )
+    FROM priced_lines
     GROUP BY tenant_id, source, period_month
+),
+-- When each seat population's billing period began. A billing period need not
+-- start on the 1st, so the month's first or last reading is not the billed one.
+population_billing_starts AS (
+    SELECT
+        tenant_id,
+        source,
+        period_month,
+        seat_source_id,
+        min(billed_at)                          AS period_started_at
+    FROM priced_lines
+    WHERE billed_at IS NOT NULL
+    GROUP BY tenant_id, source, period_month, seat_source_id
+),
+-- A seat's state at its last reading before its billing period began. A tier
+-- changed later reaches the invoice only as a proration, which prices nothing
+-- here, so the month's closing state would price the seat at a tier it was never
+-- billed at, or at none once it was moved off its tier.
+seat_billed_states AS (
+    SELECT
+        reading.insight_tenant_id               AS tenant_id,
+        reading.source                          AS source,
+        reading.source_id                       AS source_id,
+        reading.account_id                      AS account_id,
+        starts.period_month                     AS period_month,
+        argMax(reading.seat_tier, reading.collected_at) AS billed_tier,
+        argMax(toUInt8(reading.credit_limit_cents IS NOT NULL), reading.collected_at)
+                                                AS billed_with_ceiling
+    FROM {{ ref('class_ai_overage_daily') }} AS reading FINAL
+    INNER JOIN population_billing_starts AS starts
+        ON  starts.tenant_id = reading.insight_tenant_id
+        AND starts.source = reading.source
+    -- An unscoped start reaches every population; the offers below decide
+    -- whether its price may.
+    WHERE has([reading.source_id, ''], starts.seat_source_id)
+      AND reading.collected_at <= starts.period_started_at
+      AND reading.collected_at > starts.period_started_at - INTERVAL 1 MONTH
+    GROUP BY
+        reading.insight_tenant_id,
+        reading.source,
+        reading.source_id,
+        reading.account_id,
+        starts.period_month
 ),
 seat_month_source AS (
     SELECT
@@ -155,23 +202,46 @@ seat_month_offers AS (
         AND prices.source = scoped.source
         AND prices.period_month = scoped.period_month
 ),
+-- The seat's state when its billing period began, carried onto the seat.
+--
+-- INVARIANT: nullIf/coalesce rather than IS NULL — without join_use_nulls an
+-- unmatched LEFT JOIN yields '' and 0, and both readings must agree.
+seat_month_billed AS (
+    SELECT
+        offered.*,
+        nullIf(coalesce(billed.billed_tier, ''), '') AS billed_tier,
+        coalesce(billed.billed_with_ceiling, 0) AS billed_with_ceiling
+    FROM seat_month_offers AS offered
+    LEFT JOIN seat_billed_states AS billed
+        ON  billed.tenant_id = offered.tenant_id
+        AND billed.source = offered.source
+        AND billed.source_id = offered.source_id
+        AND billed.account_id = offered.account_id
+        AND billed.period_month = offered.period_month
+),
 -- The price this seat was billed at. One priced tier among the offers prices
 -- every seat billed in it, which is the common shape and the only one the vendor
--- states unambiguously. With several, the seat's own tier has to name one of
--- them, which needs the operator's binding above: no vendor states that an
--- invoice line's tier and a seat's tier are the same tier. A seat that names
--- none is left without a price rather than given a share of the invoice total.
+-- states unambiguously. With several, the seat's tier has to name one of them,
+-- which needs the operator's binding above: no vendor states that an invoice
+-- line's tier and a seat's tier are the same tier. The tier it held when its
+-- billing period began names it first; the month's closing tier names it for a
+-- seat with no reading before then, or whose tier then priced nothing. A seat
+-- that names none is left without a price rather than given a share of the
+-- invoice total.
 seat_month_priced AS (
     SELECT
-        * EXCEPT (offers),
+        * EXCEPT (offers, billed_tier),
         multiIf(
             length(offers) = 1,
             offers[1].3,
+            billed_tier IS NOT NULL
+                AND length(arrayFilter(p -> p.2 = billed_tier, offers)) = 1,
+            arrayFilter(p -> p.2 = billed_tier, offers)[1].3,
             length(arrayFilter(p -> p.2 = coalesce(seat_tier, ''), offers)) = 1,
             arrayFilter(p -> p.2 = coalesce(seat_tier, ''), offers)[1].3,
             CAST(NULL AS Nullable(Int64))
         )                                       AS seat_price_cents
-    FROM seat_month_offers
+    FROM seat_month_billed
 ),
 -- Every reading of a seat inside its billing month. The vendor reports a
 -- cumulative month-to-date figure, so a day's spend is the step between two
@@ -294,9 +364,12 @@ ARRAY JOIN arrayConcat(
     ),
     -- The seat fee itself, which the extra usage above sits on top of. Gated on
     -- the ceiling because that is what marks a seat as carrying a tier, and an
-    -- untiered seat is not one the invoice billed for.
+    -- untiered seat is not one the invoice billed for. The ceiling it had when
+    -- its billing period began counts: a seat moved off its tier later in the
+    -- month was still billed for it.
     if(
-        seat_price_cents IS NOT NULL AND credit_limit_cents IS NOT NULL,
+        seat_price_cents IS NOT NULL
+            AND (credit_limit_cents IS NOT NULL OR billed_with_ceiling = 1),
         [tuple('seat_cost_usd', toFloat64(seat_price_cents) / 100)],
         []
     )

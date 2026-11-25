@@ -180,6 +180,23 @@ describe("<OrphanedDashboards>", () => {
     ).toBeDisabled();
   });
 
+  it("will not offer administrators when the listing filled its one page", async () => {
+    vi.mocked(identityClient.listRoleHolders).mockResolvedValue({
+      complete: false,
+    });
+    const user = renderWith(<OrphanedDashboards />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Transfer Release notes" })
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      await within(dialog).findByText("Couldn't read the administrators.")
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole("searchbox")).toBeNull();
+  });
+
   it("transfers to an administrator who has no roster row", async () => {
     vi.mocked(identityClient.listRoleHolders).mockResolvedValue({
       personIds: new Set([BOB, FRAN]),

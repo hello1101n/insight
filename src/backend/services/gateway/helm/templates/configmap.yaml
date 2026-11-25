@@ -1,9 +1,3 @@
-{{- /*
-  The reviewable route table, built from .Values.gateway.routes and rendered
-  with `tpl` so `{{ .Release.Name }}` in each upstream resolves to the real
-  service. The gateway container compiles this into nginx.conf at startup via
-  routegen; editing routes is a values change, reviewable in gitops (DD-GW-02).
-*/}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -22,9 +16,8 @@ data:
       {{- range .Values.gateway.routes }}
       {{- $mcpOk := or (not (.mcpOnly | default false)) $.Values.global.mcp.enabled }}
       {{- $sqlApiOk := or (not (.sqlApiOnly | default false)) $.Values.global.sqlApi.enabled }}
-      {{- $previewsOk := or (not (.previewsOnly | default false)) $.Values.global.previews.enabled }}
       {{- $v3Ok := or (not (.v3Only | default false)) ((($.Values.global).insightV3Core).deploy) }}
-      {{- if and $mcpOk $sqlApiOk $previewsOk $v3Ok }}
+      {{- if and $mcpOk $sqlApiOk $v3Ok }}
       - prefix: {{ .prefix }}
         upstream: {{ tpl .upstream $ | quote }}
         {{- with .auth }}

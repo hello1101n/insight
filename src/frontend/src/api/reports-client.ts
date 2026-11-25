@@ -32,10 +32,6 @@ export interface ReportPreviewResponse {
   columns: ReportColumn[];
   rows: Array<Array<string | number | null>>;
   total_rows: number;
-  /**
-   * Set when the rows stop short because a relation a metric reads has not
-   * been built yet. Absent on every answered preview, including an empty one.
-   */
   not_ready?: NotReadyReason;
 }
 

@@ -2,8 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-// Names link to the IC page; navigation isn't exercised here, so stub Link
-// to a plain anchor with the `$person` param interpolated.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@tanstack/react-router")>();
@@ -42,7 +40,6 @@ const MEMBERS = [
   { entityId: "cy@x.com", displayName: "Cy" },
 ];
 
-/** One sum metric with per-member peer bands (p25 5 / median 10 / p75 15). */
 function metric(
   key: string,
   perMember: Array<{
@@ -118,21 +115,18 @@ describe("MembersGrid", () => {
       />,
     );
     const table = screen.getByRole("table", { name: "Members grid" });
-    // Header carries the server short label; the sort control names the full one.
-    expect(
-      within(table).getByRole("button", {
-        name: "Active AI days — sort by this column",
-      }),
-    ).toHaveTextContent("AI days");
+    const header = within(table).getByRole("button", {
+      name: "Active AI days — sort by this column",
+    });
+    expect(header).toHaveTextContent("AI days");
+    expect(header).toHaveAttribute("title", "Active AI days");
     const rowHeaders = within(table).getAllByRole("rowheader");
     expect(rowHeaders).toHaveLength(3);
     const annLink = within(table).getByRole("link", { name: "Ann" });
     expect(annLink).toHaveAttribute(
       "href",
-      "/ic/ann%40x.com/personal",
+      "/people/ann%40x.com",
     );
-    // No issues facet → the Member header is a plain name toggle, no menu,
-    // and no issues chip.
     expect(
       within(table).getByRole("button", { name: "Person" }),
     ).toBeInTheDocument();
@@ -206,7 +200,6 @@ describe("MembersGrid", () => {
         caption="Members grid"
       />,
     );
-    // Member column + one metric column only.
     expect(screen.getAllByRole("columnheader")).toHaveLength(2);
   });
 
@@ -228,7 +221,6 @@ describe("MembersGrid", () => {
     );
     const names = () =>
       screen.getAllByRole("rowheader").map((th) => th.textContent);
-    // No facet and no cell trails its cohort → issues all 0, tiebroken by name.
     expect(names()).toEqual(["Ann", "Bo", "Cy"]);
 
     const sortButton = screen.getByRole("button", {
@@ -274,7 +266,6 @@ describe("MembersGrid", () => {
         name: /Ann — Active AI days: not recorded/,
       }),
     ).toBeInTheDocument();
-    // Suppressed cohort (n < 5): the member's value shows without a standing.
     expect(
       screen.getByRole("button", {
         name: /Bo — Active AI days: 4 days — No comparison/,
@@ -323,14 +314,11 @@ describe("MembersGrid", () => {
         caption="Members grid"
       />,
     );
-    // Bo (3 behind) leads under the default behind-first sort; Ann's chip
-    // surfaces her strengths instead of a flat "on par".
     const rowHeaders = screen.getAllByRole("rowheader");
     expect(rowHeaders[0]).toHaveTextContent("Bo");
     expect(rowHeaders[0]).toHaveTextContent("3 of 3 behind peers");
     expect(rowHeaders[0]).toHaveTextContent("worst: Time to resolution");
     expect(rowHeaders[1]).toHaveTextContent("2 of 3 ahead of peers");
-    // With the facet, the Member header is a menu (the roster-ordering control).
     expect(
       screen.getByRole("button", { name: /Person/ }),
     ).toBeInTheDocument();
@@ -343,9 +331,9 @@ describe("MembersGrid", () => {
         metricKeys={["ai.active_days"]}
         byKey={byKeyFor(
           metric("ai.active_days", [
-            { id: "ann@x.com", value: 2 }, // below p25 → trails
-            { id: "bo@x.com", value: 20 }, // above p75 → ahead
-            { id: "cy@x.com", value: 8 }, // in pack
+            { id: "ann@x.com", value: 2 },
+            { id: "bo@x.com", value: 20 },
+            { id: "cy@x.com", value: 8 },
           ]),
         )}
         showIssues
@@ -353,8 +341,6 @@ describe("MembersGrid", () => {
       />,
     );
     const rowHeaders = screen.getAllByRole("rowheader");
-    // Ann trails this group's metric → behind; Bo leads it → ahead; Cy is
-    // genuinely mid-pack → on par.
     expect(rowHeaders[0]).toHaveTextContent("Ann");
     expect(rowHeaders[0]).toHaveTextContent("1 of 1 behind peers");
     expect(rowHeaders[0]).toHaveTextContent("worst: Active AI days");
@@ -371,9 +357,9 @@ describe("MembersGrid", () => {
         metricKeys={["ai.active_days"]}
         byKey={byKeyFor(
           metric("ai.active_days", [
-            { id: "ann@x.com", value: 20 }, // top
-            { id: "bo@x.com", value: 8 }, // in pack
-            { id: "cy@x.com", value: 2 }, // bottom
+            { id: "ann@x.com", value: 20 },
+            { id: "bo@x.com", value: 8 },
+            { id: "cy@x.com", value: 2 },
           ]),
         )}
         caption="Members grid"

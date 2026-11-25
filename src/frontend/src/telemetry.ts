@@ -16,7 +16,12 @@ let service: TelemetryService | null = null;
 const pending: Array<{ name: string; data: Record<string, unknown> }> = [];
 const MAX_PENDING = 50;
 
-function emit(name: string, data: Record<string, unknown>): void {
+type ScreenPath = string & { readonly __screenPath: true };
+
+function emit(
+  name: string,
+  data: { path: ScreenPath } & Record<string, unknown>,
+): void {
   if (service) {
     service.logEvent(name, data);
     return;
@@ -39,8 +44,7 @@ export async function startUsageTelemetry(session: Session): Promise<void> {
     url: `${BASE}/usage/events`,
     apiVersion: 2,
     autocapture: false,
-    // The SDK keeps its session in origin-wide storage, so two people signing
-    // in on one browser would share a session id and merge into one visit.
+    // WORKAROUND: the SDK keeps one session per origin, so two people on one browser would merge.
     storagePrefix: `insight-usage:${session.personId}`,
   })
     .identify(session.personId)
@@ -61,29 +65,26 @@ const CUSTOM_PAGES = new Set([
   "new",
 ]);
 
-/** Adoption counting must not become a record of who read whose profile. */
-export function screenPath(path: string): string {
+export function screenPath(path: string): ScreenPath {
   const segments = path.split("/");
   return segments
     .map((segment, i) =>
-      // The segment after `/ic` is a person key whatever shape it arrives in;
-      // matching on shape alone lets an email through.
-      segments[i - 1] === "ic" ||
+      segments[i - 1] === "people" ||
       isDashboardId(segments, i) ||
       isIdentifier(segment)
         ? ":id"
         : segment,
     )
-    .join("/");
+    .join("/") as ScreenPath;
 }
 
 function isDashboardId(segments: readonly string[], i: number): boolean {
   const segment = segments[i] ?? "";
   if (segment === "") return false;
 
-  const page = segments[i - 2] === "portal" && segments[i - 1] === "custom";
+  const page = segments[i - 1] === "dashboards";
   const editor =
-    segments[i - 3] === "custom" &&
+    segments[i - 3] === "dashboards" &&
     segments[i - 2] === "edit" &&
     segments[i - 1] === "dashboards";
 
@@ -97,14 +98,13 @@ function isIdentifier(segment: string): boolean {
   );
 }
 
-let lastPath = "";
+let lastPath = screenPath("");
 
 export function recordPageView(path: string): void {
   lastPath = screenPath(path);
   emit("page_view", { path: lastPath });
 }
 
-/** The shape of a scope, never the person it is rooted at. */
 export function scopeLabel(scope: {
   root: string | null;
   directOnly: boolean;
@@ -119,7 +119,6 @@ export function recordUsageEvent(name: string, target: string): void {
   emit(name, { target, path: lastPath });
 }
 
-/** The screen the reader is on, named as the usage rows name it. */
-export function currentScreen(): string {
+export function currentScreen(): ScreenPath {
   return lastPath;
 }

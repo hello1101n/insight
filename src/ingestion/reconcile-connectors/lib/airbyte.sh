@@ -296,6 +296,18 @@ for p in json.load(sys.stdin):
 }
 
 # ---------------------------------------------------------------------------
+# ab_builder_delete_project <workspace_id> <builder_project_id>
+# POST /api/v1/connector_builder_projects/delete.
+# ---------------------------------------------------------------------------
+ab_builder_delete_project() {
+  local workspace_id="$1"
+  local builder_project_id="$2"
+  local body
+  body=$(printf '{"workspaceId":"%s","builderProjectId":"%s"}' "${workspace_id}" "${builder_project_id}")
+  ab__curl POST /api/v1/connector_builder_projects/delete "${body}"
+}
+
+# ---------------------------------------------------------------------------
 # ab_builder_create_with_manifest <workspace_id> <connector_name> <manifest_yaml_path>
 # POST /api/v1/connector_builder_projects/create with the manifest as a
 # parsed object. Prints the new builderProjectId. Manifest is loaded by

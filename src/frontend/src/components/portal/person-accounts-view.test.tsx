@@ -1,13 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The console's second mode. What matters: an operator arrives holding a name
- * and reaches accounts the queue never shows, because a settled binding is not
- * a problem — until someone asks about it; the roster STAYS on screen while a
- * person is open, exactly as the account listing does behind its own window;
- * and the person rides in the URL, so the view is shareable like the rest.
- *
- * What the window itself does belongs to `person-dialog.test.tsx`.
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,8 +63,6 @@ vi.mock("@/queries/identity-resolution", async (importOriginal) => ({
     return hooks.search;
   },
   useAccountList: () => hooks.accountSearch,
-  // The verbs belong to person-dialog.test; stubbed so the window can render
-  // them without this suite standing up a query client.
   useBindAccount: () => hooks.bind,
   useDetachAccount: () => hooks.detach,
   useExcludeAccount: () => hooks.exclude,
@@ -154,13 +143,10 @@ beforeEach(() => {
     verb.isError = false;
     verb.error = null;
   }
-  portalRouter.reset();
-  portalRouter.set({ zone: "manage", item: "identities", mode: "person" });
+  portalRouter.reset("/manage/identities/person");
 });
 
 describe("PersonAccountsView", () => {
-  // With nobody chosen the mode IS the roster: an operator reviewing
-  // identities needs to see who exists, not guess a name to type.
   it("lists the roster before anyone is chosen", () => {
     roster();
     render(<PersonAccountsView />);
@@ -180,10 +166,6 @@ describe("PersonAccountsView", () => {
     expect(portalRouter.search.person).toBe(ANN);
   });
 
-  // The point of the redesign: the roster does not go away. Both listings in
-  // this console now behave the same — a window opens over what you were
-  // reading, rather than replacing the screen and needing a way back drawn on
-  // it.
   it("keeps the roster behind the window a person opens", () => {
     roster();
     portalRouter.set({ person: ANN });
@@ -194,7 +176,6 @@ describe("PersonAccountsView", () => {
     expect(screen.getByText("Ann Lee")).toBeInTheDocument();
   });
 
-  // Closing IS the way back, so no second control has to say so.
   it("clears the person from the URL when the window closes", async () => {
     portalRouter.set({ person: ANN });
     hooks.accounts.data = { person_id: ANN, accounts: [entry()] };
@@ -205,9 +186,6 @@ describe("PersonAccountsView", () => {
     expect(portalRouter.search.person).toBeUndefined();
   });
 
-  // Two different questions, so two different fields — and never one field
-  // pointed at both. The surface finds PEOPLE; the window over it finds
-  // ACCOUNTS, to bind them to the person it is about.
   it("searches people on the surface and accounts inside the window", () => {
     roster();
     portalRouter.set({ person: ANN });
@@ -219,9 +197,7 @@ describe("PersonAccountsView", () => {
         name: /find an account/i,
       }),
     ).toBeInTheDocument();
-    // By placeholder, not by role: the window marks the page behind it hidden
-    // from assistive tech, which is exactly what an open dialog should do — the
-    // roster is still mounted and still holds its own terms.
+    // WORKAROUND: the open dialog aria-hides the page behind it, so role queries miss the roster field.
     expect(screen.getByPlaceholderText(/search people/i)).toBeInTheDocument();
   });
 });

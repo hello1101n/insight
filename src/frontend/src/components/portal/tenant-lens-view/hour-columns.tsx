@@ -1,26 +1,29 @@
-import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart,
   CartesianGrid,
-  ChartBar,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
   ReferenceArea,
   ReferenceLine,
   XAxis,
-  YAxis,
+} from "recharts";
+import {
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { hourColumns } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const COLUMNS_CONFIG: ChartConfig = { value: { label: "Value" } };
 
-/** A rate per two-hour block, with a ±1σ band around the blocks' mean. */
 export function HourColumnsSection({
   section,
   resolve,
@@ -28,11 +31,9 @@ export function HourColumnsSection({
   section: Extract<TenantSectionSpec, { kind: "hour-columns" }>;
   resolve: ResolveView;
 }) {
-  // Breakdown needs carry no bucket, so any bucket resolves identically.
   const r = resolve(sectionNeeds(section, "day")[0]);
   if (!r) return null;
   const { columns, mean, stddev } = hourColumns(tenantData(r).breakdown);
-  // A band around three columns is a shrug; ask for a real day's spread.
   if (columns.length < 4) return null;
 
   return (
@@ -41,7 +42,7 @@ export function HourColumnsSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}
@@ -73,14 +74,14 @@ export function HourColumnsSection({
                 <ReferenceArea
                   y1={mean - stddev}
                   y2={mean + stddev}
-                  fill="var(--chart-2)"
+                  fill={chartColor(1)}
                   fillOpacity={0.12}
                 />
               ) : null}
               {mean != null ? (
                 <ReferenceLine
                   y={mean}
-                  stroke="var(--chart-2)"
+                  stroke={chartColor(1)}
                   strokeDasharray="4 4"
                 />
               ) : null}
@@ -88,7 +89,7 @@ export function HourColumnsSection({
               <ChartBar
                 dataKey="value"
                 name={r.short_label ?? r.label}
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
               />
             </BarChart>
           </ChartContainer>

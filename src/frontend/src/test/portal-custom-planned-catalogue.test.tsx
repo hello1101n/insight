@@ -1,9 +1,3 @@
-/**
- * An install that marks a catalogue planned, through the real router.
- *
- * Its own file because `navPolicy()` reads `/config.js` once and memoises the
- * answer, so the policy has to be in place before anything renders.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   RouterProvider,
@@ -109,7 +103,7 @@ afterEach(() => {
 });
 
 describe("a catalogue the install marks planned", { timeout: 20_000 }, () => {
-  it.each(["/portal/custom/alerts", "/portal/custom/alerts/new"])(
+  it.each(["/dashboards/alerts", "/dashboards/alerts/new"])(
     "sends an administrator with planned sections off from %s to the dashboards",
     async (path) => {
       setPortalShowPlanned(false);
@@ -117,7 +111,7 @@ describe("a catalogue the install marks planned", { timeout: 20_000 }, () => {
       const router = renderAt(path);
 
       await waitFor(
-        () => expect(router.state.location.pathname).toBe("/portal/custom"),
+        () => expect(router.state.location.pathname).toBe("/dashboards"),
         WAIT
       );
       expect(
@@ -132,10 +126,10 @@ describe("a catalogue the install marks planned", { timeout: 20_000 }, () => {
     signedInAs({ admin: false });
     setPortalShowPlanned(false);
 
-    const router = renderAt("/portal/custom/alerts");
+    const router = renderAt("/dashboards/alerts");
 
     await waitFor(
-      () => expect(router.state.location.pathname).toBe("/portal/custom"),
+      () => expect(router.state.location.pathname).toBe("/dashboards"),
       WAIT
     );
     expect(
@@ -146,7 +140,7 @@ describe("a catalogue the install marks planned", { timeout: 20_000 }, () => {
   it("opens, and lists it as planned, while planned sections are on", async () => {
     setPortalShowPlanned(true);
 
-    const router = renderAt("/portal/custom/alerts");
+    const router = renderAt("/dashboards/alerts");
 
     await expectAlertsPage();
     expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute(
@@ -155,18 +149,18 @@ describe("a catalogue the install marks planned", { timeout: 20_000 }, () => {
     expect(screen.getByRole("link", { name: "Metrics" })).not.toHaveAttribute(
       "data-planned"
     );
-    expect(router.state.location.pathname).toBe("/portal/custom/alerts");
+    expect(router.state.location.pathname).toBe("/dashboards/alerts");
   });
 
   it("leaves the page when the reader turns planned sections off", async () => {
     setPortalShowPlanned(true);
-    const router = renderAt("/portal/custom/alerts");
+    const router = renderAt("/dashboards/alerts");
     await expectAlertsPage();
 
     act(() => setPortalShowPlanned(false));
 
     await waitFor(
-      () => expect(router.state.location.pathname).toBe("/portal/custom"),
+      () => expect(router.state.location.pathname).toBe("/dashboards"),
       WAIT
     );
   });

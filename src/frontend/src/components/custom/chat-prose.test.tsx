@@ -13,7 +13,6 @@ describe("<ChatProse>", () => {
 
     expect(screen.getByText("events").tagName).toBe("STRONG");
     expect(screen.getByText("raw_data").tagName).toBe("STRONG");
-    // And the asterisks themselves are gone.
     expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
   });
 

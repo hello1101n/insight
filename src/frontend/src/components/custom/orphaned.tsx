@@ -10,8 +10,7 @@ import { MoreDefinitions } from "@/components/custom/definition-paging";
 import { OwnerName } from "@/components/custom/person-name";
 import { refusal } from "@/components/custom/refusal";
 import { PersonCell } from "@/components/portal/person-cell";
-import { Badge, Button } from "@gears-frontx/ui-kit";
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge, Button, Card, CardContent } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { formatUtcInstant } from "@/lib/format";
 import { TEXT_HEADING, TEXT_LABEL, TEXT_NAME } from "@/lib/type-scale";
@@ -40,7 +39,6 @@ export function OrphanedChip() {
   );
 }
 
-/** Administrators only: the orphaned list is refused to anyone else. */
 export function OrphanedDashboards() {
   const pages = useInfiniteQuery(orphanedPagesQuery("dashboards"));
   const [moving, setMoving] = useState<Orphan | null>(null);
@@ -102,7 +100,7 @@ function OrphanedDashboardCard({
   onTransfer: () => void;
 }) {
   return (
-    <Card size="sm" className="bg-muted/40">
+    <Card size="sm">
       <CardContent className="flex items-center gap-3">
         <UserX className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="flex min-w-0 flex-1 flex-col">

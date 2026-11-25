@@ -33,15 +33,15 @@ vi.mock("@/queries/visible-roster", () => ({
 }));
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
-  useRouterState: () => "/portal",
+  useParams: () => ({}),
 }));
 vi.mock("@/lib/portal/portal-nav", () => ({
   usePortalNavActions: () => ({ setScope: vi.fn() }),
 }));
-vi.mock("@/lib/metrics/entity", () => ({ personIdFromPath: () => null }));
-// The sidebar primitives need their provider; the tree's own markup is what
-// this file is about, so they stand in as plain elements.
-vi.mock("@/components/ui/sidebar", () => ({
+// WORKAROUND: the kit's sidebar primitives need their provider, so they
+// stand in as plain elements.
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
   SidebarMenu: ({ children }: { children?: React.ReactNode }) => (
     <ul>{children}</ul>
   ),
@@ -130,7 +130,6 @@ describe("OrgTree", () => {
     render(<OrgTree />);
     expect(screen.getByText("Root Person")).toBeInTheDocument();
     expect(screen.getByText("Lead Person")).toBeInTheDocument();
-    // Nothing is active, so the lead's reports stay folded away.
     expect(screen.queryByText("Deep Person")).not.toBeInTheDocument();
   });
 
@@ -140,7 +139,7 @@ describe("OrgTree", () => {
 
     const expand = screen.getByRole("button", { name: "Expand Lead Person" });
     expect(expand).toHaveAttribute("data-sidebar", "menu-button");
-    expect(expand).toHaveClass("w-8", "shrink-0", "justify-center", "p-0");
+    expect(expand).toHaveClass("w-8", "shrink-0", "justify-center");
     expect(screen.getByRole("link", { name: "Lead Person" })).toHaveAttribute(
       "data-sidebar",
       "menu-button"
@@ -212,8 +211,6 @@ describe("OrgTree", () => {
 describe("OrgTree on an organisation with no reporting lines", () => {
   beforeEach(() => {
     mocks.isFlat = true;
-    // The tree the profile serves is the viewer alone — the shape that left
-    // this pane showing one name beside a full Employees table.
     mocks.viewer = {
       person_id: "root",
       display_name: "Me",

@@ -12,6 +12,7 @@ requires-python = ">=3.12"
 dependencies = [
     "airbyte-cdk>=7.16.0",
     "ldap3>=2.9.1",
+    "pydantic>=2,<3",
 ]
 
 [project.optional-dependencies]
@@ -26,8 +27,7 @@ source-active-directory = "source_active_directory.source:main"
 # Do not resolve a version published in the last week: a freshly pushed release is
 # where a compromised maintainer account shows up first.
 exclude-newer = "7 days"
-# airbyte-cdk pins nltk==3.9.4; the image installs 3.10.4 over it (see Dockerfile),
-# so keep the resolved dependency graph on the same version.
+# airbyte-cdk pins nltk==3.9.4, which OSV flags. The image installs uv.lock, so this override reaches it.
 override-dependencies = ["nltk>=3.10.4"]
 
 [tool.pytest.ini_options]

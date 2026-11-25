@@ -99,6 +99,7 @@ dependencies = [
  "futures-util",
  "hex",
  "insight-clickhouse",
+ "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
  "insight-migration",
@@ -509,6 +510,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures",
+ "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
  "insight-openapi",
@@ -542,6 +544,7 @@ dependencies = [
  "async-trait",
  "cf-gears-toolkit-canonical-errors",
  "cf-gears-toolkit-security",
+ "insight-http-client",
  "jsonwebtoken",
  "reqwest 0.12.28",
  "serde",
@@ -2011,6 +2014,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "connectors"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "cf-gears-api-gateway",
+ "cf-gears-authn-resolver",
+ "cf-gears-authz-resolver",
+ "cf-gears-grpc-hub",
+ "cf-gears-oidc-authn-plugin",
+ "cf-gears-service-discovery",
+ "cf-gears-single-tenant-tr-plugin",
+ "cf-gears-static-authz-plugin",
+ "cf-gears-tenant-resolver",
+ "cf-gears-toolkit",
+ "cf-gears-toolkit-canonical-errors",
+ "cf-gears-toolkit-security",
+ "cf-gears-types-registry",
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "clickhouse",
+ "insight-clickhouse",
+ "insight-http-client",
+ "insight-http-metrics",
+ "insight-log-context",
+ "insight-migration",
+ "insight-openapi",
+ "k8s-openapi",
+ "kube",
+ "reqwest 0.12.28",
+ "sea-orm",
+ "sea-orm-migration",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2896,21 +2948,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
-name = "foreign-types"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-dependencies = [
- "foreign-types-shared",
-]
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-
-[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3116,6 +3153,7 @@ dependencies = [
  "chrono",
  "clap",
  "hex",
+ "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
  "insight-openapi",
@@ -3498,22 +3536,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-tls"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
-dependencies = [
- "bytes",
- "http-body-util",
- "hyper",
- "hyper-util",
- "native-tls",
- "tokio",
- "tokio-native-tls",
- "tower-service",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3777,6 +3799,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "insight-http-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cf-gears-toolkit-security",
+ "reqwest 0.12.28",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "insight-http-metrics"
 version = "0.1.0"
 dependencies = [
@@ -3852,6 +3888,7 @@ dependencies = [
  "clickhouse",
  "futures",
  "insight-clickhouse",
+ "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
  "insight-openapi",
@@ -4457,23 +4494,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "native-tls"
-version = "0.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "465500e14ea162429d264d44189adc38b199b62b1c21eea9f69e4b73cb03bbf2"
-dependencies = [
- "libc",
- "log",
- "openssl",
- "openssl-probe",
- "openssl-sys",
- "schannel",
- "security-framework",
- "security-framework-sys",
- "tempfile",
-]
-
-[[package]]
 name = "nix"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4736,47 +4756,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "openssl"
-version = "0.10.81"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45"
-dependencies = [
- "bitflags 2.11.1",
- "cfg-if",
- "foreign-types",
- "libc",
- "openssl-macros",
- "openssl-sys",
-]
-
-[[package]]
-name = "openssl-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "opentelemetry"
@@ -5358,42 +5341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "previews"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "cf-gears-api-gateway",
- "cf-gears-authn-resolver",
- "cf-gears-authz-resolver",
- "cf-gears-grpc-hub",
- "cf-gears-oidc-authn-plugin",
- "cf-gears-service-discovery",
- "cf-gears-single-tenant-tr-plugin",
- "cf-gears-static-authz-plugin",
- "cf-gears-tenant-resolver",
- "cf-gears-toolkit",
- "cf-gears-toolkit-canonical-errors",
- "cf-gears-toolkit-security",
- "cf-gears-types-registry",
- "chrono",
- "clap",
- "insight-log-context",
- "insight-openapi",
- "k8s-openapi",
- "kube",
- "regex-lite",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "utoipa",
- "uuid",
-]
-
-[[package]]
 name = "primefield"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5936,12 +5883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "regex-lite"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
-
-[[package]]
 name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5972,12 +5913,10 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-rustls",
- "hyper-tls",
  "hyper-util",
  "js-sys",
  "log",
  "mime",
- "native-tls",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -5988,7 +5927,6 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-native-tls",
  "tokio-rustls",
  "tower",
  "tower-http 0.6.11",
@@ -7638,16 +7576,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "tokio-native-tls"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
-dependencies = [
- "native-tls",
- "tokio",
 ]
 
 [[package]]

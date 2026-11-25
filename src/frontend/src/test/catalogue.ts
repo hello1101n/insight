@@ -8,7 +8,6 @@ import type {
 
 const CHANGED = "2026-01-05T09:00:00.000Z";
 
-/** A metric as its catalogue lists it, over a synthetic table unless given. */
 export function metricListed(
   id: string,
   name: string = id,
@@ -17,7 +16,6 @@ export function metricListed(
   return { id, name, updated_at: CHANGED, body };
 }
 
-/** A widget as its catalogue lists it, drawing a table of `metric` unless given. */
 export function widgetListed(
   id: string,
   name: string = id,
@@ -27,7 +25,6 @@ export function widgetListed(
   return { id, name, updated_at: CHANGED, body, metric_name: metricName };
 }
 
-/** A datasets page holding these names, each untitled with no fields. */
 export function datasetNames(names: string[], total = names.length): NamePage {
   return {
     names,

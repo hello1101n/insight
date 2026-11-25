@@ -5,23 +5,9 @@ import type {
 } from "@/lib/metrics/collection";
 import type { TenantLensConfig, TenantSectionSpec } from "@/lib/portal/lens-configs";
 
-/** How a renderer reaches the result the planner requested for its need. */
 export type ResolveView = (
   need: TenantViewNeed
 ) => NormalizedMetricResult | undefined;
-
-/**
- * Turns a tenant lens config into the requests it needs. The backend rejects
- * a second view of the same kind on one metric within one request
- * (`validation.rs`: "duplicate view"), so a lens whose sections need, say,
- * three differently-dimensioned timeseries of ci.runs cannot ride one
- * request — this planner packs the conflicting views into as few extra
- * collections as possible and remembers where each section's view landed.
- *
- * Both the planner and the section renderers derive a section's needs from
- * the same `sectionNeeds`, so a renderer always finds the view the planner
- * requested for it — there is no second bookkeeping to drift.
- */
 
 export type HalfWindow = "first-half" | "second-half";
 
@@ -39,22 +25,13 @@ export type TenantViewNeed =
       view: "breakdown";
       metric: string;
       dimensions: readonly string[];
-      /**
-       * A mergeable need tolerates EXTRA dimensions in the served rows and
-       * re-aggregates by summing — only valid for count/sum readings. An
-       * exact need (the default) must be served grouped by exactly its
-       * dimensions: rates and medians cannot be re-aggregated client-side.
-       */
       merge?: boolean;
-      /** Served over one half of the window instead of the whole period. */
       window?: HalfWindow;
     };
 
-/** Groups a ranked dimension can spread into before the panel stops reading. */
 const MAX_GROUPS = 40;
 const SMALL_MULTIPLES_DEFAULT = 12;
 
-/** The views one section draws from, in stable order. */
 export function sectionNeeds(
   section: TenantSectionSpec,
   bucket: MetricBucket
@@ -117,8 +94,6 @@ export function sectionNeeds(
           : []),
       ];
     case "heatmap-hours":
-      // Day buckets regardless of the lens bucket: the weekday axis needs
-      // the date, and 400 days × 12 blocks still fits the backend's limits.
       return [
         {
           view: "timeseries",
@@ -148,7 +123,6 @@ export function sectionNeeds(
         },
       ];
     case "marginal-impact":
-      // Derived gate math over run counts — the dims the gate definition needs.
       return [
         {
           view: "breakdown",
@@ -189,8 +163,6 @@ export function sectionNeeds(
         },
       ];
     case "verdict-table":
-      // Weekly regardless of the lens bucket: the verdict IS about weekly
-      // spread, so a monthly lens must not coarsen it away.
       return [
         {
           view: "timeseries",
@@ -213,9 +185,7 @@ export type NeedLocation =
   | { at: "second-half" };
 
 export interface TenantRequestPlan {
-  /** Concurrent whole-period requests; index 0 carries every period view. */
   collections: MetricCollectionConfig[];
-  /** Views served over each half of the window (empty when unused). */
   halves: MetricCollectionConfig;
   locate(need: TenantViewNeed): NeedLocation | undefined;
 }
@@ -255,9 +225,6 @@ function needSignature(need: TenantViewNeed): string {
   }
 }
 
-// The merge flag stays in the identity while slotting: an exact consumer
-// must never share a slot a later merge need could widen under it. The
-// post-widening coalesce pass drops the flag and merges true duplicates.
 function slotSignature(slot: Slot): string {
   return [
     slot.view,
@@ -287,9 +254,6 @@ export function planTenantRequests(
       if (consumerSlot.has(sig)) continue;
       if (need.view === "breakdown" && need.merge && !need.window) {
         const dims = new Set(need.dimensions);
-        // A merge consumer re-aggregates, so any slot whose dims cover its
-        // own serves it; widening a narrower merge slot keeps that true for
-        // the slot's earlier consumers too.
         let index = slots.findIndex(
           (slot) =>
             slot.view === "breakdown" &&
@@ -349,8 +313,6 @@ export function planTenantRequests(
     }
   }
 
-  // A widened merge slot can end up identical to an exact slot with the same
-  // dims — serve both consumers from one request instead of two.
   const canonical = new Map<string, number>();
   const remap = new Map<number, number>();
   slots.forEach((slot, index) => {
@@ -368,9 +330,6 @@ export function planTenantRequests(
     remap.set(index, kept ?? index);
   });
 
-  // First-fit pack: a collection can hold one view of each kind per metric.
-  // Periods lead so they all land in collection 0 — only the primary request
-  // carries the previous-period twin the tiles derive deltas from.
   const orderedSlots = [...new Set(remap.values())].sort((a, b) => {
     const rank = (i: number) => (slots[i].view === "period" ? 0 : 1);
     return rank(a) - rank(b) || a - b;

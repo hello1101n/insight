@@ -1,41 +1,31 @@
-import { ComingSoon } from "@/components/widgets/coming-soon";
+import { useTranslation } from "react-i18next";
+import { CartesianGrid, ComposedChart, ReferenceLine, XAxis } from "recharts";
 import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  Skeleton,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import {
-  CartesianGrid,
-  ChartArea,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartLine,
-  ChartTooltip,
-  ChartTooltipContent,
-  ComposedChart,
-  ReferenceLine,
-  type ChartConfig,
-  XAxis,
-  YAxis,
-} from "@/components/ui/chart";
-import { Skeleton } from "@gears-frontx/ui-kit";
+} from "@gears-frontx/ui-kit";
 
-/** One plotted series: its metric key, its label, and how to draw it. */
+import { ChartArea, ChartLine, YAxis } from "@/components/chart-series";
+import { ComingSoon } from "@/components/widgets/coming-soon";
+import { chartColor } from "@/lib/chart-palette";
+
 export type SectionTrendSeries = {
   key: string;
   label: string;
-  /** "step" reads as "held at", not "drifted to" — for slow-moving medians. */
   type?: "line" | "step" | "area" | "stacked-area";
   yAxisId?: "left" | "right";
 };
 
-/**
- * One bucket. A series key is ABSENT when that series has no reading for the
- * bucket — never zero, so the line shows a gap instead of a measurement.
- */
 export type SectionTrendPoint = {
   date: string;
   [seriesKey: string]: number | string;
@@ -47,27 +37,14 @@ export interface SectionTrendProps {
   series: SectionTrendSeries[];
   data: SectionTrendPoint[];
   targetLine?: { value: number; label: string };
-  /**
-   * Force the right axis on. Normally unnecessary — it is rendered whenever a
-   * series asks for it — but a caller can pin it so the plot area does not
-   * shift when a right-axis series drops out of the data.
-   */
   rightAxis?: boolean;
   height?: number;
   isPending?: boolean;
   isError?: boolean;
   onRetry?: () => void;
-  /**
-   * The bucket a reader clicked, by its own label — what the axis shows and
-   * what the trend rows are keyed by. A card that also opens as a whole must
-   * stop this event, or one click answers two questions at once.
-   */
   onBucketClick?: (bucket: string) => void;
 }
 
-const DEFAULT_CHART_KEYS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"];
-
-/** The shared trend card: one chart, the same states, wherever a trend appears. */
 export function SectionTrend({
   title,
   description,
@@ -81,14 +58,15 @@ export function SectionTrend({
   onRetry,
   onBucketClick,
 }: SectionTrendProps) {
+  const { t } = useTranslation();
   if (isPending) {
-    return <Skeleton className="h-48 w-full rounded-lg" />;
+    return <Skeleton className="h-48 w-full" />;
   }
   if (isError) {
     return (
       <ComingSoon
         state="error"
-        label={`${title} — unable to load`}
+        label={t("common.chart.unable_to_load_named", { title })}
         onRetry={onRetry}
       />
     );
@@ -97,17 +75,15 @@ export function SectionTrend({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-          <CardDescription>No trend data yet.</CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{t("common.chart.no_trend")}</CardDescription>
         </CardHeader>
       </Card>
     );
   }
 
-  // Series keys are metric keys like "collab.messages_sent". A dot is illegal
-  // in a CSS custom-property name (so `--color-<key>` never resolves → invisible
-  // strokes) and makes recharts treat the dataKey as a nested path. Remap every
-  // series to a safe, collision-free alias and rewrite the data rows to match.
+  // WORKAROUND: a dot in a key breaks the `--color-<key>` custom property and reads as a
+  // nested path to Recharts, so series and rows are rekeyed to safe aliases.
   const safeKeys = series.map((s, i) => `s${i}_${s.key.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
   const safeSeries = series.map((s, i) => ({ ...s, key: safeKeys[i] }));
   const safeData = data.map((row) => {
@@ -119,24 +95,23 @@ export function SectionTrend({
     return next;
   });
 
-  // Derived, not just taken from the prop: a series with `yAxisId: "right"`
-  // and no right YAxis rendered is dropped by recharts without a word.
+  // WORKAROUND: Recharts silently drops a `yAxisId: "right"` series when no right YAxis renders.
   const needsRightAxis =
     rightAxis || safeSeries.some((s) => s.yAxisId === "right");
 
   const config: ChartConfig = Object.fromEntries(
     safeSeries.map((s, i) => [
       s.key,
-      { label: s.label, color: `var(--${DEFAULT_CHART_KEYS[i % DEFAULT_CHART_KEYS.length]})` },
+      { label: s.label, color: chartColor(i) },
     ]),
   );
 
   return (
     <Card className="relative">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
         {description ? (
-          <CardDescription className="text-xs">{description}</CardDescription>
+          <CardDescription>{description}</CardDescription>
         ) : null}
       </CardHeader>
       <CardContent>
@@ -154,8 +129,6 @@ export function SectionTrend({
                 ? (next, event) => {
                     const bucket = next?.activeLabel;
                     if (typeof bucket !== "string") return;
-                    // The card around this chart opens the whole period; a
-                    // point is a narrower question, so it must not also fire.
                     (
                       event as { stopPropagation?: () => void }
                     )?.stopPropagation?.();
@@ -228,7 +201,7 @@ export function SectionTrend({
                   yAxisId={yAxisId}
                   dataKey={s.key}
                   name={s.label}
-                  type={s.type === "step" ? "stepAfter" : "linear"}
+                  type={s.type === "step" ? "stepAfter" : undefined}
                   stroke={color}
                   strokeWidth={2}
                 />

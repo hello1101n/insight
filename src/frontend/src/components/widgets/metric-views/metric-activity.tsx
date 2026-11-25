@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 import {
   evidenceSelection,
@@ -10,7 +10,7 @@ import {
   withOwnTarget,
 } from "@/components/metric-evidence-context";
 import { Button, Spinner } from "@gears-frontx/ui-kit";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
+import { MetricName } from "@/components/widgets/metric-name";
 import {
   beforeAvailableDataDays,
   isCovered,
@@ -21,7 +21,6 @@ import {
   type StripDay,
 } from "@/lib/insight/day-strip";
 import { metricComparisons } from "@/lib/insight/metric-comparison";
-import { metricHelp } from "@/lib/insight/metric-help";
 import {
   activityEvents,
   finestGrain,
@@ -32,33 +31,18 @@ import {
   forEntity,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
-import {
-  activityEventLabel,
-  TYPE_DIMENSION,
-  withTypeDimension,
-} from "@/lib/metrics/provider-links";
+import { activityEventLabel, TYPE_DIMENSION } from "@/lib/metrics/provider-links";
 import { RecordLink } from "@/components/record-link";
 import { useMetricDaySeries } from "@/queries/metric-day-series";
 import { useMetricDetail } from "@/queries/metric-detail";
 import {
   useCollectionBoundary,
-  useDeclaredMetricDimensions,
+  useTypedEvidenceSelection,
 } from "@/queries/metric-definitions";
 import { cn } from "@/lib/utils";
 
-/** Events listed inline before the rest goes to the evidence dialog. */
 const EVENTS_SHOWN = 8;
 
-/**
- * What a person actually did, at the closest grain the metric offers.
- *
- * A section is where a number is explained, and the explanation a reader
- * wants is the work behind it: which commits, on which days, against what
- * denominator. Each metric declares how closely it can be read, so this
- * renders that and nothing more — a counter is never dressed up as a list of
- * things, and a metric that offers no detail says so rather than being drawn
- * as though it had some.
- */
 export function MetricActivity({
   metric,
   previous,
@@ -68,27 +52,19 @@ export function MetricActivity({
   metric: NormalizedMetricResult;
   previous: NormalizedMetricResult | null;
   entityId: string;
-  /** "month" / "week" — what the change is measured against. */
   periodNoun: string;
 }) {
   const grain = finestGrain(metric);
-  const declared = useDeclaredMetricDimensions();
   const base = metric.selection
     ? evidenceSelection(metric.selection, entityId)
     : null;
-  // INVARIANT: asking for `type` where a metric does not declare it is rejected,
-  // so the read waits for the catalogue.
-  const declaredForMetric = base
-    ? declared.byMetricKey?.get(base.metric_key)
-    : null;
-  const selection = base ? withTypeDimension(base, declaredForMetric) : null;
-  // Two shapes of detail, and only the one this grain renders is fetched: a
-  // list of things reads evidence rows, a strip of days reads the metric's own
-  // daily series.
-  const ready = grain != null && !declared.isPending;
-  const detail = useMetricDetail(selection, ready && grain === "event");
-  const series = useMetricDaySeries(selection, ready && grain !== "event");
-  const help = metricHelp(metric);
+  const selection = useTypedEvidenceSelection(base);
+  const detail = useMetricDetail(selection, grain === "event");
+  const series = useMetricDaySeries(
+    selection,
+    grain != null && grain !== "event"
+  );
+  const description = metric.description?.trim();
   const data = forEntity(metric, entityId);
   const total = formatMetricValue(data.value, metric.format, metric.unit);
   const against = metricComparisons(metric, previous, entityId);
@@ -101,24 +77,14 @@ export function MetricActivity({
             which the figures drop to their own line. */}
         <div className="min-w-0 flex-[1_1_16rem]">
           <MetricName metric={metric} className="text-sm font-medium" />
-          {help?.description ? (
+          {description ? (
             <p className="truncate text-xs text-muted-foreground">
-              {help.description}
+              {description}
             </p>
           ) : null}
         </div>
         <div className="ms-auto shrink-0 text-right">
           <div className="text-sm tabular-nums">{total}</div>
-          {/* Both readings, stated and neither judged. The reader's own last
-              period comes first because it is the one they can act on; the
-              cohort follows, because they did not choose it and cannot see
-              who is in it. */}
-          {/* No standing mark here, though the list below carries one on
-              every row. What makes that mark readable is the shared line the
-              list draws behind it: a dot means something against a visible
-              middle and nothing at all on its own. Three rows would not earn
-              a line of their own either — the mark exists to make fifteen
-              rows scannable, and here both comparisons are already in words. */}
           <div className="text-xs text-muted-foreground">
             {[
               against.change
@@ -152,16 +118,12 @@ function Body({
 }: {
   grain: ReturnType<typeof finestGrain>;
   metric: NormalizedMetricResult;
-  /** The read's own selection — the dialog opens on exactly what was listed. */
   selection: MetricEvidenceSelection | null;
   detail: ReturnType<typeof useMetricDetail>;
   series: ReturnType<typeof useMetricDaySeries>;
 }) {
   const source = grain === "event" ? detail : series;
   if (grain == null) {
-    // Said plainly rather than left blank: a reader who can open the day of
-    // every other metric on the page will otherwise read the silence here as
-    // a screen that failed to load.
     return (
       <p className="text-xs text-muted-foreground">
         This metric reports a period total only — no daily or per-item detail is
@@ -172,7 +134,7 @@ function Body({
   if (source.isPending) {
     return (
       <div className="flex h-12 items-center">
-        <Spinner className="size-4 text-muted-foreground" />
+        <Spinner />
       </div>
     );
   }
@@ -210,10 +172,6 @@ function NothingRecorded() {
   );
 }
 
-/**
- * Distinct from `NothingRecorded`: that one states something about the period,
- * which a read that never reached the data cannot.
- */
 function NoDataYet() {
   return (
     <p className="text-xs text-muted-foreground">
@@ -237,8 +195,6 @@ function EventList({
   const events = useMemo(() => activityEvents(rows), [rows]);
   const shown = events.slice(0, EVENTS_SHOWN);
   const rest = events.length - shown.length;
-  // A column only where the rows have one to fill it: a metric whose records
-  // carry no type would otherwise reserve width for a strip of dashes.
   const typed = events.some((event) => eventType(event.values) != null);
 
   return (
@@ -285,7 +241,7 @@ function EventList({
         <Button
           type="button"
           variant="link"
-          className="h-auto justify-start p-0 text-xs"
+          className="justify-start"
           onClick={() =>
             evidence.openEvidenceTargets(
               withOwnTarget(scope, { selection, label: metric.label }),
@@ -300,7 +256,6 @@ function EventList({
   );
 }
 
-/** What kind of thing a row is, when the row says — "Bug", "Story". */
 function eventType(values: Readonly<Record<string, unknown>>): string | null {
   const value = values[TYPE_DIMENSION];
   if (typeof value !== "string") return null;
@@ -308,13 +263,6 @@ function eventType(values: Readonly<Record<string, unknown>>): string | null {
   return type === "" ? null : type;
 }
 
-/**
- * One day, in words.
- *
- * "No reading" is spelled out rather than shown as a zero, because the whole
- * point of the gap in the drawing is that those are different — and a reader
- * checking a suspicious blank is exactly who reaches for this.
- */
 function dayTitle(metric: NormalizedMetricResult, day: StripDay): string {
   const when = formatDate(day.date, "d MMM");
   if (day.coverage === "before_available_data")
@@ -322,9 +270,6 @@ function dayTitle(metric: NormalizedMetricResult, day: StripDay): string {
   if (day.coverage === "not_yet_collected")
     return `${when} — not collected yet`;
   if (day.value == null) return `${when} — no reading`;
-  // Formatted once, from the reading as the metric computed it. A ratio
-  // arrives with its scale and its value transform already applied, so
-  // anything applied again here would show a clamped share past its clamp.
   const value = formatMetricValue(day.value, metric.format, metric.unit);
   const suffix = day.provisional ? ", may still change" : "";
   if (day.numerator != null && day.denominator != null) {
@@ -333,13 +278,6 @@ function dayTitle(metric: NormalizedMetricResult, day: StripDay): string {
   return `${when} — ${value}${suffix}`;
 }
 
-/**
- * The strip in words, for anyone not reading it with their eyes.
- *
- * States the span, the busiest day and how many days hold no reading — the
- * three things the drawing is for. The per-day readout stays a pointer
- * enhancement over this.
- */
 function stripSummary(
   metric: NormalizedMetricResult,
   days: StripDay[],
@@ -383,19 +321,17 @@ function stripSummary(
   return `${parts.join("; ")}.`;
 }
 
+function readoutAnchor(hoveredIndex: number, dayCount: number): CSSProperties {
+  const barStartPct = (hoveredIndex / dayCount) * 100;
+  const barEndPct = ((hoveredIndex + 1) / dayCount) * 100;
+  if (hoveredIndex < dayCount / 2) return { left: `${barStartPct}%` };
+  return { left: `${barEndPct}%`, transform: "translateX(-100%)" };
+}
+
 function dayWord(n: number): string {
   return n === 1 ? "day" : "days";
 }
 
-/**
- * What the period holds that the drawing cannot say: how much of it the source
- * never reached, and what is unsettled inside the part it did.
- *
- * Two slots, each assembled from its own facts rather than picked off a
- * priority list. Within a slot both facts are stated when both apply — a slot
- * that chose between them let the larger hide the smaller, which is how a
- * window with weeks of missing coverage reported only its two open days.
- */
 function coverageNote(strip: StripDay[]): string | null {
   const before = beforeAvailableDataDays(strip);
   const pending = notYetCollectedDays(strip);
@@ -420,11 +356,6 @@ function observedNote(strip: StripDay[]): string | null {
   return parts.length === 0 ? null : parts.join(", ");
 }
 
-/**
- * The caption: the two notes above, and the denominator only where one of them
- * had nothing to say. The denominator is context for a share, never a reason
- * to drop a fact about coverage or settlement.
- */
 function stripNotes(
   strip: StripDay[],
   constantDenominator: number | null
@@ -463,12 +394,6 @@ function DayStrip({
   if (days.length === 0) return null;
 
   const hoveredDay = hovered != null ? (days[hovered] ?? null) : null;
-  // Which way the hover readout grows: rightwards from the bar over the first
-  // half of the strip, leftwards over the second, so it never runs off an end.
-  const leftAnchored = hovered != null && hovered < days.length / 2;
-  // One denominator for the whole period is worth naming: it is the thing a
-  // reader argues with when a share looks wrong, and it is invisible in the
-  // percentage itself.
   const denominators = new Set(
     days.flatMap((d) => (d.denominator != null ? [d.denominator] : []))
   );
@@ -477,22 +402,6 @@ function DayStrip({
 
   return (
     <div className="mt-5 flex flex-col gap-1.5">
-      {/* The reading appears over the bar the pointer is on, not in the
-          caption below. Put anywhere else it is a change in the middle of a
-          chart, which is exactly where a reader looking at one bar does not
-          look — they hover, the number moves somewhere in their periphery, and
-          they never learn it was there.
-
-          One positioned element rather than a tooltip per day: a month is
-          thirty-one triggers, and thirty-one floating cards is both heavy and
-          the wrong shape. It sits ABOVE the bars so it never covers the
-          neighbours being compared against.
-
-          The strip carries its own description rather than making each day
-          focusable. Thirty-one tab stops per strip, three strips to a section,
-          is a worse answer for a keyboard reader than one sentence saying what
-          the shape is — and the per-day figure is an enhancement over content
-          the header and caption already state. */}
       <div
         className="relative flex h-10 items-end gap-px border-b"
         role="img"
@@ -503,23 +412,7 @@ function DayStrip({
           <div
             aria-hidden
             className="pointer-events-none absolute bottom-full z-10 mb-1 rounded border bg-popover px-1.5 py-0.5 text-xs whitespace-nowrap text-popover-foreground tabular-nums shadow-sm"
-            style={{
-              // Anchored to the bar's own edge and grown inwards, rather than
-              // centred and clamped. Centring needs to know the readout's
-              // width to keep it inside, and it does not: the text varies from
-              // "3 messages" to "3.5 hours of 8", so any constant guarding the
-              // ends is a guess that the longer strings walk straight past.
-              // Growing inwards cannot overflow whatever the text says.
-              //
-              // Which edge is the bar's own edge depends on the direction it
-              // grows in: a readout on the left half starts at the bar's left
-              // boundary, one on the right half ENDS at its right boundary.
-              // Taking the left boundary for both put every right-half readout
-              // a full bar to the left of the bar it describes, and left the
-              // last bar with a strip of empty space beside it.
-              left: `${((hovered + (leftAnchored ? 0 : 1)) / days.length) * 100}%`,
-              transform: leftAnchored ? undefined : "translateX(-100%)",
-            }}
+            style={readoutAnchor(hovered, days.length)}
           >
             {dayTitle(metric, hoveredDay)}
           </div>
@@ -531,22 +424,12 @@ function DayStrip({
             className="relative flex h-full flex-1 items-end"
           >
             {!isCovered(day) ? (
-              // A wash over the whole column, not a bar: it says the day was
-              // never delivered, and at this weight it cannot be misread as a
-              // value the way any bottom-anchored height would be.
               <div className="h-full w-full bg-foreground/8" />
             ) : day.height == null ? null : (
               <div
                 className={cn(
                   "w-full rounded-t-[1px] bg-foreground/35",
-                  // A measured zero keeps a hairline: without it the day is
-                  // indistinguishable from one the source said nothing about,
-                  // and those mean opposite things.
                   day.height === 0 && "bg-foreground/20",
-                  // Still open to revision: the reading is real, so it keeps
-                  // its height and fades. Fading rather than re-toning leaves
-                  // the zero's own tone intact, so a zero that may still move
-                  // stays distinguishable from one that has settled.
                   day.provisional && "opacity-50"
                 )}
                 style={{ height: `${Math.max(day.height * 100, 2)}%` }}

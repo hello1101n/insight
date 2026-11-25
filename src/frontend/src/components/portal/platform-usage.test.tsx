@@ -1,17 +1,10 @@
 // @vitest-environment jsdom
-/**
- * Platform usage. The load-bearing part is that every number on it is dated:
- * a bar the reader cannot put a day against says traffic happened, not when.
- */
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Recharts needs a real layout; the assertions here are about what the page
-// hands the chart, so the primitives report their props as data attributes.
-vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+// WORKAROUND: Recharts draws nothing without a real layout, so the primitives report their props as data attributes.
+vi.mock("recharts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   BarChart: ({
     data,
     children,
@@ -23,20 +16,28 @@ vi.mock("@/components/ui/chart", () => ({
       {children}
     </div>
   ),
-  ChartBar: ({ dataKey }: { dataKey: string }) => (
-    <div data-testid="bar" data-key={dataKey} />
-  ),
   XAxis: ({ dataKey }: { dataKey: string }) => (
     <div data-testid="x-axis" data-key={dataKey} />
   ),
-  YAxis: () => <div data-testid="y-axis" />,
   CartesianGrid: () => <div data-testid="grid" />,
+}));
+
+vi.mock("@gears-frontx/ui-kit", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ChartContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="chart">{children}</div>
+  ),
   ChartTooltip: () => <div data-testid="tooltip" />,
   ChartTooltipContent: () => <div data-testid="tooltip-content" />,
 }));
 
-// The house harness for a virtualized body: report every row, and record what
-// the page asked to virtualize.
+vi.mock("@/components/chart-series", () => ({
+  ChartBar: ({ dataKey }: { dataKey: string }) => (
+    <div data-testid="bar" data-key={dataKey} />
+  ),
+  YAxis: () => <div data-testid="y-axis" />,
+}));
+
 type Asked = { since: string; until: string };
 type Order = { sort: string; direction: "asc" | "desc" } | null;
 
@@ -71,8 +72,6 @@ const SUMMARY = {
   since: "2026-08-01",
   until: "2026-08-03",
   totals: { visits: 5, visitors: 2, page_views: 9 },
-  // A day nobody opened the product is ABSENT: the server groups by the days it
-  // has rows for and fills nothing, so a zero row is a shape it cannot emit.
   by_day: [
     { day: "2026-08-01", visits: 3, visitors: 2 },
     { day: "2026-08-03", visits: 2, visitors: 1 },
@@ -132,8 +131,6 @@ vi.mock("@/queries/feedback", () => ({
   },
 }));
 
-// The shared period control the rest of the portal uses; here it only has to
-// report what the page hands it.
 vi.mock("@/components/widgets/period-selector-bar", () => ({
   PeriodSelectorBar: ({
     period,
@@ -232,16 +229,23 @@ describe("PlatformUsage", () => {
     render(<PlatformUsage />);
 
     const asked = mocks.asked.at(-1)!;
-    // The UTC day, not the reader's. The server buckets by UTC, so east of
-    // Greenwich the reader's date names a day ClickHouse has no rows for yet,
-    // and the chart draws it as a zero.
     expect(asked.until).toBe(new Date().toISOString().slice(0, 10));
-    // The shared window ends yesterday; moving only its end would make a
-    // 30-day month cover 31.
     const shared = resolveDateRange("month", null);
     const days = (range: { since: string; until: string }) =>
       (Date.parse(range.until) - Date.parse(range.since)) / 86_400_000;
     expect(days(asked)).toBe(days({ since: shared.from, until: shared.to }));
+  });
+
+  it("slides a preset whole to end on the UTC day, keeping its length", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-15T05:00:00Z"));
+    try {
+      render(<PlatformUsage />);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mocks.asked.at(-1)).toEqual({ since: "2026-07-16", until: "2026-08-15" });
   });
 
   it.each([
@@ -266,8 +270,6 @@ describe("PlatformUsage", () => {
 
     fireEvent.click(screen.getByTestId("pick-week"));
     const asked = mocks.asked.at(-1)!;
-    // A custom range outranks the period in resolveDateRange, so a preset that
-    // did not clear it would still be serving January.
     expect(asked.since).not.toBe("2026-01-01");
     const days = (Date.parse(asked.until) - Date.parse(asked.since)) / 86_400_000 + 1;
     expect(days).toBe(7);
@@ -300,8 +302,6 @@ describe("PlatformUsage", () => {
     ]);
   });
 
-  // #2573 scenario 5 — the server omits a quiet day entirely, so this zero is
-  // the component's own doing.
   it("draws a day nobody used the product as a zero", () => {
     render(<PlatformUsage />);
 

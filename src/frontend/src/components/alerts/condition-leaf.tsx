@@ -26,8 +26,16 @@ interface Option {
   disabled?: boolean;
 }
 
-// INVARIANT: a value the list does not offer is shown as an option of its
-// own, so a draft written as JSON is drawn as it stands, never rewritten.
+function withCurrentOption(
+  options: readonly Option[],
+  value: string
+): readonly Option[] {
+  const offered =
+    value === "" || options.some((option) => option.value === value);
+
+  return offered ? options : [{ value, label: value }, ...options];
+}
+
 export function Choice({
   id,
   label,
@@ -47,15 +55,12 @@ export function Choice({
   className?: string;
   onChange: (value: string) => void;
 }) {
-  const offered =
-    value === "" || options.some((option) => option.value === value);
-
   return (
     <FieldSelect
       id={id}
       label={label}
       value={value}
-      options={offered ? options : [{ value, label: value }, ...options]}
+      options={withCurrentOption(options, value)}
       placeholder={placeholder}
       describe={described(describedBy)}
       className={className}
@@ -74,8 +79,10 @@ function shownNumber(value: unknown): string {
     : "";
 }
 
-// INVARIANT: what is typed is kept while it still means the value held, so
-// "1.50" is not rewritten to "1.5" mid-word.
+function keepTypedText(typed: string, value: unknown): string {
+  return typedNumber(typed) === value ? typed : shownNumber(value);
+}
+
 export function NumberInput({
   id,
   label,
@@ -90,7 +97,7 @@ export function NumberInput({
   onChange: (value: unknown) => void;
 }) {
   const [typed, setTyped] = useState(() => shownNumber(value));
-  const shown = typedNumber(typed) === value ? typed : shownNumber(value);
+  const shown = keepTypedText(typed, value);
 
   return (
     <Input
@@ -99,7 +106,7 @@ export function NumberInput({
       {...described(describedBy)}
       inputMode="decimal"
       value={shown}
-      className="h-9 w-32 tabular-nums"
+      className="w-32 tabular-nums"
       onChange={(event) => {
         setTyped(event.target.value);
         onChange(typedNumber(event.target.value));
@@ -107,8 +114,6 @@ export function NumberInput({
     />
   );
 }
-
-const TEXT = "h-9 w-48";
 
 const AGE_UNITS: readonly (Option & { prefix: string; suffix: string })[] = [
   { value: "minutes", label: "minutes", prefix: "PT", suffix: "M" },
@@ -201,7 +206,7 @@ function ValueInput({
           aria-label="Value"
           {...described(saidOn())}
           value={textOfValue(value)}
-          className={TEXT}
+          className="w-48"
           onChange={(event) => onChange(event.target.value)}
         />
       );
@@ -249,7 +254,7 @@ function ValueInput({
             {...described(saidOn())}
             inputMode="numeric"
             value={amount}
-            className="h-9 w-20 tabular-nums"
+            className="w-20 tabular-nums"
             onChange={(event) => onChange(ageText(event.target.value, unit))}
           />
           <Choice

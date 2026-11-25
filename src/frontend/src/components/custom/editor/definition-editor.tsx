@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 import { DEFINITION_NAME_MAX, type EditableKind } from "@/api/custom-client";
 import { TextView } from "@/components/custom/editor/text-view";
@@ -16,6 +16,12 @@ import { refusals } from "@/lib/custom/editor/violations";
 import { catalogueQuery, useStoreDefinition } from "@/queries/custom";
 import { TEXT_BODY, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
+
+function keepEnterFromSubmitting(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+    event.preventDefault();
+  }
+}
 
 export function DefinitionEditor({
   kind,
@@ -42,12 +48,11 @@ export function DefinitionEditor({
   const given = called.trim();
   const isDataset = kind === "datasets";
   const creating = id === undefined;
-  // SAFETY: writing a dataset replaces the one under its name, so a new one
-  // may not take a name the catalogue lists; the catalogue may lag the service.
-  const taken = isDataset && creating && datasets().includes(given);
+  const wouldReplaceDataset =
+    isDataset && creating && datasets().includes(given);
 
   const submit = () => {
-    if (given === "" || taken || !sendable(held)) return;
+    if (given === "" || wouldReplaceDataset || !sendable(held)) return;
     store.mutate(
       { kind, id, name: given, body: held.document },
       { onSuccess: (storedId) => onStored(storedId) }
@@ -61,12 +66,7 @@ export function DefinitionEditor({
         event.preventDefault();
         submit();
       }}
-      // SAFETY: storing claims a name and, for a dataset, builds what holds its
-      // records. Enter in a field is not that decision; only Save is.
-      onKeyDown={(event) => {
-        const inField = event.target instanceof HTMLInputElement;
-        if (event.key === "Enter" && inField) event.preventDefault();
-      }}
+      onKeyDown={keepEnterFromSubmitting}
     >
       {isDataset && !creating ? (
         <div className="flex flex-col gap-1">
@@ -88,9 +88,9 @@ export function DefinitionEditor({
             id="definition-name"
             value={called}
             maxLength={isDataset ? undefined : DEFINITION_NAME_MAX}
-            aria-invalid={taken || undefined}
+            aria-invalid={wouldReplaceDataset || undefined}
             aria-describedby={isDataset ? "definition-name-hint" : undefined}
-            className={cn("h-9 w-full max-w-72", isDataset && "font-mono")}
+            className={cn("w-full max-w-72", isDataset && "font-mono")}
             onChange={(event) => setCalled(event.target.value)}
           />
           {isDataset ? (
@@ -103,11 +103,11 @@ export function DefinitionEditor({
               <code>-</code>.
             </p>
           ) : null}
-          {taken ? (
+          {wouldReplaceDataset ? (
             <p role="alert" className={cn(TEXT_LABEL, "text-destructive")}>
               A {noun} called <code>{given}</code> already exists.{" "}
               <Link
-                to="/portal/custom/edit/$kind/$name"
+                to="/dashboards/edit/$kind/$name"
                 params={{ kind, name: given }}
                 className="underline decoration-dotted underline-offset-4"
               >
@@ -143,7 +143,7 @@ export function DefinitionEditor({
       <div className="flex items-center gap-2">
         <Button
           type="submit"
-          disabled={given === "" || taken || !sendable(held)}
+          disabled={given === "" || wouldReplaceDataset || !sendable(held)}
           loading={store.isPending}
         >
           Save

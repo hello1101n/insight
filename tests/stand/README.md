@@ -65,7 +65,7 @@ image below runs its bundled tests directly against a deployed stand. See
 
 ## Running from the published image
 
-`ghcr.io/constructorfabric/insight-ui-tests:<tag>` includes the suite, its
+`ghcr.io/hello1101n/insight-ui-tests:<tag>` includes the suite, its
 locked Python dependencies and browsers for `linux/amd64` and `linux/arm64`.
 Use the build tag reported by the image workflow, or `latest` for the most
 recent image published from main. No checkout or Python installation is needed.
@@ -83,7 +83,7 @@ docker run --rm --init --ipc=host \
   -e INSIGHT_STAND_ARTIFACT_DIR=/results \
   -v "$PWD/stand-manifest.json:/stand/manifest.json:ro" \
   -v "$PWD/test-results:/results" \
-  ghcr.io/constructorfabric/insight-ui-tests:<tag> \
+  ghcr.io/hello1101n/insight-ui-tests:<tag> \
   /tests/stand -m stand_smoke --stand-manifest /stand/manifest.json \
   --junitxml=/results/junit.xml \
   --tracing retain-on-failure --screenshot only-on-failure \

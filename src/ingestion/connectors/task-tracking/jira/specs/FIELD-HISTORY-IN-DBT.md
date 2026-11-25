@@ -154,7 +154,7 @@ are instance-specific; type constants are not. This is enforced by a test.
 | `issue_ref` | `schema_custom` ends `:gh-epic-link` or `:jpo-custom-field-parent` | `"PROJ-1"` — the referenced issue's key | Set, numeric id + key display |
 | `ignored` | `schema_type` in progress / watches / votes / statusCategory / securitylevel / timetracking / issuerestriction / comments-page; `schema_items = 'worklog'`; `field_id` in issuekey / thumbnail | container or aggregate | not a field state |
 | `ignored` | `schema_custom` ends `:gh-lexo-rank`, `:timeinstatus`, `:devsummarycf`, `:vulnerabilitycf` | ordering artifact or app-computed | decided, not measured |
-| `ignored` | app and JSM single-value types: `schema_type` in option-with-child / option2 / team / atlas-project / sd-request-lang / sd-approvals / sd-feedback / sd-customerrequesttype | app-specific | decided, not measured |
+| `ignored` | app and JSM single-value types: `schema_type` in option-with-child / option2 / team / atlas-project / sd-request-lang / sd-approvals / sd-feedback / sd-customerrequesttype / sd-servicelevelagreement | app-specific | decided, not measured |
 
 Four consequences of matching on structure rather than on plugin keys:
 
@@ -1308,7 +1308,7 @@ separately.
 
 Two models read a JSON column that is gigabytes wide, and both must resolve
 their dedup to a raw id FIRST, in an aggregation that carries only that String,
-then fetch the payload by joining back:
+then fetch the payload through an `IN` filter on that raw id:
 
 - `jira__issue_field_snapshot` reads `custom_fields_json`;
 - `jira__changelog_items` reads `items`. Its earlier shape — `SELECT *` ordered
@@ -1326,7 +1326,20 @@ sit **after** the argMax dedup, never before it.
 The same column must never be the build side of a join. ClickHouse hashes the
 RIGHT table of a join in memory, so `… INNER JOIN issue_json` holds every
 issue's payload at once, and that hash table alone can exceed a server's memory
-budget. A question about the JSON ("does this issue still carry this key?") is
+budget. The right side is the build side only when the planner keeps the order
+written: with the default `query_plan_join_swap_table = 'auto'` (ClickHouse
+25.7) it can swap the sides by estimated row count, which ignores row width,
+and the same model on the same data can get either plan (#4370). Two rules
+follow:
+
+- the raw-id dedup is an `IN (SELECT argMax(...) ... GROUP BY ...)` filter,
+  never a join back on a winner CTE. `IN` always builds its set from the
+  subquery, so no plan can hash the payload;
+- every model that reads `custom_fields_json` or `items` sets
+  `query_plan_join_swap_table: 'false'` in its `query_settings`, so a join the
+  `IN` cannot replace (one that reads a column of the small side) keeps the
+  JSON stream on the left.
+ A question about the JSON ("does this issue still carry this key?") is
 answered by streaming the keys out of the column (`ARRAY JOIN JSONExtractKeys`)
 on the LEFT and hashing the small set of pairs being asked about on the RIGHT,
 after every other filter has already shrunk that set. `snapshot_diff_pairs` is

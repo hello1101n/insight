@@ -3,6 +3,7 @@ import type {
   AlertDraft,
   AlertNumber,
   Condition,
+  IntegerDigits,
 } from "@/api/alerts-types";
 import type { Held } from "@/lib/custom/editor/document";
 
@@ -18,12 +19,10 @@ import {
 
 const NAME_MAX = 200;
 const DEFAULT_INTERVAL_SECS = 300;
-/** The most context columns the service takes on a rule. */
 export const CONTEXT_COLUMNS_MAX = 5;
 
 export type AlertDocument = Record<string, unknown>;
 
-/** Keyed by the path the service names a refusal by, as `condition.where.all[1].value`. */
 export type FieldErrors = Readonly<Record<string, string>>;
 
 export function blankForm(destination = ""): AlertDocument {
@@ -57,7 +56,6 @@ export function textOf(document: AlertDocument, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-/** The context columns the document names, or nothing while it names them badly. */
 export function contextColumnsOf(
   document: AlertDocument
 ): string[] | undefined {
@@ -85,7 +83,7 @@ export function numberOf(typed: string): AlertNumber | undefined {
   if (!Number.isFinite(value)) return undefined;
   if (Number.isSafeInteger(value) || !Number.isInteger(value)) return value;
 
-  return DIGITS.test(trimmed) ? trimmed : undefined;
+  return DIGITS.test(trimmed) ? (trimmed as IntegerDigits) : undefined;
 }
 
 function isNumber(value: unknown): boolean {

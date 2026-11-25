@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { metricHelp } from "@/lib/insight/metric-help";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
@@ -8,15 +8,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
 } from "@gears-frontx/ui-kit";
-import {
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@/components/ui/preview-card";
 import { formatMetricValue, isDurationUnit } from "@/lib/format";
 import { absenceLabel } from "@/lib/metrics/absence";
 import {
@@ -60,17 +55,9 @@ import {
   withOwnTarget,
 } from "@/components/metric-evidence-context";
 
-/**
- * INVARIANT: every step leaves room for the names plus one whole metric column
- * (`METRIC_COL_PX`) inside the container it applies to — a step wider than
- * that is the bug this replaced, where the roster showed names and nothing
- * else. A container query, not a viewport one: a drilldown pane on a desktop
- * is as narrow as a phone.
- */
 const MEMBER_COL_WIDTH =
   "[--member-col:9rem] @min-[26rem]:[--member-col:12rem] @min-[32rem]:[--member-col:16rem]";
 
-/** Falls back rather than collapsing to `auto` if the wrapper ever loses it. */
 const MEMBER_COL_CELL =
   "sticky start-0 z-10 w-[var(--member-col,16rem)] bg-card text-left";
 
@@ -87,48 +74,26 @@ const HEADING_CELL =
 const METRIC_COL_PX = 108;
 
 export interface MembersGridMember {
-  /** Canonical person id — keys every metric lookup AND the IC link. */
   entityId: string;
   displayName: string;
 }
 
 export interface MembersGridProps {
   members: MembersGridMember[];
-  /** Row order restored after a column completes its sort cycle. */
   defaultSort?: "input" | "issues";
-  /** Column metrics, in display order; keys absent from `byKey` are skipped. */
   metricKeys: readonly string[];
-  /** Current-period value + peer standing per metric key. */
   byKey: Map<string, NormalizedMetricResult>;
-  /** Previous-period value per metric key — drives the trend arrows. */
   previousByKey?: Map<string, NormalizedMetricResult>;
-  /**
-   * Optional triage facet: per-member standing counts across ALL groups.
-   * When present each row carries a standing chip (behind / ahead / near the median,
-   * the section-card vocabulary) and the grid offers the "Furthest behind" sort
-   * (the default).
-   */
   countsByMember?: Map<string, RankCounts>;
-  /** Optional per-member worst-standing metric label, shown under the chip. */
   worstByMember?: Map<string, string | null>;
-  /**
-   * Show the standing facet (chip + "worst:" line + Member-header sort).
-   * Defaults to on when `countsByMember` is supplied. Set explicitly to
-   * derive the facet from the grid's OWN cells (group-local) when no
-   * cross-group counts are passed — e.g. the group drilldown.
-   */
   showIssues?: boolean;
-  /** Accessible summary of what the table shows. */
   caption: string;
-  /** Names the peer cohort in the cell popovers ("department median"). */
   cohortLabel?: PeerCohortLabel;
   className?: string;
 }
 
 interface Column {
-  /** Metric key — column identity + sort key. */
   key: string;
-  /** Compact header text (server short label, falling back to the label). */
   heading: string;
   label: string;
   unit: string | null;
@@ -149,42 +114,22 @@ function columnFor(metric: NormalizedMetricResult): Column {
   };
 }
 
-/**
- * Which end of the scale reads as "better", or `null` for a neutral metric
- * that carries no better/worse judgment. Never collapse `direction` to a
- * boolean: a neutral metric is a fact, not a score, and must not be tinted
- * or ranked as if higher were good.
- */
-function betterWhenHigher(direction: MetricDirection): boolean | null {
-  if (direction === "higher_is_better") return true;
-  if (direction === "lower_is_better") return false;
-  return null;
-}
-
 interface CellShape {
   col: Column;
   value: number | null;
   previous: number | null;
-  /** Period-over-period move (computation-aware); null when unobservable. */
   delta: MetricDelta | null;
   status: PeerStatusWithNeutral;
   median: number | null;
-  /** Divergence vs the cohort median, straight from the standing — feeds
-   *  `formatGapMagnitude` in the popover. */
   gapPct: number | null;
   gapDelta: number;
-  /** Outlier weight; picks the member's worst cell for the group-local facet. */
   severity: number;
-  /** False when the source never observed this member — a zero-filled sum
-   *  reads 0, but an unmeasured member has no value to show. */
   observed: boolean;
 }
 
 interface RowShape {
   member: MembersGridMember;
   cells: CellShape[];
-  /** Cross-group standing counts when provided, else derived from the row's
-   *  own cells. Drives the chip phrase and the "Furthest behind" sort. */
   counts: RankCounts;
   worstLabel: string | null;
 }
@@ -196,9 +141,6 @@ type SortState =
   | { key: null }
   | { key: SortKey; direction: SortDirection };
 
-/** Cell text: bare number — the unit lives in the header tooltip and the
- *  cell popover, so ten columns of "141 commits / 707 lines" don't shout.
- *  A duration keeps its shape: "1.3" under an "h" header is a conversion. */
 function cellDisplay(value: number | null, col: Column): string {
   if (value == null || !Number.isFinite(value)) return "—";
   const unit = isDurationUnit(col.unit) ? col.unit : null;
@@ -210,18 +152,10 @@ function fullDisplay(value: number | null, col: Column): string {
   return formatMetricValue(value, col.format, col.unit);
 }
 
-/** True when the cell has nothing rankable — always sorts last, both ways. */
 function cellMissing(cell: CellShape | undefined): boolean {
   return !cell?.observed || cell.value == null || !Number.isFinite(cell.value);
 }
 
-/**
- * Roster × metrics as a semantic table: one row per member (name links to
- * their IC view), one sortable column per metric. Every cell is the member's
- * own value, trend arrow vs the previous period, and colour from their
- * standing vs their OWN department cohort — nothing is pooled and members are
- * never scored against each other; sorting only orders the rows.
- */
 export function MembersGrid({
   members,
   defaultSort = "issues",
@@ -278,9 +212,6 @@ export function MembersGrid({
         const previous = prevMetric
           ? forEntity(prevMetric, member.entityId).value
           : null;
-        // Period-over-period move via the shared, computation-aware delta
-        // (percentage points for percent ratios, relative % otherwise) — the
-        // same helper the KPI tiles use. Only meaningful for observed members.
         const delta = standing.observed
           ? computeDelta(
               data.value,
@@ -302,9 +233,6 @@ export function MembersGrid({
           observed: standing.observed,
         };
       });
-      // Group-local fallback for the standing facet: rank counts over THIS
-      // grid's cells, and the worst trailing metric (highest severity). Used
-      // when no cross-group counts are supplied.
       const below = cells.filter((cell) => cell.status === "bottom");
       const selfWorst =
         below.length > 0
@@ -355,9 +283,6 @@ export function MembersGrid({
         copy.sort((a, b) => {
           const ac = a.cells[colIdx];
           const bc = b.cells[colIdx];
-          // Members the source never measured sort last in either direction —
-          // an unmeasured cell (or a zero-filled sum with no observation) is
-          // not a best or worst score. Mirrors the "—" the cell renders.
           const aMissing = cellMissing(ac);
           const bMissing = cellMissing(bc);
           if (aMissing || bMissing) return Number(aMissing) - Number(bMissing);
@@ -368,9 +293,6 @@ export function MembersGrid({
     return copy;
   }, [rows, sort, columns, defaultSort]);
 
-  /**
-   * The active-column sort order drives both `aria-sort` and the header arrow.
-   */
   const directionFor = (
     key: SortKey
   ): "ascending" | "descending" | undefined => {
@@ -378,22 +300,12 @@ export function MembersGrid({
     return sort.direction;
   };
 
-  // Member-level orderings (name / issues) live on the Member header; metric
-  // orderings live on their own headers. This is the arrow the Member header
-  // shows — whichever member order is active, if any.
   const memberDirection = directionFor("issues") ?? directionFor("name");
   const memberSortActive = sort.key === "issues" || sort.key === "name";
 
   return (
     <div className={cn("@container flex flex-col gap-3", className)}>
       <div className={cn(ROSTER_SCROLLPORT, MEMBER_COL_WIDTH)}>
-        {/* Fixed layout so metric columns are uniform — auto layout sizes
-            each column to its own content, making them ragged. The member
-            column takes a fixed width; the metric columns split the rest
-            equally, filling the container (w-full) up to the ultrawide cap.
-            Fixed layout ignores cell min-widths, so the floor that keeps
-            headers legible is an explicit table min-width — past it the
-            wrapper scrolls instead of crushing columns. */}
         <table
           className="w-full max-w-[1600px] table-fixed border-separate border-spacing-1"
           style={{
@@ -409,9 +321,6 @@ export function MembersGrid({
                 className={cn(MEMBER_COL_CELL, HEADING_CELL, "z-30 px-2")}
               >
                 {hasIssuesFacet ? (
-                  // Two member orderings (issues / name) → a small header menu,
-                  // so the roster-ordering control lives on the column it
-                  // orders instead of a lone button.
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -439,7 +348,6 @@ export function MembersGrid({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : (
-                  // Only name to order by → a plain toggle like a metric header.
                   <button
                     type="button"
                     onClick={() => toggleSort("name")}
@@ -493,15 +401,10 @@ function MemberRow({
   cohortLabel,
 }: {
   row: RowShape;
-  /** True when the cross-group facet backs the chip; the fallback self-count
-   *  still sorts but is already visible as the row's own cell colours. */
   showIssues: boolean;
   cohortLabel: PeerCohortLabel;
 }) {
   const { member, cells, counts, worstLabel } = row;
-  // The section-card vocabulary: behind wins over ahead on mixed profiles,
-  // "near the median" only when nothing sticks out either way. The chip states the
-  // count; the tint carries the judgment.
   const chipText = showIssues ? sectionStandingPhrase(counts) : null;
   const chipRank: PeerStatusWithNeutral =
     rankableCount(counts) === 0
@@ -528,7 +431,7 @@ function MemberRow({
         <div className="flex min-h-12 flex-col justify-center gap-0.5">
           <div className="flex items-center gap-1.5">
             <Link
-              to="/ic/$person/personal"
+              to="/people/$person"
               params={{ person: member.entityId }}
               className="min-w-0 truncate text-sm leading-tight font-medium hover:underline"
             >
@@ -592,9 +495,6 @@ function GridCell({
         col.metric.breakdown?.dimensions
       )
     : null;
-  // Show the trend arrow only when the delta rounds to a real change (the
-  // KPI-tile suppression rule); direction from the sign, favorability from
-  // the shared deltaStatus (neutral metric → muted, no good/bad).
   const deltaText = delta ? formatTileDelta(delta) : null;
   const showTrend = deltaText != null;
   const trendUp = delta != null && delta.value > 0;
@@ -604,11 +504,6 @@ function GridCell({
     : "text-muted-foreground";
   const display = observed ? cellDisplay(value, col) : "—";
   const displayWithUnit = observed ? fullDisplay(value, col) : "—";
-  // Divergence magnitude vs the median — same formatter as the KPI tiles
-  // ("3.5×" / "−39%" / "−35 pp"). Driven purely by having a value, a median,
-  // and a real gap: a disclosed median is a fact regardless of the metric's
-  // direction, so this shows for neutral-direction metrics too (the quartile
-  // verdict below is what direction gates, not the number).
   const gapText =
     value != null && median != null && Math.abs(cell.gapDelta) > 1e-9
       ? formatGapMagnitude({
@@ -620,18 +515,13 @@ function GridCell({
           unit: col.unit,
         })
       : null;
-  // Quartile verdict exists only for a real rank; "neutral" is the
-  // no-comparison placeholder, already stated by the context line — never
-  // render it as a second line.
   const showStanding = observed && cell.status !== "neutral";
   return (
-    // PreviewCard is base-ui's hover-only surface — no click-to-open at all,
-    // so a pressed cell can never pin its detail open.
-    <PreviewCard>
-      <PreviewCardTrigger
+    <HoverCard>
+      <HoverCardTrigger
         delay={150}
-        // Close immediately on mouse-out — the default 300ms lets the old
-        // card linger while the next cell's opens, flashing two at once.
+        // WORKAROUND: base-ui's PreviewCard closes 300ms after mouse-out by default,
+        // so the previous cell's card lingers beside the next one.
         closeDelay={0}
         render={
           <button
@@ -656,9 +546,6 @@ function GridCell({
               PEER_CELL[cell.status]
             )}
           >
-            {/* Value stays centered in the cell; the trend arrow is anchored
-                to the value's right edge (left-full) so it hugs the number
-                instead of drifting to the cell border. */}
             <span className="relative inline-flex items-center">
               {display}
               {showTrend && value != null ? (
@@ -671,7 +558,7 @@ function GridCell({
           </button>
         }
       />
-      <PreviewCardContent className="w-64 p-3">
+      <HoverCardContent>
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold">{col.label}</p>
           <p className="text-xs text-muted-foreground">{memberName}</p>
@@ -680,8 +567,6 @@ function GridCell({
           </p>
           <p className="text-xs text-muted-foreground">
             {!observed ? (
-              // No value for this member — can't be "at the median". Show the
-              // cohort median as context only.
               median != null ? (
                 `Not recorded · ${cohortLabel} median ${formatMetricValue(median, col.format, col.unit)}`
               ) : (
@@ -717,15 +602,11 @@ function GridCell({
             <p className="mt-1 text-xs text-muted-foreground">{leaveLabel}</p>
           ) : null}
         </div>
-      </PreviewCardContent>
-    </PreviewCard>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
-/** Ascending → up arrow, descending → down arrow; nothing when inactive.
- *  Column headers pass absolute-positioning classes so the arrow sits beside
- *  the centered label without contributing width (no reflow as the active
- *  sort moves); inline callers (the sort button) pass nothing. */
 function SortArrow({
   direction,
   className,
@@ -749,66 +630,37 @@ function ColumnHeader({
   direction: "ascending" | "descending" | undefined;
   onClick: () => void;
 }) {
-  const help = metricHelp(col.metric);
+  const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onClick}
-            className={cn(
-              "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
-              active && "text-foreground"
-            )}
-            aria-label={`${col.label} — sort by this column`}
-          >
-            {/* Label stays centered; the arrow hugs its right edge (left-full)
-                like the value cell, rather than pinning to the column edge. */}
-            <span className="relative inline-flex max-w-full items-center">
-              <span className="truncate">{col.heading}</span>
-              <SortArrow
-                direction={direction}
-                className="absolute left-full ml-0.5"
-              />
-            </span>
-          </button>
-        }
-      />
-      <TooltipContent side="top" className="max-w-56">
-        <span className="flex flex-col gap-0.5 leading-snug">
-          <span className="font-medium">{col.label}</span>
-          {/* What the column counts, in the catalog's words. A header reading
-              "AI LINES +" is otherwise a guess, and the grid is where a
-              reader compares people on it. */}
-          {help?.description ? <span>{help.description}</span> : null}
-          {/* The catalog sometimes supplies only the longer explanation, and a
-              header showing neither leaves the column a guess. */}
-          {help?.explanation ? (
-            <span className="text-background/70">{help.explanation}</span>
-          ) : null}
-          <span className="text-background/70">
-            {col.unit ? `${col.unit} · ` : ""}
-            {betterWhenHigher(col.direction) === true
-              ? "higher is better · "
-              : betterWhenHigher(col.direction) === false
-                ? "lower is better · "
-                : ""}
-            click to sort
-          </span>
-        </span>
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-9 w-full cursor-pointer items-center justify-center px-4 text-xs font-medium tracking-wider text-muted-foreground uppercase transition-colors hover:text-foreground",
+        active && "text-foreground"
+      )}
+      aria-label={t("common.legend.sort_column", { column: col.label })}
+      title={col.label}
+    >
+      <span className="relative inline-flex max-w-full items-center">
+        <span className="truncate">{col.heading}</span>
+        <SortArrow
+          direction={direction}
+          className="absolute left-full ml-0.5"
+        />
+      </span>
+    </button>
   );
 }
 
 function Legend() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-4 px-3 text-xs text-muted-foreground">
-      <LegendSwatch className={PEER_FILL.top}>Top 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.in_pack}>Near the median</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.bottom}>Bottom 25%</LegendSwatch>
-      <LegendSwatch className={PEER_FILL.neutral}>No comparison</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.top}>{t("common.legend.top")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.in_pack}>{t("common.legend.near_median")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.bottom}>{t("common.legend.bottom")}</LegendSwatch>
+      <LegendSwatch className={PEER_FILL.neutral}>{t("common.legend.no_comparison")}</LegendSwatch>
     </div>
   );
 }

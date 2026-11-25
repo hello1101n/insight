@@ -42,6 +42,8 @@ source "${_RECONCILE_LIB_DIR}/argo.sh"
 source "${_RECONCILE_LIB_DIR}/log.sh"
 # shellcheck source=./validate.sh
 source "${_RECONCILE_LIB_DIR}/validate.sh"
+# shellcheck source=./state-backup.sh
+source "${_RECONCILE_LIB_DIR}/state-backup.sh"
 
 # Counters reset per reconcile_run.
 _RECONCILE_CHANGED=0
@@ -321,42 +323,6 @@ for d in json.load(sys.stdin):
 }
 
 # ---------------------------------------------------------------------------
-# reconcile_migrated_state_file <source_name>
-#
-# Path of the state backup taken when reconcile_migrate_definition_kind tore a
-# source down, read back by reconcile_connections when it creates the
-# replacement. The handoff goes through the filesystem rather than a shell
-# variable because both stages are invoked as `$(...)` by _reconcile_one_connector
-# — anything they assign dies with the subshell.
-#
-# Keyed by source name: the name is what survives a recreate, and a definition
-# may have several sources bound to it, whose states must not overwrite each
-# other. Scoped to the run so a backup abandoned by an earlier crash is never
-# mistaken for this run's.
-# ---------------------------------------------------------------------------
-reconcile_migrated_state_file() {
-  local source_name="$1" safe_name
-  safe_name="$(printf '%s' "${source_name}" | tr -c '[:alnum:]._-' '_')"
-  printf '%s/%s.json' "$(reconcile_migrated_state_dir)" "${safe_name}"
-}
-
-# Directory holding this run's state backups. The file paths are predictable —
-# both stages have to derive the same one — so the directory carries the
-# protection: created 0700, and refused if it is not a directory we own, which
-# is what stops a pre-created path or symlink in a shared TMPDIR from
-# redirecting the write or exposing the contents.
-reconcile_migrated_state_dir() {
-  printf '%s/insight-migrated-state.%s' "${TMPDIR:-/tmp}" "${RECONCILE_RUN_ID:-$$}"
-}
-
-reconcile_migrated_state_dir_ready() {
-  local dir
-  dir="$(reconcile_migrated_state_dir)"
-  [[ -d "${dir}" ]] || mkdir -m 700 "${dir}" 2>/dev/null || return 1
-  [[ -d "${dir}" && ! -L "${dir}" && -O "${dir}" ]] || return 1
-}
-
-# ---------------------------------------------------------------------------
 # reconcile_is_mirror_move <current_repo> <desired_repo>
 # True when the desired repository is the current one rewritten through
 # RECONCILE_IMAGE_MIRRORS: the same image, now pulled through the install's
@@ -377,15 +343,17 @@ reconcile_is_mirror_move() {
 # by name — the old one must be gone before the new one can hold the name.
 #
 # Delete-then-create is therefore forced, and the order below makes it safe:
-# state is exported and persisted to disk before anything is destroyed, and the
-# remaining stages are self-healing — reconcile_sources finds no source and
-# creates one from the descriptor and Secret. Rebuilding the source config from
+# state is exported to the state backup Secret before anything is destroyed,
+# and the remaining stages are self-healing — reconcile_sources finds no source
+# and creates one from the descriptor and Secret, and reconcile_connections
+# restores the backup onto the replacement connection. Rebuilding the source config from
 # the Secret rather than copying the old one is also what drops a config field
 # the rewrite retired, which the old config would otherwise carry into a spec
 # that no longer accepts it.
 #
-# A crash between the delete and the create leaves no definition, which the next
-# pass treats as a first publish — the same path a new connector takes.
+# A crash at any step resumes on the next pass: sources still bound are backed
+# up again and deleted, a missing definition is a first publish, and the backup
+# stays in the Secret until a connection holds it.
 #
 # Emits the new definition id on stdout.
 # ---------------------------------------------------------------------------
@@ -402,7 +370,12 @@ reconcile_migrate_definition_kind() {
   fi
 
   workspace_id="$(ab_workspace_id)"
-  sources_json="$(ab_list_sources "${workspace_id}")"
+  # SAFETY: an unread listing reads as "no bound sources", and the definition
+  # delete below would then take their connections and state with it.
+  if ! sources_json="$(ab_list_sources "${workspace_id}")"; then
+    reconcile__log ERROR "${connector_name}" "Source listing failed. The migration stops before a delete."
+    return 1
+  fi
   # `<sourceId>\t<name>` per bound source — the name is the key the replacement
   # is created under, so it is what the state backup has to be filed against.
   bound_sources="$(printf '%s' "${sources_json}" | python3 -c '
@@ -413,35 +386,57 @@ for s in json.load(sys.stdin):
         print("%s\t%s" % (s.get("sourceId", ""), s.get("name", "")))
 ' "${old_definition_id}")"
 
-  local source_id source_name connection_id state_json state_backup
+  local source_id source_name connection_id state_json
   while IFS=$'\t' read -r source_id source_name; do
     [[ -n "${source_id}" ]] || continue
 
-    connection_id="$(ab_list_connections "${workspace_id}" \
-      | python3 "${_RECONCILE_PY_DIR}/select_connection_by_source.py" "${source_id}")"
+    if ! connection_id="$(ab_list_connections "${workspace_id}" \
+          | python3 "${_RECONCILE_PY_DIR}/select_connection_by_source.py" "${source_id}")"; then
+      reconcile__log ERROR "${connector_name}" "Connection listing failed. The migration stops before a delete."
+      return 1
+    fi
     if [[ -n "${connection_id}" ]]; then
       if ! state_json="$(ab_get_state "${connection_id}")"; then
         reconcile__log ERROR "${connector_name}" \
-          "state export failed for connection ${connection_id} — aborting definition migration"
+          "State export for connection ${connection_id} failed. The migration stops before a delete."
         return 1
       fi
-      if ! reconcile_migrated_state_dir_ready; then
+    fi
+    if [[ -n "${connection_id}" ]] && reconcile_state_is_set "${state_json}"; then
+      if ! printf '%s' "${state_json}" | state_backup_put "${source_name}"; then
         reconcile__log ERROR "${connector_name}" \
-          "state backup directory $(reconcile_migrated_state_dir) is unusable — aborting before anything is deleted"
+          "State backup of ${source_name} to Secret ${RECONCILE_STATE_BACKUP_SECRET:-} failed. The migration stops before a delete."
         return 1
       fi
-      state_backup="$(reconcile_migrated_state_file "${source_name}")"
-      rm -f "${state_backup}"
-      ( umask 077 && printf '%s' "${state_json}" > "${state_backup}" ) \
-        || { reconcile__log ERROR "${connector_name}" "state backup write failed — aborting"; return 1; }
-      reconcile__log INFO "${connector_name}" "state backup for ${source_name}: ${state_backup}"
+      reconcile__log INFO "${connector_name}" \
+        "State of ${source_name} is in Secret ${RECONCILE_STATE_BACKUP_SECRET}."
     fi
 
     # RECONCILE_DRY_RUN guarded at top of reconcile_migrate_definition_kind.
-    ab_delete_source "${source_id}" >/dev/null
+    if ! ab_delete_source "${source_id}" >/dev/null; then
+      reconcile__log ERROR "${connector_name}" \
+        "Delete of source ${source_id} failed. The migration stops; the next pass retries it."
+      return 1
+    fi
     reconcile__log CHANGE "${connector_name}" \
       "deleted source ${source_id} bound to the manifest-backed definition"
   done <<<"${bound_sources}"
+
+  local builder_id
+  if ! builder_id="$(ab_builder_find_by_definition "${workspace_id}" "${old_definition_id}")"; then
+    reconcile__log ERROR "${connector_name}" \
+      "Builder project lookup for definition ${old_definition_id} failed. The migration stops."
+    return 1
+  fi
+  if [[ -n "${builder_id}" ]]; then
+    # RECONCILE_DRY_RUN guarded at top of reconcile_migrate_definition_kind.
+    if ! ab_builder_delete_project "${workspace_id}" "${builder_id}" >/dev/null; then
+      reconcile__log ERROR "${connector_name}" \
+        "Delete of builder project ${builder_id} failed. The migration stops; the next pass retries it."
+      return 1
+    fi
+    reconcile__log CHANGE "${connector_name}" "deleted builder project ${builder_id}"
+  fi
 
   # RECONCILE_DRY_RUN guarded at top of reconcile_migrate_definition_kind.
   if ! ab_delete_source_definition "${old_definition_id}" >/dev/null; then
@@ -888,6 +883,67 @@ for s in json.load(sys.stdin):
 }
 
 # ---------------------------------------------------------------------------
+# reconcile_connection_has_state <connection_id>
+# True when Airbyte holds a sync state for the connection.
+# ---------------------------------------------------------------------------
+reconcile_connection_has_state() {
+  local state_json
+  state_json="$(ab_get_state "$1")" || return 2
+  reconcile_state_is_set "${state_json}"
+}
+
+# reconcile_state_is_set <state_json>  — false for Airbyte's `not_set` state.
+reconcile_state_is_set() {
+  printf '%s' "$1" | python3 -c '
+import json, sys
+sys.exit(0 if json.load(sys.stdin).get("stateType", "not_set") != "not_set" else 1)
+'
+}
+
+# ---------------------------------------------------------------------------
+# reconcile_restore_state_backup <connector_name> <source_name> <connection_id>
+# Moves the state that a definition migration backed up for this source onto
+# its connection, then drops the backup. A connection with a state of its own
+# synced after the migration, so its state is newer and the backup is dropped.
+# Any error fails the tick and keeps the backup for the next pass.
+# ---------------------------------------------------------------------------
+reconcile_restore_state_backup() {
+  local connector_name="$1" source_name="$2" connection_id="$3"
+  local backup has_state=0
+
+  if ! backup="$(state_backup_get "${source_name}")"; then
+    reconcile__log ERROR "${connector_name}" \
+      "Read of Secret ${RECONCILE_STATE_BACKUP_SECRET:-} failed. The connection setup stops."
+    return 1
+  fi
+  [[ -n "${backup}" ]] || return 0
+
+  reconcile_connection_has_state "${connection_id}" || has_state=$?
+  if [[ "${has_state}" -eq 2 ]]; then
+    reconcile__log ERROR "${connector_name}" \
+      "State read for connection ${connection_id} failed. The backup stays in the Secret."
+    return 1
+  fi
+  if [[ "${has_state}" -eq 0 ]]; then
+    reconcile__log WARN "${connector_name}" \
+      "Connection ${connection_id} holds a state. Reconcile drops the backup of ${source_name} and does not restore it."
+  elif ! ab_create_or_update_state "${connection_id}" "${backup}" >/dev/null; then
+    reconcile__log ERROR "${connector_name}" \
+      "State restore onto connection ${connection_id} failed. The backup stays in the Secret; the next pass retries it."
+    return 1
+  else
+    reconcile__log CHANGE "${connector_name}" \
+      "restored state onto migrated connection ${connection_id}"
+  fi
+
+  if ! state_backup_drop "${source_name}"; then
+    reconcile__log ERROR "${connector_name}" \
+      "Delete of the backup of ${source_name} from Secret ${RECONCILE_STATE_BACKUP_SECRET} failed. The next pass retries it."
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # reconcile_connections <connector_name> <source_id> <secret_cfg_hash>
 # diff-connection-tags algorithm. PATCHes connection tags so the set
 # contains `insight` and a single `cfg-hash:<hash>` entry. Idempotent.
@@ -1020,23 +1076,10 @@ print("\n".join(sorted(i for i in ids if i)))')"
       done <<< "${post_ids}"
       new_conn_id="${keep_id}"
     fi
-    # A connection created in the same pass that migrated the definition is the
-    # replacement for the one that was torn down, so the state exported there
-    # belongs to it. Without this the streams would resync from cursor zero.
-    local migrated_state=""
-    [[ -n "${source_name}" ]] && migrated_state="$(reconcile_migrated_state_file "${source_name}")"
-    if [[ -n "${migrated_state}" && -n "${new_conn_id}" && -s "${migrated_state}" ]]; then
-      # RECONCILE_DRY_RUN guarded by the early return in this branch above.
-      if ab_create_or_update_state "${new_conn_id}" "$(cat "${migrated_state}")" >/dev/null; then
-        reconcile__log CHANGE "${connector_name}" \
-          "restored state onto migrated connection ${new_conn_id}"
-        rm -f "${migrated_state}"
-      else
-        # Keep the backup: it is the only copy, and the restore is retried on
-        # the next pass or recovered by hand from this path.
-        reconcile__log ERROR "${connector_name}" \
-          "state restore failed for migrated connection ${new_conn_id} — recover from ${migrated_state}"
-      fi
+    # RECONCILE_DRY_RUN guarded by the early return in this branch above.
+    if [[ -n "${source_name}" ]] \
+       && ! reconcile_restore_state_backup "${connector_name}" "${source_name}" "${new_conn_id}"; then
+      return 1
     fi
     _RECONCILE_CHANGED=$((_RECONCILE_CHANGED + 1))
     printf 'created\t%s\n' "${new_conn_id}"
@@ -1053,6 +1096,10 @@ print("\n".join(sorted(i for i in ids if i)))')"
       reconcile_converge_connection_name "${connector_name}" "${connection_id}" \
         "$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("name") or "")')" \
         "${source_name}-conn" || return 1
+      if [[ "${RECONCILE_DRY_RUN:-0}" -ne 1 ]] \
+         && ! reconcile_restore_state_backup "${connector_name}" "${source_name}" "${connection_id}" >&2; then  # RULE-DEFAULTS-OK: feature flag — OFF when caller doesn't opt in
+        return 1
+      fi
     fi
 
     # @cpt-begin:cpt-insightspec-algo-reconcile-diff-connection-tags:p2:inst-dct-if-drift
@@ -1564,27 +1611,36 @@ _reconcile_one_connector() {
   # CronWorkflow apply (idempotent — kubectl apply no-op when YAML unchanged).
   local conn_name schedule tenant schedule_details schedule_origin
   conn_name="$(reconcile_compute_connection_name "${name}" "${source_id_label}")"
-  schedule_details="$(reconcile_resolve_schedule "${name}" "${secret_name}")"
-  schedule_origin="${schedule_details%%$'\n'*}"
-  schedule="${schedule_details#*$'\n'}"
   tenant="$(reconcile_compute_tenant "${name}")"
-  if [[ "${RECONCILE_DRY_RUN:-0}" -eq 1 ]]; then  # RULE-DEFAULTS-OK: feature flag — OFF when caller doesn't opt in
-    log_line INFO "${name}: would create/update Argo CronWorkflow"
-  else
-    local apply_rc=0 apply_error
-    apply_error="$(argo_apply_cronworkflow "${name}" "${conn_name}" "${schedule}" "${tenant}" \
-                            "${source_id_label}" "${dbt_select}" "${schedule_origin}" 2>&1 >/dev/null)" \
-      || apply_rc=$?
-    apply_error="$(argo_error_reason "${apply_error}")"
-    if [[ "${apply_rc}" -eq 2 ]]; then
-      log_line ERROR "${name}: applied Argo CronWorkflow but failed to remove legacy CronWorkflow $(argo_cron_workflow_name_full_tenant "${name}" "${tenant}")${apply_error:+: ${apply_error}}"
+  if connector_schedules_writable; then
+    local deployment
+    if ! deployment="$(reconcile_resolve_deployment_schedule "${name}" "${secret_name}")" \
+        || ! schedule_details="$(reconcile_resolve_schedule "${name}" "${secret_name}" "${source_id_label}" "${deployment}")"; then
+      log_line ERROR "${name}: failed to resolve schedule; CronWorkflow was left unchanged"
       rc=1
-    elif [[ "${apply_rc}" -ne 0 ]]; then
-      log_line ERROR "${name}: failed to create/update Argo CronWorkflow${apply_error:+: ${apply_error}}"
-      rc=1
-    elif ! argo_delete_former_tenant_cronworkflows "${name}" "${tenant}" "${source_id_label}" >/dev/null; then
-      log_line ERROR "${name}: applied Argo CronWorkflow but failed to remove the ones named for a former tenant"
-      rc=1
+    else
+      schedule_origin="${schedule_details%%$'\n'*}"
+      schedule="${schedule_details#*$'\n'}"
+      if [[ "${RECONCILE_DRY_RUN:-0}" -eq 1 ]]; then  # RULE-DEFAULTS-OK: feature flag — OFF when caller doesn't opt in
+        log_line INFO "${name}: would create/update Argo CronWorkflow (origin=${schedule_origin})"
+      else
+        local apply_rc=0 apply_error
+        apply_error="$(argo_apply_cronworkflow "${name}" "${conn_name}" "${schedule}" "${tenant}" \
+                                "${source_id_label}" "${dbt_select}" "${schedule_origin}" "${deployment}" 2>&1 >/dev/null)" \
+          || apply_rc=$?
+        apply_error="$(argo_error_reason "${apply_error}")"
+        argo_log_schedule_release_failure "${name}" "${apply_rc}" "${apply_error}"
+        if [[ "${apply_rc}" -eq 2 ]]; then
+          log_line ERROR "${name}: applied Argo CronWorkflow but failed to remove legacy CronWorkflow $(argo_cron_workflow_name_full_tenant "${name}" "${tenant}")${apply_error:+: ${apply_error}}"
+          rc=1
+        elif [[ "${apply_rc}" -ne 0 ]]; then
+          log_line ERROR "${name}: failed to create/update Argo CronWorkflow${apply_error:+: ${apply_error}}"
+          rc=1
+        elif ! argo_delete_former_tenant_cronworkflows "${name}" "${tenant}" "${source_id_label}" >/dev/null; then
+          log_line ERROR "${name}: applied Argo CronWorkflow but failed to remove the ones named for a former tenant"
+          rc=1
+        fi
+      fi
     fi
   fi
 
@@ -1676,6 +1732,36 @@ reconcile_prune_removed_instances() {
   rm -f "${plan_file}" "${definitions_file}"   # explicit cleanup; sourced libs MUST NOT install RETURN traps
 }
 
+reconcile_sweep_orphan_schedules() {
+  local opt_connector="${1:-}" opt_source_id="${2:-}"
+  if [[ "${RECONCILE_NO_GC:-0}" -eq 1 || "${RECONCILE_DRY_RUN:-0}" -eq 1 || -n "${opt_source_id}" ]]; then
+    return 0
+  fi
+  local secrets_file errors_file failures reason
+  secrets_file="$(mktemp -t insight-schedule-secrets.XXXXXX)" || { _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1)); return 0; }
+  errors_file="$(mktemp -t insight-schedule-errors.XXXXXX)" || { rm -f "${secrets_file}"; _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1)); return 0; }
+  if ! disc_load_secrets > "${secrets_file}"; then
+    rm -f "${secrets_file}" "${errors_file}"
+    log_line ERROR "schedule orphan sweep skipped: cannot read connector Secrets"
+    _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1))
+    return 0
+  fi
+  if ! failures="$(python3 "${_RECONCILE_PY_DIR}/sweep_connector_schedules.py" "${secrets_file}" --connector "${opt_connector}" 2>"${errors_file}")" \
+      || [[ ! "${failures}" =~ ^[0-9]+$ ]]; then
+    failures=1
+  fi
+  while IFS= read -r reason; do
+    [[ -n "${reason}" ]] || continue
+    if [[ "${reason}" == *"schedule lock release failed:"* ]]; then
+      log_line WARN "${reason}"
+    else
+      log_line ERROR "${reason}"
+    fi
+  done < "${errors_file}"
+  rm -f "${secrets_file}" "${errors_file}"
+  _RECONCILE_FAILED=$((_RECONCILE_FAILED + failures))
+}
+
 # ---------------------------------------------------------------------------
 # _reconcile_mark_colliding_connectors <plan_tsv>
 # Connectors whose instances do not render distinct CronWorkflow names, refused
@@ -1736,6 +1822,8 @@ reconcile_run() {
   _RECONCILE_SKIPPED=0
 
   log_init
+  connector_schedules_read
+  connector_schedules_writable || _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1))
 
   # INVARIANT: the desired state is read once, and a read that failed stops the
   # tick. Every destructive path below is driven by "this instance is not in the
@@ -1782,6 +1870,7 @@ reconcile_run() {
 
   # Layer 4a — instances whose Secret is gone while their siblings' remain.
   reconcile_prune_removed_instances "${plan_tsv}" "${opt_connector}" "${opt_source_id}"
+  reconcile_sweep_orphan_schedules "${opt_connector}" "${opt_source_id}"
 
   # Layer 4b — GC (skipped when --no-gc).
   reconcile_gc_orphans

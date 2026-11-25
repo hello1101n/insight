@@ -1,28 +1,32 @@
-import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   CartesianGrid,
-  ChartContainer,
-  ChartScatter,
-  ChartTooltip,
-  ChartTooltipContent,
   ReferenceLine,
+  Scatter,
   ScatterChart,
   XAxis,
-  YAxis,
   ZAxis,
+} from "recharts";
+import {
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { YAxis } from "@/components/chart-series";
+import type { MetricBucket } from "@/api/metric-results-client";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { scatterPoints, type DimRow } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const SCATTER_CONFIG: ChartConfig = { y: { label: "y" } };
 
-/** Two measures per dimension value at once; size is an optional third. */
 export function ScatterSection({
   section,
   resolve,
@@ -45,8 +49,6 @@ export function ScatterSection({
     section.size ? rows(rs) : null,
     section.dimension
   );
-  // Two points always split cleanly into quadrants — that is geometry, not a
-  // reading. Ask for enough dots that position starts to mean something.
   if (points.length < 3) return null;
 
   const axisLabel = (r: NormalizedMetricResult) =>
@@ -58,7 +60,7 @@ export function ScatterSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}
@@ -112,10 +114,11 @@ export function ScatterSection({
                   />
                 }
               />
-              <ChartScatter
+              <Scatter
+                isAnimationActive={false}
                 data={points}
                 name={axisLabel(ry)}
-                fill="var(--chart-1)"
+                fill={chartColor(0)}
                 fillOpacity={0.7}
               />
             </ScatterChart>

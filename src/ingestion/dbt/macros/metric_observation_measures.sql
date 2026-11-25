@@ -63,11 +63,12 @@
    relation to one row per intended subject — this macro does not group.
    Carries the `subject_key` column the other measure macros omit, so
    distinct-count measures live in their own UNION branch. #}
-{% macro distinct_measure(measure_key, relation, subject_key_expr, dimensions_col) %}
+{% macro distinct_measure(measure_key, relation, subject_key_expr, dimensions_col, keys=[]) %}
     SELECT
         tenant_id,
         entity_id,
-        metric_date,
+        {% for key in keys %}{{ key }},
+        {% endfor %}metric_date,
         '{{ measure_key }}' AS measure_key,
         toNullable(toFloat64(1)) AS value,
         toNullable(toString({{ subject_key_expr }})) AS subject_key,

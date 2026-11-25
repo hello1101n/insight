@@ -20,17 +20,11 @@ import {
   overviewMetricKeys,
 } from "@/lib/portal/overview-configs";
 
-/**
- * Home and the Overview items, each read for the viewer alone or for their
- * team (`useHomeSubject`). The team grid fetch is zone-scoped (union across
- * all items) so switching items never re-spins the loading gate.
- */
 export function OverviewView({ item }: { item: string | null }) {
+  const { t } = useTranslation();
   const gridKeys = useMemo(() => overviewMetricKeys(), []);
   const { subject, isPending } = useHomeSubject();
   const asked = item ?? DEFAULT_OVERVIEW_ITEM;
-  // A manager's Home would otherwise open on their own view, then switch to
-  // the team's once their reach is known.
   if (isPending) {
     return (
       <CenteredSpinner
@@ -53,11 +47,11 @@ export function OverviewView({ item }: { item: string | null }) {
         data-testid="page-overview-at-a-glance"
         className="@container flex flex-col gap-6 p-4 md:p-6"
       >
-        <h1 className={TEXT_TITLE}>Home</h1>
+        <h1 className={TEXT_TITLE}>{t("overview.home")}</h1>
         <HomeDashboards />
         {subject === "me" ? <OwnGlance /> : null}
         {subject === "team" && rollup ? (
-          <DomainLensView config={rollup} gridKeys={gridKeys} embedded />
+          <DomainLensView config={rollup} fetchOnlyKeys={gridKeys} embedded />
         ) : null}
       </div>
     );
@@ -66,28 +60,29 @@ export function OverviewView({ item }: { item: string | null }) {
 
   const entry = OVERVIEW_ITEMS[shown];
   if (!entry) {
-    return <Pending label={`“${item}” isn't an Overview view yet.`} />;
+    return <Pending label={t("overview.not_a_view", { item })} />;
   }
   return (
     <DomainLensView
       config={entry}
-      gridKeys={gridKeys}
+      fetchOnlyKeys={gridKeys}
       data-testid={`page-overview-${shown}`}
     />
   );
 }
 
 function OwnItem({ item }: { item: string }) {
+  const { t } = useTranslation();
   const { personId } = useViewer();
   const openSection = useOpenOwnSection();
   const groupIds = useVisibleGroupIds();
   const own = OWN_OVERVIEW_ITEMS[item];
 
   if (!own || own.kind === "home") {
-    return <Pending label={`“${item}” isn't an Overview view yet.`} />;
+    return <Pending label={t("overview.not_a_view", { item })} />;
   }
   if (!personId) {
-    return <Pending label="There is no person record to show here." />;
+    return <Pending label={t("overview.no_person")} />;
   }
 
   switch (own.kind) {
@@ -122,7 +117,7 @@ function OwnThemePage({
 }: {
   item: string;
   title: DisplayText;
-  tagline: string;
+  tagline: DisplayText;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -133,7 +128,7 @@ function OwnThemePage({
     >
       <div>
         <h1 className="text-lg font-semibold tracking-tight">{resolveText(t, title)}</h1>
-        <p className="text-sm text-muted-foreground">{tagline}</p>
+        <p className="text-sm text-muted-foreground">{resolveText(t, tagline)}</p>
       </div>
       {children}
     </div>

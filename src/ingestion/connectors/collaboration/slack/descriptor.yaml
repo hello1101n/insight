@@ -13,7 +13,16 @@ name: slack
 #   definition and restores the connection state; bronze keeps its meaning.
 #   Staging drops a row with a NULL message counter instead of reading it as 0
 #   (none exist on vz, so no full refresh is needed).
-version: "2027.2.0"
+# 2028.0.0 (major): chat rows carry the Slack account (user_id), and the gold
+#   chat evidence resolves each Slack row by that account first, then by the email.
+#   MAJOR so reconcile runs `dbt --full-refresh`: staging rows built before the
+#   change have no account. Slack sends identity inputs from the members models.
+# 2029.0.0 (major): the chat staging feeders replace rows by key (delete+insert
+#   on ReplacingMergeTree). They build every day extracted after the newest
+#   extract they already built, so a gap of more than 3 days heals (#4323,
+#   #4317). MAJOR so reconcile runs the one-shot `dbt --full-refresh` that
+#   removes the stored duplicate keys and creates the new table engine.
+version: "2029.4.0"
 type: cdk
 schedule: 0 4 * * *
 # images.cdk.image stays empty until the first main build of build-images.yml,
@@ -23,12 +32,13 @@ images:
     name: source-slack-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-slack-insight:2026.11.12.09.21-3400fcd"
+    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.20.13.24-f15a8f6"
 dbt_select: tag:slack+
 workflow: sync
 connection:
   namespace: bronze_slack
+# INVARIANT: the token key is not listed. A Secret can name it slack_user_token
+# or slack_bot_token, and the connection check reports a missing token.
 secret:
   required_fields:
-    - slack_bot_token
     - slack_start_date

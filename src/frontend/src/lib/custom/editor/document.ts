@@ -1,9 +1,5 @@
-/** A path into a document, as a violation names it: `fields[0].type`. */
 export type Path = readonly (string | number)[];
 
-// INVARIANT: there is one document, not two copies. The fields and the text are
-// two views of it, and whichever was edited last is believed; text that does not
-// parse leaves the document as it stands.
 export interface Held {
   document: Record<string, unknown>;
   text: string;
@@ -18,15 +14,12 @@ export function hold(document: Record<string, unknown> = {}): Held {
   return { document, text: written(document) };
 }
 
-// `undefined` removes the property rather than sending a null: a property the
-// document does not carry and one carrying nothing are different documents.
 export function change(held: Held, path: Path, value: unknown): Held {
   const document = put(held.document, path, value) as Record<string, unknown>;
 
   return { document, text: written(document) };
 }
 
-// A document must be an object: the fields have nowhere to put a list or a number.
 export function retype(held: Held, text: string): Held {
   let parsed: unknown;
   try {
@@ -46,7 +39,6 @@ export function sendable(held: Held): boolean {
   return held.unparsed === undefined;
 }
 
-/** The line a parser's message points at, when it names one. */
 export function brokenLine(unparsed: string | undefined): number | undefined {
   const named = unparsed?.match(/line (\d+)/);
   return named ? Number(named[1]) : undefined;
@@ -62,8 +54,6 @@ export function read(document: unknown, path: Path): unknown {
   }, document);
 }
 
-// A missing step is created as the next segment needs it - an index makes a
-// list, a name makes an object - so a field can be filled before what holds it exists.
 function put(at: unknown, path: Path, value: unknown): unknown {
   const [segment, ...rest] = path;
   if (segment === undefined) return value;
@@ -84,9 +74,6 @@ function put(at: unknown, path: Path, value: unknown): unknown {
       ? { ...(at as Record<string, unknown>) }
       : {};
   const next = put(record[segment], rest, value);
-  // A removal that leaves a nested record with nothing in it removes the
-  // record: `order_by: {}` is not an ordering the service will take. An entry
-  // of a list is kept, since it is a row somebody is editing.
   const emptied = value === undefined && (rest.length === 0 || bare(next));
   if (emptied) {
     delete record[segment];

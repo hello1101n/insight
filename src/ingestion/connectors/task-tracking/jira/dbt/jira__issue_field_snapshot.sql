@@ -11,6 +11,7 @@
     query_settings={
         'max_bytes_before_external_group_by': 2000000000,
         'max_bytes_before_external_sort': 2000000000,
+        'query_plan_join_swap_table': 'false',
     },
     tags=['staging', 'jira']
 ) }}
@@ -34,8 +35,12 @@
 --      carries only that String — never the JSON. Selecting the JSON into an
 --      argMax state, or sorting rows that carry it, puts every issue's payload
 --      into one buffer.
---   2. the key/value unpivot happens AFTER that join, so it streams over one
+--   2. the key/value unpivot happens AFTER that filter, so it streams over one
 --      row per issue instead of one per bronze emission.
+-- The dedup is an `IN` filter, not a join back on the raw id: ClickHouse
+-- always builds the set from the subquery, while the planner may swap the
+-- sides of a join and hash the JSON (#4370). `query_plan_join_swap_table` is
+-- off for the same reason: `classified` joins the unpivoted JSON stream.
 -- A single `argMax` over a wide tuple (the previous shape) also works, but only
 -- because the tuple is small; it cannot be extended to all fields.
 --
@@ -44,20 +49,8 @@
 -- different row when `_airbyte_extracted_at` ties, silently mixing two versions
 -- of an issue.
 
-WITH winner AS (
-    -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
-    -- within a source, (source_id, jira_id): unmerged parts hold several rows
-    -- per issue, and `unique_key` exists for the merge alone.
-    SELECT
-        source_id,
-        jira_id,
-        argMax(_airbyte_raw_id, _airbyte_extracted_at) AS raw_id
-    FROM {{ source('bronze_jira', 'jira_issue') }}
-    GROUP BY source_id, jira_id
-),
-
 -- One row per (issue, field key present in the issue JSON).
-unpivoted AS (
+WITH unpivoted AS (
     SELECT
         CAST(i.source_id AS String)                                   AS insight_source_id,
         CAST(i.jira_id AS String)                                     AS issue_id,
@@ -67,8 +60,15 @@ unpivoted AS (
         kv.1                                                          AS field_id,
         kv.2                                                          AS raw_value
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    INNER JOIN winner AS w ON i._airbyte_raw_id = w.raw_id
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
+    -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
+    -- within a source, (source_id, jira_id): unmerged parts hold several rows
+    -- per issue, and `unique_key` exists for the merge alone.
+    WHERE i._airbyte_raw_id IN (
+        SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
+        FROM {{ source('bronze_jira', 'jira_issue') }}
+        GROUP BY source_id, jira_id
+    )
 ),
 
 classified AS (

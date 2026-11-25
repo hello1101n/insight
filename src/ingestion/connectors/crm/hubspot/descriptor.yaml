@@ -1,7 +1,13 @@
 name: hubspot
 # MAJOR per ADR-0015: the one-shot dbt --full-refresh it dispatches is what
 #   fills the new class_crm_* columns for rows stored before them.
-version: "3.4.0"
+# 3.9.0: tickets and their property history also feed the support classes
+#   (dim_support_ticket, class_support_activity). MINOR: new staging models
+#   build whole on their first run; nothing already stored changes meaning.
+# 3.11.0: the support models move to the class_support_* contract. MINOR:
+#   new staging tables that each run rebuilds whole; the old support classes
+#   and their models are dropped by the deploy hook.
+version: "3.12.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync
@@ -13,7 +19,7 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/constructorfabric/source-hubspot-insight:2026.11.11.10.19-6a448d1"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.24.13.03-17d28da"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"

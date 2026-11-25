@@ -1,5 +1,4 @@
 pub mod ai;
-pub(crate) mod connector_health;
 pub mod contract_version;
 pub(crate) mod date_window;
 pub mod external_links;
@@ -14,5 +13,4 @@ pub(crate) mod person_absences;
 pub(crate) mod person_visibility;
 pub mod query_gate;
 pub mod reports;
-pub mod saved_query;
 pub(crate) mod spreadsheet;

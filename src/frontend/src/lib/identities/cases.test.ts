@@ -1,14 +1,13 @@
-/**
- * A conflict flags every account sharing the disputed value, each row
- * carrying the same candidates — so the queue showed one split person as five
- * problems, and ordering by source scattered them among the others. Grouping
- * by "who is being argued over" is what puts one case back together.
- */
 import { describe, expect, it } from "vitest";
 
-import type { AttentionItem } from "@/api/identity-client";
+import type { AttentionItem, PersonSummary } from "@/api/identity-client";
 
-import { dropDecided, groupIntoCases } from "./cases";
+import {
+  detachOffered,
+  dropDecided,
+  groupIntoCases,
+  holderCard,
+} from "./cases";
 
 const ANN = { person_id: "01900000-0000-7000-8000-0000000000a0", display_name: "Ann Lee" };
 const BOB = { person_id: "01900000-0000-7000-8000-0000000000b0", display_name: "Bob Park" };
@@ -39,8 +38,6 @@ describe("groupIntoCases", () => {
     expect(cases[0]?.candidates).toEqual([ANN, BOB]);
   });
 
-  // The server sorts candidates, but a case must not split because a future
-  // read hands the same two people back in the other order.
   it("is blind to the order the candidates arrive in", () => {
     const cases = groupIntoCases([
       item({ account_id: "a1", candidates: [ANN, BOB] }),
@@ -59,8 +56,6 @@ describe("groupIntoCases", () => {
     expect(cases).toHaveLength(2);
   });
 
-  // Nothing to match on means nothing to join them by: collapsing these would
-  // claim an argument that does not exist.
   it("leaves candidate-less accounts as cases of their own", () => {
     const cases = groupIntoCases([
       item({ account_id: "a1", kind: "no_evidence", candidates: [] }),
@@ -92,8 +87,6 @@ describe("dropDecided", () => {
     ).toHaveLength(0);
   });
 
-  // A refusal changed nothing, so the row must stay: removing it would show a
-  // queue that dealt with something the server declined.
   it("keeps a refused account in the queue", () => {
     const items = [item({ account_id: "a1" })];
 
@@ -108,5 +101,88 @@ describe("dropDecided", () => {
     expect(
       dropDecided(items, [{ ...ref, account_id: "a1", outcome: "applied" }]),
     ).toHaveLength(1);
+  });
+});
+
+describe("holderCard", () => {
+  it.each<{
+    rule: string;
+    boundId: string | null;
+    holder: PersonSummary | null;
+    candidates: PersonSummary[];
+    expected: PersonSummary | null;
+  }>([
+    {
+      rule: "the holder card names the binding it matches",
+      boundId: ANN.person_id,
+      holder: ANN,
+      candidates: [],
+      expected: ANN,
+    },
+    {
+      rule: "a holder card for a different id than the binding is not the holder",
+      boundId: BOB.person_id,
+      holder: ANN,
+      candidates: [ANN, BOB],
+      expected: BOB,
+    },
+    {
+      rule: "a bound candidate names the holder when no card is handed in",
+      boundId: BOB.person_id,
+      holder: null,
+      candidates: [ANN, BOB],
+      expected: BOB,
+    },
+    {
+      rule: "an unbound account has no holder, whatever card is handed in",
+      boundId: null,
+      holder: ANN,
+      candidates: [ANN],
+      expected: null,
+    },
+  ])("$rule", ({ boundId, holder, candidates, expected }) => {
+    expect(holderCard(boundId, holder, candidates)).toEqual(expected);
+  });
+});
+
+describe("detachOffered", () => {
+  it.each<{
+    rule: string;
+    holderId: string | null;
+    count: number | undefined;
+    expected: boolean;
+  }>([
+    {
+      rule: "an account nobody holds can be detached before its count is read",
+      holderId: null,
+      count: undefined,
+      expected: true,
+    },
+    {
+      rule: "an account nobody holds can be detached whatever the count says",
+      holderId: null,
+      count: 1,
+      expected: true,
+    },
+    {
+      rule: "a held account is not detached while the holder's count is unread",
+      holderId: ANN.person_id,
+      count: undefined,
+      expected: false,
+    },
+    {
+      rule: "a holder's only account is not detached",
+      holderId: ANN.person_id,
+      count: 1,
+      expected: false,
+    },
+    {
+      rule: "one of a holder's several accounts can be detached",
+      holderId: ANN.person_id,
+      count: 2,
+      expected: true,
+    },
+  ])("$rule", ({ holderId, count, expected }) => {
+    expect(detachOffered(holderId, count)).toBe(expected);
   });
 });

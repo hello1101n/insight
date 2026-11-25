@@ -1,9 +1,9 @@
 import { CalendarIcon, CircleAlert } from "lucide-react";
 import { useState } from "react";
-import type { DateRange as DayPickerRange } from "react-day-picker";
+import { useTranslation } from "react-i18next";
 
 import {
-  latestPickableDay,
+  laterOfLocalAndUtcDay,
   MAX_DATE_RANGE_DAYS,
   resolveDateRange,
   toISODate,
@@ -21,10 +21,15 @@ import {
   PopoverTrigger,
   ToggleGroup,
   ToggleGroupItem,
+  type CalendarProps,
 } from "@gears-frontx/ui-kit";
 import { formatRange } from "@/lib/date-range-label";
 import { keepNavigationKeysInside } from "@/lib/keep-navigation-keys-inside";
 import type { CustomRange, PeriodValue } from "@/types/insight";
+
+type DayPickerRange = NonNullable<
+  Extract<CalendarProps, { mode: "range" }>["selected"]
+>;
 
 function formatLongDate(d: Date): string {
   return d.toLocaleDateString("en-GB", {
@@ -34,15 +39,12 @@ function formatLongDate(d: Date): string {
   });
 }
 
-const TABS: { value: PeriodValue; label: string; short: string }[] = [
-  { value: "week", label: "Week", short: "W" },
-  { value: "month", label: "Month", short: "M" },
-  { value: "quarter", label: "Quarter", short: "Q" },
-  { value: "year", label: "Year", short: "Y" },
+const TABS: { value: PeriodValue }[] = [
+  { value: "week" },
+  { value: "month" },
+  { value: "quarter" },
+  { value: "year" },
 ];
-
-const SEGMENT =
-  "bg-card text-muted-foreground aria-pressed:bg-selection-subtle aria-pressed:text-foreground";
 
 export interface PeriodSelectorBarProps {
   period: PeriodValue;
@@ -59,6 +61,7 @@ export function PeriodSelectorBar({
   onPeriodChange,
   onRangeChange,
 }: PeriodSelectorBarProps) {
+  const { t } = useTranslation();
   const [calOpen, setCalOpen] = useState(false);
   const [tempRange, setTempRange] = useState<DayPickerRange | undefined>(
     customRange
@@ -116,10 +119,10 @@ export function PeriodSelectorBar({
         variant="outline"
         size="default"
       >
-        {TABS.map(({ value, label, short }) => (
-          <ToggleGroupItem key={value} value={value} className={SEGMENT}>
-            <span className="hidden sm:inline">{label}</span>
-            <span className="sm:hidden">{short}</span>
+        {TABS.map(({ value }) => (
+          <ToggleGroupItem key={value} value={value} className="aria-pressed:bg-selection-subtle">
+            <span className="hidden sm:inline">{t(`common.period.${value}`)}</span>
+            <span className="sm:hidden">{t(`common.period.${value}_short`)}</span>
           </ToggleGroupItem>
         ))}
         <Popover open={calOpen} onOpenChange={handleOpenChange}>
@@ -127,32 +130,28 @@ export function PeriodSelectorBar({
             render={
               <ToggleGroupItem
                 value="custom"
-                className={`${SEGMENT} gap-1.5`}
-                // Below `sm` the label is hidden and only the icon remains, so
-                // without this the control has no accessible name at all.
-                aria-label={`Custom date range: ${activeRangeLabel}`}
+                className="aria-pressed:bg-selection-subtle"
+                aria-label={t("common.period.custom_range", { range: activeRangeLabel })}
               >
                 <CalendarIcon className="size-3.5" />
-                {/* The range spells out to ~140px; below `sm` the calendar icon
-                    stands in for it and the popover shows the actual dates. */}
                 <span className="hidden sm:inline">{activeRangeLabel}</span>
                 <Tooltip>
                   <TooltipTrigger
                     render={
                       <span
                         className="rounded bg-muted px-1 py-px text-xs font-semibold tracking-wider text-muted-foreground uppercase"
-                        aria-label="Days are counted in UTC"
+                        aria-label={t("common.period.utc_days")}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        UTC
+                        {t("common.period.utc")}
                       </span>
                     }
                   />
                   <TooltipContent
                     side="bottom"
-                    className="max-w-xs text-xs leading-relaxed"
+                    className="max-w-xs"
                   >
-                    All dates here are bucketed by UTC midnight.
+                    {t("common.period.utc_tooltip")}
                   </TooltipContent>
                 </Tooltip>
               </ToggleGroupItem>
@@ -160,7 +159,7 @@ export function PeriodSelectorBar({
           />
           <PopoverContent
             align="end"
-            className="w-auto gap-0 p-0"
+            className="w-auto"
             onKeyDown={keepNavigationKeysInside}
           >
             {tempRange?.from ? (
@@ -171,7 +170,7 @@ export function PeriodSelectorBar({
                     ` – ${formatLongDate(tempRange.to)}`
                   ) : (
                     <span className="text-muted-foreground">
-                      {" → pick end date"}
+                      {t("common.period.pick_end")}
                     </span>
                   )}
                 </p>
@@ -182,13 +181,12 @@ export function PeriodSelectorBar({
               weekStartsOn={1}
               captionLayout="dropdown"
               fixedWeeks
-              endMonth={latestPickableDay()}
-              className="p-3"
+              endMonth={laterOfLocalAndUtcDay()}
               resetOnSelect
               showOutsideDays={false}
               selected={tempRange}
               onSelect={(r) => setTempRange(r)}
-              disabled={{ after: latestPickableDay() }}
+              disabled={{ after: laterOfLocalAndUtcDay() }}
               defaultMonth={tempRange?.from}
               numberOfMonths={
                 typeof window !== "undefined" && window.innerWidth < 640 ? 1 : 2
@@ -201,8 +199,10 @@ export function PeriodSelectorBar({
               >
                 <CircleAlert className="size-3.5 shrink-0" />
                 <span>
-                  Selected range is {pendingValidation.days} days. Choose up to{" "}
-                  {MAX_DATE_RANGE_DAYS} days.
+                  {t("common.period.range_too_long", {
+                    days: pendingValidation.days,
+                    max: MAX_DATE_RANGE_DAYS,
+                  })}
                 </span>
               </div>
             ) : null}
@@ -217,7 +217,7 @@ export function PeriodSelectorBar({
                     setCalOpen(false);
                   }}
                 >
-                  Clear
+                  {t("common.actions.clear")}
                 </Button>
               ) : null}
               <Button
@@ -225,7 +225,7 @@ export function PeriodSelectorBar({
                 size="sm"
                 onClick={() => setCalOpen(false)}
               >
-                Cancel
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 variant="default"
@@ -238,7 +238,7 @@ export function PeriodSelectorBar({
                   setCalOpen(false);
                 }}
               >
-                Apply
+                {t("common.actions.apply")}
               </Button>
             </div>
           </PopoverContent>

@@ -56,7 +56,6 @@ describe("MetricEvidencePeople", () => {
   it("maps rows and cells for a screen reader, despite the flex layout", () => {
     draw();
 
-    // Two people plus the header row they sit under.
     expect(screen.getByRole("table")).toHaveAttribute("aria-rowcount", "3");
     expect(
       screen.getByRole("columnheader", { name: "Person" })
@@ -64,7 +63,6 @@ describe("MetricEvidencePeople", () => {
     expect(
       screen.getByRole("columnheader", { name: "Commits" })
     ).toBeInTheDocument();
-    // Two people plus the header row.
     expect(screen.getAllByRole("row")).toHaveLength(3);
     expect(screen.getAllByRole("cell", { name: "142" })).toHaveLength(1);
   });
@@ -84,7 +82,6 @@ describe("MetricEvidencePeople", () => {
     await user.click(screen.getByRole("cell", { name: "Ada Lovelace" }));
     expect(onDrill).toHaveBeenCalledTimes(1);
 
-    // The opener must not also trigger the row it sits in.
     await user.click(
       screen.getByRole("button", { name: "Open records for Ada Lovelace" })
     );

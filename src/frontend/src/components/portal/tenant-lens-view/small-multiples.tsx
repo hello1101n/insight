@@ -1,22 +1,22 @@
-import type { MetricBucket } from "@/api/metric-results-client";
-import { Card, CardContent } from "@/components/ui/card";
+import { ComposedChart, XAxis } from "recharts";
 import {
-  ChartContainer,
-  ChartLine,
-  ComposedChart,
-  XAxis,
-  YAxis,
   type ChartConfig,
-} from "@/components/ui/chart";
+  ChartContainer,
+  Card,
+  CardContent,
+} from "@gears-frontx/ui-kit";
+
+import { ChartLine, YAxis } from "@/components/chart-series";
+import type { MetricBucket } from "@/api/metric-results-client";
 import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 
 import { bucketNote, smallMultiples } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
+import { chartColor } from "@/lib/chart-palette";
 
 const MULTIPLE_CONFIG: ChartConfig = { value: { label: "Value" } };
 
-/** A grid of small line charts, one per dimension value, one shared y-axis. */
 export function SmallMultiplesSection({
   section,
   resolve,
@@ -33,7 +33,6 @@ export function SmallMultiplesSection({
     section.dimension,
     section.top ?? 12
   );
-  // A single multiple is a trend wearing a costume.
   if (multiples.length < 2 || max <= 0) return null;
 
   return (
@@ -42,12 +41,12 @@ export function SmallMultiplesSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4 pb-1 text-xs text-muted-foreground">
+        <CardContent>
           {[bucketNote(r.timeseries?.bucket ?? bucket), "one shared y-axis"]
             .filter(Boolean)
             .join(" · ")}
         </CardContent>
-        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 p-4 md:grid-cols-3 lg:grid-cols-4">
+        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3 lg:grid-cols-4">
           {multiples.map((multiple) => (
             <div key={multiple.value} className="min-w-0">
               <p
@@ -62,12 +61,10 @@ export function SmallMultiplesSection({
                   margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
                 >
                   <XAxis dataKey="date" hide />
-                  {/* The shared ceiling is the whole point: the same y-axis
-                      everywhere, or the grid invites false comparisons. */}
                   <YAxis hide domain={[0, max]} />
                   <ChartLine
                     dataKey="value"
-                    stroke="var(--chart-1)"
+                    stroke={chartColor(0)}
                     strokeWidth={1.5}
                   />
                 </ComposedChart>

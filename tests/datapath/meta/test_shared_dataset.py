@@ -136,3 +136,18 @@ def test_configuration_cannot_escape_the_scenarios_sources() -> None:
     )
     with pytest.raises(ValueError, match="seeded source"):
         namespace(original, key="tasks/example", caller_email="lead@example.com")
+
+
+@pytest.mark.parametrize("column", ["source_id", "insight_source_id"])
+def test_each_case_gets_its_own_bronze_source_whatever_the_platform_column_is_named(
+    column: str,
+) -> None:
+    original = replace(
+        fixture(), bronze={"bronze_example.rows": [{column: "example-source", "unique_key": "k"}]}
+    )
+
+    first = namespace(original, key="a", caller_email="lead@example.com")
+    second = namespace(original, key="b", caller_email="lead@example.com")
+
+    sources = {case.seeded.bronze["bronze_example.rows"][0][column] for case in (first, second)}
+    assert len(sources) == 2, f"should namespace {column}: {sources}"

@@ -14,12 +14,6 @@ export interface Option {
   disabled?: boolean;
 }
 
-/**
- * One choice from a short fixed list, as the kit draws a select.
- *
- * The trigger carries the field's id, so the field's `<label htmlFor>` names
- * it and its hint and refusal describe it.
- */
 export function FieldSelect({
   id,
   label,
@@ -32,7 +26,6 @@ export function FieldSelect({
   className,
 }: {
   id: string;
-  /** Names the control when no visible label does. */
   label?: string;
   value: string;
   options: readonly Option[];
@@ -56,7 +49,7 @@ export function FieldSelect({
         id={id}
         aria-label={label}
         {...describe}
-        className={cn("h-9 w-full", className)}
+        className={cn("w-full", className)}
       >
         <SelectValue>
           {picked ? (

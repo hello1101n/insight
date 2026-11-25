@@ -2,7 +2,7 @@
 
 Frontend application for **Insight** — a decision intelligence platform for engineering analytics, productivity insights, bottleneck detection, AI adoption tracking, and team health visibility.
 
-Single-page application built on React 19 + TanStack Router + TanStack Query + shadcn/ui. Uses MSW for offline / demo mocking; talks to the Insight backend in production.
+Single-page application built on React 19 + TanStack Router + TanStack Query + `@gears-frontx/ui-kit`. Uses MSW for offline / demo mocking; talks to the Insight backend in production.
 
 Part of the [Insight](https://github.com/constructorfabric/insight) monorepo — the backend, ingestion
 and Helm charts live alongside this directory. Connector specs and API contracts are in
@@ -17,7 +17,7 @@ and Helm charts live alongside this directory. Connector specs and API contracts
 | Data | TanStack Query (per-query hooks under `src/queries/`) |
 | Build | Vite 8 |
 | Language | TypeScript 6 (strict) |
-| Styling | Tailwind CSS 4 + shadcn/ui (`base-vega` style, CSS variables) |
+| Styling | Tailwind CSS 4 + `@gears-frontx/ui-kit` (CSS variables) |
 | Charts | Recharts 3 |
 | Auth | Server-side session (cookie/BFF through the gateway) |
 | i18n | `i18next` + `react-i18next` (English only today) |
@@ -100,7 +100,6 @@ src/
   routeTree.gen.ts       #   ← auto-generated, do not edit
   screens/               # Page components composed by routes
   components/
-    ui/                  #   shadcn/ui primitives (button, card, dialog, alert, …)
     widgets/             #   Feature widgets (dashboard/, metric-views/, …)
     app-sidebar.tsx      #   Org-tree sidebar (recursive nav)
     theme-provider.tsx   #   Light/dark/system theme (localStorage-backed)
@@ -175,6 +174,7 @@ Build-time (Vite, `.env.local`):
 | `VITE_HIDE_MOCK_BANNER` | `"true"` to hide the warning strip while mocks are on (for screenshots). |
 | `VITE_API_PROXY_TARGET` | Dev-only `/api` proxy target (e.g. `http://localhost:8080`). |
 | `VITE_API_BASE` | Override analytics API base URL (default `/api/analytics/v1`). |
+| `VITE_CONNECTORS_BASE` | Override connector health, syncs and ingestion API base URL (default `/api/connectors/v1`). |
 | `VITE_IDENTITY_BASE` | Override identity API base URL (default `/api/identity/v1`). |
 | `VITE_SENTRY_DSN` | Sentry DSN for local runs only; a deployed stand uses `sentry.dsn`. Unset means Sentry never initializes. |
 | `VITE_APP_RELEASE` | Release attached to events. Defaults to `local-<git sha>`; CI passes the image tag. |
@@ -217,17 +217,30 @@ minified bundle rather than your code.
 
 ## Routes
 
-| Path | Screen | Notes |
-|---|---|---|
-| `/` | Dashboard for the signed-in viewer | Resolves the viewer from the session. |
-| `/ic/$person` | (redirects to `/ic/$person/personal`) | |
-| `/ic/$person/personal` | Dashboard | KPI row, attention list, metric group cards + drilldowns. |
-| `/ic/$person/team` | Team view | Members heatmap, attention list, metric group drilldowns. |
-| `/whats-new` | Release notes | |
+Every page sits under one shell route (`routes/_shell.tsx`), so the rail, the
+pane and the top bar stay mounted while the page changes. The path says where
+the reader is; the query string carries only that page's own settings, plus
+`scope`, `direct`, `slice`, `period`, `from` and `to`, which every page shares.
+
+| Path | Screen |
+|---|---|
+| `/` | Redirects to `/home`, or to the viewer's own page where the install hides Home |
+| `/home`, `/home/directions`, `/home/attention` | Home |
+| `/explore`, `/explore/$dir/$lens` | Directions and their lenses (`?repo=` on a lens) |
+| `/explore/ai`, `/explore/ai/$view` | AI & Cost |
+| `/people` | Redirects to the viewer's own page |
+| `/people/$person`, `/people/$person/$section` | One person, and one of their sections |
+| `/people/$person/team`, `/people/$person/team/roster`, `/people/$person/team/metrics` | That person's team (`?metrics=&compare=` on the metrics view) |
+| `/reports/$view` | Reports |
+| `/manage/$surface`, `/manage/identities/$mode`, `/manage/ingestion/$connector` | Manage |
+| `/dashboards/...` | Dashboards, metrics, widgets, datasets and alerts |
+
+Paths use short names; the zone and item ids the install's `frontend.nav`
+policy is written against are mapped in `src/lib/portal/portal-routes.ts`.
 
 ## Theming
 
-`light` / `dark` / `system`. Theme tokens are CSS variables defined in [src/index.css](src/index.css); use the semantic Tailwind utilities (`bg-background`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-warning/10`, etc.). The shadcn theme is `base-vega` with `cssVariables: true` (see [components.json](components.json)).
+`light` / `dark` / `system`. Theme tokens are CSS variables defined in [src/index.css](src/index.css); use the semantic Tailwind utilities (`bg-background`, `text-muted-foreground`, `border-border`, `text-destructive`, `bg-warning/10`, etc.).
 
 ## i18n
 

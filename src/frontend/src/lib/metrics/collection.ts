@@ -61,25 +61,6 @@ export interface MetricCollectionConfig {
   metrics: MetricCollectionMetricConfig[];
 }
 
-/**
- * Drop metrics this installation's catalog does not offer.
- *
- * The backend resolves a request ALL-or-NOTHING: one key it cannot serve and
- * the whole `/v1/metric-results` call is rejected with 400 UNAVAILABLE
- * (`metric_definitions/repository.rs` — `return Err(unavailable(key))`), so a
- * single missing metric blanks an entire screen rather than its own tile.
- *
- * The frontend's metric keys are compiled in, but the catalog is per
- * installation: it is seeded from a registry that moves, and a tenant running
- * an older backend, or a different connector set, simply has fewer keys. Asking
- * only for what the catalog lists turns "the screen is broken" into "that one
- * metric has no data here", which every section already renders honestly.
- *
- * `available === null` means the catalog has not answered yet (or failed) —
- * then nothing is dropped, because a not-yet-known catalog must not silently
- * shrink a request. The config object is returned unchanged when no key is
- * dropped, so query keys stay stable.
- */
 export function filterCollectionToAvailable(
   collection: MetricCollectionConfig,
   available: ReadonlySet<string> | null,
@@ -88,10 +69,6 @@ export function filterCollectionToAvailable(
   return filterCollectionByKey(collection, (key) => available.has(key));
 }
 
-/**
- * Drop every metric the predicate rejects, keeping the config object identical
- * when nothing is dropped so query keys stay stable.
- */
 export function filterCollectionByKey(
   collection: MetricCollectionConfig,
   keep: (metricKey: string) => boolean,
@@ -100,28 +77,11 @@ export function filterCollectionByKey(
   return kept.length === collection.metrics.length ? collection : { metrics: kept };
 }
 
-/**
- * Drop metrics whose request narrows by a dimension they do not declare.
- *
- * The backend rejects the WHOLE request over one such filter — "metric
- * tasks.closed does not support dimension repository" — so a screen that
- * scopes a whole direction to one repository would blank itself over the
- * metrics that have nothing to do with repositories.
- *
- * Dropping, not un-filtering: an unfiltered tile on a scoped screen would show
- * a figure for the whole roster under a heading that names one repository,
- * which is worse than an absent tile. `declared === null` means the catalog has
- * not answered, and then nothing is dropped — the caller holds the request
- * instead, the same rule `filterCollectionToAvailable` follows.
- */
 export function filterCollectionToDeclaredDimensions(
   collection: MetricCollectionConfig,
   declared: ReadonlyMap<string, ReadonlySet<string>> | null,
 ): MetricCollectionConfig {
   if (!declared) return collection;
-  // Judged per ENTRY, not per key: two entries may name the same metric under
-  // different filters, and looking the key up would decide the second one by
-  // the first one's filters.
   const kept = collection.metrics.filter((metric) => {
     const asked = metric.filters ?? [];
     if (!asked.length) return true;
@@ -132,8 +92,6 @@ export function filterCollectionToDeclaredDimensions(
 }
 
 export type MetricCollectionEntity =
-  // The tenant variant carries no ids: the backend derives the organization
-  // from the session, and a client-supplied identifier is rejected outright.
   | { type: "person"; ids: string[] }
   | { type: "tenant" };
 
@@ -141,7 +99,6 @@ export type NormalizedMetricResult = {
   absenceContext?: ReadonlyMap<string, PersonAbsenceContext>;
   metric_key: string;
   label: string;
-  /** Compact label for dense surfaces (member grids); falls back to `label`. */
   short_label?: string;
   description?: string;
   explanation?: string;
@@ -157,13 +114,7 @@ export type NormalizedMetricResult = {
   rollup?: RollupView;
   histogram?: HistogramView;
   unattributed?: UnattributedView;
-  /** Set when a view's computation failed server-side (first error wins). */
   error?: Pick<MetricErrorView, "code" | "message">;
-  /**
-   * Set when the data behind a view has not been built yet. Neither a failure
-   * nor a reading: a card showing `0` here would report a measurement nobody
-   * took, so the card renders "no data yet" instead.
-   */
   notReady?: NotReadyReason;
   drilldown?: MetricResult["drilldown"];
   selection?: MetricResult["selection"];
@@ -208,12 +159,6 @@ export function buildMetricCollectionRequest(
   };
 }
 
-/**
- * Derive a view-subset collection for a surface that must not request the
- * full view set (e.g. team surfaces request `period` + `peer` only — a
- * per-member timeseries over a large roster would exceed the backend's
- * all-or-nothing row limit and fail the whole request).
- */
 export function projectViews(
   collection: MetricCollectionConfig,
   kinds: readonly MetricResultViewKind[]
@@ -225,8 +170,6 @@ export function projectViews(
         filters: metric.filters,
         views: metric.views.filter((view) => kinds.includes(view.view)),
       }))
-      // The backend rejects a metric with no views (invalid_argument) and
-      // fails the whole request — drop rather than send empty.
       .filter((metric) => metric.views.length > 0),
   };
 }
@@ -273,20 +216,12 @@ export function normalizeMetricResult(
         normalized.unattributed = view;
         break;
       case "error":
-        // A failed view arrives in its requested slot; the slot's field stays
-        // unset and downstream reads are optional-chained already. First
-        // error wins — one message per metric is enough to render.
         normalized.error ??= { code: view.code, message: view.message };
         break;
       case "not_ready":
-        // Same slot discipline as a failure, but it is not one: the relation
-        // behind the view has not been built yet.
         normalized.notReady ??= view.reason;
         break;
       default:
-        // Forward-compat: the server may ship new view kinds before this
-        // client knows them; an unknown view must not take down the whole
-        // collection. `exhaustive` stays on request-side unions only.
         if (import.meta.env.DEV) {
           console.warn("Ignoring unknown metric view kind", view);
         }
@@ -297,19 +232,6 @@ export function normalizeMetricResult(
   return normalized;
 }
 
-/**
- * The comparison window read as if it had been its own request: its value takes
- * the place of `value`, and the views that never carry a window (`peer`,
- * `timeseries`, `histogram`, `rollup`) are dropped rather than repeated —
- * reading them here would silently answer over the primary period. This is what
- * lets the window feed the same selectors a separate request did.
- *
- * A compared breakdown groups over both windows at once, so its row set is the
- * union of them; `present` says which rows the window actually had, and a row
- * it never had is dropped here. Presence cannot be read off the value: a ratio
- * over a group that IS in the window is null whenever its denominator is zero,
- * and dropping that row would lose one a standalone request returns.
- */
 export function projectComparison(
   results: Map<string, NormalizedMetricResult>
 ): Map<string, NormalizedMetricResult> {
@@ -351,11 +273,6 @@ export function projectComparison(
   return out;
 }
 
-/**
- * The primary period of a compared response, read the same way: its breakdown
- * row set is the union of both windows too, so the groups the primary period
- * never had are dropped. An uncompared response is returned untouched.
- */
 export function projectPrimary(
   results: Map<string, NormalizedMetricResult>
 ): Map<string, NormalizedMetricResult> {
@@ -396,11 +313,6 @@ export function normalizeMetricResults(
   );
 }
 
-/**
- * Entity-scoped read of a normalized result. Renderers and cell selectors are
- * entity-blind: they receive the slice for one entity instead of re-running
- * `values.find(v => v.entity_id === …)` each.
- */
 export function forEntity(
   result: NormalizedMetricResult,
   entityId: string
@@ -423,28 +335,12 @@ export function forEntity(
   };
 }
 
-/**
- * The backend rejects requests whose projected result rows exceed its
- * all-or-nothing limit (5000). Headroom below that so period+peer chunking
- * never sits exactly on the cliff.
- */
-export const MAX_PROJECTED_ROWS = 4500;
+const BACKEND_MAX_PROJECTED_ROWS = 5000;
 
-// INVARIANT: matches MAX_PERSON_IDS in the analytics metric_results validation.
-export const MAX_ENTITY_IDS = 1000;
+export const PROJECTED_ROWS_BUDGET = BACKEND_MAX_PROJECTED_ROWS - 500;
 
-/**
- * How many entities fit in one request for this collection, or null when the
- * collection is not chunkable. Timeseries/breakdown project rows per bucket
- * or dimension group (unbounded client-side); histogram projects a fixed bin
- * count per entity but is a drilldown-only single-entity view — all three are
- * for single-entity surfaces and roster surfaces strip them via
- * `projectViews(["period", "peer"])`, so none should ride a chunked request.
- * Rollup is not chunkable either, and for a harder reason: its rows carry no
- * entity grain, so per-chunk results cannot be merged (a median or a distinct
- * person count over half the roster is not half the answer). Unattributed
- * names no entity at all: every chunk would repeat the same tenant figure.
- */
+const MAX_PERSON_IDS = 1000;
+
 export function entityChunkSize(
   collection: MetricCollectionConfig
 ): number | null {
@@ -465,8 +361,8 @@ export function entityChunkSize(
   }
   if (rowsPerEntity === 0) return null;
   return Math.min(
-    MAX_ENTITY_IDS,
-    Math.max(1, Math.floor(MAX_PROJECTED_ROWS / rowsPerEntity)),
+    MAX_PERSON_IDS,
+    Math.max(1, Math.floor(PROJECTED_ROWS_BUDGET / rowsPerEntity)),
   );
 }
 
@@ -479,12 +375,6 @@ export function chunkEntityIds(ids: string[], size: number): string[][] {
   return chunks;
 }
 
-/**
- * Merge per-chunk results for the same collection: entity-scoped view values
- * concatenate; metric metadata is identical across chunks (first wins). Only
- * period/peer views occur here — chunking is disabled for collections with
- * timeseries/breakdown views.
- */
 export function mergeNormalizedResults(
   maps: Array<Map<string, NormalizedMetricResult>>
 ): Map<string, NormalizedMetricResult> {
@@ -530,14 +420,6 @@ export function mergeNormalizedResults(
   return out;
 }
 
-/**
- * Whether the entity has any observations for this metric. Period views
- * zero-fill sums for requested entities, so a zero alone cannot distinguish
- * "measured zero" from "unmeasured" — the peer view's `target_value` can
- * (null exactly when unobserved). Without a peer row (no peer view, or no
- * cohort membership), a non-null non-zero period value still proves
- * observation; a zero-filled one does not.
- */
 export function entityObserved(
   result: NormalizedMetricResult,
   entityId: string

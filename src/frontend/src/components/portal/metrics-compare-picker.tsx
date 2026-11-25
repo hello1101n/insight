@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Search, Users } from "lucide-react";
 
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
@@ -24,6 +25,7 @@ export function MetricsComparePicker({
   picked: readonly string[];
   onCompare: (entityIds: string[]) => void;
 }) {
+  const { t } = useTranslation();
   const idPrefix = useId();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string[]>([]);
@@ -66,26 +68,20 @@ export function MetricsComparePicker({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-80 gap-3 p-3">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Find a person or a team"
-            aria-label="Find a person or a team"
-            className="ps-8"
-          />
-        </div>
+      <PopoverContent align="end" className="w-80">
+        <Input
+          type="search"
+          icon={<Search />}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Find a person or a team"
+          aria-label="Find a person or a team"
+        />
 
         <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
           {teams.some((team) => matches(team.name)) ? (
             <section className="flex flex-col gap-1">
-              <h3 className={TEXT_EYEBROW}>Teams</h3>
+              <h3 className={TEXT_EYEBROW}>{t("metrics_view.teams")}</h3>
               {teams
                 .filter((team) => matches(team.name))
                 .map((team) => {
@@ -112,7 +108,7 @@ export function MetricsComparePicker({
           ) : null}
 
           <section className="flex flex-col gap-1">
-            <h3 className={TEXT_EYEBROW}>People</h3>
+            <h3 className={TEXT_EYEBROW}>{t("metrics_view.people")}</h3>
             {sortedPeople
               .filter((person) => matches(person.displayName))
               .map((person, index) => {

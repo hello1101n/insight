@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-/**
- * What the Manage-zone surface may show, and to whom. The key is the sharp
- * case: it goes out in a request and comes back only as four characters.
- */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -211,7 +207,6 @@ describe("AiAssistantBody", () => {
 
     render(<AiAssistantBody />);
 
-    // Said, not left blank: someone who came to paste a key needs the reason.
     expect(
       screen.getByText("One key for the whole stand, set by an administrator.")
     ).toBeInTheDocument();

@@ -28,13 +28,6 @@ interface Exchange {
   error?: string;
 }
 
-/**
- * Which tool the model called, read from the shape of what came back: written
- * definitions mean it built, anything else answered. Never inferred from the prose.
- *
- * Keyed off `created`, not `result`: an answer about what data exists runs no
- * query, so a reply without rows is still an answer.
- */
 function toolUsed(reply: ChatReply): string {
   return reply.created || reply.updated ? "create" : "answer";
 }
@@ -80,17 +73,13 @@ export function CustomChat({ onCreated }: CustomChatProps) {
     field?.setSelectionRange(field.value.length, field.value.length);
   }, [asked]);
 
-  // A thread that grows below the fold reads as a dead panel.
   useEffect(() => {
-    // Optional call: jsdom does not implement it, and a thread that cannot
-    // scroll is still a thread.
+    // WORKAROUND: jsdom does not implement scrollIntoView.
     threadEnd.current?.scrollIntoView?.({ block: "end" });
   }, [exchanges]);
 
   async function handleSend() {
     const question = message.trim();
-    // The send button is disabled while one is in flight; Enter is not, so
-    // the check lives here rather than beside the button.
     if (!question || sendChat.isPending) return;
 
     const id = Date.now() + Math.random();
@@ -115,9 +104,6 @@ export function CustomChat({ onCreated }: CustomChatProps) {
       if (reply.created) onCreated(reply.created);
     } catch (error) {
       setMessage(question);
-      // What the service said, not that something failed: an assistant with no
-      // key configured, or a dataset being removed, is a different answer to
-      // the reader than "try again".
       const said = refusal(error, "The chat request failed.");
       setExchanges((prev) =>
         prev.map((exchange) =>
@@ -171,7 +157,7 @@ export function CustomChat({ onCreated }: CustomChatProps) {
                       "me-auto flex items-center gap-2 px-1"
                     )}
                   >
-                    <Spinner className="size-3" /> Thinking…
+                    <Spinner compact /> Thinking…
                   </span>
                 )}
               </li>
@@ -181,18 +167,13 @@ export function CustomChat({ onCreated }: CustomChatProps) {
         <div ref={threadEnd} />
       </div>
 
-      {/* The composer, shaped like every chat the reader already uses: the box
-          and the send action on one row, the action an icon. A labelled block
-          button below the box read as a form to submit rather than a message
-          to send, and the keyboard hint beside it said nothing after the
-          first send. */}
       <div className="flex items-center gap-2 border-t p-3">
         <Textarea
           ref={input}
           data-testid="chat-input"
           value={message}
           rows={2}
-          className="max-h-40 min-h-11 flex-1 resize-none bg-background"
+          className="max-h-40 flex-1 resize-none"
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -207,9 +188,7 @@ export function CustomChat({ onCreated }: CustomChatProps) {
           type="button"
           variant="ghost"
           aria-label="Send"
-          // `size="icon"` is 50x36 here: a wide box around a plane, 8px
-          // shorter than the input beside it. Square it and the two line up.
-          className="size-10 shrink-0 text-primary disabled:opacity-40"
+          className="shrink-0"
           onClick={() => void handleSend()}
           disabled={sendChat.isPending || message.trim() === ""}
           icon={<SendHorizontal className="size-5 fill-current stroke-1" />}
@@ -234,7 +213,6 @@ function ChatAnswer({ reply }: { reply: ChatReply }) {
         <ChatProse text={reply.reply} />
       </p>
 
-      {/* A result with no rows says nothing a sentence has not already said. */}
       {reply.result && reply.result.rows.length > 0 ? (
         <div className="max-h-64 overflow-auto rounded-md border">
           <CustomTable result={reply.result} />
@@ -272,7 +250,7 @@ function WrittenLink({ item }: { item: Written }) {
     case "metric":
       return (
         <Link
-          to="/portal/custom/metrics/$name"
+          to="/dashboards/metrics/$name"
           params={{ name: item.id }}
           className={LINK_CLASS}
         >
@@ -282,7 +260,7 @@ function WrittenLink({ item }: { item: Written }) {
     case "widget":
       return (
         <Link
-          to="/portal/custom/widgets/$name"
+          to="/dashboards/widgets/$name"
           params={{ name: item.id }}
           className={LINK_CLASS}
         >
@@ -292,7 +270,7 @@ function WrittenLink({ item }: { item: Written }) {
     case "dashboard":
       return (
         <Link
-          to="/portal/custom/$name"
+          to="/dashboards/$name"
           params={{ name: item.id }}
           className={LINK_CLASS}
         >

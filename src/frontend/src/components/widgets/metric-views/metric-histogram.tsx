@@ -1,23 +1,17 @@
+import { BarChart, CartesianGrid, Cell, ReferenceLine, XAxis } from "recharts";
 import {
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ChartBar,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-  type ChartConfig,
-} from "@/components/ui/chart";
-import { evidenceSelection } from "@/api/metric-drilldown-client";
-import {
   Card,
   CardAction,
   CardContent,
   CardHeader,
-} from "@/components/ui/card";
+} from "@gears-frontx/ui-kit";
+
+import { ChartBar, YAxis } from "@/components/chart-series";
+import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { ChartEmpty } from "@/components/widgets/metric-views/chart-empty";
 import { MetricCardActions } from "@/components/widgets/metric-views/metric-card-actions";
 import { formatMetricNumber, formatMetricValue } from "@/lib/format";
@@ -32,7 +26,6 @@ export interface MetricHistogramProps {
 const COUNT_KEY = "count";
 const CONFIG: ChartConfig = { [COUNT_KEY]: { label: "Count" } };
 
-/** Bars nearest the pivot are faintest; the tails saturate to this ceiling. */
 const MIN_FILL_OPACITY = 0.35;
 const MAX_FILL_OPACITY = 0.95;
 
@@ -50,14 +43,14 @@ function directionText(metric: NormalizedMetricResult): string | null {
   return null;
 }
 
-/**
- * Classify each bin against the peer (cohort) median and shade it: bins on the
- * better side of the pivot are green, the worse side red (per the metric's
- * direction), and intensity ramps with distance from the pivot so the tails
- * read strongest. The bin the pivot falls inside is neutral. With no peer
- * median (thin cohort, suppressed) there's no honest comparison, so every bin
- * stays neutral.
- */
+function binContains(
+  bin: { lo: number; hi: number },
+  value: number,
+  isLastBin: boolean,
+): boolean {
+  return bin.lo <= value && (isLastBin ? value <= bin.hi : value < bin.hi);
+}
+
 function buildRows(
   bins: Array<{ lo: number; hi: number; count: number }>,
   pivot: number | null,
@@ -73,13 +66,8 @@ function buildRows(
   let pivotLabel: string | null = null;
   const rows = bins.map((bin, index) => {
     const label = `${formatMetricNumber(bin.lo, metric.format)}–${formatMetricNumber(bin.hi, metric.format)}`;
-    // The last bin's upper edge is inclusive (the max value lives there), so a
-    // pivot exactly on it must straddle that bin rather than fall through.
     const isLastBin = index === bins.length - 1;
-    const straddlesPivot =
-      diverging &&
-      bin.lo <= pivot &&
-      (pivot < bin.hi || (isLastBin && pivot <= bin.hi));
+    const straddlesPivot = diverging && binContains(bin, pivot, isLastBin);
     if (straddlesPivot) pivotLabel = label;
     const status: Status =
       !diverging || straddlesPivot
@@ -99,11 +87,6 @@ function buildRows(
   return { rows, pivotLabel };
 }
 
-/**
- * One entity's own value distribution (server-owned bins), shaded by how each
- * range compares to the peer median. Headline is the person's own median; the
- * peer median is drawn as the pivot line the colors key off.
- */
 export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
   const data = forEntity(metric, entityId);
   const bins = data.histogram[0]?.bins ?? [];
@@ -114,13 +97,13 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
     ? evidenceSelection(metric.selection, entityId)
     : null;
 
-  // Shared header so an empty tile reads as the same chart, laid out to match
-  // its populated neighbours in the grid rather than collapsing to a corner.
   const header = (
-    <CardHeader className="pb-2">
+    <CardHeader>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{metric.label}</span>
+          <span className="truncate text-sm font-semibold" title={metric.label}>
+            {metric.label}
+          </span>
           <span className="text-xs text-muted-foreground">
             {[
               direction,
@@ -133,7 +116,6 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
           </span>
         </div>
         {ownMedian != null ? (
-          // 32px matches the ⋯ box beside it, so both sit on one centre line.
           <span className="shrink-0 text-xs leading-8 text-muted-foreground">
             Median{" "}
             <span className="font-semibold text-foreground tabular-nums">
@@ -143,8 +125,6 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
         ) : null}
       </div>
       {evidence ? (
-        // Pulls the ⋯ out to the card's 16px corner inset, so laying it out in
-        // flow costs the title column nothing.
         <CardAction className="-mr-2">
           <MetricCardActions
             evidence={evidence}
@@ -208,9 +188,6 @@ export function MetricHistogram({ metric, entityId }: MetricHistogramProps) {
               ))}
             </ChartBar>
             {pivotLabel ? (
-              // The peer median: named in the subtitle ("vs peer median …")
-              // and the only dashed line on the chart, so it needs no
-              // on-chart label (which clipped at the top edge).
               <ReferenceLine
                 x={pivotLabel}
                 stroke="var(--foreground)"

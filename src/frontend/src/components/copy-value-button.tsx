@@ -1,10 +1,3 @@
-/**
- * Copy one value, with the result fed back on the control itself rather than
- * as a toast: the button is what the operator is looking at when they press it.
- *
- * The value goes into the accessible name — a column of identical "Copy"
- * buttons tells a screen-reader user nothing about which row they are on.
- */
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast, Button } from "@gears-frontx/ui-kit";
@@ -22,9 +15,7 @@ export function CopyValueButton({
   className,
 }: {
   value: string;
-  /** Hover text — what kind of value this is. */
   title?: string;
-  /** Verb the accessible name is built from: `<copyLabel> <value>`. */
   copyLabel?: string;
   copiedLabel?: string;
   errorMessage?: string;
@@ -61,7 +52,7 @@ export function CopyValueButton({
       variant="ghost"
       size="sm"
       className={cn(
-        "shrink-0 text-muted-foreground hover:text-foreground",
+        "shrink-0",
         className,
       )}
       aria-label={copied ? copiedLabel : `${copyLabel} ${value}`}

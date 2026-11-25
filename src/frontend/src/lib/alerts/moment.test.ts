@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { momentParts, momentText, pickedDay, pickerDate } from "./moment";
+import {
+  momentParts,
+  momentText,
+  momentToWrite,
+  pickedDay,
+  pickerDate,
+} from "./moment";
 
 const ZONE = process.env.TZ;
 
@@ -54,4 +60,19 @@ describe("the picked day", () => {
       time: "07:05",
     });
   });
+});
+
+describe("momentToWrite", () => {
+  it.each([
+    ["2026-10-15", "07:05", "2026-10-15T07:05:00Z"],
+    ["", "07:05", null],
+    ["2026-10-15", "", null],
+    ["2026-10-15", "07:0", null],
+    ["2026-10-15", "24:00", null],
+  ])(
+    "writes a moment only once a day is picked and the time is whole: %j %j",
+    (day, time, written) => {
+      expect(momentToWrite(day, time), `${day} ${time}`).toBe(written);
+    }
+  );
 });

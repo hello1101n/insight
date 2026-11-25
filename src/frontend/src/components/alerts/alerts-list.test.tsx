@@ -32,14 +32,13 @@ function page(
   return { alerts, total, limit: 50, offset };
 }
 
-/** A read that never lands, so only what a write put in the cache can show. */
 function neverLands<T>(): Promise<T> {
   return new Promise<T>(() => {});
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
-  portalRouter.reset("/portal/custom/alerts");
+  portalRouter.reset("/dashboards/alerts");
   scrollEndOutOfView();
   vi.mocked(customClient.fetchMetric).mockRejectedValue(
     new CustomApiError(404, null)
@@ -58,12 +57,12 @@ describe("AlertsList", () => {
 
     expect(
       await screen.findByRole("link", { name: "Too many open PRs" })
-    ).toHaveAttribute("href", "/portal/custom/alerts/a1");
+    ).toHaveAttribute("href", "/dashboards/alerts/a1");
     expect(await screen.findByText("Open pull requests")).toBeInTheDocument();
     expect(customClient.fetchMetric).toHaveBeenCalledWith("prs-open");
     expect(screen.getByRole("button", { name: "New alert" })).toHaveAttribute(
       "href",
-      "/portal/custom/alerts/new"
+      "/dashboards/alerts/new"
     );
     expect(screen.getByText("1 alert")).toBeInTheDocument();
   });

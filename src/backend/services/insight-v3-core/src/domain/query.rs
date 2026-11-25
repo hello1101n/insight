@@ -1,5 +1,3 @@
-//! Turning a stored metric into an answer: its shape, its window, its SQL.
-
 pub(crate) mod composite;
 pub(crate) mod metric;
 pub(crate) mod metric_query;

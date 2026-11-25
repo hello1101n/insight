@@ -13,15 +13,17 @@ authenticator's own suite the same way, over its own tables.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 from insight_stand import coverage
 
 # Two catalogued operations, standing in for the real catalogue.
-QUERIES = coverage.Operation(method="GET", path="/api/analytics/v1/queries")
+METRICS = coverage.Operation(method="GET", path="/api/analytics/v1/metrics")
 SUBCHART = coverage.Operation(method="GET", path="/api/identity/v1/subchart")
-CATALOGUE = [QUERIES, SUBCHART]
+CATALOGUE = [METRICS, SUBCHART]
 
 
 def _ledger(rows: dict[tuple[str, str], list[int]]) -> list[dict[str, Any]]:
@@ -47,7 +49,7 @@ def _passing_catalogue() -> coverage.CatalogueReport:
     """A catalogue with nothing to report, so a spec finding stands alone."""
     return _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200],
+            (METRICS.method, METRICS.path): [200],
             (SUBCHART.method, SUBCHART.path): [200],
         }
     )
@@ -68,12 +70,12 @@ def test_an_operation_only_the_sweep_touched_is_not_covered() -> None:
     """
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200, 401],
+            (METRICS.method, METRICS.path): [200, 401],
             (SUBCHART.method, SUBCHART.path): [401],
         }
     )
 
-    assert report.exercised == [QUERIES.label]
+    assert report.exercised == [METRICS.label]
     assert report.swept_only == [SUBCHART.label]
     assert not report.passed
 
@@ -92,12 +94,12 @@ def test_an_operation_only_the_admin_sweep_touched_is_not_covered() -> None:
     """
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200],
+            (METRICS.method, METRICS.path): [200],
             (SUBCHART.method, SUBCHART.path): [401, 403],
         }
     )
 
-    assert report.exercised == [QUERIES.label]
+    assert report.exercised == [METRICS.label]
     assert report.swept_only == [SUBCHART.label]
     assert not report.passed
 
@@ -106,12 +108,12 @@ def test_a_refusal_beside_a_real_answer_still_counts_as_covered() -> None:
     """The guard must not punish a route for also being tested for refusal."""
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200, 401, 403],
+            (METRICS.method, METRICS.path): [200, 401, 403],
             (SUBCHART.method, SUBCHART.path): [200],
         }
     )
 
-    assert sorted(report.exercised) == sorted([QUERIES.label, SUBCHART.label])
+    assert sorted(report.exercised) == sorted([METRICS.label, SUBCHART.label])
     assert report.passed
 
 
@@ -129,12 +131,12 @@ def test_a_refusal_no_sweep_produces_is_not_in_the_set(earned: int) -> None:
 
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [earned],
+            (METRICS.method, METRICS.path): [earned],
             (SUBCHART.method, SUBCHART.path): [200],
         }
     )
 
-    assert QUERIES.label in report.exercised
+    assert METRICS.label in report.exercised
     assert report.passed
 
 
@@ -143,12 +145,12 @@ def test_a_bare_403_with_no_anonymous_call_is_still_only_a_sweep() -> None:
     not is in the same position: refused, never answered."""
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [403],
+            (METRICS.method, METRICS.path): [403],
             (SUBCHART.method, SUBCHART.path): [200],
         }
     )
 
-    assert report.swept_only == [QUERIES.label]
+    assert report.swept_only == [METRICS.label]
     assert not report.passed
 
 
@@ -156,8 +158,8 @@ def test_a_real_id_counts_against_the_operation_it_belongs_to() -> None:
     """A concrete url folds onto its catalogued template — see `fold_onto_catalogue`."""
     catalogued = coverage.Operation(
         method="PUT",
-        path="/api/analytics/v1/queries/01900000-0000-7000-8000-000000000000",
-        template="/api/analytics/v1/queries/{id}",
+        path="/api/analytics/v1/metrics/example.absent_metric",
+        template="/api/analytics/v1/metrics/{metric_key}",
     )
     report = coverage.CatalogueReport(
         catalogue=[catalogued],
@@ -165,7 +167,7 @@ def test_a_real_id_counts_against_the_operation_it_belongs_to() -> None:
             _ledger(
                 {
                     ("PUT", catalogued.path): [401],  # the sweep
-                    ("PUT", "/api/analytics/v1/queries/019fc6c8-020f"): [200],
+                    ("PUT", "/api/analytics/v1/metrics/scratch.key"): [200],
                 }
             )
         ),
@@ -178,9 +180,9 @@ def test_a_real_id_counts_against_the_operation_it_belongs_to() -> None:
 
 def test_a_catalogue_entry_without_a_template_still_matches_itself() -> None:
     """A ledger from a suite that predates templates must not crash the gate."""
-    report = _catalogue_report({(QUERIES.method, QUERIES.path): [200]})
-    assert QUERIES.key == QUERIES.label
-    assert report.exercised == [QUERIES.label]
+    report = _catalogue_report({(METRICS.method, METRICS.path): [200]})
+    assert METRICS.key == METRICS.label
+    assert report.exercised == [METRICS.label]
 
 
 def test_a_catalogued_operation_nobody_called_fails() -> None:
@@ -190,7 +192,7 @@ def test_a_catalogued_operation_nobody_called_fails() -> None:
     means even the 401 sweep did not reach it — usually a typo'd path, which
     would otherwise sit in the catalogue looking like coverage forever.
     """
-    report = _catalogue_report({(QUERIES.method, QUERIES.path): [200]})
+    report = _catalogue_report({(METRICS.method, METRICS.path): [200]})
 
     assert report.unobserved == [SUBCHART.label]
     assert not report.passed
@@ -200,7 +202,7 @@ def test_a_catalogued_operation_nobody_called_fails() -> None:
 def test_a_fully_exercised_catalogue_passes() -> None:
     report = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200, 401],
+            (METRICS.method, METRICS.path): [200, 401],
             (SUBCHART.method, SUBCHART.path): [200, 401],
         }
     )
@@ -217,7 +219,7 @@ def test_the_verdict_and_the_violations_cannot_disagree() -> None:
 
     passing = _catalogue_report(
         {
-            (QUERIES.method, QUERIES.path): [200],
+            (METRICS.method, METRICS.path): [200],
             (SUBCHART.method, SUBCHART.path): [200],
         }
     )
@@ -225,7 +227,7 @@ def test_the_verdict_and_the_violations_cannot_disagree() -> None:
 
 
 def test_gateway_prefixes_fold_onto_the_service_contract() -> None:
-    """`/api/analytics/v1/queries` is the document's `/v1/queries`.
+    """`/api/analytics/v1/metrics` is the document's `/v1/metrics`.
 
     The gateway strips the prefix before the service sees the request
     (`routes.yaml`, `strip_prefix: true`), so the ledger's gateway paths and the
@@ -233,43 +235,43 @@ def test_gateway_prefixes_fold_onto_the_service_contract() -> None:
     every operation as unmatched — a 0% that looks like a broken suite rather
     than a broken matcher.
     """
-    spec_ops = coverage.spec_operations(_spec({"/v1/queries": {"get": [200, 404]}}))
+    spec_ops = coverage.spec_operations(_spec({"/v1/metrics": {"get": [200, 404]}}))
     validated, unmatched = coverage.match_against_spec(
-        _ledger({("GET", "/api/analytics/v1/queries"): [200]}),
+        _ledger({("GET", "/api/analytics/v1/metrics"): [200]}),
         "/api/analytics",
         spec_ops,
     )
 
-    assert validated == {"GET /v1/queries": {200}}
+    assert validated == {"GET /v1/metrics": {200}}
     assert not unmatched
 
 
 def test_a_path_parameter_matches_its_template() -> None:
-    spec_ops = coverage.spec_operations(_spec({"/v1/queries/{id}": {"get": [200]}}))
+    spec_ops = coverage.spec_operations(_spec({"/v1/metrics/{metric_key}": {"get": [200]}}))
     validated, _ = coverage.match_against_spec(
-        _ledger({("GET", "/api/analytics/v1/queries/abc-123"): [200]}),
+        _ledger({("GET", "/api/analytics/v1/metrics/abc.key"): [200]}),
         "/api/analytics",
         spec_ops,
     )
-    assert validated == {"GET /v1/queries/{id}": {200}}
+    assert validated == {"GET /v1/metrics/{metric_key}": {200}}
 
 
 def test_a_literal_path_wins_over_a_same_arity_template() -> None:
-    """`/v1/queries/run-batch` is not a saved query whose id is "run-batch".
+    """`/v1/metrics/export` is not a custom metric whose key is "export".
 
     Both templates have two segments, so ordering decides. Sorting by
     `{param}` count is what makes the answer independent of the order the
     document happened to list them in.
     """
     spec_ops = coverage.spec_operations(
-        _spec({"/v1/queries/{id}": {"get": [200]}, "/v1/queries/run-batch": {"get": [200]}})
+        _spec({"/v1/metrics/{metric_key}": {"get": [200]}, "/v1/metrics/export": {"get": [200]}})
     )
     validated, _ = coverage.match_against_spec(
-        _ledger({("GET", "/api/analytics/v1/queries/run-batch"): [200]}),
+        _ledger({("GET", "/api/analytics/v1/metrics/export"): [200]}),
         "/api/analytics",
         spec_ops,
     )
-    assert validated == {"GET /v1/queries/run-batch": {200}}
+    assert validated == {"GET /v1/metrics/export": {200}}
 
 
 def test_401_and_403_are_required_where_a_handler_can_answer_them() -> None:
@@ -301,14 +303,14 @@ def test_403_is_subtracted_only_where_no_handler_can_produce_it() -> None:
     `_NO_AUTHORIZATION_PATH` in `coverage.py`.
     """
     assert 403 not in coverage.UNIVERSAL_BOILERPLATE, "must stay a per-route judgement"
-    assert 403 in coverage.BLOCKED["GET /v1/queries"], "no gate on the saved-query listing"
+    assert 403 in coverage.BLOCKED["GET /v1/metrics"], "no gate on the custom-metric listing"
     assert "POST /v1/metric-results" not in coverage.BLOCKED
 
-    spec_ops = coverage.spec_operations(_spec({"/v1/queries": {"get": [200, 401, 403, 404]}}))
+    spec_ops = coverage.spec_operations(_spec({"/v1/metrics": {"get": [200, 401, 403, 404]}}))
     report = coverage.SpecReport(
-        spec_ops=spec_ops, validated={"GET /v1/queries": {200}}, unmatched=[]
+        spec_ops=spec_ops, validated={"GET /v1/metrics": {200}}, unmatched=[]
     )
-    assert report.required["GET /v1/queries"] == {200, 401, 404}, (
+    assert report.required["GET /v1/metrics"] == {200, 401, 404}, (
         "403 subtracted; a code this list says nothing about is untouched"
     )
 
@@ -340,8 +342,8 @@ def test_an_exclusion_the_document_outgrew_is_reported() -> None:
 def test_409_is_subtracted_everywhere_a_route_cannot_conflict() -> None:
     """The second sourced exclusion, with one route that really can conflict.
 
-    `already_exists`, `aborted` and `conflict` appear on no read-only, saved-query
-    or drilldown-export route, so 409 there is boilerplate the spec declares and
+    `already_exists`, `aborted` and `conflict` appear on no read-only,
+    drilldown-export or custom-metric route but create, so 409 there is boilerplate the spec declares and
     no handler can send. `POST /v1/metrics` is the exception — a duplicate
     `metric_key` is a real conflict — so it is covered by a test rather than
     blocked, and it is the sole excluded route that does NOT subtract 409.
@@ -362,12 +364,12 @@ def test_an_undeclared_code_the_suite_proved_is_reported() -> None:
     matrix, so without this it would be invisible — the suite covers it, the
     contract does not describe it, and only one of those is a problem.
     """
-    spec_ops = coverage.spec_operations(_spec({"/v1/queries": {"get": [200]}}))
+    spec_ops = coverage.spec_operations(_spec({"/v1/metrics": {"get": [200]}}))
     report = coverage.SpecReport(
-        spec_ops=spec_ops, validated={"GET /v1/queries": {200, 415}}, unmatched=[]
+        spec_ops=spec_ops, validated={"GET /v1/metrics": {200, 415}}, unmatched=[]
     )
 
-    assert report.undeclared == {"GET /v1/queries": {415}}
+    assert report.undeclared == {"GET /v1/metrics": {415}}
     assert any("observed but undeclared" in note for note in coverage.advisories(report))
 
 
@@ -392,15 +394,143 @@ def test_the_ledger_merges_rather_than_overwrites(tmp_path: Any) -> None:
     target = tmp_path / "ledger.json"
 
     coverage.reset()
-    coverage.record("GET", "/api/analytics/v1/queries", 200)
+    coverage.record("GET", "/api/analytics/v1/metrics", 200)
     coverage.dump(target)
 
     coverage.reset()
-    coverage.record("GET", "/api/analytics/v1/queries", 404)
+    coverage.record("GET", "/api/analytics/v1/metrics", 404)
     coverage.record("GET", "/api/identity/v1/subchart", 200)
     coverage.dump(target)
     coverage.reset()
 
     merged = coverage.by_label(coverage.load_ledger(target))
-    assert merged["GET /api/analytics/v1/queries"] == {200, 404}
+    assert merged["GET /api/analytics/v1/metrics"] == {200, 404}
     assert merged["GET /api/identity/v1/subchart"] == {200}
+
+
+@pytest.mark.parametrize("prefix", ["/api/analytics", "/api/connectors"])
+@pytest.mark.parametrize("observed", [False, True])
+def test_each_service_contract_requires_its_own_observations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], prefix: str, observed: bool
+) -> None:
+    analytics = tmp_path / "analytics.json"
+    analytics.write_text(json.dumps(_spec({"/v1/metrics": {"get": [200]}})))
+    connectors = tmp_path / "connectors.json"
+    connectors.write_text(json.dumps(_spec({"/v1/connector-health": {"get": [200]}})))
+    catalogue = tmp_path / "catalogue.json"
+    catalogue.write_text("[]")
+    rows = _ledger({("GET", "/api/analytics/v1/metrics"): [200]})
+    if observed:
+        rows += _ledger({("GET", f"{prefix}/v1/connector-health"): [200]})
+    ledger = tmp_path / "observed.json"
+    ledger.write_text(json.dumps(rows))
+
+    status = coverage.main(
+        [
+            "--observed",
+            str(ledger),
+            "--catalogue",
+            str(catalogue),
+            "--spec",
+            f"/api/analytics={analytics}",
+            "--spec",
+            f"/api/connectors={connectors}",
+        ]
+    )
+
+    covered = observed and prefix == "/api/connectors"
+    assert status == (0 if covered else 1)
+    assert ("MISSING: GET /v1/connector-health" in capsys.readouterr().out) == (not covered)
+
+
+def _gate_arguments(tmp_path: Path, rows: list[dict[str, Any]]) -> list[str]:
+    ledger = tmp_path / "observed.json"
+    ledger.write_text(json.dumps(rows))
+    catalogue = tmp_path / "catalogue.json"
+    catalogue.write_text("[]")
+    return ["--observed", str(ledger), "--catalogue", str(catalogue)]
+
+
+def test_each_document_matches_observations_at_its_own_prefix(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps(_spec({"/v1/first": {"get": [200]}})))
+    second = tmp_path / "second.json"
+    second.write_text(json.dumps(_spec({"/v1/second": {"get": [200]}})))
+    args = _gate_arguments(
+        tmp_path,
+        _ledger({("GET", "/api/first/v1/first"): [200], ("GET", "/api/second/v1/second"): [200]}),
+    )
+
+    status = coverage.main(
+        [*args, "--spec", f"/api/first={first}", "--spec", f"/api/second={second}"]
+    )
+
+    assert status == 0
+    assert (
+        "OpenAPI contracts: **100.0%** of coverable status codes (2/2)." in capsys.readouterr().out
+    )
+
+
+@pytest.mark.parametrize("value", ["{path}", "={path}", "/api/example=", "api/example={path}", ""])
+def test_malformed_spec_values_are_usage_errors(tmp_path: Path, value: str) -> None:
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps(_spec({})))
+    args = _gate_arguments(tmp_path, [])
+    value = value.format(path=spec)
+
+    with pytest.raises(SystemExit) as error:
+        coverage.main([*args, "--spec", value])
+
+    assert error.value.code == 2, f"should reject: {value!r}"
+
+
+def test_repeated_spec_prefixes_are_usage_errors(tmp_path: Path) -> None:
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps(_spec({})))
+    second = tmp_path / "second.json"
+    second.write_text(json.dumps(_spec({})))
+    args = _gate_arguments(tmp_path, [])
+
+    with pytest.raises(SystemExit) as error:
+        coverage.main(
+            [*args, "--spec", f"/api/example={first}", "--spec", f"/api/example={second}"]
+        )
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("observed_prefix", ["/api/first", "/api/second"])
+def test_operation_keys_shared_by_documents_are_usage_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], observed_prefix: str
+) -> None:
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps(_spec({"/v1/shared": {"get": [200]}})))
+    second = tmp_path / "second.json"
+    second.write_text(json.dumps(_spec({"/v1/shared": {"get": [200]}})))
+    args = _gate_arguments(tmp_path, _ledger({("GET", f"{observed_prefix}/v1/shared"): [200]}))
+
+    with pytest.raises(SystemExit) as error:
+        coverage.main([*args, "--spec", f"/api/first={first}", "--spec", f"/api/second={second}"])
+
+    assert error.value.code == 2, f"should reject shared operation observed at {observed_prefix}"
+    diagnostic = capsys.readouterr().err
+    assert "GET /v1/shared" in diagnostic
+    assert "/api/first" in diagnostic
+    assert "/api/second" in diagnostic
+
+
+def test_missing_spec_files_are_usage_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    spec = tmp_path / "missing.json"
+    args = _gate_arguments(tmp_path, [])
+
+    with pytest.raises(SystemExit) as error:
+        coverage.main([*args, "--spec", f"/api/example={spec}"])
+
+    assert error.value.code == 2
+    diagnostic = capsys.readouterr().err
+    assert str(spec) in diagnostic
+    assert "Traceback" not in diagnostic

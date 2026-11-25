@@ -592,6 +592,14 @@ is an order statistic instead, and always answers with one that did.
 - Shape: decimal, neutral, unit messages/day
 - Notes: Chat messages sent divided by the distinct days with chat messages in any tool, so a day spent in two tools counts once.
 
+## collab.chat_active_days — Chat active days
+
+- Source: collab (collab_metric_observations)
+- Reads: chat_active_day
+- Formula: distinct_count(chat_active_day)
+- Shape: integer, neutral, unit days
+- Notes: Distinct days on which a person sent at least one chat message in any tool, so a day spent in two tools counts once. Email, meetings and files do not count; Active days counts those too.
+
 ## collab.active_days — Active days
 
 - Source: collab (collab_metric_observations)

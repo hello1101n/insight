@@ -5,7 +5,6 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** A timestamp's UTC calendar day and minute, when it is one. */
 export function momentParts(
   value: unknown
 ): { day: string; time: string } | undefined {
@@ -19,7 +18,6 @@ export function momentParts(
   };
 }
 
-/** `2026-10-01` and `09:30` as the RFC 3339 UTC timestamp the service takes. */
 export function momentText(day: string, time: string): string {
   return `${day}T${time}:00Z`;
 }
@@ -41,4 +39,8 @@ export function pickedDay(date: Date): string {
 export function isTime(text: string): boolean {
   const read = TIME.exec(text);
   return read !== null && Number(read[1]) < 24 && Number(read[2]) < 60;
+}
+
+export function momentToWrite(day: string, time: string): string | null {
+  return day === "" || !isTime(time) ? null : momentText(day, time);
 }

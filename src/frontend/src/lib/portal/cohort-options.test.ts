@@ -4,7 +4,6 @@ import type { MetricDefinitionListResponse } from "@/api/metric-definitions-clie
 import type { SliceAttr } from "@/lib/insight/slices";
 import { catalogAttributes, cohortOptions } from "./cohort-options";
 
-/** A roster row as `collectRosterAttrs` produces it. */
 const person = (division: string): Record<string, SliceAttr> => ({
   division: { key: "division", label: "Division", value: division },
 });
@@ -30,8 +29,6 @@ describe("catalogAttributes", () => {
   });
 
   it("treats a response without one as a normal state", () => {
-    // This client runs against installations on both sides of the change, so
-    // the field's absence is expected rather than an error to surface.
     expect(catalogAttributes(response())).toEqual([]);
     expect(catalogAttributes(undefined)).toEqual([]);
   });
@@ -64,8 +61,6 @@ describe("cohortOptions", () => {
   });
 
   it("does not mix the two sources", () => {
-    // A locally-derived attribute standing beside a governed one is
-    // indistinguishable to the reader, who cannot tell which they picked.
     const options = cohortOptions(
       [{ id: "job_title", label: "Title" }],
       [person("Alpha"), person("Alpha"), person("Beta")],
@@ -74,8 +69,6 @@ describe("cohortOptions", () => {
   });
 
   it("falls back to the roster until the catalog exists", () => {
-    // Three people, two divisions: an attribute that splits them without
-    // being near-unique, which `availableSlices` reads as an identifier.
     const options = cohortOptions(
       [],
       [person("Alpha"), person("Alpha"), person("Beta")],
@@ -85,8 +78,6 @@ describe("cohortOptions", () => {
   });
 
   it("reports having nothing when neither source can offer anything", () => {
-    // A viewer with no reports: one person in the roster, so no attribute
-    // takes a second value and none qualifies.
     const options = cohortOptions([], [person("Alpha")]);
     expect(options.source).toBe("none");
     expect(options.dims).toEqual([]);

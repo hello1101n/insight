@@ -19,25 +19,18 @@ import {
   DialogTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
-import { drawable, startsOver } from "@/lib/custom/drilldown";
+import { drawable, refusedForRebuiltSource } from "@/lib/custom/drilldown";
 import { nextSort } from "@/lib/metrics/evidence-rows";
 import { drilldownPagesQuery, metricQuery } from "@/queries/custom";
 import type { RunOptions } from "@/api/custom-client";
 import { TEXT_BODY, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
-/** Which of the dialog's three views is showing. */
 type View =
   { kind: "rows" } | { kind: "widget" } | { kind: "metric"; id: string };
 
-/**
- * The rows behind a widget, and the definitions that produced them.
- *
- * A chart is a shape; the question it prompts is "which rows are those?", and
- * the one after it is "what exactly is being counted?". Both are answered
- * here rather than on another page: the dialog steps to a definition and back
- * without leaving the dashboard.
- */
+const BESIDE_KIT_CLOSE_BUTTON = "absolute top-4 right-14";
+
 export function WidgetDrilldown({
   dashboard,
   widgetId,
@@ -55,14 +48,11 @@ export function WidgetDrilldown({
   label: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The window the card was read over, if it was read over one. */
   options?: RunOptions;
 }) {
   const [view, setView] = useState<View>({ kind: "rows" });
-  /** Whether the dialog has been asked to fill the window. */
   const [filling, setFilling] = useState(false);
 
-  /** Closing returns to the rows, so the next visit starts where it should. */
   function change(next: boolean) {
     if (!next) {
       setView({ kind: "rows" });
@@ -101,11 +91,9 @@ export function WidgetDrilldown({
               />
             )}
             <span className="min-w-0 truncate">{heading}</span>
-            {/* Placed as the kit places its close button - over the corner,
-                not in this row - so the two sit on one line, one step apart. */}
             <Button
               variant="ghost"
-              className="absolute top-4 right-14 z-[2] w-9"
+              className={cn(BESIDE_KIT_CLOSE_BUTTON, "z-[2] w-9")}
               aria-pressed={filling}
               aria-label={
                 filling ? "Shrink the dialog back" : "Fill the window"
@@ -144,12 +132,6 @@ export function WidgetDrilldown({
   );
 }
 
-/**
- * What drew this, by name.
- *
- * The identifiers are off the card because a heading is not a name — this is
- * where a reader asks for them, and each one opens its definition in place.
- */
 function Definitions({
   widget,
   name,
@@ -222,7 +204,6 @@ function StoredMetric({ id }: { id: string }) {
   return <MetricSummary definition={definition.data.definition} />;
 }
 
-/** Past this many pages the reader is asked to narrow rather than scroll. */
 const MAX_PAGES = 50;
 
 function Rows({
@@ -234,18 +215,13 @@ function Rows({
 }: {
   dashboard: string;
   widgetId: string;
-  /** The metric the rows come from, which decides whether they are windowed. */
   metric: string;
   options?: RunOptions;
-  /** Filling the window, the dialog scrolls rather than the rows inside it. */
   filling: boolean;
 }) {
   const definition = useQuery(metricQuery(metric));
   const [sort, setSort] = useState<DrilldownSort | null>(null);
 
-  // The rows have to be the rows behind the number on the card, so they take
-  // the card's own window — and a metric nothing dates cannot be windowed at
-  // all.
   const windowed = options && Boolean(definition.data?.clock);
   const pages = useInfiniteQuery({
     ...drilldownPagesQuery(dashboard, widgetId, {
@@ -266,9 +242,6 @@ function Rows({
       ) ?? [],
     [pages.data, columns]
   );
-  // What the headers announce: the order of the rows ON SCREEN, read off the
-  // page that produced them - never the order just asked for, whose rows are
-  // still on their way.
   const shownSort = pages.data?.pages[0]?.selection.sort ?? null;
   const pageLimitReached =
     (pages.data?.pages.length ?? 0) >= MAX_PAGES && pages.hasNextPage;
@@ -315,14 +288,11 @@ function Rows({
         rows={rows}
         columns={columns}
         sort={shownSort}
-        // The next order is counted from the one ON SCREEN, so the first
-        // click on the column the service chose itself flips it rather than
-        // asking for what is already there.
         onSortChange={(key) => setSort(nextSort(shownSort, key))}
-        // A table made again mid-walk invalidates every cursor: the walk
-        // starts over rather than retrying a page that cannot come.
         fetchNextPage={() =>
-          startsOver(pages.error) ? pages.refetch() : pages.fetchNextPage()
+          refusedForRebuiltSource(pages.error)
+            ? pages.refetch()
+            : pages.fetchNextPage()
         }
         hasNextPage={pages.hasNextPage && !pageLimitReached}
         isFetchingNextPage={pages.isFetchingNextPage}

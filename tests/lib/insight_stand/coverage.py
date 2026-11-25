@@ -7,7 +7,7 @@ every response, so the ledger is a byproduct of the requests the tests already
 make rather than a list somebody maintains. `tests/stand/conftest.py` writes it
 out at `pytest_sessionfinish`.
 
-**The gate** (`python3 coverage.py --observed … --spec …`, stdlib only, no
+**The gate** (`python3 coverage.py --observed … --spec PREFIX=PATH`, stdlib only, no
 stand) reads that ledger back and answers two questions:
 
   1. Did every operation the CATALOGUE names get exercised by something other
@@ -16,10 +16,10 @@ stand) reads that ledger back and answers two questions:
      the admin grant (403). So every operation has an observation, and one whose
      only observed codes are those was swept and never tested. Counting it as
      covered is precisely the mistake this gate exists to prevent.
-  2. Did every status code the analytics CONTRACT declares get observed?
+  2. Did every status code the analytics and connectors CONTRACTS declare get observed?
 
-Only analytics is gated on its spec, though identity emits its own document
-and CI drift-gates it beside analytics. What blocks (2) for identity is the
+Analytics and connectors are gated on their specs, though identity emits its own
+document and CI drift-gates it too. What blocks (2) for identity is the
 other side of the comparison: every status code the
 document declares has to be OBSERVED, and `.standard_errors` stamps the full
 error set onto every operation. Identity stays held to (1) until the suite
@@ -101,8 +101,7 @@ UNIVERSAL_BOILERPLATE = frozenset({429})
 #:
 #: Nothing else in the service gates on anything: `is_tenant_admin`,
 #: `authorize_*` and `require_admin` appear nowhere in `handlers.rs`,
-#: `saved_queries.rs`, `catalog.rs`, `metric_definitions.rs` or
-#: `metric_drilldown.rs`. The spec declared 403 on every route anyway, because
+#: `catalog.rs`, `metric_definitions.rs` or `metric_drilldown.rs`. The spec declared 403 on every route anyway, because
 #: `.standard_errors` stamped the same seven codes on all of them (#1669); the
 #: fidelity fixes are correcting that route by route, and each one that lands
 #: retires an entry below.
@@ -122,13 +121,6 @@ _NO_CONFLICT_PATH = frozenset({409})
 _NO_AUTHZ_OR_CONFLICT = _NO_AUTHORIZATION_PATH | _NO_CONFLICT_PATH
 
 BLOCKED: dict[str, frozenset[int]] = {
-    # Saved queries — no owner check and no role check; cross-tenant is 404.
-    "GET /v1/queries": _NO_AUTHZ_OR_CONFLICT,
-    "POST /v1/queries": _NO_AUTHZ_OR_CONFLICT,
-    "GET /v1/queries/{id}": _NO_AUTHZ_OR_CONFLICT,
-    "PUT /v1/queries/{id}": _NO_AUTHZ_OR_CONFLICT,
-    "DELETE /v1/queries/{id}": _NO_AUTHZ_OR_CONFLICT,
-    "POST /v1/queries/{id}/run": _NO_AUTHZ_OR_CONFLICT,
     # `POST /v1/metric-drilldown` and `GET /v1/metric-definitions` used to sit
     # here. #2134 corrected their declarations, so there is no longer a 403 to
     # subtract — the gate reported both as stale and they came out.
@@ -299,7 +291,7 @@ def dump(path: str | Path) -> Path:
 class Operation:
     """One catalogued operation, as the ledger will have seen it.
 
-    `template` is the parameterised form (`/v1/queries/{id}`); `path` is the
+    `template` is the parameterised form (`/v1/metrics/{metric_key}`); `path` is the
     concrete url the catalogue names, with a stand-in substituted. They differ
     for every operation that takes a path parameter, and conflating them is
     what this field exists to stop — see `fold_onto_catalogue`.
@@ -316,7 +308,7 @@ class Operation:
     @property
     def key(self) -> str:
         """How the operation is identified in a report: the template if it has
-        one, so `PUT /v1/queries/{id}` is one row rather than one per id."""
+        one, so `PUT /v1/metrics/{metric_key}` is one row rather than one per key."""
         return f"{self.method} {self.template or self.path}"
 
 
@@ -327,9 +319,9 @@ def fold_onto_catalogue(
 
     Without this the catalogue half compares literal paths while the spec half
     folds templates, and the two disagree about the same run. A test that
-    updates a real threshold records
-    `PUT /api/analytics/v1/queries/019fc6c8-…`, which matches
-    the catalogue's stand-in id nowhere — so the only call left against the
+    updates a real metric records
+    `PUT /api/analytics/v1/metrics/scratch_…`, which matches
+    the catalogue's stand-in key nowhere — so the only call left against the
     catalogued url is the anonymous sweep's, and the operation is reported
     SWEPT ONLY while a passing test is exercising it.
 
@@ -467,8 +459,8 @@ def match_against_spec(
 ) -> tuple[dict[str, set[int]], list[dict[str, Any]]]:
     """Fold gateway-prefixed observations onto the service's own operations.
 
-    The suite calls `/api/analytics/v1/queries`; the document describes
-    `/v1/queries`. `strip_prefix: true` in the gateway's route table is what
+    The suite calls `/api/analytics/v1/metrics`; the document describes
+    `/v1/metrics`. `strip_prefix: true` in the gateway's route table is what
     makes those the same request, so stripping it here is reading the route
     table, not guessing.
     """
@@ -550,7 +542,7 @@ def render(catalogue: CatalogueReport, spec: SpecReport | None) -> str:
     ]
     if spec is not None:
         lines.append(
-            f"Analytics contract: **{spec.coverage_pct}%** of coverable status codes "
+            f"OpenAPI contracts: **{spec.coverage_pct}%** of coverable status codes "
             f"({spec.total_covered}/{spec.total_coverable})."
         )
     lines += [
@@ -599,13 +591,37 @@ def render(catalogue: CatalogueReport, spec: SpecReport | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _spec_argument(value: str) -> tuple[str, Path]:
+    prefix, separator, path = value.partition("=")
+    if not separator or not prefix.startswith("/") or not path:
+        raise argparse.ArgumentTypeError(
+            "expected PREFIX=PATH with a prefix starting with / and a nonempty path"
+        )
+    spec_path = Path(path)
+    if not spec_path.is_file():
+        raise argparse.ArgumentTypeError(f"--spec file not found: {spec_path}")
+    return prefix, spec_path
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Stand API coverage gate.")
     parser.add_argument("--observed", required=True, help="ledger written at pytest_sessionfinish")
     parser.add_argument("--catalogue", required=True, help="JSON list of catalogued operations")
-    parser.add_argument("--spec", help="committed analytics OpenAPI document")
-    parser.add_argument("--prefix", default="/api/analytics", help="gateway prefix for --spec")
+    parser.add_argument(
+        "--spec",
+        action="append",
+        type=_spec_argument,
+        default=[],
+        metavar="PREFIX=PATH",
+        help="gateway prefix and committed OpenAPI document (repeatable)",
+    )
     args = parser.parse_args(argv)
+
+    prefixes: set[str] = set()
+    for prefix, _ in args.spec:
+        if prefix in prefixes:
+            parser.error(f"duplicate --spec prefix: {prefix}")
+        prefixes.add(prefix)
 
     ledger_path = Path(args.observed)
     if not ledger_path.is_file():
@@ -633,9 +649,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     spec_report: SpecReport | None = None
+    spec_ops: dict[str, list[int]] = {}
+    operation_prefixes: dict[str, str] = {}
+    validated: dict[str, set[int]] = {}
+    unmatched: list[dict[str, Any]] = []
+    for prefix, spec_path in args.spec:
+        operations = spec_operations(json.loads(Path(spec_path).read_text(encoding="utf-8")))
+        for operation in operations:
+            if operation in operation_prefixes:
+                parser.error(
+                    f"duplicate --spec operation {operation}: prefixes "
+                    f"{operation_prefixes[operation]} and {prefix}"
+                )
+            operation_prefixes[operation] = prefix
+
+        matched, missed = match_against_spec(rows, prefix, operations)
+        spec_ops.update(operations)
+        validated.update(matched)
+        unmatched.extend(missed)
     if args.spec:
-        spec_ops = spec_operations(json.loads(Path(args.spec).read_text(encoding="utf-8")))
-        validated, unmatched = match_against_spec(rows, args.prefix, spec_ops)
         spec_report = SpecReport(spec_ops=spec_ops, validated=validated, unmatched=unmatched)
 
     sys.stdout.write(render(catalogue, spec_report))

@@ -1,6 +1,6 @@
 import { Delta } from "@/components/portal/domain-lens-view";
-import { MetricName } from "@/components/widgets/metric-help-tooltip";
-import { Card, CardContent } from "@/components/ui/card";
+import { MetricName } from "@/components/widgets/metric-name";
+import { Card, CardContent } from "@gears-frontx/ui-kit";
 import { formatMetricValue } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { TEXT_FIGURE } from "@/lib/type-scale";
@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 import { tenantData } from "./data";
 
-/** Headline and stat tiles: one org-wide value with its previous-period delta. */
 export function TileRow({
   metrics,
   data,
@@ -42,13 +41,12 @@ export function TileRow({
     >
       {tiles.map((tile) => (
         <Card key={tile.key}>
-          <CardContent className="p-4">
+          <CardContent>
             <div className="flex items-center justify-between gap-2">
               <MetricName
                 metric={tile.r}
                 className="text-xs font-medium text-muted-foreground"
                 truncate
-                focusable
               />
               <Delta
                 now={tile.now}

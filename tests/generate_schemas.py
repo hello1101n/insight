@@ -69,8 +69,7 @@ CODEGEN_ARGS = (
     "forbid",
     "--disable-timestamp",
     "--formatters",
-    "ruff-format",
-    "--formatters",
+    "isort",
     "ruff-check",
 )
 
@@ -96,6 +95,15 @@ status code from here — every one is asserted from observed behaviour.
 ONE substitution is applied after generation: every `AwareDatetime` becomes
 `UnzonedDatetime`, because the contract declares `format: date-time` while the
 service serialises timestamps with no offset. See `common.UnzonedDatetime`.
+"""
+
+'''
+
+
+CONNECTORS_HEADER = '''"""Connectors response shapes — GENERATED, do not edit.
+
+Regenerate: uv run --project tests --frozen python tests/generate_schemas.py
+Source: docs/components/backend/connectors/openapi.json
 """
 
 '''
@@ -131,25 +139,6 @@ Two consequences worth knowing while it stays this small:
 
 '''
 
-
-PREVIEWS_HEADER = '''"""Previews response shapes — GENERATED, do not edit.
-
-Regenerate with:
-
-    uv run --project tests --frozen python tests/generate_schemas.py
-
-Source: `docs/components/backend/previews/openapi.json`, generated offline by
-`cargo run -p previews --bin previews -- openapi` and drift-gated in CI beside
-the analytics and identity documents. These models describe the structs that
-serialize the wire, so a validation failure is a contract disagreement rather
-than a stale transcription.
-
-BODIES ONLY — no status code comes from this document. Its per-operation lists
-are stamped uniformly by `.standard_errors` and describe nothing (#1669), the
-same limitation the other generated documents carry.
-"""
-
-'''
 
 IDENTITY_HEADER = '''"""Identity Resolution response shapes — GENERATED, do not edit.
 
@@ -253,6 +242,12 @@ TARGETS: tuple[Generated | Bodyless | Untrusted, ...] = (
         unzoned_datetime=True,
     ),
     Generated(
+        name="connectors",
+        spec=_SPECS / "connectors" / "openapi.json",
+        output=_SCHEMAS / "connectors.py",
+        header=CONNECTORS_HEADER,
+    ),
+    Generated(
         name="authenticator",
         spec=_SPECS / "authenticator" / "openapi.json",
         output=_SCHEMAS / "authenticator.py",
@@ -277,12 +272,6 @@ TARGETS: tuple[Generated | Bodyless | Untrusted, ...] = (
         spec=_SPECS / "identity-resolution" / "openapi.json",
         output=_SCHEMAS / "identity.py",
         header=IDENTITY_HEADER,
-    ),
-    Generated(
-        name="previews",
-        spec=_SPECS / "previews" / "openapi.json",
-        output=_SCHEMAS / "previews.py",
-        header=PREVIEWS_HEADER,
     ),
 )
 
@@ -329,6 +318,12 @@ def generate(target: Generated) -> str:
             capture_output=True,
             text=True,
         )
+        subprocess.run(
+            ["ruff", "check", "--isolated", "--select", "I", "--fix", str(out)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         body = out.read_text(encoding="utf-8")
 
     # The generator's own two-line provenance comment is replaced by the target's
@@ -349,6 +344,8 @@ def _substitute_unzoned_datetime(source: str) -> str:
     """The single pinned deviation — see `common.UnzonedDatetime`. Applied here
     rather than by hand because the file is regenerated: an edit would be lost,
     and this way `--check` still passes on a clean tree."""
+    if "AwareDatetime" not in source:
+        return source
     source = source.replace("AwareDatetime", "UnzonedDatetime")
     source = source.replace("from pydantic import UnzonedDatetime, ", "from pydantic import ")
     source = source.replace("from pydantic import UnzonedDatetime\n", "")

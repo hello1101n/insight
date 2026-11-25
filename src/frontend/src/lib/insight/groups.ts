@@ -1,4 +1,5 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
+import type { DisplayText } from "@/i18n/localized-text";
 import type {
   MetricCollectionConfig,
   MetricTimeseriesGroupLimitConfig,
@@ -16,32 +17,9 @@ import {
   type InstanceNavPolicy,
 } from "@/lib/portal/nav-policy";
 
-/**
- * Dashboard composition registry: named groups of metrics and the KPI row.
- * This file is the single place a new metrics-backed group is added — one
- * `MetricGroup` entry (plus a renderer only if it needs a chart kind outside
- * the vocabulary).
- *
- * A group is a named set of metrics with presentation defaults — nothing ties
- * it to a connector or source family; a group may mix metrics from any
- * families (today's groups align with connector classes only because AI is
- * the first migrated family). Meaning (labels, units, formats, directions,
- * explanations) is server-owned and rides the `/v1/metric-results` response;
- * groups carry metric KEYS and presentation choices only. Group titles are
- * dashboard composition, so they live here.
- */
-
 type BreakdownChartKind = "bars" | "summary-card";
 type HistogramChartKind = "histogram";
 
-/**
- * One chart in a group's drilldown. Blocks compose: a multi-metric chart
- * is `metrics: [a, b]` (axes config joins when a family needs dual-axis).
- * The supporting grid is not a block — every group metric renders
- * value + peer-comparison below the blocks by convention. Chart kinds are
- * constrained per view so a block can't pair a composition chart with a
- * timeseries payload.
- */
 export type DrilldownBlock =
   | {
       id: string;
@@ -61,7 +39,7 @@ export type DrilldownBlock =
 
 export interface MetricGroup {
   id: GroupId;
-  title: string;
+  title: DisplayText;
   collection: MetricCollectionConfig;
   card: { preview: string[] };
   drilldown: DrilldownBlock[];
@@ -148,9 +126,6 @@ const AI_ADOPTION_COLLECTION: MetricCollectionConfig = {
     { key: "ai.active_days", views: [{ view: "period" }, { view: "peer" }] },
     { key: "ai.cost", views: [{ view: "period" }, { view: "peer" }] },
     {
-      // The daily distribution, not the month's running total: this section
-      // reads a metric one day at a time, and a cumulative figure repeated on
-      // every day of the month is not a day's reading.
       key: "ai.daily_approximate_extra_usage_cost",
       views: [{ view: "period" }, { view: "peer" }],
     },
@@ -184,14 +159,7 @@ const AI_ADOPTION_COLLECTION: MetricCollectionConfig = {
 const GIT_OUTPUT_COLLECTION: MetricCollectionConfig = {
   metrics: [
     {
-      // INVARIANT: no `branch_scope` breakdown on a metric already scoped to
-      // one branch: `/v1/metric-results` refuses a dimension a metric does not
-      // declare, and the call is all-or-nothing, so it would blank the whole
-      // section.
       key: "git.default_branch_commits",
-      // The forge split is asked for so the section can name what it was
-      // watching. One breakdown per class is enough for that line, and this
-      // is the metric every git source reports.
       views: [
         { view: "period" },
         { view: "peer" },
@@ -222,7 +190,6 @@ const GIT_OUTPUT_COLLECTION: MetricCollectionConfig = {
       key: "git.pr_cycle_time_p75_h",
       views: [{ view: "period" }, { view: "peer" }],
     },
-    // Review hygiene and timing, read by the Quality lens.
     { key: "git.review_coverage", views: [{ view: "period" }, { view: "peer" }] },
     {
       key: "git.reviewers_per_pr",
@@ -332,6 +299,10 @@ const COLLABORATION_COLLECTION: MetricCollectionConfig = {
       views: [{ view: "period" }, { view: "peer" }],
     },
     {
+      key: "collab.chat_active_days",
+      views: [{ view: "period" }, { view: "peer" }],
+    },
+    {
       key: "collab.active_days",
       views: [{ view: "period" }, { view: "peer" }],
     },
@@ -368,8 +339,6 @@ const COLLABORATION_COLLECTION: MetricCollectionConfig = {
       views: [
         { view: "period" },
         { view: "peer" },
-        // Single-tool today; the summary card hides its breakdown section
-        // below two groups, so this lights up if a second mail source lands.
         { view: "breakdown", dimensions: ["tool"] },
       ],
     },
@@ -422,7 +391,7 @@ const WIKI_COLLECTION: MetricCollectionConfig = {
 export const GROUPS: readonly MetricGroup[] = [
   {
     id: "task_delivery",
-    title: "Task delivery",
+    title: { key: "common.sections.task_delivery" },
     collection: TASK_DELIVERY_COLLECTION,
     card: {
       preview: ["tasks.closed", "tasks.resolution_time", "tasks.pickup_time"],
@@ -461,7 +430,7 @@ export const GROUPS: readonly MetricGroup[] = [
   },
   {
     id: "git_output",
-    title: "Git output",
+    title: { key: "common.sections.git_output" },
     collection: GIT_OUTPUT_COLLECTION,
     card: {
       preview: [
@@ -522,7 +491,7 @@ export const GROUPS: readonly MetricGroup[] = [
   },
   {
     id: "collaboration",
-    title: "Collaboration",
+    title: { key: "common.sections.collaboration" },
     collection: COLLABORATION_COLLECTION,
     card: {
       preview: [
@@ -532,10 +501,6 @@ export const GROUPS: readonly MetricGroup[] = [
       ],
     },
     drilldown: [
-      // Modality headline cards (period total + dimension breakdown) instead
-      // of trend charts — one card per modality. Everything else takes its
-      // standing in the peer story below; a second card row echoed the
-      // story's outliers.
       {
         chart: "summary-card",
         view: "breakdown",
@@ -551,13 +516,9 @@ export const GROUPS: readonly MetricGroup[] = [
   },
   {
     id: "ai_adoption",
-    title: "AI adoption",
+    title: { key: "common.sections.ai_adoption" },
     collection: AI_ADOPTION_COLLECTION,
     card: {
-      // The two cost figures are adjacent and ahead of the line count: the card
-      // trims this list to four once a lead row joins it, and a trim that keeps
-      // the potential cost while dropping the actual one leaves the reader with
-      // the half that is not an invoice.
       preview: [
         "ai.active_days",
         "ai.cost",
@@ -576,7 +537,7 @@ export const GROUPS: readonly MetricGroup[] = [
   },
   {
     id: "wiki",
-    title: "Wiki",
+    title: { key: "common.sections.wiki" },
     collection: WIKI_COLLECTION,
     card: {
       preview: ["wiki.pages_created", "wiki.edits", "wiki.comments"],
@@ -592,12 +553,6 @@ export const GROUPS: readonly MetricGroup[] = [
   },
 ];
 
-/**
- * The members heatmap's fixed cross-family column set: one metric key per
- * column, in display order. Every key exists in a group collection above.
- * The FE owns only the key list and order — each column's label, unit,
- * format, and direction ride the `/v1/metric-results` response.
- */
 export const HEATMAP_METRIC_KEYS: readonly string[] = [
   "tasks.closed",
   "tasks.bugs_fixed",
@@ -612,11 +567,6 @@ export const HEATMAP_METRIC_KEYS: readonly string[] = [
   "wiki.edits",
 ];
 
-/**
- * Heatmap fetch collection: `period` (the cell value) + `peer` (each person's
- * standing vs their OWN department cohort). No timeseries/breakdown/histogram,
- * so a large roster chunks under the backend's projected-row limit.
- */
 export const HEATMAP_COLLECTION: MetricCollectionConfig = {
   metrics: HEATMAP_METRIC_KEYS.map((key) => ({
     key,
@@ -624,23 +574,6 @@ export const HEATMAP_COLLECTION: MetricCollectionConfig = {
   })),
 };
 
-/**
- * CANDIDATES for the "At a glance" row, in display order — not the row itself.
- *
- * The row renders the first `KPI_ROW_MAX` of these that this person was
- * actually observed for. A fixed five-key row spends the most valuable space on
- * the page on whatever the list happens to name: a person whose role produces
- * no pull requests and no tasks gets dashes in those slots, while the metrics
- * their work does register are nowhere on the screen.
- *
- * The tail exists for exactly that person. It is a fallback, not a demotion —
- * a developer still leads with tasks and PRs, because those come first here and
- * they have them.
- *
- * "Observed" is the honest test, not "non-zero": a developer who merged nothing
- * this month KEEPS the empty PR tile, because a measured zero is a finding. A
- * metric no connector feeds for this person is what drops out.
- */
 export const KPI_ROW: readonly string[] = [
   "tasks.closed",
   "collab.focus_time_pct",
@@ -653,14 +586,6 @@ export const KPI_ROW: readonly string[] = [
   "git.default_branch_commits",
 ];
 
-/** How many tiles the row shows; the rest of the candidates are fallbacks. */
-/**
- * Four, not five, because the row is laid out in a column count that divides
- * it. Five tiles in a four-column row leave the fifth alone on a line of its
- * own beside a hole the width of three tiles, and the hole reads as something
- * failing to load. The candidate list is longer than the row either way, so
- * the row already adapts to the person; it now also fills.
- */
 export const KPI_ROW_MAX = 4;
 
 export const KPI_ROW_COLLECTION: MetricCollectionConfig = {
@@ -670,8 +595,6 @@ export const KPI_ROW_COLLECTION: MetricCollectionConfig = {
   })),
 };
 
-/** KPI tiles navigate to the group that owns their metric. */
-/** Every group's card-preview keys, deduped — the cross-domain headline set. */
 export function headlineMetricKeys(): string[] {
   return [...new Set(GROUPS.flatMap((g) => g.card.preview))];
 }
@@ -683,17 +606,6 @@ export function groupIdForMetricKey(metricKey: string): GroupId | null {
   return null;
 }
 
-/**
- * The groups this install shows, with the metrics it gates removed.
- *
- * Two gates, both from the per-install nav policy: a group whose Person-zone
- * section the install hides or marks planned is not part of what this
- * deployment measures, and neither is a group left with no visible metric of
- * its own. Both matter beyond the menu — the coverage screen counts sections to
- * say how much of a person's work the product can see, and counting a section
- * this install does not show would report our own backlog as a gap in their
- * data.
- */
 export function visibleGroups(
   showPlanned: boolean,
   policy: InstanceNavPolicy = navPolicy()

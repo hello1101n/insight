@@ -1,18 +1,8 @@
-/**
- * The windows a custom dashboard can be read over.
- *
- * The token is what crosses the wire and sits in the URL; the label is only
- * ever shown. The server resolves every token against the clock, so nothing
- * here computes a date — a custom interval is passed on as the two dates the
- * reader picked.
- */
-
 import { parseISOCalendarDate } from "@/api/period-to-date-range";
 
 export interface RangePreset {
   token: string;
   label: string;
-  /** What a phone-width picker shows in its place. */
   short: string;
 }
 
@@ -33,7 +23,6 @@ export interface DateInterval {
   to: string;
 }
 
-/** The two dates a custom range names, or nothing when it names a preset. */
 export function toInterval(token: string): DateInterval | undefined {
   const parts = token.split("/");
   if (parts.length !== 2) return undefined;
@@ -45,12 +34,6 @@ export function toInterval(token: string): DateInterval | undefined {
   return { from, to };
 }
 
-/**
- * Whether the server would accept this as a range.
- *
- * The same check the handler makes, run here so a hand-edited URL degrades to
- * the board's default instead of a 400.
- */
 export function isRangeToken(token: string): boolean {
   return LABELS.has(token) || toInterval(token) !== undefined;
 }

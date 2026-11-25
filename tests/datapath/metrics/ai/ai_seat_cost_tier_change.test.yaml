@@ -1,0 +1,53 @@
+spec_version: 1
+description: >
+  Metric: ai.seat_cost — a seat whose tier changes after its billing period began.
+  How it's computed (bronze → silver → gold):
+    • bronze: the vendor's invoice, whose subscription lines state the instant the
+              billing period began; and the per-seat spend snapshot, read daily
+    • silver: invoice lines keep their per-seat amount and the period start; seat
+              snapshots keep one reading per seat per day and the latest per month
+    • gold:   the invoice's base lines bill every seat at the tier it held when the
+              period began, and a later change reaches the invoice only as a
+              proration, which prices nothing. So a seat is priced by its last
+              reading before the period began, not by the month's closing state;
+              the closing tier prices only a seat with no reading before then.
+
+  December's period begins at 00:00 UTC on Dec 1 and prices two tiers. Each seat is
+  read on Nov 30 and again on Dec 10:
+
+    person   Nov 30           Dec 10                 seat cost
+    dave     team_tier_1      unassigned, no ceiling  $25.00 — billed as Premium
+    erin     team_standard    team_tier_1             $12.00 — billed as Standard
+    alice    (not read)       team_standard           $12.00 — closing tier
+
+  Pricing dave by his closing state would serve nothing, since an unassigned seat
+  with no ceiling carries no tier. Pricing erin by hers would serve 25.00. alice
+  has no reading before the period began, so her closing tier still prices her.
+
+  Cases: moved off a tier after billing · upgraded after billing · first read after
+  billing.
+
+bronze:
+  bronze_bamboohr.employees:
+    - $ref: ../templates/people.yaml#/templates/alice
+    - $ref: ../templates/people.yaml#/templates/dave
+    - $ref: ../templates/people.yaml#/templates/erin
+
+  bronze_claude_team.claude_team_overage_spend:
+    # ── dave — Premium when billed, moved to no tier on Dec 10 ──────────────────
+    - { $ref: ../templates/claude_team_overage.yaml#/templates/dave, _airbyte_extracted_at: "2026-11-30T12:00:00Z", unique_key: seat-dave-1130, used_credits: 0, monthly_credit_limit: 1000, seat_tier: team_tier_1 }
+    - { $ref: ../templates/claude_team_overage.yaml#/templates/dave, _airbyte_extracted_at: "2026-12-10T00:00:00Z", unique_key: seat-dave-1210, used_credits: 0, monthly_credit_limit: null, seat_tier: unassigned, limit_type: null }
+    # ── erin — Standard when billed, upgraded to Premium on Dec 10 ──────────────
+    - { $ref: ../templates/claude_team_overage.yaml#/templates/erin, _airbyte_extracted_at: "2026-11-30T12:00:00Z", unique_key: seat-erin-1130, used_credits: 0, monthly_credit_limit: 1000, seat_tier: team_standard }
+    - { $ref: ../templates/claude_team_overage.yaml#/templates/erin, _airbyte_extracted_at: "2026-12-10T00:00:00Z", unique_key: seat-erin-1210, used_credits: 0, monthly_credit_limit: 1000, seat_tier: team_tier_1 }
+    # ── alice — first read after the period began ───────────────────────────────
+    - { $ref: ../templates/claude_team_overage.yaml#/templates/alice, _airbyte_extracted_at: "2026-12-10T00:00:00Z", unique_key: seat-alice-1210, used_credits: 0, monthly_credit_limit: 1000, seat_tier: team_standard }
+
+  bronze_claude_team_invoices.claude_team_invoice_lines:
+    - $ref: ../templates/claude_team_invoice.yaml#/templates/december_invoice
+    - { $ref: ../templates/claude_team_invoice.yaml#/templates/december_line, unique_key: line-standard, line_id: il_standard, category: subscriptions, product_id: prod_EXAMPLE_STD,  price_id: price_EXAMPLE_STD,  product_name: "Example plan - Standard", description: "1 x Example plan - Standard", amount: 1200, quantity: 1, unit_amount: 1200, seat_unit_amount: 1200 }
+    - { $ref: ../templates/claude_team_invoice.yaml#/templates/december_line, unique_key: line-premium,  line_id: il_premium,  category: subscriptions, product_id: prod_EXAMPLE_PREM, price_id: price_EXAMPLE_PREM, product_name: "Example plan - Premium",  description: "1 x Example plan - Premium",  amount: 2500, quantity: 1, unit_amount: 2500, seat_unit_amount: 2500 }
+
+  config.ai_seat_tier_map:
+    - { tenant_id: "{{ tenant }}", insight_source_id: "claude-team-invoices-test", source: claude_team, tier_ref: prod_EXAMPLE_STD,  unique_key: tier-std,  seat_source_id: claude-team-test, seat_tier: team_standard, is_deleted: 0, note: "", recorded_by: "", _version: "2026-12-01T00:00:00.000Z" }
+    - { tenant_id: "{{ tenant }}", insight_source_id: "claude-team-invoices-test", source: claude_team, tier_ref: prod_EXAMPLE_PREM, unique_key: tier-prem, seat_source_id: claude-team-test, seat_tier: team_tier_1,   is_deleted: 0, note: "", recorded_by: "", _version: "2026-12-01T00:00:00.000Z" }

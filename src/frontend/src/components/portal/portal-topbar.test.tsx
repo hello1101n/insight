@@ -1,20 +1,11 @@
 // @vitest-environment jsdom
-/**
- * The seam between the catalog and the control.
- *
- * `cohortOptions` is tested on its own and so is `SliceSelect`; what neither
- * covers is that the bar actually asks the catalog and hands the answer down.
- * This test therefore runs the real query hook against a real QueryClient and
- * stubs only the network — so a wiring mistake here fails rather than hiding
- * behind a stubbed hook.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
 });
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@gears-frontx/ui-kit";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,14 +46,10 @@ vi.mock("@/queries/visible-roster", () => ({
   }),
 }));
 
-// Only the network is stubbed; the query hook itself is the real one.
 vi.mock("@/api/metric-definitions-client", () => ({
   listMetricDefinitions: () => Promise.resolve(mocks.definitions),
 }));
 vi.mock("@/queries/ic-dashboard", () => ({
-  // A viewer with two reports who differ by division: enough for the roster
-  // walk to offer something, so a catalog winning is a real preference and
-  // not the absence of an alternative.
   useIcPerson: () => ({
     data: identityPerson("boss", {
       person_id: pid("boss"),
@@ -86,7 +73,6 @@ vi.mock("@/hooks/use-portal-period", () => ({
 vi.mock("@/components/widgets/period-selector-bar", () => ({
   PeriodSelectorBar: () => <div />,
 }));
-// Stands in for the control so the test can read what it was given.
 vi.mock("@/components/portal/slice-select", () => ({
   SliceSelect: ({ dims }: { dims: { key: string; label: string }[] }) => (
     <div data-testid="dims">{dims.map((d) => d.key).join(",")}</div>
@@ -140,8 +126,6 @@ describe("PortalTopBar", () => {
   });
 
   it("prefers the catalog over what the roster happens to support", async () => {
-    // The roster here would offer `division`; a governed answer wins, and the
-    // two are never shown side by side.
     mocks.definitions = {
       metrics: [],
       comparison_attributes: [{ id: "job_title", label: "Title" }],
@@ -164,25 +148,21 @@ const filters = () => screen.queryByRole("group", { name: "View filters" });
 
 describe("PortalTopBar · zones that filter nothing", () => {
   it("drops the whole filter group on Manage", async () => {
-    portalRouter.set({ zone: "manage" });
+    portalRouter.go("/manage/assistant");
     bar();
 
-    // Awaited: the catalog resolves after the first paint.
     await waitFor(() => expect(screen.queryByTestId("dims")).toBeNull());
     expect(filters()).toBeNull();
   });
 
   it("keeps it on a zone whose numbers the filters move", async () => {
-    portalRouter.set({ zone: "overview" });
+    portalRouter.go("/home");
     bar();
 
     await waitFor(() => expect(filters()).toBeInTheDocument());
   });
 
   it("drops the cohort control where there is one cohort", async () => {
-    // A flat organisation has no teams to compare within and no attributes on
-    // its roster: the control would offer a single choice, and its tooltip
-    // would describe a cut nobody can make.
     mocks.isFlat = true;
 
     bar();

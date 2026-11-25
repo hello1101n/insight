@@ -10,7 +10,6 @@ import type { TenantSectionSpec } from "@/lib/portal/lens-configs";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** The org total cut by one dimension. */
 export function CompositionSection({
   section,
   resolve,
@@ -20,8 +19,6 @@ export function CompositionSection({
   resolve: ResolveView;
   bucket: MetricBucket;
 }) {
-  // The served rows may be grouped finer than this section's dims (the
-  // planner merges summable breakdowns) — the aggregation below re-sums.
   const r = resolve(sectionNeeds(section, bucket)[0]);
   if (!r) return null;
   const entries = new Map<string, BarEntry>();
@@ -49,8 +46,6 @@ export function CompositionSection({
     });
   }
   const rows = toBarRows(entries);
-  // A single bar with a single segment is an empty shell (rule 11) — but one
-  // row CUT by a real split (one environment, several outcomes) is a reading.
   const segments = rows[0]?.segments?.length ?? 0;
   if (rows.length === 0 || (rows.length === 1 && segments < 2)) return null;
 

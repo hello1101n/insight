@@ -17,15 +17,13 @@ from conftest import TENANT, UMBRELLA, UMBRELLA_BASE, render
 
 GEARS_SERVICES = {
     "analytics",
+    "connectors",
     "authenticator",
     "gitCliProxy",
     "identityResolution",
     "insightV3Core",
-    "previews",
 }
 
-# Minimum count of platform-ConfigMap-sourced INSIGHT_LOG_LEVEL env entries per
-# ingestion template; airbyte-sync carries one in each of its two step scripts.
 INGESTION_TEMPLATES = {
     "insight/templates/ingestion/reconcile-cron.yaml": 1,
     "insight/templates/ingestion/dbt-run.yaml": 1,
@@ -40,8 +38,6 @@ INGESTION_ENABLED = [
     "ingestion.toolboxImage=ghcr.io/example/insight-toolbox:0.0.0-test",
 ]
 
-# `render` templates the release as "contract-test", so the platform ConfigMap
-# the env entries must reference is contract-test-platform.
 PLATFORM_KEY_REF = re.compile(
     r"- name: INSIGHT_LOG_LEVEL\s*\n"
     r"\s*valueFrom:\s*\n"
@@ -59,6 +55,8 @@ def rendered_per_service(stdout: str, key: str) -> dict[str, list[str]]:
         values = re.findall(rf"{key}:\s*(\S+)", doc)
         if source and values:
             per_service.setdefault(source.group(1), []).extend(values)
+        if "# Source: insight/templates/connectors.yaml" in doc and "kind: ConfigMap" in doc and values:
+            per_service.setdefault("connectors", []).extend(values)
     return per_service
 
 

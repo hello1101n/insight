@@ -18,8 +18,6 @@ describe("the document an editor holds", () => {
     expect(JSON.parse(held.text)).toEqual({ title: "Pull requests" });
   });
 
-  // The fields have nowhere to put a property they do not know, and dropping
-  // it would turn a mistyped name into a silent loss rather than a refusal.
   it("keeps a property the fields do not know", () => {
     const held = change(
       hold({ title: "Commits", mistyped: 1 }),
@@ -47,8 +45,6 @@ describe("the document an editor holds", () => {
     expect(held.document).toEqual({ fields: [{ name: "author" }] });
   });
 
-  // `order_by: {}` is not an ordering the service will take; clearing the one
-  // property an optional record has must leave no record.
   it("removes a record that removing its last property emptied", () => {
     const held = hold({ dataset: "commits", order_by: { field: "total" } });
 
@@ -91,8 +87,6 @@ describe("the document an editor holds", () => {
     expect(sendable(held)).toBe(true);
   });
 
-  // The fields must not show something nobody wrote, so they stay as they
-  // stand and nothing may be sent until the text parses again.
   it("leaves the fields alone and blocks sending when the text does not parse", () => {
     const held = retype(hold({ title: "Commits" }), "{not json");
 

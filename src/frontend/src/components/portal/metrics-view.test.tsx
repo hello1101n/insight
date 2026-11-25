@@ -22,7 +22,6 @@ import {
 import { parseNavPolicy, type InstanceNavPolicy } from "@/lib/portal/nav-policy";
 import { EvidenceDialogContext } from "@/components/metric-evidence-context";
 import { identityPerson, peopleFromIdentityTree, pid } from "@/test/identity";
-import { AppTooltips, openTooltip } from "@/test/tooltip";
 
 const mocks = vi.hoisted(() => ({
   personId: null as string | null,
@@ -178,10 +177,7 @@ beforeEach(() => {
   mocks.roster = peopleFromIdentityTree(tree);
   mocks.definitions = [
     definition("collab.messages_sent", "Messages"),
-    definition("git.default_branch_commits", "Default branch commits", {
-      description: "Commits that landed on the default branch.",
-      explanation: "Counted per author, merges included.",
-    }),
+    definition("git.default_branch_commits", "Default branch commits"),
     definition("tasks.closed", "Tasks closed"),
     definition("ci.runs", "CI runs", { entity_type: "tenant" }),
   ];
@@ -474,19 +470,6 @@ describe("MetricsView", () => {
         activeMetricKey: "git.default_branch_commits",
         title: expect.stringMatching(/^Default branch commits · b · 20 · 1 Jul( 2026)? – 31 Jul/),
       },
-    );
-  });
-
-  it("explains a metric when its title is hovered", async () => {
-    const user = userEvent.setup();
-    render(<MetricsView />, { wrapper: AppTooltips });
-
-    await user.hover(screen.getByRole("button", { name: "Sort by Default branch commits" }));
-
-    await waitFor(() =>
-      expect(openTooltip()).toHaveTextContent(
-        "Commits that landed on the default branch.Counted per author, merges included.",
-      ),
     );
   });
 

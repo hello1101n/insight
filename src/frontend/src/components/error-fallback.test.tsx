@@ -10,7 +10,7 @@ const reload = vi.fn();
 
 beforeEach(() => {
   reload.mockClear();
-  // jsdom does not implement navigation; swap in an inert reload.
+  // WORKAROUND: jsdom does not implement navigation; swap in an inert reload.
   Object.defineProperty(window, "location", {
     value: { ...window.location, reload },
     writable: true,

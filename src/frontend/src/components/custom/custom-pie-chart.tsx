@@ -2,7 +2,6 @@ import { Cell, Pie, PieChart } from "recharts";
 
 import type { MetricResult } from "@/api/custom-client";
 import {
-  CHART_COLORS,
   type ChartConfig,
   points,
 } from "@/components/custom/chart-data";
@@ -18,6 +17,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/custom/chart-frame";
+import { chartColor } from "@/lib/chart-palette";
 
 export interface CustomPieChartProps {
   result: MetricResult;
@@ -27,7 +27,6 @@ export interface CustomPieChartProps {
   onPointClick?: () => void;
 }
 
-/** A share of a total: one slice per row, painted round the kit's palette. */
 export function CustomPieChart({
   result,
   label,
@@ -42,7 +41,7 @@ export function CustomPieChart({
       String(slice[label]),
       {
         label: categoryTick(slice[label]),
-        color: `var(--chart-${(index % CHART_COLORS) + 1})`,
+        color: chartColor(index),
       },
     ])
   );
@@ -76,7 +75,7 @@ export function CustomPieChart({
           {data.map((slice, index) => (
             <Cell
               key={String(slice[label])}
-              fill={`var(--chart-${(index % CHART_COLORS) + 1})`}
+              fill={chartColor(index)}
             />
           ))}
         </Pie>

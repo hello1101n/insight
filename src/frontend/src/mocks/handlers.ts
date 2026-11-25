@@ -1,12 +1,16 @@
 import { http, HttpResponse } from "msw";
 
 import type { AppliedSchedule } from "@/api/connector-health-client";
+import { CONNECTORS_BASE } from "@/api/connectors-client";
 import { FEEDBACK_MESSAGE_MAX } from "@/api/feedback-client";
 import type { MetricDrilldownRequest } from "@/api/metric-drilldown-client";
 import type { MetricResultsRequest } from "@/api/metric-results-client";
 import { isPersonId } from "@/lib/metrics/entity";
 
 import { ADMIN_ASSIGNMENTS } from "./admin-assignments";
+import { catalogueHandlers } from "./catalogue-handlers";
+import { seedConnectorScheduleScenarios } from "./connector-schedule-scenarios";
+import { connectorScheduleMocks } from "./connector-schedules";
 import { buildMetricDefinitions } from "./metric-definitions-factory";
 import { dashboardHandlers } from "./dashboard-handlers";
 import {
@@ -41,22 +45,10 @@ function peopleItem(person: (typeof PEOPLE)[number]) {
   };
 }
 
-/**
- * A mock page holds far fewer rows than a real one. The synthetic roster is
- * smaller than the console's page size, so honouring `?limit=` would put every
- * row on page one and leave "show more" unreachable in mock mode — the affordance
- * would have no dev or Storybook path at all.
- */
 const MOCK_PAGE_SIZE = 8;
 
 const DECIDED_MOCK_ACCOUNTS = new Set<string>();
 
-/**
- * One page of a listing, cursor and all — the mock pages the way the service
- * does so the console's "show more" is exercised in mock mode too. The cursor
- * carries the query it was issued for, and a mismatched one restarts, which is
- * the behaviour the real cursor enforces by refusing.
- */
 function pageOf<T>(items: T[], params: URLSearchParams, query: string) {
   const limit = Math.min(Number(params.get("limit") ?? 20), MOCK_PAGE_SIZE);
   const cursor = params.get("cursor");
@@ -73,38 +65,28 @@ function pageOf<T>(items: T[], params: URLSearchParams, query: string) {
   };
 }
 
-// Stable synthetic session for mock/Storybook runs. The old in-code
-// MOCKS_ENABLED viewer path is gone; an authenticated viewer now comes from
-// the same `/auth/me` probe the real app uses, so the boot `loadSession()`
-// call resolves to `authenticated` against these handlers.
 const MOCK_SESSION = {
-  // `user` is the person id the SPA keys on (the gateway JWT `sub`).
   user: defaultPerson?.person_id ?? "00000000-0000-0000-0000-0000000000bb",
   email: defaultPerson?.email ?? "bob.park@example.com",
   tenant_id: "00000000-0000-0000-0000-000000000001",
   roles: ["user"],
-  // Required by loadSession's fail-closed guard (a live session always has one).
   csrf_token: "mock-csrf-token",
 };
 
-// Session timing for the refresh driver: mirror the backend defaults
-// (ttl 600 s, refresh ~90 s before expiry) relative to "now".
+const MOCK_SESSION_TTL_SECS = 600;
+const MOCK_REFRESH_LEAD_SECS = 90;
+
 function mockSessionTiming(): { expires_at: number; refresh_at: number } {
   const now = Math.floor(Date.now() / 1000);
-  return { expires_at: now + 600, refresh_at: now + 510 };
+  const expiresAt = now + MOCK_SESSION_TTL_SECS;
+  return {
+    expires_at: expiresAt,
+    refresh_at: expiresAt - MOCK_REFRESH_LEAD_SECS,
+  };
 }
 
-// Assembled last: the sections above declare module-level stores/consts the
-// handler factories close over, and the factories are CALLED right here —
-// an earlier array literal hits the temporal dead zone.
-/** Whoever the person mode has open holds the two accounts it lists for them. */
 const HELD_BY = "2517cd48-4961-52b3-a401-b0e5a03858a4";
 
-/**
- * AI assist (`/v1/ai/*`) — on in mock so the sparkle, the settings screen and
- * an answer all have a dev and Storybook path. Synthetic data only; no request
- * leaves the browser.
- */
 const AI_BASE = "/api/analytics/v1/ai";
 
 let mockCredential = { configured: true, hint: "wxyz" };
@@ -153,6 +135,7 @@ const mockContext = new Map<
 
 export const handlers = [
   ...dashboardHandlers,
+  ...catalogueHandlers,
   http.get("/auth/me", () =>
     HttpResponse.json({ ...MOCK_SESSION, ...mockSessionTiming() })
   ),
@@ -174,10 +157,6 @@ export const handlers = [
       );
     }
 
-    // Mirror the real endpoint since the identity cutover: entity ids are
-    // person UUIDs and an email is a 400. Without this the mock would happily
-    // answer a stale email fixture and hide the very regression it exists to
-    // catch.
     if (
       body.entity.type === "person" &&
       (!Array.isArray(body.entity.ids) ||
@@ -203,9 +182,6 @@ export const handlers = [
     }
     return HttpResponse.json(buildMetricResultsResponse(body));
   }),
-  // The records behind a figure. Order and narrowing are the server's since
-  // #2470, so the factory does both — a mock that answered every request with
-  // the same page would hide the whole change.
   http.post("/api/analytics/v1/metric-drilldown", async ({ request }) => {
     const body = (await request
       .json()
@@ -235,9 +211,6 @@ export const handlers = [
       });
     }
   ),
-  // The demo viewer is an identity admin, so mock mode exercises the admin
-  // surfaces (Manage → Identities). The role id is the backend's seeded
-  // `roles_repo::ADMIN_ROLE_ID` migration constant.
   http.get("/api/identity/v1/me", () =>
     HttpResponse.json({
       person_id:
@@ -249,28 +222,15 @@ export const handlers = [
           name: "admin",
         },
       ],
-      // Mock mode demos the reporting-line product; the flat roster below is
-      // served anyway, so switching this to "flat" exercises that shell.
       visibility_policy: "org_chart",
     })
   ),
-  // Minimal, honest empty catalog: without this handler the request falls
-  // through to the network, and in a proxy-configured dev run the resulting
-  // 401 bounces the whole mock session to the real IdP.
   http.get("/api/analytics/v1/metric-definitions", () =>
     HttpResponse.json({ metrics: buildMetricDefinitions() })
   ),
-  // One account's binding + decision trail. dev-42 carries a small history so
-  // the panel has something to show; any other account answers 200 with no
-  // binding and no history — the real endpoint has no 404: an account nobody
-  // ever observed or decided reads as an empty journal, and THAT is what a
-  // stale shared link lands on. Timestamps are zone-less UTC on the wire — a
-  // `Z` here would train the panel on a shape the service never sends.
   http.get(
     "/api/identity/v1/resolution/accounts/:source/:sourceId/:accountId",
     ({ params }) => {
-      // The roster mint: bound, by the batch, with nothing but its own
-      // creation on the trail — the state an operator is asked to confirm.
       if (params.accountId === "874") {
         const minted = {
           person_id: "01900000-0000-7000-8000-0000000000d0",
@@ -285,9 +245,6 @@ export const handlers = [
           history: [
             {
               person_id: minted.person_id,
-              // No `provisional` here: the server builds trail cards from the
-              // journal alone and never marks them, so claiming it would have
-              // the console verified against a shape it will not receive.
               person: minted,
               author_person_id: "00000000-0000-0000-0000-000000000000",
               by_operator: false,
@@ -298,10 +255,6 @@ export const handlers = [
           operations: [],
         });
       }
-      // The two accounts the person listing above claims for whoever is open:
-      // reporting them as unbound here would have the console demonstrate a
-      // state the service cannot produce — an account in a person's own list
-      // that the binding read says nobody holds.
       if (params.accountId === "gh-main" || params.accountId === "gl-alt") {
         return HttpResponse.json({
           source: params.source,
@@ -363,8 +316,6 @@ export const handlers = [
             person_id: carol?.person_id,
             author_person_id: "00000000-0000-0000-0000-000000000000",
             by_operator: false,
-            // The resolver's own rows carry an EMPTY reason, never null —
-            // mirroring the real column, which a nullish fallback misses.
             reason: "",
             recorded_at: "2026-07-15T08:00:00.000000",
           },
@@ -376,8 +327,6 @@ export const handlers = [
             recorded_at: "2026-07-01T06:30:00.000000",
           },
         ],
-        // The call behind the operator's row above: who ran it, how far it
-        // reached, and the one thing no other record holds — why.
         operations: [
           {
             operation_id: "01900000-0000-7000-8000-0000000000f1",
@@ -401,14 +350,10 @@ export const handlers = [
       });
     }
   ),
-  // The person listing: a blank query is the whole roster, terms narrow it,
-  // and both are paged the way the service pages them.
   http.get("/api/identity/v1/persons", ({ request }) => {
     const params = new URL(request.url).searchParams;
     const q = params.get("q")?.trim() ?? "";
     const terms = q ? q.toLowerCase().split(/\s+/) : [];
-    // A term that parses as an id names a person, mirroring the service: it is
-    // the only way to reach someone the journal holds no values for.
     const items = PEOPLE.filter((p) =>
       terms.every((term) =>
         isPersonId(term)
@@ -431,9 +376,6 @@ export const handlers = [
       );
     return HttpResponse.json(pageOf(items, params, q));
   }),
-  // Who the caller may see. Mock mode has one tenant and one roster, so this
-  // answers the same people the operator listing does — the difference on a real
-  // stand is the visible-set filter, which a mock cannot have an opinion about.
   http.get("/api/identity/v1/visible-persons", ({ request }) => {
     const params = new URL(request.url).searchParams;
     const q = params.get("q")?.trim().toLowerCase() ?? "";
@@ -524,7 +466,6 @@ export const handlers = [
     const id = String(params.personRoleId);
     for (const [person, assignment] of ADMIN_ASSIGNMENTS) {
       if (assignment.person_role_id !== id) continue;
-      // Keeps one back so the last-admin refusal is reachable here.
       if (ADMIN_ASSIGNMENTS.size === 1) {
         return HttpResponse.json(
           { context: { reason: "last_admin_protected" } },
@@ -615,8 +556,6 @@ export const handlers = [
           )
       )
       .filter((item) => picked.length === 0 || picked.includes(item.source));
-    // The service orders by the label each row shows; the mock mirrors it so a
-    // mock run does not demonstrate an order the real listing never produces.
     items.sort((left, right) =>
       (left.email ?? left.account_id).localeCompare(
         right.email ?? right.account_id
@@ -629,7 +568,6 @@ export const handlers = [
       items: ["github", "gitlab", "gitlab-commit-email", "hr"],
     })
   ),
-  // A merge preview's substance: two synthetic accounts for anyone.
   http.get(
     "/api/identity/v1/resolution/persons/:personId/accounts",
     ({ params }) =>
@@ -698,8 +636,6 @@ export const handlers = [
       });
     })
   ),
-  // The review queue, exercising all three kinds. Candidates reuse the seeded
-  // roster so names/emails stay consistent with every other mock surface.
   http.get("/api/identity/v1/resolution/attention", ({ request }) => {
     const params = new URL(request.url).searchParams;
     const picked = (params.get("source") ?? "").split(",").filter(Boolean);
@@ -722,8 +658,6 @@ export const handlers = [
         account_id: "dev-42",
         email: "dev42@example.com",
         username: "dev42",
-        // Contested means unbound: nobody holds it, which is why two people
-        // can claim it.
         bound_to: null,
         candidates: [card(bob), card(carol)],
       },
@@ -747,9 +681,6 @@ export const handlers = [
         candidates: [],
       },
       {
-        // Minted during a sign-in so its owner could get in: bound, and
-        // still nobody's decision. It may duplicate a person the roster
-        // already knows, which only an operator can settle.
         kind: "provisioned_at_login",
         source: "github",
         source_id: "01900000-0000-7000-8000-00000000aa01",
@@ -760,9 +691,6 @@ export const handlers = [
         candidates: [card(carol, { provisional: true })],
       },
       {
-        // Added because the roster lists the account, not because anything
-        // matched: no address, so the person may already be on the roster
-        // under a different account. Bound, and still nobody's decision.
         kind: "minted_from_roster",
         source: "hr",
         source_id: "01900000-0000-7000-8000-00000000aa03",
@@ -783,16 +711,11 @@ export const handlers = [
             display_name: "Ravi Menon",
             job_title: "Facilities Lead",
             status: "active",
-            // Minted for this very account, so nothing else is known about
-            // them and they may be someone the roster already lists.
             provisional: true,
           },
         ],
       },
       {
-        // Neither address nor handle — nothing automation can match on. The
-        // source still describes the human, which is what the fold reads for
-        // the operator and what makes this row bindable by hand.
         kind: "no_evidence",
         source: "hr",
         source_id: "01900000-0000-7000-8000-00000000aa03",
@@ -863,16 +786,12 @@ export const handlers = [
       value?: string;
     } | null;
     const value = (body?.value ?? "").trim();
-    // The service resolves `person_id` (the SPA's key) and `email` (legacy
-    // URL migration only); anything else is a client error.
     if (body?.value_type !== "email" && body?.value_type !== "person_id") {
       return HttpResponse.json(
         { type: "urn:insight:error:invalid_argument" },
         { status: 400 }
       );
     }
-    // A malformed person_id is a 400, not a 404 — matching the service, where
-    // "does not parse" and "resolves to nobody" are different answers.
     if (body.value_type === "person_id" && !isPersonId(value)) {
       return HttpResponse.json(
         { type: "urn:insight:error:invalid_argument" },
@@ -905,21 +824,13 @@ export const handlers = [
   ...aiAssistHandlers(),
 ];
 
-// ── Ingestion intensity (`/v1/ingestion/intensity`) ────────────
-// The admin ops lens has no mock path otherwise: its data comes from a
-// merge() over every bronze database, which no seeded stand carries (compose
-// seeds silver/gold directly and runs no connector). Without this the surface
-// can only be seen against a warehouse that has actually ingested something.
-//
-// The grain/series sets are closed server-side, so they are refused here too —
-// a 200 for a value the service would reject would hide a client-side bug.
 const INGESTION_GRAINS = new Set(["15m", "1s"]);
 const INGESTION_SERIES = new Set(["connector", "stream", "total"]);
 const BRONZE_SLUG = /^bronze_[a-z0-9_]{1,120}$/;
 
 function ingestionHandlers() {
   return [
-    http.get("/api/analytics/v1/ingestion/intensity", ({ request }) => {
+    http.get(`${CONNECTORS_BASE}/ingestion/intensity`, ({ request }) => {
       const params = new URL(request.url).searchParams;
       const grain = params.get("grain") ?? "15m";
       const series = params.get("series");
@@ -953,10 +864,6 @@ function ingestionHandlers() {
   ];
 }
 
-// ── Product feedback (`/v1/feedback`) ──────────────────────────
-// An in-memory store, so the dialog's send and the usage surface's listing
-// round-trip in mock, Storybook, and `VITE_ENABLE_MOCKS=true` dev runs.
-
 interface MockFeedback {
   feedback_id: string;
   ts: string;
@@ -967,7 +874,6 @@ interface MockFeedback {
   path: string;
 }
 
-/** Mirrors the service's own cap. */
 const MOCK_FEEDBACK_LIMIT = 200;
 
 function mockSender(person: (typeof PEOPLE)[number] | undefined) {
@@ -1022,8 +928,6 @@ function feedbackHandlers() {
       const params = new URL(request.url).searchParams;
       const since = params.get("since") ?? "";
       const until = params.get("until") ?? "";
-      // Answering the window the caller asked for, as the service does: a mock
-      // that ignores it hides every date-range regression from mock runs.
       const items = feedbackStore
         .filter((row) => {
           const day = row.ts.slice(0, 10);
@@ -1041,8 +945,6 @@ function feedbackHandlers() {
   ];
 }
 
-// ── Platform usage (`/v1/usage/*`) ─────────────────────────────
-
 function syntheticDays(count: number) {
   const days = [];
   for (let i = count - 1; i >= 0; i -= 1) {
@@ -1057,23 +959,14 @@ function syntheticDays(count: number) {
   return days;
 }
 
-/**
- * Connector health in mock mode.
- *
- * Deliberately not all-green: one failing connector, one queued, one never
- * synced and one no longer configured, so the demo shows what the page is for
- * rather than a wall of successes. `records_reported: 0` on the failed sync and
- * a missing count on the queued one keep the absence-versus-zero distinction
- * visible in the mock too.
- */
 function connectorHealthHandlers() {
-  // The fixtures are anchored once, so a sync keeps the moment it started
-  // across requests. Only the answer's own clock is read per request — below,
-  // in the handler — because a fixed `as_of` would freeze the elapsed time the
-  // page derives from it and the running row would never advance while polling.
-  const anchor = new Date();
+  const fixturesAnchoredAt = new Date();
+  const scenarios =
+    import.meta.env.VITE_CONNECTOR_SCHEDULE_SCENARIOS === "true"
+      ? seedConnectorScheduleScenarios(fixturesAnchoredAt)
+      : null;
   const minutesAgo = (minutes: number) =>
-    new Date(anchor.getTime() - minutes * 60_000).toISOString();
+    new Date(fixturesAnchoredAt.getTime() - minutes * 60_000).toISOString();
 
   const sync = (
     job_id: string,
@@ -1090,9 +983,6 @@ function connectorHealthHandlers() {
     records_reported,
   });
 
-  // One history per connector, newest first, so each connector's expansion
-  // agrees with the row above it. A demo whose drill-down contradicts its own
-  // summary teaches the reader to distrust both.
   const histories: Record<string, ReturnType<typeof sync>[]> = {
     "example-tracker": [
       sync("8414", "failed", 18, 142_000, 0),
@@ -1103,9 +993,6 @@ function connectorHealthHandlers() {
       sync("8402", "succeeded", 24, 41_000, 903),
       sync("8388", "succeeded", 84, 39_100, 874),
     ],
-    // A sync still in flight carries no duration — the mover reports one only
-    // for a job it has finished — so the row states how long it has been going
-    // instead.
     "example-inbox": [
       sync("8420", "running", 37, null, null),
       sync("8391", "succeeded", 97, 61_000, 2_140),
@@ -1117,18 +1004,22 @@ function connectorHealthHandlers() {
   const summaryRow = (
     connector: string,
     configured: boolean,
-    schedule: AppliedSchedule | null
+    schedule: AppliedSchedule | null,
+    sourceId = `${connector}-main`,
+    scenario = false
   ) => ({
     connector,
     tenant_id: "00000000-0000-4000-8000-000000000001",
-    source_id: `${connector}-main`,
+    source_id: sourceId,
     configured,
-    schedule,
+    ...connectorScheduleMocks.summary(connector, sourceId, schedule, scenario),
     last_sync: histories[connector]?.[0] ?? null,
   });
 
   return [
-    http.get("/api/analytics/v1/connector-health", () => {
+    ...(scenarios?.handlers ?? []),
+    ...connectorScheduleMocks.handlers,
+    http.get(`${CONNECTORS_BASE}/connector-health`, () => {
       const now = new Date();
       return HttpResponse.json({
         as_of: now.toISOString(),
@@ -1136,11 +1027,20 @@ function connectorHealthHandlers() {
         typical_read_interval_ms: 15 * 60_000,
         history_available: true,
         connectors: [
+          ...(scenarios?.rows.map(({ connector, sourceId }) =>
+            summaryRow(
+              connector,
+              true,
+              connectorScheduleMocks.read(connector, sourceId).live ?? null,
+              sourceId,
+              true
+            )
+          ) ?? []),
           summaryRow("example-tracker", true, {
             suspended: false,
             crons: ["0 22 * * *", "0 10 * * *"],
             timezone: "Europe/Sofia",
-            origin: "annotation",
+            origin: "api",
           }),
           summaryRow("example-directory", true, {
             suspended: false,
@@ -1165,7 +1065,7 @@ function connectorHealthHandlers() {
         ],
       });
     }),
-    http.get("/api/analytics/v1/connector-health/:connector/syncs", ({ params }) => {
+    http.get(`${CONNECTORS_BASE}/connector-health/:connector/syncs`, ({ params }) => {
       const connector = String(params.connector);
       return HttpResponse.json({
         connector,
@@ -1283,13 +1183,13 @@ const PAGE_ROWS = [
   { path: "/portal/people", views: 61, visitors: 3 },
   { path: "/portal/manage/connector-health", views: 42, visitors: 2 },
   { path: "/portal/manage/platform-usage", views: 23, visitors: 1 },
-  { path: "/portal/custom/:id", views: 31, visitors: 3 },
-  { path: "/portal/custom/q3-hiring-plan", views: 17, visitors: 2 },
-  { path: "/portal/custom/release-health", views: 12, visitors: 2 },
-  { path: "/portal/custom/metrics", views: 9, visitors: 2 },
-  { path: "/portal/custom/metrics/deploy-frequency", views: 6, visitors: 1 },
-  { path: "/portal/custom/edit/dashboards/release-health", views: 4, visitors: 1 },
-  { path: "/portal/custom/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
+  { path: "/dashboards/:id", views: 31, visitors: 3 },
+  { path: "/dashboards/q3-hiring-plan", views: 17, visitors: 2 },
+  { path: "/dashboards/release-health", views: 12, visitors: 2 },
+  { path: "/dashboards/metrics", views: 9, visitors: 2 },
+  { path: "/dashboards/metrics/deploy-frequency", views: 6, visitors: 1 },
+  { path: "/dashboards/edit/dashboards/release-health", views: 4, visitors: 1 },
+  { path: "/dashboards/edit/metrics/deploy-frequency", views: 3, visitors: 1 },
 ];
 
 function aiAssistHandlers() {

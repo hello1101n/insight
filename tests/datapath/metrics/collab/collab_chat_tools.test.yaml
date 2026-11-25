@@ -1,7 +1,7 @@
 spec_version: 1
 description: >
-  Metrics: collab.messages_sent, collab.channel_posts, collab.dm_ratio and
-  collab.msgs_per_active_day across Microsoft Teams, Slack and Zulip, #3691 #3677
+  Metrics: collab.messages_sent, collab.channel_posts, collab.dm_ratio,
+  collab.msgs_per_active_day and collab.chat_active_days across Microsoft Teams, Slack and Zulip, #3691 #3677
   #3678 #3692.
   How it's computed (bronze → silver → gold):
     • bronze: the daily Teams activity report, Slack member analytics, and Zulip's
@@ -12,14 +12,16 @@ description: >
     • gold:   messages sent = all totals; channel posts = channel messages where a
       tool reports them; DM ratio = direct messages over the totals of the tools
       that tell direct from channel apart; messages per active day = messages over
-      the distinct days with messages in any tool.
+      the distinct days with messages in any tool; chat active days = those days.
 
   Cast (Engineering):
     alice — Teams Dec 7: 6 private, 4 in channels (3 posts, 1 reply). Zulip under
             a second address: 10 on Dec 7, 20 on Dec 8 (first sent as 18).
-            → 40 messages, 4 channel posts, DM 60%, 20 per active day.
+            → 40 messages, 4 channel posts, DM 60%, 20 per active day,
+            2 chat active days.
     bob   — Zulip only, 12 on Dec 7 → 12 messages, no channel posts, no DM ratio.
-    carol — Slack Dec 7: 20 messages, 5 in channels → 5 channel posts, DM 75%.
+    carol — Slack Dec 7: 20 messages, 5 in channels → 5 channel posts, DM 75%,
+            1 chat active day.
   Cases: totals add across tools · channel posts only where reported · a tool
   without a split leaves the DM ratio alone · a day in two tools is one active
   day · a re-sent Zulip total keeps its latest value.

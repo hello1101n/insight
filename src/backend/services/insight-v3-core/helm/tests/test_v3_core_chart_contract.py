@@ -212,6 +212,23 @@ def test_allow_insecure_private_network_follows_the_global_switch(overrides: dic
     assert env["APP__gears__insight_v3_core__config__mcp__allow_insecure_private_network"] == expected
 
 
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({}, ""),
+        (
+            {"global__mcp__jwksUrl": "http://{{ .Release.Name }}-gateway:8080/.well-known/jwks.json"},
+            f"http://{RELEASE}-gateway:8080/.well-known/jwks.json",
+        ),
+    ],
+)
+def test_the_jwks_url_renders_the_global_template_or_stays_empty(overrides: dict[str, str], expected: str):
+    """Empty makes the server derive the key URL from the public origin."""
+    env = env_of(render(**MCP_ON, **overrides))
+
+    assert env["APP__gears__insight_v3_core__config__mcp__jwks_url"] == expected
+
+
 ALERTS_ON = {"alerts__enabled": "true", "alerts__redis__host": "redis"}
 REDIS_URL = "APP__gears__insight_v3_core__config__alerts__redis_url"
 REDIS_PASSWORD = "APP__gears__insight_v3_core__config__alerts__redis_password"
@@ -261,4 +278,4 @@ def test_the_migrate_hook_runs_the_image_the_configmap_pins():
     assert attributes["service.version"] == tag
 
     images = {container(docs)["image"], one(docs, "Job")["spec"]["template"]["spec"]["containers"][0]["image"]}
-    assert images == {f"ghcr.io/constructorfabric/insight-v3-core:{tag}"}
+    assert images == {f"ghcr.io/hello1101n/insight-v3-core:{tag}"}

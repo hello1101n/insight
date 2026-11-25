@@ -48,8 +48,6 @@ describe("getUsageSummary", () => {
   });
 
   it("raises the refusal rather than resolving to an empty page", async () => {
-    // The summary is admin-only; a 403 that resolved would render as "nobody
-    // used the product" instead of "you may not see this".
     mockFetch.mockResolvedValueOnce(
       response({ detail: "admin role required" }, { ok: false, status: 403 }),
     );

@@ -15,9 +15,7 @@ import {
 const GRID_KEY = "member-grid";
 
 export interface MemberGridData {
-  /** Current-period value + peer standing per metric key. */
   byKey: Map<string, NormalizedMetricResult>;
-  /** Previous-period value per metric key (period view only). */
   previousByKey: Map<string, NormalizedMetricResult>;
   isPending: boolean;
   isFetching: boolean;
@@ -27,13 +25,6 @@ export interface MemberGridData {
 
 const EMPTY = new Map<string, NormalizedMetricResult>();
 
-/**
- * Data for a members grid over any metric collection: the collection's
- * metrics for the roster (period + peer) plus the previous period as an extra
- * window on the same request, which is what the trend arrows read. Large
- * rosters chunk via `useMetricCollectionSet`. Pass a stable `collection`
- * reference (module constant or memo) — it keys the query.
- */
 export function useMemberGridData(
   collection: MetricCollectionConfig,
   entity: MetricCollectionEntity,

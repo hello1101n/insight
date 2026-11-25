@@ -1,26 +1,11 @@
-//! Database migrations for the identity-resolution service.
-//!
-//! Each module applies one `sql/NNN_*.sql` script through [`apply_sql`].
-//! [`SQUASHED`] lists the history the baseline replaced: the names stay in the
-//! migrator, applying nothing, so a ledger that walked that history still
-//! matches this build (see [`insight_migration::squash`]).
-//!
-//! Timezone note: sqlx pins every pooled `MySQL` connection to
-//! `time_zone='+00:00'`, so `SET time_zone` statements inside the scripts are
-//! belt-and-braces, not load-bearing.
-
 mod m20261014_000019_drop_dbup_ledger_lowercase;
 mod m20261030_000001_baseline;
+mod m20261124_000020_drop_previews_admin_role;
 
 use insight_migration::squash;
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::ConnectionTrait;
 
-/// The migrations `m20261030_000001_baseline` squashed, in their original
-/// order.
-///
-/// INVARIANT: never rename, reorder or drop an entry — databases that walked
-/// the old history hold exactly these names in their ledger.
 pub(crate) const SQUASHED: &[&str] = &[
     "m20260724_000001_persons",
     "m20260724_000002_account_person_map",
@@ -53,13 +38,13 @@ impl MigratorTrait for Migrator {
         migrations.push(Box::new(
             m20261014_000019_drop_dbup_ledger_lowercase::Migration,
         ));
+        migrations.push(Box::new(
+            m20261124_000020_drop_previews_admin_role::Migration,
+        ));
         migrations
     }
 }
 
-/// Execute every statement of a SQL script on the migration connection, in
-/// order.
-///
 /// The `MySQL` wire protocol takes one statement per call, so the script is
 /// split on `;` after stripping `--` line comments. That is safe for these
 /// scripts because none of their string literals contain a semicolon (the
@@ -72,8 +57,6 @@ pub(crate) async fn apply_sql(manager: &SchemaManager<'_>, script: &str) -> Resu
     Ok(())
 }
 
-/// Strip `--` line comments, then split on `;`. Empty fragments (trailing
-/// newline after the last `;`) are dropped.
 fn split_statements(script: &str) -> Vec<String> {
     let no_comments: String = script
         .lines()
@@ -88,8 +71,6 @@ fn split_statements(script: &str) -> Vec<String> {
         .collect()
 }
 
-/// Shared irreversibility error for `down()`: the identity schema is an
-/// append-only observation log; there is no supported downgrade path.
 pub(crate) fn irreversible() -> DbErr {
     DbErr::Migration(
         "identity schema migrations are irreversible (append-only observation log)".into(),
@@ -100,9 +81,6 @@ pub(crate) fn irreversible() -> DbErr {
 mod tests {
     use super::{Migrator, MigratorTrait, SQUASHED, split_statements};
 
-    /// Statement counts per script. A count change means either an edit to an
-    /// applied script leaked in or the splitter broke — both must be looked
-    /// at, not auto-accepted.
     #[test]
     fn splits_every_script_into_the_expected_statement_count() {
         let cases: &[(&str, &str, usize)] = &[
@@ -111,6 +89,11 @@ mod tests {
                 "019_drop_dbup_ledger_lowercase",
                 include_str!("sql/019_drop_dbup_ledger_lowercase.sql"),
                 1,
+            ),
+            (
+                "020_drop_previews_admin_role",
+                include_str!("sql/020_drop_previews_admin_role.sql"),
+                2,
             ),
         ];
         for (name, script, expected) in cases {
@@ -130,7 +113,6 @@ mod tests {
         }
     }
 
-    /// The seeded role ids are stable API; this pins them against edits.
     #[test]
     fn seeded_role_ids_and_names_are_stable() {
         use crate::infra::db::roles_repo::ADMIN_ROLE_ID;
@@ -160,6 +142,7 @@ mod tests {
         let mut expected = vec!["m20261030_000001_baseline".to_owned()];
         expected.extend(SQUASHED.iter().map(|name| (*name).to_owned()));
         expected.push("m20261014_000019_drop_dbup_ledger_lowercase".to_owned());
+        expected.push("m20261124_000020_drop_previews_admin_role".to_owned());
         assert_eq!(names, expected);
     }
 

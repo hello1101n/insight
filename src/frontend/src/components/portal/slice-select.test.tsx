@@ -1,14 +1,4 @@
 // @vitest-environment jsdom
-/**
- * What the control says when there is nothing to choose.
- *
- * Slices are discovered by enumerating people and grouping them by one of
- * their attributes, and identity serves a viewer only their own subtree — so a
- * viewer with no reports has a roster of one person and no attribute with a
- * second value. Comparisons still happen (the peer view compares within the
- * organization unit, server-side); the choice is what is missing, and a
- * control offering exactly one option claims the reader chose it.
- */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,7 +14,6 @@ describe("SliceSelect", () => {
     render(<SliceSelect dims={[]} />);
     const trigger = screen.getByLabelText("Cohort");
     expect(trigger).toBeDisabled();
-    // And says why, rather than leaving a dead control.
     expect(trigger).toHaveAttribute(
       "title",
       expect.stringContaining("organization unit"),

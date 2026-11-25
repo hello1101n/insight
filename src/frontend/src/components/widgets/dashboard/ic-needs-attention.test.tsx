@@ -6,7 +6,7 @@ import "@/i18n";
 
 import { IcNeedsAttention } from "@/components/widgets/dashboard/ic-needs-attention";
 import type { AttentionItem } from "@/lib/insight/attention";
-import { AppTooltips } from "@/test/tooltip";
+import { AppTooltips, openTooltip } from "@/test/tooltip";
 
 function item(overrides: Partial<AttentionItem> = {}): AttentionItem {
   return {
@@ -18,7 +18,6 @@ function item(overrides: Partial<AttentionItem> = {}): AttentionItem {
     valueUnit: "days",
     medianText: "11 days",
     gapText: "-82%",
-    help: null,
     spreadGap: 0.8,
     relGap: 0.8,
     kind: "fell" as const,
@@ -44,9 +43,6 @@ describe("IcNeedsAttention", () => {
   });
 
   it("renders items in the order it is given", () => {
-    // Ranking moved to `orderAttentionItems`, next to the rule that produced
-    // the items: which of two findings is the stronger is a question about
-    // the findings, and the thinning that follows depends on the answer.
     render(
       <IcNeedsAttention
         items={[
@@ -121,31 +117,22 @@ describe("IcNeedsAttention", () => {
     }
   );
 
-  it("explains a row's metric on its name, not anywhere on the row", async () => {
-    // The row names a metric and a number; what the metric MEANS lives in the
-    // catalog, and the row is the only place a reader meets it.
+  it("titles the row's name it may cut with the full name and opens no tooltip on it", async () => {
     render(
       <IcNeedsAttention
-        items={[
-          item({
-            help: {
-              description: "Days with any AI tool activity",
-              explanation: null,
-            },
-          }),
-        ]}
+        items={[item({ label: "Messages per Active Collaboration Day" })]}
         onOpenGroup={vi.fn()}
       />,
       { wrapper: AppTooltips },
     );
-    await userEvent.hover(screen.getByRole("button"));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(screen.queryByTestId("metric-help")).not.toBeInTheDocument();
-    await userEvent.unhover(screen.getByRole("button"));
-
-    await userEvent.hover(screen.getByText("Active AI days"));
-    expect(await screen.findByTestId("metric-help")).toHaveTextContent(
-      "Days with any AI tool activity"
+    const name = screen.getByText("Messages per Active Collaboration Day");
+    expect(name).toHaveAttribute(
+      "title",
+      "Messages per Active Collaboration Day"
     );
+
+    await userEvent.hover(name);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(openTooltip()).toBeNull();
   });
 });

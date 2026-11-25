@@ -10,12 +10,6 @@ import {
 import { TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
-/**
- * The document as text, with a line for every line.
- *
- * Lines do not wrap: a wrapped line would take two rows against one number,
- * and the parser's "line 18" would point at the wrong place.
- */
 export function TextView({
   id,
   label,
@@ -26,7 +20,6 @@ export function TextView({
   id: string;
   label: string;
   text: string;
-  /** Why the text cannot be believed, as the parser said it. */
   unparsed?: string;
   onChange: (text: string) => void;
 }) {
@@ -39,8 +32,6 @@ export function TextView({
       gutter.current.scrollTop = event.currentTarget.scrollTop;
   };
 
-  // Tab indents rather than leaving the field; Escape is the way out for a
-  // keyboard, since the field has taken Tab.
   const type = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const field = event.currentTarget;
     const typed = keystroke(event, field);

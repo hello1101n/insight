@@ -94,6 +94,9 @@ SELECT
         'invoice_ref',   ifNull(toString(invoice_ref), ''),
         'num_seats',     ifNull(toString(invoice_num_seats), ''),
         'invoice_total', ifNull(toString(invoice_total), ''),
+        -- Unix seconds. Gold reads the seat's tier as of this instant: the tier
+        -- the line billed it at.
+        'period_start_ts', ifNull(toString(toInt64(period_start_ts)), ''),
         'period_end_ts', ifNull(toString(period_end_ts), ''),
         'price_id',      ifNull(toString(price_id), '')
     ))                                                  AS invoice_metrics_json,
