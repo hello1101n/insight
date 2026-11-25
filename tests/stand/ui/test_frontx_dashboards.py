@@ -11,15 +11,15 @@ is a key in the browser's local storage, and the renderer choice happens in the
 SPA, so no HTTP client can see it. With the key absent, the board drew 0
 `[data-cell-frame]` cells, 0 `group`s named after a widget and 0 `Details`
 buttons, and it fetched nothing under `/widgets/`. After one click on the
-Settings toggle, its `aria-pressed` went from `false` to `true`, the board drew 8
-card cells, one `group` per widget name, each with a `Details` button, and it
-fetched `/widgets/widgets.json` and the 5 `widget.gts.json` files it lists.
-The toggle sent no new run: FrontX answered its 8 cells from the 8 runs that
+Settings toggle, its `aria-pressed` went from `false` to `true`, the board drew
+one card cell and one `group` per widget name, each with a `Details` button, and it
+fetched `/widgets/widgets.json` and each `widget.gts.json` file it lists.
+The toggle sent no new run: FrontX answered its cells from the runs that
 the current renderer had already made. So the API answers are the same in both
 states, and only the drawn page shows which renderer ran.
 
 The `Details` button is a client-side cell action for an administrator: the
-admin operator saw it on 8 of 8 cells, and the CEO saw it on 0 of 2 cells of
+admin operator saw it on every cell, and the CEO saw it on 0 of 2 cells of
 the shared board. The drilldown it opens is a dialog the SPA holds in its own
 state. A click sent one `POST …/drilldown` that answered 200, and the dialog,
 named after the widget, drew a table of 20 rows. On the `failing_widget` board

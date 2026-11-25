@@ -37,6 +37,10 @@ COLUMN_KEYS: dict[str, tuple[str, ...]] = {
     "pie": ("label", "value"),
     "stat": ("value",),
     "table": (),
+    "heatmap": ("x", "y", "value"),
+    "funnel": (),
+    "treemap": ("label", "value", "group"),
+    "scatter": ("x", "y", "size", "series", "label"),
 }
 
 
