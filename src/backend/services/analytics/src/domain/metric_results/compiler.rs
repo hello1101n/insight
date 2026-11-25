@@ -56,7 +56,7 @@ const MEDIAN_AGGREGATE: &str = "quantileExactInclusiveIf";
 
 const MEDIAN_AGGREGATE_OR_NULL: &str = "quantileExactInclusiveIfOrNull";
 
-const RESOLVED_OBSERVATION_COLUMNS: &str = "tenant_id, entity_type, source_key, measure_key, metric_date, observed_at, value, \
+const RESOLVED_OBSERVATION_COLUMNS: &str = "insight_tenant_id, entity_type, source_key, measure_key, metric_date, observed_at, value, \
      subject_key, dimensions";
 
 pub(crate) const MIN_PEER_N: u32 = 5;
@@ -1607,12 +1607,12 @@ fn single_resolved_observation_from(
 
 // INVARIANT: every observation read carries this predicate; its one placeholder binds
 // the session tenant and leads `metric_where_params` — keep the two in lockstep.
-const TENANT_PREDICATE: &str = "tenant_id = ?";
+const TENANT_PREDICATE: &str = "insight_tenant_id = ?";
 
 /// The same predicate on one relation's tenant, for queries that join another
-/// relation carrying its own `tenant_id`.
+/// relation carrying its own `insight_tenant_id`.
 pub(crate) fn tenant_predicate_on(alias: &str) -> String {
-    format!("{alias}.tenant_id = ?")
+    format!("{alias}.insight_tenant_id = ?")
 }
 
 #[cfg(test)]
@@ -1821,7 +1821,7 @@ impl ObservationRead {
                     )
                 }
                 ValidatedEntitySelection::Tenant { .. } => {
-                    "\n          AND entity_id = tenant_id".to_owned()
+                    "\n          AND entity_id = insight_tenant_id".to_owned()
                 }
             },
         }
@@ -1866,7 +1866,7 @@ fn resolved_observation_from(
             let person_params = placeholders(req.entity.len());
             (
                 format!(
-                    "((toString(obs.tenant_id), obs.entity_id) IN (SELECT tenant_id, email FROM {PERSON_MAP_RELATION} WHERE person_id IN ({person_params})) \
+                    "((toString(obs.insight_tenant_id), obs.entity_id) IN (SELECT insight_tenant_id, email FROM {PERSON_MAP_RELATION} WHERE person_id IN ({person_params})) \
                       OR coalesce(obs.account_id, '') != ''){date_scope}"
                 ),
                 format!("resolved_person_id IN ({person_params})"),
@@ -1876,7 +1876,7 @@ fn resolved_observation_from(
             let date_scope = scan_of(req, params);
             (
                 format!(
-                    "((toString(obs.tenant_id), obs.entity_id) IN (SELECT tenant_id, email FROM {PERSON_MAP_RELATION} \
+                    "((toString(obs.insight_tenant_id), obs.entity_id) IN (SELECT insight_tenant_id, email FROM {PERSON_MAP_RELATION} \
                       WHERE toString(person_id) IN (SELECT entity_id FROM cohort)) \
                       OR coalesce(obs.account_id, '') != ''){date_scope}"
                 ),
@@ -1923,12 +1923,12 @@ fn resolved_observation_from(
                 coalesce(account_map.account_id, '') != '' AS account_bound
             FROM {table} AS obs
             LEFT JOIN {ACCOUNT_ASSIGNMENT_RELATION} AS account_map
-                ON account_map.tenant_id = toString(obs.tenant_id)
+                ON account_map.insight_tenant_id = toString(obs.insight_tenant_id)
                AND account_map.source_type = obs.account_source_type
                AND account_map.source_id = {account_source_uuid}
                AND account_map.account_id = {account_id}
             LEFT JOIN {PERSON_MAP_RELATION} AS person_map
-                ON person_map.tenant_id = toString(obs.tenant_id)
+                ON person_map.insight_tenant_id = toString(obs.insight_tenant_id)
                AND person_map.email = obs.entity_id
             WHERE {inner_where}
         ) AS resolved
@@ -1946,14 +1946,14 @@ fn resolved_observation_from(
     }
 }
 
-/// `tenant_id` is aliased back to its bare name: the identity maps joined beside
-/// the relation carry it too, and an unaliased `obs.tenant_id` would surface
+/// `insight_tenant_id` is aliased back to its bare name: the identity maps joined beside
+/// the relation carry it too, and an unaliased `obs.insight_tenant_id` would surface
 /// under its qualified name, which the outer SELECT cannot see.
 fn qualified_resolved_columns(alias: &str) -> String {
     RESOLVED_OBSERVATION_COLUMNS
         .split(", ")
         .map(|column| match column {
-            "tenant_id" => format!("{alias}.tenant_id AS tenant_id"),
+            "insight_tenant_id" => format!("{alias}.insight_tenant_id AS insight_tenant_id"),
             _ => format!("{alias}.{column}"),
         })
         .collect::<Vec<_>>()
@@ -1987,7 +1987,7 @@ fn collapsed_observation_from(
     value_expr.push_str("sum(value))");
     let flagged_set = flagged_pairs.join(", ");
 
-    let group_by = "tenant_id, entity_type, source_key, measure_key, metric_date, entity_id, \
+    let group_by = "insight_tenant_id, entity_type, source_key, measure_key, metric_date, entity_id, \
                     dimensions, subject_key";
     format!(
         r"(
@@ -2291,7 +2291,7 @@ mod tests {
         assert!(
             query
                 .sql
-                .contains("WHERE tenant_id = ? AND entity_type = ?")
+                .contains("WHERE insight_tenant_id = ? AND entity_type = ?")
         );
         assert!(query.sql.contains("AS m0"));
         assert!(query.sql.contains("AS m1"));
@@ -2606,12 +2606,12 @@ mod tests {
 
         let query = compile_period_batch_query(&[&sum], &req, &[]);
 
-        assert!(query.sql.contains("AND entity_id = tenant_id"));
+        assert!(query.sql.contains("AND entity_id = insight_tenant_id"));
         assert!(!query.params.iter().any(|value| value == "default"));
         assert_eq!(query.sql.matches('?').count(), query.params.len());
     }
 
-    const CUSTOM_SQL: &str = "SELECT tenant_id, source_key, entity_type, entity_id, \
+    const CUSTOM_SQL: &str = "SELECT insight_tenant_id, source_key, entity_type, entity_id, \
         metric_date, measure_key, observed_at, value, subject_key, dimensions FROM joined";
 
     fn custom_sum_metric() -> MetricDefinition {
@@ -2638,7 +2638,7 @@ mod tests {
         let ts = compile_timeseries_query(&def, &request(), QueryBucket::Day, &[], &[], None);
         assert!(ts.sql.contains(&format!("FROM ({CUSTOM_SQL})")));
         assert!(!ts.sql.contains("insight.ai_metric_observations"));
-        assert!(ts.sql.contains("WHERE tenant_id = ?"));
+        assert!(ts.sql.contains("WHERE insight_tenant_id = ?"));
         assert_eq!(ts.params.first().map(String::as_str), Some(TEST_TENANT_STR));
         assert_eq!(ts.sql.matches('?').count(), ts.params.len());
 
@@ -2688,12 +2688,18 @@ mod tests {
         let sum = sum_metric();
 
         let ts = compile_timeseries_query(&sum, &request(), QueryBucket::Day, &[], &[], None);
-        assert!(ts.sql.contains("WHERE tenant_id = ?"), "timeseries read");
+        assert!(
+            ts.sql.contains("WHERE insight_tenant_id = ?"),
+            "timeseries read"
+        );
         assert_eq!(tenant_binds(&ts), 1);
         assert_eq!(ts.sql.matches('?').count(), ts.params.len());
 
         let rank = compile_group_ranking_query(&sum, &request(), &["tool".to_owned()], &[], 5);
-        assert!(rank.sql.contains("WHERE tenant_id = ?"), "ranking read");
+        assert!(
+            rank.sql.contains("WHERE insight_tenant_id = ?"),
+            "ranking read"
+        );
         assert_eq!(tenant_binds(&rank), 1);
 
         let peer = compile_peer_batch_query(
@@ -2703,7 +2709,7 @@ mod tests {
             PeerPopulation::DeclaredCohort,
             &[],
         );
-        assert_eq!(peer.sql.matches("tenant_id = ?").count(), 3);
+        assert_eq!(peer.sql.matches("insight_tenant_id = ?").count(), 3);
         assert_eq!(tenant_binds(&peer), 3);
         assert_eq!(peer.sql.matches('?').count(), peer.params.len());
     }
@@ -2795,7 +2801,7 @@ mod tests {
         ];
 
         for (shape, query) in &reads {
-            let bound = values_bound_by(&query.sql, &query.params, "tenant_id = ?");
+            let bound = values_bound_by(&query.sql, &query.params, "insight_tenant_id = ?");
             assert!(!bound.is_empty(), "should filter on the tenant: {shape}");
             assert!(
                 bound.iter().all(|value| *value == TEST_TENANT_STR),
@@ -3112,7 +3118,7 @@ mod tests {
                 .contains("toUInt64(uniqExactIf(peer.entity_id, peer.m0 IS NOT NULL)) AS m0_n"),
             "an empty observation window still yields the one aggregate row, so n reads 0"
         );
-        assert_eq!(query.sql.matches("tenant_id = ?").count(), 1);
+        assert_eq!(query.sql.matches("insight_tenant_id = ?").count(), 1);
         assert_eq!(
             query.params,
             vec![
@@ -3629,7 +3635,7 @@ mod tests {
             let opened = sql.matches(&format!("AS {map} ON")).count();
             let scoped = sql
                 .matches(&format!(
-                    "AS {map} ON {map}.tenant_id = toString(obs.tenant_id)"
+                    "AS {map} ON {map}.insight_tenant_id = toString(obs.insight_tenant_id)"
                 ))
                 .count();
             assert!(opened > 0, "should join {map}");
@@ -3639,7 +3645,7 @@ mod tests {
             );
         }
         assert!(
-            sql.contains("(toString(obs.tenant_id), obs.entity_id) IN (SELECT tenant_id, email FROM identity.person_map"),
+            sql.contains("(toString(obs.insight_tenant_id), obs.entity_id) IN (SELECT insight_tenant_id, email FROM identity.person_map"),
             "the prune should keep only addresses the observation's own tenant maps"
         );
     }
@@ -3661,18 +3667,22 @@ mod tests {
         assert!(
             query
                 .sql
-                .contains("ON person_map.tenant_id = toString(obs.tenant_id)")
+                .contains("ON person_map.insight_tenant_id = toString(obs.insight_tenant_id)")
         );
         assert!(query.sql.contains("AND person_map.email = obs.entity_id"));
-        assert!(query.sql.contains("obs.tenant_id AS tenant_id"));
         assert!(
             query
                 .sql
-                .contains("ON account_map.tenant_id = toString(obs.tenant_id)")
+                .contains("obs.insight_tenant_id AS insight_tenant_id")
+        );
+        assert!(
+            query
+                .sql
+                .contains("ON account_map.insight_tenant_id = toString(obs.insight_tenant_id)")
         );
         assert!(
             query.sql.contains(
-                "((toString(obs.tenant_id), obs.entity_id) IN (SELECT tenant_id, email FROM identity.person_map WHERE person_id IN (?, ?)) OR coalesce(obs.account_id, '') != '')"
+                "((toString(obs.insight_tenant_id), obs.entity_id) IN (SELECT insight_tenant_id, email FROM identity.person_map WHERE person_id IN (?, ?)) OR coalesce(obs.account_id, '') != '')"
             ),
             "the prune keeps the requested people's email parts plus every account-carrying row"
         );
@@ -3731,7 +3741,7 @@ mod tests {
         assert!(query.sql.contains("max(value)"), "flag collapses with max");
         assert!(
             query.sql.contains(
-                "GROUP BY tenant_id, entity_type, source_key, measure_key, metric_date, entity_id, dimensions, subject_key"
+                "GROUP BY insight_tenant_id, entity_type, source_key, measure_key, metric_date, entity_id, dimensions, subject_key"
             ),
             "collapse groups at the relation's own grain with the person in place of the identity"
         );

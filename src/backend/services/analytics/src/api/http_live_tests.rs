@@ -419,16 +419,16 @@ async fn create_identity_relations(ch: &insight_clickhouse::Client) -> anyhow::R
         .execute()
         .await?;
     ch.query(
-        "CREATE TABLE IF NOT EXISTS identity.person_map (tenant_id String, email String, person_id UUID) \
-         ENGINE = MergeTree ORDER BY (tenant_id, email)",
+        "CREATE TABLE IF NOT EXISTS identity.person_map (insight_tenant_id String, email String, person_id UUID) \
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, email)",
     )
     .execute()
     .await?;
     ch.query(
         "CREATE TABLE IF NOT EXISTS identity.account_assignment \
-         (tenant_id String, source_type String, source_id UUID, account_id String, \
+         (insight_tenant_id String, source_type String, source_id UUID, account_id String, \
           person_id UUID, created_at DateTime64(6)) \
-         ENGINE = MergeTree ORDER BY (tenant_id, source_type, source_id, account_id)",
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, source_type, source_id, account_id)",
     )
     .execute()
     .await?;
@@ -489,12 +489,12 @@ async fn create_observation_relation(
         .execute()
         .await?;
     ch.query(&format!(
-        "CREATE TABLE {relation} (tenant_id UUID, source_key String, entity_type String, \
+        "CREATE TABLE {relation} (insight_tenant_id UUID, source_key String, entity_type String, \
          entity_id String, account_source_type String, account_source_id String, \
          account_id String, metric_date Date, measure_key String, observed_at DateTime64(3), \
          value Float64, subject_key Nullable(String), \
          dimensions Array(Tuple(key String, value String, label Nullable(String)))) \
-         ENGINE = MergeTree ORDER BY (tenant_id, metric_date)"
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, metric_date)"
     ))
     .execute()
     .await?;
@@ -706,14 +706,14 @@ async fn create_evidence_relation(
         .execute()
         .await?;
     ch.query(&format!(
-        "CREATE TABLE {relation} (tenant_id String, source_key String, entity_type String, \
+        "CREATE TABLE {relation} (insight_tenant_id String, source_key String, entity_type String, \
          entity_id String, account_source_type String, account_source_id String, \
          account_id String, metric_date Date, observed_at Nullable(DateTime64(3)), \
          measure_key String, record_id String, record_kind String, granularity String, \
          record_label String, contribution Nullable(Float64), subject_key Nullable(String), \
          dimensions Array(Tuple(key String, value String, label Nullable(String))), \
          details Map(String, String)) \
-         ENGINE = MergeTree ORDER BY (tenant_id, metric_date)"
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, metric_date)"
     ))
     .execute()
     .await?;
@@ -1064,14 +1064,14 @@ async fn a_drilldown_over_a_built_relation_pages_the_records_behind_the_measure(
         .execute()
         .await?;
     ch.query(&format!(
-        "CREATE TABLE {evidence} (tenant_id String, source_key String, entity_type String, \
+        "CREATE TABLE {evidence} (insight_tenant_id String, source_key String, entity_type String, \
          entity_id String, account_source_type String, account_source_id String, \
          account_id String, metric_date Date, observed_at Nullable(DateTime64(3)), \
          measure_key String, record_id String, record_kind String, granularity String, \
          record_label String, contribution Nullable(Float64), subject_key Nullable(String), \
          dimensions Array(Tuple(key String, value String, label Nullable(String))), \
          details Map(String, String)) \
-         ENGINE = MergeTree ORDER BY (tenant_id, source_key, entity_id, metric_date)"
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, source_key, entity_id, metric_date)"
     ))
     .execute()
     .await?;

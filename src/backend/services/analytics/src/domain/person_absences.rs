@@ -78,7 +78,7 @@ fn compile(request: &ValidatedMetricResultsRequest) -> Option<CompiledQuery> {
             {comparison} AS compare_to_overlap
          FROM silver.class_person_absences AS a FINAL
          INNER JOIN identity.account_assignment AS binding
-             ON binding.tenant_id = a.insight_tenant_id
+             ON binding.insight_tenant_id = a.insight_tenant_id
             AND binding.source_type = a.account_source_type
             AND binding.source_id = {source_id}
             AND binding.account_id = {account_id}
@@ -137,7 +137,7 @@ mod tests {
             "CREATE DATABASE IF NOT EXISTS identity",
             "CREATE DATABASE IF NOT EXISTS silver",
             "CREATE TABLE IF NOT EXISTS identity.account_assignment
-             (tenant_id String, source_type String, source_id UUID, account_id String,
+             (insight_tenant_id String, source_type String, source_id UUID, account_id String,
               person_id UUID, created_at DateTime64(6))
              ENGINE = MergeTree ORDER BY (source_type, source_id, account_id)",
             ABSENCE_TABLE,
@@ -247,7 +247,7 @@ mod tests {
         client
             .query(
                 "INSERT INTO identity.account_assignment
-             (tenant_id, source_type, source_id, account_id, person_id, created_at)
+             (insight_tenant_id, source_type, source_id, account_id, person_id, created_at)
              SELECT ?, 'bamboohr', toUUID(UUIDNumToString(sipHash128(?))),
                     'account-example', toUUID(?), now64(6)",
             )

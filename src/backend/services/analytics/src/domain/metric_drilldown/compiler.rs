@@ -252,15 +252,15 @@ fn person_projection(
     PersonProjection {
         expression: resolved_person_expr().to_owned(),
         join: format!(
-            " LEFT JOIN (SELECT tenant_id, source_type, source_id, account_id, person_id \
+            " LEFT JOIN (SELECT insight_tenant_id, source_type, source_id, account_id, person_id \
                   FROM {account_map} WHERE person_id IN ({roster})) AS account_map \
-                  ON account_map.tenant_id = toString(evidence.tenant_id) \
+                  ON account_map.insight_tenant_id = toString(evidence.insight_tenant_id) \
                  AND account_map.source_type = evidence.account_source_type \
                  AND account_map.source_id = {account_source_uuid} \
                  AND account_map.account_id = {account_id} \
-              LEFT JOIN (SELECT tenant_id, email, person_id FROM {person_map} \
+              LEFT JOIN (SELECT insight_tenant_id, email, person_id FROM {person_map} \
                   WHERE person_id IN ({roster})) AS person_map \
-                  ON person_map.tenant_id = toString(evidence.tenant_id) \
+                  ON person_map.insight_tenant_id = toString(evidence.insight_tenant_id) \
                  AND person_map.email = evidence.entity_id",
             account_map = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
             person_map = crate::domain::metric_results::compiler::PERSON_MAP_RELATION,
@@ -350,11 +350,11 @@ fn compile_ratio_query(
                        {collapsed} AS contribution{record_columns} \
                 FROM {database}.{table} AS evidence \
                 LEFT JOIN {account_map_relation} AS account_map \
-                    ON account_map.tenant_id = toString(evidence.tenant_id) AND account_map.source_type = evidence.account_source_type \
+                    ON account_map.insight_tenant_id = toString(evidence.insight_tenant_id) AND account_map.source_type = evidence.account_source_type \
                    AND account_map.source_id = {account_source_uuid} \
                    AND account_map.account_id = {account_id} \
                 LEFT JOIN {person_map_relation} AS person_map \
-                    ON person_map.tenant_id = toString(evidence.tenant_id) AND person_map.email = evidence.entity_id \
+                    ON person_map.insight_tenant_id = toString(evidence.insight_tenant_id) AND person_map.email = evidence.entity_id \
                 WHERE {scope} \
                 GROUP BY evidence.metric_date, evidence.measure_key, \
                          evidence.subject_key, toJSONString(evidence.dimensions), \
@@ -472,7 +472,7 @@ fn collapsed_evidence_value(numerator: &EvidenceInput, denominator: &EvidenceInp
 
 fn account_binding_key(alias: &str) -> String {
     format!(
-        "(toString({alias}.tenant_id), {alias}.account_source_type, {source_uuid}, {account_id})",
+        "(toString({alias}.insight_tenant_id), {alias}.account_source_type, {source_uuid}, {account_id})",
         source_uuid = crate::domain::metric_results::compiler::account_source_uuid_expr(alias),
         account_id = crate::domain::metric_results::compiler::account_id_expr(alias),
     )
@@ -488,11 +488,11 @@ fn entity_predicate(
             params.push(id.clone());
             params.push(id.clone());
             format!(
-                "({account_key} IN (SELECT tenant_id, source_type, source_id, account_id \
+                "({account_key} IN (SELECT insight_tenant_id, source_type, source_id, account_id \
                  FROM {account_map} WHERE person_id = ?) \
-                 OR ({account_key} NOT IN (SELECT tenant_id, source_type, source_id, account_id \
+                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id \
                  FROM {account_map}) \
-                 AND (toString(evidence.tenant_id), evidence.entity_id) IN (SELECT tenant_id, email FROM {person_map} WHERE person_id = ?)))",
+                 AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM {person_map} WHERE person_id = ?)))",
                 account_map = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
                 person_map = crate::domain::metric_results::compiler::PERSON_MAP_RELATION,
             )
@@ -502,17 +502,17 @@ fn entity_predicate(
             params.extend(ids.iter().cloned());
             let id_params = vec!["?"; ids.len()].join(", ");
             format!(
-                "({account_key} IN (SELECT tenant_id, source_type, source_id, account_id \
+                "({account_key} IN (SELECT insight_tenant_id, source_type, source_id, account_id \
                  FROM {account_map} WHERE person_id IN ({id_params})) \
-                 OR ({account_key} NOT IN (SELECT tenant_id, source_type, source_id, account_id \
+                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id \
                  FROM {account_map}) \
-                 AND (toString(evidence.tenant_id), evidence.entity_id) IN (SELECT tenant_id, email FROM {person_map} WHERE person_id IN ({id_params}))))",
+                 AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM {person_map} WHERE person_id IN ({id_params}))))",
                 account_map = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
                 person_map = crate::domain::metric_results::compiler::PERSON_MAP_RELATION,
             )
         }
         super::dto::MetricDrilldownEntity::Tenant {} => {
-            "evidence.entity_id = evidence.tenant_id".to_owned()
+            "evidence.entity_id = evidence.insight_tenant_id".to_owned()
         }
         super::dto::MetricDrilldownEntity::Persons { .. }
         | super::dto::MetricDrilldownEntity::Unknown => "1 = 0".to_owned(),
@@ -786,7 +786,7 @@ mod tests {
         let (sql, params) =
             compile_query(&request).unwrap_or_else(|error| panic!("query must compile: {error}"));
 
-        assert!(sql.contains("evidence.entity_id = evidence.tenant_id"));
+        assert!(sql.contains("evidence.entity_id = evidence.insight_tenant_id"));
         assert!(!params.iter().any(|value| value == "default"));
         assert_eq!(sql.matches('?').count(), params.len());
     }
@@ -817,7 +817,7 @@ mod tests {
         assert!(sql.contains("WHERE person_id IN (?, ?)"), "account arm");
         assert!(
             sql.contains(
-                "AND (toString(evidence.tenant_id), evidence.entity_id) IN (SELECT tenant_id, email FROM identity.person_map WHERE person_id IN (?, ?))"
+                "AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM identity.person_map WHERE person_id IN (?, ?))"
             ),
             "email fallback arm"
         );
@@ -910,19 +910,19 @@ mod tests {
 
         assert!(
             sql.contains(
-                "AND (toString(evidence.tenant_id), evidence.entity_id) IN (SELECT tenant_id, email FROM identity.person_map WHERE person_id = ?)"
+                "AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM identity.person_map WHERE person_id = ?)"
             ),
             "scoped by the person's identity set, not one id"
         );
         assert!(
             sql.contains(
-                "IN (SELECT tenant_id, source_type, source_id, account_id FROM identity.account_assignment WHERE person_id = ?)"
+                "IN (SELECT insight_tenant_id, source_type, source_id, account_id FROM identity.account_assignment WHERE person_id = ?)"
             ),
             "the account binding is consulted first"
         );
         assert!(
             sql.contains(
-                "NOT IN (SELECT tenant_id, source_type, source_id, account_id FROM identity.account_assignment)"
+                "NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id FROM identity.account_assignment)"
             ),
             "a bound account never falls back to the email map — an excluded binding terminates"
         );
@@ -989,7 +989,7 @@ mod tests {
         let opened = sql.matches(&format!("AS {map} ON")).count();
         let scoped = sql
             .matches(&format!(
-                "AS {map} ON {map}.tenant_id = toString(evidence.tenant_id)"
+                "AS {map} ON {map}.insight_tenant_id = toString(evidence.insight_tenant_id)"
             ))
             .count();
         (opened, scoped)
@@ -1026,8 +1026,8 @@ mod tests {
         request
     }
 
-    // INVARIANT: the identity maps a drilldown joins carry their own tenant_id,
-    // so a bare `tenant_id` in the scope is ambiguous and ClickHouse refuses it.
+    // INVARIANT: the identity maps a drilldown joins carry their own insight_tenant_id,
+    // so a bare `insight_tenant_id` in the scope is ambiguous and ClickHouse refuses it.
     #[test]
     fn every_drilldown_query_scopes_the_tenant_on_the_evidence_relation() {
         let tenant = TEST_TENANT.to_string();
@@ -1044,12 +1044,12 @@ mod tests {
                 compile_query(&plan).unwrap_or_else(|error| panic!("{case} must compile: {error}"));
 
             assert_eq!(
-                values_bound_by(&sql, &params, "evidence.tenant_id = ?"),
+                values_bound_by(&sql, &params, "evidence.insight_tenant_id = ?"),
                 [tenant.as_str()],
                 "should scope once on the evidence tenant: {case}"
             );
             assert_eq!(
-                sql.matches("tenant_id = ?").count(),
+                sql.matches("insight_tenant_id = ?").count(),
                 1,
                 "should leave no tenant predicate unqualified: {case}"
             );
