@@ -16,7 +16,7 @@
 WITH roster AS (
     SELECT
         unique_key,
-        insight_tenant_id,
+        {{ bronze_tenant() }}                               AS insight_tenant_id,
         source_id,
         toString(toInt64(project_id))                       AS project_id,
         project_key,

@@ -41,7 +41,7 @@
 WITH exploded AS (
     SELECT
         CAST(h.source_id AS String)                              AS insight_source_id,
-        ifNull(h.insight_tenant_id, '')                                  AS insight_tenant_id,
+        {{ bronze_tenant('h.insight_tenant_id') }}               AS insight_tenant_id,
         COALESCE(h.id_readable, '')                              AS id_readable,
         h.jira_id                                                AS jira_id,
         COALESCE(toString(h.changelog_id), '')                   AS changelog_id,
@@ -83,7 +83,7 @@ parsed AS (
 -- `unique_key` encodes the same content-identity so silver/RMT dedup works on a single column.
 SELECT
     CAST(concat(
-        ifNull(insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         coalesce(insight_source_id, ''), '-',
         coalesce(changelog_id, ''), '-',
         coalesce(field_id, ''), '-',

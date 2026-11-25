@@ -18,7 +18,7 @@
 
 WITH issues AS (
     SELECT
-        i.insight_tenant_id                                                   AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}                    AS insight_tenant_id,
         CAST(i.source_id AS String)                                   AS insight_source_id,
         CAST(i.jira_id AS String)                                     AS issue_id,
         COALESCE(toString(i.id_readable), '')                         AS id_readable,
@@ -73,7 +73,7 @@ parsed_links AS (
 )
 
 SELECT
-    CAST(concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-', issue_id, '-', kind, '-', link_id, '-', target_id, '-', target_key) AS String) AS unique_key,
+    CAST(concat(insight_tenant_id, '-', insight_source_id, '-', issue_id, '-', kind, '-', link_id, '-', target_id, '-', target_key) AS String) AS unique_key,
     insight_tenant_id,
     insight_source_id,
     issue_id,

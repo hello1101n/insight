@@ -34,7 +34,7 @@ WITH key_ids AS (
 -- the epic by id and key exactly as a parent change does.
 epic_link_fields AS (
     SELECT DISTINCT
-        ifNull(insight_tenant_id, '')                                         AS insight_tenant_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
         CAST(source_id AS String)                                     AS insight_source_id,
         field_id
     FROM {{ source('bronze_jira', 'jira_fields') }} FINAL

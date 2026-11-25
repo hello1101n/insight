@@ -1,8 +1,9 @@
-"""A bronze row without a tenant builds, and the tenant tests on its models report it.
+"""What a bronze row without a valid tenant does to the models that read it.
 
-`hubspot_support_scope` reads the tenant through `coalesce(insight_tenant_id, '')`, so a
-missing one never makes a key Nullable and arrives as an empty tenant; `not_empty`
-on each support model's tenant is the guard, with `not_null` beside it.
+The CRM staging models read the tenant through `bronze_tenant()`, so a NULL, empty or
+non-UUID tenant fails the build of the model that reads it, naming that model; with
+`bronze_tenant_on_invalid: warn` the row is kept with an empty tenant, its keys stay
+non-NULL, and `not_empty` on each support model's tenant reports it.
 """
 
 from __future__ import annotations
@@ -82,38 +83,69 @@ def test_the_tenant_tests_pass_over_rows_that_carry_a_tenant(case: Warehouse) ->
     assert case.failing_tests(every_test) == set(), "no tenant test should fail while every row carries a tenant"
 
 
-# BUG: hubspot__crm_field_history and hubspot__crm_teams key a row by
-# concat(insight_tenant_id, ...), which is NULL for a NULL tenant, and
-# hubspot_staging_tail's `(unique_key, _version) IN (...)` then drops the row:
-# it is lost before any tenant test can report it.
-DROPPED_BY_CRM_STAGING = {"hubspot__support_ticket_field_history", "hubspot__support_groups"}
+#: The CRM staging model that reads each support model's bronze rows.
+READ_BY = {
+    "hubspot__support_tickets": "hubspot__crm_tickets",
+    "hubspot__support_ticket_field_history": "hubspot__crm_field_history",
+    "hubspot__support_field_definitions": "hubspot__crm_property_definitions",
+    "hubspot__support_agents": "hubspot__crm_users",
+    "hubspot__support_groups": "hubspot__crm_teams",
+    "hubspot__support_group_memberships": "hubspot__crm_users",
+    "hubspot__support_customers": "hubspot__crm_",
+}
+GUARD = ": a Bronze insight_tenant_id is NULL, empty or not a UUID"
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        pytest.param(
-            model,
-            marks=pytest.mark.xfail(
-                strict=True, reason="the CRM staging drops a row without a tenant on a NULL unique_key"
-            ),
-        )
-        if model in DROPPED_BY_CRM_STAGING
-        else model
-        for model in sorted(STREAMS)
-    ],
-)
-def test_a_bronze_row_without_a_tenant_builds_and_the_tenant_tests_report_it(case: Warehouse, model: str) -> None:
+@pytest.mark.parametrize("tenant", [None, "", "not-a-uuid"])
+@pytest.mark.parametrize("model", sorted(STREAMS))
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build(case: Warehouse, model: str, tenant: str | None) -> None:
+    _seed(case, tenant, model)
+
+    success, log = case.build_status(f"+{model}")
+
+    assert not success, f"{model} should refuse a bronze row with a tenant of {tenant!r}"
+    assert f"staging.{READ_BY[model]}" in log and GUARD in log, f"the failure should name the reader:\n{log}"
+
+
+@pytest.mark.parametrize("model", sorted(STREAMS))
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_tests_report_it(
+    case: Warehouse, model: str
+) -> None:
     _seed(case, None, model)
-    case.build(f"+{model}")
+    success, log = case.build_status(f"+{model}", *WARN)
+    assert success, log
 
     failing = case.failing_tests(tenant_tests(model))
     assert f"not_empty_{model}_insight_tenant_id" in failing, f"{model} should report the row: {sorted(failing)}"
 
 
-def test_the_support_class_reports_a_ticket_without_a_tenant(case: Warehouse) -> None:
+def test_warn_mode_carries_a_ticket_without_a_tenant_to_the_support_class(case: Warehouse) -> None:
     _seed(case, None, "hubspot__support_tickets")
-    case.build("+class_support_tickets")
+    success, log = case.build_status("+class_support_tickets", *WARN)
+    assert success, log
 
     failing = case.failing_tests(tenant_tests("class_support_tickets"))
     assert "not_empty_class_support_tickets_insight_tenant_id" in failing, sorted(failing)
+
+
+CRM_STAGING = (
+    "hubspot__crm_tickets",
+    "hubspot__crm_field_history",
+    "hubspot__crm_property_definitions",
+    "hubspot__crm_users",
+    "hubspot__crm_teams",
+)
+
+
+def test_the_crm_staging_carries_a_lowercase_string_tenant(case: Warehouse) -> None:
+    _seed(case, TENANT.upper(), *STREAMS)
+    case.build(" ".join(CRM_STAGING))
+
+    found = {
+        model: case.rows(
+            f"SELECT DISTINCT insight_tenant_id AS t, toTypeName(insight_tenant_id) AS type FROM staging.{model}"
+        )
+        for model in CRM_STAGING
+    }
+    assert found == dict.fromkeys(CRM_STAGING, [{"t": TENANT, "type": "String"}]), found

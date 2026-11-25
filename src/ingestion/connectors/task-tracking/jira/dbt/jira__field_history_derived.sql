@@ -82,7 +82,7 @@ WITH kinds AS (
 {%- set issue_winner_ids %}
         SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
         FROM {{ source('bronze_jira', 'jira_issue') }}
-        WHERE {{ jira_journal_in_batch("ifNull(insight_tenant_id, '')", "CAST(source_id AS String)", "CAST(jira_id AS String)") }}
+        WHERE {{ jira_journal_in_batch(bronze_tenant(), "CAST(source_id AS String)", "CAST(jira_id AS String)") }}
         GROUP BY insight_tenant_id, source_id, jira_id
 {%- endset %}
 
@@ -91,7 +91,7 @@ WITH kinds AS (
 -- issues this run does not recompute.
 issues AS (
     SELECT
-        ifNull(i.insight_tenant_id, '')                           AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
         CAST(i.source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         COALESCE(toString(i.id_readable), '')             AS id_readable,
@@ -100,7 +100,7 @@ issues AS (
         i.reporter_id                                     AS reporter_id,
         toDateTime64(i._airbyte_extracted_at, 3)          AS observed_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    WHERE {{ jira_journal_in_batch("ifNull(i.insight_tenant_id, '')", "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
       AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
       )
 ),
@@ -110,7 +110,7 @@ issues AS (
 -- that needs it.
 issue_json AS (
     SELECT
-        ifNull(i.insight_tenant_id, '')                           AS insight_tenant_id,
+        {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
         CAST(i.source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         COALESCE(i.custom_fields_json, '{}')              AS custom_fields_json,
@@ -119,7 +119,7 @@ issue_json AS (
             JSONExtractString(COALESCE(i.custom_fields_json, '{}'), 'resolutiondate'), 3)
                                                           AS resolved_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    WHERE {{ jira_journal_in_batch("ifNull(i.insight_tenant_id, '')", "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
       AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
       )
 ),

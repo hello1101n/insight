@@ -1,8 +1,9 @@
-"""A bronze row without a tenant builds, and the tenant tests on its models report it.
+"""What a bronze row without a valid tenant does to the models that read it.
 
-`zendesk_bronze` reads the tenant through `coalesce(insight_tenant_id, '')`, so a missing
-one never makes a key Nullable and arrives as an empty tenant; `not_empty` on each
-model's tenant is the guard, with `not_null` beside it.
+`zendesk_bronze` reads the tenant through `bronze_tenant()`, so a NULL, empty or non-UUID
+tenant fails the build of the model that reads it, naming that model; with
+`bronze_tenant_on_invalid: warn` the row is kept with an empty tenant and the `not_empty`
+test on each model's tenant reports it.
 """
 
 from __future__ import annotations
@@ -56,6 +57,14 @@ STREAMS: dict[str, tuple[str, dict[str, object]]] = {
 }
 SELECTOR = " ".join(STREAMS)
 
+#: The model that reads the bronze row, where it is not the model itself.
+READ_BY = {
+    "zendesk__support_interactions": "zendesk__ticket_event_items",
+    "zendesk__support_ticket_field_history": "zendesk__ticket_event_items",
+}
+GUARD = "a Bronze insight_tenant_id is NULL, empty or not a UUID"
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
+
 
 def tenant_tests(model: str) -> tuple[str, str]:
     return f"not_null_{model}_insight_tenant_id", f"not_empty_{model}_insight_tenant_id"
@@ -76,11 +85,26 @@ def test_the_tenant_tests_pass_over_rows_that_carry_a_tenant(case: Warehouse) ->
     assert case.failing_tests(every_test) == set(), "no tenant test should fail while every row carries a tenant"
 
 
+@pytest.mark.parametrize("tenant", [None, "", "not-a-uuid"])
 @pytest.mark.parametrize("model", sorted(STREAMS))
-def test_a_bronze_row_without_a_tenant_builds_and_the_tenant_tests_report_it(case: Warehouse, model: str) -> None:
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build(case: Warehouse, model: str, tenant: str | None) -> None:
+    table, payload = STREAMS[model]
+    case.insert(table, tenant, str(payload["id"]), payload, "2026-01-10T00:00:00")
+
+    success, log = case.build_status(f"+{model}")
+
+    assert not success, f"{model} should refuse a {table} row with a tenant of {tenant!r}"
+    assert f"staging.{READ_BY.get(model, model)}: {GUARD}" in log, f"the failure should name the reader:\n{log}"
+
+
+@pytest.mark.parametrize("model", sorted(STREAMS))
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_tests_report_it(
+    case: Warehouse, model: str
+) -> None:
     table, payload = STREAMS[model]
     case.insert(table, None, str(payload["id"]), payload, "2026-01-10T00:00:00")
-    case.build(f"+{model}")
+    success, log = case.build_status(f"+{model}", *WARN)
+    assert success, log
 
     failing = case.failing_tests(tenant_tests(model))
     assert f"not_empty_{model}_insight_tenant_id" in failing, (
@@ -88,10 +112,22 @@ def test_a_bronze_row_without_a_tenant_builds_and_the_tenant_tests_report_it(cas
     )
 
 
-def test_the_support_class_reports_a_ticket_without_a_tenant(case: Warehouse) -> None:
+def test_warn_mode_carries_a_ticket_without_a_tenant_to_the_support_class(case: Warehouse) -> None:
     table, payload = STREAMS["zendesk__support_tickets"]
     case.insert(table, None, "1", payload, "2026-01-10T00:00:00")
-    case.build("+class_support_tickets")
+    success, log = case.build_status("+class_support_tickets", *WARN)
+    assert success, log
 
     failing = case.failing_tests(tenant_tests("class_support_tickets"))
     assert "not_empty_class_support_tickets_insight_tenant_id" in failing, sorted(failing)
+
+
+def test_a_bronze_tenant_is_read_as_its_lowercase_canonical_uuid(case: Warehouse) -> None:
+    table, payload = STREAMS["zendesk__support_tickets"]
+    case.insert(table, TENANT.upper(), "1", payload, "2026-01-10T00:00:00")
+    case.build("zendesk__support_tickets")
+
+    rows = case.rows(
+        "SELECT insight_tenant_id, toTypeName(insight_tenant_id) AS type FROM staging.zendesk__support_tickets"
+    )
+    assert rows == [{"insight_tenant_id": TENANT, "type": "String"}], rows

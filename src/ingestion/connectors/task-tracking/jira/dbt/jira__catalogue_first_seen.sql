@@ -23,7 +23,7 @@
 
 WITH first_syncs AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                             AS insight_tenant_id,
         CAST(source_id AS String)                         AS insight_source_id,
         min(_airbyte_extracted_at)                        AS catalogue_first_sync,
         now64(3)                                          AS recorded_at
@@ -32,7 +32,7 @@ WITH first_syncs AS (
 )
 
 SELECT
-    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id)             AS unique_key,
+    concat(insight_tenant_id, '-', insight_source_id)             AS unique_key,
     insight_tenant_id,
     insight_source_id,
     catalogue_first_sync,

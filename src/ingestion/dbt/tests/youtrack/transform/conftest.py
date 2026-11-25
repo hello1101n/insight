@@ -34,7 +34,7 @@ from bronze import create_bronze  # noqa: E402
 from dbt_profiles import Connection, build_profile  # noqa: E402
 
 SOURCE = "synthetic-youtrack"
-TENANT = "synthetic-tenant"
+TENANT = "bbbbbbbb-2222-4222-8222-222222222222"
 
 
 class Warehouse:
@@ -47,11 +47,16 @@ class Warehouse:
         }
 
     def dbt(self, command: str, *args: str) -> None:
-        messages = []
+        success, log = self.dbt_status(command, *args)
+        assert success, log
+
+    def dbt_status(self, command: str, *args: str) -> tuple[bool, str]:
+        """Run dbt and hand back whether it succeeded and its log, judging nothing."""
+        messages: list[str] = []
         result = dbtRunner(callbacks=[lambda e: messages.append(e.info.msg)]).invoke(
             [command, "--project-dir", str(DBT), "--profiles-dir", str(self.profile), "--quiet", *args]
         )
-        assert result.success, "\n".join(messages)[-10000:]
+        return result.success, "\n".join(messages)[-10000:]
 
     def build(self, selector: str = "tag:youtrack", full_refresh: bool = False) -> None:
         self.dbt("run", "--select", selector, *(["--full-refresh"] if full_refresh else []))
