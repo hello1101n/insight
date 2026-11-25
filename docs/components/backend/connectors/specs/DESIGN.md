@@ -474,6 +474,10 @@ The trigger or poll step updates the dedicated source allocation before launch w
 Reconcile removes the managed sync allocation on the next pass after both effective sizes are cleared.
 The [chart README](../../../../../charts/insight/README.md#configure-connector-instance-resources) lists the fields and their units.
 
+By default, the ClickHouse provisioning job sets the sync user's total memory budget to 60% of the lowest server limit among answering replicas.
+Provisioning stops if an answering server uses the host memory to set its limit.
+Set `clickhouse.syncUser.totalMemoryBytes` to supply the total directly.
+
 The history observer reads Airbyte settings from `sync_resources` on the submitted Workflow.
 For dbt and identity seed attempts, it records the CPU and memory requests from the corresponding pod patch.
 It reads the dbt query memory limit from `dbt_pod_patch`.

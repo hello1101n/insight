@@ -70,6 +70,18 @@ reconcile__log() {
   log_line "${level}" "${connector}: ${message}"
 }
 
+reconcile_converge_destination_credentials() {
+  local connector="$1" destination_id="$2" refusal
+  refusal="$(ab_converge_destination_credentials "${destination_id}")" || {
+    if [[ "$?" -eq 3 ]]; then
+      reconcile__log ERROR "${connector}" "${refusal}"
+    else
+      reconcile__log ERROR "${connector}" "Airbyte destination credential update failed. destination=${destination_id}"
+    fi
+    return 1
+  }
+}
+
 # reconcile_compute_{connection_name,schedule,tenant} have moved to
 # lib/connector-naming.sh so adopt.sh can call them without depending on
 # the order in which reconcile.sh and adopt.sh source each other.
@@ -140,7 +152,7 @@ reconcile_resolve_destination_id() {
     fi
 
     dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")" || {
-      [[ "$?" -eq 3 ]] || reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
+      reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
       return 1
     }
     if [[ -z "${dest_id}" ]]; then
@@ -148,10 +160,7 @@ reconcile_resolve_destination_id() {
       return 1
     fi
   else
-    ab_converge_destination_credentials "${dest_id}" || {
-      [[ "$?" -eq 3 ]] || reconcile__log ERROR "${subject}" "Airbyte destination credential update failed."
-      return 1
-    }
+    reconcile_converge_destination_credentials "${subject}" "${dest_id}" || return 1
   fi
   _RECONCILE_DESTINATION_ID="${dest_id}"
   printf '%s' "${dest_id}"
@@ -1103,10 +1112,7 @@ print("\n".join(sorted(i for i in ids if i)))')"
         reconcile__log ERROR "${connector_name}" "Airbyte connection has no destination ID."
         return 1
       fi
-      ab_converge_destination_credentials "${destination_id}" || {
-        [[ "$?" -eq 3 ]] || reconcile__log ERROR "${connector_name}" "Airbyte destination credential update failed."
-        return 1
-      }
+      reconcile_converge_destination_credentials "${connector_name}" "${destination_id}" || return 1
     fi
     if [[ -n "${source_name}" ]]; then
       reconcile_converge_connection_name "${connector_name}" "${connection_id}" \
@@ -1279,6 +1285,11 @@ reconcile_recreate_with_state() {
   fi
   # @cpt-end:cpt-insightspec-algo-reconcile-export-import-state-on-recreate:p1:inst-eisor-try
 
+  local destination_id
+  if ! destination_id="$(reconcile_resolve_destination_id "${connector_name}")"; then
+    return 1
+  fi
+
   # @cpt-begin:cpt-insightspec-algo-reconcile-export-import-state-on-recreate:p1:inst-eisor-delete
   # RECONCILE_DRY_RUN guarded at top of reconcile_recreate_with_state.
   ab_delete_source "${source_id}" >/dev/null
@@ -1291,10 +1302,6 @@ reconcile_recreate_with_state() {
                       "${source_name}" "${target_cfg_json}")"
   new_source_id="$(printf '%s' "${new_source_json}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sourceId",""))')"
 
-  local destination_id
-  if ! destination_id="$(reconcile_resolve_destination_id "${source_name}")"; then
-    return 1
-  fi
   # Airbyte connection re-created with scheduleType=manual; Argo
   # CronWorkflow is the sole scheduler (see bootstrap branch of
   # reconcile_connections for rationale).

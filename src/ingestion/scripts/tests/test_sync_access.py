@@ -143,23 +143,33 @@ def test_a_missing_sync_password_stops_provisioning() -> None:
     assert "The ClickHouse sync password is missing from its Secret." in result.stderr
 
 
-def test_cluster_mode_takes_the_smallest_limit_of_the_replicas_that_answer(tmp_path: Path) -> None:
+def _provision_with_memory_metrics(
+    tmp_path: Path, metrics: str, *, cluster: bool = False, total: str = ""
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     bodies = tmp_path / "bodies"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     curl = bin_dir / "curl"
-    curl.write_text(f"#!/bin/bash\ncat >> '{bodies}'\nprintf '\\n;\\n' >> '{bodies}'\nprintf '10000000001'\n")
+    curl.write_text(
+        "#!/bin/bash\n"
+        'query="$(cat)"\n'
+        'printf \'%s\\n;\\n\' "$query" >> "$QUERY_LOG"\n'
+        'if [[ "$query" == *system.server_settings* ]]; then printf \'%s\\n\' "$MEMORY_METRICS"; fi\n'
+    )
     curl.chmod(0o755)
     env = {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "QUERY_LOG": str(bodies),
+        "MEMORY_METRICS": metrics,
         "CLICKHOUSE_URL": "http://clickhouse.invalid:8123",
         "CLICKHOUSE_USER": "admin",
         "CLICKHOUSE_PASSWORD": "admin-fixture",
         "CLICKHOUSE_DATABASE": "insight",
-        "CLICKHOUSE_CLUSTER_MODE": "true",
+        "CLICKHOUSE_CLUSTER_MODE": str(cluster).lower(),
         "CLICKHOUSE_CLUSTER_NAME": "insight_cluster",
         "CLICKHOUSE_SYNC_USER": "sync_fixture",
         "CLICKHOUSE_SYNC_PASSWORD": "sync-fixture",
+        "CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES": total,
     }
     result = subprocess.run(
         ["bash", str(SCRIPTS / "bootstrap-db/provision-sync-access.sh")],
@@ -168,10 +178,45 @@ def test_cluster_mode_takes_the_smallest_limit_of_the_replicas_that_answer(tmp_p
         text=True,
         timeout=30,
     )
+    return result, bodies.read_text().split("\n;\n")
+
+
+@pytest.mark.parametrize(
+    ("metrics", "cluster", "total"),
+    [
+        ("10000000001\t0.9\t20000000000", False, 6000000000),
+        ("12000000000\t0.9\t20000000000\n10000000001\t0.9\t20000000000", True, 6000000000),
+        ("17999999999\t0.9\t20000000000", False, None),
+        ("10000000001\t0.9\t20000000000\n17999999999\t0.9\t20000000000", True, None),
+    ],
+    ids=["limited", "limited-cluster", "unlimited", "one-unlimited-replica"],
+)
+def test_default_sync_memory_requires_a_limit_on_each_answering_server(
+    tmp_path: Path, metrics: str, cluster: bool, total: int | None
+) -> None:
+    result, statements = _provision_with_memory_metrics(tmp_path, metrics, cluster=cluster)
+    query = statements[0]
+    assert "max_server_memory_usage" in query
+    assert "max_server_memory_usage_to_ram_ratio" in query
+    assert "system.asynchronous_metrics WHERE metric = 'OSMemoryTotal'" in query
+    if cluster:
+        assert "clusterAllReplicas('insight_cluster', view(" in query
+        assert "SETTINGS skip_unavailable_shards = 1" in query
+
+    if total is None:
+        assert result.returncode == 1
+        assert result.stderr.splitlines() == [
+            "ClickHouse runs without a memory limit. Set clickhouse.syncUser.totalMemoryBytes."
+        ]
+        assert statements[1:] == [""]
+    else:
+        assert result.returncode == 0, result.stderr
+        assert f"max_memory_usage_for_user = {total} CONST" in statements[1]
+
+
+def test_an_explicit_sync_total_skips_the_server_memory_check(tmp_path: Path) -> None:
+    result, statements = _provision_with_memory_metrics(tmp_path, "17999999999\t0.9\t20000000000", total="12345")
+
     assert result.returncode == 0, result.stderr
-    statements = bodies.read_text().split("\n;\n")
-    assert statements[0] == (
-        "SELECT min(toUInt64(value)) FROM clusterAllReplicas('insight_cluster', system.server_settings) "
-        "WHERE name = 'max_server_memory_usage' SETTINGS skip_unavailable_shards = 1"
-    )
-    assert "max_memory_usage_for_user = 6000000000 CONST" in statements[1]
+    assert all("system.server_settings" not in statement for statement in statements)
+    assert "max_memory_usage_for_user = 12345 CONST" in statements[0]

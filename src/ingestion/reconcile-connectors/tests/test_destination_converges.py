@@ -153,18 +153,15 @@ def test_a_destination_that_already_matches_is_left_alone(tmp_path: Path) -> Non
 
 def test_a_topology_flipped_after_the_first_tick_reaches_airbyte(tmp_path: Path) -> None:
     standalone = {k: v for k, v in COMPOSED.items() if k not in ("use_replicated_engines", "cluster_name")}
+    standalone["database"] = "standalone"
 
-    done, calls = _ensure(tmp_path, stored=standalone)
+    done, calls = _ensure(tmp_path, stored=standalone, current=False)
 
     assert done.returncode == 0, done.stderr
     assert done.stdout == DEST_ID
     assert [c[1] for c in calls] == ["/api/v1/destinations/list", "/api/v1/destinations/update"]
-    assert calls[1][2] == {
-        "destinationId": DEST_ID,
-        "name": "clickhouse-bronze",
-        "connectionConfiguration": COMPOSED | {"password": MASK},
-    }
-    assert "updated: cluster_name use_replicated_engines" in done.stderr
+    assert calls[1][2] == {"destinationId": DEST_ID, "name": "clickhouse-bronze", "connectionConfiguration": COMPOSED}
+    assert "updated: cluster_name database use_replicated_engines password" in done.stderr
 
 
 def test_turning_the_topology_back_off_is_also_drift(tmp_path: Path) -> None:
@@ -179,12 +176,22 @@ def test_turning_the_topology_back_off_is_also_drift(tmp_path: Path) -> None:
     assert calls[1][2]["connectionConfiguration"] == standalone | {"password": MASK}
 
 
-def test_a_renamed_cluster_is_updated(tmp_path: Path) -> None:
-    done, calls = _ensure(tmp_path, stored=COMPOSED | {"cluster_name": "renamed"})
+@pytest.mark.parametrize(
+    ("drift", "fields"),
+    [
+        ({"cluster_name": "renamed"}, "cluster_name"),
+        ({"host": "other.example.test"}, "host"),
+        ({"port": "8443", "protocol": "https"}, "port protocol"),
+    ],
+    ids=["cluster-name", "host-move", "tls-switch"],
+)
+def test_any_other_drifted_key_is_updated_too(tmp_path: Path, drift: dict[str, object], fields: str) -> None:
+    done, calls = _ensure(tmp_path, stored=COMPOSED | drift, current=False)
 
     assert done.returncode == 0, done.stderr
-    assert [c[1] for c in calls][-1] == "/api/v1/destinations/update"
-    assert done.stderr.rstrip("\n").endswith("updated: cluster_name")
+    assert [c[1] for c in calls] == ["/api/v1/destinations/list", "/api/v1/destinations/update"]
+    assert calls[1][2]["connectionConfiguration"] == COMPOSED
+    assert done.stderr.rstrip("\n").endswith(f"updated: {fields} password")
 
 
 def test_a_rotated_password_alone_is_not_visible_and_not_an_update(tmp_path: Path) -> None:
@@ -395,13 +402,14 @@ def test_destination_write_masks_the_token_sent_in_the_request(tmp_path: Path) -
 
 
 def _converge(
-    tmp_path: Path, current: dict[str, object], *, dry_run: bool = False, explicit: bool = False
+    tmp_path: Path, current: dict[str, object] | None, *, dry_run: bool = False, route: str = "connection"
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     answers = tmp_path / "answers"
     answers.mkdir()
-    (answers / "_api_v1_destinations_get").write_text(
-        json.dumps({"destinationId": DEST_ID, "name": "custom-destination", "connectionConfiguration": current})
-    )
+    if current is not None:
+        (answers / "_api_v1_destinations_get").write_text(
+            json.dumps({"destinationId": DEST_ID, "name": "custom-destination", "connectionConfiguration": current})
+        )
     (answers / "_api_v1_destinations_update").write_text("{}")
     log = tmp_path / "calls"
     connection = {
@@ -412,22 +420,27 @@ def _converge(
     }
     environment = sync_user(tmp_path / "sync-user", username="etl")
     write_sync_secret(tmp_path / "sync-user", "10", "example-secret")
-    command = (
-        "reconcile_resolve_destination_id jira"
-        if explicit
-        else "reconcile_connections jira source-1 abcdefabcdef1234 bronze_jira"
-    )
+    command = {
+        "explicit": "reconcile_resolve_destination_id jira",
+        "connection": "reconcile_connections jira source-1 abcdefabcdef1234 bronze_jira",
+        "recreate": "reconcile_recreate_with_state conn-1 source-1 def-1 fixture-source '{}' hash jira bronze_jira",
+    }[route]
     script = f"""
     set -uo pipefail
     export AIRBYTE_URL=http://127.0.0.1:1 INSIGHT_NAMESPACE=fixture CONNECTORS_DIR=/nonexistent
+    export TMPDIR="{tmp_path}"
     export RECONCILE_DRY_RUN={int(dry_run)}
     source "{ROOT}/lib/reconcile.sh"
     {STUB.format(workspace=WORKSPACE, log=log, answers=answers)}
     {environment}
     {WAREHOUSE_ENV}
+    unset RECONCILE_DEST_CLICKHOUSE_DATABASE
     export RECONCILE_DESTINATION_ID={DEST_ID}
     ab_destination_version() {{ printf '%s' '2.1.29'; }}
     ab_list_connections() {{ printf '%s' '{json.dumps([connection])}'; }}
+    ab_get_state() {{ printf '%s' '{{}}'; }}
+    ab_delete_source() {{ printf 'POST /api/v1/sources/delete\n' >> '{log}'; }}
+    ab_create_source() {{ printf 'POST /api/v1/sources/create\n' >> '{log}'; printf '%s' '{{"sourceId":"new-source"}}'; }}
     if [[ "$RECONCILE_DRY_RUN" == "0" ]]; then
       ab_destination_credentials_init || exit 1
     fi
@@ -437,27 +450,53 @@ def _converge(
     return done, log.read_text().splitlines() if log.exists() else []
 
 
-@pytest.mark.parametrize("route", ["name", "connection", "explicit"])
+@pytest.mark.parametrize("route", ["connection", "explicit"])
 @pytest.mark.parametrize(
-    ("key", "value"), [("host", "other.example.test"), ("port", "8443"), ("database", "other"), ("protocol", "https")]
+    ("key", "value"),
+    [
+        ("host", "other.example.test"),
+        ("port", "8443"),
+        ("protocol", "https"),
+        ("tunnel_method", {"tunnel_method": "SSH_KEY_AUTH", "ssh_key": "example-ssh-key"}),
+    ],
+    ids=["host", "port", "protocol", "ssh-tunnel"],
 )
-def test_destination_refuses_writes_to_a_different_warehouse(tmp_path: Path, route: str, key: str, value: str) -> None:
+def test_destination_refuses_writes_to_a_different_warehouse(
+    tmp_path: Path, route: str, key: str, value: object
+) -> None:
     stored = COMPOSED | {key: value}
-    if route == "name":
-        done, calls = _ensure(tmp_path, stored=stored, current=False)
-        actual_paths = [call[1] for call in calls]
-        expected_path = "/api/v1/destinations/list"
-    else:
-        done, lines = _converge(tmp_path, stored, explicit=route == "explicit")
-        actual_paths = [line.split()[1] for line in lines]
-        expected_path = "/api/v1/destinations/get"
+    done, lines = _converge(tmp_path, stored, route=route)
 
-    assert actual_paths == [expected_path], (route, key)
+    assert [line.split()[1] for line in lines] == ["/api/v1/destinations/get"], (route, key)
     assert done.returncode != 0
     errors = [line for line in done.stderr.splitlines() if line.startswith("ERROR")]
-    assert len(errors) == 1
-    assert f"destination={DEST_ID} fields={key}" in errors[0]
+    assert errors == [f"ERROR   jira: Airbyte destination warehouse differs. destination={DEST_ID} fields={key}"]
     assert "example-secret" not in done.stderr
+    assert "example-ssh-key" not in done.stderr
+
+
+@pytest.mark.parametrize("route", ["connection", "explicit"])
+def test_credential_updates_keep_the_stored_database_on_the_same_server(tmp_path: Path, route: str) -> None:
+    stored = COMPOSED | {"database": "other", "tunnel_method": {"tunnel_method": "NO_TUNNEL"}}
+    done, calls = _converge(tmp_path, stored, route=route)
+
+    assert done.returncode == 0, done.stderr
+    assert len(calls) == 2
+    assert json.loads(calls[1].split(" ", 2)[2])["connectionConfiguration"] == stored | {
+        "username": "etl",
+        "password": "example-secret",
+    }
+
+
+@pytest.mark.parametrize("destination_available", [True, False], ids=["refused", "unavailable"])
+def test_recreate_keeps_the_source_and_connection_when_destination_resolution_fails(
+    tmp_path: Path, destination_available: bool
+) -> None:
+    stored = COMPOSED | {"host": "other.example.test"} if destination_available else None
+    done, calls = _converge(tmp_path, stored, route="recreate")
+
+    assert done.returncode != 0
+    assert [line.split()[1] for line in calls] == ["/api/v1/destinations/get"]
 
 
 def test_host_case_and_a_trailing_dot_are_not_destination_drift(tmp_path: Path) -> None:

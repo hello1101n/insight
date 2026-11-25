@@ -884,7 +884,7 @@ except Exception:
 }
 
 ab_converge_destination_credentials() {
-  local id="$1" request response update
+  local id="$1" request response update status
   if ab_destination_write_attempted "${id}"; then
     ab_destination_write_succeeded "${id}"
     return
@@ -894,7 +894,13 @@ ab_converge_destination_credentials() {
   fi
   request="$(printf '{"destinationId":"%s"}' "${id}")"
   response="$(ab__curl POST /api/v1/destinations/get "${request}")" || return 1
-  update="$(printf '%s' "${response}" | python3 "${_AIRBYTE_PY_DIR}/destination_credentials.py" update "${id}")" || return $?
+  update="$(printf '%s' "${response}" | python3 "${_AIRBYTE_PY_DIR}/destination_credentials.py" update "${id}")" || {
+    status=$?
+    if [[ "${status}" -eq 3 ]]; then
+      printf '%s' "${update}"
+    fi
+    return "${status}"
+  }
   ab_destination_update_once "${id}" "${update}" true
 }
 

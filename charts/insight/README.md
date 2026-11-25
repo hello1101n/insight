@@ -77,7 +77,7 @@ The same mutex protects a writer group on both the Jira and non-Jira paths.
 | `clickhouse.syncUser.username` | `insight_sync` | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
 | `clickhouse.syncUser.passwordSecret.name` | `insight-db-creds` | Secret in the release namespace that holds the password |
 | `clickhouse.syncUser.passwordSecret.key` | `clickhouse-sync-password` | Password key in that Secret |
-| `clickhouse.syncUser.totalMemoryBytes` | 60% of `max_server_memory_usage` | `max_memory_usage_for_user` on each ClickHouse server |
+| `clickhouse.syncUser.totalMemoryBytes` | 60% of the lowest server limit, when each answering server has a limit | `max_memory_usage_for_user` on each ClickHouse server |
 | `clickhouse.syncUser.queryMemoryBytes` | Unset | Optional `max_memory_usage` for each query |
 
 Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
@@ -191,7 +191,8 @@ Analytics, application services, the reconcile sweep, and the independent schedu
 
 The next reconcile pass updates the sync credentials on the ClickHouse destinations of managed Airbyte connections.
 The update preserves the destination ID, connection state, and other destination settings.
-Reconcile updates only destinations with the same host, port, database, and protocol as the configured warehouse.
+For a credential-only update, reconcile checks the host, port, and protocol against the configured warehouse.
+Reconcile refuses a credential-only update if the destination uses an SSH tunnel.
 Airbyte can share a destination across connections. All connections that use that destination receive the credential change.
 Reconcile reads the password and its Secret revision together.
 Reconcile records each successful credential write in the release's `reconcile-destinations` ConfigMap.
@@ -201,11 +202,14 @@ A new Secret revision can cause one write even if the password stays the same.
 
 Apply the new password in ClickHouse before the next reconcile pass.
 The chart provisioning job does this on upgrade.
+After `helm rollback`, run `helm upgrade` again to match the ClickHouse sync password to the Secret.
 Bronze loads can fail authentication for up to one reconcile interval, until the next successful pass updates Airbyte.
 
 Without `clickhouse.syncUser.totalMemoryBytes`, the database job reads `max_server_memory_usage` from ClickHouse.
 It sets the sync total to 60% of that value, rounded down to whole bytes.
 In cluster mode, it uses the smallest value across the replicas that answer, and it stops if none answers.
+The job stops if any answering server uses the host memory to set its limit.
+Set `clickhouse.syncUser.totalMemoryBytes` if ClickHouse runs without a memory limit.
 Give all replicas the same `max_server_memory_usage`, or set `clickhouse.syncUser.totalMemoryBytes`.
 
 Measure query peaks during a representative Jira sync while Analytics runs.
@@ -231,7 +235,7 @@ Leave the default unset to retain the server's per-query and spill settings.
 Set `clickhouse.provisionAccess: false` when the operator manages ClickHouse users.
 Use the same username and password in the chart and in ClickHouse.
 Replace `insight_sync`, the example password, and `insight` with your account, password, and `clickhouse.database` value.
-Replace the example limits with your values. The default total is 60% of `max_server_memory_usage`.
+Replace the example limits with your values.
 Remove the per-query limit and the four spill settings if `clickhouse.syncUser.queryMemoryBytes` is unset.
 Set each spill threshold to half the per-query limit in bytes, rounded down.
 

@@ -7,6 +7,35 @@ user="${CLICKHOUSE_SYNC_USER:-}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "$SCRIPT_DIR/../lib/ch-exec.sh"
 
+read_server_memory_limit() {
+  local metrics_query query
+  metrics_query="SELECT
+    maxIf(toUInt64OrZero(value), name = 'max_server_memory_usage') AS server,
+    maxIf(toFloat64OrZero(value), name = 'max_server_memory_usage_to_ram_ratio') AS ratio,
+    (SELECT toUInt64(max(value)) FROM system.asynchronous_metrics WHERE metric = 'OSMemoryTotal') AS host_memory
+    FROM system.server_settings WHERE name IN ('max_server_memory_usage', 'max_server_memory_usage_to_ram_ratio')"
+  query="$metrics_query"
+  if ch_cluster_mode; then
+    query="SELECT * FROM clusterAllReplicas('${CLICKHOUSE_CLUSTER_NAME:?Set CLICKHOUSE_CLUSTER_NAME}', view($metrics_query))
+      SETTINGS skip_unavailable_shards = 1"
+  fi
+
+  printf '%s FORMAT TabSeparated' "$query" | _ch_http_query | LC_ALL=C awk -F '\t' '
+    NF != 3 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?$/ ||
+        $3 !~ /^[0-9]+$/ || $1 < 4 || $2 <= 0 || $3 <= 0 {
+      invalid = 1
+      next
+    }
+    $1 >= $2 * $3 * 0.99 { unlimited = 1 }
+    !minimum || $1 + 0 < minimum + 0 { minimum = $1 }
+    END {
+      if (unlimited) exit 2
+      if (invalid || !minimum) exit 1
+      print minimum
+    }
+  '
+}
+
 if [[ -z "${CLICKHOUSE_SYNC_PASSWORD:-}" ]]; then
   echo "The ClickHouse sync password is missing from its Secret." >&2
   exit 1
@@ -20,15 +49,14 @@ if [[ ! "$user" =~ ^[A-Za-z_][A-Za-z0-9_]*$ || "$user" == "$CLICKHOUSE_USER" ]];
   exit 1
 fi
 if [[ -z "$total" ]]; then
-  server_settings=system.server_settings
-  if ch_cluster_mode; then
-    server_settings="clusterAllReplicas('${CLICKHOUSE_CLUSTER_NAME:?Set CLICKHOUSE_CLUSTER_NAME}', system.server_settings)"
-  fi
-  if ! server="$(ch_scalar "SELECT min(toUInt64(value)) FROM $server_settings WHERE name = 'max_server_memory_usage' SETTINGS skip_unavailable_shards = 1")" ||
-    (( server < 4 )); then
-    echo "The ClickHouse server memory limit read failed." >&2
+  server="$(read_server_memory_limit)" || {
+    if [[ "$?" -eq 2 ]]; then
+      echo "ClickHouse runs without a memory limit. Set clickhouse.syncUser.totalMemoryBytes." >&2
+    else
+      echo "The ClickHouse server memory limit read failed." >&2
+    fi
     exit 1
-  fi
+  }
   total=$((server / 5 * 3 + server % 5 * 3 / 5))
 fi
 if [[ ! "$total" =~ ^[1-9][0-9]{0,17}$ ]] || (( total < 2 )) ||

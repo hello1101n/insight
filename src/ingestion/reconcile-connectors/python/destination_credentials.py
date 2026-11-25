@@ -5,10 +5,10 @@ import os
 import sys
 from collections.abc import Mapping
 
-from compose_destination_config import warehouse_config
+from compose_destination_config import warehouse_endpoint
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
-WAREHOUSE_FIELDS = ("host", "port", "database", "protocol")
+WAREHOUSE_FIELDS = ("host", "port", "protocol")
 MASK = "**********"
 CONFIGURATION = TypeAdapter(dict[str, JsonValue])
 
@@ -45,6 +45,9 @@ def require_same_warehouse(destination: Destination, desired: Mapping[str, objec
         if not warehouse_value(key, desired.get(key))
         or warehouse_value(key, current.get(key)) != warehouse_value(key, desired.get(key))
     ]
+    tunnel = current.get("tunnel_method")
+    if tunnel is not None and tunnel != {"tunnel_method": "NO_TUNNEL"}:
+        differences.append("tunnel_method")
     if differences:
         destination_id = "".join(char for char in destination.destinationId if char.isprintable())
         raise WarehouseMismatch(f"destination={destination_id} fields={','.join(differences)}")
@@ -58,7 +61,6 @@ def named_drift(name: str, payload: str) -> int:
     if destination is None:
         return 0
 
-    require_same_warehouse(destination, desired)
     current = destination.connectionConfiguration or {}
     drift = [
         key
@@ -77,7 +79,7 @@ def credentials_update(destination_id: str, payload: str) -> int:
         print("Airbyte destination identity or ClickHouse configuration did not match.", file=sys.stderr)
         return 1
 
-    require_same_warehouse(destination, warehouse_config(os.environ))
+    require_same_warehouse(destination, warehouse_endpoint(os.environ))
     if not isinstance(config.get("username"), str):
         print("Airbyte destination identity or ClickHouse configuration did not match.", file=sys.stderr)
         return 1
@@ -104,7 +106,7 @@ def main() -> int:
             return named_drift(target, payload)
         return credentials_update(target, payload)
     except WarehouseMismatch as error:
-        print(f"ERROR   Airbyte destination warehouse differs. {error}", file=sys.stderr)
+        print(f"Airbyte destination warehouse differs. {error}")
         return 3
     except ValidationError as error:
         for field in error.errors(include_input=False):

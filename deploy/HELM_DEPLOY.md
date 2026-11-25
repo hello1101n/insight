@@ -317,6 +317,7 @@ Check these before installing:
 Create this Secret with the four datastore passwords and the ClickHouse sync user's password.
 Use the current passwords for the datastores. Use only `[A-Za-z0-9._~-]` characters in the datastore passwords.
 Generate the sync user's password once with `openssl rand -hex 16`.
+If ClickHouse runs without a container memory limit, for example on its own VM, set `clickhouse.syncUser.totalMemoryBytes` before the upgrade. Otherwise the `clickhouse-databases` hook stops the upgrade.
 
 ```yaml
 apiVersion: v1

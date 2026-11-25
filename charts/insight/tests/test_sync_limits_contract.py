@@ -228,7 +228,6 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     }
     bootstrap = default["Secret", "contract-clickhouse-sync-bootstrap"]
     assert bootstrap["stringData"] == {"password": password}
-    assert bootstrap["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade,post-rollback"
     databases = default["Job", "contract-clickhouse-databases"]["metadata"]["annotations"]
     assert "pre-install" in databases["helm.sh/hook"]
     assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < int(databases["helm.sh/hook-weight"])
@@ -308,19 +307,19 @@ def test_a_release_that_creates_no_users_never_generates_the_sync_password() -> 
     assert ("Secret", "contract-clickhouse-sync-bootstrap") not in chart
 
 
-def test_sync_password_rollback_provisions_after_the_bootstrap_secret(charts: dict[str, dict]) -> None:
-    resources = charts["defaults"]
-    names = (
-        ("Secret", "contract-clickhouse-sync-bootstrap"),
-        ("Job", "contract-clickhouse-databases"),
-        ("Job", "contract-clickhouse-migrate"),
-    )
-    weights = []
-    for name in names:
-        annotations = resources[name]["metadata"]["annotations"]
-        assert "post-rollback" in annotations["helm.sh/hook"].split(","), name
-        weights.append(int(annotations["helm.sh/hook-weight"]))
-    assert weights[0] < weights[1] < weights[2]
+@pytest.mark.parametrize(
+    ("resource", "phases"),
+    [
+        (("Secret", "contract-clickhouse-sync-bootstrap"), "pre-install,pre-upgrade"),
+        (("Job", "contract-clickhouse-databases"), "pre-install,pre-upgrade"),
+        (("Job", "contract-clickhouse-migrate"), "post-install,post-upgrade"),
+    ],
+)
+def test_sync_password_hooks_never_run_on_rollback(
+    charts: dict[str, dict], resource: tuple[str, str], phases: str
+) -> None:
+    annotations = charts["defaults"][resource]["metadata"]["annotations"]
+    assert annotations["helm.sh/hook"] == phases, resource
 
 
 @pytest.fixture
