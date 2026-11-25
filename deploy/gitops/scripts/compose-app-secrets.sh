@@ -13,8 +13,8 @@
 #
 # Rather than seal them as static manifests (which would need re-sealing
 # every password rotation), we compose them at deploy time from the
-# already-sealed `insight-db-creds`. Idempotent — `kubectl apply`
-# overwrites on each run.
+# already-sealed `insight-db-creds`. Idempotent — each run replaces the
+# whole Secret (see put_secret).
 #
 # Inputs (env vars):
 #   ENV           required — selects environments/$ENV/values.yaml
@@ -307,7 +307,20 @@ else
 fi
 
 # ── Compose + apply ──
-# kubectl apply -f - reads stdin; the YAML never lands on disk.
+# put_secret <name> reads the manifest from stdin; the YAML never lands on disk.
+# It replaces the whole object instead of `kubectl apply`: apply does not delete
+# a key dropped from stringData, so a removed config field stays in the live
+# Secret and a deny_unknown_fields gear refuses to start.
+put_secret() {
+  local manifest
+  manifest=$(cat)
+  if kubectl -n "$NS_APP" get secret "$1" >/dev/null 2>&1; then
+    printf '%s\n' "$manifest" | kubectl -n "$NS_APP" replace -f - >/dev/null
+  else
+    printf '%s\n' "$manifest" | kubectl -n "$NS_APP" create -f - >/dev/null
+  fi
+}
+
 {
   cat <<EOF
 apiVersion: v1
@@ -339,7 +352,7 @@ stringData:
   APP__gears__analytics__config__identity_url: "${IDENTITY_URL}"
   APP__gears__analytics__config__redis_url: "${REDIS_URL}"
 EOF
-} | kubectl -n "$NS_APP" apply -f - >/dev/null
+} | put_secret insight-analytics-config
 echo "composed → $NS_APP/insight-analytics-config"
 
 if [ -n "$CORE_CONFIG_SECRET" ] && [ "$CORE_CONFIG_SECRET" != "null" ]; then
@@ -355,9 +368,8 @@ if [ -n "$CORE_CONFIG_SECRET" ] && [ "$CORE_CONFIG_SECRET" != "null" ]; then
     ${CORE_CH_READER_PW:+--from-literal=APP__gears__insight_v3_core__config__clickhouse_query_user="${CORE_CH_READER}"} \
     ${CORE_CH_READER_PW:+--from-literal=APP__gears__insight_v3_core__config__clickhouse_query_password="${CORE_CH_READER_PW}"} \
     --dry-run=client -o yaml \
-    | kubectl -n "$NS_APP" apply -f - >/dev/null
-  kubectl -n "$NS_APP" annotate secret "$CORE_CONFIG_SECRET" \
-    helm.sh/resource-policy=keep --overwrite >/dev/null
+    | kubectl annotate --local -f - helm.sh/resource-policy=keep -o yaml \
+    | put_secret "$CORE_CONFIG_SECRET"
   echo "composed → $NS_APP/$CORE_CONFIG_SECRET"
 fi
 
@@ -407,7 +419,7 @@ EOF
   if [ "$AUTH_RESOLVE_BY" = "email" ]; then
     echo "  APP__gears__authenticator__config__idp__resolve_by: \"email\""
   fi
-} | kubectl -n "$NS_APP" apply -f - >/dev/null
+} | put_secret insight-authenticator-config
 echo "composed → $NS_APP/insight-authenticator-config"
 
 # `insight-identity-resolution-config` carries the identity-resolution
@@ -442,7 +454,7 @@ EOF
   if [ -n "$IDENTITY_RESOLUTION_BOOTSTRAP_ADMIN" ] && [ "$IDENTITY_RESOLUTION_BOOTSTRAP_ADMIN" != "null" ]; then
     echo "  APP__gears__identity_resolution__config__bootstrap_admin_person_id: \"${IDENTITY_RESOLUTION_BOOTSTRAP_ADMIN}\""
   fi
-} | kubectl -n "$NS_APP" apply -f - >/dev/null
+} | put_secret insight-identity-resolution-config
 echo "composed → $NS_APP/insight-identity-resolution-config"
 
 # Don't echo any of the passwords; clear the shell env explicitly.
