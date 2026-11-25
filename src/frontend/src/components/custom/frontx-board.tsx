@@ -5,27 +5,29 @@ import {
   DashboardRoot,
   loadWidgetParts,
   type DashboardHost,
-  type ServedFile,
 } from "@gears-frontx/frontx-dashboard-root";
 
+import type { DashboardRead, RunOptions } from "@/api/custom-client";
 import {
-  JSON_HEADERS,
-  readJson,
-  type DashboardRead,
-  type MetricResult,
-} from "@/api/custom-client";
-import { fetchWithAuth } from "@/api/fetch-with-auth";
-import { frontxAnswer, frontxBoard } from "@/lib/custom/frontx-board";
-import { dashboardWidgetsQuery } from "@/queries/custom";
+  frontxAnswer,
+  frontxBoard,
+  type FrontxBoard as Drawn,
+} from "@/lib/custom/frontx-board";
+import {
+  dashboardWidgetResultQuery,
+  dashboardWidgetsQuery,
+} from "@/queries/custom";
+import { queryClient } from "@/query-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { refusal } from "@/components/custom/refusal";
 
 const WIDGET_LIST = "/widgets/widgets.json";
 
-let shown: { key: string; file: ServedFile } = {
+let shown: Pick<Drawn, "file" | "runs"> & { key: string } = {
   key: "",
   file: { types: [], instances: [] },
+  runs: new Map(),
 };
 
 const host: DashboardHost = {
@@ -36,15 +38,20 @@ const host: DashboardHost = {
       ...(await loadWidgetParts(WIDGET_LIST, signal, location.href)),
     ];
   },
-  request: async ({ method, path, body }, signal) => {
-    const res = await fetchWithAuth(path, {
-      method,
-      signal,
-      ...(body === undefined
-        ? {}
-        : { headers: JSON_HEADERS, body: JSON.stringify(body) }),
-    });
-    return frontxAnswer(await readJson<MetricResult>(res));
+  request: async ({ path, body }) => {
+    const run = shown.runs.get(path);
+    if (!run)
+      throw new Error("The shown board has no widget that runs at this path.");
+
+    // INVARIANT: a run body is the one runRequest builds plus the range that FrontX adds, so the cache key matches the current renderer's.
+    const result = await queryClient.query(
+      dashboardWidgetResultQuery(
+        run.dashboard,
+        run.widget,
+        body as RunOptions | undefined
+      )
+    );
+    return frontxAnswer(result);
   },
 };
 

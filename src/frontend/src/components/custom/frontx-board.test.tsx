@@ -2,8 +2,13 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { DashboardHost } from "@gears-frontx/frontx-dashboard-root";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DashboardRead, DashboardWidget } from "@/api/custom-client";
+import {
+  dashboardWidgetPath,
+  type DashboardRead,
+  type DashboardWidget,
+} from "@/api/custom-client";
 import FrontxBoard from "@/components/custom/frontx-board";
+import { queryClient } from "@/query-client";
 import { wrapper } from "@/test/alerts";
 
 const fx = vi.hoisted(() => ({
@@ -70,6 +75,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 beforeEach(() => {
+  fetchWithAuth.mockReset();
   fetchWithAuth.mockImplementation(async (_url: string, init?: RequestInit) =>
     init?.method === "POST"
       ? json({ columns: ["bucket", "deploys"], rows: [["2026-10-01", 3]] })
@@ -79,7 +85,21 @@ beforeEach(() => {
 
 afterEach(() => {
   delete document.documentElement.dataset.theme;
+  queryClient.clear();
 });
+
+const runPath = (board: string) => `${dashboardWidgetPath(board, "w1")}/run`;
+
+const runs = () =>
+  fetchWithAuth.mock.calls.filter(([, init]) => init?.method === "POST");
+
+async function hostOf(board: string): Promise<DashboardHost> {
+  render(<FrontxBoard id={board} read={READ} range={undefined} />, {
+    wrapper,
+  });
+  await screen.findByTestId("frontx-dashboard");
+  return fx.hosts.at(-1)!;
+}
 
 describe("FrontxBoard", () => {
   it("draws the board with the page theme and the selected range, and follows a theme switch", async () => {
@@ -99,25 +119,28 @@ describe("FrontxBoard", () => {
     );
   });
 
-  it("answers a data request through fetchWithAuth with each column's position, its distinct values and the rows a table shows", async () => {
-    render(<FrontxBoard id="board-d" read={READ} range={undefined} />, {
-      wrapper,
-    });
-    await screen.findByTestId("frontx-dashboard");
-    const host = fx.hosts.at(-1)!;
-    const signal = new AbortController().signal;
+  it("answers a widget run with each column's position, its distinct values and the rows a table shows", async () => {
+    const host = await hostOf("board-d");
 
     const answer = await host.request(
-      { method: "POST", path: "/run", body: { bucket: true } },
-      signal
+      {
+        method: "POST",
+        path: runPath("board-d"),
+        body: { bucket: true, range: "P7D" },
+      },
+      new AbortController().signal
     );
 
-    expect(fetchWithAuth).toHaveBeenCalledWith("/run", {
-      method: "POST",
-      signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bucket: true }),
-    });
+    expect(runs()).toEqual([
+      [
+        runPath("board-d"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bucket: true, range: "P7D" }),
+        },
+      ],
+    ]);
     expect(answer).toEqual({
       columns: ["bucket", "deploys"],
       rows: [["2026-10-01", 3]],
@@ -125,12 +148,48 @@ describe("FrontxBoard", () => {
       distinct: { bucket: ["2026-10-01"], deploys: [3] },
       tableRows: [["2026-10-01", 3]],
     });
+  });
 
-    await host.request({ method: "POST", path: "/plain" }, signal);
-    expect(fetchWithAuth).toHaveBeenLastCalledWith("/plain", {
-      method: "POST",
-      signal,
-    });
+  it("answers a run the page already holds without running it again", async () => {
+    const host = await hostOf("board-h");
+    const request = {
+      method: "POST" as const,
+      path: runPath("board-h"),
+      body: { bucket: true, range: "P7D" },
+    };
+
+    const first = await host.request(request, new AbortController().signal);
+    const again = await host.request(request, new AbortController().signal);
+    await host.request(
+      { ...request, body: { bucket: true, range: "P30D" } },
+      new AbortController().signal
+    );
+
+    expect(again).toEqual(first);
+    expect(runs()).toHaveLength(2);
+  });
+
+  it("runs a widget without a body when the board has no periods", async () => {
+    const host = await hostOf("board-p");
+
+    await host.request(
+      { method: "POST", path: runPath("board-p") },
+      new AbortController().signal
+    );
+
+    expect(runs()).toEqual([[runPath("board-p"), { method: "POST" }]]);
+  });
+
+  it("refuses a run that the shown board does not hold", async () => {
+    const host = await hostOf("board-r");
+
+    await expect(
+      host.request(
+        { method: "POST", path: runPath("another-board") },
+        new AbortController().signal
+      )
+    ).rejects.toThrow();
+    expect(runs()).toEqual([]);
   });
 
   it("serves the board file followed by the widget parts", async () => {
@@ -148,18 +207,35 @@ describe("FrontxBoard", () => {
     ]);
   });
 
-  it("rejects a data request the service refuses", async () => {
-    render(<FrontxBoard id="board-f" read={READ} range={undefined} />, {
-      wrapper,
-    });
-    await screen.findByTestId("frontx-dashboard");
-    fetchWithAuth.mockResolvedValueOnce(json({ detail: "busy" }, 429));
+  it("runs a refused widget once more, and then rejects", async () => {
+    const host = await hostOf("board-f");
+    fetchWithAuth.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? json({ detail: "busy" }, 429)
+          : json({ items: WIDGETS })
+    );
 
     await expect(
-      fx.hosts
-        .at(-1)!
-        .request({ method: "POST", path: "/run" }, new AbortController().signal)
+      host.request(
+        { method: "POST", path: runPath("board-f") },
+        new AbortController().signal
+      )
     ).rejects.toMatchObject({ status: 429 });
+    expect(runs()).toHaveLength(2);
+  });
+
+  it("answers a run that succeeds on its second try", async () => {
+    const host = await hostOf("board-s");
+    fetchWithAuth.mockResolvedValueOnce(json({ detail: "down" }, 500));
+
+    await expect(
+      host.request(
+        { method: "POST", path: runPath("board-s") },
+        new AbortController().signal
+      )
+    ).resolves.toMatchObject({ rows: [["2026-10-01", 3]] });
+    expect(runs()).toHaveLength(2);
   });
 
   it("says so when the widgets do not load", async () => {

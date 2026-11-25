@@ -26,6 +26,7 @@ import { drawsBucket } from "@/lib/custom/draws-bucket";
 export interface FrontxBoard {
   dashboardId: string;
   file: ServedFile;
+  runs: ReadonlyMap<string, { dashboard: string; widget: string }>;
 }
 
 export interface FrontxAnswer extends MetricResult {
@@ -95,12 +96,15 @@ function markdownId(key: string): string {
   return `${WIDGET_BASE_TYPE_ID}frontx.dashboard.widget.markdown_card.v1~${uuidv5(key, NAMESPACE)}`;
 }
 
+const runPath = (dashboard: string, widget: string) =>
+  `${dashboardWidgetPath(dashboard, widget)}/run`;
+
 function runRequest(
   dashboard: string,
   widget: DashboardWidget,
   windowed: boolean
 ): DashboardRequest {
-  const path = `${dashboardWidgetPath(dashboard, widget.id)}/run`;
+  const path = runPath(dashboard, widget.id);
   if (!windowed || !widget.clock) return { method: "POST", path };
 
   return {
@@ -312,6 +316,12 @@ export function frontxBoard(
       types: catalog.types,
       instances: [...catalog.instances, { ...dashboard }],
     },
+    runs: new Map(
+      widgets.map((widget) => [
+        runPath(id, widget.id),
+        { dashboard: id, widget: widget.id },
+      ])
+    ),
   };
 }
 
