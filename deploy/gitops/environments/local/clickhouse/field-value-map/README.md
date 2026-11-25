@@ -29,7 +29,7 @@ insight_tenant_id  insight_source_id  data_source  field  source_key  display_na
 
 | column              | meaning                                                                      |
 |---------------------|------------------------------------------------------------------------------|
-| `insight_tenant_id`         | Insight tenant the decision belongs to                                        |
+| `insight_tenant_id`         | Ignored: the loader writes every row under the install's tenant (`INSIGHT_TENANT_ID`) |
 | `insight_source_id` | the connector instance the value came from                                    |
 | `data_source`       | `github`, `jira`, …                                                           |
 | `field`             | what is standardized — currently only `issue_type`                            |
