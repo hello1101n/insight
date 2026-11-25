@@ -7,7 +7,9 @@
     python3 -m tenant_migration finalize
 
 `--old-tenant` is the tenant segment the install's keys were written with; rows
-with an empty tenant move too. Run with connectors and dbt stopped.
+with an empty tenant move too. On an install already keyed by the UUID, pass the
+UUID as both: only the rows with a NULL or empty tenant move. Run with
+connectors and dbt stopped.
 
 `apply` keeps each original until `finalize`. After an interruption anywhere,
 `rollback` puts the originals back and `finalize` keeps what is live; both, and
@@ -37,7 +39,11 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("plan", "apply"):
         command = commands.add_parser(name)
         command.add_argument("--tenant", required=True, help="the canonical tenant, a lowercase UUID")
-        command.add_argument("--old-tenant", required=True, help="the tenant the stored keys carry now")
+        command.add_argument(
+            "--old-tenant",
+            required=True,
+            help="the tenant the stored keys carry now; equal to --tenant to move only empty tenants",
+        )
         if name == "apply":
             command.add_argument("--dump-dir", required=True, type=Path, help="a new directory for the dump")
     commands.add_parser("rollback")
@@ -49,6 +55,8 @@ def _parser() -> argparse.ArgumentParser:
 def render(plan: Plan) -> str:
     lines = [f"{'relation':<64} {'rows':>12} {'moving':>12}"]
     lines += [f"{t.table.relation:<64} {t.rows:>12} {t.moving:>12}" for t in plan.tables if t.rows]
+    if plan.tenants.empty_only:
+        lines.append("old tenant equals the new one: only rows with a NULL or empty tenant move")
     lines.append(f"tables changing: {len(plan.changing)}; YouTrack comment ids to fill: {plan.comment_ids_to_fill}")
     lines += [f"REFUSED {reason}" for reason in plan.refusals]
     return "\n".join(lines)

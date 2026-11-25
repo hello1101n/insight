@@ -21,8 +21,8 @@ NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
 
 @pytest.mark.parametrize(
     ("new", "old"),
-    [("Example-Legacy", "example-legacy"), (NEW.upper(), "example-legacy"), (NEW, NEW), (NEW, "it's"), (NEW, "a\\b")],
-    ids=["new not a uuid", "upper case", "old equals new", "quote", "backslash"],
+    [("Example-Legacy", "example-legacy"), (NEW.upper(), "example-legacy"), (NEW, "it's"), (NEW, "a\\b")],
+    ids=["new not a uuid", "upper case", "quote", "backslash"],
 )
 def test_tenants_that_cannot_be_moved_safely_are_refused(new: str, old: str) -> None:
     with pytest.raises(TenantError):
@@ -32,6 +32,15 @@ def test_tenants_that_cannot_be_moved_safely_are_refused(new: str, old: str) -> 
 def test_an_empty_tenant_always_moves_beside_the_old_one() -> None:
     assert Tenants.parse(NEW, "example-legacy").moving == ("example-legacy", "")
     assert Tenants.parse(NEW, "").moving == ("",)
+
+
+def test_an_old_tenant_equal_to_the_new_one_moves_only_the_empty_tenant() -> None:
+    """An install already keyed by the UUID still stamps its NULL and empty rows."""
+    tenants = Tenants.parse(NEW, NEW)
+
+    assert tenants.moving == ("",)
+    assert tenants.empty_only
+    assert not Tenants.parse(NEW, "example-legacy").empty_only
 
 
 STRING = "Nullable(String)"

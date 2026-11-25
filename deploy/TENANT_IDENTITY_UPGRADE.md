@@ -93,9 +93,11 @@ ClickHouse disk for a second copy of every migrated table until `finalize`.
   If either differs, or `persons` holds several tenants, stop: moving the
   MariaDB stores to another tenant is not covered here.
 
-If `<OLD_TENANT>` already equals `<TENANT_UUID>`, skip step 6 (the tool refuses:
-there is nothing to move) and do everything else — the previous release stamped
-identity inputs with a hashed tenant, which only the rebuild replaces.
+If `<OLD_TENANT>` already equals `<TENANT_UUID>`, do every step anyway, step 6
+included, with `--old-tenant <TENANT_UUID>`: the tool then moves only the rows
+with a NULL or empty tenant, and their keys, which dbt refuses to build over;
+rows already under `<TENANT_UUID>` stay. The previous release stamped identity
+inputs with a hashed tenant, which only the rebuild replaces.
 
 ### 2. Prepare the migration tool
 
@@ -209,9 +211,11 @@ python3 -m tenant_migration apply --tenant <TENANT_UUID> --old-tenant <OLD_TENAN
 Otherwise it dumps every table it will change — DDL, rows and a
 `manifest.json` with each table's row and key counts — then moves each table
 by copy, count check and `EXCHANGE`, and prints the rows and keys it holds
-afterwards. Rows under `<OLD_TENANT>` and rows with an empty tenant move;
-rows already under `<TENANT_UUID>` stay. Each original stays beside its table
-as `<table>__tenant_backup` until step 10.
+afterwards. Rows under `<OLD_TENANT>` and rows with a NULL or empty tenant
+move; rows already under `<TENANT_UUID>` stay. When `<OLD_TENANT>` equals
+`<TENANT_UUID>`, `plan` prints `only rows with a NULL or empty tenant move`;
+when it lists no table changing, `apply` changes nothing. Each original stays
+beside its table as `<table>__tenant_backup` until step 10.
 
 If it stops part-way, run `python3 -m tenant_migration rollback` — it puts every
 original back, wherever the run stopped — then `python3 -m tenant_migration

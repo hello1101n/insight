@@ -411,6 +411,57 @@ def test_the_command_line_plans_applies_and_refuses_a_bad_tenant(warehouse: Clic
     assert main(["finalize"]) == 0
 
 
+def _settle_on_the_uuid(ch: ClickHouse, tmp_path: Path) -> None:
+    """An install already keyed by the UUID, which then wrote rows without a tenant."""
+    _apply(ch, _plan(ch), tmp_path / "first")
+    migration.finalize(ch)
+    ch.execute(
+        "INSERT INTO bronze_example.items VALUES "
+        "('-main-PROJ-20', NULL, 'main', 'written without a tenant', '2026-01-03 00:00:00'), "
+        "(':main:PROJ-21', '', 'main', 'an empty tenant, colon key', '2026-01-03 00:00:00')"
+    )
+    ch.execute("INSERT INTO ingestion_history.sync_events VALUES ('2026-01-03 00:00:00', '', 'main', 'sync')")
+
+
+def test_an_install_already_on_the_uuid_moves_only_its_empty_tenant_rows(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+
+    plan = _plan(warehouse, old=NEW)
+
+    moving = {t.table.relation: t.moving for t in plan.tables if t.moving}
+    assert plan.refusals == []
+    assert moving == {"bronze_example.items": 2, "ingestion_history.sync_events": 1}, moving
+
+    _apply(warehouse, plan, tmp_path)
+
+    assert _column(warehouse, "bronze_example.items", "tenant_id") == [NEW] * 7
+    assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
+    assert f"{NEW}:main:PROJ-21" in _column(warehouse, "bronze_example.items", "unique_key")
+    assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW] * 3
+    assert _plan(warehouse, old=NEW).changing == [], "a second run must find nothing to move"
+    assert migration.rollback(warehouse) == ["bronze_example.items", "ingestion_history.sync_events"]
+    migration.finalize(warehouse)
+    assert _column(warehouse, "bronze_example.items", "tenant_id").count(NEW) == 5
+
+
+def test_an_install_already_on_the_uuid_still_refuses_a_second_tenant(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+    warehouse.execute(f"INSERT INTO bronze_example.items VALUES ('{OLD}-main-1', '{OLD}', 'main', '', now())")
+
+    plan = _plan(warehouse, old=NEW)
+
+    assert any("holds another tenant" in r for r in plan.refusals), plan.refusals
+
+
+def test_the_command_line_takes_the_uuid_as_both_tenants(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _settle_on_the_uuid(warehouse, tmp_path)
+
+    assert main(["plan", "--tenant", NEW, "--old-tenant", NEW]) == 0
+    assert main(["apply", "--tenant", NEW, "--old-tenant", NEW, "--dump-dir", str(tmp_path / "dump")]) == 0
+    assert main(["finalize"]) == 0
+    assert "" not in _column(warehouse, "ingestion_history.sync_events", "tenant_id")
+
+
 TAB_AND_NEWLINE = "synthetic\titems\nsecond line"
 
 
