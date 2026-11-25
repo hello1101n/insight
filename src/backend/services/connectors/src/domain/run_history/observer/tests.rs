@@ -780,14 +780,17 @@ async fn history_records_bronze_capacity_time_and_the_actual_pod_request_after_r
     let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
     Migrator::up(&db, None).await?;
     let stand = uuid::Uuid::new_v4().to_string();
+    let uid = uuid::Uuid::new_v4().to_string();
+    let own = |marker: String| marker.replace("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", &uid);
     let mut workflow = workflow(&json!({"phase":"Running", "startedAt":at(1)}))?;
+    workflow.metadata.uid = Some(uid.clone());
     workflow.data["spec"]["arguments"]["parameters"]
         .as_array_mut()
         .context("missing Workflow parameters")?
         .push(json!({"name":PARAMETER, "value":"{\"airbyte_cpu_millis\":1750}"}));
     let annotations = workflow.metadata.annotations.get_or_insert_default();
     let key = "insight.cyberfabric.com/airbyte-capacity-wait";
-    annotations.insert(key.into(), bronze_capacity_marker(1, 1, 2, None));
+    annotations.insert(key.into(), own(bronze_capacity_marker(1, 1, 2, None)));
     let (mut run, _) = identity(&workflow, at(7), false).context("missing run")?;
     run.stages = vec![bronze::snapshot(
         &workflow,
@@ -801,12 +804,12 @@ async fn history_records_bronze_capacity_time_and_the_actual_pod_request_after_r
     assert_eq!(result[0].stages[0].status, "wait_warning");
 
     let annotations = workflow.metadata.annotations.get_or_insert_default();
-    annotations.insert(key.into(), bronze_capacity_marker(1, 1, 2, Some(8)));
+    annotations.insert(key.into(), own(bronze_capacity_marker(1, 1, 2, Some(8))));
     let mut mark = bronze_launch_mark(1, 1, 20);
     mark["pod_request"] = json!({"cpu_millis":3575, "memory_bytes":5_368_709_120_u64});
     annotations.insert(
         "insight.cyberfabric.com/airbyte-launch".into(),
-        mark.to_string(),
+        own(mark.to_string()),
     );
     let evidence = json!({
         "job_id":20, "status":"succeeded", "started_at":at(9).timestamp(), "ended_at":at(10).timestamp(),
