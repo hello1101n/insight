@@ -11,7 +11,7 @@ field the connector did not have before (run.sh widens the catalog to match).
 
 The records carry the stamps the connector's `standard_fields` put on every
 row, keyed the way the connector keys them, so what the destination writes is
-what a real sync writes. `tenant_id` is the rig's canonical tenant (RIG_TENANT in
+what a real sync writes. `insight_tenant_id` is the rig's canonical tenant (RIG_TENANT in
 services.sh, the tenant identity-resolution is configured for); `source_id` is
 the fake one in bootstrap-db/connectors-config.yaml.
 """
@@ -57,7 +57,7 @@ COUNTS = {
 def stamp(unique_key: str) -> dict[str, object]:
     return {
         "unique_key": unique_key,
-        "tenant_id": TENANT,
+        "insight_tenant_id": TENANT,
         "source_id": SOURCE,
         "data_source": "insight_github",
         "collected_at": COLLECTED_AT,

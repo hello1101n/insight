@@ -840,7 +840,7 @@ class TestSweptRowsLandAndResolve:
         _query(f"DROP TABLE IF EXISTS bronze_departed_tracker.rows{ON_CLUSTER}")
         _query(
             f"CREATE TABLE bronze_departed_tracker.rows{ON_CLUSTER} "
-            "(tenant_id String, source_id String, payload String) "
+            "(insight_tenant_id String, source_id String, payload String) "
             f"ENGINE = {REPLICATED_PREFIX}MergeTree ORDER BY tuple()"
         )
         _query(f"INSERT INTO bronze_departed_tracker.rows VALUES ('{TENANT}', 'departed-tracker-reports', 'x')")
@@ -864,7 +864,7 @@ class TestSweptRowsLandAndResolve:
         _query(f"CREATE DATABASE IF NOT EXISTS bronze_two_faced{ON_CLUSTER}")
         _query(f"DROP TABLE IF EXISTS bronze_two_faced.rows{ON_CLUSTER}")
         _query(
-            f"CREATE TABLE bronze_two_faced.rows{ON_CLUSTER} (tenant_id String, source_id String) "
+            f"CREATE TABLE bronze_two_faced.rows{ON_CLUSTER} (insight_tenant_id String, source_id String) "
             f"ENGINE = {REPLICATED_PREFIX}MergeTree ORDER BY tuple()"
         )
         _query(f"INSERT INTO bronze_two_faced.rows VALUES ('{TENANT}', 'a'), ('{TENANT}', 'b')")

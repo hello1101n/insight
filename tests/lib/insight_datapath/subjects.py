@@ -143,7 +143,7 @@ class Subjects:
         rows = ch.query(
             self.cfg,
             "SELECT account_id, toString(person_id) FROM identity.account_assignment "
-            f"WHERE tenant_id = {ch.literal(self.tenant_id)} "
+            f"WHERE insight_tenant_id = {ch.literal(self.tenant_id)} "
             f"AND source_type = 'bamboohr' AND account_id IN ({wanted})",
         )
         return {
@@ -165,7 +165,7 @@ class Subjects:
         rows = ch.query(
             self.cfg,
             "SELECT email, toString(person_id) FROM identity.person_map "
-            f"WHERE tenant_id = {ch.literal(self.tenant_id)} AND email IN ({wanted})",
+            f"WHERE insight_tenant_id = {ch.literal(self.tenant_id)} AND email IN ({wanted})",
         )
         resolved = {str(email): str(person_id) for email, person_id in rows}
         LOG.info("identity resolved %d of %d addresses", len(resolved), len(set(emails)))

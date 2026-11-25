@@ -57,7 +57,7 @@ definitions:
 
   standard_fields: &standard_fields
     - type: AddedFieldDefinition
-      path: [tenant_id]
+      path: [insight_tenant_id]
       value: "{{ config['insight_tenant_id'] }}"
     - type: AddedFieldDefinition
       path: [source_id]
@@ -175,7 +175,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -267,7 +267,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -355,7 +355,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -453,7 +453,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -565,7 +565,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -670,7 +670,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -725,7 +725,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -789,7 +789,7 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
+          insight_tenant_id: { type: string }
           source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
@@ -839,7 +839,7 @@ spec:
       insight_tenant_id:
         type: string
         title: Insight Tenant ID
-        description: Tenant isolation identifier, injected as `tenant_id` on every record.
+        description: Tenant isolation identifier, injected as `insight_tenant_id` on every record.
         order: 0
       chatgpt_account_id:
         type: string

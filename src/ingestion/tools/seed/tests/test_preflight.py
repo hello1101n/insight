@@ -156,7 +156,7 @@ class SilverResetGuardTests(unittest.TestCase):
         stands over tables the seed never touches."""
         from insight_seed.generators.insert import RESET_TARGETS
 
-        columns = [(schema, table, "tenant_id") for schema, table in RESET_TARGETS]
+        columns = [(schema, table, "insight_tenant_id") for schema, table in RESET_TARGETS]
         client = _FakeClickHouse(columns=columns, counts=[])
         preflight._foreign_silver_rows(client, _TENANT)
 
@@ -183,21 +183,21 @@ class SilverResetGuardTests(unittest.TestCase):
         client = _FakeClickHouse(
             columns=[
                 ("silver", "class_focus_metrics", "insight_tenant_id"),
-                ("silver", "class_people", "tenant_id"),
-                ("silver", "not_a_target", "tenant_id"),
+                ("silver", "class_people", "insight_tenant_id"),
+                ("silver", "not_a_target", "insight_tenant_id"),
             ],
             counts=[],
         )
         found = preflight._tenant_columns(client)
         self.assertEqual(found[("silver", "class_focus_metrics")], "insight_tenant_id")
-        self.assertEqual(found[("silver", "class_people")], "tenant_id")
+        self.assertEqual(found[("silver", "class_people")], "insight_tenant_id")
         self.assertNotIn(("silver", "not_a_target"), found)
 
     def test_targets_without_a_tenant_column_are_reported_as_unjudgeable(self) -> None:
         from insight_seed.generators.insert import RESET_TARGETS
 
         client = _FakeClickHouse(
-            columns=[("silver", "class_people", "tenant_id")],
+            columns=[("silver", "class_people", "insight_tenant_id")],
             counts=[],
         )
         _, _, unattributable = preflight._foreign_silver_rows(client, _TENANT)
@@ -208,8 +208,8 @@ class SilverResetGuardTests(unittest.TestCase):
     def test_foreign_rows_are_summed_and_the_worst_targets_named(self) -> None:
         client = _FakeClickHouse(
             columns=[
-                ("silver", "class_git_commits", "tenant_id"),
-                ("silver", "class_people", "tenant_id"),
+                ("silver", "class_git_commits", "insight_tenant_id"),
+                ("silver", "class_people", "insight_tenant_id"),
             ],
             counts=[("silver.class_git_commits", 900), ("silver.class_people", 100)],
         )
@@ -220,7 +220,9 @@ class SilverResetGuardTests(unittest.TestCase):
     def test_a_null_tenant_is_this_seeder_s_own_row_not_a_foreign_one(self) -> None:
         """`class_people` carries the tenant in `workspace_id`; counting NULLs
         would refuse every re-seed of a stand this seeder seeded itself."""
-        client = _FakeClickHouse(columns=[("silver", "class_people", "tenant_id")], counts=[])
+        client = _FakeClickHouse(
+            columns=[("silver", "class_people", "insight_tenant_id")], counts=[]
+        )
         preflight._foreign_silver_rows(client, _TENANT)
         self.assertIn("IS NOT NULL", client.queries[-1])
         self.assertNotIn("IS NULL OR", client.queries[-1])
@@ -326,7 +328,7 @@ class GuardCoverageTests(unittest.TestCase):
         """Locks the reason the gate above exists: a same-tenant row is not
         counted, so this scan alone cannot see a single-tenant stand's data."""
         client = _FakeClickHouse(
-            columns=[("silver", "class_people", "tenant_id")],
+            columns=[("silver", "class_people", "insight_tenant_id")],
             counts=[],
         )
         preflight._foreign_silver_rows(client, _TENANT)

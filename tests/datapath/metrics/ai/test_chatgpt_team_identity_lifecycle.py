@@ -42,7 +42,7 @@ def _seat(tenant: str, read_at: str, deactivated_time: str | None) -> Seat:
         "_airbyte_extracted_at": read_at,
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "source_id": SOURCE,
         "unique_key": f"{tenant}-{SOURCE}-{SEAT_ID}",
         "collected_at": read_at,

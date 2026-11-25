@@ -72,7 +72,7 @@ def _assignments(cfg: InstanceConfig, member_ids: list[int]) -> dict[str, str]:
     ids = ", ".join(f"'{member_id}'" for member_id in member_ids)
     rows = clickhouse.query(
         cfg,
-        "SELECT account_id, tenant_id FROM identity.account_assignment"
+        "SELECT account_id, insight_tenant_id FROM identity.account_assignment"
         f" WHERE source_type = 'github' AND account_id IN ({ids})",
     )
     return {str(account): str(tenant) for account, tenant in rows}
@@ -82,7 +82,7 @@ def _map_persons(cfg: InstanceConfig, email: str) -> dict[str, str]:
     """The person the address resolves to, by tenant."""
     rows = clickhouse.query(
         cfg,
-        "SELECT tenant_id, toString(person_id) FROM identity.person_map"
+        "SELECT insight_tenant_id, toString(person_id) FROM identity.person_map"
         f" WHERE email = {clickhouse.literal(email)}",
     )
     return {str(tenant): str(person) for tenant, person in rows}

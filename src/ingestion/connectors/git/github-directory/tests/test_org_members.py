@@ -47,9 +47,7 @@ def _body(cursor: str | None = None) -> dict:
     return {"query": _query(), "variables": variables}
 
 
-def _page(
-    edges: list[dict], *, has_next: bool = False, end_cursor: str | None = None
-) -> HttpResponse:
+def _page(edges: list[dict], *, has_next: bool = False, end_cursor: str | None = None) -> HttpResponse:
     return HttpResponse(
         body=json.dumps(
             {
@@ -107,13 +105,11 @@ def test_full_refresh_single_page(http_mocker: HttpMocker) -> None:
 
 def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
     config = GitHubDirectoryConfigBuilder().with_tenant_id("t-9").with_source_id("s-9").build()
-    http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001)])
-    )
+    http_mocker.post(HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001)]))
 
     record = read_stream(CONNECTOR, _STREAM, config).records[0].record.data
 
-    assert record["tenant_id"] == "t-9"
+    assert record["insight_tenant_id"] == "t-9"
     assert record["source_id"] == "s-9"
     assert record["data_source"] == "insight_github"
     assert record["collected_at"].endswith("Z")
@@ -125,9 +121,7 @@ def test_entity_key_is_the_member_id_not_the_login(http_mocker: HttpMocker) -> N
     numeric member id, so a login rename or letter-case change on GitHub
     neither forks the member into a second bronze row nor breaks sign-in."""
     config = GitHubDirectoryConfigBuilder().build()
-    http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("Dev-One", 7001)])
-    )
+    http_mocker.post(HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("Dev-One", 7001)]))
 
     record = read_stream(CONNECTOR, _STREAM, config).records[0].record.data
 
@@ -143,11 +137,7 @@ def test_a_login_rename_keeps_the_entity_key(http_mocker: HttpMocker) -> None:
     the property the member-id keying exists for."""
     config = GitHubDirectoryConfigBuilder().build()
     http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()),
-        [
-            _page([_member("old-name", 7001)]),
-            _page([_member("new-name", 7001)]),
-        ],
+        HttpRequest(GRAPHQL_URL, body=_body()), [_page([_member("old-name", 7001)]), _page([_member("new-name", 7001)])]
     )
 
     before = read_stream(CONNECTOR, _STREAM, config).records[0].record.data
@@ -163,8 +153,7 @@ def test_a_member_without_database_id_is_dropped(http_mocker: HttpMocker) -> Non
     under ReplacingMergeTree. The stream filters the record out instead."""
     config = GitHubDirectoryConfigBuilder().build()
     http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()),
-        _page([_member("dev-one", 7001), _member("ghost", 0, databaseId=None)]),
+        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001), _member("ghost", 0, databaseId=None)])
     )
 
     output = read_stream(CONNECTOR, _STREAM, config)
@@ -192,8 +181,7 @@ def test_absent_profile_fields_are_empty_not_the_text_none(http_mocker: HttpMock
     """
     config = GitHubDirectoryConfigBuilder().build()
     http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()),
-        _page([_member("dev-one", 7001, email=None, name=None, company=None)]),
+        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001, email=None, name=None, company=None)])
     )
 
     record = read_stream(CONNECTOR, _STREAM, config).records[0].record.data
@@ -208,14 +196,10 @@ def test_absent_profile_fields_are_empty_not_the_text_none(http_mocker: HttpMock
 def test_pagination_injects_cursor(http_mocker: HttpMocker) -> None:
     config = GitHubDirectoryConfigBuilder().build()
     http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()),
-        _page([_member("dev-one", 7001)], has_next=True, end_cursor="CUR1"),
+        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001)], has_next=True, end_cursor="CUR1")
     )
     # Only served if `variables.cursor` was injected into the request body.
-    http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body(cursor="CUR1")),
-        _page([_member("dev-two", 7002)]),
-    )
+    http_mocker.post(HttpRequest(GRAPHQL_URL, body=_body(cursor="CUR1")), _page([_member("dev-two", 7002)]))
 
     output = read_stream(CONNECTOR, _STREAM, config)
 
@@ -236,8 +220,7 @@ def test_empty_page(http_mocker: HttpMocker) -> None:
 def test_schema_conformance(http_mocker: HttpMocker) -> None:
     config = GitHubDirectoryConfigBuilder().build()
     http_mocker.post(
-        HttpRequest(GRAPHQL_URL, body=_body()),
-        _page([_member("dev-one", 7001), _member("dev-two", 7002, name=None)]),
+        HttpRequest(GRAPHQL_URL, body=_body()), _page([_member("dev-one", 7001), _member("dev-two", 7002, name=None)])
     )
 
     output = read_stream(CONNECTOR, _STREAM, config)

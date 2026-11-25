@@ -88,7 +88,7 @@ definitions:
 
   stamp: &stamp
     - type: AddedFieldDefinition
-      path: [tenant_id]
+      path: [insight_tenant_id]
       value: "{{ config['insight_tenant_id'] }}"
     - type: AddedFieldDefinition
       path: [source_id]
@@ -168,7 +168,7 @@ definitions:
   lookback: &lookback "P1D"
 
   base_properties: &base_properties
-    tenant_id: { type: string }
+    insight_tenant_id: { type: string }
     source_id: { type: string }
     unique_key: { type: string }
     payload_json: { type: string }
@@ -808,7 +808,7 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path: [source_id]

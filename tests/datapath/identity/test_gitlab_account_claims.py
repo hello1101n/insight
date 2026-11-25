@@ -40,7 +40,7 @@ class Envelope:
             "_airbyte_extracted_at": READ_AT,
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
-            "tenant_id": self.tenant,
+            "insight_tenant_id": self.tenant,
             "source_id": f"gitlab-{self.run_tag}",
             "data_source": "insight_gitlab",
             "collected_at": READ_AT,

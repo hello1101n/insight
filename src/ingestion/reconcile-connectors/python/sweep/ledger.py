@@ -302,10 +302,13 @@ class Ledger:
         # written without a quorum, so on a cluster the rows are read from every
         # replica too: one still fetching could answer with half of them.
         if self._cluster is None:
-            found = self._select(f"SELECT DISTINCT tenant_id, source_id FROM {namespace}.{table} LIMIT 2")
+            found = self._select(
+                f"SELECT DISTINCT insight_tenant_id AS tenant_id, source_id FROM {namespace}.{table} LIMIT 2"
+            )
         else:
             found = self._select(
-                f"SELECT tenant_id, source_id FROM clusterAllReplicas({_quote(self._cluster)}, {namespace}.{table}) "
+                f"SELECT insight_tenant_id AS tenant_id, source_id "
+                f"FROM clusterAllReplicas({_quote(self._cluster)}, {namespace}.{table}) "
                 f"GROUP BY tenant_id, source_id LIMIT 2 {_SKIP_UNAVAILABLE_REPLICAS}"
             )
         if len(found) != 1:

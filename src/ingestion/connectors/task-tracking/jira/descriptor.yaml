@@ -174,7 +174,10 @@ name: jira
 # deletes and batches per tenant. MAJOR because rows already written change
 # key, and only the full refresh a major dispatches (ADR-0015) replaces them in
 # the journal, its lifecycle arms and the silver classes.
-version: "19.0.0"
+# 19.1.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "19.1.0"
 # 22:10 and 10:10 UTC: clear of the 02:00-06:00 daily block and of github's
 # 4-hourly ticks, which rebuild the same task chain; :10 misses the */15
 # reconcile and identity-seed ticks.
