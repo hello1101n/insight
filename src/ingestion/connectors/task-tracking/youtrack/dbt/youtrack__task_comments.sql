@@ -5,10 +5,11 @@ WITH comments AS (
     -- their key, `{tenant}-{source}-{comment id}`; the issue comes from the snapshots.
     -- Such a row that no snapshot lists cannot name its issue (one deleted or
     -- hidden from the source since) and is left out until a snapshot lists it.
-    SELECT *, coalesce(id, substring(unique_key, length(concat(insight_tenant_id, '-', source_id, '-')) + 1)) AS resolved_comment_id
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id),
+        coalesce(id, substring(unique_key, length(concat({{ bronze_tenant() }}, '-', source_id, '-')) + 1)) AS resolved_comment_id
     FROM {{ source('bronze_youtrack', 'youtrack_comments') }} FINAL
 )
-SELECT c.unique_key AS unique_key, ifNull(c.insight_tenant_id, '') AS insight_tenant_id, c.source_id AS insight_source_id, 'youtrack' AS data_source,
+SELECT c.unique_key AS unique_key, c.insight_tenant_id AS insight_tenant_id, c.source_id AS insight_source_id, 'youtrack' AS data_source,
     c.resolved_comment_id AS comment_id, coalesce(c.issue_id_readable, nullIf(i.id_readable, '')) AS id_readable, c.author_id AS author_id,
     fromUnixTimestamp64Milli(toInt64(c.created)) AS created_at,
     {{ youtrack_timestamp('c.updated') }} AS updated_at, c.text AS body,

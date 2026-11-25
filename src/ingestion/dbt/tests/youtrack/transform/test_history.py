@@ -454,7 +454,7 @@ def test_gold_uses_bindings_and_does_not_choose_first_of_many_assignees(case: Wa
     )
     case.build()
     case.client.command(
-        "INSERT INTO config.task_field_roles (insight_tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, role) VALUES ('synthetic-tenant','synthetic-youtrack','youtrack','field-1','2026-01-01','2026-01-01','assignee'), ('synthetic-tenant','synthetic-youtrack','youtrack','due-1','2026-01-01','2026-01-01','duedate')"
+        "INSERT INTO config.task_field_roles (insight_tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, role) VALUES ('bbbbbbbb-2222-4222-8222-222222222222','synthetic-youtrack','youtrack','field-1','2026-01-01','2026-01-01','assignee'), ('bbbbbbbb-2222-4222-8222-222222222222','synthetic-youtrack','youtrack','due-1','2026-01-01','2026-01-01','duedate')"
     )
     case.build("class_task_field_history class_task_users class_task_statuses class_task_issuetypes")
     case.build("task_issue_state task_status_spans")

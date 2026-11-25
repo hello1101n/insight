@@ -57,7 +57,7 @@ models:
     description: "HubSpot contacts → staging, feeds class_crm_contacts"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -73,7 +73,7 @@ models:
     description: "HubSpot companies → staging, feeds class_crm_accounts"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -89,7 +89,7 @@ models:
     description: "HubSpot deals → staging, feeds class_crm_deals"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -105,7 +105,7 @@ models:
     description: "HubSpot engagements (calls/emails/meetings/tasks/notes/communications) → staging, feeds class_crm_activities"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -127,7 +127,7 @@ models:
     description: "HubSpot owners → staging, feeds class_crm_users. Rows with null email filtered out."
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -150,7 +150,7 @@ models:
     description: "HubSpot leads → staging, feeds class_crm_leads"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -166,7 +166,7 @@ models:
     description: "HubSpot tickets → staging, feeds class_crm_tickets"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: insight_source_id
         tests: [not_null]
       - name: unique_key
@@ -182,7 +182,7 @@ models:
     description: "Associated object ids per (record, object type) → staging, feeds class_crm_associations"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -202,7 +202,7 @@ models:
     description: "Deal and ticket pipelines → staging, feeds class_crm_pipelines"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -220,7 +220,7 @@ models:
     description: "Pipeline stages → staging, feeds class_crm_pipeline_stages"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -240,7 +240,7 @@ models:
     description: "Deal and ticket property value changes → staging, feeds class_crm_field_history"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -260,7 +260,7 @@ models:
     description: "Owner teams → staging, feeds class_crm_teams"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -276,7 +276,7 @@ models:
     description: "Property definitions of every synced object → staging, feeds class_crm_property_definitions"
     columns:
       - name: insight_tenant_id
-        tests: [not_null]
+        tests: [not_null, not_empty]
       - name: source_id
         tests: [not_null]
       - name: unique_key
@@ -293,6 +293,11 @@ models:
   - name: hubspot__owners_latest
     description: "One row per owner across live and archived Bronze — the source of the identity snapshot"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests: [not_null]
       - name: owner_id

@@ -34,7 +34,7 @@
 WITH src AS (
     {% for arm in arms %}
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
         source_id,
         concat(insight_tenant_id, '-', source_id, '-{{ arm.from }}-', id, '-{{ arm.to }}') AS unique_key,
         '{{ arm.from }}'                                AS from_object_type,

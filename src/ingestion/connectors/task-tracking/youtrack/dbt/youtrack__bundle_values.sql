@@ -1,6 +1,6 @@
 {{ config(materialized='view', schema='staging', tags=['youtrack', 'staging']) }}
 
-SELECT insight_tenant_id, coalesce(source_id, '') AS insight_source_id,
+SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(source_id, '') AS insight_source_id,
     coalesce(field_id, '') AS field_id,
     coalesce(field_type_id, '') AS field_type,
     JSONExtractRaw({{ youtrack_json('values_json') }}, 'value') AS value,

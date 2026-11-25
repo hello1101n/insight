@@ -29,7 +29,7 @@
 WITH issue_rows AS (
     -- Every row, not the newest: bronze keeps one per key the connector saw.
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
         CAST(source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
@@ -39,7 +39,7 @@ WITH issue_rows AS (
     UNION ALL
 
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
         CAST(source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
@@ -52,7 +52,7 @@ WITH issue_rows AS (
     -- The census lists every issue a visible project holds, whatever its last
     -- update, so a key outside the sync window still resolves.
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
         CAST(source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
@@ -78,7 +78,7 @@ moves AS (
         toUInt8(3)                                                    AS precedence
     FROM (
         SELECT
-            insight_tenant_id,
+            {{ bronze_tenant() }}                                     AS insight_tenant_id,
             CAST(source_id AS String)                                 AS insight_source_id,
             COALESCE(toString(jira_id), '')                           AS issue_id,
             arrayJoin(JSONExtractArrayRaw(COALESCE(items, '[]')))     AS item
