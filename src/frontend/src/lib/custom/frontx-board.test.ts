@@ -327,7 +327,7 @@ describe("frontxBoard", () => {
     expect(plain.widget.render).not.toHaveProperty("unlisted_stack_group");
   });
 
-  it("reads a date bucket on the x axis as time, any other column as a category, and titles no axis", () => {
+  it("draws every x column on a category axis, as the current chart does, and titles no axis", () => {
     const [line, bar, stacked] = cells([
       { widget: "line" },
       { widget: "bar" },
@@ -335,7 +335,7 @@ describe("frontxBoard", () => {
     ]);
 
     expect(line.widget.render).toMatchObject({
-      x_axis: { type: "time" },
+      x_axis: { type: "category" },
       y_axis: { type: "value" },
       drill_down: true,
     });
@@ -604,26 +604,8 @@ describe("frontxBoard x values", () => {
     );
   }
 
-  it.each<[string, unknown, unknown]>([
-    ["a date-time", "2026-11-03 00:00:00", "2026-11-03T00:00:00Z"],
-    ["an hour bucket", "2026-11-03 14:00:00", "2026-11-03T14:00:00Z"],
-    [
-      "fractional seconds",
-      "2026-11-03 00:00:00.000",
-      "2026-11-03T00:00:00.000Z",
-    ],
-    ["a date", "2026-11-03", "2026-11-03"],
-    ["an ISO date-time", "2026-11-03T00:00:00Z", "2026-11-03T00:00:00Z"],
-    ["epoch milliseconds", 1_793_664_000_000, 1_793_664_000_000],
-    ["null", null, null],
-  ])(
-    "hands a bucket that is %s to the time axis as ISO 8601",
-    (kind, value, x) => {
-      expect(xs(LINE, [value]), kind).toEqual([x]);
-    }
-  );
-
   it.each<[string, Widget]>([
+    ["line over buckets", LINE],
     ["bar", BAR],
     ["bar with a series column", STACKED],
   ])(
@@ -711,7 +693,7 @@ describe("frontxBoard percent columns", () => {
       "line",
       { type: "line", metric: "m", x: "bucket", y: "rate" },
       { columns: ["bucket", "rate"], rows: [["2026-10-01", 50]] },
-      { series: [{ name: "rate", points: [{ x: "2026-10-01", y: 0.5 }] }] },
+      { series: [{ name: "rate", points: [{ x: "Oct 1", y: 0.5 }] }] },
     ],
     [
       "bar",

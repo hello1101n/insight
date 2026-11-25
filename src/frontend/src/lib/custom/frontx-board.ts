@@ -61,11 +61,6 @@ const PERCENT = { value_type: "percent" } as const;
 
 const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 
-// WORKAROUND: the warehouse writes a bucket as a UTC `2026-11-03 00:00:00`, and the FrontX time
-// axis reads only ISO 8601 with a zone. CEL has no replace.
-const instant = (value: string) =>
-  `(type(${value}) == string && size(${value}) > 10 && ${value}.substring(10, 11) == ' ' ? dyn(${value}.substring(0, 10) + 'T' + ${value}.substring(11) + 'Z') : ${value})`;
-
 const DATE = cel(String.raw`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])`);
 
 const MONTHS = cel(
@@ -78,16 +73,9 @@ const isDate = (value: string) =>
 const spansYears = `cel.bind(ys, response.rows.filter(r, ${isDate("r[x]")}).map(r, r[x].substring(0, 4)), ys.exists(yr, yr != ys[0]))`;
 
 // WORKAROUND: a FrontX category axis writes a date as it arrives, and the current chart writes `Nov 3`.
+// INVARIANT: the transform binds `w` to whether the x column spans more than one year.
 const shortDate = (value: string) =>
   `(${isDate(value)} ? dyn(${MONTHS}[int(${value}.substring(5, 7)) - 1] + ' ' + string(int(${value}.substring(8, 10))) + (w ? ', ' + ${value}.substring(0, 4) : '')) : ${value})`;
-
-// INVARIANT: `point` reads a row `r`, and the transform binds `x` to the x column and `w` to `withYear`.
-function xAxis(x: string) {
-  if (x === "bucket") {
-    return { type: "time", withYear: "false", point: instant("r[x]") };
-  }
-  return { type: "category", withYear: spansYears, point: shortDate("r[x]") };
-}
 
 function dataWidgetId(type: string, key: string): string {
   return `${DATA_WIDGET_TYPE_ID}frontx.dashboard.widget.${type}.v1~${uuidv5(key, NAMESPACE)}`;
@@ -130,19 +118,18 @@ function chart(
   render: Record<string, unknown>,
   series: (point: string, value: string) => string
 ): Drawn {
-  const axis = xAxis(x);
-  const point = `{'x': ${axis.point}, 'y': ${number("r", "y", percent)}}`;
+  const point = `{'x': ${shortDate("r[x]")}, 'y': ${number("r", "y", percent)}}`;
 
   return {
     ...(percent ? { value_format: PERCENT } : {}),
     type: "cartesian_chart",
     render: {
       ...render,
-      x_axis: { type: axis.type },
+      x_axis: { type: "category" },
       y_axis: { type: "value" },
       drill_down: true,
     },
-    transform: `cel.bind(x, ${column(x)}, cel.bind(w, ${axis.withYear}, cel.bind(y, ${column(y)}, {'series': ${series(point, cel(y))}})))`,
+    transform: `cel.bind(x, ${column(x)}, cel.bind(w, ${spansYears}, cel.bind(y, ${column(y)}, {'series': ${series(point, cel(y))}})))`,
   };
 }
 
