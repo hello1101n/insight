@@ -1,311 +1,192 @@
-"""Move each table by copy, check, swap — and recover from any step of it.
+"""Move each table by copy, count check and EXCHANGE; undo the whole run on any failure.
 
-Which table holds the original is never inferred from a name or remembered in a
-file: every rewritten copy carries the table comment MIGRATED, and every table
-loaded from a dump carries RESTORED, from the moment it is created. A comment
-travels with its table through EXCHANGE and RENAME, so rollback, finalize and
-restore read the state of an interrupted run from the warehouse itself — even
-when the reply to a swap was lost — and a second run of any of them finishes
-what the first left.
+Each table is copied into `<table>__tenant_backup` (or the first free
+`__tenant_backup_<n>`) with every tenant set to the install's, the copy is
+checked against the original, and the two are EXCHANGEd: the migrated rows go
+live and the original stays beside them under the backup name. Nothing here
+ever drops a backup; `finalize` does, by hand.
 
-INVARIANT: nothing writes to these tables while this runs (connectors and dbt
-stopped). Each step re-reads the original and stops if it changed under it.
+Which table is which is read from ClickHouse, never assumed: the copy's UUID is
+recorded when it is created, and EXCHANGE moves names, not UUIDs. So when a
+step fails — even a swap whose reply was lost — `undo` swaps back every table
+whose live name holds a copy, and drops only tables that are copies.
+
+INVARIANT: nothing writes to these tables while this runs (connectors, dbt and
+reconcile stopped by the pre-upgrade hook).
 """
 
 from __future__ import annotations
 
-import base64
 import contextlib
-import json
-import re
-from collections.abc import Callable
-from dataclasses import asdict, dataclass
-from pathlib import Path
+from dataclasses import dataclass
 
 from tenant_migration import ddl, keys
 from tenant_migration.clickhouse import ClickHouse
-from tenant_migration.inventory import BACKUP, COPY, DUMP_CHECK, REJECTED, RESTORE, Relation, Table
-from tenant_migration.inventory import WORK_SUFFIXES as WORK
-from tenant_migration.plan import Plan, TablePlan
+from tenant_migration.inventory import BACKUP, KEY_COLUMN, Relation, Table
+from tenant_migration.plan import TablePlan
 
-MIGRATED = "tenant_migration: rewritten copy"
-RESTORED = "tenant_migration: loaded from dump"
-MANIFEST = "manifest.json"
-CREATE_TABLE = re.compile(r"^CREATE TABLE \S+(?: UUID '[0-9A-Fa-f-]+')?")
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+MAX_BACKUPS = 100
 
 
 class MigrationError(RuntimeError):
     pass
 
 
+class UndoError(MigrationError):
+    """The run failed and not every table could be put back."""
+
+
 @dataclass(frozen=True)
-class Measure:
-    """What a copy must preserve: rows, or keys where merges may collapse rows."""
+class Copy:
+    """A rewritten copy of `rel`, created under `rel{suffix}` with ClickHouse UUID `uuid`."""
 
-    rows: int
-    keys: int
-
-
-def measure(ch: ClickHouse, table: Table, suffix: str = "", key: str | None = None) -> Measure:
-    key = key or table.columns.key
-    keys_sql = f"uniqExact({key})" if key else "0"
-    ((rows, unique),) = ch.rows(f"SELECT count(), {keys_sql} FROM {table.sql(suffix)}")
-    return Measure(rows=int(rows), keys=int(unique))
+    rel: Relation
+    suffix: str
+    uuid: str
 
 
-def _same(by_keys: bool, expected: Measure, actual: Measure) -> bool:
-    """Keys on a replacing table, whose merges may collapse rows at any time; rows elsewhere."""
-    return actual.keys == expected.keys if by_keys else actual.rows == expected.rows
-
-
-def _by_keys(table: Table) -> bool:
-    return table.replacing and table.columns.key is not None
-
-
-def _comments(ch: ClickHouse, rel: Relation) -> dict[str, str]:
-    """suffix → table comment, for the relation and each of its work tables that exists."""
-    names = ", ".join(f"'{rel.name}{suffix}'" for suffix in ("", *WORK))
+def table_uuid(ch: ClickHouse, rel: Relation, suffix: str = "") -> str | None:
     rows = ch.rows(
-        f"SELECT name, base64Encode(comment) FROM system.tables WHERE database = '{rel.database}' AND name IN ({names})"
+        f"SELECT toString(uuid) FROM system.tables WHERE database = '{rel.database}' AND name = '{rel.name}{suffix}'"
     )
-    return {name[len(rel.name) :]: decode_comment(encoded) for name, encoded in rows}
+    return rows[0][0] if rows else None
 
 
-def decode_comment(encoded: str) -> str:
-    """A comment read through base64, so a tab or newline in it cannot split the row."""
-    return base64.b64decode(encoded).decode("utf-8")
+def backup_suffix(ch: ClickHouse, rel: Relation) -> str:
+    """`__tenant_backup`, or past a backup an earlier deploy left, the first free `__tenant_backup_<n>`."""
+    taken = {
+        name
+        for (name,) in ch.rows(
+            f"SELECT name FROM system.tables WHERE database = '{rel.database}' "
+            f"AND startsWith(name, '{rel.name}{BACKUP}')"
+        )
+    }
+    for n in range(1, MAX_BACKUPS):
+        suffix = BACKUP if n == 1 else f"{BACKUP}_{n}"
+        if f"{rel.name}{suffix}" not in taken:
+            return suffix
+    raise MigrationError(f"{rel}: {MAX_BACKUPS - 1} backups already stand — run `finalize` first")
 
 
-def _set_comment(ch: ClickHouse, rel: Relation, suffix: str, comment: str) -> None:
-    ch.execute(ddl.set_comment(rel, suffix, comment))
+def _create_copy(ch: ClickHouse, table: Table, suffix: str) -> None:
+    rel = table.rel
+    if table.renames:
+        # The copy keeps the original's column order and keys, under the new name.
+        original = ch.execute(ddl.show_create(rel), fmt="TabSeparatedRaw")
+        ch.execute(ddl.tenant_renamed(ddl.retarget(original, rel, suffix)))
+        return
+    ch.execute(ddl.create_like(rel, suffix))
+    if table.adds:
+        ch.execute(ddl.add_tenant(rel, suffix, KEY_COLUMN if table.key else None))
 
 
-def _replacements(table: Table, tenants: keys.Tenants) -> str:
-    columns = table.columns
-    replaced = [f"{keys.new_tenant(columns.tenant, tenants)} AS {columns.tenant}"]
-    if columns.key:
-        replaced.append(f"{keys.rewritten_key(columns, tenants)} AS {columns.key}")
-    return ", ".join(replaced)
-
-
-def dump(ch: ClickHouse, plan: Plan, directory: Path) -> None:
-    """DDL, rows and comment of every table the plan changes, before anything changes."""
-    directory.mkdir(parents=True, exist_ok=False)
-    entries = []
-    for t in plan.changing:
-        table = t.table
-        rel = Relation(table.database, table.name)
-        (directory / f"{table.relation}.sql").write_text(ch.execute(ddl.show_create(table.rel), fmt="TabSeparatedRaw"))
-        counted = measure(ch, table)
-        path = directory / f"{table.relation}.native.gz"
-        ch.dump(f"SELECT * FROM {table.sql()}", path)
-        entry: dict[str, object] = {
-            "relation": table.relation,
-            "rows": counted.rows,
-            "keys": counted.keys,
-            "by_keys": _by_keys(table),
-            "comment": _comments(ch, rel).get("", ""),
-        }
-        verify_dump(ch, rel, path, entry)
-        entries.append(entry)
-    manifest = {"tenant": plan.tenants.new, "old_tenant": plan.tenants.old, "tables": entries}
-    (directory / MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n")
-
-
-def verify_dump(ch: ClickHouse, rel: Relation, path: Path, entry: dict[str, object]) -> None:
-    """Load the dump into a scratch copy, as `restore` would, before it counts as the way back.
-
-    SAFETY: a streamed reply can end in an exception after a 200, leaving a file no restore can load.
-    """
-    ch.execute(ddl.drop(rel, DUMP_CHECK))
-    try:
-        ch.execute(ddl.create_like(rel, DUMP_CHECK))
-        ch.load(rel.sql(DUMP_CHECK), path)
-        loaded = _matches_dump(ch, rel, DUMP_CHECK, entry)
-    except Exception as error:
-        raise MigrationError(f"{rel}: the dump does not load back, nothing changed — {error}") from error
-    finally:
-        ch.execute(ddl.drop(rel, DUMP_CHECK))
-    if not loaded:
-        raise MigrationError(f"{rel}: the dump does not load back to what was counted, nothing changed")
-
-
-def migrate_table(ch: ClickHouse, t: TablePlan, tenants: keys.Tenants) -> Measure:
-    table = t.table
-    rel = Relation(table.database, table.name)
-    by_keys = _by_keys(table)
-    new_key = keys.rewritten_key(table.columns, tenants) if table.columns.key else None
-    before = measure(ch, table)
-    expected = Measure(rows=before.rows, keys=measure(ch, table, key=new_key).keys if new_key else 0)
-
-    try:
-        if table.renames_tenant:
-            # Positional: the copy keeps the original's column order, so the INSERT below still lines up.
-            original = ch.execute(ddl.show_create(rel), fmt="TabSeparatedRaw")
-            ch.execute(ddl.tenant_renamed(retarget(original, rel, COPY)))
+def _insert(table: Table, suffix: str, tenant: str) -> str:
+    columns, expressions = [], []
+    for name, _ in table.columns:
+        columns.append(table.target if name == table.tenant else name)
+        if name == table.tenant:
+            expressions.append(keys.lit(tenant))
+        elif name == table.key and table.tenant:
+            expressions.append(keys.key_expression(table, tenant))
+        elif name == table.comment_id:
+            expressions.append(keys.comment_id_expression(table))
         else:
-            ch.execute(ddl.create_like(rel, COPY))
-        _set_comment(ch, rel, COPY, MIGRATED)
-        ch.execute(ddl.insert_rewritten(rel, COPY, _replacements(table, tenants)))
-        copied = measure(ch, table, COPY)
-        if not _same(by_keys, before, measure(ch, table)) or not _same(by_keys, expected, copied):
-            raise MigrationError(f"{rel}: copy holds {copied}, expected {expected}")
-    except Exception as error:
-        with contextlib.suppress(Exception):
-            ch.execute(ddl.drop(rel, COPY))
-        raise MigrationError(f"{rel}: not migrated, the table is unchanged — {error}") from error
-
-    try:
-        ch.execute(ddl.exchange(rel, "", COPY))
-        live = measure(ch, table)
-        if _comments(ch, rel).get("") != MIGRATED or not _same(by_keys, copied, live):
-            raise MigrationError(f"{rel}: swapped-in table reads {live}, expected {copied}")
-        ch.execute(ddl.rename(rel, COPY, BACKUP))
-    except Exception as error:
-        raise MigrationError(f"{rel}: failed at the swap — {error}. {_compensate(ch, rel)}") from error
-    return live
+            expressions.append(keys.col(name))
+    if table.adds:
+        columns.append(table.target)
+        expressions.append(keys.lit(tenant))
+    return ddl.insert(table.rel, suffix, columns, expressions)
 
 
-def _compensate(ch: ClickHouse, rel: Relation) -> str:
-    try:
-        rollback_relation(ch, rel)
-    except Exception as error:  # noqa: BLE001 — reported inside the original failure, which the caller raises
-        return f"Putting the original back failed too ({error}); run `rollback` once ClickHouse answers."
-    return f"The original is live again; the rewritten copy is kept as {rel}{REJECTED}."
+def _check(ch: ClickHouse, table: Table, suffix: str, tenant: str) -> None:
+    """The copy holds every row (every key, where merges may collapse rows), all under the tenant."""
+    rel = table.rel
+    if table.replacing and table.key and table.tenant:
+        expected = ch.scalar(f"SELECT uniqExact({keys.key_expression(table, tenant)}) FROM {rel.sql()} AS src")
+        actual = ch.scalar(f"SELECT uniqExact(`{table.key}`) FROM {rel.sql(suffix)}")
+        what = "keys"
+    else:
+        expected = ch.scalar(f"SELECT count() FROM {rel.sql()}")
+        actual = ch.scalar(f"SELECT count() FROM {rel.sql(suffix)}")
+        what = "rows"
+    if actual != expected:
+        raise MigrationError(f"{rel}: the copy holds {actual} {what}, the original {expected}")
+    foreign = ch.scalar(
+        f"SELECT count() FROM {rel.sql(suffix)} WHERE ifNull(toString(`{table.target}`), '') != '{tenant}'"
+    )
+    if foreign:
+        raise MigrationError(f"{rel}: the copy still holds {foreign} row(s) under another tenant")
 
 
-def apply(
-    ch: ClickHouse, plan: Plan, dump_dir: Path, *, before_rewrite: list[Callable[[], None]]
-) -> list[tuple[str, Measure]]:
-    if plan.refusals:
-        raise MigrationError("refusing: " + "; ".join(plan.refusals))
-    dump(ch, plan, dump_dir)
-    for step in before_rewrite:
-        step()
-    moved: list[tuple[str, Measure]] = []
-    for table_plan in plan.changing:
+def migrate_table(ch: ClickHouse, table: Table, tenant: str, copies: list[Copy]) -> None:
+    """Copy, check, swap; the copy is listed in `copies` as soon as it exists, for `undo`."""
+    rel = table.rel
+    suffix = backup_suffix(ch, rel)
+    _create_copy(ch, table, suffix)
+    uuid = table_uuid(ch, rel, suffix)
+    if not uuid or uuid == NIL_UUID:
+        ch.execute(ddl.drop(rel, suffix))
+        raise MigrationError(f"{rel}: the copy has no UUID — EXCHANGE needs an Atomic database")
+    copies.append(Copy(rel, suffix, uuid))
+    ch.execute(_insert(table, suffix, tenant))
+    _check(ch, table, suffix, tenant)
+    ch.execute(ddl.exchange(rel, suffix))
+    if table_uuid(ch, rel) != uuid:
+        raise MigrationError(f"{rel}: after the swap the live table is not the copy")
+
+
+def undo(ch: ClickHouse, copies: list[Copy]) -> list[str]:
+    """Swap back every copy that went live and drop every copy, newest first; returns what it could not."""
+    problems = []
+    for copy in reversed(copies):
         try:
-            moved.append((table_plan.table.relation, migrate_table(ch, table_plan, plan.tenants)))
-        except MigrationError as error:
-            raise _with_earlier_swaps(error, [relation for relation, _ in moved]) from error
-    return moved
+            if table_uuid(ch, copy.rel) == copy.uuid:
+                ch.execute(ddl.exchange(copy.rel, copy.suffix))
+            if table_uuid(ch, copy.rel) == copy.uuid:
+                raise MigrationError("the copy is still live")
+            if table_uuid(ch, copy.rel, copy.suffix) == copy.uuid:
+                ch.execute(ddl.drop(copy.rel, copy.suffix))
+        except Exception as error:  # noqa: BLE001 — every table gets its chance; the caller reports all
+            problems.append(f"{copy.rel}: {error}")
+    return problems
 
 
-def _with_earlier_swaps(error: MigrationError, done: list[str]) -> MigrationError:
-    """The failed table's own message hides the tables already swapped before it."""
-    if not done:
-        return error
-    return MigrationError(
-        f"{error} Already migrated before it: {', '.join(done)} — the warehouse now holds both tenants; "
-        "run `rollback` to undo them or `finalize` to keep them before restarting any writer."
-    )
-
-
-def rollback_relation(ch: ClickHouse, rel: Relation) -> bool:
-    """Make the original live and set the rewritten copy aside; False when nothing was rewritten."""
-    comments = _comments(ch, rel)
-    places = [s for s in ("", COPY, BACKUP) if s in comments]
-    rewritten = [s for s in places if comments[s] == MIGRATED]
-    originals = [s for s in places if comments[s] != MIGRATED]
-    if not rewritten:
-        return False
-    if len(originals) != 1 or len(rewritten) != 1:
-        raise MigrationError(f"{rel}: cannot tell the original apart in {sorted(places)} — leaving it for an operator")
-    if REJECTED in comments:
-        raise MigrationError(f"{rel}{REJECTED} exists — finalize before rolling back again")
-
-    original = originals[0]
-    if original and "" in comments:
-        ch.execute(ddl.exchange(rel, "", original))
-    elif original:
-        ch.execute(ddl.rename(rel, original, ""))
-
-    aside = next(s for s in (COPY, BACKUP) if _comments(ch, rel).get(s) == MIGRATED)
-    ch.execute(ddl.rename(rel, aside, REJECTED))
-    return True
-
-
-def _relations_with(ch: ClickHouse, suffixes: tuple[str, ...], marker: str) -> list[Relation]:
-    by_suffix = " OR ".join(f"endsWith(name, '{s}')" for s in suffixes)
-    rows = ch.rows(
-        f"SELECT database, name FROM system.tables WHERE ({by_suffix}) OR comment = '{marker}' ORDER BY database, name"
-    )
-    found: dict[str, Relation] = {}
-    for database, name in rows:
-        base = next((name[: -len(s)] for s in WORK if name.endswith(s)), name)
-        found.setdefault(f"{database}.{base}", Relation(database, base))
-    return list(found.values())
-
-
-def rollback(ch: ClickHouse) -> list[str]:
-    """Put every rewritten table's original back, wherever an interrupted run left it."""
-    return [str(rel) for rel in _relations_with(ch, (COPY, BACKUP), MIGRATED) if rollback_relation(ch, rel)]
+def apply(ch: ClickHouse, plans: list[TablePlan], tenant: str) -> list[str]:
+    """Migrate every pending table, or none: any failure — an interrupt included — undoes the run."""
+    copies: list[Copy] = []
+    migrated: list[str] = []
+    try:
+        for plan in (p for p in plans if p.pending):
+            print(f"migrating {plan.table.relation} ({plan.change}, {plan.rows} rows)", flush=True)
+            migrate_table(ch, plan.table, tenant, copies)
+            migrated.append(plan.table.relation)
+    except BaseException as error:
+        with contextlib.suppress(Exception):
+            ch.cancel_running()
+        problems = undo(ch, copies)
+        if problems:
+            raise UndoError(
+                f"{error}; PUTTING THE ORIGINALS BACK FAILED for: {'; '.join(problems)} — "
+                f"each original is in <table>{BACKUP}* beside it"
+            ) from error
+        raise MigrationError(f"{error}; every table is back as it was") from error
+    return migrated
 
 
 def finalize(ch: ClickHouse) -> list[str]:
-    """Keep what is live, drop every work table, and give a rewritten table back its comment."""
+    """Drop every `__tenant_backup*` table whose live table stands."""
     dropped = []
-    for rel in _relations_with(ch, WORK, MIGRATED):
-        comments = _comments(ch, rel)
-        if "" not in comments:
-            raise MigrationError(f"{rel}: no live table — restore or roll back before finalizing")
-        if comments[""] == MIGRATED:
-            kept = [comments[s] for s in (COPY, BACKUP) if s in comments and comments[s] != MIGRATED]
-            _set_comment(ch, rel, "", kept[0] if kept else "")
-        for suffix in WORK:
-            if suffix in comments:
-                ch.execute(ddl.drop(rel, suffix, if_exists=False))
-                dropped.append(f"{rel}{suffix}")
+    rows = ch.rows(
+        f"SELECT database, name FROM system.tables WHERE match(name, '^[A-Za-z0-9_]+{BACKUP}(_[0-9]+)?$') "
+        "ORDER BY database, name"
+    )
+    for database, name in rows:
+        base = name[: name.index(BACKUP)]
+        rel = Relation(database, base)
+        if table_uuid(ch, rel) is None:
+            print(f"kept {database}.{name}: {rel} does not exist")
+            continue
+        ch.execute(ddl.drop(rel, name[len(base) :]))
+        dropped.append(f"{database}.{name}")
     return dropped
-
-
-def retarget(ddl: str, rel: Relation, suffix: str) -> str:
-    """The saved DDL naming the work table; an explicit UUID is dropped, as it is the dumped table's."""
-    if not CREATE_TABLE.match(ddl):
-        raise MigrationError(f"{rel}: the saved DDL does not start with CREATE TABLE")
-    return CREATE_TABLE.sub(f"CREATE TABLE {rel.sql(suffix)}", ddl, count=1)
-
-
-def _matches_dump(ch: ClickHouse, rel: Relation, suffix: str, entry: dict[str, object]) -> bool:
-    """Keys on a replacing table, which merges may collapse after the load; rows elsewhere."""
-    if entry["by_keys"]:
-        return ch.scalar(f"SELECT uniqExact(unique_key) FROM {rel.sql(suffix)}") == entry["keys"]
-    return ch.scalar(f"SELECT count() FROM {rel.sql(suffix)}") == entry["rows"]
-
-
-def restore_relation(ch: ClickHouse, dump_dir: Path, entry: dict[str, object]) -> None:
-    """Load one dumped table into a fresh relation from its saved DDL, check it, and make it live."""
-    rel = Relation.parse(str(entry["relation"]))
-    comments = _comments(ch, rel)
-    if comments.get("") != RESTORED:
-        if REJECTED in comments:
-            raise MigrationError(f"{rel}{REJECTED} exists — finalize before restoring")
-        ch.execute(ddl.drop(rel, RESTORE))
-        ch.execute(retarget((dump_dir / f"{rel}.sql").read_text(), rel, RESTORE))
-        _set_comment(ch, rel, RESTORE, RESTORED)
-        ch.load(rel.sql(RESTORE), dump_dir / f"{rel}.native.gz")
-        if not _matches_dump(ch, rel, RESTORE, entry):
-            ch.execute(ddl.drop(rel, RESTORE))
-            raise MigrationError(f"{rel}: the dump does not load to what the manifest recorded")
-        if "" in comments:
-            ch.execute(ddl.exchange(rel, "", RESTORE))
-        else:
-            ch.execute(ddl.rename(rel, RESTORE, ""))
-
-    if _comments(ch, rel).get("") != RESTORED or not _matches_dump(ch, rel, "", entry):
-        raise MigrationError(f"{rel}: the live table is not the restored one — run `restore` again")
-    if RESTORE in _comments(ch, rel):
-        ch.execute(ddl.rename(rel, RESTORE, REJECTED))
-    _set_comment(ch, rel, "", str(entry["comment"]))
-
-
-def restore(ch: ClickHouse, dump_dir: Path) -> list[str]:
-    """Every dumped table back as it was dumped; the tables it displaces are kept as rejected."""
-    manifest = json.loads((dump_dir / MANIFEST).read_text())
-    for entry in manifest["tables"]:
-        restore_relation(ch, dump_dir, entry)
-    return [entry["relation"] for entry in manifest["tables"]]
-
-
-def describe(measures: list[tuple[str, Measure]]) -> str:
-    return "\n".join(f"{relation}: {json.dumps(asdict(m))}" for relation, m in measures)

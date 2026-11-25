@@ -267,6 +267,17 @@ ingestion:
     ttlSecondsAfterCompletion: 1800
     ttlSecondsAfterSuccess: 600
     ttlSecondsAfterFailure: 3600
+  # The tenant cutover (deploy/TENANT_IDENTITY_UPGRADE.md): a pre-upgrade hook
+  # migrates the stored tenant when anything is left to migrate, and a
+  # post-upgrade hook then submits a background full dbt rebuild. Both exit at
+  # once on an install with nothing to migrate.
+  tenantCutover:
+    enabled: true
+    # How long the pre-upgrade hook waits for running workflows and Airbyte
+    # jobs to finish before it fails the deploy (and resumes everything).
+    idleTimeoutSeconds: 1800
+    # Deadline of each dbt step of the rebuild (the default dbt-run step has 2h).
+    dbtStepDeadlineSeconds: 21600
   # Reconcile loop: descriptor-driven Airbyte connector reconciliation,
   # cron-scheduled inside the cluster (see templates/ingestion/reconcile-cron.yaml).
   reconcile:

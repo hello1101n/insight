@@ -1,30 +1,24 @@
 #!/usr/bin/env bash
-# Cut a warm installation over to the canonical tenant UUID, the way
-# deploy/TENANT_IDENTITY_UPGRADE.md tells an operator to, and check every step.
+# Cut a warm installation over to the canonical tenant UUID the way the
+# chart's hooks do (deploy/TENANT_IDENTITY_UPGRADE.md), and check every step.
 #
 #   1. Install BASE_SHA the way warm-upgrade-sim.sh does: its deploy hook, the
 #      zoom Bronze its connector creates, and its sync of the identity map
-#      views, which carry no tenant column. Then deploy this tree
-#      (apply-ch-migrations.sh): it builds no model and drops those views, so
-#      analytics answers not-ready instead of failing on the column until the
-#      rebuild recreates them.
-#   2. Hold the state a warm installation holds at that point: Bronze, a
-#      history relation, operator config and the sync ledger written under a
-#      legacy tenant that is not a UUID, and identity inputs the previous
-#      release stamped with a hashed tenant. The history relation is built by
-#      the base tree's dbt from that Bronze, as the installed release built it:
-#      the tenant column is still `tenant_id` there; the identity inputs model
-#      refuses to build over it, because tenant_uuid() refuses a tenant that is
-#      not a UUID, which is why dbt stays stopped until the migration.
-#   3. `tenant_migration plan` and `apply`: nothing lost, tenant and keys moved,
-#      and the tenant column renamed to `insight_tenant_id` outside the ledger.
-#   4. `rollback`, then `restore` from the dump: each gives back the warm state
-#      exactly.
-#   5. Apply again and rebuild with `--full-refresh` the way a sync selects,
-#      the history relation in the selection and the `sync:always` views
-#      beside it: the identity inputs carry only the canonical tenant, the
-#      identity map views are back and key on it, the history relation refuses
-#      the flag and keeps every row, and `finalize` leaves no work table behind.
+#      views.
+#   2. Hold the state a warm installation holds: Bronze, a history relation,
+#      operator config and the sync ledger written under a legacy tenant that
+#      is not a UUID, and identity inputs the previous release stamped with a
+#      hashed tenant. The identity inputs model refuses to build over it.
+#   3. The pre-upgrade hook's migration, failing part-way: every table is
+#      back exactly as it was and no work table is left.
+#   4. The pre-upgrade hook's migration, with no flag but INSIGHT_TENANT_ID:
+#      nothing lost, tenant and keys moved, the tenant column renamed outside
+#      the ledger, each original kept as its backup.
+#   5. clickhouse-migrate (apply-ch-migrations.sh), which drops the identity
+#      map views without a tenant column, then the post-upgrade rebuild with
+#      `--full-refresh`: the identity inputs carry only the canonical tenant,
+#      the map views are back, the history relation keeps every row.
+#   6. A second deploy finds nothing to migrate; `finalize` drops the backups.
 #
 # Required env (same contract as apply-ch-migrations.sh):
 #   CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, CLICKHOUSE_DATABASE
@@ -149,7 +143,7 @@ map_views() {
     ON c.table = t.name"
 }
 
-echo "=== Step 1: install base $(git -C "$REPO_ROOT" rev-parse --short "$BASE_SHA"), then deploy this tree over its identity map views ==="
+echo "=== Step 1: install base $(git -C "$REPO_ROOT" rev-parse --short "$BASE_SHA") ==="
 BASE="$WORKDIR/base"
 mkdir -p "$BASE"
 git -C "$REPO_ROOT" archive "$BASE_SHA" src/ingestion | tar -x -C "$BASE"
@@ -157,19 +151,14 @@ dbt_venv_for "$BASE/src/ingestion/scripts/bootstrap-db/pins.env" "$WORKDIR/base-
 PATH="$WORKDIR/base-venv/bin:$PATH" bash "$BASE/src/ingestion/scripts/apply-ch-migrations.sh"
 create_zoom_bronze "$BASE"
 build_base_identity_maps "$BASE"
-
-[[ "$(map_views)" == "account_assignment:0,person_map:0" ]] \
-  || fail "the base sync must leave identity map views without a tenant column — got '$(map_views)'"
-
-bash "$SCRIPTS/apply-ch-migrations.sh"
-
-[[ "$(map_views)" == "" ]] \
-  || fail "the deploy must drop identity map views without a tenant column, so analytics answers not-ready until a sync rebuilds them — got '$(map_views)'"
+TENANT_COLUMN="$(ch_tenant_column bronze_zoom users)"
+[[ "$TENANT_COLUMN" == tenant_id ]] \
+  || echo "=== The base already names its tenant column $TENANT_COLUMN: the rename is a no-op here ==="
 
 echo "=== Step 2: the warm state, under the legacy tenant '$OLD_TENANT' ==="
 # Rows of the zoom users stream in the Bronze its connector created, with the
 # columns the snapshot tracks; keys follow the connector's formula.
-USER_COLUMNS="unique_key, tenant_id, source_id, id, first_name, last_name, display_name, email, dept, status,
+USER_COLUMNS="unique_key, $TENANT_COLUMN, source_id, id, first_name, last_name, display_name, email, dept, status,
     role_id, timezone, language, phone_number, employee_unique_id, type,
     _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id"
 run_ch <<SQL
@@ -187,8 +176,9 @@ SQL
 dbt_base_run --select zoom__users_snapshot zoom__users_fields_history
 
 # The config tables come from dbt's on-run-start, which the deploy no longer runs.
+CONFIG_TENANT_COLUMN="$(ch_tenant_column config task_value_map)"
 run_ch <<SQL
-INSERT INTO config.task_value_map (tenant_id, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, canonical_value)
+INSERT INTO config.task_value_map ($CONFIG_TENANT_COLUMN, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, canonical_value)
 VALUES ('$OLD_TENANT', 'jira-main', 'insight_jira', 'status', '10001', '2026-01-01 00:00:00', '2026-01-01 00:00:00', 'done');
 SQL
 
@@ -200,11 +190,9 @@ INSERT INTO bronze_zoom.users ($USER_COLUMNS) VALUES
 SQL
 dbt_base_run --select zoom__users_snapshot
 
-if dbt_base_run --select zoom__identity_inputs >"$WORKDIR/refused.log" 2>&1; then
-  fail "zoom__identity_inputs built over Bronze stamped '$OLD_TENANT': tenant_uuid() must refuse a tenant that is not a UUID"
-fi
-grep -q "CANNOT_PARSE_UUID" "$WORKDIR/refused.log" \
-  || fail "zoom__identity_inputs failed over Bronze stamped '$OLD_TENANT', but not on its tenant: $(tail -c 2000 "$WORKDIR/refused.log")"
+# A base before #3661 hashes the legacy tenant into the identity inputs; one
+# after it refuses the legacy tenant. Either way the rebuild must replace them.
+dbt_base_run --select zoom__identity_inputs >"$WORKDIR/base-inputs.log" 2>&1 || true
 
 # What the previous release left in the identity inputs: the tenant hashed. The
 # base sync built the relation; its producer refuses the legacy tenant, so both
@@ -224,12 +212,53 @@ WARM="$(fingerprint)"
 SNAPSHOT_ROWS="$(query "SELECT count() FROM staging.zoom__users_snapshot")"
 [[ "$SNAPSHOT_ROWS" == "4" ]] || fail "the warm history relation holds $SNAPSHOT_ROWS rows, expected 4 (three users, u1 twice)"
 
-echo "=== Step 3: plan and apply ==="
-migration plan --tenant "$NEW_TENANT" --old-tenant "$OLD_TENANT" | tee "$WORKDIR/plan.txt"
+export INSIGHT_TENANT_ID="$NEW_TENANT"
+migration plan --exit-code >/dev/null && fail "the plan finds nothing to migrate in the warm state"
+
+echo "=== Step 3: a migration that fails part-way puts every table back ==="
+(cd "$SCRIPTS" && python3 - <<'PY'
+from dataclasses import dataclass, field
+
+from tenant_migration import apply as migration
+from tenant_migration.clickhouse import ClickHouse
+from tenant_migration.inventory import discover, history_relations
+from tenant_migration.plan import survey
+import os
+
+
+@dataclass(frozen=True)
+class FailsAtTheThirdSwap(ClickHouse):
+    swaps: list[str] = field(default_factory=list)
+
+    def execute(self, sql: str, *, fmt: str | None = None) -> str:
+        if sql.startswith("EXCHANGE TABLES"):
+            self.swaps.append(sql)
+            if len(self.swaps) == 3:
+                raise RuntimeError("injected failure at the third swap")
+        return super().execute(sql, fmt=fmt)
+
+
+env = ClickHouse.from_env()
+ch = FailsAtTheThirdSwap(url=env.url, user=env.user, password=env.password)
+tenant = os.environ["INSIGHT_TENANT_ID"]
+try:
+    migration.apply(ch, survey(ch, discover(ch, history_relations()), tenant), tenant)
+except migration.MigrationError as error:
+    print(f"failed as injected: {error}")
+else:
+    raise SystemExit("the injected failure did not stop the migration")
+PY
+)
+[[ "$(fingerprint)" == "$WARM" ]] || fail "a failed migration did not put the warm tables back exactly: '$(fingerprint)' != '$WARM'"
+leftovers="$(query "SELECT count() FROM system.tables WHERE position(name, '__tenant_') > 0")"
+[[ "$leftovers" == "0" ]] || fail "a failed migration left $leftovers work table(s) behind"
+
+echo "=== Step 4: the pre-upgrade hook's migration ==="
+migration plan | tee "$WORKDIR/plan.txt"
 for relation in "${FIXTURES[@]}"; do
   grep -q "^$relation " "$WORKDIR/plan.txt" || fail "the plan does not list $relation"
 done
-migration apply --tenant "$NEW_TENANT" --old-tenant "$OLD_TENANT" --dump-dir "$WORKDIR/dump-1"
+migration apply
 
 assert_migrated() {
   local got expected="4:0:3|3:3|1:0|1:0|$NEW_TENANT-$SOURCE-u1"
@@ -240,28 +269,21 @@ assert_migrated() {
       toString((SELECT count() FROM bronze_zoom.users)), ':',
       toString((SELECT countIf(insight_tenant_id = '$NEW_TENANT' AND startsWith(unique_key, '$NEW_TENANT-$SOURCE-')) FROM bronze_zoom.users FINAL)), '|',
       toString((SELECT count() FROM config.task_value_map)), ':',
-      toString((SELECT countIf(insight_tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT:')) FROM config.task_value_map)), '|',
+      toString((SELECT countIf(insight_tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT')) FROM config.task_value_map)), '|',
       toString((SELECT count() FROM ingestion_history.sync_events)), ':',
       toString((SELECT countIf(tenant_id != '$NEW_TENANT') FROM ingestion_history.sync_events)), '|',
       (SELECT min(unique_key) FROM bronze_zoom.users WHERE id = 'u1'))")"
   [[ "$got" == "$expected" ]] || fail "after apply expected '$expected' — every row kept, each tenant column and key prefix on $NEW_TENANT, the row without a tenant moved too — but got '$got'"
 }
 assert_migrated
+backups="$(query "SELECT count() FROM system.tables WHERE endsWith(name, '__tenant_backup')")"
+(( backups >= ${#FIXTURES[@]} )) || fail "expected a backup of every migrated table, found $backups"
 
-echo "=== Step 4: rollback and restore give the warm state back ==="
-migration rollback
-[[ "$(fingerprint)" == "$WARM" ]] || fail "rollback did not put the warm tables back exactly: '$(fingerprint)' != '$WARM'"
-migration finalize
+echo "=== Step 5: clickhouse-migrate, then the post-upgrade rebuild ==="
+bash "$SCRIPTS/apply-ch-migrations.sh"
+[[ "$(map_views)" == "" ]] \
+  || fail "the deploy must drop identity map views without a tenant column, so analytics answers not-ready until the rebuild recreates them — got '$(map_views)'"
 
-migration apply --tenant "$NEW_TENANT" --old-tenant "$OLD_TENANT" --dump-dir "$WORKDIR/dump-2"
-migration finalize
-migration restore --dump-dir "$WORKDIR/dump-2"
-[[ "$(fingerprint)" == "$WARM" ]] || fail "restore did not load the dump back exactly: '$(fingerprint)' != '$WARM'"
-migration finalize
-
-echo "=== Step 5: apply, rebuild, finalize ==="
-migration apply --tenant "$NEW_TENANT" --old-tenant "$OLD_TENANT" --dump-dir "$WORKDIR/dump-3"
-assert_migrated
 # Gold is left out: its views read the evidence of every connector class, and
 # this warm state synced only one.
 dbt_run --full-refresh --select zoom__users_snapshot+ tag:sync:always --exclude tag:gold
@@ -279,10 +301,11 @@ got="$(query "SELECT concat(
 [[ "$got" =~ ^[1-9][0-9]*:0:[1-9][0-9]*:[1-9][0-9]*\|4$ ]] \
   || fail "after the rebuild expected the email identity inputs all under $NEW_TENANT (the hashed-tenant row gone, every user present) and the history relation, which refuses a full refresh, still holding its 4 rows — got '$got' (inputs:foreign:ada:cy|history)"
 
+echo "=== Step 6: the next deploy finds nothing; finalize drops the backups ==="
+migration plan --exit-code >/dev/null || fail "a second plan still finds tables to migrate"
+migration apply
 migration finalize
 leftovers="$(query "SELECT count() FROM system.tables WHERE position(name, '__tenant_') > 0")"
 [[ "$leftovers" == "0" ]] || fail "finalize left $leftovers work table(s) behind"
-migration plan --tenant "$NEW_TENANT" --old-tenant "$OLD_TENANT" | tee "$WORKDIR/replan.txt"
-grep -q "^tables changing: 0;" "$WORKDIR/replan.txt" || fail "a second plan still finds rows to move"
 
-echo "=== Tenant cutover OK: nothing lost, keys moved, rollback and restore exact, rebuild on the canonical tenant ==="
+echo "=== Tenant cutover OK: a failed run restores exactly, nothing lost, keys moved, rebuild on the canonical tenant ==="
