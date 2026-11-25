@@ -141,6 +141,41 @@ def test_an_unclassifiable_field_stops_the_run(scenario: Scenario) -> None:
     assert "jira__task_field_kind" in attempt.log
 
 
+def test_a_service_management_sla_field_does_not_stop_the_run(scenario: Scenario) -> None:
+    sla = "customfield_10011"
+    scenario.seed(
+        fields=[
+            field(
+                sla,
+                name="Time to resolution",
+                schema_type="sd-servicelevelagreement",
+                schema_custom="com.atlassian.servicedesk:sd-sla-field",
+            )
+        ],
+        issues=[
+            issue(
+                "TST-1",
+                fields={
+                    sla: {
+                        "id": "1",
+                        "name": "Time to resolution",
+                        "completedCycles": [],
+                        "ongoingCycle": {
+                            "breached": False,
+                            "paused": False,
+                            "remainingTime": {"millis": 28800000, "friendly": "8h"},
+                        },
+                    }
+                },
+            )
+        ],
+    )
+    attempt = scenario.warehouse.dbt_status("run", "--select", "tag:jira,tag:staging")
+
+    assert attempt.success, attempt.log
+    assert scenario.journal(issue="TST-1", field=sla) == []
+
+
 @case(
     fields=[
         field(POINTS, name="Incident Start", schema_type="string", extracted_at="2026-01-01T00:00:00"),

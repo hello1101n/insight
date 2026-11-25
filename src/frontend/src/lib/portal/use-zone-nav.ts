@@ -19,26 +19,14 @@ export interface ZoneNav {
   selectZone: (zone: Zone, item?: string) => void;
 }
 
-/**
- * The zone list the viewer may see plus the selection behaviour, shared by the
- * desktop icon rail and the mobile drawer so both offer exactly the same zones
- * and route the same way. Person and People open the viewer's own pages.
- */
 export function useZoneNav(): ZoneNav {
   const go = useGo();
   const { zone: activeZone, person: activePerson } = useNavLocation();
   const { personId: viewerPersonId } = useViewer();
   const me = viewerPersonId ?? activePerson;
   const { canSeeOthers, isPending: reachPending } = useViewerReach();
-  // A rail of scaffolds makes the built zones look unreliable.
   const showPlanned = usePortalShowPlanned();
-  // A viewer with nobody to look at has nothing to roll up, so org zones are
-  // hidden and the shell keeps only the zones every viewer has. While the answer is resolving,
-  // assume they have a cohort so the nav doesn't flash a collapsed state.
   const orgZonesVisible = canSeeOthers || reachPending;
-  // Manage is opened by the admin role, not by having reports: the operator
-  // persona is an IC by design. Fail closed while the role check is pending —
-  // a rail entry that vanishes is worse than one that appears a beat late.
   const { isAdmin } = useIsAdmin();
 
   const zones = ZONES.filter((z) => {

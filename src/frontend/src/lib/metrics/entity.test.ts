@@ -21,8 +21,6 @@ describe("isPersonId", () => {
   });
 
   it("rejects the nil UUID, which parses but is never a person", () => {
-    // Both backends reject it. Accepting it here would clear the route guard
-    // and paint a dashboard whose every metric request 400s.
     expect(isPersonId("00000000-0000-0000-0000-000000000000")).toBe(false);
     expect(isPersonId(" 00000000-0000-0000-0000-000000000000 ")).toBe(false);
   });

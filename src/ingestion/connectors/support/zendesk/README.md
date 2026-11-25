@@ -1,16 +1,32 @@
 # Zendesk Connector
 
-Extracts Zendesk tickets, satisfaction ratings, and agent directory into the Bronze layer.
+Reads Zendesk Support into `bronze_zendesk`: tickets, their full event history,
+SLA metric events, both CSAT generations, users, organizations, dictionaries
+and Help Center articles. Every record keeps the API object whole in
+`payload_json`; staging parses it. Design and silver contract:
+[DESIGN.md](../../../../../docs/domain/support/specs/DESIGN.md).
 
-**API**: Zendesk REST API v2 (`https://{subdomain}.zendesk.com/api/v2/`)
+**API:** REST v2 at `https://{subdomain}.zendesk.com/api/v2/`.
 
-**Auth model**: HTTP Basic Auth — `{email}/token:{api_token}` Base64-encoded. Token created under Admin → Apps & Integrations → Zendesk API.
+**Auth:** OAuth client credentials. Zendesk no longer issues API tokens and
+disables existing ones on 30 April 2027.
 
 ## Prerequisites
 
-1. API token access is enabled (Admin Center → Apps and integrations → APIs → Zendesk API → Settings → Token access: ON). Only an administrator can create a token.
-2. `zendesk_email` is the address of an **administrator**. API tokens carry no scopes of their own: the paired email decides the permissions, and both the incremental ticket export and the satisfaction-ratings list are admin-only. `check` exercises both, so a non-admin email fails at `check` rather than three streams into the first sync.
-3. CSAT ratings come from the legacy CSAT endpoint. An account on Zendesk's newer survey-based CSAT, or with CSAT disabled, gets an empty ratings stream — not an error.
+1. An administrator creates an OAuth client: Admin Center → Apps and
+   integrations → APIs → OAuth clients → Add OAuth client.
+   - **Client kind:** Confidential.
+   - **Allowed scopes:** `read`.
+   - Copy the secret when it is shown; it is shown once.
+2. The client acts as the administrator who created it. The incremental
+   exports, SLA policies and satisfaction data are admin-only, so a client
+   created by an agent fails `check` with 403.
+3. Survey CSAT and Help Center are optional products. An account without them
+   gets empty streams, not an error.
+4. Ticket links to Jira issues come from the Zendesk Jira integration. An
+   account without the integration gets empty link streams. For the Jira
+   integration V2, copy its external ID from Admin Center → Apps and
+   integrations → Integrations → Jira → Edit into `zendesk_jira_external_id`.
 
 ## K8s Secret
 
@@ -27,99 +43,64 @@ metadata:
     insight.cyberfabric.com/source-id: zendesk-main
 type: Opaque
 stringData:
-  zendesk_subdomain: "<your-subdomain>"          # e.g. "acme" for acme.zendesk.com
-  zendesk_email:     "<service-account@example.com>"
-  zendesk_api_token: "<api-token>"
-  # start_date: "2024-01-01"                     # optional; default: 90 days ago (YYYY-MM-DD)
+  zendesk_subdomain: "<your-subdomain>"
+  zendesk_client_id: "<oauth-client-id>"
+  zendesk_secret: "<oauth-client-secret>"
+  zendesk_start_date: ""
+  zendesk_jira_external_id: ""
 ```
 
-> **Multiple Zendesk instances**: change `name` and `source-id` annotation accordingly, e.g. `insight-zendesk-staging` / `zendesk-staging`.
-
-### Fields
-
 | Field | Required | Description |
-|-------|----------|-------------|
-| `zendesk_subdomain` | Yes | Your Zendesk subdomain (the `{subdomain}` part of `{subdomain}.zendesk.com`). Used to build all API URLs. |
-| `zendesk_email` | Yes | Email of the Zendesk user associated with the API token. Used as the Basic Auth username with `/token` suffix. |
-| `zendesk_api_token` | Yes | API token generated under Admin → Apps & Integrations → Zendesk API. Sent as the Basic Auth password. |
-| `start_date` | No | Earliest date for historical backfill (YYYY-MM-DD). Default: 90 days ago. First run fetches all tickets and ratings updated since this date. |
+|---|---|---|
+| `zendesk_subdomain` | yes | `{subdomain}` of `{subdomain}.zendesk.com` |
+| `zendesk_client_id` | yes | The OAuth client's identifier |
+| `zendesk_secret` | yes | The OAuth client's secret |
+| `zendesk_start_date` | no | Earliest day to read, `YYYY-MM-DD`. Empty reads the whole account, so every ticket keeps its `Create` event |
+| `zendesk_jira_external_id` | no | External ID of the Jira integration V2. Empty skips the V2 links |
 
-### Automatically injected
+`tenant_id`, `source_id` and `unique_key` are added to every record
+(`{tenant_id}-{source_id}-{id}`); do not put them in the Secret.
 
-These fields are added to every record by the connector — do **not** put them in the K8s Secret:
-
-| Field | Source |
-|-------|--------|
-| `tenant_id` | `insight_tenant_id` from tenant YAML (`connections/<tenant>.yaml`) |
-| `source_id` | `insight.cyberfabric.com/source-id` annotation on the K8s Secret |
-| `unique_key` | Composite primary key (varies per stream — see Streams below) |
-| `data_source` | Always `insight_zendesk` |
-| `collected_at` | UTC ISO-8601 timestamp at extraction time |
+Local development: copy `src/ingestion/secrets/connectors/zendesk.yaml.example`
+to `zendesk.yaml` (gitignored), fill it in, run `./secrets/apply.sh`.
 
 ## Streams
 
-| Stream | Endpoint | Sync Mode | Cursor | `unique_key` |
-|--------|----------|-----------|--------|-------------|
-| `support_tickets` | `GET /api/v2/incremental/tickets/cursor.json?include=metric_sets` | Incremental (lookback P1D) | `updated_at` (Unix ts) | `{tenant}-{source}-{ticket_id}` |
-| `support_ticket_ids` | `GET /api/v2/incremental/tickets/cursor.json` (id + updated_at only) | Incremental | `updated_at` (Unix ts) | `{tenant}-{source}-{ticket_id}` |
-| `support_agents` | `GET /api/v2/users?role[]=agent&role[]=admin` | Full refresh | — | `{tenant}-{source}-{agent_id}` |
-| `zendesk_satisfaction_ratings` | `GET /api/v2/satisfaction_ratings` | Incremental (lookback P1D) | `created_at` (Unix ts) | `{tenant}-{source}-{rating_id}` |
-| `support_ticket_events` | `GET /api/v2/tickets/{id}/audits` | Incremental (substream over `support_ticket_ids`, `incremental_dependency`) | `created_at` (formal — see below) | `{tenant}-{source}-{audit_id}` |
+| Stream | Endpoint | Sync |
+|---|---|---|
+| `zendesk_tickets` | `incremental/tickets/cursor.json`, with metric sets and AI-agent tickets | incremental on `updated_at` |
+| `zendesk_ticket_events` | `incremental/ticket_events.json` with comments | incremental on `timestamp` |
+| `zendesk_ticket_metric_events` | `incremental/ticket_metric_events.json` | incremental on `time` |
+| `zendesk_users` | `incremental/users/cursor.json` | incremental on `updated_at` |
+| `zendesk_organizations` | `incremental/organizations.json` | incremental on `updated_at` |
+| `zendesk_csat_ratings` | `satisfaction_ratings` (legacy CSAT) | incremental on `created_at` |
+| `zendesk_survey_responses` | `guide/survey_responses` (survey CSAT) | incremental on the latest answer |
+| `zendesk_kb_articles` | `help_center/incremental/articles.json` | incremental on `updated_at` |
+| `zendesk_merge_audits` | `tickets/{id}/audits.json` of tickets tagged `closed_by_merge`, merge audit only | incremental |
+| `zendesk_jira_links` | `jira/links`, links of the original Jira integration | full refresh |
+| `zendesk_jira_links_v2` | `integrations/jira/{external_id}/links`, links of the Jira integration V2 | full refresh |
+| `zendesk_groups`, `zendesk_group_memberships`, `zendesk_ticket_fields`, `zendesk_ticket_forms`, `zendesk_custom_statuses`, `zendesk_brands`, `zendesk_sla_policies`, `zendesk_schedules`, `zendesk_deleted_tickets` | list endpoints | full refresh |
 
-Pagination: the two ticket streams use Zendesk's **cursor-based** incremental
-export (`cursor` parameter; the response's `after_url` becomes the next request
-path and `end_of_stream` stops it); `support_agents` and
-`zendesk_satisfaction_ratings` use Zendesk **cursor pagination** (`page[size]`
-/ `page[after]`, `meta.after_cursor`; `meta.has_more` ends the read only as an
-explicit false — otherwise an empty page or a missing cursor does). Neither
-offset paging (`per_page` / `next_page`) nor the time-based export is used:
-mixing either with a cursor-shaped paginator yields an empty token and ends
-the read after one page without an error.
-
-Rate limits: every `/api/v2/incremental/*` call shares one budget of 10
-requests per minute per account (30 with the High Volume add-on), so the two
-ticket streams draw on it together. The per-ticket audits requests count
-against the account-wide limit instead.
-
-### Notes
-
-- **`support_tickets`**: uses Zendesk's cursor-based incremental export endpoint (1000 tickets/page). Sideloads `metric_sets` to retrieve timing fields without extra API calls. Both business-hours and calendar-hours timing variants are stored (`first_reply_time_seconds` / `first_reply_time_calendar_seconds` and `full_resolution_time_seconds` / `full_resolution_time_calendar_seconds`). The export's `support_type_scope` is left at its default `agent`, so tickets handled by AI agents are not exported.
-- **`support_agents`**: full refresh on every run — agent roster is small and Zendesk does not expose a reliable incremental endpoint for users. `group_name` is NULL in Phase 1 (group enrichment deferred); `is_active` is stored as an int and is 1 only for a user who is both `active` and not `suspended`; deactivated agents leave the listing entirely, so their last row keeps `is_active = 1` until a silver-side absence check lands.
-- **`support_ticket_ids`**: slim incremental parent (id + `updated_at` only, no metadata) that drives the `support_ticket_events` SubstreamPartitionRouter. Kept separate from `support_tickets` so the audit fan-out only re-fetches tickets whose `updated_at` advanced.
-- **`zendesk_satisfaction_ratings`**: CSAT ratings stored as a separate stream preserving full history. `support_tickets.satisfaction_score` is NULL in Phase 1; Silver layer derives per-ticket CSAT from this stream. Incremental by `created_at`, the axis the endpoint's `start_time` filter bounds: a rating edited after it left the one-day lookback keeps its first-seen score. Legacy CSAT endpoint — see Prerequisites.
-- **`support_ticket_events`**: per-ticket audit log from `GET /api/v2/tickets/{id}/audits`, fanned out over `support_ticket_ids` with `incremental_dependency` (concurrency_level=4). A 404 (the audits of a deleted ticket, which the export still lists) is ignored and 429/503 are retried after `Retry-After`, so a single bad ticket does not fail the sync. Its `created_at` cursor is *formal*: the endpoint takes no time filter and nothing is dropped client-side. It exists so the stream is stateful, which is the only thing that lets `incremental_dependency` persist the parent's cursor — without it every sync re-enumerates the whole `start_date` window, one request per ticket.
-- **`zendesk_ticket_ext`** (Phase 2, deferred): custom field key-value pairs from `ticket.custom_fields[]`.
+The incremental exports share one budget of 10 requests a minute per account;
+a 429 waits for `Retry-After`. Every export re-reads one day behind its state,
+and bronze deduplicates on `unique_key`.
 
 ## Silver targets
 
-The `dbt/` models tagged `zendesk` populate:
-- `staging.zendesk__support_event` — event-grain, actor-attributed audit facts (an intermediate of this connector; `updates` are counted as distinct audits, not distinct field changes)
-- `staging.zendesk__support_activity` — per-person per-day metrics (updates / public_comments / private_comments / solved [distinct tickets] / csat_good / csat_total / kb [honest-NULL])
-- `silver.class_support_activity` — the cross-vendor support class relation
-- `silver.dim_support_agent`, `silver.dim_support_ticket` — support dimensions
+Staging parses `payload_json` into one model per class; each is tagged
+`silver:class_support_*` and unioned into `silver/support/`.
 
-**There is no Gold layer for support.** Nothing reads `class_support_activity`,
-so no support metric reaches the product yet: the domain was built against the
-`*_bullet_rows` gold contract, which was removed when metrics moved to the
-unified `*_metric_observations` / `*_metric_evidence` relations. Support is the
-one domain that was not ported across.
+| Class | Built from |
+|---|---|
+| `class_support_ticket_field_history` | ticket events (one row per field set), merge audits, deleted tickets |
+| `class_support_tickets` | ticket snapshot, merge audits, deletions, the history's last `closed` |
+| `class_support_interactions` | comment events |
+| `class_support_sla_events`, `class_support_sla_policies` | ticket metric events, SLA policies |
+| `class_support_satisfaction` | legacy ratings and survey responses in one score vocabulary |
+| `class_support_agents`, `class_support_customers` | users by role, organizations |
+| `class_support_groups`, `class_support_group_memberships` | groups, memberships |
+| `class_support_field_definitions`, `class_support_schedules`, `class_support_kb_articles` | ticket fields, schedules, Help Center articles |
+| `class_support_ticket_issue_links` | links of both Jira integration versions |
 
-`dbt_select` in `descriptor.yaml` is scoped to `tag:zendesk+` — it selects the `zendesk`-tagged models and their downstream silver unions while keeping the run from touching other connectors' models.
-
-## Validation
-
-```bash
-./src/ingestion/tools/declarative-connector/source.sh validate-strict support/zendesk
-./src/ingestion/tools/declarative-connector/source.sh validate        support/zendesk
-```
-
-Mock tests (no credentials needed):
-
-```bash
-cd src/ingestion/tests/connectors
-.venv/bin/pytest ../../connectors/support/zendesk/tests
-```
-
-## Related
-
-- The `support_*` bronze tables and the `silver.class_support_activity` contract are cross-vendor by design; a second support connector would land beside this one rather than replace it. None exists today.
+`zendesk__ticket_event_items` is the shared parse of the event export: one row
+per field an update set, or per comment it added.

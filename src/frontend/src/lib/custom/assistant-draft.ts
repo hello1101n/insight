@@ -19,8 +19,6 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-// INVARIANT: the draft is held until the panel takes it, so it also reaches a
-// panel that mounts after the call.
 export function askAssistant(text: string): void {
   pending = { text };
   emit();

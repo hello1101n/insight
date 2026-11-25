@@ -11,7 +11,6 @@ interface OperatorOption<T extends string = ConditionOperator> {
   label: string;
 }
 
-// INVARIANT: the service bounds nesting counting `all`, `any` and `not` alike.
 export const MAX_GROUP_DEPTH = 3;
 export const MAX_LEAVES = 20;
 
@@ -91,7 +90,6 @@ export function blankLeaf(): ConditionNode {
   return { column: "", op: ">", value: "" };
 }
 
-/** A new test: on the metric's only column when it has one, else blank. */
 export function freshLeaf(
   kinds: ReadonlyMap<string, ColumnKind>
 ): ConditionNode {
@@ -363,11 +361,6 @@ export function placeRefusals(
 export const MAX_LIST_VALUES = 50;
 export const MAX_TEXT_CHARS = 256;
 
-/**
- * A list with entries added: trimmed, and neither empty nor already there.
- * An entry past a bound is refused with why; it and the entries after it
- * are left unadded.
- */
 export function withListValues(
   current: readonly unknown[],
   entries: readonly string[]

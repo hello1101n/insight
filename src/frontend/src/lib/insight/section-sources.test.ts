@@ -1,10 +1,3 @@
-/**
- * The line naming what a section was watching.
- *
- * Its value is entirely in what it refuses to say: a dimension that describes
- * the thing being counted is not a system, and a system that produced nothing
- * cannot be told apart from one nobody wired — so neither is claimed.
- */
 import { describe, expect, it } from "vitest";
 
 import type { MetricResult } from "@/api/metric-results-client";
@@ -14,7 +7,6 @@ import { normalizeMetricResults } from "@/lib/metrics/collection";
 
 const ME = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 
-/** One metric with a breakdown over `dimension`, as the wire delivers it. */
 function metric(
   key: string,
   dimension: string,
@@ -73,8 +65,6 @@ describe("sectionSources", () => {
   });
 
   it("ignores dimensions that describe the work rather than the system", () => {
-    // "Internal" and "external" are properties of a shared file, not products.
-    // Naming them here would claim a connector that does not exist.
     const results = [
       metric("collab.files_shared", "scope", [
         ["internal", "Internal", 9],
@@ -91,8 +81,6 @@ describe("sectionSources", () => {
   });
 
   it("leaves out a system that produced nothing", () => {
-    // A zero means either "this person did not use it" or "nobody wired it",
-    // and this line cannot tell those apart — so it claims neither.
     const results = [
       metric("ai.accepted_lines", "tool", [
         ["claude_code", "Claude Code", 164],
@@ -120,8 +108,6 @@ describe("sectionSources", () => {
   });
 
   it("says nothing when no metric carries a breakdown", () => {
-    // A section whose metrics were fetched without a system split states no
-    // sources rather than guessing from the metric keys.
     expect(sectionSources(group(["git.commits"]), new Map(), ME)).toEqual([]);
   });
 });

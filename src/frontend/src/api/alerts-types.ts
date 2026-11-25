@@ -1,4 +1,3 @@
-/** A comparison a number column, or the count of matching rows, takes. */
 export type ComparisonOperator = ">" | ">=" | "<" | "<=" | "==" | "!=";
 
 export type NumberOperator = ComparisonOperator | "between";
@@ -11,7 +10,6 @@ export type DateOperator =
 
 export type ConditionOperator = NumberOperator | TextOperator | DateOperator;
 
-/** Which rows must pass the test for the rule to be breached. */
 export type Quantifier =
   | "one"
   | "any"
@@ -19,11 +17,6 @@ export type Quantifier =
   | "none"
   | { count: { op: ComparisonOperator; value: number } };
 
-/**
- * A test on one result column. `value` is a number or digit string, a text,
- * an RFC 3339 timestamp, a duration such as `P7D`, or a list of those, by
- * what the operator takes.
- */
 export interface ConditionLeaf {
   column: string;
   op: ConditionOperator;
@@ -41,11 +34,6 @@ export interface Condition {
   where: ConditionNode;
 }
 
-/**
- * The rows a check found the test held on: `columns` names each cell of a
- * row, the grouping first, then the columns the condition reads, then the
- * rule's context columns.
- */
 export interface Witness {
   matched: number;
   answered: number;
@@ -53,10 +41,8 @@ export interface Witness {
   rows: unknown[][];
 }
 
-/** What one check found. Absent on an alert that has not been checked yet. */
 export type AlertOutcome = "breach" | "no_breach" | "unknown";
 
-/** Why a check could not say whether the condition was met. */
 export type UnknownReason =
   | "no_rows"
   | "many_rows"
@@ -74,29 +60,22 @@ export type UnknownReason =
 
 export type NotificationStatus = "pending" | "cancelled" | "sent" | "failed";
 
-/**
- * A number as the service answers it: a JSON number while an integer is within
- * ±(2^53 − 1), its decimal digits as a string beyond that, and a draft sends
- * such a string back as it came.
- */
-export type AlertNumber = number | string;
+export type IntegerDigits = string & { readonly __integerDigits: true };
 
-/** A rule as an administrator writes it. */
+export type AlertNumber = number | IntegerDigits;
+
 export interface AlertDraft {
   name: string;
   metric: string;
   condition: Condition;
-  /** Result columns the witness keeps beside the condition's: up to 5. */
   context_columns: string[];
   range?: string | null;
   interval_secs: number;
   destination: string;
   enabled: boolean;
-  /** The revision a replacement expects; sent only when changing an alert. */
   expected_revision?: number;
 }
 
-/** What the latest checks left on the rule. */
 export interface AlertState {
   last_evaluated_at?: string;
   last_outcome?: AlertOutcome;
@@ -142,7 +121,6 @@ export interface AlertNotification {
   metric: string;
   metric_name: string | null;
   condition: Condition;
-  /** The columns the rule asked the witness to keep beside the condition's. */
   context_columns: string[];
   witness?: Witness | null;
   evaluated_at: string;
@@ -165,7 +143,6 @@ export interface AlertDestination {
   provider: string;
 }
 
-/** What a rule would find if it were checked now. */
 export interface AlertPreviewRequest {
   metric: string;
   range: string | null;

@@ -3,13 +3,6 @@ import { Search } from "lucide-react";
 import { Input } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 
-/**
- * A search box over a catalogue.
- *
- * The service matches the stored body as well as the name, so a table or a
- * column finds every definition that reads it — which is the question a
- * catalogue of a few hundred is actually asked.
- */
 export function DefinitionSearch({
   label,
   value,
@@ -22,17 +15,13 @@ export function DefinitionSearch({
   className?: string;
 }) {
   return (
-    <div className={cn("relative w-full max-w-64", className)}>
-      <Search
-        className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
+    <div className={cn("w-full max-w-64", className)}>
       <Input
         type="search"
+        icon={<Search />}
         value={value}
         aria-label={label}
         placeholder={label}
-        className="h-8 rounded-md ps-9"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>

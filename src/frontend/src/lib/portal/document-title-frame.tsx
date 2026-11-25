@@ -44,8 +44,6 @@ export function DocumentTitleFrame({
   children: ReactNode;
 }) {
   const [override, setOverride] = useState<TitleSubject | null>(null);
-  // INVARIANT: a subject names the path it was published on. A path change
-  // drops it in the same render, before the leaving page's effect runs.
   const subject = override?.pathname === pathname ? override.subject : null;
   const shown = documentTitle(screenPath, subject);
 

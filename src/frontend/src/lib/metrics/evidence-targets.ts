@@ -10,12 +10,6 @@ export interface EvidenceTarget {
   label: string;
 }
 
-/**
- * The drillable metrics of a collection, deduplicated, in declaration order.
- *
- * Every entry into the evidence dialog offers this set, so a reader who opens
- * one metric can reach its neighbours without going back to the page.
- */
 export function collectionEvidenceTargets(
   metricKeys: readonly string[],
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
@@ -33,16 +27,6 @@ export function collectionEvidenceTargets(
   });
 }
 
-/**
- * The same figure, narrowed to what the reader clicked.
- *
- * A bar, a segment or a point on a trend answers a slice of the figure above
- * it, so its dialog has to be that slice: each clicked dimension value becomes
- * a filter ON TOP of the selection's own, never instead of it, and a clicked
- * day becomes the period. The narrowed dimensions also join
- * `display_dimensions` — a reader who arrived by clicking one repository
- * should see which repository every row belongs to.
- */
 export function narrowedEvidenceSelection(
   metric: NormalizedMetricResult | undefined,
   personIds: readonly string[],

@@ -16,9 +16,11 @@ import {
   grantPersonRole,
   listPeople,
   listPersonRoles,
+  listRoleHolders,
   listSources,
   mergePersons,
   revokePersonRole,
+  ROLE_HOLDERS_MAX,
   searchAccounts,
   searchPersons,
 } from "./identity-client";
@@ -248,9 +250,6 @@ describe("getMe", () => {
     });
   });
 
-  // The gate reads `role_id` off every entry, so a well-shaped list of badly
-  // shaped members has to fail here — downstream it would throw during render
-  // instead of failing closed.
   it.each([
     ["a null member", [null]],
     ["a non-object member", ["admin"]],
@@ -493,8 +492,6 @@ describe("searchPersons", () => {
     });
   });
 
-  // The caller's signal is how a superseded keystroke stops costing the service
-  // a scan of the person journal; dropped here, every one of them is answered.
   it("hands the caller's abort signal to the request", async () => {
     mockFetch.mockResolvedValueOnce(response({ items: [] }));
     const controller = new AbortController();
@@ -551,8 +548,6 @@ describe("getPersonAccounts", () => {
     });
   });
 
-  // The merge preview counts this list, so a malformed body must not read as
-  // "no accounts move" — that would understate what the merge is about to do.
   it("rejects a malformed body rather than reading it as nothing to move", async () => {
     mockFetch.mockResolvedValueOnce(response({ person_id: "p-1" } as never));
 
@@ -607,6 +602,36 @@ describe("listPersonRoles", () => {
     );
 
     await expect(listPersonRoles("p-1")).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("listRoleHolders", () => {
+  const ADMIN = "a4d11000-0000-4000-8000-000000000001";
+
+  function assignments(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      person_role_id: `role-${index}`,
+      person_id: `019E27BC-0000-7000-8000-${String(index).padStart(12, "0")}`,
+      role_id: ADMIN,
+    }));
+  }
+
+  it("names every holder, normalized, when the listing ends inside its page", async () => {
+    const rows = assignments(ROLE_HOLDERS_MAX - 1);
+    mockFetch.mockResolvedValueOnce(response({ items: rows }));
+
+    await expect(listRoleHolders(ADMIN)).resolves.toEqual({
+      complete: true,
+      personIds: new Set(rows.map((row) => row.person_id.toLowerCase())),
+    });
+  });
+
+  it("reports a listing that filled its one page as partial", async () => {
+    mockFetch.mockResolvedValueOnce(
+      response({ items: assignments(ROLE_HOLDERS_MAX) })
+    );
+
+    await expect(listRoleHolders(ADMIN)).resolves.toEqual({ complete: false });
   });
 });
 

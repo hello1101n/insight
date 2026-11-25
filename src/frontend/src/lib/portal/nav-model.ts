@@ -12,7 +12,6 @@ import {
   Filter,
   Database,
   Fingerprint,
-  FlaskConical,
   GitPullRequest,
   LayoutGrid,
   Layers,
@@ -46,17 +45,6 @@ import {
 } from "./nav-policy";
 
 
-/**
- * Portal navigation model (Phase 1 buildout — mirrors the design mockup).
- *
- * This is the static composition the mockup demonstrates. Directions, their
- * lenses and the connector chips are hand-declared here for now; a later phase
- * derives them from the Analytics API metric catalog (see _work/portal-nav/SPEC.md).
- * Meaning stays server-owned; this file only carries structure + presentation.
- */
-
-/* ── Rail zones ──────────────────────────────────────────────────────── */
-
 export type ZoneKind =
   | "person"
   | "directions"
@@ -84,7 +72,6 @@ export const ZONES: readonly Zone[] = [
   { id: "manage", label: { key: "nav.zones.manage" }, kind: "manage" },
 ];
 
-/** Zones every viewer may open: Home, their own page, Reports and Dashboards. */
 export const ZONES_FOR_EVERYONE: ReadonlySet<string> = new Set([
   "overview",
   "person",
@@ -100,7 +87,6 @@ export function zoneIsPlanned(zone: Zone, policy: InstanceNavPolicy = navPolicy(
   );
 }
 
-/** The zone a URL names, or undefined for an id no longer in the rail. */
 export function lensSlug(lens: string): string {
   return lens
     .toLowerCase()
@@ -116,8 +102,6 @@ export function zoneById(id: string | null): Zone | undefined {
   if (!id) return undefined;
   return ZONES.find((z) => z.id === id);
 }
-
-/* ── Directions (catalog-driven family list) ─────────────────────────── */
 
 export type DirectionSource = "semantic" | "bullet";
 
@@ -179,25 +163,13 @@ export const DIRECTIONS: readonly Direction[] = [
   },
 ];
 
-/* ── Theme-zone section lists ────────────────────────────────────────── */
-
 export interface PaneItem {
   id: string;
   label: DisplayText;
   icon: LucideIcon;
   badge?: { text: string; tone: "warn" | "new" | "error" };
   readiness?: Readiness;
-  /**
-   * Rendered only for viewers holding the active `admin` identity role
-   * (`useIsAdmin`) — a UI courtesy over the server-side gate, which refuses
-   * regardless of what the frontend draws.
-   */
   adminOnly?: boolean;
-  /**
-   * Rendered only when the previews gate passes (`usePreviewsGate`) — the
-   * same courtesy-over-server-gate doctrine as `adminOnly`.
-   */
-  previewsGated?: boolean;
   unbuilt?: boolean;
 }
 
@@ -207,16 +179,8 @@ export interface PaneGroup {
   items: readonly PaneItem[];
 }
 
-/** The label the pane uses for the demoted group of planned entries. */
 export const PLANNED_GROUP_LABEL: DisplayText = { key: "nav.groups.planned" };
 
-/**
- * Split entries into the views a reader can open and the marked ones that
- * belong under the demoted "Planned" group. Nothing marked survives
- * `showPlanned: false` — a reader who turned planned sections off is asking
- * for navigation that only lists what renders. An `unbuilt` entry stays among
- * the live ones, under the same switch.
- */
 export function partitionByReadiness<
   T extends { readiness?: Readiness; unbuilt?: boolean },
 >(entries: readonly T[], showPlanned: boolean): { live: T[]; planned: T[] } {
@@ -331,22 +295,19 @@ export const STARTER_DASHBOARDS: PaneItem = {
   unbuilt: true,
 };
 
-/* ── People zone ─────────────────────────────────────────────────────── */
+type PeopleItems = readonly [
+  PaneItem & { id: "roster" },
+  PaneItem & { id: "employees" },
+  PaneItem & { id: "metrics" },
+];
 
-export const PEOPLE_ITEMS: readonly PaneItem[] = [
+export const PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.my_team" }, icon: Users },
   { id: "employees", label: { key: "nav.items.roster_by_role" }, icon: List },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
 ];
 
-/**
- * The same two views under names a flat organisation can use: there is no
- * employees-versus-roster distinction to draw.
- *
- * INVARIANT: the ids match {@link PEOPLE_ITEMS} — the pane routes on them, so a
- * new People view has to be named for both shapes rather than one.
- */
-const FLAT_PEOPLE_ITEMS: readonly PaneItem[] = [
+const FLAT_PEOPLE_ITEMS: PeopleItems = [
   { id: "roster", label: { key: "nav.items.overview" }, icon: LayoutGrid },
   { id: "employees", label: { key: "nav.items.roster" }, icon: Users },
   { id: "metrics", label: { key: "nav.items.metrics_view" }, icon: Table2 },
@@ -362,15 +323,10 @@ export function peopleItemsFor(
     .map((item) => withConfigReadiness("people", item, policy));
 }
 
-/* ── Manage zone ─────────────────────────────────────────────────────── */
-
-/** The viewer facts that decide which gated Manage surfaces exist for them. */
 export interface ManageGates {
   isAdmin: boolean;
-  canManagePreviews: boolean;
 }
 
-/** The Manage pane for one viewer: gated surfaces drop for everyone else. */
 export function manageGroupsFor(
   gates: ManageGates,
   policy: InstanceNavPolicy = navPolicy(),
@@ -381,11 +337,21 @@ export function manageGroupsFor(
       .filter(
         (item) =>
           (!item.adminOnly || gates.isAdmin) &&
-          (!item.previewsGated || gates.canManagePreviews) &&
           !itemHidden("manage", item.id, policy),
       )
       .map((item) => withConfigReadiness("manage", item, policy)),
   })).filter((group) => group.items.length > 0);
+}
+
+export function manageLandingItem(
+  gates: ManageGates,
+  policy: InstanceNavPolicy = navPolicy(),
+): string | null {
+  return (
+    manageGroupsFor(gates, policy)
+      .flatMap((group) => group.items)
+      .find((item) => !item.unbuilt && item.readiness == null)?.id ?? null
+  );
 }
 
 export const MANAGE_GROUPS: readonly PaneGroup[] = [
@@ -419,7 +385,6 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
     label: { key: "nav.groups.platform" },
     items: [
       { id: "ingestion", label: { key: "nav.items.ingestion" }, icon: Database, adminOnly: true },
-      { id: "previews", label: { key: "nav.items.previews" }, icon: FlaskConical, previewsGated: true },
       { id: "ai-assistant", label: { key: "nav.items.ai_assistant" }, icon: Sparkles },
       { id: "whats-new", label: { key: "whats_new.nav_label" }, icon: Megaphone },
       { id: "platform-usage", label: { key: "nav.items.platform_usage" }, icon: Activity, adminOnly: true },
@@ -433,8 +398,6 @@ export const MANAGE_GROUPS: readonly PaneGroup[] = [
 export const MANAGE_ITEMS: readonly PaneItem[] = MANAGE_GROUPS.flatMap(
   (group) => group.items,
 );
-
-/* ── Zone item resolution ────────────────────────────────────────────── */
 
 export function zoneItems(zoneId: string): readonly PaneItem[] {
   if (zoneId === "people") return PEOPLE_ITEMS;
@@ -455,5 +418,5 @@ export function resolveZoneItem(
   const live = (i: PaneItem) => !itemPlanned(zoneId, i.id, policy);
   const items = zoneItems(zoneId);
   if (item && items.some((i) => i.id === item && shown(i))) return item;
-  return items.find((i) => live(i) && shown(i) && !i.adminOnly && !i.previewsGated)?.id ?? null;
+  return items.find((i) => live(i) && shown(i) && !i.adminOnly)?.id ?? null;
 }

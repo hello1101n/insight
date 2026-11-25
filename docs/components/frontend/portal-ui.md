@@ -15,7 +15,7 @@ Services compute every figure and decide what each person sees. The portal shows
 
 ## Shell
 
-- **Rail** (left): Home, Dashboards, Explore, People, Reports, Manage. Only items the viewer may use. Current item marked. Planned items muted. Below: Feedback, Settings.
+- **Rail** (left): Home, Dashboards, Explore, People, Reports, Manage. Only items the viewer may use. Current item marked; picking it again keeps the open page and brings back a hidden pane. Planned items muted. Below: Feedback, Settings.
 - **Pane**: pages inside the selected rail item, in titled groups. Group labels uppercase. Count beside an item where it tells the reader what they will find. Home's pane titled with the product name; others with the rail item's name.
 - **Toolbar**: above content, stays visible on scroll. Holds the period control. Shown on Home, Explore, People, Reports and an open dashboard; not on other Dashboards pages.
 - **Phone**: no rail; one drawer holds rail items and pane; picking a page closes it. Toolbar controls on one row, scrolls sideways.
@@ -69,9 +69,8 @@ Then, for the viewer alone:
 Or, for a team:
 
 1. **Per person**: six tiles: pull requests merged, PR size, tasks closed, messages sent, AI cost, AI extra usage cost. Each shows the figure per person: the average over active people for a count ("average of N active people · T total"), the median otherwise ("median of N people"). The change vs previous period of the same length (none for All time) compares those per-person figures. A tile opens the people it was taken over, each a step from their own records.
-2. **AI adoption**: people using AI, as a share of the team.
-3. **Worth a look**: collapsible rows, one per metric, with people count.
-4. **By direction**: one card per direction.
+2. **Worth a look**: collapsible rows, one per metric, with people count.
+3. **By direction**: one card per direction.
 
 Each theme in the pane reads the same subject as Home. Pane: At a glance, By direction, Worth a look; Dashboards group: My dashboards with count, Starter dashboards (planned).
 
@@ -141,7 +140,7 @@ As the services allow: create / rename / delete folders; put a dashboard in fold
 
 ## People
 
-- Pane: Me; My team; Roster · by role (flat: Overview; Roster). On a person page: that person's sections, dot per section showing data state. On team views: work chart: reporting tree rooted at the viewer (flat: alphabetical list), searchable; lead → their team, person → their page.
+- Pane: Me; My team; Roster · by role; Metrics view (flat: Overview; Roster; Metrics view). On a person page: that person's sections, dot per section showing data state. On team views other than Metrics view, whose table is the tree: work chart: reporting tree rooted at the viewer (flat: alphabetical list), searchable; lead → their team, person → their page.
 - **Person page**: name, title, department; manager if within reach; sections with data / without / no source; headline figures with trends vs the org scope; worth a look; per section: figures and the work behind them.
 - **Team**: scope size; team-level summary figures; worth a look; members grid compared within the org scope, ordered by name until sorted; subset filter; open any member.
 - **Roster**: everyone in reach: title, placement, status; searchable; row opens the person.
@@ -155,7 +154,7 @@ As the services allow: create / rename / delete folders; put a dashboard in fold
 
 - **Data**: Connectors, Data exclusions, Org snapshots.
 - **People & access**: Identities · roles & taxonomy, Access, Group management.
-- **Platform**: Ingestion, Previews, AI assistant config, What's new, Platform usage, MCP servers, Config & setup, Scorecard management.
+- **Platform**: Ingestion, AI assistant config, What's new, Platform usage, MCP servers, Config & setup, Scorecard management.
 - Items shown only to people who may use them.
 - Connectors: per connector: state, last sync, records reported, recent syncs. Never read ≠ read with nothing recorded.
 - Ingestion: row arrival rate, overall and per connector.

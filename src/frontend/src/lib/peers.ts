@@ -10,19 +10,8 @@ export type PeerStats = {
 export type PeerStatus = "top" | "in_pack" | "bottom"
 export type PeerStatusWithNeutral = PeerStatus | "neutral"
 
-/**
- * The noun a peer comparison is phrased against ("top 25% in <label>").
- * The three literals are the common cases and keep autocomplete useful; the
- * open branch admits a slice-derived cohort noun (division, title, …) now that
- * peer cohorts follow the active slice. Consumers only interpolate this — no
- * exhaustive switching depends on the closed set.
- */
 export type PeerCohortLabel = "team" | "org" | "department" | (string & {})
 
-// Heatmap cell fills. Soft tints of the semantic accents (not the solid
-// button/alert fills) so a dense grid reads as a calm data view rather than a
-// wall of alarms; the hue still signals top/bottom, the number stays crisp in
-// the neutral foreground. Tune the /alpha to taste.
 export const PEER_CELL: Record<PeerStatusWithNeutral, string> = {
   top: "bg-success/30 text-foreground",
   bottom: "bg-destructive/20 text-foreground",
@@ -51,24 +40,24 @@ export const PEER_FILL: Record<PeerStatusWithNeutral, string> = {
   neutral: "bg-muted-foreground/20",
 }
 
+type Quartiles = Pick<PeerStats, "p25" | "p50" | "p75">
+
+function beyondUpperQuartileAndMedian(value: number, stats: Quartiles): boolean {
+  return value >= stats.p75 && value > stats.p50
+}
+
+function beyondLowerQuartileAndMedian(value: number, stats: Quartiles): boolean {
+  return value <= stats.p25 && value < stats.p50
+}
+
 export function peerStatusVsQuartiles(
   value: number,
-  stats: Pick<PeerStats, "p25" | "p50" | "p75">,
+  stats: Quartiles,
   higherIsBetter: boolean
 ): PeerStatus {
-  // An outlier must sit strictly on the outlier side of the MEDIAN as well
-  // as beyond the quartile. Quartile boundaries alone overclaim on tie-heavy
-  // pools: in an all-zero cohort everyone satisfies `value >= p75`, and in a
-  // zero-inflated one (p25 == median == 0, a few sharers above) everyone at
-  // zero satisfies `value <= p25` — branding half the pack "Top/Bottom 25%".
-  // Requiring the median side also keeps quartile ranks consistent with the
-  // median-based scorers (a "bottom" here is always below-median there).
-  if (higherIsBetter) {
-    if (value >= stats.p75 && value > stats.p50) return "top"
-    if (value <= stats.p25 && value < stats.p50) return "bottom"
-    return "in_pack"
-  }
-  if (value <= stats.p25 && value < stats.p50) return "top"
-  if (value >= stats.p75 && value > stats.p50) return "bottom"
+  const above = beyondUpperQuartileAndMedian(value, stats)
+  const below = beyondLowerQuartileAndMedian(value, stats)
+  if (above) return higherIsBetter ? "top" : "bottom"
+  if (below) return higherIsBetter ? "bottom" : "top"
   return "in_pack"
 }

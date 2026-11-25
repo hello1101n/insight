@@ -1,7 +1,3 @@
-/**
- * The two gates the tile affordance waits on, and the cache writes that make a
- * saved key take effect without a reload.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";

@@ -30,7 +30,6 @@ import {
   useLocalStorageState,
 } from "@/hooks/use-local-storage-state";
 
-/** Data target for a metrics-backed group's drilldown body. */
 export type MetricDrilldownTarget =
   | {
       kind: "person";
@@ -68,7 +67,7 @@ export function GroupDrilldownSheet({
     >
       <DialogContent
         showCloseButton={false}
-        className="flex w-fit max-w-none! flex-col gap-0 overflow-hidden p-0"
+        className="flex w-fit max-w-none! flex-col gap-0 overflow-hidden"
       >
         <DrilldownPanel
           def={def}
@@ -111,7 +110,7 @@ function DrilldownPanel({
         expanded ? "h-[95vh] w-[95vw]" : "h-[70vh] w-[80vw]"
       )}
     >
-      <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2 border-b p-4">
+      <DialogHeader className="flex shrink-0 flex-row items-center justify-between gap-2">
         <DialogTitle>{title}</DialogTitle>
         <div className="flex items-center gap-0.5">
           <Button
@@ -141,10 +140,6 @@ function DrilldownPanel({
             entityId={metricTarget.entityId}
             range={range}
           >
-            {/* A drilldown opened from a card is answering "how do I
-                compare", so the standing follows the composition here. The
-                section screen reached from the navigation answers a different
-                question and puts the work itself in this slot. */}
             <PeerStory
               entries={buildPeerStoryEntries(
                 def.collection,

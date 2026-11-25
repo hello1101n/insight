@@ -38,6 +38,7 @@ import {
   usePortalSlice,
 } from "@/lib/portal/portal-nav";
 import type { TeamMember } from "@/types/insight";
+import { isAdditive } from "@/lib/portal/metric-stats";
 import { useCohortLabel } from "@/lib/portal/use-cohort-label";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useMemberGridData } from "@/queries/member-grid";
@@ -68,7 +69,7 @@ function TeamMembersSection({ members, ...gridProps }: MembersGridProps) {
       </div>
       {visibleMembers.length > 0 ? (
         <Card>
-          <CardContent className="p-0">
+          <CardContent>
             <MembersGrid members={visibleMembers} {...gridProps} />
           </CardContent>
         </Card>
@@ -91,17 +92,6 @@ function TeamMembersSection({ members, ...gridProps }: MembersGridProps) {
   );
 }
 
-/**
- * Team-state dashboard — the People roster reframed for a lead: "what's the
- * overall state, and where do I look?". Peer-cohort stats aren't computed yet,
- * so signals are honest and self-contained:
- *   • outlier — a member in the worse quartile *within this team*;
- *   • decline — a member's metric materially worse than last period;
- *   • collapse — zero on an activity the team otherwise shows.
- * The AI summary is rule-based for now (a real insights endpoint would slot in).
- * The roster is the active org scope, picked in the work chart; the view only
- * narrows it to direct reports.
- */
 export function TeamStateView() {
   const { t } = useTranslation();
   const { dateRange, compareTo } = usePortalPeriod();
@@ -111,7 +101,6 @@ export function TeamStateView() {
   const { setScope } = usePortalNavActions();
   const { pivot, roster } = orgScope;
 
-  // INVARIANT: People evaluates the selected manager with the reports-only org scope.
   const members = useMemo<TeamMember[]>(
     () => [
       ...(pivot
@@ -145,7 +134,6 @@ export function TeamStateView() {
     [members],
   );
 
-  // Active slice → each person's peer cohort (whole roster when no slice set).
   const attrByEntity = useMemo(
     () => collectRosterAttrs(pivot, normalizePersonId),
     [pivot],
@@ -157,11 +145,6 @@ export function TeamStateView() {
   );
   const cohortLabel = useCohortLabel();
 
-  // Headline metrics only (card.preview): the set a lead scans, and — crucially —
-  // small enough to stay under the API's 50-metrics-per-request cap when the full
-  // metric catalog across every group would blow past it. `GROUPS` is a module
-  // constant, so it is read inside the memo and left out of the dependency
-  // list — listing it would be noise, not safety.
   const headlineKeys = useMemo(() => headlineMetricKeys(), []);
   const gridCollection = useMemo<MetricCollectionConfig>(() => {
     const want = new Set(headlineKeys);
@@ -183,7 +166,6 @@ export function TeamStateView() {
 
   const teamName = orgScope.label;
 
-  // ── Headline: team totals (summable) / medians (everything else) ──
   const summary = useMemo(() => {
     return headlineKeys
       .map((key) => grid.byKey.get(key))
@@ -193,7 +175,7 @@ export function TeamStateView() {
           .map((id) => forEntity(r, id).value)
           .filter((v): v is number => v != null && Number.isFinite(v));
         if (vals.length === 0) return null;
-        const isSum = r.computation === "sum";
+        const isSum = isAdditive(r);
         const value = isSum
           ? vals.reduce((a, b) => a + b, 0)
           : quantile([...vals].sort((a, b) => a - b), 0.5);
@@ -208,7 +190,6 @@ export function TeamStateView() {
       .slice(0, 6);
   }, [headlineKeys, grid.byKey, memberIds]);
 
-  // ── Attention: shared within-cohort outliers + declines + collapses ──
   const flags = useMemo(
     () =>
       computeAttentionFlags({
@@ -233,8 +214,6 @@ export function TeamStateView() {
     ],
   );
 
-  // Columns with data for at least one member (drop all-empty ones, e.g. the
-  // un-ingested task metrics), and a within-team heat overlay for the grid.
   const shownKeys = useMemo(
     () =>
       headlineKeys.filter((k) => {
@@ -299,12 +278,11 @@ export function TeamStateView() {
         ) : null}
       </div>
 
-      {/* Team state at a glance */}
       {summary.length > 0 ? (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
           {summary.map((s) => (
             <Card key={s.key}>
-              <CardContent className="p-4">
+              <CardContent>
                 <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
                 <div className={cn("mt-1", TEXT_FIGURE)}>{s.text}</div>
                 <div className="text-xs text-muted-foreground">
@@ -318,13 +296,11 @@ export function TeamStateView() {
         </div>
       ) : null}
 
-      {/* What to look at — shared with the org Overview */}
       <AttentionList
         flags={flags}
         summary={attentionSummary(flags, flaggedPeople, members.length)}
       />
 
-      {/* Detailed scan */}
       <TeamMembersSection
         key={`${orgScope.pivotPersonId}:${portalScope.directOnly}`}
         members={gridMembers}

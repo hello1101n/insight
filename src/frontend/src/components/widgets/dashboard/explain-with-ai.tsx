@@ -14,20 +14,9 @@ import { cn } from "@/lib/utils";
 
 export interface ExplainWithAiProps {
   snapshot: MetricSnapshot;
-  /** Layout override for a host that places the trigger itself. */
   className?: string;
 }
 
-/**
- * The sparkle beside what it explains, and the answer it opens.
- *
- * Renders nothing at all until the deployment offers explanations AND this
- * person has stored a key: an affordance that only reports its own
- * unavailability costs scarce space and gives nothing back.
- *
- * Positioned absolutely by default, for a host that overlays it on a card;
- * a host laying it out itself passes `className` to override that.
- */
 export function ExplainWithAi({ snapshot, className }: ExplainWithAiProps) {
   const { featureOn, hasKey } = useAiAvailable();
   const [open, setOpen] = useState(false);
@@ -35,8 +24,6 @@ export function ExplainWithAi({ snapshot, className }: ExplainWithAiProps) {
 
   if (!featureOn || !hasKey) return null;
 
-  // One call at a time: the sparkle and Try again both spend the reader's own
-  // quota, so a second press while one is in flight must do nothing.
   const ask = () => {
     setOpen(true);
     if (explain.isPending) return;
@@ -120,9 +107,6 @@ function ExplanationBody({
     );
   }
 
-  // Paragraphs, not one block: the answer argues in steps — what this is, what
-  // moved, why — and a wall of text hides the steps from a reader who is
-  // scanning it beside the chart it describes.
   const paragraphs = text
     .split(/\n{2,}/)
     .map((p) => p.trim())

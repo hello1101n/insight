@@ -2,12 +2,6 @@ import { ConfirmRemove } from "@/components/custom/confirm-remove";
 import { Button } from "@gears-frontx/ui-kit";
 import { useRemoveDataset } from "@/queries/custom";
 
-/**
- * Takes the dataset away, with the records it holds.
- *
- * The service refuses while a metric reads it and names every one, so the
- * refusal is shown as it came back.
- */
 export function RemoveDataset({
   name,
   onRemoved,

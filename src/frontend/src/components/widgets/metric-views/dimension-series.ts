@@ -1,12 +1,5 @@
 import type { MetricDimension } from "@/api/metric-results-client";
 
-/**
- * Shared derivation of series identity from response dimension tuples. Both
- * chart renderers (trend, breakdown) MUST seed colors through
- * `dimensionColorSeed` so the same dimension group gets the same hue on
- * every chart in a drilldown.
- */
-
 export function dimensionLabel(dimensions: MetricDimension[]): string {
   if (dimensions.length === 0) return "Total";
   return dimensions
@@ -14,19 +7,18 @@ export function dimensionLabel(dimensions: MetricDimension[]): string {
     .join(" · ");
 }
 
-export function dimensionColorSeed(dimensions: MetricDimension[]): string {
-  if (dimensions.length === 0) return "total";
-  if (dimensions.length === 1) return dimensions[0]?.value ?? "total";
+function dimensionTuple(dimensions: MetricDimension[]): string {
   return dimensions
     .map((dimension) => `${dimension.key}:${dimension.value}`)
     .join("|");
 }
 
-/**
- * Recharts dataKey-safe identifier. Sanitization alone can collide
- * (`a.b` vs `a_b`), silently merging series — a short hash of the raw
- * string keeps distinct inputs distinct.
- */
+export function dimensionColorSeed(dimensions: MetricDimension[]): string {
+  if (dimensions.length === 0) return "total";
+  if (dimensions.length === 1) return dimensions[0]?.value ?? "total";
+  return dimensionTuple(dimensions);
+}
+
 export function safeSeriesKey(raw: string): string {
   let hash = 5381;
   for (let i = 0; i < raw.length; i += 1) {
@@ -38,12 +30,5 @@ export function safeSeriesKey(raw: string): string {
 
 export function dimensionSeriesKey(dimensions: MetricDimension[]): string {
   if (dimensions.length === 0) return "total";
-  // Compose with `:`/`|` (as `dimensionColorSeed` does) so the raw string is
-  // unambiguous before `safeSeriesKey` sanitizes/hashes it — reusing `_` for
-  // both pairing and joining could collide distinct dimension groups.
-  return safeSeriesKey(
-    dimensions
-      .map((dimension) => `${dimension.key}:${dimension.value}`)
-      .join("|"),
-  );
+  return safeSeriesKey(dimensionTuple(dimensions));
 }

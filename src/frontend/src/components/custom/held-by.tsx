@@ -7,20 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { hiddenHolders } from "@/lib/custom/hidden-holders";
 import { dependentsQuery } from "@/queries/custom";
-import { TEXT_BODY, TEXT_HEADING } from "@/lib/type-scale";
+import { TEXT_BODY } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
-/** Where a holder of each kind is looked at. */
 const PAGE: Record<Holder["kind"], string> = {
   metrics: "/dashboards/metrics/$name",
   widgets: "/dashboards/widgets/$name",
   dashboards: "/dashboards/$name",
 };
 
-/**
- * What names this definition, so a reader sees what a removal would break
- * before they ask for one.
- */
 export function HeldBy({
   kind,
   id,
@@ -46,7 +41,6 @@ export function HeldBy({
   );
 }
 
-/** The same card over holders read some other way, as a dataset's are. */
 export function Held({
   title,
   empty,
@@ -67,7 +61,7 @@ export function Held({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {pending ? (

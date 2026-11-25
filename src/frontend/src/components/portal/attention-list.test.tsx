@@ -31,7 +31,6 @@ function flag(over: Partial<AttentionFlag>): AttentionFlag {
   };
 }
 
-/** Three people on Commits, one on Meetings. */
 const MIXED = [
   ...Array.from({ length: 3 }, (_, i) =>
     flag({ personId: pid(`p${i}`), name: `Person ${i}`, severity: 3 - i })
@@ -114,7 +113,6 @@ describe("AttentionList", () => {
   });
 
   it("caps the people inside one metric, and expands on request", async () => {
-    // 14 people on Commits: the twelfth is the last one listed.
     const many = Array.from({ length: 14 }, (_, i) =>
       flag({ personId: pid(`q${i}`), name: `Q${i}`, severity: 14 - i }),
     );
@@ -127,8 +125,6 @@ describe("AttentionList", () => {
   });
 
   it("points the arrow the way the number actually went", async () => {
-    // A rise is adverse on a lower-is-better metric. A down arrow beside
-    // "well above the median" contradicts the sentence next to it.
     render(
       <AttentionList
         flags={[

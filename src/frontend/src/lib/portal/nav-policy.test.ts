@@ -56,8 +56,6 @@ describe("parseNavPaths", () => {
 
     expect(zoneHidden("aicost", policy)).toBe(false);
     expect(itemHidden("aicost", "adoption-funnel", policy)).toBe(false);
-    // Item ids are unique per zone — naming one zone's item leaves the
-    // same-named item of another zone alone.
     expect(itemHidden("overview", "idle-seats", policy)).toBe(false);
   });
 
@@ -188,8 +186,6 @@ describe("metric paths", () => {
 
     expect(metricPlanned("ai.cost", policy)).toBe(true);
     expect(metricPlanned("ai.accepted_lines", policy)).toBe(true);
-    // A family is a prefix up to the dot, so a key that merely starts with
-    // the same letters is a different family.
     expect(metricPlanned("airflow.runs", policy)).toBe(false);
   });
 
@@ -229,7 +225,6 @@ describe("metric paths", () => {
     expect(
       gatesAnyMetric(policyWith([], ["metric:tasks.resolution_time"]))
     ).toBe(true);
-    // A navigation path is not a metric gate.
     expect(gatesAnyMetric(policyWith(["zone:scorecard"]))).toBe(false);
   });
 

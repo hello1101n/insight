@@ -50,8 +50,6 @@ describe("refusals", () => {
     expect(said).toEqual(["limit: wrong"]);
   });
 
-  // A 409 names things outside the document - the metrics a change would
-  // break - by their subject.
   it("says what a precondition names, by its subject", () => {
     const said = refusals(
       refused({
@@ -87,7 +85,6 @@ describe("refusals", () => {
     expect(said).toEqual(["title: required"]);
   });
 
-  // A save that failed and shows nothing reads as a save that worked.
   it.each([
     ["a network failure", new TypeError("Failed to fetch")],
     ["a body that is not the service's", new CustomApiError(502, null)],

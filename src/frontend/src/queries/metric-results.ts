@@ -29,16 +29,6 @@ import {
   useDeclaredMetricDimensions,
 } from "@/queries/metric-definitions";
 
-/**
- * The install's metric gate, as a predicate over metric keys.
- *
- * Applied to every collection request, so a metric this install hides — or
- * marks planned while the reader has planned sections off — reaches no surface
- * at all: not a tile, not an attention row, not a heatmap column, not a
- * drilldown block. Surfaces already render only the keys that came back, so
- * they need no gate of their own; the ones that draw a shell around a missing
- * metric (a section title, a card) gate their own composition instead.
- */
 function useMetricGate(): (metricKey: string) => boolean {
   const showPlanned = usePortalShowPlanned();
   return useMemo(
@@ -48,17 +38,12 @@ function useMetricGate(): (metricKey: string) => boolean {
 }
 
 export interface MetricCollectionOptions {
-  /**
-   * The window to compare against, served in the same request and read back
-   * through `previousByKey`.
-   */
   compareTo?: DateRange;
   keepPreviousData?: boolean;
 }
 
 export interface MetricCollectionResult {
   byKey: Map<string, NormalizedMetricResult>;
-  /** The comparison window's values, or null when none was requested. */
   previousByKey: Map<string, NormalizedMetricResult> | null;
   isPending: boolean;
   isFetching: boolean;
@@ -67,14 +52,11 @@ export interface MetricCollectionResult {
 }
 
 function canonicalEntityIds(entity: MetricCollectionEntity): string[] {
-  // The tenant entity names nobody: the backend derives the organization from
-  // the session, so there are no ids to canonicalize (or to gate `enabled` on).
   if (entity.type === "tenant") return [];
   const ids = entity.ids.map(normalizePersonId);
   return [...new Set(ids.filter(Boolean))].sort();
 }
 
-/** Whether the entity selection itself is answerable (see `enabled` below). */
 function entitySelected(
   entity: MetricCollectionEntity,
   ids: string[]
@@ -89,9 +71,6 @@ function queryKeyFor(
   metrics: MetricRequest[],
   compareTo?: DateRange
 ) {
-  // The derived `metrics` array rides in the key, so key and payload are
-  // provably coherent — no hand-maintained collection identity to forget to
-  // bump. TanStack hashes the key structurally.
   return [
     "metric-results",
     entity.type,
@@ -110,9 +89,6 @@ export function useMetricCollection(
   options?: MetricCollectionOptions
 ): MetricCollectionResult {
   const ids = canonicalEntityIds(entity);
-  // Ask only for metrics this installation's catalog offers: the backend
-  // rejects the WHOLE request over one unknown key, so a compiled-in key that
-  // a tenant does not have would blank the screen instead of its own tile.
   const catalog = useAvailableMetricKeys();
   const dimensions = useDeclaredMetricDimensions();
   const gate = useMetricGate();
@@ -125,10 +101,6 @@ export function useMetricCollection(
   );
   const canonicalEntity: MetricCollectionEntity =
     entity.type === "person" ? { type: "person", ids } : { type: "tenant" };
-  // The comparison window rides along inside the request instead of a twin
-  // one: it reads the same rows the primary aggregate already scans, so a delta
-  // arrow no longer costs a second round trip, a second authorization and a
-  // second query slot (#2651).
   const compareTo = options?.compareTo;
   const request = buildMetricCollectionRequest(
     asked,
@@ -136,10 +108,6 @@ export function useMetricCollection(
     range,
     compareTo
   );
-  // Neither an empty entity list nor an empty metric list is a request the
-  // backend can answer — it rejects both with 400 invalid_argument. So the
-  // query stays disabled, and because `refetch()` bypasses `enabled`, the
-  // `refetch` and `isError` this hook returns have to respect the same flag.
   const enabled =
     entitySelected(entity, ids) &&
     request.metrics.length > 0 &&
@@ -154,42 +122,24 @@ export function useMetricCollection(
     placeholderData: options?.keepPreviousData ? keepPreviousData : undefined,
   });
 
-  // INVARIANT: both projections read the RAW response. A compared breakdown
-  // groups over both windows at once, so filtering the primary first would hide
-  // the groups that belong only to the comparison window — the very rows it
-  // exists to carry.
   const served = useMemo(
     () => normalizeMetricResults(current.data?.metrics, current.data?.absence_context),
     [current.data]
   );
   const byKey = useMemo(() => projectPrimary(served), [served]);
-  // The comparison window's values, read as if they had been their own request
-  // — a period and its comparison now stand or fall together, so there is no
-  // mispairing to guard against.
   const previousByKey = compareTo ? projectComparison(served) : null;
 
   return {
     byKey,
     previousByKey,
-    // Pending while the catalog resolves too: the request is coming, so the
-    // screen must show a skeleton rather than an empty state it would replace
-    // a moment later. Both catalog reads gate `enabled`, so both belong here —
-    // one missing leaves a window where nothing is asked and nothing is
-    // pending, which renders as "no data".
     isPending:
       (current.isPending && enabled) ||
       (entitySelected(entity, ids) &&
         (catalog.isPending || dimensions.isPending)),
     isFetching: current.isFetching,
-    // Defensive: `ids` and `range` both ride in the query key, so today a
-    // disabled query cannot be holding an error from an enabled one. Kept so
-    // that a future key change cannot resurrect "Unable to load" for a
-    // collection we are deliberately not asking about.
     isError: enabled && current.isError,
     refetch: () => {
-      // `refetch()` ignores `enabled` in react-query, so this guard is what
-      // stops a Retry on an unresolved roster from POSTing `entity.ids: []` —
-      // see the note on `enabled` above.
+      // WORKAROUND: react-query's `refetch()` ignores `enabled`.
       if (!enabled) return;
       void current.refetch();
     },
@@ -201,20 +151,12 @@ export interface KeyedCollection {
   collection: MetricCollectionConfig;
 }
 
-/** True while any collection in the set still has no data — the screen-level
- *  loading gate (a period change mints new query keys, so it re-trips). */
 export function collectionSetPending(
   set: Map<string, MetricCollectionResult>
 ): boolean {
   return [...set.values()].some((result) => result.isPending);
 }
 
-/**
- * One query per collection for a dynamic list (e.g. every metrics-backed
- * group in the registry) — `useQueries`, so the list length can change
- * without violating hook rules. `compareTo` rides every request in the set and
- * reads back per collection through `previousByKey`.
- */
 export function useMetricCollectionSet(
   collections: readonly KeyedCollection[],
   entity: MetricCollectionEntity,
@@ -231,12 +173,7 @@ export function useMetricCollectionSet(
     !dimensions.isPending &&
     Boolean(range.from && range.to);
 
-  // Large rosters are chunked so a period+peer collection over N entities
-  // never exceeds the backend's all-or-nothing projected-row limit; chunk
-  // results merge back into one collection result per key. A tenant entity
-  // names nobody, so it is always exactly one "chunk".
   const requests = collections.flatMap(({ key, collection: raw }) => {
-    // Same catalog and install gates as `useMetricCollection` — see the notes there.
     const collection = filterCollectionByKey(
       filterCollectionToDeclaredDimensions(
         filterCollectionToAvailable(raw, catalog.keys),
@@ -262,10 +199,6 @@ export function useMetricCollectionSet(
         key,
         request,
         chunkIds,
-        // Per-request, not just the shared gate: a collection the catalog
-        // covers none of filters down to `metrics: []`, which is itself a 400.
-        // It also decides `isPending`/`isError` below — a query that will never
-        // fire must not report itself as forever loading.
         active: enabled && request.metrics.length > 0,
       };
     });
@@ -291,16 +224,13 @@ export function useMetricCollectionSet(
     maps.push(normalizeMetricResults(query.data?.metrics, query.data?.absence_context));
     chunkMaps.set(key, maps);
     const existing = out.get(key);
-    // Same guard as the single-collection hook: a disabled chunk has no valid
-    // request to send, and `refetch()` would send it anyway.
+    // WORKAROUND: react-query's `refetch()` ignores `enabled`.
     const refetch = () => {
       if (active) void query.refetch();
     };
     out.set(key, {
       byKey: new Map(),
       previousByKey: null,
-      // Pending covers both catalog waits too — otherwise a screen reads "no
-      // data" for the moment before its requests are even allowed to fire.
       isPending:
         (existing?.isPending ?? false) ||
         (query.isPending && active) ||
@@ -308,7 +238,6 @@ export function useMetricCollectionSet(
           (catalog.isPending || dimensions.isPending)),
       isFetching: (existing?.isFetching ?? false) || query.isFetching,
       isError: (existing?.isError ?? false) || (active && query.isError),
-      // Chunks of the same collection share a key; refetch fans out to all.
       refetch: existing
         ? () => {
             existing.refetch();
@@ -327,12 +256,6 @@ export function useMetricCollectionSet(
   return out;
 }
 
-/**
- * The organisation-wide share of each metric that reaches no person, keyed by
- * metric. Its own request, never chunked with a roster: the figure names no
- * entity, so a chunk would repeat it. `anchorId` is any one person the viewer
- * may see — the request needs an entity, the view ignores it; null disables.
- */
 export interface UnattributedShares {
   byKey: Map<string, number | null>;
   isPending: boolean;

@@ -22,7 +22,6 @@ GEARS_SERVICES = {
     "gitCliProxy",
     "identityResolution",
     "insightV3Core",
-    "previews",
 }
 
 INGESTION_TEMPLATES = {

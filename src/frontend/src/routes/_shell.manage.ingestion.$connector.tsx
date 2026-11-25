@@ -2,7 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { ManageView } from "@/components/portal/manage-view";
 
-/** A bronze connector slug, as the endpoint's `scope` validator accepts it without the prefix. */
 const CONNECTOR_SLUG = /^[a-z0-9_]{1,120}$/;
 
 export const Route = createFileRoute("/_shell/manage/ingestion/$connector")({

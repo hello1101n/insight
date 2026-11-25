@@ -1,4 +1,3 @@
-
 server:
   home_dir: "~/.insight"
 
@@ -84,7 +83,6 @@ gears:
 
   analytics:
     config:
-      bind_addr: "0.0.0.0:8081"
       database_url: ""
       clickhouse_url: ""
       clickhouse_database: "insight"

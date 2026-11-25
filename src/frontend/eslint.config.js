@@ -27,8 +27,6 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // Underscore prefix is the project convention for intentionally
-      // unused parameters / catch bindings / destructured holes.
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -38,31 +36,17 @@ export default defineConfig([
           destructuredArrayIgnorePattern: "^_",
         },
       ],
-      // TanStack Router file-routes export `Route = createFileRoute(...)({…})`
-      // and colocate the component the route renders. Tag `createFileRoute`
-      // as a HOC so the plugin sees Route as a component export and stops
-      // warning about the colocated component. `allowExportNames` is NOT used
-      // here because it short-circuits before the HOC check and would leave
-      // the route's local component flagged.
       "react-refresh/only-export-components": [
         "error",
         {
           allowConstantExport: true,
-          // shadcn theme-provider co-exports the `useTheme` hook with the
-          // provider component — explicit allow keeps the pattern intact.
           allowExportNames: ["useTheme"],
         },
       ],
     },
   },
   {
-    // TanStack Router file-routes idiomatically co-export `Route` (object
-    // returned by `createFileRoute`/`createRootRoute`) with the route's
-    // component. `createFileRoute` is NOT a React HOC — gaming it via
-    // `extraHOCs` makes the rule pass but the eslint-plugin-react-refresh
-    // maintainer warns it can degrade HMR over time. Disable the rule for
-    // the routes directory instead; route files are small and visually
-    // distinct, so the Fast-Refresh signal isn't pulling weight here.
+    // File routes co-export `Route` with their component; this rule only guards Fast Refresh.
     files: ["src/routes/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
@@ -80,27 +64,11 @@ export default defineConfig([
     },
   },
   {
-    // Keep the text scale from growing back.
-    //
-    // It had drifted to twelve sizes and five greys, and none of that was
-    // decided — each one was a reasonable local choice that nobody could see
-    // the sum of. A reader learns a screen by learning its rules, and twelve
-    // sizes with no rule behind them is not a hierarchy, it is decoration.
-    //
-    // So the sizes a screen may use are the ones in `src/lib/type-scale.ts`,
-    // and a size written by hand is refused here rather than found later by
-    // whoever measures it again. Fractional text greys go the same way: two
-    // levels are readable as "read this / you may skip this", five are not
-    // rankable by anyone and the rule stops holding.
     files: ["src/**/*.tsx"],
     rules: {
       "no-restricted-syntax": [
         "error",
         {
-          // `(^|[\\s:])` rather than `(^|\\s)`: a variant prefix sits directly
-          // against the utility, so `hover:text-[13px]` and `sm:text-[13px]`
-          // walked past the whitespace-anchored version. A guard with a hole
-          // in it is worse than none, because it is believed.
           selector:
             "Literal[value=/(^|[\\s:])text-\\[[0-9.]+(px|rem)\\]/]",
           message:
@@ -113,10 +81,6 @@ export default defineConfig([
             "Fractional text grey. There are two: text-foreground and text-muted-foreground.",
         },
         {
-          // Every palette family, not the handful that happened to be in the
-          // tree when this was written — the next colour reached for will be
-          // one of the others. `text-black` and `text-white` carry no number
-          // and were missed for that reason alone.
           selector:
             "Literal[value=/(^|[\\s:])text-((slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]|(black|white)\\b)/]",
           message:

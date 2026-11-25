@@ -18,35 +18,17 @@ import { personDisplayName, personName } from "@/lib/identities/person-display";
 import { useVisibleRoster } from "@/queries/visible-roster";
 import { cn } from "@/lib/utils";
 
-/**
- * Person-zone header — the "climb up" + lateral half of the Person ↔ People
- * model. The name is a peer switcher: it lists the person's teammates (their
- * manager's direct reports) so you can hop between people without bouncing back
- * to People. The supervisor chip drills sideways into the manager; "Team" jumps
- * to People — scoped to the person's own reports if they're a manager, else to
- * their manager's team — and that jump also sets the global org scope, so it only
- * renders when the target is a node the scope can actually reach. Everything is
- * sourced from canonical people; absent fields render nothing.
- */
 export function PersonHeader({ person }: { person: string }) {
   const navigate = useNavigate();
   const { data } = useIcPerson(person);
   const { roster } = useVisibleRoster(true);
-  // Ids, not emails, since the identity cutover: the same key the route
-  // segment, `?scope=` and the metric entity ids carry.
   const supervisorPersonId = data?.parent_person_id ?? null;
-  // Every node the org scope can actually resolve to — identity serves the
-  // viewer only their own subtree, so anything outside it is unreachable.
   const { managerNodes } = useOrgScope();
   const scopeRoots = useMemo(
     () => new Set(managerNodes.map((n) => n.person_id.toLowerCase())),
     [managerNodes]
   );
-  // A person ABOVE the viewer is not theirs to open. Identity's visibility rule
-  // serves a viewer their own subtree, and offering a link out of it invites a
-  // request the viewer must not have answered — the analytics read path does
-  // not enforce this on its own (constructorfabric/insight#1995), so the UI
-  // must not hand out the invitation.
+  // SAFETY: analytics reads do not enforce the viewer's subtree (constructorfabric/insight#1995).
   const canSeeSupervisor = supervisorPersonId
     ? scopeRoots.has(supervisorPersonId.toLowerCase())
     : false;
@@ -68,12 +50,7 @@ export function PersonHeader({ person }: { person: string }) {
     .join(" · ");
   const supervisorName = manager ? personName(manager) : null;
   const isManager = reports.length > 0;
-  // Manager → their own team; IC → their manager's team (peers).
   const teamTarget = isManager ? data.person_id : supervisorPersonId;
-  // An IC viewer's own supervisor sits ABOVE them, outside the subtree identity
-  // serves — scoping there resolves to the viewer's (empty) org and the People
-  // zone would render "no people". Hide the button instead of dead-ending,
-  // matching the IC-aware shell where org zones don't exist at all.
   const canScopeToTeam = teamTarget
     ? scopeRoots.has(teamTarget.toLowerCase())
     : false;
@@ -92,8 +69,6 @@ export function PersonHeader({ person }: { person: string }) {
     void navigate({ to: "/people/$person", params: { person: personId } });
   }
   function goTeam(personId: string) {
-    // Jumping to a team makes that node the visible org scope (design §6), so
-    // the topbar badge and every org zone agree with where you just landed.
     recordUsageEvent("scope", scopeLabel({ root: personId, directOnly: false }));
     void navigate({
       to: "/people/$person/team",
@@ -130,7 +105,7 @@ export function PersonHeader({ person }: { person: string }) {
               className="max-h-80 w-64 overflow-y-auto"
             >
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                <DropdownMenuLabel>
                   {supervisorName ? `${supervisorName}'s team` : "Team"}
                 </DropdownMenuLabel>
                 {peers.map((p) => {
@@ -140,7 +115,6 @@ export function PersonHeader({ person }: { person: string }) {
                     <DropdownMenuItem
                       key={p.person_id}
                       onClick={() => goPerson(p.person_id)}
-                      className={cn(active && "font-medium")}
                     >
                       <Check
                         className={cn(
@@ -168,7 +142,6 @@ export function PersonHeader({ person }: { person: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1 text-muted-foreground"
             onClick={() => goPerson(supervisorPersonId)}
             icon={<ChevronUp className="size-3.5" />}
           >
@@ -179,7 +152,6 @@ export function PersonHeader({ person }: { person: string }) {
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
             onClick={() => goTeam(teamTarget)}
             icon={<Users className="size-3.5" />}
           >

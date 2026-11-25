@@ -1,8 +1,3 @@
-/**
- * The modes the identities console offers. A mode is a way IN to the same
- * decisions — the queue arrives at them from a problem, the person view from a
- * name — so adding one is an entry here and a component, nothing else.
- */
 export const MODES = ["queue", "person", "accounts"] as const;
 
 export const DEFAULT_MODE = MODES[0];

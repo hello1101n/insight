@@ -6,26 +6,21 @@ import {
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 
-/** Why a person was flagged: apart from their cohort, moving adversely, or at zero. */
 export type FlagKind = "outlier" | "decline" | "collapse";
 
 export interface AttentionFlag {
-  /** Person id (the identity-cutover key), not an email. */
   personId: string;
   name: string;
   metricKey: string;
   metricLabel: string;
   kind: FlagKind;
-  /** Which way the number went — adverse either way, so it is not a verdict. */
   moved: "up" | "down";
   valueText: string;
   reason: string;
   severity: number;
 }
 
-/** A member is flagged only when the divergence clears this fraction of the median. */
 const OUTLIER_MIN_REL_GAP = 0.25;
-/** Adverse period-over-period move that trips a "declining" flag. */
 const DELTA_MIN = 0.25;
 
 export interface FlagParams {
@@ -33,33 +28,21 @@ export interface FlagParams {
   byKey: Map<string, NormalizedMetricResult>;
   previousByKey: Map<string, NormalizedMetricResult>;
   memberIds: readonly string[];
-  /** Cohort key per member — flags are computed within each person's cohort. */
   cohortOf: (id: string) => string | null;
   nameOf: (id: string) => string;
   personIdOf: (id: string) => string;
-  /** How the cohort is named in reasons ("team" / "division" / …). */
   cohortLabel: string;
 }
 
-/**
- * The shared "needs attention" scan: per headline metric, judge each person
- * against their own cohort (Tukey outliers + period declines + collapses).
- * Used by the team-state roster and the org overview so the logic lives once.
- */
-/**
- * Severity in units of the cohort's own spread.
- *
- * One ranked list mixes metrics measured in commits, hours and dollars, so the
- * number that orders them cannot carry a unit. Dividing an adverse distance by
- * the cohort's IQR (or |median| when the cohort is flat) makes the result
- * dimensionless: multiply every value of a metric by 1000 and nothing moves.
- *
- * `null` when the cohort offers no scale — a flag that cannot be compared is
- * not raised, rather than raised with a number that means something else.
- */
-function severityIn(scale: number | null, adverseDistance: number): number | null {
-  if (scale == null || !(scale > 1e-9)) return null;
-  const sev = adverseDistance / scale;
+function cohortScale(iqr: number, p50: number): number | null {
+  if (iqr > 1e-9) return iqr;
+  if (Math.abs(p50) > 1e-9) return Math.abs(p50);
+  return null;
+}
+
+function severityIn(severityUnit: number | null, adverseDistance: number): number | null {
+  if (severityUnit == null || !(severityUnit > 1e-9)) return null;
+  const sev = adverseDistance / severityUnit;
   return Number.isFinite(sev) && sev > 0 ? sev : null;
 }
 
@@ -100,15 +83,7 @@ export function computeAttentionFlags({
         hiFence: number;
         iqr: number;
         denom: number;
-        /**
-         * The unit severity is measured in. IQR first — a robust spread that
-         * carries the metric's own scale, so "two IQRs from the median" means
-         * the same thing for hours and for commits. |median| is the fallback
-         * for a cohort with no dispersion; `null` means the cohort offers no
-         * scale at all (everyone identical AND at zero), and a flag with no
-         * scale cannot be ranked, so it is not raised.
-         */
-        scale: number | null;
+        severityUnit: number | null;
         medianText: string;
       }
     >();
@@ -127,7 +102,7 @@ export function computeAttentionFlags({
         loFence: p25 - 1.5 * iqr,
         hiFence: p75 + 1.5 * iqr,
         denom: Math.abs(p50) > 1e-9 ? Math.abs(p50) : 1,
-        scale: iqr > 1e-9 ? iqr : Math.abs(p50) > 1e-9 ? Math.abs(p50) : null,
+        severityUnit: cohortScale(iqr, p50),
         medianText: formatMetricValue(p50, r.format, r.unit),
       });
     }
@@ -147,11 +122,7 @@ export function computeAttentionFlags({
         : 0;
 
       if (higherIsBetter && v === 0 && st && st.p50 > 0) {
-        // A collapse is the extreme of the same measure, not a separate scale:
-        // how far below the cohort this person sits, in IQRs. Ranking them all
-        // at a constant made every collapse tie and flood the top of the list
-        // — and on a partly-adopted metric everyone at zero is a collapse.
-        const sev = severityIn(st.scale, st.p50 - v);
+        const sev = severityIn(st.severityUnit, st.p50 - v);
         if (sev != null) {
           out.push({
             personId, name, metricKey: key, metricLabel: label, kind: "collapse",
@@ -167,7 +138,7 @@ export function computeAttentionFlags({
         (higherIsBetter ? v < st.loFence : v > st.hiFence) &&
         relGap >= OUTLIER_MIN_REL_GAP
       ) {
-        const sev = severityIn(st.scale, higherIsBetter ? st.p50 - v : v - st.p50);
+        const sev = severityIn(st.severityUnit, higherIsBetter ? st.p50 - v : v - st.p50);
         if (sev != null) {
           out.push({
             personId, name, metricKey: key, metricLabel: label, kind: "outlier",
@@ -183,23 +154,14 @@ export function computeAttentionFlags({
         if (pv != null && Number.isFinite(pv) && Math.abs(pv) > 1e-9) {
           const change = (v - pv) / Math.abs(pv);
           const adverse = higherIsBetter ? -change : change;
-          // A move alone is not attention: over a quarter, a quarter of a
-          // person's own past is ordinary. It counts when it also left them
-          // worse than three quarters of their cohort. Without cohort stats
-          // there is no pack to be outside of, so the move stands on its own.
           const outOfPack = st
             ? higherIsBetter
               ? v < st.p25
               : v > st.p75
             : true;
           if (adverse >= DELTA_MIN && outOfPack) {
-            // The trigger stays a percentage of the person's own past — that is
-            // the question a decline answers. Severity converts the MOVE into
-            // cohort IQRs so it can share a ranking with the other two kinds;
-            // without a cohort scale there is nothing to compare against, so
-            // fall back to the fractional change and keep the flag.
             const moved = higherIsBetter ? pv - v : v - pv;
-            const sev = st ? severityIn(st.scale, moved) : null;
+            const sev = st ? severityIn(st.severityUnit, moved) : null;
             out.push({
               personId, name, metricKey: key, metricLabel: label, kind: "decline",
               moved: higherIsBetter ? "down" : "up", valueText,
@@ -211,7 +173,6 @@ export function computeAttentionFlags({
       }
     }
   }
-  // Strongest flag per (person, metric); ranked by severity.
   const best = new Map<string, AttentionFlag>();
   for (const f of out) {
     const k = `${f.personId}::${f.metricKey}`;
@@ -223,26 +184,6 @@ export function computeAttentionFlags({
   );
 }
 
-/**
- * Drop flags that restate another flag on the same person.
- *
- * Some metrics contain others — lines added contains code lines, files shared
- * contains its internal and external splits — and one real change trips every
- * metric of a containing set at once. Left alone, one fact arrives as several
- * flags: the person appears several times over, and any count of "how many
- * things are wrong" is really a count of how many ways we measured one thing.
- *
- * Thinned per person rather than globally: two people tripping the same pair of
- * related metrics are two findings, not one.
- *
- * Of a contained pair the NARROWER metric survives — the containment helper's
- * rule, and the right one: "lines added to code files" excludes documentation,
- * tests and configuration, so it says something "all lines added" cannot.
- *
- * Strongest first before thinning, because of several RESTATING metrics the
- * helper keeps the first it meets — so the flag that survives that case is the
- * one worth surviving.
- */
 function thinPerPerson(flags: AttentionFlag[]): AttentionFlag[] {
   const byPerson = new Map<string, AttentionFlag[]>();
   for (const f of flags) {
@@ -254,18 +195,15 @@ function thinPerPerson(flags: AttentionFlag[]): AttentionFlag[] {
     dropRedundantMetrics(
       [...list]
         .sort((a, b) => b.severity - a.severity)
-        // The containment map is keyed on `key`; flags carry `metricKey`.
         .map((flag) => ({ key: flag.metricKey, flag })),
     ).map((item) => item.flag),
   );
 }
 
-/** "1 person" / "3 people" — a scope of one is a real case (a lead with one report). */
 function people(n: number): string {
   return `${n} ${n === 1 ? "person" : "people"}`;
 }
 
-/** Deterministic one-liner over the flag set — placeholder for a future AI insight. */
 export function attentionSummary(
   flags: AttentionFlag[],
   flaggedPeople: number,
@@ -275,9 +213,6 @@ export function attentionSummary(
     return teamSize === 1
       ? "The one person in scope is in their usual range this period."
       : `All ${people(teamSize)} are in their usual range this period.`;
-  // Counted in PEOPLE, like the rest of the line. Counting flags here made one
-  // sentence hold two units — "3 of 16 people … most flags on Commits (5)" —
-  // and left a reader to work out that five flags can belong to two people.
   const byMetric = new Map<string, Set<string>>();
   for (const f of flags) {
     const seen = byMetric.get(f.metricLabel) ?? new Set<string>();
@@ -296,19 +231,10 @@ export function attentionSummary(
 export interface AttentionTheme {
   metricKey: string;
   metricLabel: string;
-  /** Flags in this theme, strongest first. */
   flags: AttentionFlag[];
   severity: number;
 }
 
-/**
- * Flags gathered by the metric they are about.
- *
- * Sixty people whose meeting hours rose is one fact about the org, not sixty
- * findings; listed person by person it reads as sixty and hides that it is
- * one. Themes carrying more people come first, ties broken by the strongest
- * flag in them.
- */
 export function groupFlagsByTheme(
   flags: readonly AttentionFlag[]
 ): AttentionTheme[] {

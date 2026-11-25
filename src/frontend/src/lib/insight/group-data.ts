@@ -6,14 +6,6 @@ import {
 import { derivePeerStanding } from "@/lib/metrics/peer-standing";
 import type { PeerStatusWithNeutral } from "@/lib/peers";
 
-/**
- * Whether a section has anything to say about this person in this period.
- *
- * The same test the card applies to decide it is empty, lifted out so the
- * screen above can apply it FIRST. A card that says "No data" is a
- * full-height box carrying one sentence; three of them took a third of a
- * person page and pushed what the person actually does below the fold.
- */
 export function groupHasData(
   def: MetricGroup,
   byKey: Map<string, NormalizedMetricResult>,
@@ -25,8 +17,6 @@ export function groupHasData(
   });
 }
 
-
-/** Worst standing first — the row a card leads with is the one to look at. */
 const HEADLINE_TIER: Record<PeerStatusWithNeutral, number> = {
   bottom: 3,
   in_pack: 2,
@@ -34,16 +24,6 @@ const HEADLINE_TIER: Record<PeerStatusWithNeutral, number> = {
   neutral: 0,
 };
 
-/**
- * The metric a section card states in its summary line, or null when it has
- * nothing to say.
- *
- * Shared so the attention block can leave it alone: the card's lead is the
- * most prominent thing on it, and repeating it above was the same finding
- * twice — the duplication that makes a handful of findings read as twice as
- * many. Excluding only `card.preview` misses this one, because the lead is
- * chosen from EVERY metric of the group, not from the keys the card lists.
- */
 export function groupHeadlineKey(
   def: MetricGroup,
   byKey: Map<string, NormalizedMetricResult>,

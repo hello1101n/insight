@@ -168,9 +168,10 @@ export function ConditionBuilder({
         node={where}
         drawing={drawing}
         root
-        onChange={(next) => {
-          if (next === undefined) drawing.focus(firstControl("where"));
-          set({ where: next ?? freshLeaf(kinds) });
+        onChange={(next) => set({ where: next })}
+        onRemove={() => {
+          drawing.focus(firstControl("where"));
+          set({ where: freshLeaf(kinds) });
         }}
       />
     </div>
@@ -271,7 +272,6 @@ function Messages({ id, said }: { id: string; said: readonly string[] }) {
   );
 }
 
-/** A node of the tree; `undefined` from `onChange` removes it. */
 function NodeEditor({
   path,
   node,
@@ -279,6 +279,7 @@ function NodeEditor({
   root = false,
   removable = false,
   onChange,
+  onRemove,
 }: {
   path: string;
   node: unknown;
@@ -286,6 +287,7 @@ function NodeEditor({
   root?: boolean;
   removable?: boolean;
   onChange: (node: unknown) => void;
+  onRemove: () => void;
 }) {
   const read = drawn(node);
   const said = drawing.said.get(path) ?? {};
@@ -303,7 +305,7 @@ function NodeEditor({
             said={said}
             removable={removable}
             onChange={(leaf: WrittenLeaf) => onChange(leaf)}
-            onRemove={() => onChange(undefined)}
+            onRemove={onRemove}
           />
           {root ? (
             <Additions
@@ -329,6 +331,7 @@ function NodeEditor({
           said={said}
           removable={removable}
           onChange={onChange}
+          onRemove={onRemove}
         />
       );
     case "unreadable": {
@@ -361,7 +364,7 @@ function NodeEditor({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => onChange(undefined)}
+                onClick={onRemove}
               >
                 Remove
               </Button>
@@ -421,6 +424,7 @@ function GroupEditor({
   said,
   removable,
   onChange,
+  onRemove,
 }: {
   path: string;
   node: unknown;
@@ -428,6 +432,7 @@ function GroupEditor({
   said: Readonly<Record<string, string>>;
   removable: boolean;
   onChange: (node: unknown) => void;
+  onRemove: () => void;
 }) {
   const read = drawn(node);
   const join: Join = read.kind === "group" ? read.join : "not";
@@ -448,23 +453,37 @@ function GroupEditor({
 
   const replaceChild = (index: number, next: unknown) => {
     if (read.kind === "not") {
-      onChange(next === undefined ? undefined : { not: next });
+      onChange({ not: next });
       return;
     }
     if (read.kind !== "group") return;
 
-    const kept =
-      next === undefined
-        ? read.children.filter((_, at) => at !== index)
-        : read.children.map((child, at) => (at === index ? next : child));
-    if (next === undefined && kept.length > 0) {
-      const sibling = Math.min(index, kept.length - 1);
-      drawing.focus([
-        ...firstControl(childPath(path, read.join, sibling)),
-        addConditionId(path),
-      ]);
+    onChange({
+      [read.join]: read.children.map((child, at) =>
+        at === index ? next : child
+      ),
+    });
+  };
+
+  const removeChild = (index: number) => {
+    if (read.kind === "not") {
+      onRemove();
+      return;
     }
-    onChange(kept.length === 0 ? undefined : { [read.join]: kept });
+    if (read.kind !== "group") return;
+
+    const kept = read.children.filter((_, at) => at !== index);
+    if (kept.length === 0) {
+      onRemove();
+      return;
+    }
+
+    const sibling = Math.min(index, kept.length - 1);
+    drawing.focus([
+      ...firstControl(childPath(path, read.join, sibling)),
+      addConditionId(path),
+    ]);
+    onChange({ [read.join]: kept });
   };
 
   return (
@@ -492,7 +511,7 @@ function GroupEditor({
             variant="ghost"
             size="sm"
             aria-label={`Remove ${name.toLowerCase()}`}
-            onClick={() => onChange(undefined)}
+            onClick={onRemove}
           >
             Remove group
           </Button>
@@ -508,6 +527,7 @@ function GroupEditor({
           drawing={drawing}
           removable={path !== "where" || children.length > 1}
           onChange={(next) => replaceChild(index, next)}
+          onRemove={() => removeChild(index)}
         />
       ))}
 

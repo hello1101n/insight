@@ -1,7 +1,3 @@
-/**
- * Feedback over the period the rest of the usage surface is showing. Its own
- * query, so a failed read here leaves the usage numbers standing.
- */
 import type { FeedbackRange } from "@/api/feedback-client";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";

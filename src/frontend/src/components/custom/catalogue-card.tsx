@@ -34,10 +34,6 @@ const REMOVAL_NOTE: Record<PreviewedKind, string> = {
   datasets: "The records it holds are deleted with it. This can't be undone.",
 };
 
-/**
- * One metric, widget or dataset in its catalogue, laid out as a dashboard card
- * is: what it is under its title, when it last changed, and a menu.
- */
 export function CatalogueCard({
   kind,
   id,
@@ -64,23 +60,19 @@ interface CardFrameProps {
   title: string;
   open: LinkOptions;
   icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  /** What it is, each part a short phrase. */
   facts: ReactNode[];
-  /** The one fact cut short when the line runs out of room. */
-  squeezed?: number;
+  truncatedFactIndex?: number;
   updatedAt?: string;
   menu: ReactNode;
-  /** A control the card acts on in place, set before the menu. */
   control?: ReactNode;
 }
 
-/** A catalogue card's layout, for a kind whose menu is its own. */
 export function CardFrame({
   title,
   open,
   icon: Icon,
   facts,
-  squeezed = 0,
+  truncatedFactIndex = 0,
   updatedAt,
   menu,
   control,
@@ -115,7 +107,7 @@ export function CardFrame({
                 key={index}
                 className={cn(
                   "not-first:before:me-1.5 not-first:before:content-['·']",
-                  index === squeezed ? "min-w-0 truncate" : "shrink-0"
+                  index === truncatedFactIndex ? "min-w-0 truncate" : "shrink-0"
                 )}
               >
                 {part}
@@ -162,7 +154,6 @@ function CatalogueMenu({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${title}`}
               icon={<Ellipsis />}
             />

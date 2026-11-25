@@ -39,9 +39,8 @@ import {
   TruncatedCell,
   VirtualTable,
 } from "@/components/portal/usage-table";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useSearchNeedle } from "@/hooks/use-search-needle";
 import { useUsageOrder } from "@/hooks/use-usage-order";
-import { SEARCH_DEBOUNCE_MS } from "@/queries/identity-resolution";
 import {
   useUsageActions,
   useUsagePages,
@@ -66,6 +65,14 @@ function utcToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function slideToUtcToday(
+  resolved: { from: string; to: string },
+  today: string
+): UsageRange {
+  const shift = daysBetween(resolved.to, today);
+  return { since: addDays(resolved.from, shift), until: addDays(resolved.to, shift) };
+}
+
 function fillRange(days: UsageDay[], range: UsageRange): UsageDay[] {
   if (!range.since || !range.until) return days;
   const counted = new Map(days.map((d) => [d.day, d]));
@@ -86,21 +93,14 @@ export function PlatformUsage() {
   const range = useMemo(() => {
     const resolved = resolveDateRange(period, customRange);
     if (customRange) return { since: resolved.from, until: resolved.to };
-    // Slid whole, not stretched, or a 30-day month covers 31. To the UTC day:
-    // the reader's own date names a day the server has no rows for yet.
-    const shift = daysBetween(resolved.to, utcToday());
-    return { since: addDays(resolved.from, shift), until: addDays(resolved.to, shift) };
+    return slideToUtcToday(resolved, utcToday());
   }, [period, customRange]);
   const plottedRange = useMemo(() => ({ from: range.since, to: range.until }), [range]);
-  // A custom range outranks the period in `resolveDateRange`, so leaving it set
-  // makes every preset inert.
   const choosePeriod = (next: PeriodValue) => {
     setPeriod(next);
     setCustomRange(null);
   };
 
-  // The reads are siblings, not a sequence: a section nested under the
-  // summary's pending branch waits for the summary and vanishes when it fails.
   return (
     <div data-testid="page-manage-platform-usage" className="flex w-full flex-col gap-6 p-6">
       <PeriodSelectorBar
@@ -245,15 +245,14 @@ function VisitorSearch({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative w-full sm:w-56">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+    <div className="w-full sm:w-56">
       <Input
         type="search"
+        icon={<Search />}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Search visitors"
         aria-label="Search visitors"
-        className="h-8 ps-8"
       />
     </div>
   );
@@ -262,9 +261,7 @@ function VisitorSearch({
 function PeopleTable({ range }: { range: UsageRange }) {
   const order = useUsageOrder<UsagePeopleSort>("visits");
   const [typed, setTyped] = useState("");
-  const trimmed = typed.trim();
-  const debounced = useDebouncedValue(trimmed, SEARCH_DEBOUNCE_MS);
-  const search = trimmed === "" ? "" : debounced;
+  const search = useSearchNeedle(typed);
   const people = useUsagePeople(range, order.chosen, search);
 
   return (

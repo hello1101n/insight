@@ -1,11 +1,3 @@
-/**
- * The verb hooks' cache behavior. What matters: the accounts the SERVER
- * reported as decided leave the cached attention queue at once — under the
- * REAL query key, sessionScope suffix included, since a prefix drift here
- * ships green and the operator keeps staring at rows they already decided
- * until the slow refetch lands. A refused account keeps its row, and both
- * the resolution and person-search cache families are invalidated.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -39,9 +31,6 @@ const listPeople = vi.mocked(identityClient.listPeople);
 
 const bindAccount = vi.mocked(identityClient.bindAccount);
 
-// The key `useAttention` really writes, limit segment included — a cache entry
-// under a shorter key would prove nothing about the surgery reaching the queue
-// an operator is looking at.
 const ATTENTION_KEY = [
   "identity",
   "resolution",
@@ -114,9 +103,6 @@ describe("useBindAccount cache behavior", () => {
     expect(cached?.items.map((i) => i.account_id)).toEqual(["a2"]);
   });
 
-  // A refusal changed nothing on the server, so the row must survive the
-  // prune — removing it would show a queue that dealt with something the
-  // server declined.
   it("keeps a refused row in the cached queue", async () => {
     const { queryClient, wrapper } = harness();
     queryClient.setQueryData(ATTENTION_KEY, {
@@ -218,9 +204,6 @@ describe("usePersonList", () => {
     },
   );
 
-  // The bug this key exists to prevent: `enabled: false` stops a request and
-  // NOT a cache read, so a shared key let the dialog's picker render the roster
-  // the person mode had just cached — the tenant listed into a dropdown.
   it("does not serve the browsed roster to a match-intent caller", async () => {
     const { queryClient, wrapper } = harness();
     searchPersons.mockResolvedValue(roster());
@@ -271,9 +254,6 @@ describe("usePersonList", () => {
     },
   );
 
-  // What a blank field means is the caller's: the accounts mode reviews the
-  // whole fold, and inside one person that fold would bury the accounts they
-  // actually hold.
   it.each([
     ["browse", "", true],
     ["browse", "   ", true],
@@ -311,9 +291,6 @@ describe("useAccountList", () => {
     };
   }
 
-  // The same bug the person listing's intent key exists to prevent: `enabled:
-  // false` stops a request and NOT a cache read, so a shared key would let the
-  // in-person field render the whole fold the accounts mode had just browsed.
   it("does not serve the browsed fold to a match-intent caller", async () => {
     const { wrapper } = harness();
     searchAccounts.mockResolvedValue(fold());
@@ -468,9 +445,6 @@ describe("usePersonList while a term is being typed", () => {
     };
   }
 
-  // Every keystroke is its own query key. Without kept data the list empties to
-  // a spinner between letters, which reads as "no matches" to the operator
-  // mid-word.
   it("keeps the rows it already has while the next term loads", async () => {
     const { wrapper } = harness();
     searchPersons.mockResolvedValueOnce(page("Ada Example"));
@@ -497,8 +471,6 @@ describe("usePersonList while a term is being typed", () => {
     );
   });
 
-  // The service answers a dropped request all the same, so the cancellation has
-  // to reach it: one journal scan per abandoned keystroke is the cost otherwise.
   it("passes an abort signal the query can cancel with", async () => {
     const { wrapper } = harness();
     searchPersons.mockResolvedValueOnce(page("Ada Example"));
@@ -511,9 +483,6 @@ describe("usePersonList while a term is being typed", () => {
 });
 
 describe("the prune across cached limits", () => {
-  // `keepPreviousData` leaves one cache entry per limit the operator reached.
-  // A filter narrowed to the first page would leave the row they just decided
-  // sitting in the longer list they are actually looking at.
   it("drops the decided row from every cached limit", async () => {
     const { queryClient, wrapper } = harness();
     const longer = ["identity", "resolution", "attention", "tenant-a", 400];
@@ -540,10 +509,6 @@ describe("the prune across cached limits", () => {
 });
 
 describe("useAttention", () => {
-  // The limit is the whole load-more feature. Keyed on it but not PASSED, every
-  // press would fire a fresh request, blank nothing (`keepPreviousData`) and
-  // answer the same 200 rows for ever — with every other test still green,
-  // because they all mock this hook away.
   it("asks the service for the limit it is keyed on", async () => {
     vi.mocked(identityClient.getAttention).mockResolvedValue({
       items: [],
@@ -595,9 +560,6 @@ describe("useAttention", () => {
     ).toBeDefined();
   });
 
-  // A longer read is a NEW key, and a new key is pending. Without the previous
-  // answer standing in, the queue an operator is working blanks to a spinner
-  // on every press.
   it("keeps the shorter answer on screen while the longer one is read", async () => {
     vi.mocked(identityClient.getAttention).mockResolvedValue({
       items: [],

@@ -42,8 +42,6 @@ function stamp(value: unknown): string {
   return `${at.getUTCFullYear()}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())} ${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())} UTC`;
 }
 
-// INVARIANT: a threshold reads exactly as its author wrote it, never rounded:
-// a JSON number as JavaScript prints it, a digit string as its digits.
 function thresholdWords(value: unknown): string {
   return String(value);
 }
@@ -169,7 +167,6 @@ const REASONS: Record<UnknownReason, string> = {
   timeout: "Metric timed out",
 };
 
-/** Why a check could not decide. A code this build does not know is shown as it came. */
 export function reasonText(reason: string): string {
   return reason in REASONS ? REASONS[reason as UnknownReason] : reason;
 }

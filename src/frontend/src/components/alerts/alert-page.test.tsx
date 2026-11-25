@@ -27,7 +27,6 @@ function page(notifications: AlertNotification[], offset = 0) {
   return { notifications, limit: 20, offset };
 }
 
-/** A read that never lands, so only what a write put in the cache can show. */
 function neverLands<T>(): Promise<T> {
   return new Promise<T>(() => {});
 }

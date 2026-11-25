@@ -15,16 +15,11 @@ import { useIsAdmin } from "@/queries/identity-me";
 export interface CustomWidgetProps {
   widget: Widget;
   result?: MetricResult;
-  /** Whatever failed the run, shown as the service worded it. */
   error?: unknown;
-  /** Whether a time range was asked for, which changes what empty means. */
   windowed?: boolean;
-  /** Whether the run is still in flight, which is not the same as empty. */
   pending?: boolean;
   onRetry?: () => void;
-  /** Whether a chart takes its container's height instead of the card's. */
   fillHeight?: boolean;
-  /** A click on a chart's point or slice. Absent, charts ignore clicks. */
   onPointClick?: () => void;
 }
 
@@ -73,8 +68,6 @@ export function CustomWidget({
     );
   }
 
-  // A run in flight has no result yet, which is not the same as a result with
-  // nothing in it: saying "No data" while waiting reads as an answer.
   if (pending || !result) {
     return <CenteredSpinner className="min-h-40" />;
   }
@@ -94,13 +87,13 @@ export function CustomWidget({
   switch (widget.type) {
     case "table":
       return (
-        drawable(widget.metric, widget.columns, result) ?? (
+        missingColumnsNotice(widget.metric, widget.columns, result) ?? (
           <CustomTable result={result} />
         )
       );
     case "line":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
           <CustomLineChart
             result={result}
             x={widget.x}
@@ -112,7 +105,7 @@ export function CustomWidget({
       );
     case "bar":
       return (
-        drawable(
+        missingColumnsNotice(
           widget.metric,
           [widget.x, widget.y, ...(widget.series ? [widget.series] : [])],
           result
@@ -130,7 +123,7 @@ export function CustomWidget({
       );
     case "area":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
           <CustomAreaChart
             result={result}
             x={widget.x}
@@ -142,7 +135,7 @@ export function CustomWidget({
       );
     case "stat":
       return (
-        drawable(widget.metric, [widget.value], result) ?? (
+        missingColumnsNotice(widget.metric, [widget.value], result) ?? (
           <CustomStat
             result={result}
             value={widget.value}
@@ -152,7 +145,11 @@ export function CustomWidget({
       );
     case "pie":
       return (
-        drawable(widget.metric, [widget.label, widget.value], result) ?? (
+        missingColumnsNotice(
+          widget.metric,
+          [widget.label, widget.value],
+          result
+        ) ?? (
           <CustomPieChart
             result={result}
             label={widget.label}
@@ -167,16 +164,7 @@ export function CustomWidget({
   }
 }
 
-/**
- * What to render instead of the widget when its metric does not return a
- * column it draws, and nothing when it does.
- *
- * The service refuses such a widget now, but one stored before it did — or a
- * metric edited to drop a column — still reaches here, and a chart missing
- * its y column drew its axes and no line. That read as missing data rather
- * than as a definition naming a column that is not there.
- */
-function drawable(
+function missingColumnsNotice(
   metric: string,
   drawn: string[],
   result: MetricResult
@@ -193,7 +181,6 @@ function drawable(
   );
 }
 
-/** Only an administrator, who can fix the definition, is told what is missing. */
 function MissingColumns({
   metric,
   missing,

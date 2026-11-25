@@ -1,11 +1,6 @@
 import type { MetricBucket, MetricDimension } from "@/api/metric-results-client";
 import type { DateRange } from "@/api/period-to-date-range";
 
-/**
- * The bucket a time-based section actually charted, as a reader-facing note.
- * The lens picks day/week/month from the window, so a config title must not
- * promise a period — the note states the one that was served.
- */
 export function bucketNote(bucket: MetricBucket | null): string | null {
   switch (bucket) {
     case "day":
@@ -19,19 +14,11 @@ export function bucketNote(bucket: MetricBucket | null): string | null {
   }
 }
 
-/**
- * Every derived reading of the tenant lens lives here as a pure function over
- * view rows — renderers only lay out what these return, so the math is
- * testable without a DOM or a mocked chart.
- */
-
-/** One breakdown row scoped to the tenant entity. */
 export interface DimRow {
   dimensions: MetricDimension[];
   value: number | null;
 }
 
-/** One dimensioned timeseries entry scoped to the tenant entity. */
 export {
   dayHourMatrix,
   HOUR_BLOCKS,
@@ -55,11 +42,6 @@ export function dimLabel(row: DimRow | DimSeries, key: string): string | null {
   return dim.label?.trim() || dim.value;
 }
 
-// ---------------------------------------------------------------------------
-// The gate, exactly as silver defines it (github__ci_runs.sql `is_gate`):
-// commit-triggered AND carrying a decided outcome. Any client-side gate math
-// derived from ci.runs rows must use these constants and nothing else.
-// ---------------------------------------------------------------------------
 export const GATE_TRIGGERS = ["push", "pull_request", "merge_queue"] as const;
 export const GATE_DECIDED_OUTCOMES = ["success", "failure", "timed_out"] as const;
 export const GATE_PASS_OUTCOME = "success";
@@ -71,14 +53,9 @@ export interface GateStats {
   gateRuns: number;
   gatePassed: number;
   gateFailed: number;
-  /** Percent 0–100, or null when the group has no gate runs. */
   passRate: number | null;
 }
 
-/**
- * Gate statistics per value of `key`, from ci.runs breakdown rows that carry
- * at least [key, trigger, outcome]. Rows may be grouped finer — counts sum.
- */
 export function gateStatsBy(rows: readonly DimRow[], key: string): GateStats[] {
   const byValue = new Map<string, GateStats>();
   for (const row of rows) {
@@ -116,11 +93,8 @@ export function gateStatsBy(rows: readonly DimRow[], key: string): GateStats[] {
 
 export interface MarginalImpactStep {
   n: number;
-  /** Display labels of the pipelines "fixed" so far, worst first. */
   pipelines: string[];
-  /** The org gate pass rate if those pipelines' failures had passed. */
   rate: number;
-  /** Percentage points gained over the current rate. */
   delta: number;
 }
 
@@ -130,11 +104,6 @@ export interface MarginalImpact {
   steps: MarginalImpactStep[];
 }
 
-/**
- * What fixing the worst pipelines would buy: failures of the top-N
- * failing pipelines counted as passes (denominator unchanged). Null when
- * there are no gate runs or nothing fails.
- */
 export function marginalImpact(
   rows: readonly DimRow[],
   maxSteps = 3
@@ -169,16 +138,11 @@ export function marginalImpact(
   return { currentRate, gateRuns, steps };
 }
 
-// ---------------------------------------------------------------------------
-// Series statistics.
-// ---------------------------------------------------------------------------
-
 export function mean(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-/** Sample standard deviation; null below two observations. */
 export function sampleStddev(values: readonly number[]): number | null {
   if (values.length < 2) return null;
   const m = mean(values);
@@ -202,12 +166,6 @@ export interface TrendPointReading {
   value: number;
 }
 
-/**
- * Buckets that fell more than `k` sample deviations below the mean of their
- * own trailing window — "this day was bad by this series' own recent
- * standard", not against a fixed threshold. Needs `minPrior` prior points
- * and a non-degenerate spread, so a flat series flags nothing.
- */
 export function trailingOutlierDates(
   points: readonly TrendPointReading[],
   { window = 7, minPrior = 3, k = 2 }: { window?: number; minPrior?: number; k?: number } = {}
@@ -224,19 +182,13 @@ export function trailingOutlierDates(
   return flagged;
 }
 
-// ---------------------------------------------------------------------------
-// Composition math.
-// ---------------------------------------------------------------------------
-
 export interface SegmentShare {
   value: string;
   label: string;
   amount: number;
-  /** Percent 0–100 of the total. */
   share: number;
 }
 
-/** One 100% decomposition of summable rows by a dimension. */
 export function decomposeBy(rows: readonly DimRow[], key: string): SegmentShare[] {
   const byValue = new Map<string, { label: string; amount: number }>();
   let total = 0;
@@ -264,11 +216,9 @@ export function decomposeBy(rows: readonly DimRow[], key: string): SegmentShare[
 
 export interface CumulativeRow extends SegmentShare {
   rank: number;
-  /** Percent 0–100 including every larger contributor. */
   cumulativeShare: number;
 }
 
-/** The same shares, ranked largest-first with a running total. */
 export function cumulativeShares(rows: readonly DimRow[], key: string): CumulativeRow[] {
   let running = 0;
   return decomposeBy(rows, key).map((entry, index) => {
@@ -277,20 +227,11 @@ export function cumulativeShares(rows: readonly DimRow[], key: string): Cumulati
   });
 }
 
-// ---------------------------------------------------------------------------
-// Timeseries reshaping.
-// ---------------------------------------------------------------------------
-
 export interface StackedTrendData {
   segments: Array<{ value: string; label: string }>;
-  /** One row per bucket; segment values keyed by segment value. */
   rows: Array<{ date: string; values: Record<string, number> }>;
 }
 
-/**
- * Dimensioned series → per-bucket rows keyed by segment. `share` converts
- * each bucket to percent-of-bucket-total, dropping empty buckets.
- */
 export function stackedTrend(
   series: readonly DimSeries[],
   splitBy: string,
@@ -340,7 +281,6 @@ export interface SmallMultiple {
   points: TrendPointReading[];
 }
 
-/** One line per dimension value, plus the shared y-axis ceiling. */
 export function smallMultiples(
   series: readonly DimSeries[],
   dimension: string,
@@ -385,7 +325,6 @@ export interface HourColumnsData {
   stddev: number | null;
 }
 
-/** Per-hour-block readings with the unweighted mean ± σ across blocks. */
 export function hourColumns(rows: readonly DimRow[]): HourColumnsData {
   const columns = rows
     .flatMap((row) => {
@@ -400,15 +339,6 @@ export function hourColumns(rows: readonly DimRow[]): HourColumnsData {
   return { columns, mean: mean(values), stddev: sampleStddev(values) };
 }
 
-// ---------------------------------------------------------------------------
-// Two-halves comparison (slope / momentum).
-// ---------------------------------------------------------------------------
-
-/**
- * The window split at its midpoint; the second half gets the odd day so the
- * recent half is never the thinner one. Null when either half would be
- * shorter than two days — a one-day "half" is noise dressed as direction.
- */
 export function splitDateRange(
   range: DateRange
 ): { first: DateRange; second: DateRange } | null {
@@ -448,10 +378,6 @@ export interface HalfComparison {
   delta: number;
 }
 
-/**
- * Per-dimension-value readings present in BOTH halves — a value observed in
- * only one half has no direction, only an appearance.
- */
 export function halvesComparison(
   firstRows: readonly DimRow[],
   secondRows: readonly DimRow[],
@@ -482,10 +408,6 @@ export function halvesComparison(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pairwise panels.
-// ---------------------------------------------------------------------------
-
 export interface DumbbellRow {
   value: string;
   label: string;
@@ -493,7 +415,6 @@ export interface DumbbellRow {
   right: number;
 }
 
-/** Rows with BOTH split readings, widest left-over-right gap first. */
 export function dumbbellPairs(
   rows: readonly DimRow[],
   dimension: string,
@@ -539,7 +460,6 @@ export interface ScatterData {
   medianY: number | null;
 }
 
-/** Join x/y(/size) breakdowns by dimension value; a point needs both axes. */
 export function scatterPoints(
   xRows: readonly DimRow[],
   yRows: readonly DimRow[],
@@ -584,10 +504,6 @@ export interface CalloutPair {
   groups: number;
 }
 
-/**
- * The org headline against the unweighted mean over a dimension: the gap is
- * how much the busiest groups dominate the headline.
- */
 export function calloutPair(
   headline: number | null,
   rows: readonly DimRow[],
@@ -600,10 +516,6 @@ export function calloutPair(
   if (headline == null || m == null || values.length < 2) return null;
   return { headline, unweightedMean: m, groups: values.length };
 }
-
-// ---------------------------------------------------------------------------
-// Verdicts.
-// ---------------------------------------------------------------------------
 
 export type StabilityVerdict =
   | "solid"
@@ -621,13 +533,6 @@ export interface WeeklyVerdict {
   verdict: StabilityVerdict;
 }
 
-/**
- * Mean weekly value and volatility per dimension value, resolved to a
- * verdict. The ladder assumes a 0–100 rate where higher is better:
- * spread past 15 points is erratic whatever the mean; a mean under 70 is
- * struggling; ≥95 with ≤5 spread is solid; ≥85 is healthy; the rest bears
- * watching. Histories under `minWeeks` are not judged at all.
- */
 export function weeklyVerdicts(
   series: readonly DimSeries[],
   dimension: string,

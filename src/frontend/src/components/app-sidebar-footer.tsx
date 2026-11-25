@@ -19,23 +19,11 @@ import { linkTo } from "@/lib/portal/portal-routes";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useIcPerson } from "@/queries/ic-dashboard";
 
-/**
- * Shared footer for the sidebar chrome: What's new, view
- * settings (planned sections), theme switch, and the viewer
- * identity block. The portal's rail and its context pane both mount it, so the
- * settings popover and the pane offer the same controls.
- *
- * `onNavigate` fires for the entries that put something else on screen: what
- * they open renders behind the popover the portal mounts this in, so the opener
- * has to dismiss it. The toggles stay silent — a menu that shut on every flip
- * would need reopening each time.
- */
 export function AppSidebarFooter({
   onNavigate,
   showFeedback = true,
 }: {
   onNavigate?: () => void;
-  /** False where the shell already offers it — the rail has its own slot. */
   showFeedback?: boolean;
 }) {
   const { t } = useTranslation();
@@ -77,8 +65,8 @@ export function AppSidebarFooter({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="cursor-default">
-              <Avatar className="size-8 shrink-0">
-                <AvatarFallback className="bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+              <Avatar className="shrink-0">
+                <AvatarFallback>
                   {getInitials(primary) || "?"}
                 </AvatarFallback>
               </Avatar>
@@ -100,7 +88,6 @@ export function AppSidebarFooter({
   );
 }
 
-/** Active state resolves through `resolveZoneItem`, as the context pane's does. */
 function MenuEntry({
   surface,
   icon: Icon,

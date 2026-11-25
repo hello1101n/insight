@@ -4,7 +4,6 @@ import type { AlertPreviewRequest } from "@/api/alerts-types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { alertPreviewQuery } from "@/queries/alerts";
 
-/** Long enough that picking a metric and a window is one run, not three. */
 const RUN_DEBOUNCE_MS = 600;
 
 export function useAlertPreview(request: AlertPreviewRequest, ready: boolean) {

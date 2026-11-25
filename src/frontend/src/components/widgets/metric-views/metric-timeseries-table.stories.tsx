@@ -1,35 +1,15 @@
-/**
- * Browser component tests for the geometry of `<MetricTimeseriesTable>` — the
- * scroll controls and the room they leave the data.
- *
- * What the table renders, and where a page scrolls to, is covered by the jsdom
- * tests in `metric-timeseries-presentations.test.tsx`, which hand it fake
- * geometry. What needs a real browser is the geometry itself: the controls sit
- * in gutters taken out of the scrollport, and both the sticky bucket column and
- * a whole value column have to survive that on a phone.
- *
- * `metric-timeseries-view.stories.tsx` covers the same table inside its card;
- * this file renders it in a box of a chosen size, which is the only way to
- * reach the short-table case.
- *
- * See docs/testing/storybook-component-tests.md.
- */
-
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, waitFor } from "storybook/test";
 
 import { MetricTimeseriesTable } from "@/components/widgets/metric-views/metric-timeseries-table";
+import { GUTTER_PX } from "@/components/widgets/metric-views/metric-timeseries-table-model";
 import { groupedTimeseriesModel } from "@/components/widgets/metric-views/metric-timeseries.test-fixtures";
 import {
   CARD_PX_AT_390,
   expectNothingOverlaps,
 } from "@/test/storybook/layout";
 
-/** Short enough that the three rows overrun it, so the row controls render. */
 const SHORT_PX = 180;
-
-/** Mirrors the gutter the component reserves — see the widening story. */
-const GUTTER_PX = 48;
 
 const meta: Meta<typeof MetricTimeseriesTable> = {
   title: "Widgets/MetricViews/MetricTimeseriesTable",
@@ -40,7 +20,6 @@ export default meta;
 
 type Story = StoryObj<typeof MetricTimeseriesTable>;
 
-/** Demo story for the Storybook UI (untagged — not a test). */
 export const Default: Story = {
   decorators: [
     (Story) => (
@@ -61,13 +40,6 @@ function nameOf(element: Element): string {
   return element.getAttribute("aria-label") ?? "a scroll control";
 }
 
-/**
- * Scrolling both ways, the four controls clear the cells and each other.
- *
- * The row pair shares the end gutter with the column control, so this is the
- * arrangement that stops being obvious: three chevrons in one lane, held apart
- * only by the height the caller gives the table.
- */
 export const TestShortTableKeepsItsControlsApart: Story = {
   decorators: [
     (Story) => (
@@ -101,14 +73,6 @@ export const TestShortTableKeepsItsControlsApart: Story = {
   },
 };
 
-/**
- * On a phone the bucket column and a whole value column both still read.
- *
- * Moving the controls off the cells costs the scrollport two gutters, and the
- * sticky bucket column is taken out of what is left. Clearing the cells by
- * taking the room they needed would leave the table exactly as unreadable as
- * the controls painted over it did.
- */
 export const TestNarrowTableLeavesRoomForAValueColumn: Story = {
   decorators: [
     (Story) => (
@@ -139,8 +103,6 @@ export const TestNarrowTableLeavesRoomForAValueColumn: Story = {
         `(${Math.round(value)}px) do not fit the ${room}px scrollport`
     ).toBeLessThanOrEqual(room);
 
-    // The date is what the bucket column is narrow for; a column that clips it
-    // would satisfy the width check and tell the reader nothing.
     const date = cells[0];
     await expect(
       date.scrollWidth,
@@ -149,15 +111,6 @@ export const TestNarrowTableLeavesRoomForAValueColumn: Story = {
   },
 };
 
-/**
- * Given the room back, the table gives the gutters back.
- *
- * The gutters are the wrapper's padding, so measuring the overflow on the
- * scrollport feeds them their own effect: the width they took makes the
- * overflow that keeps them. That latches — a card that was ever narrow keeps a
- * sideways scroll and two empty gutters at every width afterwards — and only a
- * resize in both directions catches it.
- */
 export const TestWidenedTableReleasesItsGutters: Story = {
   decorators: [
     (Story) => (
@@ -179,9 +132,6 @@ export const TestWidenedTableReleasesItsGutters: Story = {
       ).toBeGreaterThan(0)
     );
 
-    // One gutter's worth of room past the table is the width that catches a
-    // latch and nothing else does: wide enough that the table fits with no
-    // gutters, narrow enough that it does not once a stale pair is subtracted.
     box.style.width = `${table.offsetWidth + GUTTER_PX}px`;
 
     await waitFor(() =>
@@ -197,8 +147,8 @@ export const TestWidenedTableReleasesItsGutters: Story = {
       `the widened table still scrolls sideways (${scrollport.scrollWidth}px of table in ${scrollport.clientWidth}px)`
     ).toBeLessThanOrEqual(scrollport.clientWidth);
     await expect(
-      wrapper.className,
+      getComputedStyle(wrapper).paddingInlineStart,
       "the wrapper kept a gutter it no longer has a control for"
-    ).not.toContain("ps-12");
+    ).toBe("0px");
   },
 };

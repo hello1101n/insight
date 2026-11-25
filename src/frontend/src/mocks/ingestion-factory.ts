@@ -1,25 +1,3 @@
-/**
- * Synthetic ingestion-intensity responses for mock, Storybook and
- * `VITE_ENABLE_MOCKS=true` dev runs.
- *
- * Generated rather than captured, but CALIBRATED against a real read of the
- * gold ops view so the surface is exercised with the shape it will meet:
- *
- *   30d @ 15m, series=total  — 2884 buckets, per-bucket total 1 … ~6800
- *                              (nearly four orders of magnitude, which is the
- *                              whole reason that chart is on a log axis)
- *   24h @ 15m, by connector  — 97 buckets, three connectors ~61/32/7 %
- *   30m @ 1s,  by connector  — ~1800 buckets, per-bucket total 1 … ~13
- *
- * The pieces that matter for the lens are deliberate, not incidental: buckets
- * holding exactly ONE row (the case a log axis floored at 1 erases), and idle
- * buckets omitted entirely (the case a categorical x-axis would close up).
- *
- * Deterministic: every value derives from the bucket's own timestamp, so a
- * re-render and a reload draw the same chart and a screenshot diff means
- * something.
- */
-
 import type {
   IngestionGrain,
   IngestionIntensity,
@@ -27,7 +5,6 @@ import type {
   IngestionSeries,
 } from "@/api/ingestion-client";
 
-/** Bands and their share of the total, as the calibration read them. */
 const CONNECTORS: ReadonlyArray<readonly [string, number]> = [
   ["demo_tasks", 0.61],
   ["demo_chat", 0.32],
@@ -49,13 +26,10 @@ const STREAMS_BY_CONNECTOR: Record<string, ReadonlyArray<readonly [string, numbe
 
 const MS = { "15m": 15 * 60 * 1_000, "1s": 1_000 } as const;
 
-/** Peak rows in one 15-minute bucket, across all bands. */
 const PEAK_15M = 6_800;
 
-/** Peak rows in one 1-second bucket. */
 const PEAK_1S = 13;
 
-/** FNV-1a over the bucket, so a value depends only on its own timestamp. */
 function noise(epoch: number, salt: number): number {
   let hash = 0x811c9dc5 ^ salt;
   const text = String(epoch);
@@ -66,26 +40,16 @@ function noise(epoch: number, salt: number): number {
   return hash;
 }
 
-/** 0…1, stable per bucket. */
 function unit(epoch: number, salt: number): number {
   return (noise(epoch, salt) % 10_000) / 10_000;
 }
 
-/**
- * Rows in one bucket before the bands split it.
- *
- * Shaped like the real thing: a working-hours swell, a weekday/weekend
- * difference, idle stretches, and a thin tail of one-row buckets.
- */
 function bucketTotal(epoch: number, grain: IngestionGrain): number {
   const at = new Date(epoch);
   const hour = at.getUTCHours();
   const weekday = at.getUTCDay() >= 1 && at.getUTCDay() <= 5;
 
-  // Idle: no sync landed in this bucket at all. Omitted from the response, so
-  // the chart shows a gap rather than a zero.
   if (unit(epoch, 1) < 0.04) return 0;
-  // The sparse tail the log floor exists for.
   if (unit(epoch, 2) < 0.05) return 1;
 
   if (grain === "1s") {
@@ -105,13 +69,6 @@ function bandsFor(series: IngestionSeries, scope: string | null) {
   return CONNECTORS;
 }
 
-/**
- * Split a bucket total across bands.
- *
- * A band whose share rounds to nothing is dropped rather than sent as zero:
- * the real GROUP BY cannot emit a row for a band that extracted nothing, and a
- * zero would stack an invisible segment and appear in the legend.
- */
 function splitBucket(
   epoch: number,
   total: number,
@@ -123,14 +80,11 @@ function splitBucket(
     const rows = Math.round(total * share * wobble);
     if (rows > 0) out.push({ key, rows });
   });
-  // Every bucket present in the response has at least one band.
   if (out.length === 0) out.push({ key: bands[0][0], rows: 1 });
   return out;
 }
 
 function stamp(epoch: number, grain: IngestionGrain): string {
-  // The server emits `YYYY-MM-DD HH:MM:SS`, zone-less, and the 1s grain carries
-  // milliseconds while the 15m grain does not.
   const iso = new Date(epoch).toISOString();
   return grain === "1s"
     ? `${iso.slice(0, 10)} ${iso.slice(11, 23)}`
@@ -146,7 +100,6 @@ export interface IngestionMockRequest {
   now?: number;
 }
 
-/** The server's per-grain default window, so an unpinned request matches it. */
 function defaultSpanMs(grain: IngestionGrain): number {
   return grain === "1s" ? 30 * 60 * 1_000 : 24 * 60 * 60 * 1_000;
 }
@@ -165,7 +118,6 @@ export function buildIngestionIntensity(
 
   const bands = bandsFor(series, scope);
   const points: IngestionPoint[] = [];
-  // Aligned to the grain, the way toStartOfInterval() would.
   const first = Math.ceil(from / step) * step;
   for (let epoch = first; epoch < to; epoch += step) {
     const total = bucketTotal(epoch, grain);

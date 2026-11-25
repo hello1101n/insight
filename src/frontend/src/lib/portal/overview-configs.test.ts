@@ -48,9 +48,6 @@ describe("OVERVIEW_ITEMS registry", () => {
   });
 
   it("the at-a-glance headline spans code, delivery, comms and cost", () => {
-    // The headline used to be git + comms + cost only, so an org whose people
-    // work in tickets rather than repos read as idle at the top level — and the
-    // gap was invisible on a dataset where every git tile happened to have data.
     const headline = OVERVIEW_ITEMS[DEFAULT_OVERVIEW_ITEM]!.sections.find(
       (s) => s.kind === "headline",
     );
@@ -61,6 +58,12 @@ describe("OVERVIEW_ITEMS registry", () => {
         `headline is missing the ${family} family`,
       ).toBe(true);
     }
+  });
+
+  it("leaves the AI adoption card off Home", () => {
+    const kinds = OVERVIEW_ITEMS[DEFAULT_OVERVIEW_ITEM]!.sections.map((s) => s.kind);
+
+    expect(kinds).not.toContain("participation");
   });
 
   it("direction-cards keys are variant-independent", () => {

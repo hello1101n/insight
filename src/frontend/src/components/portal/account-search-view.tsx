@@ -1,16 +1,3 @@
-/**
- * Finding an account, and the window it is decided in.
- *
- * The mode arrives with a value in hand — a git login from a review, an address
- * from a ticket — the question neither other mode can answer, because both are
- * entered through a person. A blank field lists what the connectors reported,
- * since the accounts nobody asks about are exactly the ones nobody finds by
- * searching.
- *
- * A row opens the account, on the click itself: the queue's rows behave that
- * way, and a listing one tab across that demanded a button instead made the
- * same gesture mean two things.
- */
 import { useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ScanSearch, Search, TriangleAlert } from "lucide-react";
@@ -43,7 +30,7 @@ import { useAutoLoadOnScroll } from "@/hooks/use-auto-load-on-scroll";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { accountKey, itemKey } from "@/lib/identities/account-key";
 import { matchesAccountSearch } from "@/lib/identities/account-search";
-import { KIND_SEARCH_MATCH } from "@/lib/identities/cases";
+import { CONSOLE_SEARCH_MATCH_KIND } from "@/lib/identities/cases";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { activatesRow, activatesRowByKey } from "@/lib/identities/row-activation";
 import { formatSources, normalizeSources, parseSources } from "@/lib/identities/sources";
@@ -87,13 +74,20 @@ function accountLabel(item: {
   );
 }
 
-/**
- * The field, its results, and the one case window they open into.
- *
- * INVARIANT: the window lives here and nowhere else on the surface. It is
- * opened by `?acct=` alone, so a second one on the same screen would open
- * beside this one on the same link.
- */
+function caseRowOf(match: AccountMatch): CaseRow {
+  return {
+    kind: CONSOLE_SEARCH_MATCH_KIND,
+    source: match.source,
+    source_id: match.source_id,
+    account_id: match.account_id,
+    email: match.email,
+    username: match.username,
+    display_name: match.display_name,
+    candidates: [],
+    holder: match.person ?? null,
+  };
+}
+
 export function AccountSearchView() {
   const { t } = useTranslation();
   const { acct, src } = usePortalSearch();
@@ -112,32 +106,22 @@ export function AccountSearchView() {
   const unmatchedHeading = useId();
   const accountsHeading = useId();
 
-  // Never rows the query did not ask for: under the floor the listing is not
-  // this field's answer, and kept pages would be the previous term's.
   const lists = listsAnyAccount(debounced, "browse");
   const items = lists
     ? (search.data?.pages ?? []).flatMap((page) => page.items)
     : [];
   const loading = search.isFetching && !search.isFetchingNextPage;
-  // A needle actually reached the service, so an empty answer means "nothing
-  // matched" rather than "nothing is observed". The floor comes from the shared
-  // rule, or the two disagree about what counts as one character.
   const asked = debounced.trim() !== "" && lists;
-  // What is listed answers the term the query key carries, not the one in the
-  // field, until the debounce fires AND the fetch lands. Neither emptiness below
-  // is a claim about the field's own needle while that is true.
-  const stale = query !== debounced || search.isPlaceholderData;
+  const answersPreviousTerm = query !== debounced || search.isPlaceholderData;
+  const unreadPage = lists && search.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
-    hasNextPage: search.hasNextPage,
+    hasNextPage: unreadPage,
     isFetchingNextPage: search.isFetchingNextPage,
     fetchNextPage: () => void search.fetchNextPage(),
     root: scroller,
   });
 
-  // The window takes queue-shaped rows; a listed account adapts. This is also
-  // the voucher that the account exists — without it an unbound, never-decided
-  // account the list just showed would open as a stale link with no verbs.
   const unmatchedAll: AttentionItem[] = attention.isError
     ? []
     : (attention.data?.items ?? []).filter(
@@ -154,17 +138,7 @@ export function AccountSearchView() {
     attention.data.truncated !== true &&
     attention.data.items_truncated !== true;
   const walk = unmatched.map(itemKey);
-  const listed: CaseRow[] = items.map((m) => ({
-    kind: KIND_SEARCH_MATCH,
-    source: m.source,
-    source_id: m.source_id,
-    account_id: m.account_id,
-    email: m.email,
-    username: m.username,
-    display_name: m.display_name,
-    candidates: [],
-    holder: m.person ?? null,
-  }));
+  const listed = items.map(caseRowOf);
   const openable: CaseRow[] = [
     ...unmatchedAll,
     ...listed.filter((row) => !queued.has(itemKey(row))),
@@ -180,32 +154,24 @@ export function AccountSearchView() {
   const showAccounts =
     search.isError ||
     items.length > 0 ||
-    (lists && search.hasNextPage) ||
-    (!loading && !stale);
+    unreadPage ||
+    (!loading && !answersPreviousTerm);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <div className="flex shrink-0 items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
           <Input
             type="search"
+            icon={<Search />}
+            end={loading ? <Spinner /> : undefined}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("identities.accounts.placeholder")}
             aria-label={t("identities.accounts.placeholder")}
-            // The service refuses a longer needle. Without the stop the field
-            // accepts a paste it cannot search — an id, a url, a log line — and
-            // the operator gets a refusal instead of a result.
             maxLength={MAX_SEARCH_CHARS}
-            className={cn(
-              "ps-9",
-              loading && "pe-9 [&::-webkit-search-cancel-button]:hidden"
-            )}
+            className={cn(loading && "[&::-webkit-search-cancel-button]:hidden")}
           />
-          {loading ? (
-            <Spinner className="absolute end-3 top-1/2 size-4 -translate-y-1/2" />
-          ) : null}
         </div>
         <SourceFilter
           sources={sourceOptions}
@@ -254,8 +220,8 @@ export function AccountSearchView() {
                     </p>
                   ) : null}
                   {unmatched.length > 0 ? (
-                    <Card className="py-0">
-                      <CardContent className="flex flex-col gap-1 p-2">
+                    <Card>
+                      <CardContent className="flex flex-col gap-1">
                         {unmatched.map((item) => (
                           <UnmatchedRow
                             key={itemKey(item)}
@@ -297,12 +263,10 @@ export function AccountSearchView() {
                 />
               ) : null}
 
-              {/* Two different emptinesses: terms that matched nothing, and
-                  nothing to list. The second one does not claim the tenant is
-                  empty — the service answers an empty list for a fold it cannot
-                  read yet, and an operator cannot tell that from a tenant
-                  nobody has connected. */}
-              {!loading && !stale && items.length === 0 && !search.isError ? (
+              {!loading &&
+              !answersPreviousTerm &&
+              items.length === 0 &&
+              !search.isError ? (
                 <Empty className="mx-auto">
                   <EmptyHeader>
                     {asked ? null : (
@@ -328,12 +292,9 @@ export function AccountSearchView() {
                 </Empty>
               ) : null}
 
-              {/* Rendered for an unread next page even with nothing listed: the
-                  marker asks for that page, and an observer only reports a
-                  target inside its own root. */}
-              {items.length > 0 || (lists && search.hasNextPage) ? (
-                <Card className="py-0">
-                  <CardContent className="flex flex-col gap-1 p-2">
+              {items.length > 0 || unreadPage ? (
+                <Card>
+                  <CardContent className="flex flex-col gap-1">
                     {items.map((item) => (
                       <AccountRow
                         key={accountKey(item)}
@@ -345,14 +306,7 @@ export function AccountSearchView() {
                         onOpen={() => setAcct(accountKey(item))}
                       />
                     ))}
-                    {/* The page after this one is asked for when this marker
-                        nears the viewport, so the list continues instead of
-                        ending in a button. The marker is always there while a
-                        page is unread — the observer needs an element — but it
-                        only SAYS anything while that page is on its way:
-                        labelling an idle list "loading" is a lie the reader
-                        cannot dismiss. */}
-                    {search.hasNextPage ? (
+                    {unreadPage ? (
                       <div
                         ref={loadMore}
                         aria-live="polite"
@@ -445,11 +399,6 @@ function AccountRow({
     item.person ?? (item.excluded || !addressesKnown ? null : item.address_holder);
   const matchedByEmail = item.person == null && holder != null;
   return (
-    // Fixed columns, not content-sized ones: a list is read down a column, and
-    // holders whose names differ in length would otherwise step the cards
-    // sideways on every row. Only where there is room — taking the trailing
-    // tracks from a narrower window would leave the address, the one value this
-    // mode answers with, an ellipsis. Below that the row stacks instead.
     <div
       role="button"
       tabIndex={0}
@@ -462,8 +411,6 @@ function AccountRow({
         onOpen();
       }}
       aria-pressed={selected}
-      // Without a label the accessible name is computed from everything inside,
-      // which reads out the holder's whole card before the account is named.
       aria-label={[
         label,
         item.source,
@@ -490,13 +437,10 @@ function AccountRow({
           {item.source} · {item.account_id}
         </div>
       </div>
-      {/* Whose it is — the answer the mode exists for. Unbound is an answer
-          too, and exclusion is a third one: an operator's recorded decision,
-          which "bound to nobody" would invite undoing. */}
       {holder ? (
         <PersonCell person={holder} />
       ) : item.excluded ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.excluded")}
         </Badge>
       ) : (
@@ -504,14 +448,12 @@ function AccountRow({
           {t("identities.accounts.unbound")}
         </span>
       )}
-      {/* Who decided the binding, as a line: the two answers are two states
-          of one fact, and only one of them used to carry a shape. */}
       {matchedByEmail ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.matched_by_email")}
         </Badge>
       ) : item.person || (item.excluded && item.bound_by_operator) ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {item.bound_by_operator
             ? t("identities.person_accounts.by_operator")
             : t("identities.person_accounts.by_automation")}

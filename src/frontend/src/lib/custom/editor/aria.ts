@@ -1,4 +1,3 @@
-/** What a control tells assistive technology about the row it sits in. */
 export interface Describing {
   "aria-describedby"?: string;
   "aria-invalid"?: true;
@@ -13,12 +12,6 @@ export function saidId(id: string): string {
   return `${id}-said`;
 }
 
-/**
- * The row's hint and refusal, bound to its control.
- *
- * Text beside a control is read by nobody who cannot see it unless the control
- * names it, so the row's hint and whatever the service said about it are.
- */
 export function describing(
   id: string,
   row: { hint?: string; said?: string; required?: boolean }

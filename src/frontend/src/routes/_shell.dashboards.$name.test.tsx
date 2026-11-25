@@ -81,7 +81,6 @@ import { portalRouter } from "@/test/portal-router";
 
 import { Route } from "./_shell.dashboards.$name";
 
-/** What every read here carries besides its body. */
 const READ = {
   name: "engineering",
   tags: [],

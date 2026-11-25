@@ -63,7 +63,6 @@ function PersonRow({ flag }: { flag: AttentionFlag }) {
   );
 }
 
-/** People listed inside an opened metric before the rest wait behind "+N more". */
 const PEOPLE_PER_THEME = 12;
 
 function MoreButton({
@@ -99,8 +98,6 @@ function Theme({
   const [all, setAll] = useState(false);
   const shown = all ? flags : flags.slice(0, PEOPLE_PER_THEME);
   return (
-    // Clipping keeps the header fill inside the border's inner radius, which is
-    // the outer radius minus the border width.
     <div className="overflow-hidden rounded-lg border bg-card">
       <button
         type="button"
@@ -137,11 +134,6 @@ function Theme({
   );
 }
 
-/**
- * What stands out this period, gathered by the metric it is about.
- *
- * Used by the team-state roster and the org overview.
- */
 export function AttentionList({
   flags,
   summary,
@@ -149,7 +141,6 @@ export function AttentionList({
 }: {
   flags: AttentionFlag[];
   summary: string;
-  /** Metrics listed before the rest wait behind "+N more". */
   max?: number;
 }) {
   const { t } = useTranslation();
@@ -163,7 +154,7 @@ export function AttentionList({
       </p>
 
       <Card>
-        <CardContent className="p-3 text-sm">{summary}</CardContent>
+        <CardContent>{summary}</CardContent>
       </Card>
 
       {themes.length > 0 ? (

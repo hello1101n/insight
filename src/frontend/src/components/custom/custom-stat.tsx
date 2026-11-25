@@ -8,12 +8,6 @@ export interface CustomStatProps {
   label?: string;
 }
 
-/**
- * One number.
- *
- * "How many commits are there" answers with a single row and a single column,
- * which a table renders as a header above one cell.
- */
 export function CustomStat({ result, value, label }: CustomStatProps) {
   const at = result.columns.indexOf(value);
   const [first] = result.rows;

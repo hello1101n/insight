@@ -2,7 +2,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Folder as FolderIcon, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { DashboardAccess, FolderSummary } from "@/api/custom-client";
+import type {
+  DashboardAccess,
+  DashboardRead,
+  Folder,
+  FolderSummary,
+} from "@/api/custom-client";
 import { refusal } from "@/components/custom/refusal";
 import {
   DropdownMenuCheckboxItem,
@@ -23,6 +28,23 @@ import {
   useRemoveFromFolder,
 } from "@/queries/custom";
 
+const ASSUME_FOLDER_HAS_PEOPLE = true;
+
+function withFolderToggled(
+  read: DashboardRead | undefined,
+  folder: Folder,
+  holds: boolean
+): DashboardRead | undefined {
+  if (!read) return read;
+
+  return {
+    ...read,
+    folders: holds
+      ? read.folders.filter((one) => one.id !== folder.id)
+      : [...read.folders, { id: folder.id, name: folder.name }],
+  };
+}
+
 export function FolderSubmenu({
   id,
   access,
@@ -31,9 +53,7 @@ export function FolderSubmenu({
 }: {
   id: string;
   access: DashboardAccess;
-  /** Absent where a dashboard cannot go in a folder it creates. */
   onNewFolder?: () => void;
-  /** Asked instead of filing when filing would show the dashboard to the folder's people. */
   onShareInto: (folder: FolderSummary) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -60,11 +80,10 @@ export function FolderSubmenu({
   async function widensAudience(folder: FolderSummary): Promise<boolean> {
     if (folder.access === "ownerless" || !read.data?.carries) return false;
 
-    // SAFETY: a folder whose people cannot be read is treated as if it had some.
     return queryClient
       .fetchQuery(grantsQuery({ kind: "folders", id: folder.id }))
       .then((grants) => grants.length > 0)
-      .catch(() => true);
+      .catch(() => ASSUME_FOLDER_HAS_PEOPLE);
   }
 
   function settle(folder: string, holds: boolean | null) {
@@ -94,16 +113,8 @@ export function FolderSubmenu({
       } else {
         await add.mutateAsync(entry);
       }
-      // INVARIANT: the read is patched before the tick is let go, so a refetch another toggle cancelled cannot flip it back.
       queryClient.setQueryData(dashboardReadQuery(id).queryKey, (now) =>
-        now
-          ? {
-              ...now,
-              folders: holds
-                ? now.folders.filter((one) => one.id !== folder.id)
-                : [...now.folders, { id: folder.id, name: folder.name }],
-            }
-          : now
+        withFolderToggled(now, folder, holds)
       );
     } catch (error) {
       toast.add({

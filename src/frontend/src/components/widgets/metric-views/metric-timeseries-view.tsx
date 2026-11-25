@@ -210,7 +210,6 @@ function DimensionControls({
             type="button"
             variant="secondary"
             size="sm"
-            className="rounded-full"
             aria-label={t("common.chart.clear_filter", {
               dimension: dimensionName(filter.dimension),
             })}
@@ -248,8 +247,6 @@ export function MetricTimeseriesView({
   const [selectedMetricKey, setSelectedMetricKey] = useState(
     metricKeys[0] ?? ""
   );
-  // Not persisted, unlike the presentation: a card remembered at full height
-  // would greet the next visit as a wall.
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const dimensionOptions = useMemo(
@@ -344,9 +341,6 @@ export function MetricTimeseriesView({
   const selectedMetric =
     model.metrics.find((metric) => metric.metric_key === selectedMetricKey) ??
     model.metrics[0];
-  // Reset during render rather than in an effect, which the lint rule forbids.
-  // A chart reports no overflow, so both flags have to be cleared on the way
-  // out of the table.
   const [overflowOf, setOverflowOf] = useState(presentation);
   if (overflowOf !== presentation) {
     setOverflowOf(presentation);
@@ -364,11 +358,6 @@ export function MetricTimeseriesView({
       : selectedMetric
         ? [selectedMetric]
         : [];
-  /**
-   * Every metric the dialog can offer, over one period. Switching metric in the
-   * dialog must not switch period with it, so the caller's period reaches all
-   * of them rather than only the one that was opened.
-   */
   const evidenceTargetsOver = (
     period: DateRange,
     exactFilters: typeof filters
@@ -505,7 +494,7 @@ export function MetricTimeseriesView({
   return (
     <Card
       className={cn(
-        "shrink-0 gap-0 overflow-hidden py-0",
+        "shrink-0 overflow-hidden",
         data.isFetching && "opacity-60"
       )}
     >
@@ -533,7 +522,7 @@ export function MetricTimeseriesView({
                   size="sm"
                   aria-label={t("common.chart.metric")}
                   title={selectedMetric.label}
-                  className="min-w-0 max-w-full border-transparent bg-transparent ps-2 pe-2 font-semibold shadow-none hover:bg-muted/50 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-ring/40 data-popup-open:bg-muted/50 dark:bg-transparent dark:hover:bg-muted/50 [&>span]:truncate"
+                  className="min-w-0 max-w-full [&>span]:truncate"
                 >
                   <SelectValue>{selectedMetric.label}</SelectValue>
                 </SelectTrigger>
@@ -549,10 +538,6 @@ export function MetricTimeseriesView({
                 </SelectContent>
               </Select>
             ) : presentation === "table" && model.dimensions.length > 0 ? (
-              // Named by its grouping, since the metrics are already on the
-              // columns. The count is load-bearing: such a table is usually
-              // wider than the screen, and the grand total below covers groups
-              // the reader cannot see.
               <h3 className="flex min-w-0 items-baseline px-2 text-sm font-semibold">
                 <span className="truncate">
                   {breakdownHeading([selectedGroupBy])}
@@ -605,7 +590,6 @@ export function MetricTimeseriesView({
             range={range}
             disabled={empty || data.isFetching || data.isError}
           />
-          {/* `expanded` keeps it: once out, it no longer overflows. */}
           {presentation === "table" && (overflows || expanded) ? (
             <Button
               type="button"
@@ -630,8 +614,7 @@ export function MetricTimeseriesView({
       </div>
       <CardContent
         className={cn(
-          "relative flex min-h-0 flex-col px-0",
-          // A chart has no height of its own to fall back on; a table does.
+          "relative flex min-h-0 flex-col",
           presentation === "chart" ? "h-96" : expanded ? undefined : "max-h-96"
         )}
         aria-busy={data.isFetching}

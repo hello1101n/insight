@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use sea_orm::{
-    AccessMode, ConnectionTrait, DatabaseConnection, DbBackend, IsolationLevel, Statement,
-    TransactionTrait, Value,
+    AccessMode, ConnectionTrait, DatabaseConnection, DbBackend, DbErr, IsolationLevel, RuntimeErr,
+    SqlxMySqlError, Statement, TransactionTrait, Value,
 };
 use uuid::Uuid;
 
@@ -10,7 +10,12 @@ use crate::domain::provenance::Provenance;
 use crate::domain::resolution::{BINDING_VALUE_TYPE, BindingRow};
 use crate::domain::seed::{KnownBinding, SourceAccountKey};
 
+use super::sql_named::bind_named;
+
 pub const MAX_TENANT_BINDINGS: u64 = 200_000;
+
+const MYSQL_ER_LOCK_WAIT_TIMEOUT: u16 = 1205;
+const MYSQL_ER_LOCK_DEADLOCK: u16 = 1213;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Ceiling {
@@ -259,15 +264,16 @@ pub async fn append_binding_if_unbound(
              value_id, value_full_text, value, person_id, author_person_id, reason,
              created_at)
         SELECT * FROM (
-            SELECT 'id' AS c1, ? AS c2, ? AS c3, ? AS c4, ? AS c5,
-                   NULL AS c6, NULL AS c7, ? AS c8, ? AS c9, ? AS c10, ? AS c11
+            SELECT 'id' AS c1, @source_type AS c2, @source_id AS c3, @tenant_id AS c4,
+                   @account_id AS c5, NULL AS c6, NULL AS c7, @person_id AS c8,
+                   @author_person_id AS c9, @reason AS c10, @created_at AS c11
         ) AS incoming
         WHERE NOT EXISTS (
             SELECT 1 FROM (
                 SELECT 1 FROM persons
                 WHERE value_type = 'id'
-                  AND insight_source_type = ?
-                  AND value_id = ?
+                  AND insight_source_type = @source_type
+                  AND value_id = @account_id
                 LIMIT 1
             ) AS decided
         )
@@ -283,22 +289,26 @@ pub async fn append_binding_if_unbound(
         )
         .await?;
 
-    let statement = Statement::from_sql_and_values(
-        DbBackend::MySql,
+    let (sql, values) = bind_named(
         SQL,
-        [
-            row.account.source_type.clone().into(),
-            row.account.source_id.as_bytes().to_vec().into(),
-            tenant_id.as_bytes().to_vec().into(),
-            row.account.account_id.clone().into(),
-            row.person_id.as_bytes().to_vec().into(),
-            row.author_person_id.as_bytes().to_vec().into(),
-            row.reason.clone().into(),
-            row.created_at.into(),
-            row.account.source_type.clone().into(),
-            row.account.account_id.clone().into(),
+        &[
+            ("source_type", row.account.source_type.as_str().into()),
+            (
+                "source_id",
+                row.account.source_id.as_bytes().to_vec().into(),
+            ),
+            ("tenant_id", tenant_id.as_bytes().to_vec().into()),
+            ("account_id", row.account.account_id.as_str().into()),
+            ("person_id", row.person_id.as_bytes().to_vec().into()),
+            (
+                "author_person_id",
+                row.author_person_id.as_bytes().to_vec().into(),
+            ),
+            ("reason", row.reason.as_str().into()),
+            ("created_at", row.created_at.into()),
         ],
-    );
+    )?;
+    let statement = Statement::from_sql_and_values(DbBackend::MySql, &sql, values);
 
     let result = match txn.execute_raw(statement).await {
         Ok(result) => result,
@@ -319,12 +329,23 @@ pub async fn append_binding_if_unbound(
     Ok(result.rows_affected() > 0)
 }
 
-fn is_lock_conflict(error: &sea_orm::DbErr) -> bool {
-    let message = error.to_string();
-    message.contains("1213")
-        || message.contains("1205")
-        || message.contains("Deadlock found")
-        || message.contains("Lock wait timeout exceeded")
+fn is_lock_conflict(error: &DbErr) -> bool {
+    let (DbErr::Exec(RuntimeErr::SqlxError(sqlx_error))
+    | DbErr::Query(RuntimeErr::SqlxError(sqlx_error))) = error
+    else {
+        return false;
+    };
+    let sea_orm::sqlx::Error::Database(database_error) = sqlx_error.as_ref() else {
+        return false;
+    };
+
+    database_error
+        .try_downcast_ref::<SqlxMySqlError>()
+        .is_some_and(|mysql_error| is_lock_conflict_number(mysql_error.number()))
+}
+
+fn is_lock_conflict_number(number: u16) -> bool {
+    matches!(number, MYSQL_ER_LOCK_DEADLOCK | MYSQL_ER_LOCK_WAIT_TIMEOUT)
 }
 
 pub async fn append_bindings(
@@ -500,53 +521,42 @@ pub async fn present_rows(
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{DbErr, RuntimeErr};
+    use std::sync::Arc;
 
     use super::*;
 
     #[test]
-    fn a_lock_conflict_is_told_apart_from_a_real_failure() {
-        for (case, message, expected) in [
+    fn only_deadlock_and_lock_wait_timeout_numbers_are_lock_conflicts() {
+        for (number, expected) in [(1213, true), (1205, true), (1062, false), (1064, false)] {
+            assert_eq!(
+                is_lock_conflict_number(number),
+                expected,
+                "misclassified MySQL error {number}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_error_without_a_mysql_error_number_is_not_a_lock_conflict() {
+        for (case, error) in [
             (
-                "deadlock, by code",
-                "Execution Error: error returned from database: 1213 (40001): \
-                 Deadlock found when trying to get lock; try restarting transaction",
-                true,
+                "lock wording outside a database error",
+                DbErr::Exec(RuntimeErr::Internal(
+                    "1213 (40001): Deadlock found when trying to get lock".to_owned(),
+                )),
             ),
             (
-                "lock-wait timeout, by code",
-                "Execution Error: error returned from database: 1205 (HY000): \
-                 Lock wait timeout exceeded; try restarting transaction",
-                true,
+                "a dead connection",
+                DbErr::Conn(RuntimeErr::Internal("closed".to_owned())),
             ),
             (
-                "deadlock, wording only",
-                "Deadlock found when trying to get lock",
-                true,
-            ),
-            (
-                "lock-wait timeout, wording only",
-                "Lock wait timeout exceeded",
-                true,
-            ),
-            (
-                "a duplicate key is NOT a lock conflict",
-                "error returned from database: 1062 (23000): Duplicate entry for key 'PRIMARY'",
-                false,
-            ),
-            (
-                "a syntax error is NOT a lock conflict",
-                "error returned from database: 1064 (42000): You have an error in your SQL syntax",
-                false,
-            ),
-            (
-                "a dead connection is NOT a lock conflict",
-                "Connection Error: closed",
-                false,
+                "a pool timeout",
+                DbErr::Exec(RuntimeErr::SqlxError(Arc::new(
+                    sea_orm::sqlx::Error::PoolTimedOut,
+                ))),
             ),
         ] {
-            let error = DbErr::Exec(RuntimeErr::Internal(message.to_owned()));
-            assert_eq!(is_lock_conflict(&error), expected, "misclassified: {case}");
+            assert!(!is_lock_conflict(&error), "misclassified: {case}");
         }
     }
 }

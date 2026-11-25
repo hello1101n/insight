@@ -64,7 +64,7 @@ export function CurrentValue({
     if (!settled || query.isPending) {
       return (
         <span className="flex items-center gap-2">
-          <Spinner className="size-3" /> Checking…
+          <Spinner compact /> Checking…
         </span>
       );
     }

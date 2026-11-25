@@ -50,7 +50,6 @@ describe("screenPath", () => {
     ["/dashboards", "/dashboards"],
     ["/dashboards/", "/dashboards/"],
     ["/dashboards/q3-hiring-plan", "/dashboards/:id"],
-    ["/exp/preview/dashboards/q3-hiring-plan", "/exp/preview/dashboards/:id"],
     ["/dashboards/Board%20for%20Jane", "/dashboards/:id"],
     ["/dashboards/metrics", "/dashboards/metrics"],
     ["/dashboards/widgets", "/dashboards/widgets"],
@@ -129,8 +128,6 @@ describe("scopeLabel", () => {
 });
 
 describe("a session opened on somebody else's behalf", () => {
-  // #2573 scenario 11 — a fresh module, because a collector another test already
-  // started would short-circuit the guard under test and pass for that reason.
   it("starts no collector and sends nothing, for either person", async () => {
     vi.resetModules();
     mocks.createTelemetry.mockClear();

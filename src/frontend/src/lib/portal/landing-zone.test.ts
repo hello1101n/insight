@@ -1,8 +1,3 @@
-/**
- * The landing rules, as a table. The case that motivated the module: an
- * admin who manages nobody must keep `?zone=manage`, and must not be reset
- * while the role check is still in flight.
- */
 import { describe, expect, it } from "vitest";
 
 import { landingDecision, type LandingDecision } from "./landing-zone";

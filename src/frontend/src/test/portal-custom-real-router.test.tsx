@@ -1,19 +1,3 @@
-/**
- * `/dashboards` and `/dashboards/$name` are file routes nested under the
- * `_shell` layout, and `PortalLayout` renders them through its `<Outlet/>` — so the
- * rail, the topbar and the context pane are around them, and the pane lists
- * the dashboards.
- *
- * Every other test for these two routes renders the route's `component`
- * directly with `@tanstack/react-router` mocked out (see
- * `src/test/portal-router.tsx`), so none of them would catch a page that
- * escaped the shell: the route matches, the component renders, and the shell
- * is never in the picture. This one builds a router from the real generated
- * `routeTree` and drives it with a memory history, so actual route matching
- * and parenting decide what renders — the same tree `router.ts` hands to
- * `RouterProvider` in the app.
- */
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   RouterProvider,
@@ -60,7 +44,6 @@ const READ = {
   carries: true,
 };
 
-/** The caller `GET /v1/me` describes, which is what the zone gates on. */
 function signedInAs({ admin }: { admin: boolean }) {
   vi.mocked(identityClient.getMe).mockResolvedValue({
     person_id: "00000000-0000-4000-8000-000000000001",
@@ -70,10 +53,6 @@ function signedInAs({ admin }: { admin: boolean }) {
   });
 }
 
-/**
- * The assistant starts collapsed to a strip, and its composer is inside the
- * hidden panel until the reader opens it.
- */
 async function openAssistant() {
   await userEvent.click(screen.getByRole("button", { name: "Open assistant" }));
 }
@@ -104,12 +83,9 @@ beforeEach(() => {
     items: [],
     total: 0,
   });
-  // Opening the assistant is remembered per browser, and jsdom's storage
-  // outlives a test.
   window.localStorage.clear();
   setPortalShowPlanned(true);
-  // The shell measures the viewport to decide whether the context pane is in
-  // flow or off-canvas; jsdom implements no media queries.
+  // WORKAROUND: jsdom implements no media queries.
   vi.stubGlobal(
     "matchMedia",
     (query: string) =>
@@ -125,7 +101,6 @@ beforeEach(() => {
       }) as unknown as MediaQueryList
   );
   signedInAs({ admin: true });
-  // Empty personId skips the root's viewer-identity prefetch.
   authStore.setAuthenticated(makeSession({ personId: "" }));
 });
 
@@ -196,14 +171,9 @@ describe("the /dashboards routes, through the real router", { timeout: 20_000 },
     );
     await userEvent.click(screen.getByTestId("chat-send"));
 
-    // The new dashboard opens (its title is in the pane too, so the heading
-    // is what says the page changed)...
     expect(
       await screen.findByRole("heading", { name: "Delivery" }, { timeout: 10000 })
     ).toBeInTheDocument();
-    // ...and the conversation is still there. The chat used to be mounted per
-    // page, so this navigation unmounted it and the reader lost what they had
-    // just asked.
     expect(
       screen.getByText("a dashboard about delivery")
     ).toBeInTheDocument();
@@ -415,8 +385,6 @@ describe("the portal shell, through the real router", { timeout: 20_000 }, () =>
     await act(() => router.navigate({ to: "/manage/$surface", params: { surface: "news" } }));
     expect(router.state.location.pathname).toBe("/manage/news");
 
-    // The same element, not an equal one: a shell rebuilt per page drops what
-    // the reader had open in it — the phone drawer, the pane's state, scroll.
     expect(screen.getByTestId("lens-rail")).toBe(rail);
   });
 

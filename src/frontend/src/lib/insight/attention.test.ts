@@ -48,12 +48,6 @@ function aiMetric(
   };
 }
 
-/**
- * `ai.sessions` is the block's to show; `ai.active_days` is on the headline
- * row (it is in `KPI_ROW`) and therefore this block's to leave alone. A
- * fixture needs both to express the rule.
- */
-/** What the headline row rendered — only these are the block's to skip. */
 const HEADLINE = new Set(["ai.active_days"]);
 
 const AI_DEF: MetricGroup = {
@@ -76,7 +70,6 @@ function bothMetrics(value: number | null) {
   ]);
 }
 
-/** A previous period the current one fell from, so a standing is also a change. */
 function before(value: number) {
   return normalizeMetricResults([
     aiMetric(value, "ai.sessions"),
@@ -159,10 +152,6 @@ describe("metricAttentionItems", () => {
 
 describe("what the headline row already shows", () => {
   it("is left to the row — the block never repeats a headline metric", () => {
-    // This block is the only place on the person page that names problems, so
-    // it shows everything standing out EXCEPT what the row above already
-    // carries. Repeating one puts a single finding on the screen twice, and a
-    // reader counts marks rather than facts.
     const items = metricAttentionItems(
       AI_DEF,
       bothMetrics(2),
@@ -174,8 +163,6 @@ describe("what the headline row already shows", () => {
   });
 
   it("shows a metric the row does not carry, whatever the card used to list", () => {
-    // `card.preview` no longer gates this: the page has no section cards, so
-    // excluding those keys would hide them from the screen entirely.
     const onOldCard: MetricGroup = {
       ...AI_DEF,
       card: { preview: ["ai.sessions"] },
@@ -192,12 +179,7 @@ describe("what the headline row already shows", () => {
 });
 
 describe("a moderate standing is not an event", () => {
-  // 5 against a median of 11 is behind, but not the fraction of the cohort
-  // that speaks for itself — so only a move can put it on screen.
   it("stays silent when a metric is below its cohort but did not move", () => {
-    // A lead measured against the developers reporting to them is below on
-    // commits every month, by the shape of the job. Repeating that forever
-    // teaches the reader to skip the block; a flat gap is not news.
     const items = metricAttentionItems(
       AI_DEF,
       bothMetrics(5),
@@ -220,8 +202,6 @@ describe("a moderate standing is not an event", () => {
   });
 
   it("makes no claim about direction without a previous period", () => {
-    // One period of data cannot say which way anything is going — and a
-    // moderate gap has nothing else to say for itself.
     expect(
       metricAttentionItems(AI_DEF, bothMetrics(5), null, "me@x.com", HEADLINE)
     ).toEqual([]);
@@ -230,9 +210,6 @@ describe("a moderate standing is not an event", () => {
 
 describe("a state, not only a change", () => {
   it("names a metric sitting at a fraction of the cohort, unmoved", () => {
-    // The worst finding a person can have was the one the block could not
-    // make: fallen to almost nothing long ago and flat ever since, so no
-    // period shows a change and the screen reads as "all clear".
     const items = metricAttentionItems(
       AI_DEF,
       bothMetrics(1),
@@ -270,15 +247,12 @@ describe("a state, not only a change", () => {
 
 describe("the row's candidates are not the row", () => {
   it("shows a bottom-quartile candidate the row had no slot for", () => {
-    // `KPI_ROW` lists more candidates than the row renders. Excluding the
-    // whole list would hide a metric that reached neither surface — visible
-    // nowhere, which is the one outcome worse than showing it twice.
     const items = metricAttentionItems(
       AI_DEF,
       bothMetrics(2),
       before(9),
       "me@x.com",
-      new Set<string>() // the row rendered nothing from this group
+      new Set<string>()
     );
     expect(items.map((i) => i.key).sort()).toEqual([
       "ai.active_days",
@@ -289,8 +263,6 @@ describe("the row's candidates are not the row", () => {
 
 describe("value split", () => {
   it("keeps a percent a percent", () => {
-    // The list renders the split fields, so a lost "%" turns 50% into 50 — a
-    // different number, not a shorter one.
     const pct = {
       ...aiMetric(2, "ai.sessions"),
       format: "percent" as const,
@@ -309,7 +281,6 @@ describe("value split", () => {
 });
 
 describe("what counts as a move", () => {
-  /** One metric, one cohort, a fall from `from` to `to`. */
   function fall(from: number, to: number, cohort: Cohort) {
     return metricAttentionItems(
       AI_DEF,
@@ -321,23 +292,16 @@ describe("what counts as a move", () => {
   }
 
   it("measures the move against the cohort, not against the person's own past", () => {
-    // Halving two into one is a 50% collapse of the person's own number and
-    // one event of difference. In a cohort whose quartiles are two hundred
-    // apart, one event separates nobody.
     const spreadOut = { p25: 100, median: 300, p75: 500, min: 0, max: 900 };
     expect(fall(101, 100, spreadOut)).toEqual([]);
   });
 
   it("lets the same small move through when the cohort is that tight", () => {
-    // Identical numbers, different question: here one event is a quarter of
-    // what separates people, so it is a change worth naming.
     const tight = { p25: 1, median: 3, p75: 4, min: 0, max: 8 };
     expect(fall(2, 1, tight).map((i) => i.key)).toEqual(["ai.sessions"]);
   });
 
   it("ranks nobody in a cohort where everyone is identical", () => {
-    // The quartile test alone calls someone bottom for being one of several
-    // equal numbers; eligibility is what keeps that off the screen.
     const flat = { p25: 4, median: 4, p75: 4, min: 4, max: 4 };
     expect(fall(9, 4, flat)).toEqual([]);
   });
@@ -371,9 +335,6 @@ describe("which way an adverse move went", () => {
 
 describe("ordering", () => {
   it("puts the metric furthest outside its cohort's spread first", () => {
-    // A falls by two thirds, B by one third — so percent-of-median ranks A
-    // first. But A's peers are spread across that whole distance, and B's sit
-    // in a narrow band it has fallen far outside of. B is the outlier.
     const wideBand = { p25: 2, median: 3, p75: 6, min: 0, max: 9 };
     const narrowBand = { p25: 280, median: 300, p75: 320, min: 200, max: 400 };
     const items = metricAttentionItems(
@@ -393,16 +354,12 @@ describe("ordering", () => {
     const wide = byKey.get("ai.sessions")!;
     const narrow = byKey.get("ai.active_days")!;
     expect(narrow.spreadGap).toBeGreaterThan(wide.spreadGap);
-    // …and the ordering it replaces would have said the opposite.
     expect(wide.relGap).toBeGreaterThan(narrow.relGap);
   });
 });
 
 describe("a cohort that barely does the thing", () => {
   it("makes no claim about being far behind it", () => {
-    // Zero against a median of one is a hundred-percent gap and no finding:
-    // the metric separates nobody in this cohort, and a share of a tiny
-    // number is always large, so these rows would shout the loudest.
     const scarce = { p25: 1, median: 1, p75: 2, min: 0, max: 4 };
     const items = metricAttentionItems(
       AI_DEF,
@@ -454,9 +411,6 @@ describe("orderAttentionItems", () => {
   });
 
   it("keeps the stronger of two rows that restate one another", () => {
-    // Ranking runs BEFORE thinning precisely so this holds: the survivor is
-    // the row that says the thing more strongly, not the one that happened to
-    // be evaluated first.
     const ordered = orderAttentionItems(
       [
         row({ key: "collab.meeting_hours", relGap: 0.8 }),
@@ -476,10 +430,6 @@ describe("orderAttentionItems", () => {
   });
 
   it("leads with what changed when the reader is looking at their own page", () => {
-    // A standing is the larger claim and leads by default — what a manager
-    // scanning someone else needs. On your own page what moved this period is
-    // what you can still act on; what has been true for months you have
-    // already lived through. Nothing is hidden either way.
     const items = [
       row({ key: "standing", kind: "behind" }),
       row({ key: "change", kind: "fell" }),
@@ -489,7 +439,7 @@ describe("orderAttentionItems", () => {
       "change",
     ]);
     expect(
-      orderAttentionItems(items, new Set(), true).map((i) => i.key)
+      orderAttentionItems(items, new Set(), "changes-first").map((i) => i.key)
     ).toEqual(["change", "standing"]);
   });
 });

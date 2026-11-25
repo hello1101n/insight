@@ -11,7 +11,7 @@ use crate::domain::people::PersonChange;
 use crate::domain::roster::RosterSource;
 use crate::domain::seed::{KnownBinding, SeedObservationRow, SourceAccountKey, normalize_email};
 use crate::domain::seed_service::{ApplyCounts, SeedStore};
-use crate::infra::db::{people_repo, resolution_repo};
+use crate::infra::db::{people_repo, resolution_repo, sql_named::bind_named};
 use crate::infra::metrics::{self, DbQuery};
 
 pub struct MariaDbSeedStore<'a> {
@@ -260,7 +260,7 @@ async fn rebuild_org_chart(
             FROM persons
             WHERE value_type = 'status'
               AND value_full_text IS NOT NULL
-              AND insight_tenant_id = ?
+              AND insight_tenant_id = @tenant_id
         ),
         state_transitions AS (
             SELECT
@@ -289,7 +289,7 @@ async fn rebuild_org_chart(
             FROM persons pe
             WHERE pe.value_type = 'parent_email'
               AND pe.value_id IS NOT NULL
-              AND pe.insight_tenant_id = ?
+              AND pe.insight_tenant_id = @tenant_id
               AND NOT EXISTS (
                   SELECT 1 FROM persons s
                   WHERE s.insight_tenant_id   = pe.insight_tenant_id
@@ -319,7 +319,7 @@ async fn rebuild_org_chart(
             FROM persons pe
             WHERE pe.value_type = 'parent_email'
               AND pe.value_id IS NOT NULL
-              AND pe.insight_tenant_id = ?
+              AND pe.insight_tenant_id = @tenant_id
         ),
         email_to_person AS (
             SELECT
@@ -331,7 +331,7 @@ async fn rebuild_org_chart(
             FROM persons p
             WHERE p.value_type = 'email'
               AND p.value_id IS NOT NULL
-              AND p.insight_tenant_id = ?
+              AND p.insight_tenant_id = @tenant_id
         ),
         existing_edges AS (
             SELECT
@@ -348,7 +348,7 @@ async fn rebuild_org_chart(
             FROM persons
             WHERE value_type = 'parent_person_id'
               AND value_id IS NOT NULL
-              AND insight_tenant_id = ?
+              AND insight_tenant_id = @tenant_id
               AND value_id REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
               AND HEX(person_id) <> REPLACE(value_id, '-', '')
 
@@ -400,7 +400,7 @@ async fn rebuild_org_chart(
                     MIN(created_at) AS first_obs,
                     MAX(CASE WHEN value_type = 'status' THEN 1 ELSE 0 END) AS has_status
                 FROM persons
-                WHERE insight_tenant_id = ?
+                WHERE insight_tenant_id = @tenant_id
                 GROUP BY insight_tenant_id, insight_source_type, insight_source_id, person_id
             ) m
             LEFT JOIN (
@@ -432,7 +432,7 @@ async fn rebuild_org_chart(
             sm.insight_tenant_id, sm.insight_source_type, sm.insight_source_id,
             sm.person_id                                    AS child_person_id,
             CAST(NULL AS BINARY(16))                        AS parent_person_id,
-            ?                                               AS author_person_id,
+            @author_person_id                               AS author_person_id,
             ''                                              AS reason,
             sm.first_obs                                    AS valid_from,
             sm.interval_end                                 AS valid_to
@@ -447,27 +447,28 @@ async fn rebuild_org_chart(
     ";
 
     let tenant_bytes = tenant_id.as_bytes().to_vec();
-    let author_bytes = author_person_id.as_bytes().to_vec();
+    let (insert_sql, insert_values) = bind_named(
+        INSERT_ORG_CHART,
+        &[
+            ("tenant_id", tenant_bytes.clone().into()),
+            (
+                "author_person_id",
+                author_person_id.as_bytes().to_vec().into(),
+            ),
+        ],
+    )?;
 
     txn.execute_raw(Statement::from_sql_and_values(
         DbBackend::MySql,
         DELETE_ORG_CHART,
-        [tenant_bytes.clone().into()],
+        [tenant_bytes.into()],
     ))
     .await?;
     let org_chart = txn
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::MySql,
-            INSERT_ORG_CHART,
-            [
-                tenant_bytes.clone().into(),
-                tenant_bytes.clone().into(),
-                tenant_bytes.clone().into(),
-                tenant_bytes.clone().into(),
-                tenant_bytes.clone().into(),
-                tenant_bytes.into(),
-                author_bytes.into(),
-            ],
+            &insert_sql,
+            insert_values,
         ))
         .await?;
     let org_chart_rows_rebuilt = org_chart.rows_affected();

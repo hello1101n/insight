@@ -81,9 +81,6 @@ describe("MetricEvidenceTable", () => {
     });
   });
 
-  // A row that sized its own cells drifted out of the headings above it as
-  // soon as the two had different space to grow into, and put its last cell on
-  // a line of its own. One template decides both.
   it("lays the headings and the rows out on one set of columns", () => {
     renderTable();
     const [header, ...body] = screen.getAllByRole("row");
@@ -96,8 +93,6 @@ describe("MetricEvidenceTable", () => {
     }
   });
 
-  // A column the reader can widen must widen in both places or the values slide
-  // out from under their heading.
   it("gives every column a track, expander included", () => {
     renderTable();
     const header = screen.getAllByRole("row")[0]!;
@@ -136,8 +131,6 @@ describe("MetricEvidenceTable", () => {
   });
 
   it("renders a branch column the server sent, value and header alike", () => {
-    // The branch is server-driven like every other column (#2806): the table
-    // must not need to know the key to show it.
     renderTable({
       columns: [
         { key: "ref", label: "Ref", type: "string" as const },
@@ -203,10 +196,6 @@ describe("MetricEvidenceTable", () => {
     expect(onSortChange).toHaveBeenCalledWith("value");
   });
 
-  // A control that does nothing when clicked is worse than a label: the
-  // reader spends the click finding out.
-  // Announcing the served order means a click on a header changes nothing on
-  // screen until the rows land; the busy state is what acknowledges it.
   it("says it is busy while the rows it shows are being replaced", () => {
     renderTable({ reordering: true });
 
@@ -429,7 +418,6 @@ describe("MetricEvidenceTable", () => {
 
     it("shows a cut value whole in a tooltip, and leaves a whole one alone", async () => {
       const user = userEvent.setup();
-      // A text past twelve characters overflows its cell.
       vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(
         function (this: HTMLElement) {
           return (this.textContent?.length ?? 0) * 10;
@@ -613,8 +601,6 @@ describe("MetricEvidenceTable", () => {
       vi.restoreAllMocks();
     });
 
-    // Who needs 82px, Title 346px (its 80 characters cut at the 40-character
-    // cap) and Lines 66px for its header. The expander takes 36px.
     it.each([
       [
         "a row with room gives the spare to its text columns",
@@ -675,8 +661,6 @@ describe("MetricEvidenceTable", () => {
       );
     });
 
-    // A link inside a row must not also work the row: the whole row toggles
-    // the expanded record, and following a link is not asking for that.
     it("does not expand the row when a link is followed", async () => {
       renderTable({
         columns: linkColumns,
@@ -691,8 +675,6 @@ describe("MetricEvidenceTable", () => {
       );
     });
 
-    // The expanded record shows a value entire, trailers included, so the
-    // title is a paragraph there rather than something to click.
     it("leaves the title unlinked in the expanded record", async () => {
       renderTable({
         columns: linkColumns,

@@ -7,7 +7,6 @@ import type {
   AlertSummary,
 } from "@/api/alerts-types";
 
-/** A fresh client per render, so no test reads another's cache. */
 export function wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -31,7 +30,6 @@ export const ALERT: Alert = {
   updated_at: "2026-10-01T08:00:00+00:00",
 };
 
-/** The alert as the list reads it. */
 export const SUMMARY: AlertSummary = {
   id: ALERT.id,
   name: ALERT.name,
@@ -39,7 +37,6 @@ export const SUMMARY: AlertSummary = {
   enabled: ALERT.enabled,
 };
 
-/** A notification the alert owed under its current rule, and delivered. */
 export const NOTIFICATION: AlertNotification = {
   id: "n1",
   rule_revision: ALERT.revision,

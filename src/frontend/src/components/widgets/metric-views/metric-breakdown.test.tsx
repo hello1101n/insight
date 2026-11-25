@@ -55,7 +55,6 @@ describe("MetricBreakdown", () => {
     );
     expect(screen.getByText("cursor")).toBeInTheDocument();
     expect(screen.getByText("claude_code")).toBeInTheDocument();
-    // Legend carries the share; narrow slices never clip inside the ribbon.
     expect(screen.getByText("60%")).toBeInTheDocument();
     expect(screen.getByText("40%")).toBeInTheDocument();
   });

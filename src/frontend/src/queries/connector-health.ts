@@ -25,9 +25,8 @@ import { instanceKey } from "@/lib/portal/connector-health";
 
 const KEY = ["connector-health"] as const;
 
-/** How often the open page asks again. Well inside the reconcile cadence, so
- * the age it prints is never more than a minute behind the truth. */
 const RECHECK_MS = 60_000;
+const PENDING_POLL_MS = 30_000;
 
 export function useConnectorHealth(): UseQueryResult<ConnectorHealthSummary> {
   const { session } = useAuth();
@@ -81,20 +80,13 @@ export function useConnectorHealth(): UseQueryResult<ConnectorHealthSummary> {
         }),
       };
     },
-    // The answer is only as fresh as the last sweep, and an operator opening
-    // this page during an incident wants what is recorded now — not what was
-    // recorded when they last looked.
     staleTime: 0,
     refetchOnMount: "always",
-    // INVARIANT: the page's own freshness line is the gap between two stamps
-    // the SERVER sent, so it does not move on its own. Without this the age
-    // freezes the moment the page renders, and an operator watching an incident
-    // would never see recording stop.
     refetchInterval: (query) =>
       query.state.data?.connectors.some((row) =>
         scheduleNeedsPolling(row.schedule_request?.last_observation?.status)
       )
-        ? 30_000
+        ? PENDING_POLL_MS
         : RECHECK_MS,
   });
 }
@@ -212,16 +204,10 @@ export function schedulePollInterval(
   polling: boolean
 ): number | false {
   return polling || scheduleNeedsPolling(read?.schedule.status)
-    ? 30_000
+    ? PENDING_POLL_MS
     : false;
 }
 
-/**
- * One installation's history, keyed by the whole identity.
- *
- * Keying on the connector name alone would serve one installation's window
- * from the other's cache entry, because two installations share the name.
- */
 export function useConnectorSyncs(
   instance: ConnectorInstanceRef | null
 ): UseQueryResult<ConnectorSyncHistory> {

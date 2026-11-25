@@ -1,4 +1,6 @@
 """`PortalShell.go()` survives one reset of the portal's entry script, and only one.
+A script the stand's edge injects from another origin is not the portal's, so its
+failure to load fails nothing.
 
 Run 44624330960 went red because the CDN reset the connection carrying the
 cached entry script: the shell stayed blank and the next click timed out 30 s
@@ -21,6 +23,7 @@ from ui.pages.portal_shell import PortalShell
 pytestmark = pytest.mark.reliability
 
 SHELL = b'<!doctype html><script type="module" src="/assets/index.js"></script><div id="root">'
+BEACON = b'<script defer src="https://beacon.example.com/beacon.min.js"></script>'
 ENTRY = (
     b"document.getElementById('root').innerHTML = '<nav data-testid=\"lens-rail\">"
     b"<ul><li><button><span>Explore</span></button></li></ul></nav>';\n//" + b"x" * 200_000
@@ -31,6 +34,7 @@ class Stand:
     def __init__(self) -> None:
         self.resets = 0
         self.entry_requests = 0
+        self.injected = b""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -40,10 +44,11 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self) -> None:
-        body = ENTRY if self.path == "/assets/index.js" else SHELL
+        body = ENTRY if self.path == "/assets/index.js" else SHELL + self.stand.injected
         self.send_response(200)
         self.send_header("Content-Type", "text/javascript" if body is ENTRY else "text/html")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Security-Policy", "script-src 'self'")
         self.end_headers()
         if body is ENTRY:
             self.stand.entry_requests += 1
@@ -56,6 +61,9 @@ class Handler(BaseHTTPRequestHandler):
                     socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
                 )
                 self.close_connection = True
+                # WORKAROUND: socketserver shuts the write side down before it closes,
+                # and that FIN reaches the client ahead of the RST as a truncated body.
+                self.connection.close()
                 return
         self.wfile.write(body)
 
@@ -95,3 +103,15 @@ def test_a_reset_that_persists_fails_naming_the_script(shell_page: Page, stand: 
     with pytest.raises(AssertionError, match=r"/assets/index\.js net::ERR_CONNECTION_RESET"):
         PortalShell(shell_page).go()
     assert stand.entry_requests == 2
+
+
+def test_an_outside_script_the_policy_blocks_is_not_a_failed_load(
+    shell_page: Page, stand: Stand
+) -> None:
+    stand.injected = BEACON
+
+    shell = PortalShell(shell_page)
+    shell.go()
+
+    assert shell.rail.zones().first.is_visible()
+    assert stand.entry_requests == 1

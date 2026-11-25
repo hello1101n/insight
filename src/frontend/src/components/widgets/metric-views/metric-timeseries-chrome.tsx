@@ -157,12 +157,12 @@ export function TimeseriesBody({
     <div className="relative min-h-0 flex-1">
       {isFetching && !isPending ? (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-          <Spinner className="size-8 text-muted-foreground" />
+          <Spinner size="lg" />
         </div>
       ) : null}
       {isPending ? (
         <div className="flex h-full items-center justify-center">
-          <Spinner className="size-10 text-muted-foreground" />
+          <Spinner size="lg" />
         </div>
       ) : isError ? (
         <div className="flex h-full items-center justify-center">

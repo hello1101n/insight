@@ -3,8 +3,6 @@ vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return {
     ...portalRouterMock(),
-    // The real one throws its own control-flow object; this stands in for it so
-    // the test can read the destination back off what was thrown.
     redirect: vi.fn((options: unknown) => ({ redirect: options })),
     createFileRoute: () => (options: Record<string, unknown>) => options,
   };

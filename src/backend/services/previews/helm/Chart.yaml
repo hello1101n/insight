@@ -1,6 +1,0 @@
-apiVersion: v2
-name: insight-previews
-description: Insight Previews — preview-experiment provisioning (epic #1981)
-version: 0.1.0
-appVersion: "2026.11.18.16.00-de31304"
-type: application

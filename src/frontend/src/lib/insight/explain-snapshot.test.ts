@@ -89,9 +89,6 @@ describe("trendSnapshot", () => {
   });
 
   it("indexes every line by one shared axis of bucket dates", () => {
-    // PRs merged has no June reading; contributors has no August one. Sent
-    // unpadded the two arrays would be the same length and describe different
-    // months, and the model would read a divergence that never happened.
     const shortPrs: TrendChartInput = {
       ...PRS,
       data: [

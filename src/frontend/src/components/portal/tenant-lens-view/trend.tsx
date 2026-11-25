@@ -10,7 +10,6 @@ import { bucketNote, mean, trailingOutlierDates } from "./derived";
 import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 
-/** Buckets of the single org series. */
 export function TrendSection({
   section,
   resolve,
@@ -49,7 +48,6 @@ export function TrendSection({
   const points = [...byDate.values()].sort((a, b) =>
     a.date < b.date ? -1 : 1
   );
-  // One bucket draws as a dot pretending to be a trend — say nothing instead.
   if (!series.length || points.length < 2) return null;
 
   firstMetricPoints.sort((a, b) => (a.date < b.date ? -1 : 1));
