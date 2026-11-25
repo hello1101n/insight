@@ -17,14 +17,13 @@ WITH
 {% if activity %}
 activity_users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         insight_source_id AS source_id,
         user_id,
         nullIf(argMaxIf(assumeNotNull(email_address), date, coalesce(email_address, '') != ''), '') AS activity_email,
         argMax(is_guest, date) AS activity_is_guest
     FROM {{ source('bronze_slack', 'users_details') }} FINAL
-    WHERE insight_tenant_id IS NOT NULL
-      AND insight_source_id IS NOT NULL
+    WHERE insight_source_id IS NOT NULL
       AND coalesce(user_id, '') != ''
     GROUP BY
         insight_tenant_id,
@@ -46,7 +45,7 @@ activity_users AS (
 {% if members %}
 member_users AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         insight_source_id AS source_id,
         user_id,
         nullIf(coalesce(email, ''), '') AS member_email,
@@ -54,8 +53,7 @@ member_users AS (
         is_bot AS member_is_bot,
         coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false) AS member_is_guest
     FROM {{ source('bronze_slack', 'users') }} FINAL
-    WHERE insight_tenant_id IS NOT NULL
-      AND insight_source_id IS NOT NULL
+    WHERE insight_source_id IS NOT NULL
       AND coalesce(user_id, '') != ''
 ),
 {% else %}
