@@ -471,3 +471,76 @@ describe("FrontxBoard", () => {
     expect(screen.queryByTestId("frontx-dashboard")).not.toBeInTheDocument();
   });
 });
+
+describe("FrontxBoard compared stat", () => {
+  const STAT: DashboardWidget = {
+    id: "w1",
+    name: "Deploys",
+    body: { type: "stat", metric: "m", value: "n", compare: {} },
+    clock: { field: "day", from: "metric" },
+  };
+  const STAT_READ: DashboardRead = {
+    ...READ,
+    body: { title: "Board", items: [{ widget: "w1" }], time_ranges: ["P30D"] },
+  };
+
+  function answering(previous: (body: { previous?: boolean }) => Response) {
+    fetchWithAuth.mockImplementation(
+      async (_url: string, init?: RequestInit) => {
+        if (init?.method !== "POST") return json({ items: [STAT] });
+
+        const body = JSON.parse(String(init.body ?? "{}")) as {
+          previous?: boolean;
+        };
+        return body.previous
+          ? previous(body)
+          : json({ columns: ["n"], rows: [[125]] });
+      }
+    );
+  }
+
+  const ask = (host: DashboardHost, board: string, range: string) =>
+    host.request(
+      {
+        method: "POST",
+        path: runPath(board),
+        body: { bucket: false, range },
+      },
+      new AbortController().signal
+    ) as Promise<{ previous?: unknown }>;
+
+  it("runs the previous period beside the run over a bounded range, and answers both", async () => {
+    answering(() => json({ columns: ["n"], rows: [[100]] }));
+    const host = await hostOf("board-c1", STAT_READ, "P30D");
+
+    const answer = await ask(host, "board-c1", "P30D");
+
+    expect(runs().map(([, init]) => JSON.parse(String(init.body)))).toEqual([
+      { bucket: false, range: "P30D" },
+      { bucket: false, range: "P30D", previous: true },
+    ]);
+    expect(answer).toMatchObject({
+      rows: [[125]],
+      previous: { columns: ["n"], rows: [[100]], at: { n: 0 } },
+    });
+  });
+
+  it("runs no previous period over all time", async () => {
+    answering(() => json({ columns: ["n"], rows: [[100]] }));
+    const host = await hostOf("board-c2", STAT_READ, "inf");
+
+    const answer = await ask(host, "board-c2", "inf");
+
+    expect(runs()).toHaveLength(1);
+    expect(answer).not.toHaveProperty("previous");
+  });
+
+  it("answers the run without a previous period when that run fails", async () => {
+    answering(() => json({ detail: "no window" }, 400));
+    const host = await hostOf("board-c3", STAT_READ, "P30D");
+
+    const answer = await ask(host, "board-c3", "P30D");
+
+    expect(answer).toMatchObject({ rows: [[125]], previous: null });
+  });
+});

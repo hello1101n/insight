@@ -1,5 +1,4 @@
-import type { MetricDirection } from "@/api/metric-results-client";
-import { formatMetricFigure, formatPp } from "@/lib/format";
+import { formatMetricFigure } from "@/lib/format";
 import {
   KPI_ROW,
   KPI_ROW_MAX,
@@ -17,9 +16,9 @@ import { formatGapMagnitude } from "@/lib/metrics/gap";
 import { derivePeerStanding } from "@/lib/metrics/peer-standing";
 import {
   computeDelta,
-  deltaStatus,
-  formatTileDelta,
+  shownDelta,
   type MetricDelta,
+  type ShownDelta,
 } from "@/lib/metrics/delta";
 import type { Status } from "@/lib/status";
 import { absenceLabel } from "@/lib/metrics/absence";
@@ -29,27 +28,11 @@ export interface KpiTileData {
   key: string;
   label: string;
   value: string;
-  delta: { text: string; status: Status; down: boolean } | null;
+  delta: ShownDelta | null;
   medianLabel: string | null;
   gapText: string | null;
   gapStatus: Status;
   groupId: GroupId | null;
-}
-
-function tileDelta(
-  delta: MetricDelta,
-  direction: MetricDirection
-): NonNullable<KpiTileData["delta"]> {
-  const text = formatTileDelta(delta);
-  if (text == null) {
-    const unchanged = delta.kind === "pp_change" ? formatPp(0, 0) : "±0%";
-    return { text: unchanged, status: "neutral", down: false };
-  }
-  return {
-    text,
-    status: deltaStatus(delta, direction),
-    down: delta.value < 0,
-  };
 }
 
 export function metricKpiTiles(
@@ -78,7 +61,7 @@ export function metricKpiTiles(
         ? { kind: "percent_change", value: 0 }
         : computeDelta(value, previousValue, metric.computation, metric.format);
     const delta = rawDelta
-      ? tileDelta(rawDelta, leaveLabel ? "neutral" : metric.direction)
+      ? shownDelta(rawDelta, leaveLabel ? "neutral" : metric.direction)
       : null;
 
     const gapText =

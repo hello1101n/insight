@@ -9,7 +9,11 @@ import type {
   Widget,
 } from "@/api/custom-client";
 import { groupedNumber } from "@/components/custom/chart-format";
-import { frontxAnswer, frontxBoard } from "@/lib/custom/frontx-board";
+import {
+  frontxAnswer,
+  frontxBoard,
+  type FrontxAnswer,
+} from "@/lib/custom/frontx-board";
 
 // WORKAROUND: the FrontX root runs transforms with this module, and the package does not export it.
 import { compileTransform } from "../../../vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard/src/runtime/cel";
@@ -837,6 +841,200 @@ describe("frontxBoard percent columns", () => {
         ],
         total_rows: 3,
       },
+    });
+  });
+});
+
+describe("frontxBoard options", () => {
+  function renderOf(body: Widget, percents: string[] = []) {
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", body), percents },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+
+    return cell.widget.render;
+  }
+
+  const STAT: Widget = { type: "stat", metric: "m", value: "n", label: "runs" };
+  const now = { columns: ["n"], rows: [[125]] };
+
+  function compared(
+    body: Widget,
+    percents: string[],
+    previous: FrontxAnswer | null | undefined
+  ) {
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", body), percents },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+    const answer = frontxAnswer(now);
+
+    return compileTransform(bound(cell).data.transform).evaluate({
+      response: previous === undefined ? answer : { ...answer, previous },
+    });
+  }
+
+  it.each<[string, Widget, Record<string, unknown>]>([
+    [
+      "higher is better by default",
+      { ...STAT, compare: {} },
+      { better: "higher" },
+    ],
+    [
+      "the direction it names",
+      { ...STAT, compare: { better: "lower" } },
+      { better: "lower" },
+    ],
+  ])("compares a stat with the previous period, %s", (_, body, render) => {
+    expect(renderOf(body)).toEqual({
+      value_label: "runs",
+      reference_label: "Previous period",
+      ...render,
+    });
+  });
+
+  it("leaves a stat that does not compare without a reference", () => {
+    expect(renderOf(STAT)).toEqual({ value_label: "runs" });
+    expect(
+      compared(STAT, [], frontxAnswer({ columns: ["n"], rows: [[100]] }))
+    ).toEqual({
+      value: 125,
+    });
+  });
+
+  it.each<[string, string[], FrontxAnswer | null | undefined, unknown]>([
+    [
+      "the previous run's value",
+      [],
+      frontxAnswer({ columns: ["n"], rows: [[100]] }),
+      100,
+    ],
+    [
+      "the previous run's fraction on a percent column",
+      ["n"],
+      frontxAnswer({ columns: ["x", "n"], rows: [[0, 12.5]] }),
+      0.125,
+    ],
+    ["no reference when the previous run failed", [], null, null],
+    ["no reference when the host asked no previous run", [], undefined, null],
+    [
+      "no reference when the previous period has no rows",
+      [],
+      frontxAnswer({ columns: ["n"], rows: [] }),
+      null,
+    ],
+  ])("gives a compared stat %s", (_, percents, previous, reference) => {
+    const data = compared({ ...STAT, compare: {} }, percents, previous) as {
+      reference_value: unknown;
+    };
+
+    expect(data.reference_value).toEqual(reference);
+  });
+
+  const BAR: Widget = { type: "bar", metric: "m", x: "team", y: "n" };
+  const STACKED: Widget = { ...BAR, series: "outcome" };
+
+  it.each<[string, Widget, string[], Record<string, unknown>]>([
+    [
+      "a horizontal bar",
+      { ...BAR, horizontal: true },
+      [],
+      { orientation: "horizontal" },
+    ],
+    [
+      "a bar stacked to 100%",
+      { ...STACKED, stack: "percent" },
+      [],
+      { stack_mode: "percent" },
+    ],
+    [
+      "a target on a bar",
+      { ...BAR, target: { value: 40, label: "Goal" } },
+      [],
+      { reference_lines: [{ value: 40, label: "Goal" }] },
+    ],
+    [
+      "a target on a percent bar, as a fraction",
+      { ...BAR, target: { value: 15 } },
+      ["n"],
+      { reference_lines: [{ value: 0.15 }] },
+    ],
+    [
+      "a target on a bar stacked to 100%, as a share",
+      { ...STACKED, stack: "percent", target: { value: 15 } },
+      [],
+      { stack_mode: "percent", reference_lines: [{ value: 0.15 }] },
+    ],
+    [
+      "a target on a line",
+      {
+        type: "line",
+        metric: "m",
+        x: "bucket",
+        y: "n",
+        target: { value: 3 },
+      },
+      [],
+      { reference_lines: [{ value: 3 }] },
+    ],
+    [
+      "a target on an area",
+      {
+        type: "area",
+        metric: "m",
+        x: "bucket",
+        y: "n",
+        target: { value: 3 },
+      },
+      [],
+      { reference_lines: [{ value: 3 }] },
+    ],
+  ])("draws %s", (_, body, percents, expected) => {
+    expect(renderOf(body, percents)).toMatchObject(expected);
+  });
+
+  it("draws no orientation, stack mode or line that the widget does not ask for", () => {
+    for (const body of [BAR, STACKED, { ...BAR, stack: "percent" } as Widget]) {
+      const render = renderOf(body);
+      expect(render, JSON.stringify(body)).not.toHaveProperty("orientation");
+      expect(render, JSON.stringify(body)).not.toHaveProperty("stack_mode");
+      expect(render, JSON.stringify(body)).not.toHaveProperty(
+        "reference_lines"
+      );
+    }
+  });
+
+  it.each<[string, Widget, Record<string, unknown>]>([
+    [
+      "an area by series as bars stacked by that column",
+      { type: "area", metric: "m", x: "team", y: "n", series: "outcome" },
+      { legend_position: "bottom", unlisted_stack_group: "outcome" },
+    ],
+    [
+      "a line by series as bars side by side",
+      { type: "line", metric: "m", x: "team", y: "n", series: "outcome" },
+      { legend_position: "bottom" },
+    ],
+  ])("draws %s, one series per value", (_, body, render) => {
+    const answer = {
+      columns: ["team", "outcome", "n"],
+      rows: [
+        ["Atlas", "ok", 3],
+        ["Atlas", "failed", 1],
+      ],
+    };
+    const drawnRender = renderOf(body);
+
+    expect(drawnRender).toMatchObject(render);
+    if (!("unlisted_stack_group" in render)) {
+      expect(drawnRender).not.toHaveProperty("unlisted_stack_group");
+    }
+    expect(drawnRender).not.toHaveProperty("series");
+    expect(drawnData(body, [], answer).data).toEqual({
+      series: [
+        { name: "failed", points: [{ x: "Atlas", y: 1 }] },
+        { name: "ok", points: [{ x: "Atlas", y: 3 }] },
+      ],
     });
   });
 });

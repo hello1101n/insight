@@ -31,11 +31,13 @@ export function stackColor(index: number): string {
 }
 
 // WORKAROUND: Recharts reads a dotted `dataKey` as a path, so a series value is never a key.
+// INVARIANT: with gaps, a series with no value at an x holds null there, so a line breaks instead of dropping to 0.
 export function stacks(
   result: MetricResult,
   x: string,
   y: string,
-  series: string
+  series: string,
+  gaps = false
 ): Stacks {
   const xAt = result.columns.indexOf(x);
   const yAt = result.columns.indexOf(y);
@@ -53,6 +55,7 @@ export function stacks(
 
     const bar = bars.get(row[xAt]) ?? { [x]: row[xAt], [STACK_TOTAL]: 0 };
     bars.set(row[xAt], bar);
+    if (gaps && row[yAt] == null) continue;
 
     const amount = Number(row[yAt]);
     const value = Number.isFinite(amount) ? amount : 0;
@@ -62,7 +65,7 @@ export function stacks(
 
   const ordered = [...keys.values()];
   const rows = [...bars.values()].map((bar) => ({
-    ...Object.fromEntries(ordered.map((key) => [key, 0])),
+    ...Object.fromEntries(ordered.map((key) => [key, gaps ? null : 0])),
     ...bar,
     [STACK_TOP]: ordered.findLast((key) => Number(bar[key] ?? 0) > 0),
   }));
@@ -78,6 +81,43 @@ export function stacks(
 export function seriesConfig(key: string, index = 0): ChartConfig {
   return {
     [key]: { label: key, color: chartColor(index) },
+  };
+}
+
+export interface DrawnSeries {
+  rows: Record<string, unknown>[];
+  series: { key: string; label: string }[];
+  config: ChartConfig;
+  stacked: Stacks | null;
+}
+
+export function drawnSeries(
+  result: MetricResult,
+  x: string,
+  y: string,
+  series: string | undefined,
+  gaps = false
+): DrawnSeries {
+  if (!series) {
+    return {
+      rows: points(result, [x, y]),
+      series: [{ key: y, label: y }],
+      config: seriesConfig(y),
+      stacked: null,
+    };
+  }
+
+  const stacked = stacks(result, x, y, series, gaps);
+  return {
+    rows: stacked.rows,
+    series: stacked.series,
+    config: Object.fromEntries(
+      stacked.series.map(({ key, label }, index) => [
+        key,
+        { label, color: stackColor(index) },
+      ])
+    ),
+    stacked,
   };
 }
 

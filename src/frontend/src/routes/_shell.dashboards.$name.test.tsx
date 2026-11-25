@@ -173,6 +173,48 @@ describe("/dashboards/$name", () => {
     expect(customClient.fetchMetric).not.toHaveBeenCalled();
   });
 
+  it("runs a compared stat once more over the previous period and shows the change", async () => {
+    vi.mocked(customClient.fetchDashboardRead).mockResolvedValue({
+      ...READ,
+      body: {
+        title: "Engineering",
+        widgets: ["deploys"],
+        time_ranges: ["P30D"],
+        default_range: "P30D",
+      },
+    });
+    vi.mocked(customClient.fetchDashboardWidgets).mockResolvedValue([
+      drawn(
+        "deploys",
+        { type: "stat", metric: "m", value: "n", compare: {} },
+        CLOCK
+      ),
+    ]);
+    vi.mocked(customClient.runDashboardWidget).mockImplementation(
+      async (_board, _widget, options) => ({
+        columns: ["n"],
+        rows: [[options?.previous ? 100 : 125]],
+      })
+    );
+    portalRouter.go("/dashboards/engineering");
+
+    render(<Component />, { wrapper });
+
+    expect(
+      await screen.findByText("+25% since the previous period")
+    ).toBeInTheDocument();
+    expect(customClient.runDashboardWidget).toHaveBeenCalledWith(
+      "engineering",
+      "deploys",
+      { range: "P30D", bucket: false }
+    );
+    expect(customClient.runDashboardWidget).toHaveBeenCalledWith(
+      "engineering",
+      "deploys",
+      { range: "P30D", bucket: false, previous: true }
+    );
+  });
+
   it("opens the rows behind a widget for an administrator, through the dashboard", async () => {
     boardOfCommits();
     vi.mocked(customClient.fetchMetric).mockResolvedValue({

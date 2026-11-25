@@ -15,10 +15,17 @@ export interface TableWidget extends WidgetBase {
   columns: string[];
 }
 
+export interface Target {
+  value: number;
+  label?: string;
+}
+
 export interface SeriesWidget extends WidgetBase {
   type: "line" | "area";
   x: string;
   y: string;
+  series?: string;
+  target?: Target;
 }
 
 export interface BarWidget extends WidgetBase {
@@ -27,12 +34,18 @@ export interface BarWidget extends WidgetBase {
   y: string;
   series?: string;
   labels?: boolean;
+  horizontal?: boolean;
+  stack?: "percent";
+  target?: Target;
 }
+
+export type Better = "higher" | "lower" | "neutral";
 
 export interface StatWidget extends WidgetBase {
   type: "stat";
   value: string;
   label?: string;
+  compare?: { better?: Better };
 }
 
 export interface PieWidget extends WidgetBase {

@@ -1,21 +1,15 @@
 import { BarChart, LabelList } from "recharts";
 
 import { ChartBar } from "@/components/chart-series";
-import type { MetricResult } from "@/api/custom-client";
-import {
-  type ChartConfig,
-  pointClick,
-  points,
-  seriesConfig,
-  stackColor,
-  stacks,
-} from "@/components/custom/chart-data";
+import type { MetricResult, Target } from "@/api/custom-client";
+import { drawnSeries, pointClick } from "@/components/custom/chart-data";
 import { compactNumber, unitFor } from "@/components/custom/chart-format";
 import {
   ChartFrame,
   ChartLegend,
   ChartLegendContent,
   SeriesAxes,
+  TargetLine,
 } from "@/components/custom/chart-frame";
 
 export interface CustomBarChartProps {
@@ -24,6 +18,9 @@ export interface CustomBarChartProps {
   y: string;
   series?: string;
   labels?: boolean;
+  horizontal?: boolean;
+  stack?: "percent";
+  target?: Target;
   fillHeight?: boolean;
   onPointClick?: () => void;
 }
@@ -34,21 +31,20 @@ export function CustomBarChart({
   y,
   series,
   labels = false,
+  horizontal = false,
+  stack,
+  target,
   fillHeight,
   onPointClick,
 }: CustomBarChartProps) {
   const unit = unitFor(result.percents, y);
-  const stacked = series ? stacks(result, x, y, series) : null;
-  const data = stacked?.rows ?? points(result, [x, y]);
-  const segments = stacked?.series ?? [{ key: y, label: y }];
-  const config: ChartConfig = stacked
-    ? Object.fromEntries(
-        segments.map(({ key, label }, index) => [
-          key,
-          { label, color: stackColor(index) },
-        ])
-      )
-    : seriesConfig(y);
+  const {
+    rows: data,
+    series: segments,
+    config,
+    stacked,
+  } = drawnSeries(result, x, y, series);
+  const share = stacked !== null && stack === "percent";
 
   return (
     <ChartFrame
@@ -58,7 +54,14 @@ export function CustomBarChart({
     >
       <BarChart
         data={data}
-        margin={{ top: labels ? 20 : 8, right: 12, left: 0, bottom: 0 }}
+        layout={horizontal ? "vertical" : "horizontal"}
+        stackOffset={share ? "expand" : undefined}
+        margin={{
+          top: labels && !horizontal ? 20 : 8,
+          right: labels && horizontal ? 40 : 12,
+          left: 0,
+          bottom: 0,
+        }}
         onClick={pointClick(onPointClick)}
         className={onPointClick ? "cursor-pointer" : undefined}
       >
@@ -66,6 +69,8 @@ export function CustomBarChart({
           x={x}
           categories={data.map((point) => point[x])}
           unit={unit}
+          horizontal={horizontal}
+          share={share}
         />
         {stacked && (
           <ChartLegend
@@ -80,7 +85,7 @@ export function CustomBarChart({
             name={label}
             fill={`var(--color-${key})`}
             stackId={stacked ? "stack" : undefined}
-            radius={stacked ? 0 : undefined}
+            radius={stacked ? 0 : horizontal ? [0, 3, 3, 0] : undefined}
           >
             {labels && (
               <LabelList
@@ -94,7 +99,7 @@ export function CustomBarChart({
                           : undefined,
                     }
                   : { dataKey: y })}
-                position="top"
+                position={horizontal ? "right" : "top"}
                 className="fill-foreground"
                 fontSize={11}
                 formatter={(value) => compactNumber(value, unit)}
@@ -102,6 +107,7 @@ export function CustomBarChart({
             )}
           </ChartBar>
         ))}
+        <TargetLine target={target} horizontal={horizontal} share={share} />
       </BarChart>
     </ChartFrame>
   );

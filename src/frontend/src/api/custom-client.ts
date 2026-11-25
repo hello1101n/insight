@@ -484,6 +484,7 @@ export async function deleteDataset(name: string): Promise<void> {
 export interface RunOptions {
   range?: string;
   bucket?: boolean;
+  previous?: boolean;
 }
 
 export async function runMetric(

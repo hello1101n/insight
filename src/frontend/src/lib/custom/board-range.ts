@@ -1,4 +1,4 @@
-import type { DashboardWidget, RunOptions } from "@/api/custom-client";
+import type { DashboardWidget, RunOptions, Widget } from "@/api/custom-client";
 
 import { drawsBucket } from "./draws-bucket";
 import { isRangeToken, toInterval } from "./time-range";
@@ -28,4 +28,16 @@ export function runOptions(
   return range && widget.clock
     ? { range, bucket: drawsBucket(widget.body) }
     : undefined;
+}
+
+const ALL_TIME = "inf";
+
+export function previousOptions(
+  widget: Widget,
+  options: RunOptions | undefined,
+): RunOptions | undefined {
+  const bounded = options?.range !== undefined && options.range !== ALL_TIME;
+  const compares = widget.type === "stat" && widget.compare !== undefined;
+
+  return bounded && compares ? { ...options, previous: true } : undefined;
 }

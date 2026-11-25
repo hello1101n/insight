@@ -25,7 +25,11 @@ import {
 import { DashboardByline } from "@/components/custom/dashboard-byline";
 import { DashboardPageActions } from "@/components/custom/dashboard-page-actions";
 import { RangePicker } from "@/components/custom/range-picker";
-import { runOptions, selectedRange } from "@/lib/custom/board-range";
+import {
+  previousOptions,
+  runOptions,
+  selectedRange,
+} from "@/lib/custom/board-range";
 import { dashboardIdFromPath } from "@/lib/custom/dashboard-path";
 import {
   useSetPortalSearch,
@@ -347,10 +351,15 @@ function DashboardWidgetSlot({
   const name = widget?.name ?? id;
 
   const options = widget ? runOptions(widget, range) : undefined;
+  const previous = widget ? previousOptions(widget.body, options) : undefined;
 
   const resultState = useQuery({
     ...dashboardWidgetResultQuery(dashboard, id, options),
     enabled: widget !== undefined,
+  });
+  const previousState = useQuery({
+    ...dashboardWidgetResultQuery(dashboard, id, previous),
+    enabled: previous !== undefined,
   });
 
   if (pending) {
@@ -379,6 +388,7 @@ function DashboardWidgetSlot({
     <CustomWidget
       widget={widget.body}
       result={resultState.data}
+      previous={previousState.data}
       error={resultState.error}
       windowed={Boolean(options)}
       pending={resultState.isPending || resultState.isFetching}

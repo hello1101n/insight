@@ -19,6 +19,7 @@ import {
   type DashboardRead,
   type DashboardWidget,
   type MetricResult,
+  type Target,
   type Widget,
 } from "@/api/custom-client";
 import { dashboardItems } from "@/lib/custom/dashboard-items";
@@ -27,7 +28,7 @@ import { drawsBucket } from "@/lib/custom/draws-bucket";
 export interface FrontxBoard {
   dashboardId: string;
   file: ServedFile;
-  runs: ReadonlyMap<string, { dashboard: string; widget: string }>;
+  runs: ReadonlyMap<string, { dashboard: string; widget: DashboardWidget }>;
   widgets: ReadonlyMap<string, DashboardWidget>;
 }
 
@@ -35,6 +36,7 @@ export interface FrontxAnswer extends MetricResult {
   at: Record<string, number>;
   distinct: Record<string, unknown[]>;
   tableRows: unknown[][];
+  previous?: FrontxAnswer | null;
 }
 
 // INVARIANT: FrontX grid data holds at most 500 rows, and a longer list fails the cell.
@@ -59,6 +61,8 @@ const number = (row: string, at: string, percent = false, round = false) => {
 };
 
 const PERCENT = { value_type: "percent" } as const;
+
+const PREVIOUS_PERIOD = "Previous period";
 
 const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 
@@ -162,9 +166,12 @@ function oneSeries(
   );
 }
 
+// WORKAROUND: a FrontX series that the render does not name draws as bars, and only the data names a series value.
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
-  percent: boolean
+  percent: boolean,
+  stacked: boolean,
+  render: Record<string, unknown> = {}
 ): Drawn {
   const values = `response.distinct[${cel(widget.series)}]`;
   const name = `(v == null ? dyn(null) : dyn(string(v)))`;
@@ -173,10 +180,37 @@ function seriesPerValue(
     widget.x,
     widget.y,
     percent,
-    { legend_position: "bottom", unlisted_stack_group: widget.series },
+    {
+      ...render,
+      legend_position: "bottom",
+      ...(stacked ? { unlisted_stack_group: widget.series } : {}),
+    },
     (point) =>
       `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${name}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
   );
+}
+
+// INVARIANT: a target value is in the units a reader sees, and a FrontX percent axis reads a fraction.
+function targetLines(
+  target: Target | undefined,
+  fraction: boolean
+): Record<string, unknown> {
+  if (!target) return {};
+
+  const value = fraction ? target.value / 100 : target.value;
+  return {
+    reference_lines: [
+      { value, ...(target.label ? { label: target.label } : {}) },
+    ],
+  };
+}
+
+// INVARIANT: the host adds `previous` only to the answer of a compared stat over a bounded range.
+function previousFigure(value: string, percent: boolean): string {
+  const previous = "response.previous";
+  const figure = number(`${previous}.rows[0]`, "p", percent, true);
+
+  return `(!has(${previous}) || ${previous} == null || size(${previous}.rows) == 0 ? dyn(null) : cel.bind(p, int(${previous}.at[${cel(value)}]), ${figure}))`;
 }
 
 function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
@@ -197,25 +231,58 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn | Note {
         transform: `{'rows': response.tableRows.map(r, [${widget.columns.map((name) => (percent(name) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
       };
     case "line":
-    case "area":
-      return oneSeries(widget, widget.type, percent(widget.y));
-    case "bar":
+    case "area": {
+      const lines = targetLines(widget.target, percent(widget.y));
       if (widget.series) {
         return seriesPerValue(
           { ...widget, series: widget.series },
-          percent(widget.y)
+          percent(widget.y),
+          widget.type === "area",
+          lines
+        );
+      }
+      return oneSeries(widget, widget.type, percent(widget.y), lines);
+    }
+    case "bar": {
+      const share = widget.series !== undefined && widget.stack === "percent";
+      const render = {
+        ...(widget.horizontal ? { orientation: "horizontal" } : {}),
+        ...(share ? { stack_mode: "percent" } : {}),
+        ...targetLines(widget.target, percent(widget.y) || share),
+      };
+      if (widget.series) {
+        return seriesPerValue(
+          { ...widget, series: widget.series },
+          percent(widget.y),
+          true,
+          render
         );
       }
       return oneSeries(widget, "bar", percent(widget.y), {
+        ...render,
         value_labels: widget.labels ? "always" : "never",
       });
-    case "stat":
+    }
+    case "stat": {
+      const shown = percent(widget.value);
+      const reference = widget.compare
+        ? `, 'reference_value': ${previousFigure(widget.value, shown)}`
+        : "";
       return {
         type: "metric_card",
-        ...(percent(widget.value) ? { value_format: PERCENT } : {}),
-        render: { value_label: widget.label ?? widget.value },
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent(widget.value), true)}}))`,
+        ...(shown ? { value_format: PERCENT } : {}),
+        render: {
+          value_label: widget.label ?? widget.value,
+          ...(widget.compare
+            ? {
+                better: widget.compare.better ?? "higher",
+                reference_label: PREVIOUS_PERIOD,
+              }
+            : {}),
+        },
+        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", shown, true)}${reference}}))`,
       };
+    }
     case "pie":
       return {
         type: "pie_chart",
@@ -389,7 +456,7 @@ export function frontxBoard(
     runs: new Map(
       widgets.map((widget) => [
         runPath(id, widget.id),
-        { dashboard: id, widget: widget.id },
+        { dashboard: id, widget },
       ])
     ),
     widgets: drawnWidgets,

@@ -24,7 +24,7 @@ import {
   type DashboardWidget,
   type RunOptions,
 } from "@/api/custom-client";
-import { runOptions } from "@/lib/custom/board-range";
+import { previousOptions, runOptions } from "@/lib/custom/board-range";
 import {
   frontxAnswer,
   frontxBoard,
@@ -66,14 +66,25 @@ const host: DashboardHost = {
       throw new Error("The shown board has no widget that runs at this path.");
 
     // INVARIANT: a run body is the one runRequest builds plus the range that FrontX adds, so the cache key matches the current renderer's.
-    const result = await queryClient.query(
-      dashboardWidgetResultQuery(
-        run.dashboard,
-        run.widget,
-        body as RunOptions | undefined
-      )
-    );
-    return frontxAnswer(result);
+    const options = body as RunOptions | undefined;
+    const previous = previousOptions(run.widget.body, options);
+    const [result, earlier] = await Promise.all([
+      queryClient.query(
+        dashboardWidgetResultQuery(run.dashboard, run.widget.id, options)
+      ),
+      // INVARIANT: a failed previous run leaves the stat without a comparison, as the current renderer does.
+      previous
+        ? queryClient
+            .query(
+              dashboardWidgetResultQuery(run.dashboard, run.widget.id, previous)
+            )
+            .catch(() => null)
+        : undefined,
+    ]);
+
+    const answer = frontxAnswer(result);
+    if (earlier === undefined) return answer;
+    return { ...answer, previous: earlier && frontxAnswer(earlier) };
   },
 };
 

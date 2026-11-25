@@ -15,6 +15,7 @@ import { useIsAdmin } from "@/queries/identity-me";
 export interface CustomWidgetProps {
   widget: Widget;
   result?: MetricResult;
+  previous?: MetricResult;
   error?: unknown;
   windowed?: boolean;
   pending?: boolean;
@@ -26,6 +27,7 @@ export interface CustomWidgetProps {
 export function CustomWidget({
   widget,
   result,
+  previous,
   error,
   windowed,
   pending,
@@ -93,11 +95,13 @@ export function CustomWidget({
       );
     case "line":
       return (
-        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
           <CustomLineChart
             result={result}
             x={widget.x}
             y={widget.y}
+            series={widget.series}
+            target={widget.target}
             fillHeight={fillHeight}
             onPointClick={onPointClick}
           />
@@ -105,17 +109,16 @@ export function CustomWidget({
       );
     case "bar":
       return (
-        missingColumnsNotice(
-          widget.metric,
-          [widget.x, widget.y, ...(widget.series ? [widget.series] : [])],
-          result
-        ) ?? (
+        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
           <CustomBarChart
             result={result}
             x={widget.x}
             y={widget.y}
             series={widget.series}
             labels={widget.labels}
+            horizontal={widget.horizontal}
+            stack={widget.stack}
+            target={widget.target}
             fillHeight={fillHeight}
             onPointClick={onPointClick}
           />
@@ -123,11 +126,13 @@ export function CustomWidget({
       );
     case "area":
       return (
-        missingColumnsNotice(widget.metric, [widget.x, widget.y], result) ?? (
+        missingColumnsNotice(widget.metric, seriesColumns(widget), result) ?? (
           <CustomAreaChart
             result={result}
             x={widget.x}
             y={widget.y}
+            series={widget.series}
+            target={widget.target}
             fillHeight={fillHeight}
             onPointClick={onPointClick}
           />
@@ -140,6 +145,8 @@ export function CustomWidget({
             result={result}
             value={widget.value}
             label={widget.label}
+            compare={widget.compare}
+            previous={previous}
           />
         )
       );
@@ -162,6 +169,14 @@ export function CustomWidget({
     default:
       return <p>Unknown widget type.</p>;
   }
+}
+
+function seriesColumns(widget: {
+  x: string;
+  y: string;
+  series?: string;
+}): string[] {
+  return [widget.x, widget.y, ...(widget.series ? [widget.series] : [])];
 }
 
 function missingColumnsNotice(
