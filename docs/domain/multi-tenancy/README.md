@@ -7,7 +7,8 @@ In plain words: what it takes for one Insight install to serve many tenants, who
 - Today an install serves exactly one tenant, and its id is a chart value.
 - The goal is many tenants in one install:
   - an operator with cluster access creates and removes tenants;
-  - a **tenant admin** configures their own tenant: connectors and, where the identity provider cannot supply them, roles.
+  - the same operator adds the connectors of each tenant and, where the identity provider cannot supply them, the roles.
+- Insight has no tenant admin today. A tenant admin who configures their own tenant is a later step.
 - Every tenant has its own subdomain, for example `acme.insight.example`. Its sign-in page lists the identity providers that tenant uses, and the user picks one.
 - Every tenant signs in through an identity provider. Keycloak only brokers to those providers and stamps the tenant into the token.
 - All tenants share the same warehouse tables. Every row has a tenant column.
@@ -178,15 +179,17 @@ An operator with cluster access manages the registry; there is no admin UI above
 - **One person in several tenants works naturally.** The same GitHub account signs in at `a.insight.example` and at `b.insight.example`. These are two registrations, two sessions and two tokens, each carrying its own tenant. The session cookie is bound to the host, so the sessions never mix.
 - **DNS and TLS are set once per install, not per tenant.** A wildcard DNS record and a wildcard certificate (`*.insight.example`) cover all subdomains. A new tenant needs only its redirect URIs in Keycloak.
 
-### 4. Tenant admin and connectors
+### 4. Connectors and roles
+
+The operator with cluster access configures every tenant. There is no API or UI for this.
 
 - **Users come from the identity provider.** Insight does not create, invite or remove users.
-- **Roles** are managed in Insight only where the identity provider cannot supply them. How provider roles or groups map to Insight roles is an open question.
-- An API and a UI let the tenant admin create connectors and their secrets. Tenant isolation covers the secrets too: one tenant's admin never sees another tenant's secrets. How the secrets are stored and encrypted is still open.
-- Ingestion takes the tenant from each connector's record, never from an install-wide setting.
-- Connector health and similar views show the caller's tenant only.
-- Connectors run inside the cluster against URLs the tenant admin types in, so their egress has to be restricted (SSRF).
+- **Connectors stay K8s Secrets.** Each Secret names its tenant. The operator applies it.
+- Ingestion takes the tenant from each connector Secret, never from an install-wide setting.
+- The reconcile job never takes over a source or connection of another tenant.
 - All tenants share the bronze tables. An Airbyte Clear or Refresh of one connector must not remove the rows of other tenants.
+- **Roles** are managed in Insight only where the identity provider cannot supply them. The operator assigns them. Today the `roles` table has no tenant, so it needs one.
+- Connector health and similar views show the caller's tenant only.
 
 ### 5. Tenant lifecycle
 
@@ -198,13 +201,18 @@ An operator with cluster access manages the registry; there is no admin UI above
 
 - **No tenant, no access.** Without a tenant there is no sign-in, so no connectors and no work that could write a record without a tenant. A request, job or record that reaches the system with an empty tenant is a fatal error, never something to fall back from.
 - Quotas and limits per tenant: connectors, sync frequency, query load ([#724](https://github.com/constructorfabric/insight/issues/724)). All tenants share one ClickHouse reader user, so the query compiler sets a quota key per tenant.
-- Audit of what tenant admins do.
 
 ## Not now
 
 Each of these is a separate task, picked up once there is an explicit requirement:
 
 - **An admin UI above tenants.** For now, cluster access is that role.
+- **A tenant admin.** A role inside a tenant that configures that tenant without cluster access. It needs:
+  - an API and a UI for connectors and their secrets;
+  - storage and encryption of the secrets, so that one tenant's admin never sees the secrets of another tenant;
+  - restricted egress for connectors, because they run inside the cluster against URLs that the tenant admin types in (SSRF);
+  - role management for the tenant;
+  - an audit of what tenant admins do.
 - **A tenant hierarchy:** a main tenant with subtenants, and their subtenants. An organization with departments is one tenant. Departments are data inside that tenant.
 - **Users kept by Insight itself**, for a small organization without an identity provider of its own.
 - **Cells:** groups of 5 to 10 tenants, each group with its own ClickHouse and services, behind a router. The subdomain makes the routing simple. The first install is one cell.
@@ -221,7 +229,7 @@ Each of these is a separate task, picked up once there is an explicit requiremen
 
 ## Open questions
 
-- How are connector secrets stored and encrypted, so that tenant isolation also holds for them?
+- For the later tenant admin: how are connector secrets stored and encrypted, so that tenant isolation also holds for them?
 - How do roles or groups from an identity provider map to Insight roles?
 - Function allowlist: which functions go on it? A test on real AI queries shows how much the parser and the list block.
 - insight-v3-core: does it use the query compiler, or keep its own compiler with the tenant rule?
@@ -234,5 +242,5 @@ Each of these is a separate task, picked up once there is an explicit requiremen
 
 1. Data isolation (block 1) comes before a second tenant exists in an install. Its first step is the tenant column in every table ([#2087](https://github.com/constructorfabric/insight/issues/2087)).
 2. The registry and sign-in (blocks 2–3) can run in parallel with it. They touch the authenticator, identity and Keycloak, not dbt or the warehouse.
-3. Connectors (block 4) come after the registry and sign-in.
+3. Connectors and roles per tenant (block 4) come after the registry and sign-in.
 4. Lifecycle and operations (blocks 5–6) come last.
