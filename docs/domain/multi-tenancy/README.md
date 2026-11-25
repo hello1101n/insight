@@ -234,6 +234,19 @@ A tenant becomes a record, not a single chart value. Roughly:
 
 An operator with cluster access manages the registry; there is no admin UI above tenants for now. Once the registry exists, the chart copies of the tenant go away. Related: [#725](https://github.com/constructorfabric/insight/issues/725).
 
+#### Remove the chart tenant
+
+One chart value cannot serve many tenants. Each component that reads it needs a change:
+
+| Component | What it does today | Change |
+|---|---|---|
+| Keycloak config job (`INSIGHT_TENANT_ID`) | Pins one tenant in the identity provider mappers of the realm. | Read the registry. Create one registration for each identity provider of each tenant, with the tenant of that registration pinned. |
+| authenticator `oidc.defaultTenantId` | Uses the default when a token has no tenant. | Remove the fallback. Refuse a token with no tenant. |
+| identity-resolution: login bootstrap | Creates a person in the default tenant at the first sign-in. | Use the tenant of the session. |
+| identity-resolution: bootstrap admin | Creates the first admin in the default tenant. | Create the first admin in the tenant create operation, for each tenant. |
+| identity-resolution: persons sync and seed | Stop when MariaDB holds more than one tenant. | Process each tenant. Publish each tenant to its own partition of `identity.identity_persons`. |
+| reconcile `ingestion.reconcile.tenantId` | `INSIGHT_TENANT_ID` overrides the tenant of every connector Secret and is part of the connection names. | Take the tenant from each connector Secret. Remove the install-wide override. |
+
 ### 3. Sign-in and routing
 
 **Every tenant has its own subdomain.** `acme.insight.example` belongs to one tenant, and the subdomain alone tells which tenant a visitor means. No e-mail domains are involved.
