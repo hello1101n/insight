@@ -38,8 +38,11 @@ WITH history AS (
     {% endif %}
 ),
 
+-- Guarded here, not only in the output: every join below compares this tenant,
+-- and a NULL one would otherwise just fail to match and drop out silently.
 current_users AS (
-    SELECT * FROM {{ source('bronze_active_directory', 'users') }}
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id)
+    FROM {{ source('bronze_active_directory', 'users') }}
 ),
 
 manager_changes AS (

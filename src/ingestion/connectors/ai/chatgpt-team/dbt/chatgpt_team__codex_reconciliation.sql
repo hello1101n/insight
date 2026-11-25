@@ -40,6 +40,9 @@ leaderboard AS (
     WHERE user_id IS NOT NULL
       AND trim(user_id) != ''
       AND date IS NOT NULL
+      -- An unparsable date would give day NULL, which the outer SELECT reads as
+      -- "this side is absent".
+      AND toDateOrNull(date) IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
     LIMIT 1 BY insight_tenant_id, source_id, trim(user_id), toDateOrNull(date)
 
@@ -58,6 +61,9 @@ sessions AS (
     WHERE user_id IS NOT NULL
       AND trim(user_id) != ''
       AND date IS NOT NULL
+      -- An unparsable date would give day NULL, which the outer SELECT reads as
+      -- "this side is absent".
+      AND toDateOrNull(date) IS NOT NULL
 
 )
 

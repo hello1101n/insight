@@ -144,17 +144,29 @@ def test_a_known_instance_keeps_its_own_floor(warehouse: Client) -> None:
 
 
 def test_reconciliation_keeps_the_tenant_of_a_one_sided_row(warehouse: Client) -> None:
-    """Both sides are non-Nullable, so coalesce() over the FULL JOIN kept '' for a sessions-only row."""
+    """Both sides are non-Nullable, so coalesce() over the FULL JOIN kept '' for a sessions-only row.
+
+    A leaderboard row with an unparsable date is dropped at the read: its NULL day would otherwise
+    read as "no leaderboard row" and surface as a blank sessions_only row.
+    """
     tenant, source = str(uuid4()), str(uuid4())
-    leaderboard(warehouse, tenant, source, "alice", "2026-03-10", 5)
-    sessions(warehouse, tenant, source, "bob", "2026-03-10", 3)
+    alice, bob, carol, dave = (f"{name}-{source}" for name in ("alice", "bob", "carol", "dave"))
+    leaderboard(warehouse, tenant, source, alice, "2026-03-10", 5)
+    sessions(warehouse, tenant, source, bob, "2026-03-10", 3)
+    leaderboard(warehouse, tenant, source, carol, "not-a-date", 4)
+    sessions(warehouse, tenant, source, carol, "2026-03-10", 4)
+    leaderboard(warehouse, tenant, source, dave, "not-a-date", 2)
     build("chatgpt_team__codex_reconciliation")
     rows = warehouse.query(
         "SELECT user_id, seen_in, insight_tenant_id, source_id FROM staging.chatgpt_team__codex_reconciliation "
-        "WHERE insight_tenant_id = {tenant:String} OR source_id = {source:String} ORDER BY user_id",
-        parameters={"tenant": tenant, "source": source},
+        "WHERE user_id IN {users:Array(String)} ORDER BY user_id",
+        parameters={"users": [alice, bob, carol, dave]},
     ).result_rows
-    assert rows == [("alice", "leaderboard_only", tenant, source), ("bob", "sessions_only", tenant, source)]
+    assert rows == [
+        (alice, "leaderboard_only", tenant, source),
+        (bob, "sessions_only", tenant, source),
+        (carol, "sessions_only", tenant, source),
+    ]
 
 
 @pytest.mark.parametrize("tenant", [None, "", "not-a-uuid"])
