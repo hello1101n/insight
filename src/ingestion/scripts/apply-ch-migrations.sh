@@ -66,8 +66,6 @@ export CLICKHOUSE_CLUSTER_NAME="${CLICKHOUSE_CLUSTER_NAME:-}"
 source "$SCRIPT_DIR/lib/ch-topology.sh"
 source "$SCRIPT_DIR/lib/retired-relations.sh"
 source "$SCRIPT_DIR/lib/heal-identity-map-tenant.sh"
-source "$SCRIPT_DIR/lib/heal-youtrack-field-observation-tenant.sh"
-source "$SCRIPT_DIR/lib/heal-task-producer-tenant.sh"
 source "$SCRIPT_DIR/lib/warehouse-floor.sh"
 
 bash "$SCRIPT_DIR/create-databases.sh"
@@ -260,14 +258,11 @@ SQL
 # Counts only the rows the pairs can actually fill: a key no issue stream ever
 # delivered stays NULL forever, and counting it would re-run the rebuild on
 # every deploy. Worklogs carry Jira's own issueId and count whenever it is set.
-# Bronze names its tenant `tenant_id` until `tenant_migration` renames it, so
-# each table's own column is read.
+# Bronze names its tenant `insight_tenant_id`: the pre-upgrade hook's
+# tenant_migration renamed it before this runs.
 _jira_rows_needing_issue_id() {
-  local table="$1" own="0" t ti tk
+  local table="$1" own="0" t=insight_tenant_id ti=insight_tenant_id tk=insight_tenant_id
   [[ "${table}" == "jira_worklogs" ]] && own="issueId IS NOT NULL"
-  t="$(ch_tenant_column bronze_jira "${table}")" || return 1
-  ti="$(ch_tenant_column bronze_jira jira_issue)" || return 1
-  tk="$(ch_tenant_column bronze_jira jira_issue_keys)" || return 1
   ch_scalar "$(printf "SELECT count() FROM bronze_jira.%s
           WHERE jira_id IS NULL
             AND (%s
@@ -287,9 +282,7 @@ _jira_rows_needing_issue_id() {
 # of its ids, and the aggregate is where that choice is made rather than
 # whichever row the join below met first.
 _jira_issue_id_pairs() {
-  local ti tk
-  ti="$(ch_tenant_column bronze_jira jira_issue)" || return 1
-  tk="$(ch_tenant_column bronze_jira jira_issue_keys)" || return 1
+  local ti=insight_tenant_id tk=insight_tenant_id
   cat <<SQL
     SELECT insight_tenant_id, source_id, id_readable, any(jira_id) AS jira_id
     FROM
@@ -314,9 +307,8 @@ SQL
 # keeps it, which is what makes the rebuild re-runnable, and `ANY` takes at
 # most one match, so the rebuild is row for row whatever the pairs hold.
 _jira_substream_issue_id_select() {
-  local table="$1" own="s.jira_id" t pairs
+  local table="$1" own="s.jira_id" t=insight_tenant_id pairs
   [[ "${table}" == "jira_worklogs" ]] && own="COALESCE(s.jira_id, s.issueId)"
-  t="$(ch_tenant_column bronze_jira "${table}")" || return 1
   pairs="$(_jira_issue_id_pairs)" || return 1
   cat <<SQL
 SELECT s.* REPLACE (COALESCE(${own}, nullIf(pairs.jira_id, '')) AS jira_id)
@@ -351,9 +343,6 @@ heal_jira_substream_issue_id
 echo "=== Healing the Jira catalogue first-sync record ==="
 source "$SCRIPT_DIR/lib/heal-jira-catalogue-first-seen.sh"
 heal_jira_catalogue_first_seen
-
-echo "=== Healing YouTrack field observation tenants ==="
-heal_youtrack_field_observation_tenant
 
 echo "=== Healing Allure staging test results ==="
 # INVARIANT: repairs releases without #3707, #3713 (main before 0.7.108); delete once every CH_FLOOR_RELEASES release runs it.
@@ -668,9 +657,7 @@ _GIT_PR_REPORTED_CLOSE_TARGETS=(
 # the legacy one by DECLARATION, not by whichever happened to be extracted
 # later — a clock is not a contract.
 _git_pr_reported_close_branch() {
-  local relation="$1" stream_rank="$2" tenant
-  # Bronze says `tenant_id` until `tenant_migration` renames it.
-  tenant="$(ch_tenant_column "${relation%%.*}" "${relation#*.}")" || return 1
+  local relation="$1" stream_rank="$2" tenant=insight_tenant_id
   cat <<SQL
     SELECT assumeNotNull(${tenant}) AS insight_tenant_id,
            assumeNotNull(source_id) AS source_id,
@@ -691,7 +678,8 @@ SQL
 # rows written and the rows counted cannot drift apart.
 _git_pr_rows_needing_reported_close() {
   local db="$1" table="$2" eligible="$3" lookup="$4" tenant
-  # Until the cutover rebuild, a projection still names its tenant `tenant_id`.
+  # KEEP: staging and silver are not migrated before this runs; a projection names its
+  # tenant `tenant_id` until the post-upgrade rebuild replaces it.
   tenant="$(ch_tenant_column "${db}" "${table}")" || return 1
   cat <<SQL
 FROM
@@ -841,12 +829,6 @@ SQL
 }
 
 heal_focus_metrics
-
-echo "=== Healing task class tenants ==="
-heal_task_class_tenants
-
-echo "=== Healing task class producer tenants ==="
-heal_task_producer_tenants
 
 echo "=== Healing column types a fresh install no longer creates ==="
 # dbt never retypes a column an earlier run created: an incremental model
@@ -1043,11 +1025,9 @@ echo "=== Aligning the Slack users snapshot with slack__users_latest ==="
 # so the heal removes the versions that slack__users_latest now drops, before the guest flag goes.
 # INVARIANT: repairs releases without #4328 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
 heal_slack_users_snapshot_columns() {
-  local is_guest_type tenant
+  local is_guest_type tenant=insight_tenant_id
   local excluded="coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
   ch_table_exists staging slack__users_snapshot || return 0
-  # A history relation: `tenant_id` until `tenant_migration` renames it.
-  tenant="$(ch_tenant_column staging slack__users_snapshot)"
   is_guest_type="$(ch_column_type staging slack__users_snapshot is_guest)"
   echo "  staging.slack__users_snapshot"
   if [[ -n "${is_guest_type}" ]]; then
