@@ -1,14 +1,18 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
 use clickhouse::Row;
-use insight_clickhouse::{Client, Config, Ddl, TableSpec, Topology};
+use insight_clickhouse::{
+    Client, Config, Ddl, Error as ChError, InactiveReplicasPending, ReplicaNotInQuorum, TableSpec,
+    Topology,
+};
 use sea_orm::prelude::DateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::sync_service::{IdentityPersonsWriter, PersonsLogRow};
+use crate::domain::sync_service::{IdentityPersonsWriter, Layout, PersonsLogRow};
 
 const WRITE_TIMEOUT: Duration = Duration::from_mins(5);
 
@@ -16,6 +20,7 @@ const DATABASE: &str = "identity";
 const TARGET: &str = "identity_persons";
 const STAGING_PREFIX: &str = "identity_persons_staging_";
 const STAGING_GC_AGE_SECONDS: u32 = 3600;
+const REPLACE_ATTEMPTS: u32 = 2;
 
 const COLUMNS: [(&str, &str); 14] = [
     ("id", "UInt64"),
@@ -33,7 +38,8 @@ const COLUMNS: [(&str, &str); 14] = [
     ("created_at", "DateTime64(6, 'UTC')"),
     ("_synced_at", "DateTime64(3, 'UTC')"),
 ];
-const SORT_KEY: [&str; 1] = ["id"];
+const PARTITION_KEY: &str = "insight_tenant_id";
+const SORT_KEY: [&str; 2] = ["insight_tenant_id", "id"];
 
 #[derive(Debug, Row, Serialize)]
 struct WireRow {
@@ -62,6 +68,19 @@ struct WireRow {
     synced_at: chrono::DateTime<Utc>,
 }
 
+#[derive(Debug, Row, Deserialize)]
+struct TableKeys {
+    partition_key: String,
+    sorting_key: String,
+}
+
+#[derive(Debug, Row, Deserialize)]
+struct TableColumn {
+    name: String,
+    #[serde(rename = "type")]
+    data_type: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
     Published,
@@ -69,26 +88,44 @@ enum Target {
 }
 
 fn staging_spec(staging: &str) -> Ddl {
-    Ddl::create_table(TableSpec::merge_tree(
-        DATABASE, staging, &COLUMNS, &SORT_KEY,
-    ))
+    Ddl::create_table(
+        TableSpec::merge_tree(DATABASE, staging, &COLUMNS, &SORT_KEY).partition_by(PARTITION_KEY),
+    )
 }
 
-fn swap_ddl(staging: &str, target: Target) -> Ddl {
-    match target {
-        Target::Published => Ddl::exchange_tables(DATABASE, staging, TARGET),
-        Target::Absent => Ddl::rename_table(DATABASE, staging, TARGET),
+fn swap_ddl(staging: &str, target: &str, state: Target) -> Ddl {
+    match state {
+        Target::Published => Ddl::exchange_tables(DATABASE, staging, target),
+        Target::Absent => Ddl::rename_table(DATABASE, staging, target),
+    }
+}
+
+fn layout_of(keys: &TableKeys, columns: &[TableColumn]) -> Layout {
+    let same_keys = keys.partition_key == PARTITION_KEY && keys.sorting_key == SORT_KEY.join(", ");
+    let same_columns = columns.len() == COLUMNS.len()
+        && columns
+            .iter()
+            .zip(COLUMNS)
+            .all(|(found, (name, data_type))| found.name == name && found.data_type == data_type);
+    if same_keys && same_columns {
+        Layout::Partitioned
+    } else {
+        Layout::Stale
     }
 }
 
 pub struct ClickHouseIdentityPersonsWriter {
     client: Client,
+    target: String,
 }
 
 impl ClickHouseIdentityPersonsWriter {
     #[must_use]
     pub fn new(client: Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            target: TARGET.to_owned(),
+        }
     }
 
     #[must_use]
@@ -107,7 +144,7 @@ impl ClickHouseIdentityPersonsWriter {
             .client
             .query("SELECT count() FROM system.tables WHERE database = ? AND name = ?")
             .bind(DATABASE)
-            .bind(TARGET)
+            .bind(&self.target)
             .fetch_one()
             .await?;
         Ok(if created == 0 {
@@ -117,14 +154,75 @@ impl ClickHouseIdentityPersonsWriter {
         })
     }
 
-    async fn guard_watermark(&self, synced_at: chrono::DateTime<Utc>) -> anyhow::Result<()> {
-        let published_ms: i64 = self
+    async fn read_layout(&self) -> anyhow::Result<Layout> {
+        let keys: Option<TableKeys> = self
             .client
-            .consistent_query(&format!(
-                "SELECT toUnixTimestamp64Milli(max(_synced_at)) FROM {DATABASE}.{TARGET}"
-            ))
-            .fetch_one()
+            .query(
+                "SELECT partition_key, sorting_key FROM system.tables \
+                 WHERE database = ? AND name = ?",
+            )
+            .bind(DATABASE)
+            .bind(&self.target)
+            .fetch_optional()
             .await?;
+        let Some(keys) = keys else {
+            return Ok(Layout::Stale);
+        };
+
+        let columns: Vec<TableColumn> = self
+            .client
+            .query(
+                "SELECT name, type FROM system.columns \
+                 WHERE database = ? AND table = ? ORDER BY position",
+            )
+            .bind(DATABASE)
+            .bind(&self.target)
+            .fetch_all()
+            .await?;
+        if layout_of(&keys, &columns) == Layout::Stale {
+            return Ok(Layout::Stale);
+        }
+
+        // INVARIANT: dbt reads with select_sequential_consistency on a cluster.
+        // Code 289 means a stale quorum record.
+        let probe = self
+            .client
+            .consistent_query(&format!("SELECT count() FROM {DATABASE}.`{}`", self.target))
+            .fetch_one::<u64>()
+            .await;
+        match probe {
+            Ok(_) => Ok(Layout::Partitioned),
+            Err(e) if ReplicaNotInQuorum::from_error(&e).is_some() => {
+                tracing::warn!(
+                    error = %e,
+                    "persons-sync: the quorum record of the live table names a missing part. \
+                     The sync publishes a full snapshot"
+                );
+                Ok(Layout::Stale)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn guard_watermark(
+        &self,
+        tenant: Option<Uuid>,
+        synced_at: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let select = format!(
+            "SELECT toUnixTimestamp64Milli(max(_synced_at)) FROM {DATABASE}.`{}`",
+            self.target
+        );
+        let published_ms: i64 = match tenant {
+            Some(tenant) => {
+                self.client
+                    .query(&format!("{select} WHERE insight_tenant_id = ?"))
+                    .bind(tenant)
+                    .fetch_one()
+                    .await?
+            }
+            None => self.client.query(&select).fetch_one().await?,
+        };
         anyhow::ensure!(
             published_ms <= synced_at.timestamp_millis(),
             "a newer snapshot (_synced_at={published_ms}ms) is already published; \
@@ -174,13 +272,16 @@ impl ClickHouseIdentityPersonsWriter {
         }
     }
 
-    async fn fill_and_swap(
+    async fn fill(
         &self,
         staging: &str,
-        rows: &[PersonsLogRow],
+        rows: &[&PersonsLogRow],
         synced_at: chrono::DateTime<Utc>,
     ) -> anyhow::Result<()> {
-        let mut insert = self.client.consistent_insert::<WireRow>(staging).await?;
+        let mut insert = self
+            .client
+            .insert_on_every_active_replica::<WireRow>(staging)
+            .await?;
         for row in rows {
             insert.write(&to_wire_row(row, synced_at)).await?;
         }
@@ -195,25 +296,132 @@ impl ClickHouseIdentityPersonsWriter {
         anyhow::ensure!(
             count == expected,
             "staging count mismatch: inserted {expected}, staging holds {count}; \
-             aborting swap (live table left untouched)"
+             aborting publish (live table left untouched)"
         );
-
-        let target = self.target_state().await?;
-        match target {
-            Target::Published => self.guard_watermark(synced_at).await?,
-            Target::Absent => {}
-        }
-
-        self.client.execute_ddl(&swap_ddl(staging, target)).await?;
         Ok(())
     }
 
-    async fn probe_published_max_id(&self) -> anyhow::Result<Option<u64>> {
+    // INVARIANT: a table that readers query never takes a quorum insert. A replace
+    // leaves its quorum record stale, and each sequentially consistent read fails.
+    async fn replace_partition(
+        &self,
+        table: &str,
+        tenant: Uuid,
+        rows: &[&PersonsLogRow],
+        synced_at: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        self.with_staging(async |staging: &str| {
+            self.fill(staging, rows, synced_at).await?;
+
+            let replace = Ddl::replace_partition(DATABASE, table, tenant, staging);
+            match self.client.execute_ddl(&replace).await {
+                Ok(()) => Ok(()),
+                Err(ChError::Clickhouse(e))
+                    if InactiveReplicasPending::from_error(&e).is_some() =>
+                {
+                    tracing::warn!(
+                        %tenant,
+                        error = %e,
+                        "persons-sync: the active replicas replaced the partition. The inactive \
+                         replicas replace it from the replication log on return"
+                    );
+                    Ok(())
+                }
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await
+    }
+
+    async fn publish_whole(
+        &self,
+        table: &str,
+        rows: &[PersonsLogRow],
+        synced_at: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let mut by_tenant: BTreeMap<Uuid, Vec<&PersonsLogRow>> = BTreeMap::new();
+        for row in rows {
+            by_tenant
+                .entry(row.insight_tenant_id)
+                .or_default()
+                .push(row);
+        }
+        for (tenant, tenant_rows) in &by_tenant {
+            self.replace_partition(table, *tenant, tenant_rows, synced_at)
+                .await?;
+        }
+
+        let count: u64 = self
+            .client
+            .consistent_query(&format!("SELECT count() FROM {DATABASE}.`{table}`"))
+            .fetch_one()
+            .await?;
+        let expected = rows.len() as u64;
+        anyhow::ensure!(
+            count == expected,
+            "snapshot count mismatch: published {expected}, the new table holds {count}; \
+             aborting swap (live table left untouched)"
+        );
+
+        let state = self.target_state().await?;
+        match state {
+            Target::Published => self.guard_watermark(None, synced_at).await?,
+            Target::Absent => {}
+        }
+
+        self.client
+            .execute_ddl(&swap_ddl(table, &self.target, state))
+            .await?;
+        Ok(())
+    }
+
+    async fn with_staging<F>(&self, publish: F) -> anyhow::Result<()>
+    where
+        F: AsyncFnOnce(&str) -> anyhow::Result<()>,
+    {
+        let staging = format!("{STAGING_PREFIX}{}", Uuid::now_v7().simple());
+
+        self.client.execute_ddl(&staging_spec(&staging)).await?;
+
+        let result = publish(&staging).await;
+
+        if let Err(e) = self
+            .client
+            .execute_ddl(&Ddl::drop_table(DATABASE, &staging))
+            .await
+        {
+            tracing::warn!(error = %e, table = %staging, "persons-sync: dropping own staging failed");
+        }
+        result
+    }
+
+    async fn prepare(&self) -> anyhow::Result<()> {
+        self.client.assert_database_topology(DATABASE).await?;
+        self.drop_stale_stagings().await;
+        Ok(())
+    }
+
+    async fn partition_count(&self, tenant: Uuid) -> anyhow::Result<u64> {
+        Ok(self
+            .client
+            .query(&format!(
+                "SELECT count() FROM {DATABASE}.`{}` WHERE insight_tenant_id = ?",
+                self.target
+            ))
+            .bind(tenant)
+            .fetch_one()
+            .await?)
+    }
+
+    async fn probe_published_max_id(&self, tenant: Uuid) -> anyhow::Result<Option<u64>> {
         let probed: Result<Vec<Option<u64>>, _> = self
             .client
             .query(&format!(
-                "SELECT if(count() = 0, NULL, max(id)) FROM {DATABASE}.{TARGET}"
+                "SELECT if(count() = 0, NULL, max(id)) FROM {DATABASE}.`{}` \
+                 WHERE insight_tenant_id = ?",
+                self.target
             ))
+            .bind(tenant)
             .fetch_all()
             .await;
         match probed {
@@ -228,29 +436,53 @@ impl ClickHouseIdentityPersonsWriter {
 
 #[async_trait]
 impl IdentityPersonsWriter for ClickHouseIdentityPersonsWriter {
-    async fn published_max_id(&self) -> anyhow::Result<Option<u64>> {
-        self.probe_published_max_id().await
+    async fn layout(&self) -> anyhow::Result<Layout> {
+        self.read_layout().await
     }
 
-    async fn replace(&self, rows: &[PersonsLogRow], synced_at: DateTime) -> anyhow::Result<()> {
+    async fn replace_all(&self, rows: &[PersonsLogRow], synced_at: DateTime) -> anyhow::Result<()> {
         let synced_at = synced_at.and_utc();
-        let staging = format!("{STAGING_PREFIX}{}", Uuid::now_v7().simple());
-
-        self.client.assert_database_topology(DATABASE).await?;
-        self.drop_stale_stagings().await;
-
-        self.client.execute_ddl(&staging_spec(&staging)).await?;
-
-        let result = self.fill_and_swap(&staging, rows, synced_at).await;
-
-        if let Err(e) = self
-            .client
-            .execute_ddl(&Ddl::drop_table(DATABASE, &staging))
+        self.prepare().await?;
+        self.with_staging(async |table: &str| self.publish_whole(table, rows, synced_at).await)
             .await
-        {
-            tracing::warn!(error = %e, table = %staging, "persons-sync: dropping own staging failed");
+    }
+
+    async fn replace_tenant(
+        &self,
+        tenant: Uuid,
+        rows: &[PersonsLogRow],
+        synced_at: DateTime,
+    ) -> anyhow::Result<()> {
+        // SAFETY: a row of another tenant would vanish and the count check would pass.
+        anyhow::ensure!(
+            rows.iter().all(|r| r.insight_tenant_id == tenant),
+            "persons-sync: the rows of tenant {tenant} include rows of another tenant"
+        );
+        let synced_at = synced_at.and_utc();
+        let rows: Vec<&PersonsLogRow> = rows.iter().collect();
+        self.prepare().await?;
+        self.guard_watermark(Some(tenant), synced_at).await?;
+
+        // INVARIANT: a replica that returned during the insert can replace
+        // from incomplete staging parts.
+        let mut published = 0;
+        for _ in 0..REPLACE_ATTEMPTS {
+            self.replace_partition(&self.target, tenant, &rows, synced_at)
+                .await?;
+            published = self.partition_count(tenant).await?;
+            if published == rows.len() as u64 {
+                return Ok(());
+            }
         }
-        result
+        anyhow::bail!(
+            "partition count mismatch for tenant {tenant}: replaced with {} rows, \
+             the partition holds {published}",
+            rows.len()
+        )
+    }
+
+    async fn published_max_id(&self, tenant: Uuid) -> anyhow::Result<Option<u64>> {
+        self.probe_published_max_id(tenant).await
     }
 }
 
@@ -276,122 +508,6 @@ fn to_wire_row(r: &PersonsLogRow, synced_at: chrono::DateTime<Utc>) -> WireRow {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::sync_service::PersonsLogRow;
-
-    #[test]
-    fn maps_log_row_preserving_micros_and_nulls() -> anyhow::Result<()> {
-        let created =
-            DateTime::parse_from_str("2026-07-29 12:34:56.123456", "%Y-%m-%d %H:%M:%S%.f")?;
-        let row = PersonsLogRow {
-            id: 9,
-            value_type: "email".to_owned(),
-            insight_source_type: "bamboohr".to_owned(),
-            insight_source_id: Uuid::from_u128(1),
-            insight_tenant_id: Uuid::from_u128(2),
-            value_id: Some("a@x.com".to_owned()),
-            value_full_text: None,
-            value: None,
-            value_effective: Some("a@x.com".to_owned()),
-            person_id: Uuid::from_u128(3),
-            author_person_id: Uuid::from_u128(4),
-            reason: None,
-            created_at: created,
-        };
-        let synced =
-            DateTime::parse_from_str("2026-07-29 13:00:00", "%Y-%m-%d %H:%M:%S")?.and_utc();
-
-        let wire = to_wire_row(&row, synced);
-
-        assert_eq!(wire.id, 9);
-        assert_eq!(wire.created_at.timestamp_subsec_micros(), 123_456);
-        assert_eq!(wire.synced_at, synced);
-        assert_eq!(wire.reason, None);
-        Ok(())
-    }
-
-    fn swap(target: Target) -> anyhow::Result<String> {
-        Ok(writer(Topology::Standalone)
-            .client
-            .ddl_sql(&swap_ddl("identity_persons_staging_abc", target))?)
-    }
-
-    #[test]
-    fn a_published_table_is_swapped_for_atomically() -> anyhow::Result<()> {
-        assert_eq!(
-            swap(Target::Published)?,
-            "EXCHANGE TABLES `identity`.`identity_persons_staging_abc` \
-             AND `identity`.`identity_persons`"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn a_table_no_creator_has_made_yet_is_renamed_into_place() -> anyhow::Result<()> {
-        assert_eq!(
-            swap(Target::Absent)?,
-            "RENAME TABLE `identity`.`identity_persons_staging_abc` \
-             TO `identity`.`identity_persons`"
-        );
-        Ok(())
-    }
-
-    fn writer(topology: Topology) -> ClickHouseIdentityPersonsWriter {
-        ClickHouseIdentityPersonsWriter::connect("http://ch:8123", "", "", topology)
-    }
-
-    #[test]
-    fn a_clustered_install_stages_into_a_replicated_table() -> anyhow::Result<()> {
-        let clustered = writer(Topology::new(true, "insight_cluster"))
-            .client
-            .ddl_sql(&staging_spec("identity_persons_staging_abc"))?;
-        let standalone = writer(Topology::Standalone)
-            .client
-            .ddl_sql(&staging_spec("identity_persons_staging_abc"))?;
-
-        assert!(
-            clustered.ends_with(") ENGINE = ReplicatedMergeTree ORDER BY id"),
-            "{clustered}"
-        );
-        assert!(
-            standalone.ends_with(") ENGINE = MergeTree ORDER BY id"),
-            "{standalone}"
-        );
-        assert!(!clustered.contains("ON CLUSTER"), "{clustered}");
-        Ok(())
-    }
-
-    #[test]
-    fn the_staging_table_is_the_shape_the_swap_publishes() -> anyhow::Result<()> {
-        let sql = writer(Topology::Standalone)
-            .client
-            .ddl_sql(&staging_spec("identity_persons_staging_abc"))?;
-
-        assert!(
-            sql.starts_with("CREATE TABLE `identity`.`identity_persons_staging_abc` ("),
-            "{sql}"
-        );
-        assert!(sql.ends_with(") ENGINE = MergeTree ORDER BY id"), "{sql}");
-        for (name, data_type) in COLUMNS {
-            assert!(
-                sql.contains(&format!("\n    {name} {data_type}")),
-                "`{name} {data_type}` must be declared: {sql}"
-            );
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn publishing_never_creates_the_table_dbt_owns() -> anyhow::Result<()> {
-        for target in [Target::Published, Target::Absent] {
-            let sql = swap(target)?;
-
-            assert!(
-                !sql.contains("CREATE"),
-                "the swap must not become a second creator: {sql}"
-            );
-        }
-        Ok(())
-    }
-}
+mod live_tests;
+#[cfg(test)]
+mod tests;
