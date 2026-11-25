@@ -78,12 +78,19 @@ def _built_by(selectors: list[str], refs: dict[str, set[str]]) -> set[str]:
 
     built: set[str] = set()
     for selector in selectors:
-        frontier = list(_models_for(selector))
-        built.update(frontier)
-        while selector.endswith("+") and frontier:
-            fresh = children.get(frontier.pop(), set()) - built
-            built.update(fresh)
-            frontier.extend(fresh)
+        roots = set(_models_for(selector))
+        built.update(roots)
+        directions = ((selector.startswith("+"), refs), (selector.endswith("+"), children))
+        for expand, edges in directions:
+            if not expand:
+                continue
+            reached = roots.copy()
+            frontier = list(roots)
+            while frontier:
+                fresh = edges.get(frontier.pop(), set()) - reached
+                reached.update(fresh)
+                frontier.extend(fresh)
+            built.update(reached)
     return built
 
 
@@ -116,6 +123,19 @@ def test_every_class_gold_reads_is_built_by_the_seed() -> None:
     unbuilt = sorted(read - _built_by(_seed_selectors(), refs))
 
     assert not unbuilt, f"gold reads classes no seed chain builds: {unbuilt}"
+
+
+def test_selected_connector_models_build_their_dependencies() -> None:
+    refs = _refs()
+    built = _built_by(_seed_selectors(), refs)
+    connector_models = _model_tags().keys()
+    missing = {}
+    for model in sorted(built & connector_models):
+        unbuilt = refs[model] - built
+        if unbuilt:
+            missing[model] = sorted(unbuilt)
+
+    assert not missing, f"seed selects connector models with unbuilt dependencies: {missing}"
 
 
 def test_the_selector_names_only_models_that_exist() -> None:

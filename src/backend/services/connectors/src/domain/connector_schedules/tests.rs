@@ -306,3 +306,25 @@ fn release_failure_is_logged() {
         insight_log_context::test_support::capture_output(|| release(Err(Error::LockBusy)));
     assert!(output.contains("schedule lock release failed"));
 }
+
+#[test]
+fn a_sync_job_without_pod_patches_waits_for_reconcile_whatever_the_target() -> R {
+    let mut legacy = object()?;
+    legacy.data["spec"]["suspend"] = json!(false);
+    let state = resource_state(None, &apply::observation(Some(&legacy))?)?;
+    assert!(matches!(state.status, Some(ScheduleStatus::Pending)));
+
+    let mut current = legacy.clone();
+    let parameters = current.data["spec"]["workflowSpec"]["arguments"]["parameters"]
+        .as_array_mut()
+        .ok_or("parameters")?;
+    for (name, value) in resources::POD_PATCH_PARAMETERS
+        .iter()
+        .zip(Resources::default().pod_patches())
+    {
+        parameters.push(json!({"name": name, "value": value}));
+    }
+    let state = resource_state(None, &apply::observation(Some(&current))?)?;
+    assert!(matches!(state.status, Some(ScheduleStatus::Inherited)));
+    Ok(())
+}

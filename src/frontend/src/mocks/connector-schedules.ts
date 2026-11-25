@@ -39,6 +39,13 @@ export function createConnectorScheduleMocks() {
         source_id: sourceId,
         revision: 0,
         requested: null,
+        resources: {
+          requested: {},
+          live: {},
+          inherited: {},
+          status: "inherited",
+          read_error: null,
+        },
         live: {
           crons: ["0 3 * * *"],
           timezone: "UTC",
@@ -60,6 +67,19 @@ export function createConnectorScheduleMocks() {
 
   function reply(state: ConnectorSchedule) {
     if (state.live?.suspended && !state.read_error) state.status = "paused";
+    state.resources = {
+      requested: {},
+      live: state.live ? {} : null,
+      inherited: state.live ? {} : null,
+      status: state.read_error
+        ? null
+        : state.live?.suspended
+          ? "paused"
+          : state.live
+            ? "inherited"
+            : "pending",
+      read_error: state.read_error ?? null,
+    };
     const reconcile = state.status === "pending";
     state.next_reconcile_at = reconcile
       ? new Date(Math.ceil((Date.now() + 1) / 900_000) * 900_000).toISOString()

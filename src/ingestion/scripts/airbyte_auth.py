@@ -19,7 +19,23 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from airbyte_launch import REQUEST_TIMEOUT_SECONDS
+from api_response import capacity_check_enabled, parse_response, response_errors
+from pydantic import BaseModel, ConfigDict
+
 _SA_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
+
+
+class SecretResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    data: dict[str, str]
+
+
+class TokenResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    access_token: str
 
 
 class FatalError(Exception):
@@ -45,9 +61,11 @@ def airbyte_creds() -> tuple[str, str]:
         f"https://kubernetes.default.svc/api/v1/namespaces/{namespace}/secrets/{name}",
         headers={"Authorization": f"Bearer {sa_token}"},
     )
+    enabled = capacity_check_enabled()
     try:
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        data = json.load(urllib.request.urlopen(request, timeout=30, context=ctx))["data"]
+        with response_errors(enabled=enabled), urllib.request.urlopen(request, timeout=30, context=ctx) as response:
+            data = parse_response(SecretResponse, response.read()).data if enabled else json.load(response)["data"]
     except urllib.error.HTTPError as error:
         if error.code in (401, 403, 404):
             raise FatalError(
@@ -71,5 +89,21 @@ def oauth_token() -> str:
     request = urllib.request.Request(
         f"{airbyte_api_url()}/api/v1/applications/token", data=body, headers={"Content-Type": "application/json"}
     )
+    enabled = capacity_check_enabled()
     # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-    return json.load(urllib.request.urlopen(request, timeout=30))["access_token"]
+    with response_errors(enabled=enabled), urllib.request.urlopen(request, timeout=30) as response:
+        return (
+            parse_response(TokenResponse, response.read()).access_token
+            if enabled
+            else json.load(response)["access_token"]
+        )
+
+
+def request(url: str, token: str, data: bytes | None = None) -> bytes:
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    )
+    errors = response_errors(enabled=capacity_check_enabled())
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    with errors, urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        return response.read()

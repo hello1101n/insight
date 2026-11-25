@@ -17,6 +17,29 @@ fn staging() -> Ddl {
     ))
 }
 
+const TENANT: Uuid = Uuid::from_u128(0x0123_4567_89ab_cdef_0123_4567_89ab_cdef);
+
+fn partitioned() -> Ddl {
+    Ddl::create_table(
+        TableSpec::merge_tree(
+            "identity",
+            "identity_persons_staging_abc",
+            &[("insight_tenant_id", "UUID"), ("id", "UInt64")],
+            &["insight_tenant_id", "id"],
+        )
+        .partition_by("insight_tenant_id"),
+    )
+}
+
+fn replace() -> Ddl {
+    Ddl::replace_partition(
+        "identity",
+        "identity_persons",
+        TENANT,
+        "identity_persons_staging_abc",
+    )
+}
+
 fn records() -> Ddl {
     Ddl::create_table(
         TableSpec::merge_tree(
@@ -96,6 +119,8 @@ fn no_statement_qualifies_itself_with_a_cluster() {
             "identity_persons_staging_abc",
             "identity_persons",
         ),
+        partitioned(),
+        replace(),
     ];
 
     for statement in statements {
@@ -120,6 +145,7 @@ fn a_drop_a_swap_and_a_rename_read_the_same_on_either_topology() {
             "identity_persons_staging_abc",
             "identity_persons",
         ),
+        replace(),
     ];
 
     for statement in statements {
@@ -166,6 +192,7 @@ fn every_statement_acts_in_the_database_it_names() {
         Ddl::drop_table("silver", "t"),
         Ddl::exchange_tables("silver", "a", "b"),
         Ddl::rename_table("silver", "a", "b"),
+        Ddl::replace_partition("silver", "a", TENANT, "b"),
     ];
 
     for statement in statements {
@@ -226,4 +253,32 @@ fn a_dataset_name_carrying_a_dash_stays_one_name() {
     .render(Topology::Standalone);
 
     assert!(sql.contains("`ds_quarterly-orders_abc`"), "{sql}");
+}
+
+#[test]
+fn a_partition_key_comes_between_the_engine_and_the_sort_key() {
+    assert!(
+        standalone(&partitioned()).ends_with(
+            ") ENGINE = MergeTree PARTITION BY insight_tenant_id ORDER BY (insight_tenant_id, id)"
+        ),
+        "{}",
+        standalone(&partitioned())
+    );
+    assert!(
+        replicated(&partitioned()).ends_with(
+            ") ENGINE = ReplicatedMergeTree PARTITION BY insight_tenant_id ORDER BY (insight_tenant_id, id)"
+        ),
+        "{}",
+        replicated(&partitioned())
+    );
+}
+
+#[test]
+fn a_partition_replace_names_the_partition_by_its_value() {
+    assert_eq!(
+        standalone(&replace()),
+        "ALTER TABLE `identity`.`identity_persons` \
+         REPLACE PARTITION '01234567-89ab-cdef-0123-456789abcdef' \
+         FROM `identity`.`identity_persons_staging_abc`"
+    );
 }

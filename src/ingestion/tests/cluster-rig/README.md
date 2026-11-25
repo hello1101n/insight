@@ -107,8 +107,8 @@ A MariaDB beside the warehouse holds the two services' definitions.
 9. the second sync: the same records, extracted later, and the commits
    carrying a column the connector did not have before;
 10. the deploy hook and the dbt run once more;
-11. the services, second run: the persons sync swaps behind the live table's
-    watermark; another dataset lives and dies;
+11. the services, second run: the persons sync replaces the partition of the
+    tenant behind the live table's watermark; another dataset lives and dies;
 12. the deploys the warehouse must refuse — each fails on its guard, in the
     words the guard documents (`lib/ch-topology.sh`), and before anything is
     created:
@@ -175,8 +175,8 @@ to `ch1` by check 5. Then, in order:
    engines and row counts;
 5. the cluster-mode deploy hook, the second sync (the added column reaches
    the converted bronze through the destination's `ALTER ... ON CLUSTER`), a
-   dbt build and the services through the proxy: the persons sync swaps
-   behind the watermark the converted table carries, the dataset declared
+   dbt build and the services through the proxy: the persons sync replaces
+   the partition of the tenant behind the watermark the converted table carries, the dataset declared
    standalone is read whole from its converted table on every node and
    dropped, another lives and dies;
 6. the `standalone_*` copies are dropped on `ch1`, and the assertions below

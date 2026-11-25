@@ -5,13 +5,13 @@
     schema=var('gold_database'),
     alias='task_worklog_flow',
     tags=['gold'],
-    query_settings={
+    query_settings=instance_query_settings({
         'join_use_nulls': 1,
         'max_memory_usage': 5368709120,
         'max_threads': 4,
         'max_bytes_before_external_group_by': 805306368,
         'max_bytes_before_external_sort': 805306368
-    }
+    })
 ) }}
 
 -- One row per person-day (see `task_person_day_group`) and issue: the evidence

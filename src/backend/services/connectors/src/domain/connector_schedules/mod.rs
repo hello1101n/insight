@@ -4,6 +4,8 @@ mod instance;
 pub(crate) mod lock;
 mod membership;
 mod repository;
+pub(crate) mod resources;
+mod resources_capacity;
 mod timing;
 pub(crate) mod validation;
 pub(crate) mod workflow;
@@ -18,6 +20,7 @@ use crate::infra::cluster::Cluster;
 use crate::infra::db::entities::connector_schedules::Model;
 use dto::{RequestedSchedule, ScheduleResponse};
 pub(crate) use instance::Instance;
+use resources::{ResourcePatch, ResourceState, Resources};
 use validation::Crons;
 
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +42,8 @@ pub(crate) enum Error {
     RevisionExhausted,
     #[error("{0}")]
     Invalid(#[from] validation::Violation),
+    #[error("{0}")]
+    UnschedulableResources(validation::Violation),
     #[error("schedule database read or write failed")]
     Database(#[from] sea_orm::DbErr),
     #[error("schedule lock failed")]
@@ -49,6 +54,14 @@ pub(crate) enum Error {
     SyncHistory(#[from] clickhouse::error::Error),
     #[error("stored schedule is invalid")]
     StoredCrons(serde_json::Error),
+    #[error("stored resource settings are invalid")]
+    StoredResources(serde_json::Error),
+    #[error("The resources were not changed: {0}")]
+    ResourcesNotChanged(String),
+    #[error(
+        "The request is saved but not applied: {0}. The previous resource settings could not be restored."
+    )]
+    ResourceRestoreFailed(String),
     #[error("cluster read failed: {0}")]
     Cluster(#[from] crate::infra::cluster::Error),
     #[error("The schedule was not changed: {0}")]
@@ -100,6 +113,7 @@ impl Revision {
 #[derive(Debug)]
 pub(crate) enum Change {
     Put(Crons),
+    Resources(ResourcePatch),
     Delete,
 }
 
@@ -136,11 +150,17 @@ pub(crate) async fn save(
     change: Change,
     caller: Uuid,
 ) -> Result<ScheduleResponse, Error> {
-    match &change {
-        Change::Put(_) => membership::require(&state.ch, instance).await?,
-        Change::Delete => require_readable(&state.db, &state.ch, instance)
+    let clears = match &change {
+        Change::Put(_) => false,
+        Change::Delete => true,
+        Change::Resources(patch) => patch.only_clears(),
+    };
+    if clears {
+        require_readable(&state.db, &state.ch, instance)
             .await
-            .map_err(Error::before_write)?,
+            .map_err(Error::before_write)?;
+    } else {
+        membership::require(&state.ch, instance).await?;
     }
     let state = Arc::clone(state);
     let instance = instance.clone();
@@ -182,16 +202,20 @@ async fn save_locked(
     if matches!(change, Change::Delete) {
         apply::require_reset_target(&cluster, instance).await?;
     }
-    let crons = match change {
-        Change::Put(crons) => crons.into_vec(),
-        Change::Delete => Vec::new(),
-    };
-    let written = repository::write(&state.db, instance, revision, crons, caller)
+    if let Change::Resources(patch) = &change {
+        let stored = Resources::stored(previous.as_ref().and_then(|row| row.resources.as_ref()))?;
+        if let Err(error) = resources_capacity::validate(&cluster, patch, &stored).await {
+            release(guard.release().await);
+            return Err(error);
+        }
+    }
+    let resources_only = matches!(change, Change::Resources(_));
+    let written = repository::write(&state.db, instance, revision, change, caller)
         .await
         .map_err(Error::before_write)?;
     #[cfg(test)]
     save_hooks::checkpoint(instance, "write").await;
-    let response = apply::stored(&state.db, &cluster, instance).await;
+    let response = apply::stored(&state.db, &cluster, instance, resources_only).await;
     #[cfg(test)]
     save_hooks::checkpoint(instance, "apply").await;
     let response = match response {
@@ -203,10 +227,14 @@ async fn save_locked(
             if let Err(restore) = repository::restore(&state.db, instance, previous).await {
                 tracing::error!(error = %error, restore = %restore, "schedule rollback failed");
                 let reason = match error {
-                    Error::NotChanged(reason) => reason,
+                    Error::NotChanged(reason) | Error::ResourcesNotChanged(reason) => reason,
                     error => error.to_string(),
                 };
-                Err(Error::RestoreFailed(reason))
+                Err(if resources_only {
+                    Error::ResourceRestoreFailed(reason)
+                } else {
+                    Error::RestoreFailed(reason)
+                })
             } else {
                 Err(error)
             }
@@ -243,7 +271,9 @@ fn response(
     observed: apply::Observation,
 ) -> Result<ScheduleResponse, Error> {
     let revision = row.as_ref().map_or(0, |row| row.revision);
+    let resources = resource_state(row.as_ref(), &observed)?;
     let requested = row
+        .filter(|row| row.has_schedule_revision)
         .map(|row| {
             Ok::<_, Error>(RequestedSchedule {
                 crons: serde_json::from_value(row.crons).map_err(Error::StoredCrons)?,
@@ -260,6 +290,7 @@ fn response(
         connector: instance.connector.as_str().to_owned(),
         source_id: instance.source_id.as_str().to_owned(),
         revision,
+        resources,
         requested,
         live: observed.live,
         inherited: observed.inherited,
@@ -268,6 +299,39 @@ fn response(
         pending_reason: readable.then_some(pending_reason).flatten(),
         next_reconcile_at: None,
         reconcile_interval_secs: None,
+    })
+}
+
+fn resource_state(
+    row: Option<&Model>,
+    observed: &apply::Observation,
+) -> Result<ResourceState, Error> {
+    use dto::ScheduleStatus::{Applied, Inherited, Paused, Pending};
+
+    let requested = Resources::stored(row.and_then(|r| r.resources.as_ref()))?;
+    let defaults = observed.resource_defaults.as_ref();
+    let live = observed.resources.as_ref();
+    let target = requested.resolve(&defaults.cloned().unwrap_or_default());
+    let status = if observed.live.as_ref().is_some_and(|live| live.suspended) {
+        Paused
+    } else if !observed.matches_resources(&target) {
+        Pending
+    } else if requested.is_empty() {
+        Inherited
+    } else {
+        Applied
+    };
+    let read_error = observed
+        .read_error
+        .as_ref()
+        .or(observed.resource_read_error.as_ref())
+        .cloned();
+    Ok(ResourceState {
+        requested,
+        live: live.cloned(),
+        inherited: defaults.cloned(),
+        status: read_error.is_none().then_some(status),
+        read_error,
     })
 }
 

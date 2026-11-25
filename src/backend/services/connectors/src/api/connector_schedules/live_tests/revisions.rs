@@ -13,6 +13,8 @@ pub(super) async fn arrange_schedule(
         connector: Set(connector.to_owned()),
         source_id: Set("main".to_owned()),
         crons: Set(crons),
+        resources: Set(None),
+        has_schedule_revision: Set(true),
         revision: Set(revision),
         updated_by: Set(Uuid::from_u128(2)),
         updated_at: Set(chrono::DateTime::UNIX_EPOCH),

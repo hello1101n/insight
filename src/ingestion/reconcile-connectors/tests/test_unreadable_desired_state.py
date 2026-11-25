@@ -17,6 +17,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from reconcile_inputs import sync_user
+
 ROOT = Path(__file__).resolve().parents[1]
 
 #: Everything `reconcile_run` reaches for, answering harmlessly and recording
@@ -48,6 +50,7 @@ def run_tick(loader: str, tmp_path: Path) -> tuple[int, list[str], str]:
     export CALLS="{calls}"
     source "{ROOT}/lib/reconcile.sh"
     {STUBS}
+    {sync_user(tmp_path / "sync-user")}
     disc_load_instances() {{ {loader}; }}
     reconcile_run 0 1 0 "" ""
     """

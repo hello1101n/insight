@@ -1,0 +1,7 @@
+{{- if and .Values.ingestion.templates.enabled .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: {{ include "insight.fullname" . }}-airbyte-capacity
+spec: {}
+{{- end }}

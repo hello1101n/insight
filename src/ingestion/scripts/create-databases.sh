@@ -90,6 +90,10 @@ provision_access() {
   echo "=== Provisioning presentation access (role + grant-less user) (#1963/#1964) ==="
   bash "$SCRIPT_DIR/bootstrap-db/provision-presentation-access.sh"
 
+  if [[ -n "${CLICKHOUSE_SYNC_USER:-}" ]]; then
+    bash "$SCRIPT_DIR/bootstrap-db/provision-sync-access.sh"
+  fi
+
   # Gated like the MCP reader below (#3558): `insight_v3_ro` reads every table,
   # and an installation that never runs the custom assistant has no use for a
   # role that can.

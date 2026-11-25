@@ -10,6 +10,20 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [cronworkflows]
     verbs: [get, list, watch, patch]
+  - apiGroups: [argoproj.io]
+    resources: [workflows]
+    verbs: [list, watch, patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  {{- if eq (.Values.runHistory.airbyteNamespace | default .Release.Namespace) .Release.Namespace }}
+  {{- with .Values.runHistory.airbyteReader.secret }}
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ . | quote }}]
+    verbs: [get]
+  {{- end }}
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

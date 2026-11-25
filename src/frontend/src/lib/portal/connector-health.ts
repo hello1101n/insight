@@ -124,7 +124,7 @@ const STATE: Record<SyncStatus, ConnectorStateView> = {
     label: "sync cancelled",
     tone: "idle",
   },
-  succeeded: { state: "sync_ok", label: "sync ok", tone: "ok" },
+  succeeded: { state: "sync_ok", label: "Ready", tone: "ok" },
   unknown: { state: "state_unknown", label: "state unknown", tone: "unknown" },
 };
 
@@ -238,7 +238,7 @@ function staleAfter(interval: number | null | undefined): number | null {
   return clamped * STALE_AFTER_INTERVALS;
 }
 
-function elapsedMs(
+export function elapsedMs(
   asOf: string,
   since: string | null | undefined
 ): number | null {
@@ -253,7 +253,7 @@ function elapsedMs(
 const RFC3339 =
   /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
 
-function parseStamp(raw: string | null | undefined): number | null {
+export function parseStamp(raw: string | null | undefined): number | null {
   if (typeof raw !== "string" || !RFC3339.test(raw)) return null;
   const parsed = Date.parse(raw);
   return Number.isNaN(parsed) ? null : parsed;
@@ -302,10 +302,11 @@ export function formatDuration(durationMs: number | null | undefined): string {
   if (durationMs == null || !Number.isFinite(durationMs) || durationMs < 0) {
     return UNMEASURED;
   }
-  if (durationMs < 1_000) return `${Math.round(durationMs)} ms`;
+  if (durationMs === 0) return "0s";
+  if (durationMs < 1_000) return "<1s";
 
   const totalSeconds = Math.round(durationMs / 1_000);
-  if (totalSeconds < 60) return `${(durationMs / 1_000).toFixed(1)} s`;
+  if (totalSeconds < 60) return `${totalSeconds}s`;
 
   const totalMinutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
