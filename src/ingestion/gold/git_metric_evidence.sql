@@ -115,9 +115,9 @@ authored_commits AS (
         ) AS lines_removed
     FROM {{ ref('git_authored_commits') }} AS commits
     -- The canonical commit grain, the one git_authored_commits collapses to and
-    -- git_commit_file_changes already attaches on. Null-safe on insight_tenant_id: it
-    -- is Nullable on the class, and a plain `=` never matches NULL to NULL —
-    -- which would read a whole tenant's commits as having no collected change.
+    -- git_commit_file_changes already attaches on. The tenant is never NULL or empty
+    -- from staging on (bronze_tenant() fails the build otherwise); the null-safe
+    -- compare stays only because a table built before that may keep a Nullable type.
     LEFT JOIN {{ ref('git_commit_file_line_totals') }} AS reported
         ON reported.insight_tenant_id IS NOT DISTINCT FROM commits.insight_tenant_id
         AND reported.data_source = commits.data_source

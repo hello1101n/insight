@@ -34,6 +34,7 @@
 SELECT
     {{ bronze_tenant('u.insight_tenant_id') }} AS insight_tenant_id,
     u.insight_source_id,
+    -- INVARIANT: bare insight_tenant_id here and in the bot NOT IN is the guarded SELECT alias, not u.insight_tenant_id.
     MD5(concat(
         insight_tenant_id, '-',
         u.insight_source_id, '-',
