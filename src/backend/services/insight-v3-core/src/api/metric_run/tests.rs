@@ -500,3 +500,57 @@ async fn a_window_wider_than_the_metric_allows_is_a_bad_request() -> R {
     server.abort();
     Ok(())
 }
+
+#[tokio::test]
+async fn a_previous_run_reads_the_day_before_the_window_by_the_same_clock() -> R {
+    let (address, server, seen) = recording_upstream().await;
+    let harness = TestHarness::new(&address).await;
+
+    let before = chrono::Utc::now().date_naive();
+    let response = harness
+        .ask(
+            "opened",
+            Some(clocked_metric()),
+            Some(json!({"range": "PDC", "previous": true})),
+        )
+        .await;
+    let after = chrono::Utc::now().date_naive();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.json().await["columns"], json!(["bucket", "total"]));
+
+    let sql = only_read(&seen);
+    let yesterday = |day: chrono::NaiveDate| {
+        day.pred_opt()
+            .unwrap_or_else(|| panic!("{day} has a day before it"))
+    };
+    assert!(
+        [before, after].iter().any(|day| midnights(yesterday(*day))
+            .iter()
+            .all(|edge| sql.contains(&edge.to_string()))),
+        "the day before yesterday of neither {before} nor {after} bounds the window: {sql}"
+    );
+
+    server.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_previous_run_with_no_bounded_range_names_the_previous_field() -> R {
+    let harness = TestHarness::new("http://127.0.0.1:1").await;
+
+    for asked in [
+        json!({"previous": true}),
+        json!({"range": "inf", "previous": true}),
+    ] {
+        let response = harness.ask("opened", None, Some(asked.clone())).await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{asked}");
+        assert_eq!(
+            response.json().await["context"]["field_violations"][0]["field"],
+            json!("previous"),
+            "{asked}"
+        );
+    }
+
+    Ok(())
+}

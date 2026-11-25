@@ -127,19 +127,30 @@ fn proposed_item(body: &Value) -> Value {
     })
 }
 
-/// WORKAROUND: `strict` is deliberately NOT set. The nested `MetricQuery`
-/// shape exceeds the API's compiled-grammar budget and a strict request is
-/// refused outright. What the schema cannot enforce, our own validation
-/// refuses and the repair round fixes.
-pub(super) fn proposal_tools() -> Vec<Value> {
+fn widget_schema() -> Value {
     let plain = json!({ "type": "string" });
     let metric_reference =
         described("The name of the metric in this create, or the id of a built metric.");
-    let widget_reference =
-        described("The name of a widget in this create, or the id of a built widget.");
-    let metric_query = metric_query_schema();
+    let target = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value"],
+        "description": "A line, bar or area: a level drawn across the chart, in the units a reader sees - on a percentage, 15 is 15%.",
+        "properties": { "value": { "type": "number" }, "label": plain },
+    });
+    let compare = json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "A stat: show the change since the period before the picked range.",
+        "properties": {
+            "better": {
+                "enum": ["higher", "lower", "neutral"],
+                "description": "Which way is good news. Left out, higher is better.",
+            },
+        },
+    });
 
-    let widget = json!({
+    json!({
         "type": "object",
         "additionalProperties": false,
         "required": ["type", "metric"],
@@ -151,8 +162,28 @@ pub(super) fn proposal_tools() -> Vec<Value> {
             "y": plain,
             "value": plain,
             "label": plain,
+            "series": described("A line, area or bar: the column whose values each get their own line, area or bar segment."),
+            "horizontal": { "type": "boolean", "description": "A bar: draw the bars across." },
+            "stack": {
+                "enum": ["percent"],
+                "description": "A bar with a series: stack each bar to 100%.",
+            },
+            "target": target,
+            "compare": compare,
         },
-    });
+    })
+}
+
+/// WORKAROUND: `strict` is deliberately NOT set. The nested `MetricQuery`
+/// shape exceeds the API's compiled-grammar budget and a strict request is
+/// refused outright. What the schema cannot enforce, our own validation
+/// refuses and the repair round fixes.
+pub(super) fn proposal_tools() -> Vec<Value> {
+    let widget_reference =
+        described("The name of a widget in this create, or the id of a built widget.");
+    let metric_query = metric_query_schema();
+    let widget = widget_schema();
+
     let item = json!({
         "type": "object",
         "additionalProperties": false,

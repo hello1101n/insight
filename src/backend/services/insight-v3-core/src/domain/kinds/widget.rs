@@ -12,6 +12,44 @@ use crate::domain::query::metric::Metric;
 use crate::domain::query::metric_query::MetricQuery;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "parsed only to refuse a comparison the renderer cannot draw"
+)]
+struct Compare {
+    #[serde(default)]
+    better: Better,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Better {
+    #[default]
+    Higher,
+    Lower,
+    Neutral,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Stack {
+    Percent,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "parsed only to refuse a target that is not a number"
+)]
+struct Target {
+    value: f64,
+    #[serde(default)]
+    label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Widget {
     Table {
@@ -25,6 +63,11 @@ enum Widget {
         metric: String,
         x: String,
         y: String,
+        #[serde(default)]
+        series: Option<String>,
+        #[serde(default)]
+        #[expect(dead_code, reason = "parsed only to refuse a malformed target")]
+        target: Option<Target>,
         #[serde(default)]
         detail: Option<String>,
     },
@@ -41,6 +84,17 @@ enum Widget {
         )]
         labels: bool,
         #[serde(default)]
+        #[expect(
+            dead_code,
+            reason = "parsed only to refuse a `horizontal` that is not a flag"
+        )]
+        horizontal: bool,
+        #[serde(default)]
+        stack: Option<Stack>,
+        #[serde(default)]
+        #[expect(dead_code, reason = "parsed only to refuse a malformed target")]
+        target: Option<Target>,
+        #[serde(default)]
         detail: Option<String>,
     },
     Area {
@@ -48,11 +102,19 @@ enum Widget {
         x: String,
         y: String,
         #[serde(default)]
+        series: Option<String>,
+        #[serde(default)]
+        #[expect(dead_code, reason = "parsed only to refuse a malformed target")]
+        target: Option<Target>,
+        #[serde(default)]
         detail: Option<String>,
     },
     Stat {
         metric: String,
         value: String,
+        #[serde(default)]
+        #[expect(dead_code, reason = "parsed only to refuse a malformed comparison")]
+        compare: Option<Compare>,
         #[serde(default)]
         detail: Option<String>,
     },
@@ -106,8 +168,9 @@ impl Widget {
     fn columns(&self) -> Vec<&str> {
         match self {
             Self::Table { columns, .. } => columns.iter().map(String::as_str).collect(),
-            Self::Line { x, y, .. } | Self::Area { x, y, .. } => vec![x.as_str(), y.as_str()],
-            Self::Bar { x, y, series, .. } => [Some(x), Some(y), series.as_ref()]
+            Self::Line { x, y, series, .. }
+            | Self::Bar { x, y, series, .. }
+            | Self::Area { x, y, series, .. } => [Some(x), Some(y), series.as_ref()]
                 .into_iter()
                 .flatten()
                 .map(String::as_str)
@@ -117,7 +180,21 @@ impl Widget {
         }
     }
 
+    fn check_shape(&self) -> Result<(), WidgetError> {
+        if let Self::Bar {
+            stack: Some(Stack::Percent),
+            series: None,
+            ..
+        } = self
+        {
+            return Err(WidgetError::StackWithoutSeries);
+        }
+
+        Ok(())
+    }
+
     fn check_against(&self, metric: &Metric, clocked: bool) -> Result<(), WidgetError> {
+        self.check_shape()?;
         let available = metric.column_names(clocked);
 
         if self.columns().is_empty() {
@@ -167,9 +244,15 @@ pub(crate) enum WidgetError {
         "a widget needs a metric, a type of `table`, `line`, `bar`, `area`, `stat` or `pie`, \
          and the columns that type draws: columns for a table, x and y for a line, bar or \
          area, value for a stat, label and value for a pie; a bar may add a `series` column \
-         to stack by and `labels: true` to print each bar's total"
+         to stack by and `labels: true` to print each bar's total; a line or an area may add a \
+         `series` column to draw one line per value; a line, bar or area may add a `target` \
+         of {{\"value\": <number>, \"label\": <text>}}; a bar may add `horizontal: true` and \
+         `stack: \"percent\"`; a stat may add `compare` with `better` of `higher`, `lower` \
+         or `neutral`"
     )]
     Shape(#[from] serde_json::Error),
+    #[error("a bar stacks to 100% by its `series` column; this one names no `series`")]
+    StackWithoutSeries,
     #[error("`{column}` is not a column of metric `{metric}`; its columns are: {available}")]
     UnknownColumn {
         column: String,

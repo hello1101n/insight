@@ -475,6 +475,42 @@ fn the_widget_schema_offers_exactly_the_kinds_the_renderer_draws() {
 }
 
 #[test]
+fn the_widget_schema_offers_the_options_of_a_chart_and_a_stat() {
+    let created = tool(CREATE_TOOL);
+    let widget = &created["input_schema"]["properties"]["widgets"]["items"]["properties"]["body"]["properties"];
+
+    assert_eq!(widget["series"]["type"], json!("string"));
+    assert_eq!(widget["horizontal"]["type"], json!("boolean"));
+    assert_eq!(widget["stack"]["enum"], json!(["percent"]));
+    assert_eq!(widget["target"]["required"], json!(["value"]));
+    assert_eq!(widget["target"]["additionalProperties"], json!(false));
+    assert_eq!(
+        widget["target"]["properties"]["value"]["type"],
+        json!("number")
+    );
+    assert_eq!(widget["compare"]["additionalProperties"], json!(false));
+    assert_eq!(
+        widget["compare"]["properties"]["better"]["enum"],
+        json!(["higher", "lower", "neutral"])
+    );
+}
+
+#[test]
+fn the_prompt_says_how_a_widget_takes_its_options() {
+    let prompt = system_prompt("", &Catalogue::default());
+
+    for option in [
+        "\"series\"",
+        "\"target\"",
+        "\"horizontal\"",
+        "\"stack\":\"percent\"",
+        "\"compare\"",
+    ] {
+        assert!(prompt.contains(option), "{option}: {prompt}");
+    }
+}
+
+#[test]
 fn the_query_schema_names_a_dataset_and_its_fields() {
     let answer = tool(ANSWER_TOOL);
     let query = &answer["input_schema"]["properties"]["query"]["properties"];

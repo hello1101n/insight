@@ -340,3 +340,91 @@ fn a_table_narrows_its_detail_by_the_groups_it_draws_and_not_by_its_sums() {
             .is_ok()
     );
 }
+
+#[test]
+fn a_bar_stacks_to_a_hundred_percent_only_by_a_series() {
+    let by_outcome = widget(json!({
+        "type": "bar", "metric": "runs_per_week", "x": "bucket", "y": "runs",
+        "series": "outcome", "stack": "percent"
+    }));
+    let by_nothing = widget(json!({
+        "type": "bar", "metric": "runs_per_week", "x": "bucket", "y": "runs",
+        "stack": "percent"
+    }));
+
+    assert!(by_outcome.check_against(&stacked_metric(), CLOCKED).is_ok());
+    assert!(matches!(
+        by_nothing.check_against(&stacked_metric(), CLOCKED),
+        Err(WidgetError::StackWithoutSeries)
+    ));
+}
+
+#[test]
+fn a_line_and_an_area_draw_one_line_per_value_of_a_series_the_metric_produces() {
+    for kind in ["line", "area"] {
+        let by_outcome = widget(json!({
+            "type": kind, "metric": "runs_per_week", "x": "bucket", "y": "runs",
+            "series": "outcome"
+        }));
+        let by_severity = widget(json!({
+            "type": kind, "metric": "runs_per_week", "x": "bucket", "y": "runs",
+            "series": "severity"
+        }));
+
+        assert!(
+            by_outcome.check_against(&stacked_metric(), CLOCKED).is_ok(),
+            "{kind} draws a series its metric produces"
+        );
+        assert!(
+            matches!(
+                by_severity.check_against(&stacked_metric(), CLOCKED),
+                Err(WidgetError::UnknownColumn { ref column, .. }) if column == "severity"
+            ),
+            "{kind} refuses a series its metric does not produce"
+        );
+    }
+}
+
+#[test]
+fn the_options_of_a_chart_are_accepted_in_their_shape() {
+    let accepted = [
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": {} }),
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": { "better": "lower" } }),
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": { "better": "neutral" } }),
+        json!({ "type": "bar", "metric": "m", "x": "outcome", "y": "runs", "horizontal": true }),
+        json!({ "type": "line", "metric": "m", "x": "bucket", "y": "runs",
+                "target": { "value": 15, "label": "Goal" } }),
+        json!({ "type": "area", "metric": "m", "x": "bucket", "y": "runs",
+                "target": { "value": 2.5 } }),
+        json!({ "type": "bar", "metric": "m", "x": "outcome", "y": "runs",
+                "target": { "value": 15 } }),
+    ];
+
+    for body in accepted {
+        let drawn: Result<Widget, _> = serde_json::from_value(body.clone());
+        assert!(drawn.is_ok(), "should accept: {body}");
+    }
+}
+
+#[test]
+fn an_option_out_of_its_shape_is_not_a_widget() {
+    let refused = [
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": true }),
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": { "better": "up" } }),
+        json!({ "type": "stat", "metric": "m", "value": "runs", "compare": { "worse": "lower" } }),
+        json!({ "type": "bar", "metric": "m", "x": "outcome", "y": "runs", "horizontal": "yes" }),
+        json!({ "type": "bar", "metric": "m", "x": "outcome", "y": "runs", "series": "a",
+                "stack": "absolute" }),
+        json!({ "type": "line", "metric": "m", "x": "bucket", "y": "runs",
+                "target": { "value": "high" } }),
+        json!({ "type": "line", "metric": "m", "x": "bucket", "y": "runs",
+                "target": { "label": "Goal" } }),
+        json!({ "type": "area", "metric": "m", "x": "bucket", "y": "runs",
+                "target": { "value": 1, "colour": "red" } }),
+    ];
+
+    for body in refused {
+        let drawn: Result<Widget, _> = serde_json::from_value(body.clone());
+        assert!(drawn.is_err(), "should refuse: {body}");
+    }
+}
