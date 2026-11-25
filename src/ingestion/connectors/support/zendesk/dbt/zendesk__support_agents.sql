@@ -8,7 +8,7 @@
 
 SELECT
     {{ zendesk_key([zendesk_id('payload', "'id'")]) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     {{ zendesk_id('payload', "'id'") }}                AS agent_id,

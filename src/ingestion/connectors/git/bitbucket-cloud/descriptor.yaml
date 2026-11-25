@@ -78,7 +78,10 @@ name: bitbucket-cloud
 #   start date again at its next visit. A row stored before this version has
 #   no selector or environment, and the CI classes leave it out until that
 #   read replaces it.
-version: "7.11.0"
+# 7.12.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "7.12.0"
 # Every four hours, off the hours other connectors use: replication pods sharing
 # a slot with other connector syncs can be starved of workers, which surfaces as
 # startup and activity timeouts rather than as a connector error.

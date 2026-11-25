@@ -16,7 +16,7 @@ models:
       Outline embeds user objects in API responses, so its staging model
       reads author_email / last_editor_email straight from bronze.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
@@ -99,7 +99,7 @@ models:
       `wiki_page_versions.minor_edit` is preserved upstream for forward
       compatibility but ignored here.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
@@ -180,7 +180,7 @@ models:
       — should read from the same 4 bronze streams without retrofitting
       either existing class.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null

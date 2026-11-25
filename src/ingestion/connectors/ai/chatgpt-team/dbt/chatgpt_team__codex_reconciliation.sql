@@ -31,7 +31,7 @@ WITH
 leaderboard AS (
 
     SELECT
-        coalesce(tenant_id, '')                     AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                     AS insight_tenant_id,
         coalesce(source_id, '')                     AS source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,
@@ -41,14 +41,14 @@ leaderboard AS (
       AND trim(user_id) != ''
       AND date IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY coalesce(tenant_id, ''), coalesce(source_id, ''), trim(user_id), toDateOrNull(date)
+    LIMIT 1 BY coalesce(insight_tenant_id, ''), coalesce(source_id, ''), trim(user_id), toDateOrNull(date)
 
 ),
 
 sessions AS (
 
     SELECT
-        coalesce(tenant_id, '')                     AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                     AS insight_tenant_id,
         coalesce(source_id, '')                     AS source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,

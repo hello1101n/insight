@@ -35,7 +35,7 @@ class Plan:
 
     @property
     def changing(self) -> list[TablePlan]:
-        return [t for t in self.tables if t.moving]
+        return [t for t in self.tables if t.moving or t.table.renames_tenant]
 
 
 def _stats_sql(table: Table, tenants: Tenants) -> str:
@@ -65,6 +65,16 @@ def survey_table(ch: ClickHouse, table: Table, tenants: Tenants) -> TablePlan:
         foreign=tuple(t for t in foreign.split(",") if t),
         leftovers=_leftovers(ch, table),
     )
+
+
+def stored_tenants(ch: ClickHouse, found: list[Table | Unfit]) -> set[str]:
+    """Every non-empty tenant the readable tables hold; a handful per table is enough to tell one from several."""
+    stored: set[str] = set()
+    for table in (t for t in found if isinstance(t, Table)):
+        tenant = keys.tenant_value(table.columns.tenant)
+        rows = ch.rows(f"SELECT DISTINCT {tenant} AS t FROM {table.sql()} WHERE t != '' LIMIT {FOREIGN_SAMPLE}")
+        stored.update(value for (value,) in rows)
+    return stored
 
 
 def refusals(tables: list[TablePlan], unfit_with_rows: list[tuple[Unfit, int]]) -> list[str]:

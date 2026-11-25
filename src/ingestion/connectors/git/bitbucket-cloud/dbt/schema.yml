@@ -52,7 +52,7 @@ models:
     description: "Commit author e-mails no Bitbucket account claims, with the name their commits carry"
     columns:
       - name: email
-        description: "Lowercased commit author e-mail, and the account id it is published under. Unique per connection, not globally — the grain is (email, tenant_id, source_id)"
+        description: "Lowercased commit author e-mail, and the account id it is published under. Unique per connection, not globally — the grain is (email, insight_tenant_id, source_id)"
         data_tests:
           - not_null
       - name: author_name
@@ -119,7 +119,7 @@ models:
         data_tests:
           - not_null
           - unique
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
       - name: source_id
         description: "Connector source instance id"
@@ -175,7 +175,7 @@ models:
         data_tests:
           - not_null
           - unique
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
       - name: source_id
         description: "Connector source instance id"
@@ -210,7 +210,7 @@ models:
         data_tests:
           - not_null
           - unique
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
       - name: source_id
         description: "Connector source instance id"

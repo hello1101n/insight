@@ -1,7 +1,7 @@
 {{ metric_observations_table() }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -21,4 +21,4 @@ SELECT
     subject_key,
     dimensions
 FROM {{ ref('collab_metric_evidence') }}
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, subject_key, dimensions
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, subject_key, dimensions

@@ -380,7 +380,7 @@ mod tests {
     fn custom_gate_accepts_a_contract_shaped_read() {
         assert!(
             custom(
-                "SELECT tenant_id, source_key, entity_type, entity_id, metric_date, measure_key, \
+                "SELECT insight_tenant_id, source_key, entity_type, entity_id, metric_date, measure_key, \
                  observed_at, value, subject_key, dimensions FROM silver.a JOIN gold.b USING (id)"
             )
             .is_ok()

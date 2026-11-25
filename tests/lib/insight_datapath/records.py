@@ -78,7 +78,7 @@ def org_member(
     """One GitHub organisation member (bronze_github_directory.org_members)."""
     return {
         **framing(),
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "source_id": source_id,
         "unique_key": f"{tenant}:{source_id}:{GITHUB_ORG}:{member_id}",
         "collected_at": OBSERVED_AT,

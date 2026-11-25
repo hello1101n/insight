@@ -34,7 +34,7 @@ bronze:
     - $ref: ../templates/jira_task.yaml#/templates/jira_resolution_default_unknown
 
   bronze_jira.jira_issue:
-    - {$ref: ../templates/jira_task.yaml#/templates/jira_issue, tenant_id: "{{ tenant }}", id: "17771", jira_id: "17771", unique_key: jira-test-FRM-1, id_readable: FRM-1, created: "2026-05-04T09:00:00", custom_fields_json: '{"status":{"id":"6","name":"Closed"},"issuetype":{"id":"10001","name":"Task"},"assignee":{"accountId":"former-user-acct","displayName":"Former user"}}'}
+    - {$ref: ../templates/jira_task.yaml#/templates/jira_issue, insight_tenant_id: "{{ tenant }}", id: "17771", jira_id: "17771", unique_key: jira-test-FRM-1, id_readable: FRM-1, created: "2026-05-04T09:00:00", custom_fields_json: '{"status":{"id":"6","name":"Closed"},"issuetype":{"id":"10001","name":"Task"},"assignee":{"accountId":"former-user-acct","displayName":"Former user"}}'}
 
   bronze_jira.jira_issue_history:
     - {$ref: ../templates/jira_task.yaml#/templates/jira_history, id_readable: FRM-1, jira_id: "17771", changelog_id: "77701", unique_key: jira-test-FRM1-77701, created_at: "2026-05-06T14:00:00.000+0000", author_account_id: former-user-acct, items: '[{"field":"Status","fieldId":"status","fromString":"Open","from":"1","toString":"Closed","to":"6"}]'}

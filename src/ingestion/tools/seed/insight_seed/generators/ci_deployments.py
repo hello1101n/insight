@@ -31,7 +31,7 @@ _DEPLOY_COLS = [
     "_airbyte_meta",
     "_airbyte_generation_id",
     "unique_key",
-    "tenant_id",
+    "insight_tenant_id",
     "source_id",
     "data_source",
     "collected_at",
@@ -55,7 +55,7 @@ _STATUS_COLS = [
     "_airbyte_meta",
     "_airbyte_generation_id",
     "unique_key",
-    "tenant_id",
+    "insight_tenant_id",
     "source_id",
     "data_source",
     "collected_at",
@@ -146,7 +146,7 @@ def seed_deployments(
                         "unique_key": (
                             f"{tenant_uuid}:{GITHUB_SOURCE_ID}:{repo.full_name}:deploy:{deploy_id}"
                         ),
-                        "tenant_id": tenant_uuid,
+                        "insight_tenant_id": tenant_uuid,
                         "source_id": GITHUB_SOURCE_ID,
                         "data_source": "insight_github",
                         "collected_at": anchor_datetime().isoformat(),
@@ -230,7 +230,7 @@ def _status_row(
         "unique_key": (
             f"{tenant_uuid}:{GITHUB_SOURCE_ID}:{repo.full_name}:{deployment_id}:status:{event_id}"
         ),
-        "tenant_id": tenant_uuid,
+        "insight_tenant_id": tenant_uuid,
         "source_id": GITHUB_SOURCE_ID,
         "data_source": "insight_github",
         "collected_at": anchor_datetime().isoformat(),

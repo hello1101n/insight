@@ -30,7 +30,7 @@ models:
         description: AD objectGUID.
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -84,7 +84,7 @@ models:
     description: >
       Active Directory users → class_people (Silver Step 1). Identity key: `email` (mail with UPN fallback). `source_person_id` is the AD objectGUID — stable across renames and reusable as the directory join key.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id

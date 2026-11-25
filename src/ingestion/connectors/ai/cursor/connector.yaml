@@ -22,7 +22,7 @@ definitions:
   mandatory_fields:
     type: AddFields
     fields:
-      - path: [tenant_id]
+      - path: [insight_tenant_id]
         value: "{{ config['insight_tenant_id'] }}"
       - path: [source_id]
         value: "{{ config['insight_source_id'] }}"
@@ -71,7 +71,7 @@ streams:
         $schema: http://json-schema.org/schema#
         type: object
         properties:
-          tenant_id:
+          insight_tenant_id:
             type: string
           source_id:
             type: string
@@ -125,7 +125,7 @@ streams:
         $schema: http://json-schema.org/schema#
         type: object
         properties:
-          tenant_id:
+          insight_tenant_id:
             type: string
           source_id:
             type: string
@@ -204,7 +204,7 @@ streams:
         $schema: http://json-schema.org/schema#
         type: object
         properties:
-          tenant_id:
+          insight_tenant_id:
             type: string
           source_id:
             type: string
@@ -300,7 +300,7 @@ streams:
         $schema: http://json-schema.org/schema#
         type: object
         properties:
-          tenant_id:
+          insight_tenant_id:
             type: string
           source_id:
             type: string
@@ -400,7 +400,7 @@ streams:
         $schema: http://json-schema.org/schema#
         type: object
         properties:
-          tenant_id:
+          insight_tenant_id:
             type: string
           source_id:
             type: string

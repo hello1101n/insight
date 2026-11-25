@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'commit_hash'],
+    order_by=['insight_tenant_id', 'data_source', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -18,7 +18,7 @@
 -- coordinates.
 WITH collapsed_file_changes AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         data_source,
         commit_hash,
         file_path,
@@ -37,7 +37,7 @@ WITH collapsed_file_changes AS (
     -- spellings of one change are one change, and keeping both would double
     -- the path's lines wherever a reader folds the case itself.
     GROUP BY
-        tenant_id,
+        insight_tenant_id,
         data_source,
         commit_hash,
         file_path,
@@ -46,7 +46,7 @@ WITH collapsed_file_changes AS (
         post_image_oid
 )
 SELECT
-    commits.tenant_id AS tenant_id,
+    commits.insight_tenant_id AS insight_tenant_id,
     commits.source_id AS source_id,
     commits.project_key AS project_key,
     commits.repo_slug AS repo_slug,
@@ -63,6 +63,6 @@ SELECT
     raw_file_change.post_image_oid AS post_image_oid
 FROM collapsed_file_changes AS raw_file_change
 INNER JOIN {{ ref('git_authored_commits') }} AS commits
-    ON commits.tenant_id = raw_file_change.tenant_id
+    ON commits.insight_tenant_id = raw_file_change.insight_tenant_id
     AND commits.data_source = raw_file_change.data_source
     AND commits.commit_hash = raw_file_change.commit_hash

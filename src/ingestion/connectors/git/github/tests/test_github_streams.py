@@ -85,7 +85,7 @@ def test_repositories_full_refresh_and_stamping(http_mocker: HttpMocker) -> None
 
     assert not output.errors
     rec = output.records[0].record.data
-    assert rec["tenant_id"] == config["insight_tenant_id"]
+    assert rec["insight_tenant_id"] == config["insight_tenant_id"]
     assert rec["unique_key"].endswith(":42")
     assert '"""' not in rec["unique_key"], "int id must interpolate plain (CDK string filter triple-quotes non-strings)"
     _no_literal_none(output.records)
@@ -1459,7 +1459,7 @@ def test_issue_fields_catalogue_carries_identity_and_options(http_mocker: HttpMo
     assert by_id["IFN_1"]["field_database_id"] == "222"
     assert by_id["IFSS_1"]["field_database_id"] == "111"
     assert by_id["IFN_1"]["unique_key"].endswith(":acme:issue_field:IFN_1")
-    assert by_id["IFN_1"]["tenant_id"] == config["insight_tenant_id"]
+    assert by_id["IFN_1"]["insight_tenant_id"] == config["insight_tenant_id"]
     _no_literal_none(output.records)
     assert_records_conform(output.records, _CONNECTOR, "issue_fields", strict=True)
 

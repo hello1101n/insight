@@ -17,7 +17,6 @@
 -- `id` carries source_account_id as the ADR-0002 canonical binding observation
 -- (replaces the former `platform_id`, which was always equal to source_account_id).
 -- Column set matches identity_inputs_from_history macro output.
--- TEMPORARY: insight_tenant_id derived via sipHash128 until tenants table exists.
 
 WITH source AS (
     SELECT
@@ -30,14 +29,14 @@ WITH source AS (
         toString(cm.id)                                             AS source_account_id,
         cm.name,
         cm.email,
-        cm.tenant_id
+        cm.insight_tenant_id
     FROM {{ source('bronze_cursor', 'cursor_members') }} cm
 ),
 
 observations AS (
     -- email
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, ''))))        AS insight_tenant_id,
+        {{ tenant_uuid('insight_tenant_id') }}        AS insight_tenant_id,
         toUUID('00000000-0000-0000-0000-000000000000')                      AS insight_source_id,
         'cursor'                                                            AS insight_source_type,
         source_account_id,
@@ -53,7 +52,7 @@ observations AS (
 
     -- id (binding observation per ADR-0002; value = source_account_id)
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))),
+        {{ tenant_uuid('insight_tenant_id') }},
         toUUID('00000000-0000-0000-0000-000000000000'),
         'cursor',
         source_account_id,
@@ -69,7 +68,7 @@ observations AS (
 
     -- display_name
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))),
+        {{ tenant_uuid('insight_tenant_id') }},
         toUUID('00000000-0000-0000-0000-000000000000'),
         'cursor',
         source_account_id,

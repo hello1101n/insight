@@ -11,7 +11,7 @@
                      (extracted via JSONExtractString; missing keys yield '')
 
   Output columns:
-    entity_id, tenant_id, source_id, field_name, old_value, new_value, updated_at
+    entity_id, insight_tenant_id, source_id, field_name, old_value, new_value, updated_at
 
   Note: field_name values from both lists appear without prefixes — consumers
   do not distinguish between top-level and raw_data fields.
@@ -23,7 +23,7 @@ WITH versioned AS (
     SELECT
         unique_key,
         {{ entity_id_col }} AS entity_id,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         {#- INVARIANT: NULL reads as '', as an absent key does in fields_history_raw;
             a NULL compares as neither equal nor unequal, which drops the change. #}
@@ -43,7 +43,7 @@ WITH versioned AS (
 consecutive AS (
     SELECT
         curr.entity_id,
-        curr.tenant_id,
+        curr.insight_tenant_id,
         curr.source_id,
         curr.updated_at,
         {% for f in all_fields %}
@@ -58,7 +58,7 @@ consecutive AS (
 
 {% for f in all_fields %}
 SELECT
-    entity_id, tenant_id, source_id,
+    entity_id, insight_tenant_id, source_id,
     '{{ f }}' AS field_name,
     prev_{{ f }} AS old_value,
     curr_{{ f }} AS new_value,
@@ -70,7 +70,7 @@ UNION ALL
 
 {% for f in all_fields %}
 SELECT
-    entity_id, tenant_id, source_id,
+    entity_id, insight_tenant_id, source_id,
     '{{ f }}' AS field_name,
     '' AS old_value,
     {{ f }} AS new_value,
@@ -95,7 +95,7 @@ WHERE version_num = 1
     exclude_keys:  keys to leave untracked
 
   Output columns:
-    entity_id, tenant_id, source_id, field_name, old_value, new_value, updated_at
+    entity_id, insight_tenant_id, source_id, field_name, old_value, new_value, updated_at
 
   Pair this with snapshot(check_raw_data_all=true) and the same exclude_keys: a
   field only carries a correct change timestamp if the snapshot versions on it.
@@ -121,7 +121,7 @@ field_values AS (
     SELECT
         unique_key,
         any({{ entity_id_col }}) AS entity_id,
-        any(tenant_id) AS tenant_id,
+        any(insight_tenant_id) AS insight_tenant_id,
         any(source_id) AS source_id,
         pair.1 AS field_name,
         CAST(groupArray((_tracked_at, pair.2)), 'Map(DateTime, String)') AS value_at
@@ -136,7 +136,7 @@ field_values AS (
 timelines AS (
     SELECT
         f.entity_id AS entity_id,
-        f.tenant_id AS tenant_id,
+        f.insight_tenant_id AS insight_tenant_id,
         f.source_id AS source_id,
         f.field_name AS field_name,
         e.version_times AS times,
@@ -147,7 +147,7 @@ timelines AS (
 
 SELECT
     entity_id,
-    tenant_id,
+    insight_tenant_id,
     source_id,
     field_name,
     change.1 AS old_value,

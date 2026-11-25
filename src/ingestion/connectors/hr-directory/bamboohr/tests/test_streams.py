@@ -224,7 +224,7 @@ class TestLeaveRequests:
 
         assert record["status"] == {"status": "approved"}
         assert record["unique_key"] == f"{TENANT}-{SOURCE}-7"
-        assert (record["tenant_id"], record["source_id"]) == (TENANT, SOURCE)
+        assert (record["insight_tenant_id"], record["source_id"]) == (TENANT, SOURCE)
 
     @pytest.mark.parametrize("row", [{"id": None}, {"id": ""}, {}, "nonsense"])
     def test_a_request_without_a_usable_id_is_skipped(self, row):

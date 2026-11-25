@@ -8,7 +8,7 @@
 templates:
   # ── configuration ──────────────────────────────────────────────────────
   role_state:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: github-test
     data_source: github
     field_id: state
@@ -48,7 +48,7 @@ templates:
   # `open` and every closure reason are distinct values an operator binds; a
   # value with no binding is what the coverage test refuses.
   value_open:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: github-test
     data_source: github
     field_id: state
@@ -86,7 +86,7 @@ templates:
   # it expects classified, and a default row for the rest.
   # `display_name` records the name it was made against.
   github_issue_type:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: github-test
     data_source: github
     field: issue_type
@@ -121,7 +121,7 @@ templates:
   # the row every spec needs to keep
   # `assert_task_field_value_defaults_exist` green.
   github_issue_type_default_unknown:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: github-test
     field: issue_type
     valid_from: "1970-01-01 00:00:00.000"
@@ -175,7 +175,7 @@ templates:
   # ── catalogues ─────────────────────────────────────────────────────────
   issue_type_task:
     unique_key: gh-type-task
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-01-01T00:00:00Z"
@@ -212,7 +212,7 @@ templates:
   # pair the inner join drops every issue.
   commit_author:
     unique_key: gh-author
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-01T00:00:00Z"
@@ -230,7 +230,7 @@ templates:
   # ── issues and their history ───────────────────────────────────────────
   issue:
     unique_key: gh-issue
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
@@ -263,7 +263,7 @@ templates:
   # column, so without this row the board is not bindable.
   project_field_status:
     unique_key: gh-project-field-status
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-01T00:00:00Z"
@@ -289,7 +289,7 @@ templates:
   # name and why casing is normalised downstream.
   board_status_event:
     unique_key: gh-board-event
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
@@ -325,7 +325,7 @@ templates:
   # silently rejected incremental filter leaves behind.
   project_item:
     unique_key: gh-project-item
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
@@ -350,7 +350,7 @@ templates:
 
   closed_event:
     unique_key: gh-event
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"

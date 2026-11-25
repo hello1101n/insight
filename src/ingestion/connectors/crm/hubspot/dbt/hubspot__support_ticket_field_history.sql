@@ -47,7 +47,7 @@ property_changes AS (
 
 attributed AS (
     SELECT
-        c.tenant_id                                    AS tenant_id,
+        c.insight_tenant_id                                    AS insight_tenant_id,
         c.insight_source_id                            AS insight_source_id,
         c.ticket_id                                    AS ticket_id,
         c.change_key                                   AS change_key,
@@ -66,9 +66,9 @@ attributed AS (
         c._version                                     AS source_version
     FROM property_changes AS c
     LEFT JOIN owners AS o
-        ON o.tenant_id = c.tenant_id AND o.insight_source_id = c.insight_source_id AND o.hs_user_id = c.changed_by_user_id
+        ON o.insight_tenant_id = c.insight_tenant_id AND o.insight_source_id = c.insight_source_id AND o.hs_user_id = c.changed_by_user_id
     LEFT JOIN stages AS s
-        ON s.tenant_id = c.tenant_id AND s.insight_source_id = c.insight_source_id AND s.stage_id = c.raw_value
+        ON s.insight_tenant_id = c.insight_tenant_id AND s.insight_source_id = c.insight_source_id AND s.stage_id = c.raw_value
 ),
 
 sequenced AS (
@@ -79,7 +79,7 @@ sequenced AS (
         lagInFrame(stage_status) OVER by_property      AS previous_stage_status
     FROM attributed
     WINDOW by_property AS (
-        PARTITION BY tenant_id, insight_source_id, ticket_id, property
+        PARTITION BY insight_tenant_id, insight_source_id, ticket_id, property
         ORDER BY event_at, change_key
         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     )
@@ -87,7 +87,7 @@ sequenced AS (
 
 property_rows AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         ticket_id,
         event_id,
@@ -107,7 +107,7 @@ property_rows AS (
 
 status_rows AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         ticket_id,
         event_id,
@@ -138,7 +138,7 @@ tickets AS (
 ),
 
 merged_away AS (
-    SELECT DISTINCT tenant_id, insight_source_id, merged_id AS ticket_id
+    SELECT DISTINCT insight_tenant_id, insight_source_id, merged_id AS ticket_id
     FROM tickets
     ARRAY JOIN splitByChar(';', merged_object_ids) AS merged_id
     WHERE merged_id != ''
@@ -146,7 +146,7 @@ merged_away AS (
 
 availability_rows AS (
     SELECT
-        t.tenant_id                                    AS tenant_id,
+        t.insight_tenant_id                                    AS insight_tenant_id,
         t.insight_source_id                            AS insight_source_id,
         t.ticket_id                                    AS ticket_id,
         concat(if(m.ticket_id != '', 'merged-', 'deleted-'), t.ticket_id) AS event_id,
@@ -161,7 +161,7 @@ availability_rows AS (
         t._version                                     AS source_version
     FROM tickets AS t
     LEFT JOIN merged_away AS m
-        ON m.tenant_id = t.tenant_id AND m.insight_source_id = t.insight_source_id AND m.ticket_id = t.ticket_id
+        ON m.insight_tenant_id = t.insight_tenant_id AND m.insight_source_id = t.insight_source_id AND m.ticket_id = t.ticket_id
     WHERE t.is_deleted = 1
 ),
 
@@ -175,7 +175,7 @@ events AS (
 
 SELECT
     {{ hubspot_support_key(['ticket_id', 'field_id', 'event_id', 'child_key']) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     CAST(ticket_id AS Nullable(String))                AS ticket_id,
@@ -187,7 +187,7 @@ SELECT
     CAST(previous_value AS Nullable(String))           AS previous_value,
     event_at,
     toInt64(row_number() OVER (
-        PARTITION BY tenant_id, insight_source_id, ticket_id
+        PARTITION BY insight_tenant_id, insight_source_id, ticket_id
         ORDER BY event_at, event_id, field_id
     ))                                                 AS event_order,
     CAST(actor_id AS Nullable(String))                 AS actor_id,

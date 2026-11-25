@@ -41,7 +41,7 @@ def snapshot(warehouse: Client, tenant: str, source: str, entries: list[object],
         column_names=[
             "_airbyte_raw_id",
             "_airbyte_extracted_at",
-            "tenant_id",
+            "insight_tenant_id",
             "source_id",
             "entries_json",
             "window_start",

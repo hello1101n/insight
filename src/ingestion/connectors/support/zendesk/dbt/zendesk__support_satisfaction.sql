@@ -12,7 +12,7 @@
 
 WITH legacy AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS rating_id,
         'legacy'                                       AS survey_kind,
@@ -32,7 +32,7 @@ WITH legacy AS (
 
 survey_answers AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         payload,
         arrayFilter(a -> JSONExtractString(a, 'type') = 'rating_scale', JSONExtractArrayRaw(payload, 'answers'))[1] AS rating_answer,
@@ -50,7 +50,7 @@ survey_answers AS (
 
 survey AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         JSONExtractString(payload, 'id')               AS rating_id,
         'survey'                                       AS survey_kind,
@@ -71,14 +71,14 @@ survey AS (
 ),
 
 owners AS (
-    SELECT tenant_id, insight_source_id, ticket_id, field_id, event_at, JSONExtractString(value) AS owner_id
+    SELECT insight_tenant_id, insight_source_id, ticket_id, field_id, event_at, JSONExtractString(value) AS owner_id
     FROM {{ ref('zendesk__support_ticket_field_history') }}
     WHERE field_id IN ('assignee_id', 'group_id')
 ),
 
 survey_owned AS (
     SELECT
-        s.tenant_id                                    AS tenant_id,
+        s.insight_tenant_id                                    AS insight_tenant_id,
         s.insight_source_id                            AS insight_source_id,
         s.rating_id                                    AS rating_id,
         s.survey_kind                                  AS survey_kind,
@@ -94,8 +94,8 @@ survey_owned AS (
         s.collected_at                                 AS collected_at
     FROM survey AS s
     LEFT JOIN owners AS o
-        ON o.tenant_id = s.tenant_id AND o.insight_source_id = s.insight_source_id AND o.ticket_id = s.ticket_id
-    GROUP BY s.tenant_id, s.insight_source_id, s.rating_id, s.survey_kind, s.ticket_id, s.score, s.rating,
+        ON o.insight_tenant_id = s.insight_tenant_id AND o.insight_source_id = s.insight_source_id AND o.ticket_id = s.ticket_id
+    GROUP BY s.insight_tenant_id, s.insight_source_id, s.rating_id, s.survey_kind, s.ticket_id, s.score, s.rating,
              s.scale_max, s.has_comment, s.reason, s.rated_at, s.collected_at
 ),
 
@@ -107,7 +107,7 @@ ratings AS (
 
 SELECT
     {{ zendesk_key(['survey_kind', 'rating_id']) }}    AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     rating_id,

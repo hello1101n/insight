@@ -36,7 +36,7 @@
 WITH versioned AS (
     SELECT
         unique_key,
-        coalesce(tenant_id, '')                          AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                          AS insight_tenant_id,
         coalesce(source_id, '')                          AS insight_source_id,
         coalesce(toString({{ entity_id_col }}), '')      AS source_account_id,
         toDateTime64(_tracked_at, 3)                     AS observed_at,

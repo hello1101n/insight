@@ -10,7 +10,7 @@
 -- commit_order is 0 throughout: the commits endpoint returns membership, not a
 -- position, and the class column is not nullable. Matches gitlab and github.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,

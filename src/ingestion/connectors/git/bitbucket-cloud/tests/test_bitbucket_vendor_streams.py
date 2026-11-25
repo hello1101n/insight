@@ -114,12 +114,11 @@ def test_pull_requests_four_states_and_none_guard(http_mocker: HttpMocker) -> No
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps({"values": [_pr(1, author={"uuid": "{u-1}", "display_name": "Alice"}), _pr(2, author=None)]}),
+            body=json.dumps(
+                {"values": [_pr(1, author={"uuid": "{u-1}", "display_name": "Alice"}), _pr(2, author=None)]}
+            ),
             status_code=200,
         ),
     )
@@ -157,10 +156,7 @@ def test_a_403_repository_is_skipped_not_fatal(http_mocker: HttpMocker) -> None:
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests", query_params=ANY_QUERY_PARAMS),
         HttpResponse(body="", status_code=403),
     )
 
@@ -171,9 +167,7 @@ def test_a_403_repository_is_skipped_not_fatal(http_mocker: HttpMocker) -> None:
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_date_filtered_listing_with_no_matches_is_not_an_error(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_date_filtered_listing_with_no_matches_is_not_an_error(http_mocker: HttpMocker) -> None:
     """Every discovery listing carries `updated_on >= bitbucket_start_date`, so
     an empty page there means nothing changed in the window — the same body a
     token with no access gets. Discovery must not treat it as a failure."""
@@ -190,9 +184,7 @@ def test_a_date_filtered_listing_with_no_matches_is_not_an_error(
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_visibility_probe_that_reaches_no_repository_fails_the_sync(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_visibility_probe_that_reaches_no_repository_fails_the_sync(http_mocker: HttpMocker) -> None:
     """The probe asks without a date filter, so its empty page has one meaning:
     the token reaches nothing. Left unguarded the sync collects nothing and
     still reports success."""
@@ -211,9 +203,7 @@ def test_a_visibility_probe_that_reaches_no_repository_fails_the_sync(
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_reachable_workspace_passes_the_visibility_probe(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_reachable_workspace_passes_the_visibility_probe(http_mocker: HttpMocker) -> None:
     """One repository is enough; the probe asks for a single one."""
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
@@ -267,30 +257,64 @@ def test_credential_family_drives_both_the_rest_scheme_and_the_clone_username(
         (
             "pull_request_comments",
             "comments",
-            {"values": [{"id": 77, "user": None, "content": None, "deleted": False,
-                         "created_on": "2026-06-20T10:00:00.000000+00:00",
-                         "updated_on": "2026-06-20T10:00:00.000000+00:00"}]},
+            {
+                "values": [
+                    {
+                        "id": 77,
+                        "user": None,
+                        "content": None,
+                        "deleted": False,
+                        "created_on": "2026-06-20T10:00:00.000000+00:00",
+                        "updated_on": "2026-06-20T10:00:00.000000+00:00",
+                    }
+                ]
+            },
         ),
         (
             "pull_request_commits",
             "commits",
-            {"values": [{"type": "commit", "hash": "a" * 12,
-                         "date": "2026-06-19T10:00:00+00:00", "message": "feat: x",
-                         "author": {"raw": "Alice <alice@example.com>"},
-                         "parents": [{"hash": "b" * 12}]}]},
+            {
+                "values": [
+                    {
+                        "type": "commit",
+                        "hash": "a" * 12,
+                        "date": "2026-06-19T10:00:00+00:00",
+                        "message": "feat: x",
+                        "author": {"raw": "Alice <alice@example.com>"},
+                        "parents": [{"hash": "b" * 12}],
+                    }
+                ]
+            },
         ),
         (
             "pull_request_diffstat",
             "diffstat",
-            {"values": [{"type": "diffstat", "status": "modified", "lines_added": 1,
-                         "lines_removed": 0, "old": {"path": "src/a.py"},
-                         "new": {"path": "src/a.py"}}]},
+            {
+                "values": [
+                    {
+                        "type": "diffstat",
+                        "status": "modified",
+                        "lines_added": 1,
+                        "lines_removed": 0,
+                        "old": {"path": "src/a.py"},
+                        "new": {"path": "src/a.py"},
+                    }
+                ]
+            },
         ),
         (
             "pull_request_activity",
             "activity",
-            {"values": [{"approval": {"date": "2026-06-21T10:00:00+00:00",
-                                      "user": {"uuid": "{u-1}", "display_name": "Alice"}}}]},
+            {
+                "values": [
+                    {
+                        "approval": {
+                            "date": "2026-06-21T10:00:00+00:00",
+                            "user": {"uuid": "{u-1}", "display_name": "Alice"},
+                        }
+                    }
+                ]
+            },
         ),
     ],
 )
@@ -340,23 +364,29 @@ def test_activity_synthesizes_distinct_keys_without_ids(http_mocker: HttpMocker)
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests", query_params=ANY_QUERY_PARAMS),
         HttpResponse(body=json.dumps({"values": [_pr(9, author=None)]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/9/activity",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/9/activity", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
                 {
                     "values": [
-                        {"approval": {"date": "2026-06-21T10:00:00+00:00", "user": {"uuid": "{u-1}", "display_name": "Alice"}}},
-                        {"update": {"date": "2026-06-20T09:00:00+00:00", "state": "OPEN", "author": {"uuid": "{u-2}", "display_name": "Bob"}, "source": {"commit": {"hash": "c" * 12}}}},
+                        {
+                            "approval": {
+                                "date": "2026-06-21T10:00:00+00:00",
+                                "user": {"uuid": "{u-1}", "display_name": "Alice"},
+                            }
+                        },
+                        {
+                            "update": {
+                                "date": "2026-06-20T09:00:00+00:00",
+                                "state": "OPEN",
+                                "author": {"uuid": "{u-2}", "display_name": "Bob"},
+                                "source": {"commit": {"hash": "c" * 12}},
+                            }
+                        },
                     ]
                 }
             ),
@@ -387,10 +417,7 @@ def test_comments_store_trimmed_bodies_and_inline(http_mocker: HttpMocker) -> No
         HttpResponse(body=json.dumps({"values": [_pr(9, author=None)]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/9/comments",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/9/comments", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
                 {
@@ -443,10 +470,7 @@ def test_pull_request_commits_store_only_the_edge(http_mocker: HttpMocker) -> No
         HttpResponse(body=json.dumps({"values": [_pr(9, author=None)]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/9/commits",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/9/commits", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
                 {
@@ -499,10 +523,7 @@ def test_diffstat_rows_and_uncomputable_diff(http_mocker: HttpMocker) -> None:
         HttpResponse(body=json.dumps({"values": [_pr(9, author=None)]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/9/diffstat",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/9/diffstat", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
                 {
@@ -552,14 +573,8 @@ def test_diffstat_without_common_ancestor_is_skipped(http_mocker: HttpMocker) ->
         HttpResponse(body=json.dumps({"values": [_pr(9, author=None)]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/9/diffstat",
-            query_params=ANY_QUERY_PARAMS,
-        ),
-        HttpResponse(
-            body=json.dumps({"type": "error", "error": {"message": "No common ancestor"}}),
-            status_code=400,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/9/diffstat", query_params=ANY_QUERY_PARAMS),
+        HttpResponse(body=json.dumps({"type": "error", "error": {"message": "No common ancestor"}}), status_code=400),
     )
 
     output = read_stream(_CONNECTOR, "pull_request_diffstat", config)
@@ -574,7 +589,13 @@ def test_workspace_members_stamping(http_mocker: HttpMocker) -> None:
     http_mocker.get(
         HttpRequest(f"{BB_URL}/workspaces/acme/members", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps({"values": [{"user": {"account_id": "aid-1", "display_name": "Alice", "nickname": "alice", "uuid": "{u-1}"}}]}),
+            body=json.dumps(
+                {
+                    "values": [
+                        {"user": {"account_id": "aid-1", "display_name": "Alice", "nickname": "alice", "uuid": "{u-1}"}}
+                    ]
+                }
+            ),
             status_code=200,
         ),
     )
@@ -583,7 +604,7 @@ def test_workspace_members_stamping(http_mocker: HttpMocker) -> None:
 
     assert not output.errors
     rec = output.records[0].record.data
-    assert rec["tenant_id"] == config["insight_tenant_id"]
+    assert rec["insight_tenant_id"] == config["insight_tenant_id"]
     assert rec["workspace"] == "acme"
     assert rec["account_id"] == "aid-1"
     _no_literal_none(output.records)
@@ -591,9 +612,7 @@ def test_workspace_members_stamping(http_mocker: HttpMocker) -> None:
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_pipelines_row_conforms_and_an_empty_page_is_not_an_error(
-    http_mocker: HttpMocker,
-) -> None:
+def test_pipelines_row_conforms_and_an_empty_page_is_not_an_error(http_mocker: HttpMocker) -> None:
     """A repository with pipelines disabled answers an empty page, which is a
     defined answer rather than a failure — but the declared schema still has to
     hold for a repository that has them."""
@@ -636,21 +655,14 @@ def test_a_429_is_retried_rather_than_failing_the_stream(http_mocker: HttpMocker
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS), _repos_page())
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests", query_params=ANY_QUERY_PARAMS),
         [
             # A real 429 still reports the hourly budget left. Without
             # x-ratelimit-remaining the api_budget layer reads a ratelimit-hit
             # status as budget 0 and, with no reset header, sleeps out the rest
             # of the one-hour window — which hangs this test for an hour
             # instead of retrying instantly.
-            HttpResponse(
-                body="",
-                status_code=429,
-                headers={"Retry-After": "0", "x-ratelimit-remaining": "999"},
-            ),
+            HttpResponse(body="", status_code=429, headers={"Retry-After": "0", "x-ratelimit-remaining": "999"}),
             HttpResponse(
                 body=json.dumps({"values": [_pr(1, author={"uuid": "{u-1}", "display_name": "Alice"})]}),
                 status_code=200,
@@ -665,9 +677,7 @@ def test_a_429_is_retried_rather_than_failing_the_stream(http_mocker: HttpMocker
 
 
 def _author_changes_page(*rows: dict[str, Any], next_page_token: str | None = None) -> HttpResponse:
-    return HttpResponse(
-        body=json.dumps({"items": list(rows), "next_page_token": next_page_token}), status_code=200
-    )
+    return HttpResponse(body=json.dumps({"items": list(rows), "next_page_token": next_page_token}), status_code=200)
 
 
 def _author_change(
@@ -695,8 +705,7 @@ def test_a_proxy_401_is_the_proxy_token_and_fails_as_a_config_error(http_mocker:
         HttpResponse(body=json.dumps({"values": [_repo_with_clone()]}), status_code=200),
     )
     http_mocker.get(
-        HttpRequest(f"{PROXY_URL}/v1/branches", query_params=ANY_QUERY_PARAMS),
-        HttpResponse(body="", status_code=401),
+        HttpRequest(f"{PROXY_URL}/v1/branches", query_params=ANY_QUERY_PARAMS), HttpResponse(body="", status_code=401)
     )
 
     output = read_stream(_CONNECTOR, "branches", config, expecting_exception=True)
@@ -800,9 +809,7 @@ def test_commit_authors_pair_a_git_email_with_its_account(http_mocker: HttpMocke
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_commit_authors_drops_an_email_with_no_bitbucket_account(
-    http_mocker: HttpMocker,
-) -> None:
+def test_commit_authors_drops_an_email_with_no_bitbucket_account(http_mocker: HttpMocker) -> None:
     """`author.user` is absent for a committer who holds no Bitbucket account —
     a CI or service identity. There is no account to claim the e-mail, so the
     row is dropped rather than stored as an unresolved one."""
@@ -833,21 +840,20 @@ def test_commit_authors_drops_an_email_with_no_bitbucket_account(
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_commit_authors_state_is_one_change_cursor_whatever_the_repository_count(
-    http_mocker: HttpMocker,
-) -> None:
+def test_commit_authors_state_is_one_change_cursor_whatever_the_repository_count(http_mocker: HttpMocker) -> None:
     """The child carries a cursor so the change feed's cursor persists. That
     cursor is the proxy's change stamp and nothing else: no per-repository
     entries, so a sync that resolves authors from thousands of repositories
     carries the same state as one that resolves a single author."""
     config = BitbucketCloudConfigBuilder().build()
     rows = [
-        _author_change(f"dev{n}@example.com", f"{n:x}" * 40, changed_at=f"2026-06-20T10:00:00.00000{n}Z", repo=f"repo{n}")
+        _author_change(
+            f"dev{n}@example.com", f"{n:x}" * 40, changed_at=f"2026-06-20T10:00:00.00000{n}Z", repo=f"repo{n}"
+        )
         for n in range(1, 4)
     ]
     http_mocker.get(
-        HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS),
-        _author_changes_page(*rows),
+        HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS), _author_changes_page(*rows)
     )
     for n in range(1, 4):
         http_mocker.get(
@@ -867,9 +873,7 @@ def test_commit_authors_state_is_one_change_cursor_whatever_the_repository_count
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_resumed_commit_authors_sync_asks_for_changes_after_the_saved_one(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_resumed_commit_authors_sync_asks_for_changes_after_the_saved_one(http_mocker: HttpMocker) -> None:
     """A run carrying state asks the proxy only for authors changed after the
     last change it saw — the proxy stamps a change when it observes it, so no
     lookback window is needed — and lists no repositories at all."""
@@ -890,8 +894,7 @@ def test_a_resumed_commit_authors_sync_asks_for_changes_after_the_saved_one(
     resume_mocker = HttpMocker()
     with resume_mocker:
         resume_mocker.get(
-            HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS),
-            _author_changes_page(),
+            HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS), _author_changes_page()
         )
 
         second = read_stream(_CONNECTOR, "commit_authors", config, state=state, sync_mode=SyncMode.incremental)
@@ -934,9 +937,7 @@ def test_a_future_dated_commit_never_becomes_the_commits_cursor(http_mocker: Htt
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_saved_per_repository_author_state_reads_the_whole_change_feed_once(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_saved_per_repository_author_state_reads_the_whole_change_feed_once(http_mocker: HttpMocker) -> None:
     """A connection upgraded from the per-repository author list carries state
     keyed on `last_committed_date` with a `repository_authors` parent. Neither
     names the change cursor, so the first sync reads the feed from its
@@ -1008,8 +1009,7 @@ def test_the_author_feed_is_bounded_to_the_start_date_on_every_sync(http_mocker:
     config = BitbucketCloudConfigBuilder().build()
     config["bitbucket_start_date"] = "2024-01-01"
     http_mocker.get(
-        HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS),
-        _author_changes_page(),
+        HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS), _author_changes_page()
     )
 
     output = read_stream(_CONNECTOR, "commit_authors", config, sync_mode=SyncMode.incremental)
@@ -1031,9 +1031,7 @@ def test_a_future_dated_commit_never_reaches_the_authors_cursor(http_mocker: Htt
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(
         HttpRequest(f"{PROXY_URL}/v1/authors/changes", query_params=ANY_QUERY_PARAMS),
-        _author_changes_page(
-            _author_change("zed@example.com", "b" * 40, committed="2099-01-01T00:00:00+00:00"),
-        ),
+        _author_changes_page(_author_change("zed@example.com", "b" * 40, committed="2099-01-01T00:00:00+00:00")),
     )
     http_mocker.get(
         HttpRequest(f"{BB_URL}/repositories/acme/app/commit/{'b' * 40}", query_params=ANY_QUERY_PARAMS),
@@ -1057,12 +1055,7 @@ def _resolved_commit(sha: str, email: str, account_id: str) -> HttpResponse:
                 "message": "feat: x",
                 "author": {
                     "raw": f"Dev <{email}>",
-                    "user": {
-                        "account_id": account_id,
-                        "uuid": "{u-42}",
-                        "nickname": "dev",
-                        "display_name": "Dev",
-                    },
+                    "user": {"account_id": account_id, "uuid": "{u-42}", "nickname": "dev", "display_name": "Dev"},
                 },
                 "parents": [],
             }
@@ -1073,17 +1066,13 @@ def _resolved_commit(sha: str, email: str, account_id: str) -> HttpResponse:
 
 def _pr_listing(pr_id: int, updated_on: str) -> HttpResponse:
     return HttpResponse(
-        body=json.dumps(
-            {"values": [{"id": pr_id, "updated_on": updated_on, "repo_full_name": "acme/app"}]}
-        ),
+        body=json.dumps({"values": [{"id": pr_id, "updated_on": updated_on, "repo_full_name": "acme/app"}]}),
         status_code=200,
     )
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_pr_detail_reaches_back_to_the_start_date_not_a_rolling_month(
-    http_mocker: HttpMocker,
-) -> None:
+def test_pr_detail_reaches_back_to_the_start_date_not_a_rolling_month(http_mocker: HttpMocker) -> None:
     """The start date is a floor, not a window. A pull request last touched five
     months ago is inside a start date of 2026-06-01 and its comments must be
     collected — a rolling 30-day window would have skipped it silently."""
@@ -1095,10 +1084,7 @@ def test_pr_detail_reaches_back_to_the_start_date_not_a_rolling_month(
         _pr_listing(31, stale),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/31/comments",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/31/comments", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
                 {
@@ -1137,14 +1123,9 @@ def test_pr_detail_state_advances_so_a_later_sync_resumes(http_mocker: HttpMocke
         _pr_listing(31, updated),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/31/diffstat",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/31/diffstat", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps(
-                {"values": [{"status": "modified", "new": {"path": "a.txt"}, "lines_added": 3}]}
-            ),
+            body=json.dumps({"values": [{"status": "modified", "new": {"path": "a.txt"}, "lines_added": 3}]}),
             status_code=200,
         ),
     )
@@ -1159,9 +1140,7 @@ def test_pr_detail_state_advances_so_a_later_sync_resumes(http_mocker: HttpMocke
     assert output.state_messages, "an incremental child must emit state"
     state = output.state_messages[-1].state.stream.stream_state.__dict__
     stored = state["states"][0]["cursor"]["pr_updated_on"]
-    assert stored.startswith("2026-06-20T10:00:00"), (
-        f"the stamped parent date is what the cursor stores: {state}"
-    )
+    assert stored.startswith("2026-06-20T10:00:00"), f"the stamped parent date is what the cursor stores: {state}"
     # The parent's own state is what a later sync resumes from. The CDK writes
     # it in its own datetime format, so the instant is what must match.
     resumed = state["parent_state"]["pull_requests"]["state"]["updated_on"]
@@ -1187,14 +1166,9 @@ def test_a_resumed_sync_asks_for_less_than_the_first(http_mocker: HttpMocker) ->
         _pr_listing(31, updated),
     )
     http_mocker.get(
-        HttpRequest(
-            f"{BB_URL}/repositories/acme/app/pullrequests/31/diffstat",
-            query_params=ANY_QUERY_PARAMS,
-        ),
+        HttpRequest(f"{BB_URL}/repositories/acme/app/pullrequests/31/diffstat", query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps(
-                {"values": [{"status": "modified", "new": {"path": "a.txt"}, "lines_added": 1}]}
-            ),
+            body=json.dumps({"values": [{"status": "modified", "new": {"path": "a.txt"}, "lines_added": 1}]}),
             status_code=200,
         ),
     )
@@ -1207,11 +1181,7 @@ def test_a_resumed_sync_asks_for_less_than_the_first(http_mocker: HttpMocker) ->
     resumed = _sync([m.state for m in first.state_messages][-1:])
     assert not resumed.errors, f"a resumed sync must not fail: {resumed.errors}"
 
-    asked = [
-        unquote_plus(str(r.url))
-        for r in http_mocker._mocker.request_history
-        if "/pullrequests?" in str(r.url)
-    ]
+    asked = [unquote_plus(str(r.url)) for r in http_mocker._mocker.request_history if "/pullrequests?" in str(r.url)]
     assert 'updated_on >= "2026-06-01' in asked[0], f"first run starts at the floor: {asked[0]}"
     assert 'updated_on >= "2026-06-20T09' in asked[-1], (
         f"a resumed run starts at stored state, not the floor: {asked[-1]}"
@@ -1220,7 +1190,7 @@ def test_a_resumed_sync_asks_for_less_than_the_first(http_mocker: HttpMocker) ->
 
 def _repo_named(slug: str) -> dict[str, Any]:
     return {
-        "uuid": "{r-%s}" % slug,
+        "uuid": f"{{r-{slug}}}",
         "slug": slug,
         "full_name": f"acme/{slug}",
         "updated_on": "2026-06-20T10:00:00.000000+00:00",
@@ -1231,9 +1201,7 @@ def _repo_named(slug: str) -> dict[str, Any]:
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_repository_matching_an_exclusion_pattern_is_not_collected(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_repository_matching_an_exclusion_pattern_is_not_collected(http_mocker: HttpMocker) -> None:
     """A workspace can carry thousands of mirrors whose `updated_on` moves
     without anyone committing. The operator names them by pattern; the vendor
     cannot, so the listing is filtered before a repository becomes a partition
@@ -1244,8 +1212,14 @@ def test_a_repository_matching_an_exclusion_pattern_is_not_collected(
         HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS),
         HttpResponse(
             body=json.dumps(
-                {"values": [_repo_named("app"), _repo_named("plocate.rospecs"),
-                            _repo_named("c4core.vhispecs"), _repo_named("rospecs-tooling")]}
+                {
+                    "values": [
+                        _repo_named("app"),
+                        _repo_named("plocate.rospecs"),
+                        _repo_named("c4core.vhispecs"),
+                        _repo_named("rospecs-tooling"),
+                    ]
+                }
             ),
             status_code=200,
         ),
@@ -1260,17 +1234,14 @@ def test_a_repository_matching_an_exclusion_pattern_is_not_collected(
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_every_repository_is_collected_when_no_pattern_is_configured(
-    http_mocker: HttpMocker,
-) -> None:
+def test_every_repository_is_collected_when_no_pattern_is_configured(http_mocker: HttpMocker) -> None:
     """The field is optional and silence means collect everything — an empty
     pattern list must not compile into a regex that matches every name."""
     config = BitbucketCloudConfigBuilder().build()
     http_mocker.get(
         HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps({"values": [_repo_named("app"), _repo_named("plocate.rospecs")]}),
-            status_code=200,
+            body=json.dumps({"values": [_repo_named("app"), _repo_named("plocate.rospecs")]}), status_code=200
         ),
     )
 
@@ -1281,9 +1252,7 @@ def test_every_repository_is_collected_when_no_pattern_is_configured(
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_an_excluded_repository_is_never_asked_of_the_proxy(
-    http_mocker: HttpMocker,
-) -> None:
+def test_an_excluded_repository_is_never_asked_of_the_proxy(http_mocker: HttpMocker) -> None:
     """Dropping the record is not the point — not cloning it is. A filtered
     repository must never become a partition, so the proxy is never asked to
     walk it and its clone never enters the cache."""
@@ -1292,8 +1261,7 @@ def test_an_excluded_repository_is_never_asked_of_the_proxy(
     http_mocker.get(
         HttpRequest(_REPOS_URL, query_params=ANY_QUERY_PARAMS),
         HttpResponse(
-            body=json.dumps({"values": [_repo_named("app"), _repo_named("plocate.rospecs")]}),
-            status_code=200,
+            body=json.dumps({"values": [_repo_named("app"), _repo_named("plocate.rospecs")]}), status_code=200
         ),
     )
     http_mocker.get(
@@ -1304,11 +1272,7 @@ def test_an_excluded_repository_is_never_asked_of_the_proxy(
     output = read_stream(_CONNECTOR, "commits", config)
 
     assert not output.errors
-    walked = [
-        unquote_plus(r.url)
-        for r in http_mocker._mocker.request_history
-        if "/v1/commits" in r.url
-    ]
+    walked = [unquote_plus(r.url) for r in http_mocker._mocker.request_history if "/v1/commits" in r.url]
     assert walked, "the kept repository was never walked"
     assert all("acme/app.git" in u for u in walked), walked
     assert not any("rospecs" in u for u in walked), walked
@@ -1335,15 +1299,11 @@ def _commit_row(sha: str, committed: str) -> dict[str, Any]:
 
 
 def _commits_page(*rows: dict[str, Any], next_page_token: str | None) -> HttpResponse:
-    return HttpResponse(
-        body=json.dumps({"items": list(rows), "next_page_token": next_page_token}), status_code=200
-    )
+    return HttpResponse(body=json.dumps({"items": list(rows), "next_page_token": next_page_token}), status_code=200)
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_a_superseded_snapshot_restarts_the_walk_from_the_last_commit_seen(
-    http_mocker: HttpMocker,
-) -> None:
+def test_a_superseded_snapshot_restarts_the_walk_from_the_last_commit_seen(http_mocker: HttpMocker) -> None:
     """Mid-walk the proxy answers 409: the snapshot the page token points into
     is gone. The partition must not die on it — the walk restarts from the
     first page, narrowed to the last committed_date already seen, so nothing
@@ -1452,9 +1412,7 @@ def test_the_repository_listing_walks_by_created_on_not_by_page_number(http_mock
 
 
 @freezegun.freeze_time(_FROZEN)
-def test_the_pull_request_listing_walks_by_id_from_the_cursor_with_no_upper_bound(
-    http_mocker: HttpMocker,
-) -> None:
+def test_the_pull_request_listing_walks_by_id_from_the_cursor_with_no_upper_bound(http_mocker: HttpMocker) -> None:
     """Same walk for the requests of one repository, on the integer id the
     vendor assigns once, from the cursor up with no upper bound: the request
     reads no clock, so every stream that shares the listing builds the same

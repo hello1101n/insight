@@ -976,9 +976,10 @@ mod tests {
             peer_cohort_key: None,
             transform: None,
             source_key: "custom_example".to_owned(),
-            observation_sql: "SELECT tenant_id, source_key, entity_type, entity_id, metric_date, \
+            observation_sql:
+                "SELECT insight_tenant_id, source_key, entity_type, entity_id, metric_date, \
                 measure_key, observed_at, value, subject_key, dimensions FROM src"
-                .to_owned(),
+                    .to_owned(),
             measures: vec!["events".to_owned()],
             dimensions: vec!["tool".to_owned()],
             tags: vec!["example".to_owned()],

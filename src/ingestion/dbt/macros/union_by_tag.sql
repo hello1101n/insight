@@ -60,7 +60,10 @@
     {%- else -%}
       {%- set relations = [] -%}
       {%- for m in models -%}{%- do relations.append(ref(m.name)) -%}{%- endfor -%}
-      {{ union_relations_latest(relations, dedup_version_col) }}
+      {#- A NULL unique_key (a NULL tenant or key part) would collapse into one row in the dedup. #}
+      {{ union_relations_latest(
+           relations, dedup_version_col,
+           row_filter=tenant_guard_fail('unique_key IS NULL', 'unique_key is NULL before dedup') ~ ' = 0') }}
     {%- endif -%}
   {%- else -%}
     SELECT 1 AS _placeholder WHERE FALSE
@@ -68,7 +71,7 @@
 {% endmacro %}
 
 {#-
-  union_relations_latest(relations, dedup_version_col)
+  union_relations_latest(relations, dedup_version_col, row_filter=none)
 
   The UNION ALL of `relations` with one row per `unique_key`. With a version
   column the newest version wins: it is found over `unique_key` and the
@@ -81,16 +84,21 @@
   whose relation another run replaces between the reads matches no winning
   version and leaves this batch; its newer version passes the next run's
   watermark, so it is late, not lost.
+
+  `row_filter`, when given, is applied to every row before the dedup.
 -#}
-{% macro union_relations_latest(relations, dedup_version_col) %}
+{% macro union_relations_latest(relations, dedup_version_col, row_filter=none) %}
       SELECT * FROM (
       {%- for relation in relations %}
         SELECT * FROM {{ relation }}
         {%- if not loop.last %} UNION ALL {% endif %}
       {%- endfor %}
       ) AS _ubt
+      {%- if row_filter %}
+      WHERE {{ row_filter }}
+      {%- endif %}
       {% if dedup_version_col %}
-      WHERE (isNull(unique_key), assumeNotNull(unique_key),
+      {{ 'AND' if row_filter else 'WHERE' }} (isNull(unique_key), assumeNotNull(unique_key),
              isNull({{ dedup_version_col }}), assumeNotNull({{ dedup_version_col }})) IN (
           SELECT isNull(unique_key), assumeNotNull(unique_key),
                  isNull(winning_version), assumeNotNull(winning_version)

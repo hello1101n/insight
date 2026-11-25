@@ -156,7 +156,7 @@ models:
         tests:
           - not_null
       - name: unique_key
-        description: "tenant_id-email-day"
+        description: "insight_tenant_id-email-day"
         tests:
           - not_null
           - unique

@@ -4,7 +4,7 @@ version: 2
 # Table names match the HubSpot CRM object path segment (lowercase plural)
 # as emitted by the Airbyte ClickHouse destination. Every table has the
 # Insight envelope columns:
-#   tenant_id, source_id, unique_key, data_source, collected_at, raw_data
+#   insight_tenant_id, source_id, unique_key, data_source, collected_at, raw_data
 # (JSON blob of the full record, every property included).
 
 sources:
@@ -56,7 +56,7 @@ models:
   - name: hubspot__crm_contacts
     description: "HubSpot contacts → staging, feeds class_crm_contacts"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -72,7 +72,7 @@ models:
   - name: hubspot__crm_accounts
     description: "HubSpot companies → staging, feeds class_crm_accounts"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -88,7 +88,7 @@ models:
   - name: hubspot__crm_deals
     description: "HubSpot deals → staging, feeds class_crm_deals"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -104,7 +104,7 @@ models:
   - name: hubspot__crm_activities
     description: "HubSpot engagements (calls/emails/meetings/tasks/notes/communications) → staging, feeds class_crm_activities"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -126,7 +126,7 @@ models:
   - name: hubspot__crm_users
     description: "HubSpot owners → staging, feeds class_crm_users. Rows with null email filtered out."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -149,7 +149,7 @@ models:
   - name: hubspot__crm_leads
     description: "HubSpot leads → staging, feeds class_crm_leads"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -165,7 +165,7 @@ models:
   - name: hubspot__crm_tickets
     description: "HubSpot tickets → staging, feeds class_crm_tickets"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: insight_source_id
         tests: [not_null]
@@ -181,7 +181,7 @@ models:
   - name: hubspot__crm_associations
     description: "Associated object ids per (record, object type) → staging, feeds class_crm_associations"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -201,7 +201,7 @@ models:
   - name: hubspot__crm_pipelines
     description: "Deal and ticket pipelines → staging, feeds class_crm_pipelines"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -219,7 +219,7 @@ models:
   - name: hubspot__crm_pipeline_stages
     description: "Pipeline stages → staging, feeds class_crm_pipeline_stages"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -239,7 +239,7 @@ models:
   - name: hubspot__crm_field_history
     description: "Deal and ticket property value changes → staging, feeds class_crm_field_history"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -259,7 +259,7 @@ models:
   - name: hubspot__crm_teams
     description: "Owner teams → staging, feeds class_crm_teams"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -275,7 +275,7 @@ models:
   - name: hubspot__crm_property_definitions
     description: "Property definitions of every synced object → staging, feeds class_crm_property_definitions"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: source_id
         tests: [not_null]
@@ -313,15 +313,57 @@ models:
 
   - name: hubspot__support_tickets
     description: "HubSpot tickets for class_support_tickets: status open or closed from the ticket state of the stage, merges from hs_merged_object_ids."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_ticket_field_history
     description: "Changes of the tracked ticket properties for class_support_ticket_field_history, with a status row when a stage change opens or closes the ticket."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_field_definitions
     description: "Ticket property definitions for class_support_field_definitions."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_agents
     description: "HubSpot owners as support agents for class_support_agents."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_customers
     description: "The contacts and companies that tickets name, for class_support_customers."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_groups
     description: "HubSpot teams as support groups for class_support_groups."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: hubspot__support_group_memberships
     description: "Current team memberships of the owners for class_support_group_memberships."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty

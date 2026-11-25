@@ -8,7 +8,7 @@
 ) }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,

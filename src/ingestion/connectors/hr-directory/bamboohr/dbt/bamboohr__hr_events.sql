@@ -5,7 +5,7 @@
 ) }}
 
 SELECT
-    lr.tenant_id                                            AS insight_tenant_id,
+    lr.insight_tenant_id                                            AS insight_tenant_id,
     lr.source_id,
     lr.unique_key,
     lr.employeeId                                           AS source_person_id,
@@ -26,7 +26,7 @@ SELECT
 FROM {{ source('bamboohr', 'leave_requests') }} lr
 LEFT JOIN {{ source('bamboohr', 'employees') }} e
     ON lr.employeeId = e.id
-    AND lr.tenant_id = e.tenant_id
+    AND lr.insight_tenant_id = e.insight_tenant_id
 WHERE lr.employeeId IS NOT NULL
   AND parseDateTimeBestEffortOrNull(lr.start) IS NOT NULL
   AND parseDateTimeBestEffortOrNull(lr.end)   IS NOT NULL
