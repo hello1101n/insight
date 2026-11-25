@@ -191,6 +191,20 @@ def test_the_suite_reads_every_seeded_board_and_its_failing_widgets() -> None:
     assert failing.working_widgets, "the failing-widget board has no working widget beside it"
 
 
+def test_the_suite_reads_the_percent_and_duration_columns_of_every_seeded_widget() -> None:
+    reader = _load_stand_reader()
+    env = {**_env(), config.CUSTOM_CATALOGUE_DB_ENV: "insight_v3"}
+    doc = json.loads(json.dumps(manifest.build_manifest(env)))
+
+    parsed = reader.Manifest.parse(doc, source_path=pathlib.Path("contract-test"))
+
+    for key, board in doc["custom_catalogue"]["dashboards"].items():
+        widgets = parsed.custom_board(key).widgets
+        for written, read in zip(board["widgets"], widgets, strict=True):
+            assert read.percents == frozenset(written["percents"]), written["id"]
+            assert read.units == written["units"], written["id"]
+
+
 def test_both_sides_agree_on_the_supported_version() -> None:
     reader = _load_stand_reader()
 

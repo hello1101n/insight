@@ -1,7 +1,8 @@
 """`/api/v3` — the deployed service reads and runs every seeded custom dashboard.
 
     GET  /v1/dashboards/{id}                          200 for the owner
-    GET  /v1/dashboards/{id}/widgets                  200, the widgets the manifest names
+    GET  /v1/dashboards/{id}/widgets                  200, the widgets the manifest names, with
+                                                      the percent and duration columns of each
     POST /v1/dashboards/{id}/widgets/{widget}/run     200, or a failure for a widget that fails on purpose
     GET  /v1/dashboards                               the CEO sees the shared board and no other
     GET  /v1/pins, GET /v1/folders                    the starred board and the folder read back
@@ -55,6 +56,8 @@ class DrawnWidget(BaseModel):
     name: str
     body: dict[str, JsonValue]
     clock: dict[str, JsonValue] | None = None
+    percents: list[str] = []
+    units: dict[str, str] = {}
 
 
 class DashboardWidgets(BaseModel):
@@ -139,6 +142,37 @@ def test_every_seeded_board_lists_the_widgets_the_manifest_names(
             )
 
     assert not mismatches, "\n".join(mismatches)
+
+
+@pytest.mark.reliability
+def test_every_seeded_widget_lists_the_percent_and_duration_columns_its_metric_declares(
+    admin_operator_session: PersonaSession, stand_manifest: Manifest
+) -> None:
+    client = admin_operator_session.client
+    boards = _boards(stand_manifest)
+    seeded = {widget.id: widget for board in boards for widget in board.widgets}
+    if any(widget.percents is None or widget.units is None for widget in seeded.values()):
+        pytest.skip("the manifest predates the widget formats; re-seed the stand")
+    assert any(widget.units for widget in seeded.values()), (
+        "the seed declares no duration column; the check would pass vacuously"
+    )
+    assert any(widget.percents for widget in seeded.values()), (
+        "the seed declares no percent column; the check would pass vacuously"
+    )
+
+    wrong = []
+    for board in boards:
+        for listed in _drawn(client, board):
+            declared = seeded[listed.id]
+            listed_formats = (set(listed.percents), listed.units)
+            declared_formats = (set(declared.percents or ()), dict(declared.units or {}))
+            if listed_formats != declared_formats:
+                wrong.append(
+                    f"{board.key}/{listed.id}: lists {listed_formats}, the seed declares "
+                    f"{declared_formats}"
+                )
+
+    assert not wrong, "\n".join(wrong)
 
 
 @pytest.mark.reliability

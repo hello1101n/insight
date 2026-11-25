@@ -32,10 +32,37 @@ def _objects(doc: Mapping[str, Any], key: str, where: str) -> list[Mapping[str, 
     return value
 
 
+def _percents(doc: Mapping[str, Any], where: str) -> frozenset[str] | None:
+    value = doc.get("percents")
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        raise ManifestError(f"{where}: field 'percents' must be a list of strings")
+    return frozenset(value)
+
+
+def _units(doc: Mapping[str, Any], where: str) -> Mapping[str, str] | None:
+    value = doc.get("units")
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or not all(
+        isinstance(name, str) and isinstance(unit, str) for name, unit in value.items()
+    ):
+        raise ManifestError(f"{where}: field 'units' must map column names to units")
+    return dict(value)
+
+
 @dataclass(frozen=True)
 class CustomWidget:
+    """One seeded widget, and the percent and duration columns of its metric.
+
+    `percents` and `units` are None in a manifest written before they existed.
+    """
+
     id: str
     name: str
+    percents: frozenset[str] | None
+    units: Mapping[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -53,7 +80,12 @@ class CustomBoard:
     @classmethod
     def parse(cls, key: str, doc: Mapping[str, Any], where: str) -> CustomBoard:
         widgets = tuple(
-            CustomWidget(id=_text(entry, "id", where), name=_text(entry, "name", where))
+            CustomWidget(
+                id=_text(entry, "id", where),
+                name=_text(entry, "name", where),
+                percents=_percents(entry, where),
+                units=_units(entry, where),
+            )
             for entry in _objects(doc, "widgets", where)
         )
         failing = doc.get("failing_widgets")

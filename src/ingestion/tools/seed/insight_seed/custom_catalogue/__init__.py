@@ -25,6 +25,8 @@ from .widgets import FAILING_WIDGETS, WIDGETS
 class WidgetEntry(TypedDict):
     id: str
     name: str
+    percents: list[str]
+    units: dict[str, str]
 
 
 class BoardEntry(TypedDict):
@@ -44,9 +46,20 @@ class CatalogueDoc(TypedDict):
     folder: str
 
 
+def _widget_entry(widget: Definition, metrics: dict[str, Definition]) -> WidgetEntry:
+    fields = metrics[widget.body["metric"]].body["fields"]
+    return {
+        "id": widget.id,
+        "name": widget.name,
+        "percents": [field["as_name"] for field in fields if field.get("percent")],
+        "units": {field["as_name"]: field["unit"] for field in fields if "unit" in field},
+    }
+
+
 def describe() -> CatalogueDoc:
     """What the manifest says about the seeded catalogue."""
-    names = {widget.id: widget.name for widget in WIDGETS}
+    metrics = {metric.id: metric for metric in METRICS}
+    entries = {widget.id: _widget_entry(widget, metrics) for widget in WIDGETS}
     return {
         "dashboards": {
             board.key: {
@@ -54,7 +67,7 @@ def describe() -> CatalogueDoc:
                 "name": board.name,
                 "path": board.path,
                 "covers": board.covers,
-                "widgets": [{"id": w, "name": names[w]} for w in board.widgets],
+                "widgets": [entries[w] for w in board.widgets],
                 "failing_widgets": [w for w in board.widgets if w in FAILING_WIDGETS],
             }
             for board in BOARDS
