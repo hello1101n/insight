@@ -1,10 +1,12 @@
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import * as Sentry from "@sentry/react";
 import {
   Dashboard,
   DashboardRoot,
   loadWidgetParts,
+  type CellFailureReport,
   type DashboardHost,
 } from "@gears-frontx/frontx-dashboard-root";
 
@@ -25,10 +27,13 @@ import { refusal } from "@/components/custom/refusal";
 
 const WIDGET_LIST = "/widgets/widgets.json";
 
-let shown: Pick<Drawn, "file" | "runs"> & { key: string } = {
+let shown: Drawn & { id: string; key: string } = {
+  id: "",
   key: "",
+  dashboardId: "",
   file: { types: [], instances: [] },
   runs: new Map(),
+  widgets: new Map(),
 };
 
 const host: DashboardHost = {
@@ -56,9 +61,35 @@ const host: DashboardHost = {
   },
 };
 
+// SAFETY: the report leaves out the reason message. It can quote answer values and host error text, and FrontX writes it to the console.
+function reportFailure({
+  dashboardId,
+  widgetId,
+  widgetType,
+  role,
+  reason,
+}: CellFailureReport): void {
+  const current = dashboardId === shown.dashboardId;
+  Sentry.captureMessage("A FrontX dashboard cell failed.", {
+    level: "error",
+    // WORKAROUND: Sentry drops an event with the same message and fingerprint as the event before it, so each cell gets its own fingerprint.
+    fingerprint: ["frontx-cell-failure", reason.kind, widgetId],
+    tags: {
+      "frontx.failure_kind": reason.kind,
+      "frontx.role": role,
+      "frontx.widget_type": widgetType,
+      "insight.dashboard_id": current ? shown.id : undefined,
+      "insight.widget_id": current
+        ? shown.widgets.get(widgetId)?.id
+        : undefined,
+    },
+  });
+}
+
 let root: DashboardRoot | undefined;
 
-const appRoot = () => (root ??= new DashboardRoot({ host }));
+const appRoot = () =>
+  (root ??= new DashboardRoot({ host, onFailure: reportFailure }));
 
 function subscribeTheme(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
@@ -89,7 +120,7 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   const board = useMemo(() => {
     if (!widgets.data) return undefined;
     const drawn = frontxBoard(id, read, widgets.data);
-    return { ...drawn, key: JSON.stringify(drawn.file.instances) };
+    return { ...drawn, id, key: JSON.stringify(drawn.file.instances) };
   }, [id, read, widgets.data]);
 
   // INVARIANT: a layout effect, so the shown file changes before the dashboard's own effect reads it.

@@ -1,5 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import type { DashboardHost } from "@gears-frontx/frontx-dashboard-root";
+import * as Sentry from "@sentry/react";
+import type {
+  CellFailureReport,
+  DashboardHost,
+} from "@gears-frontx/frontx-dashboard-root";
+import type { Dashboard as FrontxDashboard } from "@gears-frontx/frontx-dashboard-root/contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -13,16 +18,26 @@ import { wrapper } from "@/test/alerts";
 
 const fx = vi.hoisted(() => ({
   hosts: [] as DashboardHost[],
+  onFailure: undefined as ((failure: CellFailureReport) => void) | undefined,
   parts: [{ types: [{ $id: "part" }], instances: [] }],
 }));
+
+vi.mock("@sentry/react", () => ({ captureMessage: vi.fn() }));
 
 vi.mock("@gears-frontx/frontx-dashboard-root", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@gears-frontx/frontx-dashboard-root")
   >()),
   DashboardRoot: class {
-    constructor({ host }: { host: DashboardHost }) {
+    constructor({
+      host,
+      onFailure,
+    }: {
+      host: DashboardHost;
+      onFailure: (failure: CellFailureReport) => void;
+    }) {
       fx.hosts.push(host);
+      fx.onFailure = onFailure;
     }
     reload() {}
   },
@@ -86,6 +101,7 @@ beforeEach(() => {
 afterEach(() => {
   delete document.documentElement.dataset.theme;
   queryClient.clear();
+  vi.mocked(Sentry.captureMessage).mockClear();
 });
 
 const runPath = (board: string) => `${dashboardWidgetPath(board, "w1")}/run`;
@@ -99,6 +115,13 @@ async function hostOf(board: string): Promise<DashboardHost> {
   });
   await screen.findByTestId("frontx-dashboard");
   return fx.hosts.at(-1)!;
+}
+
+// WORKAROUND: FrontX types a served instance loosely, and the board puts its dashboard first.
+async function shownDashboard(host: DashboardHost): Promise<FrontxDashboard> {
+  const answer = await host.loadFile(new AbortController().signal);
+  const [file] = [answer].flat();
+  return file.instances[0] as unknown as FrontxDashboard;
 }
 
 describe("FrontxBoard", () => {
@@ -236,6 +259,62 @@ describe("FrontxBoard", () => {
       )
     ).resolves.toMatchObject({ rows: [["2026-10-01", 3]] });
     expect(runs()).toHaveLength(2);
+  });
+
+  it("reports a failed cell once with its kind, role, widget type and Insight ids, and without its message", async () => {
+    const dashboard = await shownDashboard(await hostOf("board-x"));
+    const [cell] = dashboard.layout.cells;
+    const failure = {
+      widgetType: "frontx.dashboard.widget.cartesian_chart.v1~",
+      role: "larger_view",
+      reason: { kind: "transform", message: "No such key: alice@example.com" },
+    } as const;
+
+    fx.onFailure!({
+      ...failure,
+      dashboardId: dashboard.id,
+      widgetId: cell.larger_view!.id,
+    });
+    fx.onFailure!({
+      ...failure,
+      dashboardId: "gts.frontx.dashboard.dashboard.dashboard.v1~another",
+      widgetId: "another-widget",
+    });
+
+    const reports = vi.mocked(Sentry.captureMessage).mock.calls;
+    expect(reports).toEqual([
+      [
+        "A FrontX dashboard cell failed.",
+        {
+          level: "error",
+          fingerprint: [
+            "frontx-cell-failure",
+            "transform",
+            cell.larger_view!.id,
+          ],
+          tags: {
+            "frontx.failure_kind": "transform",
+            "frontx.role": "larger_view",
+            "frontx.widget_type": failure.widgetType,
+            "insight.dashboard_id": "board-x",
+            "insight.widget_id": "w1",
+          },
+        },
+      ],
+      [
+        "A FrontX dashboard cell failed.",
+        {
+          level: "error",
+          fingerprint: ["frontx-cell-failure", "transform", "another-widget"],
+          tags: {
+            "frontx.failure_kind": "transform",
+            "frontx.role": "larger_view",
+            "frontx.widget_type": failure.widgetType,
+          },
+        },
+      ],
+    ]);
+    expect(JSON.stringify(reports)).not.toContain("alice@example.com");
   });
 
   it("says so when the widgets do not load", async () => {

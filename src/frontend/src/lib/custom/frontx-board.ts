@@ -28,6 +28,7 @@ export interface FrontxBoard {
   dashboardId: string;
   file: ServedFile;
   runs: ReadonlyMap<string, { dashboard: string; widget: string }>;
+  widgets: ReadonlyMap<string, DashboardWidget>;
 }
 
 export interface FrontxAnswer extends MetricResult {
@@ -343,6 +344,7 @@ export function frontxBoard(
 
   const items = dashboardItems(read.body);
   const keys = itemKeys(items);
+  const drawnWidgets = new Map<string, DashboardWidget>();
 
   const cells = items.flatMap((item, index) => {
     const key = keys[index];
@@ -352,7 +354,12 @@ export function frontxBoard(
     if ("text" in item) return proseCells(id, key, item.text, plain(item.text));
 
     const widget = byId.get(item.widget);
-    return [widget ? widgetCell(id, widget, key, windowed) : goneCell(id, key)];
+    if (!widget) return [goneCell(id, key)];
+
+    const cell = widgetCell(id, widget, key, windowed);
+    drawnWidgets.set(cell.widget.id, widget);
+    if (cell.larger_view) drawnWidgets.set(cell.larger_view.id, widget);
+    return [cell];
   });
 
   const dashboardId = `${DASHBOARD_TYPE_ID}${uuidv5(id, NAMESPACE)}`;
@@ -375,6 +382,7 @@ export function frontxBoard(
         { dashboard: id, widget: widget.id },
       ])
     ),
+    widgets: drawnWidgets,
   };
 }
 

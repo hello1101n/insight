@@ -222,6 +222,29 @@ describe("frontxBoard", () => {
     expect(after.slice(1)).toEqual(before);
   });
 
+  it("maps each widget cell and larger view back to its Insight widget, and no heading, text or gone cell", () => {
+    const board = frontxBoard(
+      "board",
+      read([
+        { heading: "Throughput" },
+        { text: "Some words" },
+        { widget: "line" },
+        { widget: "stat" },
+        { widget: "gone" },
+      ]),
+      ALL
+    );
+    const [heading, text, line, stat, gone] = dashboardOf(board).layout.cells;
+
+    expect(board.widgets.get(line.widget.id)).toBe(WIDGETS.line);
+    expect(board.widgets.get(line.larger_view!.id)).toBe(WIDGETS.line);
+    expect(board.widgets.get(stat.widget.id)).toBe(WIDGETS.stat);
+    for (const prose of [heading, text, gone]) {
+      expect(board.widgets.has(prose.widget.id), prose.widget.id).toBe(false);
+    }
+    expect(board.widgets.size).toBe(3);
+  });
+
   it("sends the range only for a widget with a clock on a board with time ranges", () => {
     const [line, pie] = cells(
       [{ widget: "line" }, { widget: "pie" }],
