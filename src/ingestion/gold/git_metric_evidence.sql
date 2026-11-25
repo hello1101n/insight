@@ -720,8 +720,7 @@ SELECT
         'branch_scope', branch_scope_label
     ) AS details
 FROM commit_line_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -791,8 +790,7 @@ ARRAY JOIN arrayConcat(
     [tuple('commit_day', toFloat64(1), true)],
     if(branch_scope_value = 'default', [tuple('default_commit_day', toFloat64(1), true)], [])
 ) AS commit_measure
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -825,8 +823,7 @@ SELECT
         'destination_branch', destination_branch_label
     ) AS details
 FROM pull_request_measures
-WHERE insight_tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
@@ -866,6 +863,5 @@ SELECT
         'destination_branch', destination_branch_label
     ) AS details
 FROM {{ ref('git_review_events') }}
-WHERE insight_tenant_id IS NOT NULL
-  AND metric_date IS NOT NULL
+WHERE metric_date IS NOT NULL
 ) AS src
