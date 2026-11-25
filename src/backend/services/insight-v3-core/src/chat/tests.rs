@@ -550,6 +550,7 @@ fn the_query_schema_names_a_dataset_and_its_fields() {
     );
     assert_eq!(field["percent"]["type"], json!("boolean"));
     assert_eq!(field["exact"]["type"], json!("boolean"));
+    assert_eq!(field["unit"]["enum"], json!(["ms", "s", "min", "h", "d"]));
     assert_eq!(
         query["fields"]["items"]["required"],
         json!(["type", "as_name"])

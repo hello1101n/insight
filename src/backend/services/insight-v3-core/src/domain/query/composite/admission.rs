@@ -82,6 +82,9 @@ impl Composite {
                 Field::Pick { alias, column, .. } => value_kind(children, &keys, alias, column)?,
                 Field::Ratio { .. } => ColumnKind::Number,
             };
+            if field.unit().is_some() && kind != ColumnKind::Number {
+                return Err(CompositeError::Unit(field.as_name().to_owned()));
+            }
             kinds.push((field.as_name().to_owned(), kind));
         }
 

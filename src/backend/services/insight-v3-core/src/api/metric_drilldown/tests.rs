@@ -417,3 +417,22 @@ async fn a_continued_walk_reads_the_window_its_first_page_resolved() -> R {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn a_column_read_as_a_duration_names_its_unit_beside_its_percent() -> R {
+    let (url, _seen) = upstream().await;
+    let harness = TestHarness::new(&url);
+    let mut timed = lines_per_day();
+    timed["fields"][1]["unit"] = json!("s");
+    harness.store("lines_per_day", timed).await;
+
+    let (status, body) = harness.page("lines_per_day", json!({ "limit": 2 })).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["columns"][1]["key"], json!("total"));
+    assert_eq!(body["columns"][1]["unit"], json!("s"));
+    assert_eq!(body["columns"][1]["percent"], json!(false));
+    assert_eq!(body["columns"][0].get("unit"), None, "{body}");
+
+    Ok(())
+}

@@ -7,7 +7,7 @@ pub(crate) mod over;
 mod people;
 mod runner;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,7 +19,7 @@ use crate::domain::query::time_window::MaximumRange;
 
 pub(crate) use compiler::{Bound, bound_by, imposed_limit};
 pub(crate) use engine::TableEngine;
-pub(crate) use field::{FieldType, OrderBy, is_identifier, ratio_sql};
+pub(crate) use field::{FieldType, OrderBy, Unit, is_identifier, ratio_sql};
 pub(crate) use filter::FilterBind;
 pub(crate) use people::People;
 pub(crate) use runner::{MetricRunError, MetricRunner, RunResult};
@@ -322,6 +322,7 @@ pub(crate) struct CompiledQuery {
     column_types: HashMap<String, FieldType>,
     percents: Vec<String>,
     exacts: Vec<String>,
+    units: BTreeMap<String, Unit>,
     hidden: Vec<String>,
     numbered: bool,
 }
@@ -333,6 +334,7 @@ impl CompiledQuery {
         column_types: HashMap<String, FieldType>,
         percents: Vec<String>,
         exacts: Vec<String>,
+        units: BTreeMap<String, Unit>,
     ) -> Self {
         Self {
             sql,
@@ -340,6 +342,7 @@ impl CompiledQuery {
             column_types,
             percents,
             exacts,
+            units,
             hidden: Vec::new(),
             numbered: false,
         }
@@ -359,6 +362,10 @@ impl CompiledQuery {
 
     pub(crate) fn exacts(&self) -> &[String] {
         &self.exacts
+    }
+
+    pub(crate) fn unit_of(&self, column: &str) -> Option<Unit> {
+        self.units.get(column).copied()
     }
 
     pub(crate) fn hidden(&self) -> &[String] {
@@ -415,6 +422,8 @@ pub(crate) enum MetricQueryError {
     BucketAlias,
     #[error("a requested time range needs a metric time source")]
     ClocklessWindow,
+    #[error("`{0}` is not a number, so it cannot be a duration with a `unit`")]
+    UnitOnText(String),
     #[error("the requested range exceeds maximum `{0}`")]
     RangeExceedsMaximum(String),
     #[error(transparent)]

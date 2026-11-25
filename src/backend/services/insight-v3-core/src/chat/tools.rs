@@ -102,6 +102,10 @@ fn metric_field_schema() -> Value {
                 "type": "boolean",
                 "description": "Show this field's numbers with every digit in the rows behind a widget. Left out, a fraction is rounded to two decimals.",
             },
+            "unit": {
+                "enum": ["ms", "s", "min", "h", "d"],
+                "description": "A number that is a duration: the unit its values are in, so a reader sees 2d 4h rather than the raw number.",
+            },
         },
     })
 }

@@ -554,3 +554,26 @@ async fn a_previous_run_with_no_bounded_range_names_the_previous_field() -> R {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn a_run_answer_names_the_unit_of_each_duration_beside_its_percents() -> R {
+    let (address, server) = clocked_upstream().await;
+    let harness = TestHarness::new(&address).await;
+    let timed = json!({
+        "dataset": "commits",
+        "time": { "field": "occurred_at" },
+        "fields": [{ "agg": "count", "type": "int", "as_name": "total", "unit": "min" }]
+    });
+
+    let response = harness
+        .ask("timed", Some(timed), Some(json!({"range": "P7D"})))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let answer = response.json().await;
+    assert_eq!(answer["percents"], json!([]));
+    assert_eq!(answer["units"], json!({ "total": "min" }));
+
+    server.abort();
+    Ok(())
+}

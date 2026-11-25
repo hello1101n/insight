@@ -15,6 +15,7 @@ fn column(key: &str, kind: ColumnKind) -> Column {
         kind,
         percent: false,
         exact: false,
+        unit: None,
     }
 }
 

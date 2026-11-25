@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 
 use super::clock::{TimeField, add_window_predicates, bucket_expression, clock_expression};
-use super::field::{Field, FieldType, OrderBy, is_identifier};
+use super::field::{Field, FieldType, OrderBy, Unit, is_identifier};
 use super::filter::FilterBind;
 use super::over::Over;
 use super::people::{People, PersonHandle};
@@ -135,6 +135,13 @@ impl MetricQuery {
             .collect()
     }
 
+    fn units(&self) -> BTreeMap<String, Unit> {
+        self.fields
+            .iter()
+            .filter_map(|field| Some((field.as_name.clone(), field.unit?)))
+            .collect()
+    }
+
     fn check_grouping(&self, as_names: &HashSet<&str>) -> Result<(), MetricQueryError> {
         for group in &self.group_by {
             if !is_identifier(group) {
@@ -181,6 +188,9 @@ impl MetricQuery {
                 Some(over) => field.result_type_over(over),
                 None => field.result_type(),
             };
+            if field.unit.is_some() && result_type == FieldType::String {
+                return Err(MetricQueryError::UnitOnText(field.as_name.clone()));
+            }
             selection
                 .column_types
                 .insert(field.as_name.clone(), result_type);
@@ -391,6 +401,7 @@ impl MetricQuery {
             column_types,
             percents: self.names_marked(|field| field.percent),
             exacts: self.names_marked(|field| field.exact),
+            units: self.units(),
             hidden,
             numbered,
         })

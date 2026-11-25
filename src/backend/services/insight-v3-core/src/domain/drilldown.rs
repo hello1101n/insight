@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use super::definition::DefinitionId;
 use super::metric_run::{MetricRuns, Source};
-use super::query::metric_query::{ColumnKind, MetricRunner};
+use super::query::metric_query::{ColumnKind, MetricRunner, Unit};
 use super::query::time_window::WindowRequest;
 use super::surfaces::CustomError;
 
@@ -38,6 +38,7 @@ pub(crate) struct Column {
     pub(crate) kind: ColumnKind,
     pub(crate) percent: bool,
     pub(crate) exact: bool,
+    pub(crate) unit: Option<Unit>,
 }
 
 #[derive(Debug)]
@@ -102,6 +103,7 @@ impl<'a> Drilldowns<'a> {
                 kind: *kind,
                 percent: prepared.compiled.percents().contains(key),
                 exact: prepared.compiled.exacts().contains(key),
+                unit: prepared.compiled.unit_of(key),
             })
             .collect();
         if let Some(taken) = columns

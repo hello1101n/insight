@@ -346,6 +346,18 @@ fn put_widget_tells_a_client_every_kind_of_widget() {
 }
 
 #[test]
+fn put_metric_tells_a_client_how_to_read_a_duration() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_metric) = tools.iter().find(|tool| tool.name == "put_metric") else {
+        panic!("put_metric is a tool");
+    };
+    let description = put_metric.description.as_deref().unwrap_or_default();
+
+    assert!(description.contains("\"unit\": \"s\""), "{description}");
+    assert!(description.contains("ms, s, min, h or d"), "{description}");
+}
+
+#[test]
 fn put_metric_tells_a_client_how_to_combine_metrics() {
     let tools = CustomSurfaces::tool_router().list_all();
     let Some(put_metric) = tools.iter().find(|tool| tool.name == "put_metric") else {

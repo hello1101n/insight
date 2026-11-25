@@ -17,7 +17,7 @@ use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::drilldown::{
     Asked, Column, CursorError, DEFAULT_PAGE_ROWS, DrilldownError, MAX_PAGE_ROWS, Page, Sort,
 };
-use crate::domain::query::metric_query::ColumnKind;
+use crate::domain::query::metric_query::{ColumnKind, Unit};
 use crate::domain::query::time_window::WindowRequest;
 
 pub(crate) const MAX_CONCURRENT_PAGES: usize = 8;
@@ -134,6 +134,8 @@ struct ColumnOut {
     r#type: &'static str,
     sortable: bool,
     percent: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unit: Option<&'static str>,
     exact: bool,
 }
 
@@ -274,6 +276,7 @@ fn column_out(column: &Column) -> ColumnOut {
         },
         sortable: true,
         percent: column.percent,
+        unit: column.unit.map(Unit::as_str),
         exact: column.exact,
     }
 }
