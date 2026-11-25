@@ -971,7 +971,6 @@
       "WaitKind": {
         "enum": [
           "lock",
-          "check_slot",
           "placement"
         ],
         "type": "string"

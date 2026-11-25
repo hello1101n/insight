@@ -1324,7 +1324,7 @@ describe("a row expands to its recent syncs", () => {
     });
     render(<ConnectorHealthPane />);
 
-    await userEvent.click(screen.getByText("sync ok"));
+    await userEvent.click(screen.getByText("Ready"));
 
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded", "true");
   });
@@ -1923,7 +1923,7 @@ describe("connector workflow runs", () => {
     expect(screen.queryByText(/Quality checks failed/)).not.toBeInTheDocument();
   });
 
-  it("keeps the run ready during a check slot wait after Gold", async () => {
+  it("keeps the run ready while checks wait for cluster capacity after Gold", async () => {
     await openRun({
       ...run(1),
       status: "queued",
@@ -1935,7 +1935,7 @@ describe("connector workflow runs", () => {
           attempt: 1,
           status: "queued",
           queued_at: stamp(-8),
-          waits: [{ kind: "check_slot", started_at: stamp(-8) }],
+          waits: [{ kind: "placement", started_at: stamp(-8) }],
         },
       ],
     });
@@ -2269,16 +2269,16 @@ describe("connector workflow runs", () => {
       screen.getByRole("list", { name: /status/i })
     ).getAllByRole("button");
     expect(marks).toHaveLength(50);
-    expect(marks[0]).toHaveAccessibleName("2026-01-15 11:10:00Z · sync ok");
+    expect(marks[0]).toHaveAccessibleName("2026-01-15 11:10:00Z · Ready");
     expect(marks.at(-2)).toHaveAccessibleName("2026-01-15 11:58:00Z · Failed");
-    expect(marks.at(-1)).toHaveAccessibleName("2026-01-15 11:59:00Z · sync ok");
+    expect(marks.at(-1)).toHaveAccessibleName("2026-01-15 11:59:00Z · Ready");
     await userEvent.click(marks[0]!);
     const details = within(
       screen.getByRole("heading", { name: "Bronze (UTC)" }).closest("section")!
     );
     expect(details.getByText("1,282")).toBeVisible();
     expect(details.getByText("3s")).toBeVisible();
-    expect(details.queryByText("Ready")).not.toBeInTheDocument();
+    expect(details.getByText("Ready")).toBeVisible();
     expect(details.queryByText("Transformations")).not.toBeInTheDocument();
   });
 
@@ -2309,7 +2309,7 @@ describe("connector workflow runs", () => {
     await userEvent.click(rowFor("jira"));
     const history = within(screen.getByRole("list", { name: /status/i }));
     expect(history.getAllByRole("button")).toHaveLength(2);
-    expect(history.getByRole("button", { name: /sync ok$/ })).toBeVisible();
+    expect(history.getByRole("button", { name: /Ready$/ })).toBeVisible();
     expect(history.getByRole("button", { name: /Failed$/ })).toBeVisible();
   });
 

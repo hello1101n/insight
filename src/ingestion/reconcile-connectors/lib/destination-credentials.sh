@@ -52,7 +52,13 @@ ab_destination_record_write() {
 
 ab_destination_update_once() {
   local id="$1" body="$2" credentials_changed="$3"
-  ab_destination_mark_attempt "${id}" || return 1
-  ab__curl POST /api/v1/destinations/update "${body}" >/dev/null || return 1
-  ab_destination_record_write "${id}" "${credentials_changed}"
+  if ! ab_destination_mark_attempt "${id}"; then
+    printf 'Airbyte destination write tracking failed. destination=%s\n' "${id}" >&2
+    return 1
+  fi
+  ab__destination_write update "${id}" "${body}" >/dev/null || return 1
+  if ! ab_destination_record_write "${id}" "${credentials_changed}"; then
+    printf 'Airbyte destination state write failed. destination=%s\n' "${id}" >&2
+    return 1
+  fi
 }

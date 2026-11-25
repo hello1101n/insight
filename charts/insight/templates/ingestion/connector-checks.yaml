@@ -29,11 +29,6 @@ spec:
   entrypoint: run
   templates:
     - name: run
-      synchronization:
-        semaphores:
-          - configMapKeyRef:
-              name: insight-sync-limits
-              key: checks
       # SECURITY: same convention as dbt-run.yaml and data-quality-test.yaml —
       # every parameter reaches the shell through an env var and is referenced
       # as "$ENV_VAR", never spliced into shell, Python or YAML source.

@@ -22,7 +22,7 @@ export interface SyncFact {
 
 export interface ConnectorRunStage {
   waits?: {
-    kind: "lock" | "check_slot" | "placement";
+    kind: "lock" | "placement";
     holder?: string | null;
     started_at: string;
     ended_at?: string | null;

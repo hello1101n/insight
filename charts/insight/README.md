@@ -69,14 +69,11 @@ toolbox image because the poller's environment variable also changed.
 
 ## Connector sync limits and history
 
-Argo limits connector checks with a semaphore.
-A check slot covers the post-sync `connector-checks` step.
 Argo uses one mutex for staging, one for Identity, and one for downstream transformations.
 The same mutex protects a writer group on both the Jira and non-Jira paths.
 
 | Setting | Default | Applies to |
 | --- | --- | --- |
-| `ingestion.maxConcurrentConnectorChecks` | 2 | Check slots in this namespace |
 | `clickhouse.syncUser.username` | `insight_sync` | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
 | `clickhouse.syncUser.passwordSecret.name` | `insight-db-creds` | Secret in the release namespace that holds the password |
 | `clickhouse.syncUser.passwordSecret.key` | `clickhouse-sync-password` | Password key in that Secret |
@@ -91,7 +88,7 @@ It distinguishes the sync user's total, the query limit, server memory pressure,
 For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
 
 The Connectors page shows Bronze, Silver, Identity, and Gold.
-The queue distinguishes a writer lock, a check slot, and a wait for cluster capacity.
+The queue distinguishes a writer lock and a wait for cluster capacity.
 The lock reason includes the holder when Argo reports it.
 A wait shows a warning after three hours.
 Connectors stops a Workflow after more than six hours of waiting for a writer lock.
@@ -217,7 +214,7 @@ Estimate the sync total with this formula.
 concurrent Bronze loads × Bronze query budget
 + staging transform cap + downstream transform cap
 + identity seed cap
-+ check slots × check query budget
++ concurrent check runs × check query budget
 ```
 
 Keep the total below the server limit minus idle memory and a reserve for Analytics.

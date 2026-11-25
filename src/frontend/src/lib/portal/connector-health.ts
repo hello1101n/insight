@@ -124,7 +124,7 @@ const STATE: Record<SyncStatus, ConnectorStateView> = {
     label: "sync cancelled",
     tone: "idle",
   },
-  succeeded: { state: "sync_ok", label: "sync ok", tone: "ok" },
+  succeeded: { state: "sync_ok", label: "Ready", tone: "ok" },
   unknown: { state: "state_unknown", label: "state unknown", tone: "unknown" },
 };
 

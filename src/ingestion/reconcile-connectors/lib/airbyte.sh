@@ -148,6 +148,7 @@ ab__curl() {
   local method="$1"
   local path="$2"
   local body="${3:-}"
+  local write_out="${4:-}"
   local token
   # Bail out cleanly when the auth flow can't reach Airbyte. Without
   # this guard every downstream parser (json.load, jq) chokes on an
@@ -167,6 +168,7 @@ ab__curl() {
   if [[ -n "${body}" ]]; then
     printf '%s' "${body}" \
       | curl --fail-with-body --silent --show-error \
+          --write-out "${write_out}" \
           -X "${method}" \
           -H "Authorization: Bearer ${token}" \
           -H "Content-Type: application/json" \
@@ -174,11 +176,30 @@ ab__curl() {
           "${url}"
   else
     curl --fail-with-body --silent --show-error \
+      --write-out "${write_out}" \
       -X "${method}" \
       -H "Authorization: Bearer ${token}" \
       -H "Content-Type: application/json" \
       "${url}"
   fi
+}
+
+ab__destination_write() {
+  local operation="$1" destination="$2" body="$3" response status
+  if response="$(ab__curl POST "/api/v1/destinations/${operation}" "${body}" $'\n%{http_code}' 2>/dev/null)"; then
+    printf '%s' "${response%$'\n'*}"
+    return 0
+  fi
+
+  status="${response##*$'\n'}"
+  if [[ "${response}" == *$'\n'* && "${status}" =~ ^[0-9]{3}$ ]]; then
+    response="${response%$'\n'*}"
+  else
+    status=000
+  fi
+  printf '%s\0%s' "${body}" "${response}" \
+    | python3 "${_AIRBYTE_PY_DIR}/destination_write_error.py" "${operation}" "${destination}" "${status}" >&2
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -832,10 +853,7 @@ print(json.dumps({
   "connectionConfiguration": json.load(sys.stdin),
 }))
 ' "${existing_id}" "${name}")
-    if ! ab_destination_update_once "${existing_id}" "${body}" "${credentials_changed}"; then
-      printf 'Airbyte destination update or state write failed for %s.\n' "${existing_id}" >&2
-      return 1
-    fi
+    ab_destination_update_once "${existing_id}" "${body}" "${credentials_changed}" || return 1
     printf 'ab_ensure_destination: destination "%s" (%s) updated: %s\n' \
       "${name}" "${existing_id}" "${drift}" >&2
     printf '%s' "${existing_id}"
@@ -854,10 +872,7 @@ print(json.dumps({
   # Capture the response so a non-2xx (e.g. 422 schema-validation) surfaces
   # the Airbyte error body — which names the offending config field — instead
   # of a bare `KeyError: 'destinationId'` from piping straight into the parser.
-  if ! resp="$(ab__curl POST /api/v1/destinations/create "${body}")"; then
-    printf 'Airbyte destination creation failed for "%s".\n' "${name}" >&2
-    return 1
-  fi
+  resp="$(ab__destination_write create "${name}" "${body}")" || return 1
   dest_id="$(printf '%s' "${resp}" | python3 -c 'import sys, json
 try:
     print(json.load(sys.stdin)["destinationId"])

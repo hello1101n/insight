@@ -112,9 +112,10 @@ request gets 401.
      that succeeded, for example "94% succeeded";
    - a table of the latest 10 syncs with column headers (status, start in UTC, duration,
      records), which expands to show the rest.
+   The row shows **Ready** after a successful load when run history is absent.
 3. For workflows that connectors observes, the row shows the current run and the last successful run.
    Each shows elapsed time waiting, loading and transforming. Select a bar to open its timeline.
-   Reports become ready when the final transformation succeeds.
+   Reports become available when the final transformation succeeds. The row shows **Ready**.
 4. The strip includes older loads and multiple runs on the same day, up to 50 in total.
    A load associated with a managed run by Airbyte Job ID appears once. Selecting an older
    load shows the measurements that Airbyte recorded.
@@ -125,7 +126,8 @@ request gets 401.
    The timeline counts the wait for cluster capacity before Airbyte submission as queued time.
    A wait shows a warning after three hours.
 7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock.
-   A wait for cluster capacity and post-sync checks can continue beyond six hours.
+   Post-sync checks run without Argo synchronization.
+   A wait for cluster capacity can continue beyond six hours.
    The run's wait time ends when Gold succeeds.
 8. The service retains the recorded run history after Argo deletes the workflow.
 9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.

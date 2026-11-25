@@ -70,7 +70,7 @@ it("labels every status cell and summarizes only finished outcomes", () => {
   });
   const cells = within(strip).getAllByRole("listitem");
   const labels = [
-    "sync ok",
+    "Ready",
     "sync failed",
     "sync incomplete",
     "sync cancelled",
@@ -231,8 +231,8 @@ it("places the newest run on the right with status and UTC start in each label a
   history(syncs);
   const bars = within(screen.getByRole("list")).getAllByRole("listitem");
   const labels = [
-    "Run 3: sync ok, started 2026-01-15 11:58:00Z",
-    "Run 2: sync ok, started 2026-01-15 11:59:00Z",
+    "Run 3: Ready, started 2026-01-15 11:58:00Z",
+    "Run 2: Ready, started 2026-01-15 11:59:00Z",
     "Run 1: sync failed, started 2026-01-15 12:00:00Z",
   ];
   for (const [index, bar] of bars.entries()) {
@@ -293,10 +293,10 @@ it("keeps UTC dates and clocks in the history cells and bar tooltips across midn
   const bars = within(screen.getByRole("list")).getAllByRole("listitem");
   expect(bars[0]).toHaveAttribute(
     "aria-label",
-    "Run 2: sync ok, started 2026-01-15 11:30:00Z"
+    "Run 2: Ready, started 2026-01-15 11:30:00Z"
   );
   expect(bars[1]).toHaveAccessibleName(
-    "Run 1: sync ok, started 2026-01-15 23:30:00Z"
+    "Run 1: Ready, started 2026-01-15 23:30:00Z"
   );
   expect(container.textContent).not.toMatch(/your time|01:30|13:30/);
   for (const bar of bars)

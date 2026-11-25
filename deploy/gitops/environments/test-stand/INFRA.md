@@ -163,7 +163,9 @@ rebuilding from the rendered release alone will miss all of it.
   `insight-clickhouse-migrate`. Every hook has `ttlSecondsAfterFinished: 600` —
   **capture hook logs immediately on a failure.**
 - **Secrets created outside the release** (in `insight`): `insight-db-creds`
-  (recomposed each run, no Helm label — §18), `insight-authenticator-signing-keys`
+  (recomposed each run, no Helm label — §18). Keep the generate-once
+  `clickhouse-sync-password` key. The upgrade stops at render if the key is missing.
+  Other Secrets include `insight-authenticator-signing-keys`
   (ES256, generate-once — a new key logs everyone out), `insight-keycloak-admin`,
   `insight-oidc` (the config Job re-pushes the same client secret each deploy so
   it can't drift), `insight-keycloak-config` (recomposed). Plus the operator
@@ -263,6 +265,8 @@ takes over.
     (no Helm label), the ES256 key, keycloak-admin + OIDC secrets,
     `insight-keycloak-config`, generate+pack the realm, apply the
     `argo-workflow` SA. Remove any maintenance route (§16).
+    Generate `clickhouse-sync-password` once with `openssl rand -hex 16` (32 hex characters).
+    Add the key to `insight-db-creds`. The upgrade stops at render if the key is missing.
 12. **Hand over to this repository** — the `helm upgrade` in
     [`README.md` step 3](README.md#deploying-by-hand) (the command CI runs),
     then the restart (§25) and route check (§26). Rehearse read-only with

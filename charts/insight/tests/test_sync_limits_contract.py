@@ -26,7 +26,7 @@ def charts() -> dict[str, dict[tuple[str, str], dict]]:
             "overrides",
             [
                 "--set",
-                "ingestion.maxConcurrentConnectorChecks=4,ingestion.airbyteSync.launchConfirmationSeconds=901,ingestion.airbyteSync.launchUnreadableSeconds=2000",
+                "ingestion.airbyteSync.launchConfirmationSeconds=901,ingestion.airbyteSync.launchUnreadableSeconds=2000",
                 "--set",
                 "ingestion.syncResourceDefaults.airbyte_cpu_millis=1000,ingestion.syncResourceDefaults.airbyte_memory_bytes=1073741824,ingestion.syncResourceDefaults.dbt_cpu_millis=2000,ingestion.syncResourceDefaults.dbt_memory_bytes=2147483648,ingestion.syncResourceDefaults.identity_cpu_millis=250,ingestion.syncResourceDefaults.identity_memory_bytes=536870912,ingestion.syncResourceDefaults.dbt_query_memory_bytes=5368709120",
             ],
@@ -71,17 +71,14 @@ def test_pipeline_serializes_each_writer_group_without_a_gate(charts: dict[str, 
     assert templates(default, "identity-seed-run")["run"]["synchronization"]["mutexes"] == [{"name": "ch-identity"}]
 
 
-def test_only_checks_hold_a_slot(charts: dict[str, dict]) -> None:
-    for release, counts in [("defaults", {"checks": "2"}), ("overrides", {"checks": "4"})]:
-        chart = charts[release]
+def test_bronze_and_checks_run_without_argo_synchronization(charts: dict[str, dict]) -> None:
+    for chart in charts.values():
         bronze = templates(chart, "airbyte-sync")
         pipeline = templates(chart, "ingestion-pipeline")["pipeline"]
         sync = next(task for task in pipeline["dag"]["tasks"] if task["name"] == "sync")
         assert sync["templateRef"] == {"name": "airbyte-sync", "template": "main"}
-        assert chart["ConfigMap", "insight-sync-limits"]["data"] == counts
-        assert templates(chart, "connector-checks")["run"]["synchronization"] == {
-            "semaphores": [{"configMapKeyRef": {"name": "insight-sync-limits", "key": "checks"}}]
-        }
+        assert "synchronization" not in templates(chart, "connector-checks")["run"]
+        assert ("ConfigMap", "insight-sync" + "-limits") not in chart
         assert all("synchronization" not in spec for spec in bronze.values())
 
 

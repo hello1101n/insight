@@ -897,7 +897,7 @@
     "sync_failed": "sync failed",
     "sync_incomplete": "sync incomplete",
     "sync_cancelled": "sync cancelled",
-    "sync_ok": "sync ok",
+    "sync_ok": "Ready",
     "state_unknown": "state unknown",
     "no_longer_configured": "no longer configured",
     "never_synced": "never synced",

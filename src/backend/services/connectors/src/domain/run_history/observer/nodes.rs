@@ -58,7 +58,7 @@ pub(super) fn waiting_lock(node: &Value) -> Option<&str> {
     }
     node["synchronizationStatus"]["waiting"]
         .as_str()
-        .filter(|lock| !lock.is_empty())
+        .filter(|lock| lock.split('/').nth(1) == Some("Mutex"))
 }
 
 fn mutex_holder(status: &Value, lock: &str) -> Option<String> {
@@ -147,15 +147,11 @@ fn attempt(
     }
     if result.finished_at.is_none() {
         result.wait = if let Some(lock) = waiting_lock(node) {
-            if stage == "connector-checks" && lock.ends_with("/insight-sync-limits/checks") {
-                Some(wait(WaitKind::CheckSlot, result.queued_at, None))
-            } else {
-                Some(wait(
-                    WaitKind::Lock,
-                    result.queued_at,
-                    mutex_holder(status, lock),
-                ))
-            }
+            Some(wait(
+                WaitKind::Lock,
+                result.queued_at,
+                mutex_holder(status, lock),
+            ))
         } else {
             placement(node, pod).map(|at| wait(WaitKind::Placement, at, None))
         };

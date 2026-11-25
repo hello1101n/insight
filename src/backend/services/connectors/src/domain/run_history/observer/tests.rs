@@ -158,25 +158,16 @@ fn argo_lock_holder_is_distinct_from_placement() -> Result<()> {
 }
 
 #[test]
-fn checks_report_their_own_slot_wait() -> Result<()> {
+fn ignores_a_semaphore_wait() -> Result<()> {
     let workflow = workflow(&json!({
         "phase":"Running",
         "nodes":{
             "checks":{"id":"checks","displayName":"connector-checks","type":"Pod","phase":"Pending",
-                "startedAt":at(3),"synchronizationStatus":{"waiting":"example/ConfigMap/insight-sync-limits/checks"}}
+                "startedAt":at(3),"synchronizationStatus":{"waiting":"example/ConfigMap/example/permits"}}
         }
     }))?;
-    let pods = HashMap::new();
-    let checks = &nodes::transforms(&workflow.data["status"], &pods, None)[0];
-    assert_eq!(
-        serde_json::to_value(checks.wait.as_ref().map(|wait| wait.kind))?,
-        "check_slot"
-    );
-
-    let (mut run, _) = identity(&workflow, at(9), false).context("expected ingestion pipeline")?;
-    run.stages = vec![nodes::transforms(&workflow.data["status"], &pods, None).remove(0)];
-    assert!(timeout::expired(&run, at(9)).is_none());
-    assert!(timeout::expired(&run, at(10)).is_none());
+    let checks = &nodes::transforms(&workflow.data["status"], &HashMap::new(), None)[0];
+    assert!(checks.wait.is_none());
     Ok(())
 }
 
@@ -189,7 +180,7 @@ fn stops_no_workflow_after_gold_is_ready() -> Result<()> {
     gold.finished_at = Some(at(2));
     let mut waiting = StageSnapshot::new("connector-checks", 1, at(2));
     waiting.status = "queued";
-    waiting.wait = Some(nodes::wait(WaitKind::CheckSlot, at(2), None));
+    waiting.wait = Some(nodes::wait(WaitKind::Placement, at(2), None));
     run.stages = vec![gold, waiting];
     assert!(timeout::expired(&run, at(9)).is_none());
     run.stages[0].finished_at = None;
@@ -203,11 +194,7 @@ fn stops_no_workflow_after_gold_is_ready() -> Result<()> {
 fn stops_strictly_after_six_hours_and_only_for_argo_synchronization() -> Result<()> {
     let workflow = workflow(&json!({"phase":"Running"}))?;
     let (mut run, _) = identity(&workflow, at(8), false).context("expected ingestion pipeline")?;
-    for (kind, stop) in [
-        (WaitKind::Placement, false),
-        (WaitKind::Lock, true),
-        (WaitKind::CheckSlot, false),
-    ] {
+    for (kind, stop) in [(WaitKind::Placement, false), (WaitKind::Lock, true)] {
         let mut attempt = StageSnapshot::new("bronze", 1, at(1));
         attempt.status = "queued";
         attempt.wait = Some(nodes::wait(kind, at(1), None));

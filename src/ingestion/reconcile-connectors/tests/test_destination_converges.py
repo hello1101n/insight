@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from threading import Thread
 
 import pytest
 from reconcile_inputs import sync_user, write_sync_secret
@@ -192,7 +194,95 @@ def test_a_failed_update_is_a_failure_not_a_stale_id(tmp_path: Path) -> None:
 
     assert done.returncode == 1
     assert done.stdout == ""
-    assert done.stderr == f"Airbyte destination update or state write failed for {DEST_ID}.\n"
+    assert f"Airbyte destination update failed. destination={DEST_ID}" in done.stderr
+
+
+def _reject_destination_write(
+    tmp_path: Path, *, operation: str, status: int, error: str, config: dict[str, object]
+) -> subprocess.CompletedProcess[str]:
+    stored = None if operation == "create" else COMPOSED
+    replies = {
+        "/api/v1/destinations/list": (200, json.dumps(_stored(stored))),
+        f"/api/v1/destinations/{operation}": (status, error),
+    }
+    paths: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers["Content-Length"]))
+            paths.append(self.path)
+            code, answer = replies.get(self.path, (404, ""))
+            self.send_response(code)
+            self.end_headers()
+            self.wfile.write(answer.encode())
+
+    with HTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            script = f"""
+            set -euo pipefail
+            export AIRBYTE_URL=http://127.0.0.1:{server.server_port} AIRBYTE_TOKEN=example-token INSIGHT_NAMESPACE=fixture
+            source "{ROOT}/lib/airbyte.sh"
+            ab_workspace_id() {{ printf '%s' '{WORKSPACE}'; }}
+            {sync_user(tmp_path / "sync-user")}
+            ab_destination_credentials_init
+            ab_ensure_destination clickhouse-bronze {DEF_ID} "$1"
+            """
+            done = subprocess.run(
+                ["bash", "-c", script, "bash", json.dumps(config)], capture_output=True, text=True, check=False
+            )
+        finally:
+            server.shutdown()
+            thread.join()
+    assert paths == list(replies)
+    assert done.returncode == 1
+    assert done.stdout == ""
+    return done
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_destination_write_reports_http_status_and_validation_details(tmp_path: Path, operation: str) -> None:
+    done = _reject_destination_write(
+        tmp_path,
+        operation=operation,
+        status=422,
+        error=json.dumps({"message": "Invalid configuration", "validationErrors": [{"field": "cluster_name"}]}),
+        config=COMPOSED,
+    )
+
+    assert "HTTP 422" in done.stderr
+    assert "Invalid configuration" in done.stderr
+    assert "cluster_name" in done.stderr
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_destination_write_masks_password_values_in_error_details(tmp_path: Path, operation: str) -> None:
+    password = 'fixture-"secret"-é'
+    another = "fixture-nested-secret"
+    config = COMPOSED | {"password": password, "alias": password, "tls": {"keyPassword": another}}
+    done = _reject_destination_write(
+        tmp_path,
+        operation=operation,
+        status=422,
+        error=json.dumps({"message": f"Invalid {password}", "details": config}),
+        config=config,
+    )
+
+    assert "[REDACTED]" in done.stderr
+    assert "fixture-" not in done.stderr
+    assert '"alias": "[REDACTED]"' in done.stderr
+
+
+def test_destination_write_bounds_an_html_error_to_one_line(tmp_path: Path) -> None:
+    done = _reject_destination_write(
+        tmp_path, operation="create", status=500, error="<html>\n" + "é" * 800 + "\n</html>", config=COMPOSED
+    )
+
+    assert "HTTP 500" in done.stderr
+    assert "body=<html>" in done.stderr
+    assert len(done.stderr.splitlines()) == 1
+    assert len(done.stderr.partition("body=")[2].rstrip("\n").encode()) <= 512
 
 
 @pytest.mark.parametrize(("dry_run", "previous_user"), [(False, "previous"), (False, "etl"), (True, "previous")])

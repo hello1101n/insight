@@ -4,7 +4,7 @@ use sea_orm::{
     TransactionTrait, Value,
 };
 
-use super::{RunSnapshot, StageSnapshot, StageWait};
+use super::{RunSnapshot, StageSnapshot, StageWait, stored_waits};
 
 pub(super) fn sql(query: impl Into<String>, params: Vec<Value>) -> Statement {
     Statement::from_sql_and_values(sea_orm::DbBackend::MySql, query, params)
@@ -203,7 +203,7 @@ async fn save_stage(
     };
     let mut waits = match saved {
         Some(saved) => {
-            serde_json::from_str(&saved.waits).map_err(|error| DbErr::Json(error.to_string()))?
+            stored_waits(&saved.waits).map_err(|error| DbErr::Json(error.to_string()))?
         }
         None => Vec::new(),
     };
@@ -323,7 +323,7 @@ pub(super) async fn close_missing(
         }
 
         let mut waits: Vec<StageWait> =
-            serde_json::from_str(&attempt.waits).map_err(|error| DbErr::Json(error.to_string()))?;
+            stored_waits(&attempt.waits).map_err(|error| DbErr::Json(error.to_string()))?;
         if let Some(wait) = waits.last_mut().filter(|wait| wait.ended_at.is_none()) {
             wait.ended_at = Some(now.max(wait.started_at));
         }

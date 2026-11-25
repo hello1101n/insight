@@ -94,7 +94,7 @@ fn total(intervals: &mut [(DateTime<Utc>, DateTime<Utc>)]) -> u64 {
 fn waits(r: &Record) -> Vec<StageWait> {
     r.waits
         .as_deref()
-        .and_then(|json| serde_json::from_str(json).ok())
+        .and_then(|json| super::stored_waits(json).ok())
         .unwrap_or_default()
 }
 
@@ -451,7 +451,7 @@ mod tests {
             &[
                 record("transform-jira-staging", "lock", 2, 4),
                 record("identity-seed", "placement", 8, 12),
-                record("connector-checks", "check_slot", 20, 50),
+                record("connector-checks", "placement", 20, 50),
             ],
             at(100),
         );

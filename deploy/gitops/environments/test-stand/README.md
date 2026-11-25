@@ -42,6 +42,9 @@ This tree owns the **stand's application config**, not the cluster.
   exists and is referenced by name (hence `inventory.yaml` lists them
   `enabled: false`). The one exception, the CI deploy credential, has its own
   [`credentials-runbook.md`](credentials-runbook.md).
+- `insight-db-creds` requires `clickhouse-sync-password` with this chart version.
+  Generate the password once as 32 hex characters (`openssl rand -hex 16`).
+  The upgrade stops at render if the key is missing.
 - **A change merged here reaches a published stand at merge speed.** No staging
   step. Review accordingly.
 

@@ -61,7 +61,6 @@
             }
           }
         },
-        "maxConcurrentConnectorChecks": { "type": "integer", "minimum": 1 },
         "toolboxImage":    { "type": "string" },
         "reconcile": {
           "type": "object",
