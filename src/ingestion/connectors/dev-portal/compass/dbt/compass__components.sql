@@ -11,7 +11,7 @@
 -- flattening them is a silver decision, deferred with silver itself (SPEC.md 7).
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     data_source,

@@ -18,8 +18,18 @@ models:
   # Profile / identity trio (mirrors youtrack + bamboohr): snapshot → fields_history → identity_inputs.
   - name: github_directory__org_members_snapshot
     description: "SCD2 snapshot of the GitHub organization roster (appends a version on tracked-field change). Feeds the fields-history / identity-inputs chain."
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
   - name: github_directory__org_members_fields_history
     description: "Field-level change log of the GitHub member profile, derived from github_directory__org_members_snapshot. entity_id is the member's immutable numeric GitHub id, stringified. Input to github_directory__identity_inputs."
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
   - name: github_directory__identity_inputs
     description: "Identity-resolution inputs from the GitHub member roster (membership, canonical person profile, id binding on the numeric member id, username, display_name and email observations). Unioned into silver.identity_inputs via the silver:identity_inputs tag; source_type is 'github'."
     columns:

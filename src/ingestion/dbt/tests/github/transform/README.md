@@ -45,6 +45,8 @@ dropped so its first build is a full one.
 
 The scenarios cover two tenants sharing one source id: the item-event
 watermark is kept per tenant and source, and a commit e-mail owned in one
-tenant stays unowned in another. A bronze row without a tenant still builds,
-and the `not_null` and `not_empty` tests on the tenant of the model that reads
-it report the row.
+tenant stays unowned in another. Tenants are UUIDs: a bronze row whose tenant is
+NULL, empty or not a UUID fails the build of the model that reads it
+(`bronze_tenant()`); with `bronze_tenant_on_invalid: warn` it builds and that
+model's `not_empty` tenant test reports the row. `test_gitlab_missing_tenant.py`
+checks the same for one GitLab model, so the suite also creates GitLab bronze.

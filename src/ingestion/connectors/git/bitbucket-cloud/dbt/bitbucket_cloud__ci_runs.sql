@@ -11,7 +11,7 @@
 -- alias shadows a column of the same name in its own SELECT.
 WITH pipeline_attempts AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         concat(unique_key, ':', toString(COALESCE(run_number, 1))) AS attempt_key,
         COALESCE(run_number, 1) AS attempt,

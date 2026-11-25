@@ -14,7 +14,7 @@
 -- honest previous value, not '' claiming it was empty.
 WITH projects AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
@@ -24,7 +24,7 @@ WITH projects AS (
 
 state_events AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         unique_key,
         project_id,
@@ -44,7 +44,7 @@ state_events AS (
 
 label_events AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         unique_key,
         project_id,

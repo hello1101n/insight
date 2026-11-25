@@ -20,13 +20,13 @@ WITH bronze AS (
         FROM {{ this }}
         GROUP BY insight_tenant_id, source_id
     ) AS w
-        ON w.insight_tenant_id = b.insight_tenant_id AND w.source_id = b.source_id
+        ON w.insight_tenant_id = {{ bronze_tenant('b.insight_tenant_id') }} AND w.source_id = b.source_id
     WHERE b._airbyte_extracted_at > coalesce(w.watermark, toDateTime64(0, 3))
     {% endif %}
 )
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     toInt64(COALESCE(launch_id, 0)) AS launch_id,
