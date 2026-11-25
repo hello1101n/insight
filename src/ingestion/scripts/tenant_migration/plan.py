@@ -67,6 +67,16 @@ def survey_table(ch: ClickHouse, table: Table, tenants: Tenants) -> TablePlan:
     )
 
 
+def stored_tenants(ch: ClickHouse, found: list[Table | Unfit]) -> set[str]:
+    """Every non-empty tenant the readable tables hold; a handful per table is enough to tell one from several."""
+    stored: set[str] = set()
+    for table in (t for t in found if isinstance(t, Table)):
+        tenant = keys.tenant_value(table.columns.tenant)
+        rows = ch.rows(f"SELECT DISTINCT {tenant} AS t FROM {table.sql()} WHERE t != '' LIMIT {FOREIGN_SAMPLE}")
+        stored.update(value for (value,) in rows)
+    return stored
+
+
 def refusals(tables: list[TablePlan], unfit_with_rows: list[tuple[Unfit, int]]) -> list[str]:
     """Every reason the plan cannot be applied; empty when it can."""
     reasons = [f"{u.relation}: {n} row(s), and {u.reason}" for u, n in unfit_with_rows]

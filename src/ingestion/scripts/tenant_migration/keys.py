@@ -49,6 +49,14 @@ class Tenants:
         return tuple(t for t in dict.fromkeys((self.old, "")) if t != self.new)
 
 
+def old_tenant_from(stored: set[str], new: str) -> str:
+    """The one tenant the stored rows carry besides the new one; the new one when there is none."""
+    others = sorted(stored - {new})
+    if len(others) > 1:
+        raise TenantError(f"the stored rows hold several tenants ({', '.join(others)}) — this install keeps several")
+    return others[0] if others else new
+
+
 @dataclass(frozen=True)
 class Columns:
     """The columns of one table the rewrite reads; `key` and `source` may be absent."""

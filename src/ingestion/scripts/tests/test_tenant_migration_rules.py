@@ -13,7 +13,7 @@ from tenant_migration import apply as migration
 from tenant_migration.apply import MigrationError, retarget
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
 from tenant_migration.inventory import RESTORE, Relation, Table, Unfit, classify
-from tenant_migration.keys import Columns, TenantError, Tenants
+from tenant_migration.keys import Columns, TenantError, Tenants, old_tenant_from
 from tenant_migration.plan import Plan, TablePlan, refusals
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
@@ -41,6 +41,20 @@ def test_an_old_tenant_equal_to_the_new_one_moves_only_the_empty_tenant() -> Non
     assert tenants.moving == ("",)
     assert tenants.empty_only
     assert not Tenants.parse(NEW, "example-legacy").empty_only
+
+
+@pytest.mark.parametrize(
+    ("stored", "old"),
+    [(set(), NEW), ({NEW}, NEW), ({"example-legacy"}, "example-legacy"), ({"example-legacy", NEW}, "example-legacy")],
+    ids=["no tenant stored", "only the uuid", "one old tenant", "old tenant beside the uuid"],
+)
+def test_the_old_tenant_is_the_one_the_rows_hold_besides_the_new_one(stored: set[str], old: str) -> None:
+    assert old_tenant_from(stored, NEW) == old
+
+
+def test_two_stored_tenants_besides_the_new_one_are_refused_and_named() -> None:
+    with pytest.raises(TenantError, match="several tenants \\(a-legacy, b-legacy\\)"):
+        old_tenant_from({"b-legacy", "a-legacy", NEW}, NEW)
 
 
 STRING = "Nullable(String)"

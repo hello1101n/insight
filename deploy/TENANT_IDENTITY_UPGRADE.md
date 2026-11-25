@@ -94,10 +94,10 @@ ClickHouse disk for a second copy of every migrated table until `finalize`.
   MariaDB stores to another tenant is not covered here.
 
 If `<OLD_TENANT>` already equals `<TENANT_UUID>`, do every step anyway, step 6
-included, with `--old-tenant <TENANT_UUID>`: the tool then moves only the rows
-with a NULL or empty tenant, and their keys, which dbt refuses to build over;
-rows already under `<TENANT_UUID>` stay. The previous release stamped identity
-inputs with a hashed tenant, which only the rebuild replaces.
+included: the tool then moves only the rows with a NULL or empty tenant, and
+their keys, which dbt refuses to build over; rows already under
+`<TENANT_UUID>` stay. The previous release stamped identity inputs with a
+hashed tenant, which only the rebuild replaces.
 
 ### 2. Prepare the migration tool
 
@@ -112,8 +112,17 @@ export CLICKHOUSE_URL=http://127.0.0.1:8123        # ClickHouse HTTP, e.g. throu
 export CLICKHOUSE_USER=<clickhouse.username>
 export CLICKHOUSE_PASSWORD="$(kubectl -n <NS> get secret insight-db-creds \
   -o jsonpath='{.data.clickhouse-password}' | base64 -d)"
-python3 -m tenant_migration plan --tenant <TENANT_UUID> --old-tenant <OLD_TENANT>
+export INSIGHT_TENANT_ID=<TENANT_UUID>             # authenticator.oidc.defaultTenantId, as the chart sets it
+python3 -m tenant_migration plan
 ```
+
+The tool takes both values from the install: the new tenant from
+`INSIGHT_TENANT_ID` (the install's config), and the old one from its data — the
+one tenant the stored rows hold besides `<TENANT_UUID>`, or `<TENANT_UUID>`
+itself when they hold no other, which moves only the empty tenant. `plan`
+prints both and where each came from: check them against step 1 before
+`apply`. Rows holding two other tenants are refused and named. `--tenant` and
+`--old-tenant` override either value.
 
 The user must be able to create, exchange and drop tables in `bronze_*`,
 `staging`, `silver`, `config` and `ingestion_history` — the chart's ClickHouse
@@ -202,8 +211,7 @@ deploy, or that deploy's loader writes the old tenant's rows again.
 ### 6. Migrate the stored tenant
 
 ```sh
-python3 -m tenant_migration apply --tenant <TENANT_UUID> --old-tenant <OLD_TENANT> \
-  --dump-dir <DUMP_DIR>
+python3 -m tenant_migration apply --dump-dir <DUMP_DIR>
 ```
 
 `<DUMP_DIR>` must not exist yet and must be on disk that outlives the window.
