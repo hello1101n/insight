@@ -27,6 +27,7 @@ from .api import (
     CONNECTORS_PREFIX,
     GATEWAY_API_PREFIXES,
     IDENTITY_PREFIX,
+    V3_PREFIX,
     ApiClient,
     ApiResponse,
     JsonValue,
@@ -36,6 +37,7 @@ from .api import (
     analytics_path,
     connectors_path,
     identity_path,
+    v3_path,
 )
 from .custom_catalogue import CustomBoard, CustomCatalogue, CustomWidget
 from .errors import (
@@ -150,6 +152,7 @@ __all__: Sequence[str] = (
     "SUPPORTED_GOLDEN_METRICS_VERSION",
     "SUPPORTED_MANIFEST_VERSION",
     "TOKEN_URL_ENV",
+    "V3_PREFIX",
     "ApiClient",
     "ApiResponse",
     "Capabilities",
@@ -198,6 +201,7 @@ __all__: Sequence[str] = (
     "resolve_by_realm_role",
     "resolve_endpoint",
     "scratch_name",
+    "v3_path",
     "verify_realm_roles",
     "wait_for",
     "wait_until",
