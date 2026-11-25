@@ -21,7 +21,7 @@
 -- predate the stamp is summed entire, as it was before this rule. #3362
 WITH diffstat_rows AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         repo_full_name,
         pr_id,
@@ -68,7 +68,7 @@ diff_stats AS (
 -- in its activity does.
 terminal_activity AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         repo_full_name,
         pr_id,
@@ -86,7 +86,7 @@ terminal_activity AS (
 -- vendor closed this silently" from one that merely means "someone commented".
 non_terminal_activity AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         repo_full_name,
         pr_id,
@@ -123,7 +123,7 @@ merge_commit_times AS (
         max(_airbyte_extracted_at) AS _airbyte_extracted_at
     FROM (
         SELECT
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id,
             arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,
             replaceRegexpOne(arrayElement(splitByChar('/', COALESCE(repository, '')), -1), '\\.git$', '') AS repo_slug,
@@ -156,7 +156,7 @@ merge_commit_times AS (
 )
 
 SELECT
-    pr.insight_tenant_id AS insight_tenant_id,
+    {{ bronze_tenant('pr.insight_tenant_id') }} AS insight_tenant_id,
     pr.source_id AS source_id,
     pr.unique_key AS unique_key,
     splitByChar('/', COALESCE(pr.repo_full_name, ''))[1] AS project_key,
@@ -247,24 +247,24 @@ SELECT
     ) AS _airbyte_extracted_at
 FROM {{ source('bronze_bitbucket_cloud', 'pull_requests') }} AS pr FINAL
 LEFT JOIN diff_stats AS ds
-    ON ds.insight_tenant_id = pr.insight_tenant_id
+    ON ds.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
     AND ds.source_id = pr.source_id
     AND ds.repo_full_name = pr.repo_full_name
     AND ds.pr_id = pr.id
 LEFT JOIN terminal_activity AS activity
-    ON activity.insight_tenant_id = pr.insight_tenant_id
+    ON activity.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
     AND activity.source_id = pr.source_id
     AND activity.repo_full_name = pr.repo_full_name
     AND activity.pr_id = pr.id
 LEFT JOIN non_terminal_activity AS seen
-    ON seen.insight_tenant_id = pr.insight_tenant_id
+    ON seen.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
     AND seen.source_id = pr.source_id
     AND seen.repo_full_name = pr.repo_full_name
     AND seen.pr_id = pr.id
 -- Scoped to the request's own repository: a 12-character prefix is a weak key,
 -- and a commit elsewhere that happens to share it is another repository's work.
 LEFT JOIN merge_commit_times AS merge_commit
-    ON merge_commit.insight_tenant_id = pr.insight_tenant_id
+    ON merge_commit.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
     AND merge_commit.source_id = pr.source_id
     AND merge_commit.project_key = splitByChar('/', COALESCE(pr.repo_full_name, ''))[1]
     AND merge_commit.repo_slug = splitByChar('/', COALESCE(pr.repo_full_name, ''))[2]

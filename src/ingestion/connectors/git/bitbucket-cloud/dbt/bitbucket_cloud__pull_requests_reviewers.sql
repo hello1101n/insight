@@ -12,7 +12,7 @@
 -- FINAL: a participant's state changes as people review, so a re-fetch within
 -- one sync can leave a pre-merge duplicate that ties the class dedup.
 SELECT
-    pr.insight_tenant_id,
+    {{ bronze_tenant('pr.insight_tenant_id') }} AS insight_tenant_id,
     pr.source_id,
     concat(
         COALESCE(pr.insight_tenant_id, ''), ':',

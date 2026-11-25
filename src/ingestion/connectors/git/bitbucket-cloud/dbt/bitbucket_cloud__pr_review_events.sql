@@ -25,7 +25,7 @@ events AS (
     -- duplicates the comments stream without the comment's own id — both
     -- stay out.
     SELECT
-        a.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('a.insight_tenant_id') }} AS insight_tenant_id,
         a.source_id AS source_id,
         a.unique_key AS unique_key,
         splitByChar('/', COALESCE(a.repo_full_name, ''))[1] AS project_key,
@@ -45,7 +45,7 @@ events AS (
     UNION ALL
 
     SELECT
-        c.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('c.insight_tenant_id') }} AS insight_tenant_id,
         c.source_id AS source_id,
         c.unique_key AS unique_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,

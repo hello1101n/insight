@@ -25,7 +25,7 @@ WITH walked_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'commits') }} FINAL
@@ -40,7 +40,7 @@ pull_request_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'pull_request_commits') }} FINAL
