@@ -25,14 +25,12 @@ _catalogue_source_count() {
 _catalogue_tenants_select() {
   local bronze
   local shared
-  local tenant
+  local tenant=insight_tenant_id
   bronze="$(ch_scalar "SELECT count() FROM system.tables WHERE database = 'bronze_jira' AND name = 'jira_fields'")" || return 1
   if [[ "${bronze}" -eq 0 ]]; then
     echo "SELECT '' AS insight_source_id, '' AS insight_tenant_id WHERE 0"
     return 0
   fi
-  # Bronze says `tenant_id` until `tenant_migration` renames it.
-  tenant="$(ch_tenant_column bronze_jira jira_fields)" || return 1
   shared="$(ch_scalar "SELECT count() FROM (
       SELECT COALESCE(source_id, '') AS insight_source_id
       FROM bronze_jira.jira_fields
