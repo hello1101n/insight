@@ -111,11 +111,24 @@ fn cases() -> [Case; 5] {
         },
         Case {
             widget: "over-a-table",
-            metric: per_team(
-                "ci_runs",
-                &json!({ "column": "duration_s", "type": "int", "agg": "avg", "as_name": "wait", "unit": "s" }),
-            ),
-            percents: None,
+            metric: json!({
+                "database": "silver",
+                "table": "class_git_ci_runs",
+                "time": { "column": "created_at" },
+                "fields": [
+                    { "column": "pipeline_name", "type": "string", "as_name": "pipeline_name" },
+                    { "column": "run_id", "type": "int", "agg": "count", "as_name": "runs" },
+                    {
+                        "column": "run_id", "type": "int", "agg": "count", "as_name": "failed",
+                        "when": [{ "column": "outcome", "type": "string", "op": "eq", "value": "failure" }]
+                    },
+                    { "divide": ["failed", "runs"], "type": "float", "as_name": "failure_share", "percent": true },
+                    { "column": "duration_s", "type": "int", "agg": "avg", "as_name": "wait", "unit": "s" }
+                ],
+                "group_by": ["pipeline_name"],
+                "order_by": { "field": "pipeline_name" }
+            }),
+            percents: Some(json!(["failure_share"])),
             units: Some(json!({ "wait": "s" })),
         },
         Case {
