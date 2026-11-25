@@ -84,10 +84,10 @@ function reportFailure({
   reason,
 }: CellFailureReport): void {
   const current = dashboardId === shown.dashboardId;
-  Sentry.captureMessage("A FrontX dashboard cell failed.", {
+  // WORKAROUND: Sentry drops an event with the same message and fingerprint as the event before it, so the message names the cell.
+  Sentry.captureMessage(`A FrontX dashboard cell failed: ${widgetId}`, {
     level: "error",
-    // WORKAROUND: Sentry drops an event with the same message and fingerprint as the event before it, so each cell gets its own fingerprint.
-    fingerprint: ["frontx-cell-failure", reason.kind, widgetId],
+    fingerprint: ["frontx-cell-failure", reason.kind],
     tags: {
       "frontx.failure_kind": reason.kind,
       "frontx.role": role,

@@ -355,14 +355,10 @@ describe("FrontxBoard", () => {
     const reports = vi.mocked(Sentry.captureMessage).mock.calls;
     expect(reports).toEqual([
       [
-        "A FrontX dashboard cell failed.",
+        `A FrontX dashboard cell failed: ${cell.larger_view!.id}`,
         {
           level: "error",
-          fingerprint: [
-            "frontx-cell-failure",
-            "transform",
-            cell.larger_view!.id,
-          ],
+          fingerprint: ["frontx-cell-failure", "transform"],
           tags: {
             "frontx.failure_kind": "transform",
             "frontx.role": "larger_view",
@@ -373,10 +369,10 @@ describe("FrontxBoard", () => {
         },
       ],
       [
-        "A FrontX dashboard cell failed.",
+        "A FrontX dashboard cell failed: another-widget",
         {
           level: "error",
-          fingerprint: ["frontx-cell-failure", "transform", "another-widget"],
+          fingerprint: ["frontx-cell-failure", "transform"],
           tags: {
             "frontx.failure_kind": "transform",
             "frontx.role": "larger_view",
