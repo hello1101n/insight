@@ -38,8 +38,11 @@ WITH history AS (
     {% endif %}
 ),
 
+-- Guarded here, not only in the output: every join below compares this tenant,
+-- and a NULL one would otherwise just fail to match and drop out silently.
 current_users AS (
-    SELECT * FROM {{ source('bronze_active_directory', 'users') }}
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id)
+    FROM {{ source('bronze_active_directory', 'users') }}
 ),
 
 manager_changes AS (
@@ -118,6 +121,7 @@ manager_email_removed AS (
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -143,6 +147,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
@@ -168,6 +173,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -192,6 +198,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
@@ -216,6 +223,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -241,6 +249,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',

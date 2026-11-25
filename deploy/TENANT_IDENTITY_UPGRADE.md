@@ -9,6 +9,11 @@ old `ingestion.reconcile.tenantId` (often not a UUID) moves to it on its next
 deploy, by the chart's hooks. Nothing is done by hand except the final
 [clean-up](#once-the-stand-is-proven-drop-the-backups).
 
+dbt reads every Bronze tenant through `bronze_tenant()`, which lowercases it. A
+stored tenant that is not lowercase would get new keys and be re-read from the
+watermark epoch; after the cutover every stored tenant is the lowercase UUID, so
+this does not arise.
+
 ## Deploy as usual
 
 1. Bump the version.
