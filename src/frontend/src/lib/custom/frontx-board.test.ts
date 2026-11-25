@@ -179,6 +179,25 @@ describe("frontxBoard", () => {
     ).toEqual(ids);
   });
 
+  it("keeps each cell's ids when an item goes in before it", () => {
+    const items: DashboardItem[] = [
+      { heading: "Throughput" },
+      { text: "Some words." },
+      { widget: "line" },
+      { widget: "stat" },
+      { widget: "line" },
+      { text: "Some words." },
+    ];
+    const idsOf = (drawn: ReturnType<typeof cells>) =>
+      drawn.map((cell) => [cell.widget.id, cell.larger_view?.id ?? null]);
+
+    const before = idsOf(cells(items));
+    const after = idsOf(cells([{ text: "New first line." }, ...items]));
+
+    expect(new Set(before.flat().filter(Boolean)).size).toBe(8);
+    expect(after.slice(1)).toEqual(before);
+  });
+
   it("sends the range only for a widget with a clock on a board with time ranges", () => {
     const [line, pie] = cells(
       [{ widget: "line" }, { widget: "pie" }],

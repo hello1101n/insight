@@ -15,6 +15,7 @@ import catalog from "@gears-frontx/frontx-dashboard-root/served/catalog.gts.json
 
 import {
   dashboardWidgetPath,
+  type DashboardItem,
   type DashboardRead,
   type DashboardWidget,
   type MetricResult,
@@ -235,13 +236,13 @@ function drawn(widget: Widget, percents: readonly string[]): Drawn {
 function widgetCell(
   dashboard: string,
   widget: DashboardWidget,
-  index: number,
+  key: string,
   windowed: boolean
 ): DashboardCell {
   const shape = drawn(widget.body, widget.percents ?? []);
   const title = widget.body.title ?? widget.name;
   const instance = (role: string): WidgetInstance => ({
-    id: dataWidgetId(shape.type, `${dashboard}/${index}/${widget.id}/${role}`),
+    id: dataWidgetId(shape.type, `${dashboard}/${key}/${role}`),
     title,
     ...(windowed && !widget.clock ? { description: "All time" } : {}),
     render: shape.render,
@@ -266,7 +267,7 @@ function widgetCell(
 // INVARIANT: a markdown_card refuses an empty body, and a blank Insight text shows nothing.
 function proseCells(
   dashboard: string,
-  index: number,
+  key: string,
   text: string,
   body = text
 ): DashboardCell[] {
@@ -277,11 +278,23 @@ function proseCells(
       size: "large",
       frame: false,
       widget: {
-        id: markdownId(`${dashboard}/${index}/prose`),
+        id: markdownId(`${dashboard}/${key}`),
         render: { body },
       },
     },
   ];
+}
+
+// INVARIANT: a cell id comes from its item and the item's repeat count, not its position, so an insert keeps the other cells drawn.
+function itemKeys(items: DashboardItem[]): string[] {
+  const seen = new Map<string, number>();
+
+  return items.map((item) => {
+    const key = JSON.stringify(item);
+    const repeat = seen.get(key) ?? 0;
+    seen.set(key, repeat + 1);
+    return `${key}/${repeat}`;
+  });
 }
 
 export function frontxBoard(
@@ -292,14 +305,18 @@ export function frontxBoard(
   const byId = new Map(widgets.map((widget) => [widget.id, widget]));
   const windowed = (read.body.time_ranges ?? []).length > 0;
 
-  const cells = dashboardItems(read.body).flatMap((item, index) => {
+  const items = dashboardItems(read.body);
+  const keys = itemKeys(items);
+
+  const cells = items.flatMap((item, index) => {
+    const key = keys[index];
     if ("heading" in item) {
-      return proseCells(id, index, item.heading, `### ${item.heading}`);
+      return proseCells(id, key, item.heading, `### ${item.heading}`);
     }
-    if ("text" in item) return proseCells(id, index, item.text);
+    if ("text" in item) return proseCells(id, key, item.text);
 
     const widget = byId.get(item.widget);
-    return widget ? [widgetCell(id, widget, index, windowed)] : [];
+    return widget ? [widgetCell(id, widget, key, windowed)] : [];
   });
 
   const dashboardId = `${DASHBOARD_TYPE_ID}${uuidv5(id, NAMESPACE)}`;
