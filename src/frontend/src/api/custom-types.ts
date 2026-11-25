@@ -327,10 +327,13 @@ export interface DatasetRecords {
   limit: number;
 }
 
+export type DurationUnit = "ms" | "s" | "min" | "h" | "d";
+
 export interface MetricResult {
   columns: string[];
   rows: unknown[][];
   percents?: string[];
+  units?: Partial<Record<string, DurationUnit>>;
 }
 
 export type DrilldownSort = MetricEvidenceSort;
@@ -346,6 +349,7 @@ export interface DrilldownRequest {
 export interface DrilldownColumn extends MetricEvidenceColumn {
   sortable: boolean;
   percent: boolean;
+  unit?: DurationUnit | null;
   exact: boolean;
 }
 

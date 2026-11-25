@@ -53,7 +53,7 @@ export function CustomLineChart({
         <SeriesAxes
           x={x}
           categories={data.map((point) => point[x])}
-          unit={unitFor(result.percents, y)}
+          unit={unitFor(result, y)}
         />
         {stacked && (
           <ChartLegend

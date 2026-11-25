@@ -4,6 +4,7 @@ import {
   type DrilldownRow,
 } from "@/api/custom-client";
 import type { MetricEvidenceRow } from "@/api/metric-drilldown-client";
+import { durationText } from "@/lib/custom/duration";
 
 const URL_CELL = /^https?:\/\/\S+$/;
 
@@ -32,6 +33,10 @@ export function drawable(
 }
 
 function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
+  if (column.unit && typeof value === "number") {
+    return durationText(value, column.unit);
+  }
+
   const fraction = typeof value === "number" && !Number.isInteger(value);
   const shown = fraction && !column.exact ? ROUNDED.format(value) : value;
 

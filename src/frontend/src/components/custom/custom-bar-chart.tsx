@@ -37,7 +37,7 @@ export function CustomBarChart({
   fillHeight,
   onPointClick,
 }: CustomBarChartProps) {
-  const unit = unitFor(result.percents, y);
+  const unit = unitFor(result, y);
   const {
     rows: data,
     series: segments,
@@ -102,7 +102,10 @@ export function CustomBarChart({
                 position={horizontal ? "right" : "top"}
                 className="fill-foreground"
                 fontSize={11}
-                formatter={(value) => compactNumber(value, unit)}
+                // WORKAROUND: a Recharts label wraps at a space to the bar's width, so a two-part duration keeps a no-break space.
+                formatter={(value) =>
+                  compactNumber(value, unit).replace(" ", " ")
+                }
               />
             )}
           </ChartBar>

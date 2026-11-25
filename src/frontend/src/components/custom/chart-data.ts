@@ -145,11 +145,14 @@ export function funnelStages(
   const [first] = projected(result, stages).rows;
   const all = (marked: string[] | undefined) =>
     stages.every((stage) => marked?.includes(stage));
+  const unit = result.units?.[stages[0] ?? ""];
+  const shared = stages.every((stage) => result.units?.[stage] === unit);
 
   return {
     columns: [FUNNEL_STAGE, FUNNEL_VALUE],
     rows: stages.map((stage, index) => [stage, first?.[index] ?? null]),
     ...(all(result.percents) ? { percents: [FUNNEL_VALUE] } : {}),
+    ...(unit && shared ? { units: { [FUNNEL_VALUE]: unit } } : {}),
   };
 }
 

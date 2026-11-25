@@ -56,9 +56,9 @@ export function CustomScatterChart({
       { label: group.label, color: chartColor(index) },
     ])
   );
-  const xUnit = unitFor(result.percents, x);
-  const yUnit = unitFor(result.percents, y);
-  const sizeUnit = size ? unitFor(result.percents, size) : "";
+  const xUnit = unitFor(result, x);
+  const yUnit = unitFor(result, y);
+  const sizeUnit = size ? unitFor(result, size) : "";
 
   return (
     <ChartFrame

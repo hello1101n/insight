@@ -17,6 +17,7 @@ import {
   groupedNumber,
   shortDate,
   spansYears,
+  type ValueUnit,
 } from "@/components/custom/chart-format";
 import { cn } from "@/lib/utils";
 
@@ -57,7 +58,7 @@ export function SeriesAxes({
 }: {
   x: string;
   categories: unknown[];
-  unit?: string;
+  unit?: ValueUnit;
   horizontal?: boolean;
   share?: boolean;
 }) {

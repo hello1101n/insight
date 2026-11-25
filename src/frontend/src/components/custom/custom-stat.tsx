@@ -50,7 +50,7 @@ export function CustomStat({
   compare,
   previous,
 }: CustomStatProps) {
-  const unit = unitFor(result.percents, value);
+  const unit = unitFor(result, value);
   const shown = figure(result, value);
   const delta = compare
     ? change(

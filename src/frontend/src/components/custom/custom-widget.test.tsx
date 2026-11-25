@@ -1172,3 +1172,36 @@ describe("<CustomWidget> new types", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("draws merged");
   });
 });
+
+describe("<CustomWidget> durations", () => {
+  it("writes a duration stat as at most two parts", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "stat", metric: "m", value: "lead" }}
+        result={{ columns: ["lead"], rows: [[52]], units: { lead: "h" } }}
+      />
+    );
+
+    expect(screen.getByText("2d 4h")).toBeInTheDocument();
+  });
+
+  it("writes each duration cell of a table, and leaves the other numbers", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "table",
+          metric: "m",
+          columns: ["stage", "p50", "runs"],
+        }}
+        result={{
+          columns: ["stage", "p50", "runs"],
+          rows: [["build", 200, 1200]],
+          units: { p50: "min" },
+        }}
+      />
+    );
+
+    expect(screen.getByRole("cell", { name: "3h 20m" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "1,200" })).toBeInTheDocument();
+  });
+});
