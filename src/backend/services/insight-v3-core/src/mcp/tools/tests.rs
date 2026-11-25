@@ -309,6 +309,7 @@ fn put_widget_tells_a_client_how_to_stack_a_bar_and_label_its_totals() {
 
     assert!(description.contains("\"series\""), "{description}");
     assert!(description.contains("\"labels\": true"), "{description}");
+    assert!(description.contains("\"colors\""), "{description}");
 }
 
 #[test]

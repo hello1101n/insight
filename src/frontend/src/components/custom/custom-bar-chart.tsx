@@ -1,7 +1,7 @@
 import { BarChart, LabelList } from "recharts";
 
 import { ChartBar } from "@/components/chart-series";
-import type { MetricResult } from "@/api/custom-client";
+import type { MetricResult, SeriesTone } from "@/api/custom-client";
 import {
   type ChartConfig,
   pointClick,
@@ -24,6 +24,7 @@ export interface CustomBarChartProps {
   y: string;
   series?: string;
   labels?: boolean;
+  colors?: Record<string, SeriesTone>;
   fillHeight?: boolean;
   onPointClick?: () => void;
 }
@@ -34,6 +35,7 @@ export function CustomBarChart({
   y,
   series,
   labels = false,
+  colors,
   fillHeight,
   onPointClick,
 }: CustomBarChartProps) {
@@ -45,7 +47,7 @@ export function CustomBarChart({
     ? Object.fromEntries(
         segments.map(({ key, label }, index) => [
           key,
-          { label, color: stackColor(index) },
+          { label, color: stackColor(index, colors?.[label]) },
         ])
       )
     : seriesConfig(y);

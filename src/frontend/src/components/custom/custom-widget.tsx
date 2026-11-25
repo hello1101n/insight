@@ -116,6 +116,7 @@ export function CustomWidget({
             y={widget.y}
             series={widget.series}
             labels={widget.labels}
+            colors={widget.colors}
             fillHeight={fillHeight}
             onPointClick={onPointClick}
           />

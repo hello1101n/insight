@@ -21,12 +21,15 @@ export interface SeriesWidget extends WidgetBase {
   y: string;
 }
 
+export type SeriesTone = "success" | "danger" | "warning" | "info" | "neutral";
+
 export interface BarWidget extends WidgetBase {
   type: "bar";
   x: string;
   y: string;
   series?: string;
   labels?: boolean;
+  colors?: Record<string, SeriesTone>;
 }
 
 export interface StatWidget extends WidgetBase {
