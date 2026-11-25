@@ -16,7 +16,7 @@
 ) }}
 
 SELECT
-    coalesce(tenant_id, '')                                     AS tenant_key,
+    coalesce(insight_tenant_id, '')                                     AS tenant_key,
     coalesce(source_id, '')                                     AS source_key,
     lower(trim(userEmail))                                      AS email,
     toDate(fromUnixTimestamp64Milli(toInt64OrNull(timestamp)))   AS day,

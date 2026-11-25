@@ -11,7 +11,7 @@
 WITH src AS (
     {% for tbl in hubspot_bronze_tables('leads') %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         unique_key,
         id                                              AS lead_id,

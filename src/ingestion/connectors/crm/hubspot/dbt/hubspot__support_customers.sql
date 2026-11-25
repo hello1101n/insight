@@ -18,13 +18,13 @@ WITH tickets AS (
 ),
 
 requesters AS (
-    SELECT DISTINCT tenant_id, insight_source_id, requester_source_id AS contact_id
+    SELECT DISTINCT insight_tenant_id, insight_source_id, requester_source_id AS contact_id
     FROM tickets
     WHERE requester_source_id IS NOT NULL
 ),
 
 ticket_companies AS (
-    SELECT DISTINCT tenant_id, insight_source_id, org_source_id AS account_id
+    SELECT DISTINCT insight_tenant_id, insight_source_id, org_source_id AS account_id
     FROM tickets
     WHERE org_source_id IS NOT NULL
 ),
@@ -48,7 +48,7 @@ companies AS (
 
 customers AS (
     SELECT
-        c.tenant_id                                    AS tenant_id,
+        c.insight_tenant_id                                    AS insight_tenant_id,
         c.insight_source_id                            AS insight_source_id,
         c.contact_id                                   AS customer_id,
         'user'                                         AS kind,
@@ -56,12 +56,12 @@ customers AS (
         c._version                                     AS source_version
     FROM contacts AS c
     INNER JOIN requesters AS r
-        ON r.tenant_id = c.tenant_id AND r.insight_source_id = c.insight_source_id AND r.contact_id = c.contact_id
+        ON r.insight_tenant_id = c.insight_tenant_id AND r.insight_source_id = c.insight_source_id AND r.contact_id = c.contact_id
 
     UNION ALL
 
     SELECT
-        a.tenant_id,
+        a.insight_tenant_id,
         a.insight_source_id,
         a.account_id,
         'organization',
@@ -69,12 +69,12 @@ customers AS (
         a._version
     FROM companies AS a
     INNER JOIN ticket_companies AS t
-        ON t.tenant_id = a.tenant_id AND t.insight_source_id = a.insight_source_id AND t.account_id = a.account_id
+        ON t.insight_tenant_id = a.insight_tenant_id AND t.insight_source_id = a.insight_source_id AND t.account_id = a.account_id
 )
 
 SELECT
     {{ hubspot_support_key(['kind', 'customer_id']) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     customer_id,

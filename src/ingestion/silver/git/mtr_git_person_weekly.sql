@@ -24,12 +24,12 @@
 -- value (empty string for non-Nullable String, 1970-01-01 for Date) instead
 -- of NULL after FOJ. A subsequent `coalesce(commits.person_key, …)` then
 -- picks the default and the joining key is lost. We anchor on the union of
--- all (tenant_id, person_key, week) tuples and LEFT JOIN each metric CTE
+-- all (insight_tenant_id, person_key, week) tuples and LEFT JOIN each metric CTE
 -- onto it, which keeps the join key authoritative on the anchor side.
 
 WITH commits AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         person_key,
         week,
         count() AS commits
@@ -37,11 +37,11 @@ WITH commits AS (
     WHERE is_merge_commit = 0
       AND person_key != ''
       AND date IS NOT NULL
-    GROUP BY tenant_id, person_key, week
+    GROUP BY insight_tenant_id, person_key, week
 ),
 loc AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         person_key,
         week,
         SUM(if(file_category = 'code', lines_added, 0)) AS code_loc,
@@ -51,17 +51,17 @@ loc AS (
     WHERE is_merge_commit = 0
       AND person_key != ''
       AND week IS NOT NULL
-    GROUP BY tenant_id, person_key, week
+    GROUP BY insight_tenant_id, person_key, week
 ),
 prs AS (
     SELECT
-        pr.tenant_id,
+        pr.insight_tenant_id,
         pr.person_key,
         coalesce(mc.week, toStartOfWeek(pr.closed_on, 1)) AS week,
         uniqExact(pr.unique_key) AS prs_merged
     FROM {{ ref('fct_git_pr') }} AS pr FINAL
     LEFT JOIN {{ ref('fct_git_commit') }} AS mc FINAL
-        ON  mc.tenant_id   = pr.tenant_id
+        ON  mc.insight_tenant_id   = pr.insight_tenant_id
         AND mc.source_id   = pr.source_id
         AND mc.project_key = pr.project_key
         AND mc.repo_slug   = pr.repo_slug
@@ -69,21 +69,21 @@ prs AS (
     WHERE pr.state_norm = 'merged'
       AND pr.closed_on IS NOT NULL
       AND pr.person_key != ''
-    GROUP BY pr.tenant_id, pr.person_key, week
+    GROUP BY pr.insight_tenant_id, pr.person_key, week
 ),
 all_keys AS (
-    SELECT tenant_id, person_key, week FROM commits
+    SELECT insight_tenant_id, person_key, week FROM commits
     UNION DISTINCT
-    SELECT tenant_id, person_key, week FROM loc
+    SELECT insight_tenant_id, person_key, week FROM loc
     UNION DISTINCT
-    SELECT tenant_id, person_key, week FROM prs
+    SELECT insight_tenant_id, person_key, week FROM prs
 )
 SELECT
-    ak.tenant_id                                                 AS tenant_id,
+    ak.insight_tenant_id                                                 AS insight_tenant_id,
     ak.person_key                                                AS person_key,
     ak.week                                                      AS week,
     concat(
-        coalesce(ak.tenant_id, ''),
+        coalesce(ak.insight_tenant_id, ''),
         '|',
         ak.person_key,
         '|',
@@ -95,6 +95,6 @@ SELECT
     coalesce(loc.spec_lines, 0)                                  AS spec_lines,
     coalesce(loc.config_loc, 0)                                  AS config_loc
 FROM all_keys ak
-LEFT JOIN commits USING (tenant_id, person_key, week)
-LEFT JOIN loc     USING (tenant_id, person_key, week)
-LEFT JOIN prs     USING (tenant_id, person_key, week)
+LEFT JOIN commits USING (insight_tenant_id, person_key, week)
+LEFT JOIN loc     USING (insight_tenant_id, person_key, week)
+LEFT JOIN prs     USING (insight_tenant_id, person_key, week)

@@ -12,7 +12,7 @@
 -- observed, each stamped with the updated_at that carried it. Readers take
 -- the latest event per deployment_id (argMax on created_at, event_id).
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     COALESCE(repo_path, '') AS repo_full_name,

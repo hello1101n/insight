@@ -13,7 +13,7 @@
 WITH owners AS (
     {% for tbl in hubspot_bronze_tables('owners') %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         unique_key,
         id                                              AS owner_id,
@@ -27,7 +27,7 @@ WITH owners AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     owner_id,

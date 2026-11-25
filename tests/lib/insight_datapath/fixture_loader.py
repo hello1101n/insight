@@ -278,7 +278,7 @@ def _payload_or_refuse(
 #: Columns that are the warehouse's framing rather than the source's payload.
 #: The connector builds `raw_data` from the report row and adds these alongside
 #: it, so a fixture's payload must leave them out too.
-_PAYLOAD_FRAMING = frozenset({"raw_data", "tenant_id", "source_id", "unique_key"})
+_PAYLOAD_FRAMING = frozenset({"raw_data", "insight_tenant_id", "source_id", "unique_key"})
 
 
 def _with_derived_payload(record: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:

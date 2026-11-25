@@ -10,7 +10,7 @@
 ) }}
 
 SELECT
-    fc.tenant_id,
+    fc.insight_tenant_id,
     fc.source_id,
     fc.unique_key,
     fc.project_key,
@@ -44,13 +44,13 @@ FROM (
     FROM {{ ref('class_git_file_changes') }} AS fc FINAL
     -- INVARIANT: the class mixes connectors with independent `_version` clocks, so the boundary is per source.
     -- Applied before the commit join: a third relation in the outer join renames its columns `fc.*`.
-    {{ silver_incremental_watermark(['tenant_id', 'source_id', 'data_source'], alias='fc') }}
+    {{ silver_incremental_watermark(['insight_tenant_id', 'source_id', 'data_source'], alias='fc') }}
 ) AS fc
 -- INNER JOIN: a file change without a matching commit cannot be attributed
 -- to a person/week and has no usable downstream role. Enforcing correspondence
 -- here avoids silent NULL-propagation through WHERE filters in metric models.
 INNER JOIN {{ ref('fct_git_commit') }} AS c FINAL
-    ON  c.tenant_id   = fc.tenant_id
+    ON  c.insight_tenant_id   = fc.insight_tenant_id
     AND c.source_id   = fc.source_id
     AND c.project_key = fc.project_key
     AND c.repo_slug   = fc.repo_slug

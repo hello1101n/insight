@@ -60,7 +60,7 @@ WITH latest_per_key AS (
 )
 
 SELECT
-    tenant_id                                           AS insight_tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     invoice_id,
@@ -123,7 +123,7 @@ FROM latest_per_key
       FROM {{ this }}
       GROUP BY insight_tenant_id, source_id
   ) AS watermarks
-      ON latest_per_key.tenant_id = watermarks.insight_tenant_id
+      ON latest_per_key.insight_tenant_id = watermarks.insight_tenant_id
      AND latest_per_key.source_id = watermarks.watermark_source_id
   WHERE latest_per_key._airbyte_extracted_at
       > coalesce(watermarks.max_collected, toDateTime64('1970-01-01 00:00:00', 3))

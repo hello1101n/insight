@@ -180,8 +180,16 @@ def test_activity_issues_batch_the_feed_targets_into_one_search(http_mocker: Htt
         "afterCursor": None,
         "hasAfter": False,
         "activities": [
-            {"id": "2-1.0-1", "timestamp": 1782820800000, "target": {"id": "2-1", "idReadable": "EX-1", "$type": "Issue"}},
-            {"id": "2-1.0-2", "timestamp": 1782824400000, "target": {"id": "2-1", "idReadable": "EX-1", "$type": "Issue"}},
+            {
+                "id": "2-1.0-1",
+                "timestamp": 1782820800000,
+                "target": {"id": "2-1", "idReadable": "EX-1", "$type": "Issue"},
+            },
+            {
+                "id": "2-1.0-2",
+                "timestamp": 1782824400000,
+                "target": {"id": "2-1", "idReadable": "EX-1", "$type": "Issue"},
+            },
             {"id": "9-1.0-1", "timestamp": 1782824400000, "target": {"id": "9-1", "$type": "Article"}},
             {"id": "2-9.0-1", "timestamp": 1782824400000, "target": {"id": "2-9", "$type": "Issue"}},
         ],
@@ -234,7 +242,10 @@ def test_a_cut_off_activities_page_fails_the_read_instead_of_ending_the_slice(ht
     cut_off = json.dumps({**first, "hasAfter": True})[:-40]
     http_mocker.get(
         HttpRequest(f"{API_URL}/activitiesPage", query_params=ANY_QUERY_PARAMS),
-        [HttpResponse(body=json.dumps({**first, "hasAfter": True}), status_code=200), HttpResponse(body=cut_off, status_code=200)],
+        [
+            HttpResponse(body=json.dumps({**first, "hasAfter": True}), status_code=200),
+            HttpResponse(body=cut_off, status_code=200),
+        ],
     )
 
     output = read_stream(_CONNECTOR, "youtrack_activities", config, expecting_exception=True)
@@ -303,7 +314,7 @@ def test_issue_sprints_paginate_the_issue_membership_endpoint(http_mocker: HttpM
         "source_id",
         "sprint_id",
         "sprint_json",
-        "tenant_id",
+        "insight_tenant_id",
         "unique_key",
     }
     assert json.loads(first_record["sprint_json"])["goal"] == "Synthetic sprint goal"

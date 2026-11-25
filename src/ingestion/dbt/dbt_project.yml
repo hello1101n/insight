@@ -18,6 +18,12 @@ clean-targets:
   - dbt_packages
 
 vars:
+  # What a Bronze row with a NULL, empty or non-UUID tenant (or a staging row
+  # with a NULL unique_key) does: 'throw' fails the model's build, 'warn' keeps
+  # the row for the `not_null`/`not_empty` tenant tests to report. Read only by
+  # macros/bronze_tenant.sql.
+  bronze_tenant_on_invalid: throw
+
   # ClickHouse database gold serving relations materialize into. Single flip
   # point for the deferred `insight` -> `presentation` relocation (#1979): the
   # gold macros and per-model configs read this rather than a literal.

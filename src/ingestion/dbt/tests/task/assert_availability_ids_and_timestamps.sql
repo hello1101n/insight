@@ -17,7 +17,7 @@
 -- defect class the epic's automated validation is required to detect.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     jira_id,
     availability

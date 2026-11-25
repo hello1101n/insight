@@ -8,7 +8,7 @@
 ) }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     arrayStringConcat(arrayPopBack(splitByChar('/', COALESCE(repo_path, ''))), '/') AS project_key,

@@ -124,7 +124,7 @@ The connection check shows the plan, the streams that the connector will read, a
 
 Reconcile adds two fields to the connector configuration. These fields are not in the Secret data:
 
-- `insight_tenant_id`: the Helm value `ingestion.reconcile.tenantId`. There is one value for each installation.
+- `insight_tenant_id`: the Helm value `authenticator.oidc.defaultTenantId`. There is one value for each installation.
 - `insight_source_id`: the value of the `source-id` annotation.
 
 Schedule: each day at **04:00 UTC**. The descriptor sets the schedule. The Secret annotation `insight.cyberfabric.com/schedule` replaces it.

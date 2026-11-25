@@ -9,7 +9,7 @@
     }
 ) }}
 
-SELECT insight_source_id, issue_id, field_id, event_order
+SELECT insight_tenant_id, insight_source_id, issue_id, field_id, event_order
 FROM {{ ref('youtrack__task_field_history') }} FINAL
-GROUP BY insight_source_id, issue_id, field_id, event_order
+GROUP BY insight_tenant_id, insight_source_id, issue_id, field_id, event_order
 HAVING count() > 1

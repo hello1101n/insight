@@ -30,10 +30,10 @@
 -- `total_chat_messages`.
 
 SELECT
-    m.tenant_id,
+    m.insight_tenant_id,
     m.source_id AS insight_source_id,
     MD5(concat(
-        m.tenant_id, '-',
+        m.insight_tenant_id, '-',
         m.source_id, '-',
         lower(u.email), '-',
         toString(toDate(parseDateTimeBestEffortOrNull(m.created_at)))
@@ -67,10 +67,10 @@ FROM (
     FROM {{ source('bronze_zulip_proxy', 'messages') }}
     WHERE parseDateTimeBestEffortOrNull(created_at) IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY tenant_id, source_id, uniq
+    LIMIT 1 BY insight_tenant_id, source_id, uniq
 ) AS m
 LEFT JOIN {{ source('bronze_zulip_proxy', 'users') }} AS u FINAL
-    ON u.tenant_id = m.tenant_id
+    ON u.insight_tenant_id = m.insight_tenant_id
     AND u.source_id = m.source_id
     AND u.id = m.sender_id
 WHERE u.email IS NOT NULL AND u.email != ''
@@ -92,7 +92,7 @@ WHERE u.email IS NOT NULL AND u.email != ''
   )
 {% endif %}
 GROUP BY
-    m.tenant_id,
+    m.insight_tenant_id,
     m.source_id,
     lower(u.email),
     toDate(parseDateTimeBestEffortOrNull(m.created_at))

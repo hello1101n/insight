@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'commit_hash'],
+    order_by=['insight_tenant_id', 'data_source', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -19,7 +19,7 @@
 -- default branch of any connected repository counts. #3354
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     project_key,
     repo_slug,
@@ -43,8 +43,8 @@ SELECT
     -- sit in different repositories.
     if(
         {{ git_on_default_branch('is_default_branch') }}
-            OR (tenant_id, data_source, commit_hash) IN (
-                SELECT tenant_id, data_source, commit_hash
+            OR (insight_tenant_id, data_source, commit_hash) IN (
+                SELECT insight_tenant_id, data_source, commit_hash
                 FROM {{ ref('git_default_branch_commits') }}
             ),
         'default',
@@ -76,8 +76,8 @@ WHERE trimBoth(author_email) != ''
   -- later carrier of a patch an earlier commit authored) re-applies work
   -- counted on another commit, so it contributes neither a commit nor —
   -- because every file-change CTE attaches through this set — any lines.
-  AND (tenant_id, data_source, commit_hash) NOT IN (
-      SELECT tenant_id, data_source, commit_hash
+  AND (insight_tenant_id, data_source, commit_hash) NOT IN (
+      SELECT insight_tenant_id, data_source, commit_hash
       FROM {{ ref('git_derived_commits') }}
   )
 -- INVARIANT: a copy whose own repository shows the landing (its flag, or a
@@ -85,17 +85,17 @@ WHERE trimBoth(author_email) != ''
 -- repository dimension names where the work went whenever a copy can say;
 -- repository coordinates only break the remaining ties.
 ORDER BY
-    tenant_id,
+    insight_tenant_id,
     data_source,
     commit_hash,
     (
         {{ git_on_default_branch('is_default_branch') }}
-            OR (tenant_id, source_id, project_key, repo_slug, commit_hash) IN (
-                SELECT tenant_id, source_id, project_key, repo_slug, commit_hash
+            OR (insight_tenant_id, source_id, project_key, repo_slug, commit_hash) IN (
+                SELECT insight_tenant_id, source_id, project_key, repo_slug, commit_hash
                 FROM {{ ref('git_default_branch_commits') }}
             )
     ) DESC,
     source_id,
     project_key,
     repo_slug
-LIMIT 1 BY tenant_id, data_source, commit_hash
+LIMIT 1 BY insight_tenant_id, data_source, commit_hash

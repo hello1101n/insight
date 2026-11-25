@@ -11,16 +11,16 @@
 -- as well, so only the numbers that name a pull request are kept.
 WITH pull_request_numbers AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         repo_full_name,
         number,
         max(_airbyte_extracted_at) AS pull_request_extracted_at
     FROM {{ source('bronze_github', 'pull_requests') }} FINAL
-    GROUP BY tenant_id, source_id, repo_full_name, number
+    GROUP BY insight_tenant_id, source_id, repo_full_name, number
 )
 SELECT
-    c.tenant_id AS tenant_id,
+    c.insight_tenant_id AS insight_tenant_id,
     c.source_id AS source_id,
     c.unique_key AS unique_key,
     splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,
@@ -44,19 +44,19 @@ SELECT
     greatest(c._airbyte_extracted_at, p.pull_request_extracted_at) AS _airbyte_extracted_at
 FROM {{ source('bronze_github', 'pull_request_comments') }} AS c FINAL
 INNER JOIN pull_request_numbers AS p
-    ON p.tenant_id = c.tenant_id
+    ON p.insight_tenant_id = c.insight_tenant_id
     AND p.source_id = c.source_id
     AND p.repo_full_name = c.repo_full_name
     AND p.number = c.issue_number
 {% if is_incremental() %}
 WHERE greatest(c._airbyte_extracted_at, p.pull_request_extracted_at)
-    > {{ instance_incremental_watermark('_airbyte_extracted_at', ['c.tenant_id', 'c.source_id']) }}
+    > {{ instance_incremental_watermark('_airbyte_extracted_at', ['c.insight_tenant_id', 'c.source_id']) }}
 {% endif %}
 
 UNION ALL
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,

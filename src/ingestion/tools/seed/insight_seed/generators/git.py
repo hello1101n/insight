@@ -75,7 +75,7 @@ AIRBYTE_COLS = [
     "_airbyte_meta",
     "_airbyte_generation_id",
 ]
-IDENTITY_COLS = ["unique_key", "tenant_id", "source_id", "data_source", "collected_at"]
+IDENTITY_COLS = ["unique_key", "insight_tenant_id", "source_id", "data_source", "collected_at"]
 
 
 def _positioned(cols: list[str], fields: dict[str, object]) -> tuple[object, ...]:
@@ -88,7 +88,7 @@ def _envelope(tenant_uuid: str) -> dict[str, object]:
         "_airbyte_extracted_at": read_at,
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": tenant_uuid,
+        "insight_tenant_id": tenant_uuid,
         "source_id": SOURCE_ID,
         "data_source": "insight_github",
         "collected_at": read_at.isoformat(),

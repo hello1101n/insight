@@ -29,7 +29,7 @@ USERS_TABLE = "silver.class_task_users"
 def user(account: str, email: str | None) -> dict[str, Any]:
     return {
         "unique_key": f"{SOURCE}-{account}",
-        "tenant_id": TENANT,
+        "insight_tenant_id": TENANT,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "user_id": account,
@@ -43,6 +43,7 @@ def user(account: str, email: str | None) -> dict[str, Any]:
 def worklog(worklog_id: str, author: str, seconds: int) -> dict[str, Any]:
     return {
         "unique_key": f"{SOURCE}-worklog-{worklog_id}",
+        "insight_tenant_id": TENANT,
         "insight_source_id": SOURCE,
         "data_source": "jira",
         "worklog_id": worklog_id,

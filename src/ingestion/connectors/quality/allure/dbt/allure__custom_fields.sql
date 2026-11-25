@@ -9,7 +9,7 @@
 
 -- Object columns land as String or JSON depending on the installation; toString reads both.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     toInt64(COALESCE(projectId, 0)) AS project_id,

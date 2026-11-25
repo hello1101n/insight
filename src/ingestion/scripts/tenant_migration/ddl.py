@@ -7,7 +7,11 @@ every name is backquoted, and the only literal — a table comment — is escape
 
 from __future__ import annotations
 
-from tenant_migration.inventory import Relation
+import re
+
+from tenant_migration.inventory import OLD_TENANT_COLUMN, TENANT_COLUMN, Relation
+
+OLD_TENANT = re.compile(rf"(?<![A-Za-z0-9_]){OLD_TENANT_COLUMN}(?![A-Za-z0-9_])")
 
 
 def literal(value: str) -> str:
@@ -21,6 +25,11 @@ def show_create(rel: Relation) -> str:
 
 def create_like(rel: Relation, suffix: str) -> str:
     return f"CREATE TABLE {rel.sql(suffix)} AS {rel.sql()}"
+
+
+def tenant_renamed(create: str) -> str:
+    """A table's DDL with its tenant column named `insight_tenant_id`, in its definition and every key."""
+    return OLD_TENANT.sub(TENANT_COLUMN, create)
 
 
 def insert_rewritten(rel: Relation, suffix: str, replacements: str) -> str:

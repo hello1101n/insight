@@ -23,7 +23,7 @@ too, and re-seeding it would resurrect a value an operator removed.
 Mapping file format — TSV, one decision per line, `#` comments and blank lines
 ignored, optional header line:
 
-    tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  [note]
+    insight_tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  [note]
 
 `field` names what is standardized (e.g. `issue_type`); `target_value` must lie
 in that field's canonical domain. `display_name` is required: it records the
@@ -32,7 +32,7 @@ vendor value detectable.
 
 `defaults.tsv` format — same conventions, all columns required:
 
-    tenant_id  insight_source_id  field  default_value
+    insight_tenant_id  insight_source_id  field  default_value
 
 Two more reserved files carry the other operator-authored task tables, so a
 source whose vendor states neither its field roles nor its status categories
@@ -41,12 +41,12 @@ source whose vendor states neither its field roles nor its status categories
 `roles.tsv` lands in `config.task_field_roles` — which vendor field plays which
 metric role. All but `note` required:
 
-    tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  [note]
+    insight_tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  [note]
 
 `task-values.tsv` lands in `config.task_value_map` — the canonical category of
 one vendor value of a field, today the status lifecycle category:
 
-    tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  [note]
+    insight_tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  [note]
 
 The operator states business columns only. `valid_from` / `recorded_at` /
 `recorded_by` are the loader's, which is what makes a hand-written file unable
@@ -101,14 +101,14 @@ TSV_ESCAPES = str.maketrans(
     {"\\": "\\\\", "\b": "\\b", "\f": "\\f", "\r": "\\r", "\n": "\\n", "\t": "\\t", "\0": "\\0", "'": "\\'"}
 )
 
-KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field", "source_key")
+KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field", "source_key")
 VALUE_COLUMNS = ("display_name", "target_value", "note")
 MIN_COLUMNS = 7
 MAX_COLUMNS = 8
-DEFAULTS_COLUMNS = ("tenant_id", "insight_source_id", "field", "default_value")
-ROLE_KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field_id")
+DEFAULTS_COLUMNS = ("insight_tenant_id", "insight_source_id", "field", "default_value")
+ROLE_KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field_id")
 ROLE_VALUE_COLUMNS = ("role", "precedence", "value_unit", "unit_multiplier", "note")
-VALUE_KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field_id", "value_id")
+VALUE_KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field_id", "value_id")
 VALUE_VALUE_COLUMNS = ("value_display", "canonical_value", "note")
 
 # The roles gold matches (task_field_roles_current, task_issue_state); `ignored`
@@ -240,7 +240,8 @@ def _parse_files[RowT: Keyed](
             if header_allowed:
                 header_allowed = False
 
-                if fields[0].lower() == "tenant_id":
+                # `tenant_id` names the column in a bundle written before the warehouse renamed it.
+                if fields[0].lower() in ("insight_tenant_id", "tenant_id"):
                     continue
 
             problem = rejection(fields)
@@ -416,9 +417,9 @@ def insert_statement(mappings: Sequence[Mapping], *, recorded_by: str) -> str:
     structure = ", ".join(f"{column} String" for column in (*KEY_COLUMNS, *VALUE_COLUMNS))
     return (
         f"INSERT INTO {MAP_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field, source_key, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field, source_key, valid_from, recorded_at, "
         f"target_value, display_name, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field, source_key, "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field, source_key, "
         f"toDateTime64(0, 3), now64(3), target_value, display_name, note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -432,8 +433,8 @@ def defaults_insert_statement(defaults: Sequence[Default], *, recorded_by: str) 
     structure = ", ".join(f"{column} String" for column in DEFAULTS_COLUMNS)
     return (
         f"INSERT INTO {DEFAULTS_TABLE} "
-        f"(tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, field, toDateTime64(0, 3), now64(3), "
+        f"(insight_tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
+        f"SELECT insight_tenant_id, insight_source_id, field, toDateTime64(0, 3), now64(3), "
         f"default_value, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -450,9 +451,9 @@ def roles_insert_statement(roles: Sequence[Role], *, recorded_by: str) -> str:
     structure = ", ".join(f"{column} String" for column in (*ROLE_KEY_COLUMNS, *ROLE_VALUE_COLUMNS))
     return (
         f"INSERT INTO {ROLES_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, "
         f"role, precedence, value_unit, unit_multiplier, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field_id, toDateTime64(0, 3), now64(3), "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field_id, toDateTime64(0, 3), now64(3), "
         f"role, toUInt8(precedence), value_unit, toFloat64(unit_multiplier), note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -469,9 +470,9 @@ def task_values_insert_statement(values: Sequence[TaskValue], *, recorded_by: st
     structure = ", ".join(f"{column} String" for column in (*VALUE_KEY_COLUMNS, *VALUE_VALUE_COLUMNS))
     return (
         f"INSERT INTO {VALUES_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, "
         f"canonical_value, value_display, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field_id, value_id, toDateTime64(0, 3), now64(3), "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field_id, value_id, toDateTime64(0, 3), now64(3), "
         f"canonical_value, value_display, note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )

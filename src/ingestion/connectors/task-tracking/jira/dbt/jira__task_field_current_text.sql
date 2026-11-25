@@ -19,13 +19,14 @@
 -- may not swap it to the build side (#4370); the dedup is an `IN` filter.
 
 WITH long_text_fields AS (
-    SELECT insight_source_id, field_id
+    SELECT insight_tenant_id, insight_source_id, field_id
     FROM {{ ref('jira__task_field_kind') }}
     WHERE field_kind = 'long_text'
 ),
 
 current_bodies AS (
     SELECT
+        i.insight_tenant_id                                       AS insight_tenant_id,
         CAST(i.source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         kv.1                                              AS field_id,
@@ -33,19 +34,21 @@ current_bodies AS (
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
-        ON f.insight_source_id = CAST(i.source_id AS String)
+        ON f.insight_tenant_id = i.insight_tenant_id
+       AND f.insight_source_id = CAST(i.source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
-      -- Read-time dedup by the issue's stable key within a source.
+      -- Read-time dedup by the issue's stable key within a tenant's source.
       AND i._airbyte_raw_id IN (
           SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
           FROM {{ source('bronze_jira', 'jira_issue') }}
-          GROUP BY source_id, jira_id
+          GROUP BY insight_tenant_id, source_id, jira_id
       )
 )
 
 SELECT
-    concat(insight_source_id, '-jira-', issue_id, '-', field_id) AS unique_key,
+    concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-jira-', issue_id, '-', field_id) AS unique_key,
+    ifNull(insight_tenant_id, '')                                 AS insight_tenant_id,
     insight_source_id,
     CAST('jira' AS String)                                AS data_source,
     issue_id,

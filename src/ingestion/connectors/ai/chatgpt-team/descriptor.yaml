@@ -118,7 +118,10 @@ name: chatgpt-team
 #   capped at a fixed number of records: at the cap the CDK reads the day again
 #   once, then fails the sync. MINOR per ADR-0015: the manifest has to reach
 #   Airbyte, and no stored row changes meaning.
-version: "3.4.0"
+# 3.5.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "3.5.0"
 # Daily at 04:00 UTC — off-peak. The customer's proxy runs a single browser
 # instance, so we avoid scheduling chatgpt-team next to anything else that
 # may also hit it (same rationale as claude-team).

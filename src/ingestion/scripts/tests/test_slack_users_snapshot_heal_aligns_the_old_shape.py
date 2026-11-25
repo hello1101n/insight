@@ -29,12 +29,12 @@ MEMBERS = "bronze_slack.users"
 
 OWN_FLAGS = "coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
 ACTIVITY_GUESTS = (
-    " OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
+    " OR (insight_tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
     " FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id"
     " HAVING argMax(coalesce(is_guest, false), date))"
 )
 MEMBERS_BOTS_AND_GUESTS = (
-    " OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
+    " OR (insight_tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
     " FROM bronze_slack.users FINAL"
     " WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
 )
@@ -57,7 +57,9 @@ def function_body(name: str) -> str:
     return match.group(0)
 
 
-def run(tables: set[str], is_guest_type: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+def run(
+    tables: set[str], is_guest_type: str, tmp_path: Path, old_tenant: bool = False
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """`tables` names the tables the system.tables probe finds; `is_guest_type` answers the
     probe of the is_guest column ('' when absent, PROBE_FAILS fails it). Every
     other statement is logged and answered with nothing."""
@@ -73,6 +75,7 @@ _ch_http_query() {{
   printf '%s\\n;;\\n' "$sql" >> "$LOG"
   case "$sql" in
 {table_probes(tables)}
+    *"FROM system.columns"*"name='tenant_id'"*) {"printf 'Nullable(String)'" if old_tenant else ":"} ;;
     *"FROM system.columns"*"name='is_guest'"*)
       [[ "{is_guest_type}" == "{PROBE_FAILS}" ]] && {{ printf 'Code: 999. DB::Exception: Service unavailable\\n'; return 22; }}
       printf '%s' "{is_guest_type}" ;;
@@ -126,6 +129,13 @@ def test_the_old_shape_loses_its_bot_and_guest_versions_before_the_flag_goes(
     assert result.returncode == 0, result.stderr
     assert REACHED_THE_END in result.stdout
     assert alters(statements) == [delete(predicate), *SHAPE_ALTERS], f"tables: {sorted(tables)}"
+
+
+def test_a_snapshot_tenant_migration_has_not_renamed_yet_is_matched_on_tenant_id(tmp_path: Path) -> None:
+    result, statements = run({SNAPSHOT, ACTIVITY}, "Nullable(Bool)", tmp_path, old_tenant=True)
+
+    assert result.returncode == 0, result.stderr
+    assert alters(statements)[0] == delete(OWN_FLAGS + ACTIVITY_GUESTS.replace("(insight_tenant_id,", "(tenant_id,", 1))
 
 
 def test_a_converged_snapshot_gets_only_the_idempotent_shape_alters(tmp_path: Path) -> None:

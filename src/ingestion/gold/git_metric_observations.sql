@@ -1,7 +1,7 @@
 {{ metric_observations_table() }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -29,12 +29,12 @@ WHERE measure_key NOT IN (
     'pr_review_to_merge_hours',
     'pr_approval_to_merge_hours'
 )
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions
 
 UNION ALL
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -62,7 +62,7 @@ WHERE measure_key IN (
 UNION ALL
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -77,4 +77,4 @@ SELECT
     dimensions
 FROM {{ ref('git_metric_evidence') }}
 WHERE measure_key IN ('commit_day', 'default_commit_day')
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, subject_key, dimensions
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, subject_key, dimensions

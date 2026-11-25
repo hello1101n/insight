@@ -18,7 +18,7 @@ WITH polls AS (
 
 current_stages AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         pipeline_id,
         object_type,
@@ -33,9 +33,9 @@ current_stages AS (
 
 polled AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
-        concat(tenant_id, '-', source_id, '-', object_type, '-', JSONExtractString(stage, 'id')) AS unique_key,
+        concat(insight_tenant_id, '-', source_id, '-', object_type, '-', JSONExtractString(stage, 'id')) AS unique_key,
         JSONExtractString(stage, 'id')                  AS stage_id,
         pipeline_id,
         object_type,
@@ -63,14 +63,14 @@ polled AS (
 
 {% if is_incremental() %}
 latest_polls AS (
-    SELECT tenant_id, source_id, object_type, max(_version) AS polled_version
+    SELECT insight_tenant_id, source_id, object_type, max(_version) AS polled_version
     FROM polled
-    GROUP BY tenant_id, source_id, object_type
+    GROUP BY insight_tenant_id, source_id, object_type
 ),
 
 removed AS (
     SELECT
-        known.tenant_id,
+        known.insight_tenant_id,
         known.source_id,
         known.unique_key,
         known.stage_id,
@@ -89,7 +89,7 @@ removed AS (
         latest_polls.polled_version                     AS _version
     FROM {{ this }} AS known FINAL
     INNER JOIN latest_polls
-        ON latest_polls.tenant_id = known.tenant_id
+        ON latest_polls.insight_tenant_id = known.insight_tenant_id
        AND latest_polls.source_id = known.source_id
        AND latest_polls.object_type = known.object_type
     WHERE known.is_deleted = 0

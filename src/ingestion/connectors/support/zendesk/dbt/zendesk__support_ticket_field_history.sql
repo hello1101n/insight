@@ -10,13 +10,13 @@
 -- whole set (DESIGN.md §4) and is split into an array; `tags` already is one.
 
 WITH custom_cardinality AS (
-    SELECT tenant_id, insight_source_id, field_id, field_cardinality
+    SELECT insight_tenant_id, insight_source_id, field_id, field_cardinality
     FROM {{ ref('zendesk__support_field_definitions') }}
 ),
 
 field_changes AS (
     SELECT
-        i.tenant_id                                    AS tenant_id,
+        i.insight_tenant_id                                    AS insight_tenant_id,
         i.insight_source_id                            AS insight_source_id,
         i.ticket_id                                    AS ticket_id,
         i.audit_id                                     AS event_id,
@@ -34,7 +34,7 @@ field_changes AS (
         i.collected_at                                 AS collected_at
     FROM {{ ref('zendesk__ticket_event_items') }} AS i
     LEFT JOIN custom_cardinality AS d
-        ON d.tenant_id = i.tenant_id
+        ON d.insight_tenant_id = i.insight_tenant_id
        AND d.insight_source_id = i.insight_source_id
        AND d.field_id = i.field_key
     WHERE i.child_event_type IN ('Create', 'Change')
@@ -42,7 +42,7 @@ field_changes AS (
 
 merges AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'ticket_id'") }}     AS ticket_id,
         {{ zendesk_id('payload', "'id'") }}            AS event_id,
@@ -62,7 +62,7 @@ merges AS (
 
 deletions AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS ticket_id,
         concat('deleted-', {{ zendesk_id('payload', "'id'") }}) AS event_id,
@@ -90,7 +90,7 @@ events AS (
 
 SELECT
     {{ zendesk_key(['e.ticket_id', 'e.field_id', 'e.event_id', 'e.child_key']) }} AS unique_key,
-    e.tenant_id                                        AS tenant_id,
+    e.insight_tenant_id                                        AS insight_tenant_id,
     e.insight_source_id                                AS insight_source_id,
     'zendesk'                                          AS data_source,
     e.ticket_id                                        AS ticket_id,
@@ -106,7 +106,7 @@ SELECT
        nullIf(e.previous_value_raw, ''))               AS previous_value,
     e.event_at                                         AS event_at,
     toInt64(row_number() OVER (
-        PARTITION BY e.tenant_id, e.insight_source_id, e.ticket_id
+        PARTITION BY e.insight_tenant_id, e.insight_source_id, e.ticket_id
         ORDER BY e.event_at, toUInt64OrZero(e.event_id), e.child_index, e.field_id
     ))                                                 AS event_order,
     e.actor_id                                         AS actor_id,
@@ -116,6 +116,6 @@ SELECT
     {{ zendesk_version() }}                            AS _version
 FROM events AS e
 LEFT JOIN {{ ref('zendesk__user_kinds') }} AS k
-    ON k.tenant_id = e.tenant_id
+    ON k.insight_tenant_id = e.insight_tenant_id
    AND k.insight_source_id = e.insight_source_id
    AND k.user_id = e.actor_id

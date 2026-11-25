@@ -267,7 +267,7 @@ HubSpot owners feed `identity.identity_inputs` with `insight_source_type = 'hubs
 
 ### Example: open deals per owner at a point in time
 
-The state of a deal at a moment `T` is its last change at or before `T` in `class_crm_field_history`, falling back to the current value when the deal has no change in that window. A deal is open when that stage is not closing. The sketch shows the idea; a real query also reads with `FINAL`, scopes joins by `tenant_id` / `source_id` and drops deals deleted before `T`.
+The state of a deal at a moment `T` is its last change at or before `T` in `class_crm_field_history`, falling back to the current value when the deal has no change in that window. A deal is open when that stage is not closing. The sketch shows the idea; a real query also reads with `FINAL`, scopes joins by `insight_tenant_id` / `source_id` and drops deals deleted before `T`.
 
 ```sql
 SELECT owner_at_T, count() AS open_deals

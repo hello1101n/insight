@@ -195,7 +195,7 @@ class TestReadRecordsPipeline:
         out = list(deals_stream.read_records(sync_mode=None))
         assert len(out) == 2
         first = out[0]
-        assert first["tenant_id"] == TENANT
+        assert first["insight_tenant_id"] == TENANT
         assert first["source_id"] == SOURCE
         assert first["unique_key"] == f"{TENANT}-{SOURCE}-1"
         assert first["data_source"] == "hubspot"

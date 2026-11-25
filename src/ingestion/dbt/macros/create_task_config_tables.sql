@@ -46,13 +46,13 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.task_field_roles
         (
-            tenant_id         String,
+            insight_tenant_id         String,
             insight_source_id String,
             data_source       LowCardinality(String),
             field_id          String,
             valid_from        DateTime64(3),
             recorded_at       DateTime64(3),
-            unique_key        String DEFAULT concat(tenant_id, ':', insight_source_id, ':',
+            unique_key        String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':',
                                                     data_source, ':', field_id, ':',
                                                     toString(valid_from), ':', toString(recorded_at)),
             role              LowCardinality(String),
@@ -71,14 +71,14 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.task_value_map
         (
-            tenant_id         String,
+            insight_tenant_id         String,
             insight_source_id String,
             data_source       LowCardinality(String),
             field_id          String,
             value_id          String,
             valid_from        DateTime64(3),
             recorded_at       DateTime64(3),
-            unique_key        String DEFAULT concat(tenant_id, ':', insight_source_id, ':',
+            unique_key        String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':',
                                                     data_source, ':', field_id, ':', value_id, ':',
                                                     toString(valid_from), ':', toString(recorded_at)),
             canonical_value   LowCardinality(String),
@@ -95,14 +95,14 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.field_value_map
         (
-            tenant_id         String,
+            insight_tenant_id         String,
             insight_source_id String,
             data_source       LowCardinality(String),
             field             LowCardinality(String),
             source_key        String,
             valid_from        DateTime64(3),
             recorded_at       DateTime64(3),
-            unique_key        String DEFAULT concat(tenant_id, ':', insight_source_id, ':',
+            unique_key        String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':',
                                                     data_source, ':', field, ':', source_key, ':',
                                                     toString(valid_from), ':', toString(recorded_at)),
             target_value      LowCardinality(String),
@@ -119,12 +119,12 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.field_value_defaults
         (
-            tenant_id         String,
+            insight_tenant_id         String,
             insight_source_id String,
             field             LowCardinality(String),
             valid_from        DateTime64(3),
             recorded_at       DateTime64(3),
-            unique_key        String DEFAULT concat(tenant_id, ':', insight_source_id, ':',
+            unique_key        String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':',
                                                     field, ':',
                                                     toString(valid_from), ':', toString(recorded_at)),
             default_value     LowCardinality(String),
