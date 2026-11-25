@@ -29,12 +29,15 @@ from bronze import create_bronze  # noqa: E402
 from dbt_profiles import Connection, build_profile  # noqa: E402
 
 SOURCE = "synthetic-github"
-TENANT = "synthetic-tenant"
-OTHER_TENANT = "synthetic-other-tenant"
+# Canonical tenant UUIDs: a Bronze tenant that is not one fails the build (bronze_tenant()).
+# OTHER_TENANT sorts first, as the two-tenant assertions expect.
+TENANT = "22222222-2222-4222-8222-222222222222"
+OTHER_TENANT = "11111111-1111-4111-8111-111111111111"
 
 # INVARIANT: github__account_emails also reads the directory connector's bronze.
-CONNECTORS = ("github", "github-directory")
-BRONZE_DATABASES = ("bronze_github", "bronze_github_directory")
+# GitLab rides along for its missing-tenant case (test_gitlab_missing_tenant.py).
+CONNECTORS = ("github", "github-directory", "gitlab")
+BRONZE_DATABASES = ("bronze_github", "bronze_github_directory", "bronze_gitlab")
 
 
 class Warehouse:
@@ -50,12 +53,17 @@ class Warehouse:
         }
 
     def build(self, selector: str, full_refresh: bool = False) -> None:
+        success, log = self.build_status(selector, full_refresh=full_refresh)
+        assert success, log
+
+    def build_status(self, selector: str, *extra: str, full_refresh: bool = False) -> tuple[bool, str]:
+        """Run the selector and say whether it built, with its log, instead of asserting it did."""
         messages: list[str] = []
         args = ["run", "--project-dir", str(DBT), "--profiles-dir", str(self.profile), "--quiet", "--select", selector]
         result = dbtRunner(callbacks=[lambda e: messages.append(e.info.msg)]).invoke(
-            [*args, *(["--full-refresh"] if full_refresh else [])]
+            [*args, *(["--full-refresh"] if full_refresh else []), *extra]
         )
-        assert result.success, "\n".join(messages)[-10000:]
+        return result.success, "\n".join(messages)[-10000:]
 
     def failing_tests(self, names: Sequence[str]) -> set[str]:
         result = dbtRunner().invoke(
@@ -68,8 +76,10 @@ class Warehouse:
             if outcome.node.resource_type == "test" and outcome.status in {"fail", "error"}
         }
 
-    def insert(self, table: str, tenant: str | None, row: Mapping[str, object], extracted: str) -> None:
-        qualified = "bronze_github." + table
+    def insert(
+        self, table: str, tenant: str | None, row: Mapping[str, object], extracted: str, database: str = "bronze_github"
+    ) -> None:
+        qualified = f"{database}.{table}"
         assert qualified in self.tables, f"no bronze table {qualified}"
         values = {
             "_airbyte_raw_id": str(uuid4()),

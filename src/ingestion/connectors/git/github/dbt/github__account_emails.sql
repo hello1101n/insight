@@ -26,7 +26,7 @@ WITH resolved_authors AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_github.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -42,7 +42,7 @@ commit_accounts AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_github.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
@@ -56,7 +56,7 @@ committer_accounts AS (
     SELECT
         toString(committer_id) AS account_id,
         lower(trimBoth(COALESCE(committer_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_github.pull_request_commits.committer_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at
@@ -70,7 +70,7 @@ profile_emails AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_github.pull_request_diff_stats.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(updated_at)) AS seen_at
@@ -86,7 +86,7 @@ noreply_commits AS (
     SELECT
         extract(COALESCE(author_email, ''), '^([0-9]+)\\+[^@]+@users\\.noreply\\.github\\.com$') AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_github.commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
@@ -115,7 +115,7 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(author_login, ''))) AS login,
             toString(author_id) AS id_str,
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id
         FROM {{ source('bronze_github', 'commit_authors') }} FINAL
         WHERE COALESCE(author_id, 0) > 0
@@ -126,7 +126,7 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(author_login, ''))) AS login,
             toString(author_id) AS id_str,
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id
         FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
         WHERE COALESCE(author_id, 0) > 0
@@ -137,7 +137,7 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(committer_login, ''))) AS login,
             toString(committer_id) AS id_str,
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id
         FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
         WHERE COALESCE(committer_id, 0) > 0
@@ -148,7 +148,7 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(login, ''))) AS login,
             toString(member_id) AS id_str,
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id
         FROM {{ source('bronze_github_directory', 'org_members') }} FINAL
         WHERE COALESCE(member_id, 0) > 0
@@ -177,7 +177,7 @@ legacy_noreply_commits AS (
         SELECT
             lower(trimBoth(extract(COALESCE(author_email, ''), '^([^@+]+)@users\\.noreply\\.github\\.com$'))) AS login,
             lower(trimBoth(COALESCE(author_email, ''))) AS email,
-            insight_tenant_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
             source_id,
             max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
         FROM {{ source('bronze_github', 'commits') }} FINAL

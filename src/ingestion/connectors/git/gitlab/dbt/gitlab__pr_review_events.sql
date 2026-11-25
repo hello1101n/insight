@@ -12,7 +12,7 @@
 -- approval or requested changes; a comment is a note a person wrote.
 WITH projects AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
@@ -35,7 +35,7 @@ account_email AS (
 
 events AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         unique_key,
         project_id,

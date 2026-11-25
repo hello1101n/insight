@@ -8,6 +8,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key; the vendor event id is the natural key"
         tests:
@@ -33,6 +34,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -65,6 +67,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key (one per run attempt)"
         tests:
@@ -135,6 +138,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -176,6 +180,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -214,6 +219,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -227,6 +233,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -268,6 +275,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -291,6 +299,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -330,6 +339,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -343,6 +353,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -356,6 +367,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -369,6 +381,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:

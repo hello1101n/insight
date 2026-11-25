@@ -9,6 +9,8 @@ on:
       - src/ingestion/connectors/git/github/descriptor.yaml
       - src/ingestion/connectors/git/github-directory/connector.yaml
       - src/ingestion/connectors/git/github-directory/descriptor.yaml
+      - src/ingestion/connectors/git/gitlab/dbt/**
+      - src/ingestion/connectors/git/gitlab/connector.yaml
       - src/ingestion/dbt/tests/github/**
       - src/ingestion/dbt/tests/bronze.py
       - src/ingestion/dbt/dbt_project.yml
@@ -24,6 +26,8 @@ on:
       - src/ingestion/connectors/git/github/descriptor.yaml
       - src/ingestion/connectors/git/github-directory/connector.yaml
       - src/ingestion/connectors/git/github-directory/descriptor.yaml
+      - src/ingestion/connectors/git/gitlab/dbt/**
+      - src/ingestion/connectors/git/gitlab/connector.yaml
       - src/ingestion/dbt/tests/github/**
       - src/ingestion/dbt/tests/bronze.py
       - src/ingestion/dbt/dbt_project.yml

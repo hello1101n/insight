@@ -33,6 +33,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -54,6 +55,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -93,6 +95,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -112,6 +115,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -131,6 +135,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -146,6 +151,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -167,6 +173,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -186,6 +193,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -201,6 +209,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -220,6 +229,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null
@@ -241,6 +251,7 @@ models:
       - name: insight_tenant_id
         data_tests:
           - not_null
+          - not_empty
       - name: source_id
         data_tests:
           - not_null

@@ -11,6 +11,9 @@ models:
     columns: &columns
       - name: insight_tenant_id
         description: "Tenant identity injected by reconcile."
+        data_tests:
+          - not_null
+          - not_empty
       - name: source_id
         description: "Instance identity injected by reconcile."
       - name: unique_key

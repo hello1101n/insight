@@ -24,7 +24,7 @@
 -- move), so a window re-fetch within one sync can leave a pre-merge duplicate
 -- in bronze.
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     COALESCE(repo_full_name, '') AS repo_full_name,
