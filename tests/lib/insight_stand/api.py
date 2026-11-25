@@ -74,9 +74,10 @@ GATEWAY_API_PREFIXES: tuple[str, ...] = (
     V3_PREFIX,
 )
 
-# Served by the edge itself rather than routed to a backend: the SPA at `/` and
-# the authenticator's browser endpoints under `/auth/`.
-EDGE_PATH_PREFIXES: tuple[str, ...] = ("/auth/",)
+# Served by the edge itself rather than routed to a backend: the SPA at `/`,
+# its FrontX widget parts under `/widgets/`, and the authenticator's browser
+# endpoints under `/auth/`.
+EDGE_PATH_PREFIXES: tuple[str, ...] = ("/auth/", "/widgets/")
 
 
 def analytics_path(suffix: str) -> str:
