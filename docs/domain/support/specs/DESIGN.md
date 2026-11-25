@@ -1,11 +1,11 @@
 # Technical Design — Support Domain
 
-Version 0.7 — November 2026
+Version 0.8 — November 2026
 Based on: #886, #2297
 
 Target bronze → silver design for customer support data, with Zendesk as the
-first source. It describes where the domain should end up, not the shipped
-connector; [section 11](#11-gap-to-the-shipped-connector) lists the
+first source and HubSpot Service Hub as the second. It describes where the
+domain should end up, not the shipped connector; [section 11](#11-gap-to-the-shipped-connector) lists the
 difference. Gold models and UI are out of scope; [section 9](#9-metrics-and-audiences)
 names the metrics and audiences silver has to serve.
 
@@ -534,6 +534,42 @@ only Zendesk look-alikes.
 Minimum set before freezing the contract: Zendesk, Jira Service Management,
 Intercom, and ServiceNow or Salesforce.
 
+### HubSpot Service Hub, the second source
+
+HubSpot is the first source with a model different from Zendesk. Its tickets
+come from the CRM connector, which already reads them for sales. The support
+classes are a projection of the CRM staging models; the connector does not
+change.
+
+| Class | Built from | Difference from Zendesk |
+|---|---|---|
+| `class_support_tickets` | tickets, pipeline stages, ticket properties | `status` is `open` or `closed` only, from the ticket state of the stage; the stage id is `status_raw` |
+| `class_support_ticket_field_history` | property history of stage, pipeline, owner, priority | no other property keeps history; a stage change that opens or closes a ticket adds a derived `status` row |
+| `class_support_field_definitions` | ticket property definitions | one version per property; `valid_from` is the creation time |
+| `class_support_agents` | owners | every owner is an `agent` |
+| `class_support_groups`, `class_support_group_memberships` | teams, the teams of each owner | the interval of a membership has no start and no end |
+| `class_support_customers` | contacts and companies | only those a ticket names; the rest of the CRM stays in `class_crm_*` |
+
+Rules of the projection:
+
+- **One update, one event.** The changes one user makes to one ticket at one
+  instant share one `event_id`. A change without a user is `system`.
+- **Two id spaces.** History names the user account; tickets name the owner.
+  The projection maps the user account to the owner through the owners stream.
+- **Merges.** The surviving ticket lists the merged tickets in
+  `hs_merged_object_ids`. A merged ticket is `merged`, with that ticket as
+  `merged_into_id`. Any other archived ticket is `deleted`.
+
+The other classes stay empty for HubSpot:
+
+- **Interactions.** The connector reads engagements, but not their
+  associations to tickets.
+- **Satisfaction.** The connector does not read feedback submissions.
+- **SLA, schedules, knowledge base, tracker links.** No stream exists for them.
+
+Interactions and satisfaction need connector changes and come in a separate
+change.
+
 ## 11. Gap to the shipped connector
 
 | Area | Shipped | Target |
@@ -643,3 +679,10 @@ Zendesk developer and help documentation:
 - [Jira integration links V2](https://developer.zendesk.com/api-reference/ticketing/jira_v2/jira_integration_links_v2/)
 - [Reporting on Jira-linked tickets](https://support.zendesk.com/hc/en-us/articles/4408843823642-Jira-Linked-tickets-reporting)
 - [Reporting on merged tickets](https://support.zendesk.com/hc/en-us/articles/4419174418202-What-Analytics-reporting-options-are-available-for-merged-tickets)
+
+HubSpot developer documentation:
+
+- [Tickets](https://developers.hubspot.com/docs/api/crm/tickets)
+- [Pipelines](https://developers.hubspot.com/docs/api/crm/pipelines)
+- [Properties](https://developers.hubspot.com/docs/api/crm/properties)
+- [Owners](https://developers.hubspot.com/docs/api/crm/owners)
