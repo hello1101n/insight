@@ -1,3 +1,6 @@
+import type { DashboardWidget, RunOptions } from "@/api/custom-client";
+
+import { drawsBucket } from "./draws-bucket";
 import { isRangeToken, toInterval } from "./time-range";
 
 export function selectedRange(
@@ -16,4 +19,13 @@ export function selectedRange(
   if (usable(fallback)) return fallback;
 
   return offered[0];
+}
+
+export function runOptions(
+  widget: DashboardWidget,
+  range: string | undefined,
+): RunOptions | undefined {
+  return range && widget.clock
+    ? { range, bucket: drawsBucket(widget.body) }
+    : undefined;
 }

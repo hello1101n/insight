@@ -1,4 +1,9 @@
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react";
@@ -6,11 +11,18 @@ import {
   Dashboard,
   DashboardRoot,
   loadWidgetParts,
+  type CellAction,
+  type CellActionTarget,
   type CellFailureReport,
   type DashboardHost,
 } from "@gears-frontx/frontx-dashboard-root";
 
-import type { DashboardRead, RunOptions } from "@/api/custom-client";
+import type {
+  DashboardRead,
+  DashboardWidget,
+  RunOptions,
+} from "@/api/custom-client";
+import { runOptions } from "@/lib/custom/board-range";
 import {
   frontxAnswer,
   frontxBoard,
@@ -20,10 +32,12 @@ import {
   dashboardWidgetResultQuery,
   dashboardWidgetsQuery,
 } from "@/queries/custom";
+import { useIsAdmin } from "@/queries/identity-me";
 import { queryClient } from "@/query-client";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { refusal } from "@/components/custom/refusal";
+import { WidgetDrilldown } from "@/components/custom/widget-drilldown";
 
 const WIDGET_LIST = "/widgets/widgets.json";
 
@@ -115,8 +129,13 @@ interface FrontxBoardProps {
 
 export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   const { t, i18n } = useTranslation();
+  const { isAdmin } = useIsAdmin();
   const widgets = useQuery(dashboardWidgetsQuery(id));
   const theme = useAppliedTheme();
+  const [drilldown, setDrilldown] = useState<{
+    widget: DashboardWidget;
+    open: boolean;
+  }>();
   const board = useMemo(() => {
     if (!widgets.data) return undefined;
     const drawn = frontxBoard(id, read, widgets.data);
@@ -142,27 +161,54 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
   }
   if (!board) return <CenteredSpinner className="min-h-40" />;
 
+  const details = ({ widgetId }: CellActionTarget): CellAction[] => {
+    const widget = board.widgets.get(widgetId);
+    if (!widget) return [];
+
+    return [
+      {
+        label: "Details",
+        onSelect: () => setDrilldown({ widget, open: true }),
+      },
+    ];
+  };
+
   return (
-    <Dashboard
-      root={appRoot()}
-      dashboardId={board.dashboardId}
-      theme={theme}
-      language={i18n.resolvedLanguage ?? "en"}
-      texts={{
-        dashboard: {
-          loading: "Loading",
-          cannotBeShown: "Couldn't load this dashboard.",
-        },
-        frame: {
-          loading: "Loading",
-          cannotBeShown: "This widget couldn't be loaded.",
-          openLarger: (title) => `Expand ${title}`,
-          close: t("common.actions.close"),
-          retry: t("common.actions.retry"),
-        },
-      }}
-      variables={range ? { range } : {}}
-      overlayContainer={document.body}
-    />
+    <>
+      <Dashboard
+        root={appRoot()}
+        dashboardId={board.dashboardId}
+        theme={theme}
+        language={i18n.resolvedLanguage ?? "en"}
+        texts={{
+          dashboard: {
+            loading: "Loading",
+            cannotBeShown: "Couldn't load this dashboard.",
+          },
+          frame: {
+            loading: "Loading",
+            cannotBeShown: "This widget couldn't be loaded.",
+            openLarger: (title) => `Expand ${title}`,
+            close: t("common.actions.close"),
+            retry: t("common.actions.retry"),
+          },
+        }}
+        variables={range ? { range } : {}}
+        overlayContainer={document.body}
+        cellActions={isAdmin ? details : undefined}
+      />
+      {isAdmin && drilldown ? (
+        <WidgetDrilldown
+          dashboard={id}
+          widgetId={drilldown.widget.id}
+          widget={drilldown.widget.body}
+          name={drilldown.widget.name}
+          label={drilldown.widget.body.title ?? drilldown.widget.name}
+          open={drilldown.open}
+          onOpenChange={(open) => setDrilldown({ ...drilldown, open })}
+          options={runOptions(drilldown.widget, range)}
+        />
+      ) : null}
+    </>
   );
 }

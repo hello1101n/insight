@@ -21,14 +21,12 @@ import {
   isBusy,
   type DashboardRead,
   type DashboardWidget,
-  type RunOptions,
 } from "@/api/custom-client";
 import { DashboardByline } from "@/components/custom/dashboard-byline";
 import { DashboardPageActions } from "@/components/custom/dashboard-page-actions";
 import { RangePicker } from "@/components/custom/range-picker";
-import { selectedRange } from "@/lib/custom/board-range";
+import { runOptions, selectedRange } from "@/lib/custom/board-range";
 import { dashboardIdFromPath } from "@/lib/custom/dashboard-path";
-import { drawsBucket } from "@/lib/custom/draws-bucket";
 import {
   useSetPortalSearch,
   usePortalSearch,
@@ -312,15 +310,6 @@ function DashboardItems({
       ) : null}
     </>
   );
-}
-
-function runOptions(
-  widget: DashboardWidget,
-  range: string | undefined
-): RunOptions | undefined {
-  return range && widget.clock
-    ? { range, bucket: drawsBucket(widget.body) }
-    : undefined;
 }
 
 function drawnOverAllTime(

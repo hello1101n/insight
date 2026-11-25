@@ -1,6 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import * as Sentry from "@sentry/react";
 import type {
+  CellAction,
+  CellActionTarget,
   CellFailureReport,
   DashboardHost,
 } from "@gears-frontx/frontx-dashboard-root";
@@ -19,7 +21,20 @@ import { wrapper } from "@/test/alerts";
 const fx = vi.hoisted(() => ({
   hosts: [] as DashboardHost[],
   onFailure: undefined as ((failure: CellFailureReport) => void) | undefined,
+  cellActions: undefined as
+    ((target: CellActionTarget) => readonly CellAction[]) | undefined,
   parts: [{ types: [{ $id: "part" }], instances: [] }],
+}));
+
+const role = vi.hoisted(() => ({ isAdmin: true }));
+vi.mock("@/queries/identity-me", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/queries/identity-me")>()),
+  useIsAdmin: () => ({
+    isAdmin: role.isAdmin,
+    isPending: false,
+    isError: false,
+    retry: () => {},
+  }),
 }));
 
 vi.mock("@sentry/react", () => ({ captureMessage: vi.fn() }));
@@ -46,15 +61,19 @@ vi.mock("@gears-frontx/frontx-dashboard-root", async (importOriginal) => ({
     theme: string;
     variables: Record<string, string>;
     overlayContainer: HTMLElement;
-  }) => (
-    <div
-      data-testid="frontx-dashboard"
-      data-dashboard={props.dashboardId}
-      data-theme={props.theme}
-      data-range={props.variables.range ?? ""}
-      data-overlay={props.overlayContainer === document.body ? "body" : ""}
-    />
-  ),
+    cellActions?: (target: CellActionTarget) => readonly CellAction[];
+  }) => {
+    fx.cellActions = props.cellActions;
+    return (
+      <div
+        data-testid="frontx-dashboard"
+        data-dashboard={props.dashboardId}
+        data-theme={props.theme}
+        data-range={props.variables.range ?? ""}
+        data-overlay={props.overlayContainer === document.body ? "body" : ""}
+      />
+    );
+  },
   loadWidgetParts: vi.fn(async () => fx.parts),
 }));
 
@@ -101,6 +120,7 @@ beforeEach(() => {
 afterEach(() => {
   delete document.documentElement.dataset.theme;
   queryClient.clear();
+  role.isAdmin = true;
   vi.mocked(Sentry.captureMessage).mockClear();
 });
 
@@ -109,19 +129,35 @@ const runPath = (board: string) => `${dashboardWidgetPath(board, "w1")}/run`;
 const runs = () =>
   fetchWithAuth.mock.calls.filter(([, init]) => init?.method === "POST");
 
-async function hostOf(board: string): Promise<DashboardHost> {
-  render(<FrontxBoard id={board} read={READ} range={undefined} />, {
+async function hostOf(board: string, read = READ): Promise<DashboardHost> {
+  render(<FrontxBoard id={board} read={read} range={undefined} />, {
     wrapper,
   });
   await screen.findByTestId("frontx-dashboard");
   return fx.hosts.at(-1)!;
 }
 
+const WITH_PROSE: DashboardRead = {
+  ...READ,
+  body: {
+    title: "Board",
+    items: [{ heading: "Delivery" }, { text: "Some words" }, { widget: "w1" }],
+  },
+};
+
 // WORKAROUND: FrontX types a served instance loosely, and the board puts its dashboard first.
 async function shownDashboard(host: DashboardHost): Promise<FrontxDashboard> {
   const answer = await host.loadFile(new AbortController().signal);
   const [file] = [answer].flat();
   return file.instances[0] as unknown as FrontxDashboard;
+}
+
+function actionsOf(
+  dashboard: FrontxDashboard,
+  widgetId: string,
+  role: CellActionTarget["role"] = "cell"
+): readonly CellAction[] {
+  return fx.cellActions?.({ dashboardId: dashboard.id, widgetId, role }) ?? [];
 }
 
 describe("FrontxBoard", () => {
@@ -259,6 +295,41 @@ describe("FrontxBoard", () => {
       )
     ).resolves.toMatchObject({ rows: [["2026-10-01", 3]] });
     expect(runs()).toHaveLength(2);
+  });
+
+  it("gives an admin a Details action on a widget cell and its larger view, which opens the widget's drilldown", async () => {
+    const dashboard = await shownDashboard(await hostOf("board-a", WITH_PROSE));
+    const [, , cell] = dashboard.layout.cells;
+
+    const onCell = actionsOf(dashboard, cell.widget.id);
+    const onLarger = actionsOf(dashboard, cell.larger_view!.id, "larger_view");
+
+    expect(onCell.map((action) => action.label)).toEqual(["Details"]);
+    expect(onLarger.map((action) => action.label)).toEqual(["Details"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    act(() => onLarger[0].onSelect());
+    expect(
+      await screen.findByRole("dialog", { name: "Deploys" })
+    ).toBeInTheDocument();
+  });
+
+  it("gives no action on a heading or a text cell", async () => {
+    const dashboard = await shownDashboard(await hostOf("board-t", WITH_PROSE));
+    const [heading, text] = dashboard.layout.cells;
+
+    expect(actionsOf(dashboard, heading.widget.id)).toEqual([]);
+    expect(actionsOf(dashboard, text.widget.id)).toEqual([]);
+  });
+
+  it("gives a viewer who is not an admin no action on a widget cell", async () => {
+    role.isAdmin = false;
+    const dashboard = await shownDashboard(await hostOf("board-v"));
+    const [cell] = dashboard.layout.cells;
+
+    expect(actionsOf(dashboard, cell.widget.id)).toEqual([]);
+    expect(actionsOf(dashboard, cell.larger_view!.id, "larger_view")).toEqual(
+      []
+    );
   });
 
   it("reports a failed cell once with its kind, role, widget type and Insight ids, and without its message", async () => {
