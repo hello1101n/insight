@@ -48,6 +48,7 @@ Rows of different tenants never mix, and no query can read the rows of another t
 - One tenant column, `insight_tenant_id`, in every staging, silver and gold table ([#2087](https://github.com/constructorfabric/insight/issues/2087)).
 - The sort key of each silver and gold table starts with `insight_tenant_id`, so a tenant filter reads only the rows of that tenant.
 - Tenant-scoped dbt.
+- A job that writes a whole table, for example the persons sync of identity-resolution into `identity.identity_persons`, uses one partition for each tenant (`PARTITION BY insight_tenant_id`). The job replaces the partition of one tenant at a time (`REPLACE PARTITION`). Thus a sync of one tenant does not touch the rows of other tenants, and a failure stays in one tenant.
 - Tenant-aware MariaDB through the gears ORM.
 
 #### 1.2 Who reads which layer
