@@ -118,8 +118,8 @@ describe("frontxBoard", () => {
       { heading: "Throughput" },
       { text: "Some words" },
       { widget: "table" },
-      { widget: "gone" },
       { widget: "stat" },
+      { widget: "gone" },
     ]);
 
     expect(drawn).toHaveLength(5);
@@ -133,7 +133,7 @@ describe("frontxBoard", () => {
       frame: false,
       widget: { render: { body: "Some words" } },
     });
-    expect(drawn[3]).toEqual({
+    expect(drawn[4]).toEqual({
       size: "medium",
       height: "low",
       widget: {
@@ -145,7 +145,7 @@ describe("frontxBoard", () => {
     });
     expect(drawn[0].widget.id).toContain(".widget.markdown_card.v1~");
     expect(drawn[2].widget.id).toContain(".widget.grid.v1~");
-    expect(drawn[4].widget.id).toContain(".widget.metric_card.v1~");
+    expect(drawn[3].widget.id).toContain(".widget.metric_card.v1~");
   });
 
   it("writes a heading and a text as plain text, with their whitespace collapsed", () => {
@@ -255,7 +255,8 @@ describe("frontxBoard", () => {
   });
 
   it("gives a stat cell a low frame and every other widget a larger view", () => {
-    const [stat, line] = cells([{ widget: "stat" }, { widget: "line" }]);
+    const [stat] = cells([{ widget: "stat" }]);
+    const [line] = cells([{ widget: "line" }]);
 
     expect(stat).toMatchObject({ size: "medium", height: "low" });
     expect(stat).not.toHaveProperty("larger_view");
@@ -264,6 +265,42 @@ describe("frontxBoard", () => {
       title: line.widget.title,
       render: line.widget.render,
     });
+  });
+
+  it("puts framed cells two in a row, and raises a low cell beside a high one to the high one's height", () => {
+    const drawn = cells([
+      { widget: "stat" },
+      { widget: "line" },
+      { widget: "stat" },
+      { widget: "stat" },
+      { heading: "Next" },
+      { widget: "stat" },
+      { widget: "gone" },
+      { widget: "pie" },
+      { widget: "stat" },
+    ]);
+
+    expect(drawn.map((cell) => cell.height ?? "frameless")).toEqual([
+      "high",
+      "high",
+      "low",
+      "low",
+      "frameless",
+      "low",
+      "low",
+      "high",
+      "high",
+    ]);
+  });
+
+  it("leaves a lone low cell at the end of a run low", () => {
+    const drawn = cells([
+      { widget: "line" },
+      { widget: "pie" },
+      { widget: "stat" },
+    ]);
+
+    expect(drawn.map((cell) => cell.height)).toEqual(["high", "high", "low"]);
   });
 
   it("writes value labels only on a bar that asks for them, and a legend and a stack only on a bar with a series column", () => {

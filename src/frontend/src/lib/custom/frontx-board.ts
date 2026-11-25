@@ -314,6 +314,33 @@ function itemKeys(items: DashboardItem[]): string[] {
   });
 }
 
+// WORKAROUND: the kit Grid moves a low cell beside a high one to a row of its own, and the current board keeps the two
+// side by side. So each two framed cells in a row get the taller height of the two.
+function paired(cells: DashboardCell[]): DashboardCell[] {
+  const out: DashboardCell[] = [];
+  let row: DashboardCell[] = [];
+  const flush = () => {
+    const high = row.some((cell) => cell.height === "high");
+    out.push(
+      ...row.map((cell) => (high ? { ...cell, height: "high" as const } : cell))
+    );
+    row = [];
+  };
+
+  for (const cell of cells) {
+    if (cell.frame === false) {
+      flush();
+      out.push(cell);
+      continue;
+    }
+    row.push(cell);
+    if (row.length === 2) flush();
+  }
+  flush();
+
+  return out;
+}
+
 export function frontxBoard(
   id: string,
   read: DashboardRead,
@@ -341,7 +368,7 @@ export function frontxBoard(
     id: dashboardId,
     title: read.body.title || read.name,
     // INVARIANT: Insight draws two medium cells in a row, and a flexible grid packs three.
-    layout: { cells, flexible: false },
+    layout: { cells: paired(cells), flexible: false },
   };
 
   return {
