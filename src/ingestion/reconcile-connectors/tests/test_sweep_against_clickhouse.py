@@ -352,7 +352,7 @@ class TestSweptRowsLandAndResolve:
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
-    def _scratch_bronze_is_dropped(cls) -> Iterator[None]:
+    def _scratch_bronze_is_dropped(cls, _sweep_points_at_the_stubs: None) -> Iterator[None]:
         yield
         for database in SCRATCH_DATABASES:
             _query(f"DROP DATABASE IF EXISTS {database}{ON_CLUSTER}")
