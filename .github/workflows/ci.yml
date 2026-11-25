@@ -616,6 +616,27 @@ jobs:
         working-directory: ${{ matrix.entry.root }}
         run: pnpm typecheck
 
+      - name: Locate the npm cache
+        id: npm-cache
+        if: ${{ matrix.entry.name == 'frontend' }}
+        run: echo "path=$(npm config get cache)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ matrix.entry.name == 'frontend' }}
+        with:
+          path: ${{ steps.npm-cache.outputs.path }}
+          key: npm-frontx-${{ runner.os }}-${{ hashFiles('src/frontend/vendor/gears-frontx-templates/template-dashboard/package-lock.json') }}
+          restore-keys: |
+            npm-frontx-${{ runner.os }}-
+
+      # INVARIANT: The widget build runs before the tests. frontx-dependencies.test.ts then checks the workspace that the build leaves.
+      - name: Build the FrontX widget bundles (${{ matrix.entry.name }})
+        if: ${{ matrix.entry.name == 'frontend' }}
+        working-directory: ${{ matrix.entry.root }}
+        env:
+          npm_config_cache: ${{ steps.npm-cache.outputs.path }}
+        run: pnpm build:widgets
+
       # Both vitest projects in one pass, so their coverage merges into a single
       # Cobertura and a component exercised only by a story still counts.
       - name: Coverage (${{ matrix.entry.name }} -> Cobertura)
