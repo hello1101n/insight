@@ -41,6 +41,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
       - name: unique_key
         description: "Composite dedup key: tenant-source-user-day"
@@ -124,6 +125,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
       - name: unique_key
         description: "Composite dedup key: tenant-source-email-day-surface"

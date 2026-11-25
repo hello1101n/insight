@@ -15,6 +15,9 @@ models:
     columns:
       - name: insight_tenant_id
         description: "Tenant associated with the snapshot."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         description: "Tenant, source, account, and interval identity."
         tests: [not_null, unique]
@@ -70,6 +73,7 @@ models:
         description: "Tenant isolation identifier"
         tests:
           - not_null
+          - not_empty
       - name: source_id
         description: "Connector instance identifier"
         tests:
@@ -108,6 +112,7 @@ models:
         description: "Tenant identifier"
         tests:
           - not_null
+          - not_empty
 
   - name: bamboohr__hr_events
     description: >
@@ -116,6 +121,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -171,6 +177,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -231,6 +238,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null
@@ -257,6 +265,11 @@ models:
       a configured subset of them, so claiming the rest would stamp changes
       with the wrong effective date.
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null

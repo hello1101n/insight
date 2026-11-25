@@ -38,7 +38,7 @@
 ) }}
 
 SELECT
-    * EXCEPT tokenUsage,
+    * EXCEPT tokenUsage REPLACE ({{ bronze_tenant() }} AS insight_tenant_id),
     CAST(tokenUsage AS Nullable(String)) AS tokenUsage
 FROM (
     SELECT

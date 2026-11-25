@@ -62,6 +62,15 @@ def test_an_empty_source_id_is_refused_before_any_request(
     assert http.call_count == 0, "a config that cannot produce keys is refused without a call"
 
 
+def test_an_empty_tenant_id_is_refused_before_any_request(
+    source: SourceClaudeTeamInvoices, http: rm_module.Mocker
+) -> None:
+    ok, message = source.check_connection(None, dict(CONFIG, insight_tenant_id="  "))
+    assert ok is False
+    assert "insight_tenant_id" in message
+    assert http.call_count == 0, "a config that cannot scope its records is refused without a call"
+
+
 def test_an_unreachable_proxy_names_the_url(source: SourceClaudeTeamInvoices, http: rm_module.Mocker) -> None:
     http.get(HEALTH_URL, exc=requests.ConnectionError("no route"))
     ok, message = source.check_connection(None, CONFIG)

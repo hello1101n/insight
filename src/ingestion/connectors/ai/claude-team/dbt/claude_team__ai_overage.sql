@@ -96,7 +96,7 @@ latest_per_seat_month AS (
 )
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }}                               AS insight_tenant_id,
     source_id,
     -- Silver dedup key: tenant-source-seat-month, the same grain Bronze now
     -- keys on. Derived here from the extraction timestamp rather than copied,
@@ -104,7 +104,7 @@ SELECT
     -- month preserves history and gives intra-month idempotency (latest
     -- snapshot wins via _version, same key).
     CAST(concat(
-        coalesce(insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         coalesce(source_id, ''), '-',
         coalesce(account_uuid, ''), '-',
         formatDateTime(toStartOfMonth(_airbyte_extracted_at), '%Y-%m')
