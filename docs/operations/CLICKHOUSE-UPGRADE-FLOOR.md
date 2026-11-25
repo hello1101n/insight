@@ -31,7 +31,7 @@ its outcome is now a floor fact; a data repair leaves none.
 | `heal_task_field_history_arm` | Jira field-history arms with dropped columns and `Enum8` discriminators | #3179, #3420 | 0.7.39 | absent / String |
 | `heal_crm_staging` | HubSpot CRM staging with `custom_fields` | #2212 | 0.5.76 | absent |
 | `heal_collab_chat_table` | collab chat without `direct_and_group_messages` | #1784 | 0.3.45 | present |
-| `heal_task_users_table` | `silver.class_task_users` without `tenant_id` | #1794 | 0.3.48 | present |
+| `heal_task_users_table` | `silver.class_task_users` without `insight_tenant_id` (or `tenant_id`, its name before the rename) | #1794 | 0.3.48 | present |
 | `heal_git_file_change_oids` | git file changes without `pre_image_oid`, `post_image_oid` | #2691 | 0.5.207 | present |
 | `heal_git_commit_patch_id` | git commits without `patch_id` | #2847 | 0.5.274 | present |
 | `heal_git_pr_author_account` | git pull requests without `author_account_id` | #2823 | 0.5.262 | present |

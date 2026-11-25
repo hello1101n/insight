@@ -62,9 +62,10 @@ of them. Nothing else in this document applies.
 | Where | Changed by | Kept as a way back |
 |---|---|---|
 | `bronze_*`, the `tag:history` relations (`src/ingestion/scripts/tenant_migration/history-tables.txt`), `config.*`, `ingestion_history.*` — tenant column and the tenant segment of `unique_key` | `tenant_migration apply` (step 6) | the original of each table until `finalize`, and the tool's dump |
+| the name of that tenant column: `tenant_id` becomes `insight_tenant_id` in every one of those tables except `ingestion_history.*` | `tenant_migration apply` (step 6) | as above |
 | every other ClickHouse relation dbt owns (staging, silver, gold, `identity.identity_inputs`) | dbt full refresh (step 7) | full ClickHouse backup (step 4) |
-| `silver.class_task_*` and their staging producers — a `tenant_id` column after `unique_key` | the deploy's heals (step 5) | full ClickHouse backup (step 4) |
-| identity map views `identity.person_map` and `identity.account_assignment` | dropped by the deploy when they lack `tenant_id` (step 5), recreated by the rebuild (step 7) | nothing to keep: views hold no rows |
+| `silver.class_task_*` and their staging producers — an `insight_tenant_id` column after `unique_key` (a `tenant_id` column there is renamed in place) | the deploy's heals (step 5) | full ClickHouse backup (step 4) |
+| identity map views `identity.person_map` and `identity.account_assignment` | dropped by the deploy when they lack `insight_tenant_id` (step 5), recreated by the rebuild (step 7) | nothing to keep: views hold no rows |
 | identity MariaDB `persons` journal | the identity seed appends to it (step 7) | identity MariaDB backup (step 4) |
 | Airbyte source and connection names, the source's `insight_tenant_id`; Argo sync schedules | reconcile renames in place on its first tick (step 8) | Airbyte database backup, exported CronWorkflows (step 4) |
 
@@ -193,11 +194,13 @@ remove it if the values still set it (it is ignored).
 
 Deploy the release (`helm upgrade`, or sync the GitOps application). Its
 `clickhouse-migrate` hook applies the migrations and heals: the task classes
-and their producers gain a `tenant_id` column — `String`, or `Nullable(String)`
-on a table still holding rows written before it, until step 7 rebuilds that
-table — and the identity map views the
-previous release built are dropped, because they lack the `tenant_id` analytics
-now joins on. It creates and rebuilds no dbt relation — every staging, silver
+and their producers gain an `insight_tenant_id` column, or have their `tenant_id`
+column renamed to it — `String`, or `Nullable(String)` on a table still holding
+rows written before it, until step 7 rebuilds that table — and the identity map
+views the previous release built are dropped, because they lack the
+`insight_tenant_id` analytics now joins on. The heals that read Bronze or a
+history relation read the tenant column under whichever name it has: Bronze
+keeps `tenant_id` until step 6. It creates and rebuilds no dbt relation — every staging, silver
 and gold relation is built by a dbt run — so gold keeps the rows the last sync
 wrote under `<OLD_TENANT>`, and anything that reads the identity maps answers
 not-ready until step 7.1 recreates them. Metrics read empty or not-ready until
@@ -205,9 +208,11 @@ step 7. Then confirm the CronWorkflows and the seed CronJob
 are still suspended, and run `plan` again: it must print no `REFUSED` line now.
 
 Operator-authored field-value-map bundles
-(`clickhouse.fieldValueMap`) carry a `tenant_id` column. Leave them as they are
-for this deploy; change it to `<TENANT_UUID>` after step 6 and before the next
-deploy, or that deploy's loader writes the old tenant's rows again.
+(`clickhouse.fieldValueMap`) carry the tenant in their first column. Leave them
+as they are for this deploy; change it to `<TENANT_UUID>` after step 6 and
+before the next deploy, or that deploy's loader writes the old tenant's rows
+again. The loader writes that column to `insight_tenant_id`; a header line may
+name it `insight_tenant_id` or, as before, `tenant_id`.
 
 ### 6. Migrate the stored tenant
 
@@ -220,7 +225,11 @@ python3 -m tenant_migration apply --dump-dir <DUMP_DIR>
 Otherwise it dumps every table it will change — DDL, rows and a
 `manifest.json` with each table's row and key counts — then moves each table
 by copy, count check and `EXCHANGE`, and prints the rows and keys it holds
-afterwards. Rows under `<OLD_TENANT>` and rows with a NULL or empty tenant
+afterwards. The copy of a table whose tenant column is still `tenant_id` names
+it `insight_tenant_id`, in the same position, with the same type and in every
+key that holds it; such a table changes even when none of its rows moves, and
+`plan` marks it `renamed to insight_tenant_id`. `ingestion_history.*` keeps
+`tenant_id`. A table that holds both names is refused. Rows under `<OLD_TENANT>` and rows with a NULL or empty tenant
 move; rows already under `<TENANT_UUID>` stay. When `<OLD_TENANT>` equals
 `<TENANT_UUID>`, `plan` prints `only rows with a NULL or empty tenant move`;
 when it lists no table changing, `apply` changes nothing. Each original stays
@@ -229,6 +238,21 @@ beside its table as `<table>__tenant_backup` until step 10.
 If it stops part-way, run `python3 -m tenant_migration rollback` — it puts every
 original back, wherever the run stopped — then `python3 -m tenant_migration
 finalize` to drop the set-aside copies, and `apply` again with a new `--dump-dir`.
+
+#### Why the rename runs before any sync
+
+This release stamps every connector's records with `insight_tenant_id`; the
+connectors' descriptors carry a new minor version, so the reconcile tick of
+step 8 republishes them and refreshes each connection's catalog. The Airbyte
+ClickHouse destination (2.x) makes a Bronze table match the catalog at the
+start of every sync: it adds the columns the catalog has and the table lacks,
+and drops the ones the table has and the catalog lacks. A sync that met a
+Bronze table still holding `tenant_id` would add an empty `insight_tenant_id`
+and drop `tenant_id` with every stored tenant in it. Step 6 renames the column
+first, so the destination finds `insight_tenant_id` as `Nullable(String)`, the
+type it expects, and changes nothing. Keep every sync stopped until step 6 has
+run; `plan` must list no table with a `tenant_id` column outside
+`ingestion_history.*` before step 8.
 
 ### 7. Rebuild everything else
 
@@ -362,10 +386,14 @@ expected and leaves history relations alone.
 ### 9. Verify
 
 - [ ] `plan` prints `tables changing: 0` and no `REFUSED` line.
+- [ ] No warehouse table outside `ingestion_history` and `product_usage` has a
+      `tenant_id` column:
+      `SELECT database, table FROM system.columns WHERE name = 'tenant_id' AND database NOT IN ('system', 'ingestion_history', 'product_usage')`
+      returns no row.
 - [ ] Each table `apply` printed holds the row and key counts `plan` printed
       before it (the `manifest.json` in `<DUMP_DIR>` holds the same numbers).
 - [ ] Derived relations carry only the canonical tenant: for each
-      `insight.*_metric_observations` table, `SELECT DISTINCT tenant_id`
+      `insight.*_metric_observations` table, `SELECT DISTINCT insight_tenant_id`
       returns `<TENANT_UUID>` alone, and so does
       `SELECT DISTINCT insight_tenant_id FROM identity.identity_inputs`.
 - [ ] A user signs in, `/auth/me` shows `tenant_id` `<TENANT_UUID>`, and their
