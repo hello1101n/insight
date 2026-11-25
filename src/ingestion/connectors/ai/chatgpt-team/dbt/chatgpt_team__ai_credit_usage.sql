@@ -34,32 +34,11 @@
     tags=['chatgpt-team', 'silver:class_ai_credit_usage']
 ) }}
 
-{% if is_incremental() %}
--- One watermark per connector instance. A global max(day) lets a busy instance
--- raise the floor for a quiet one and silently skip its days; the floor has to
--- belong to the instance it filters. Grouped once and joined, rather than a
--- correlated scalar subquery, which ClickHouse supports unevenly.
-WITH instance_watermark AS (
-
-    SELECT
-        insight_tenant_id,
-        source_id,
-        max(day)                                        AS latest_day,
-        max(collected_at)                               AS latest_collected
-    FROM {{ this }}
-    GROUP BY insight_tenant_id, source_id
-
-)
-{% endif %}
 SELECT
-    bronze.insight_tenant_id                                    AS insight_tenant_id,
+    {{ bronze_tenant('bronze.insight_tenant_id') }}    AS insight_tenant_id,
     bronze.source_id                                    AS source_id,
-    -- Qualified: instance_watermark also carries source_id, so the bare name is
-    -- ambiguous once the incremental join is in place. insight_tenant_id goes with it —
-    -- one half of a key expression qualified and the other not reads as an
-    -- oversight.
     CAST(concat(
-        coalesce(bronze.insight_tenant_id, ''), '-',
+        insight_tenant_id, '-',
         coalesce(bronze.source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(date, '')
@@ -89,11 +68,6 @@ FROM (
     ORDER BY _airbyte_extracted_at DESC
     LIMIT 1 BY insight_tenant_id, source_id, lower(trim(email)), date
 ) AS bronze
-{% if is_incremental() %}
-LEFT JOIN instance_watermark AS w
-       ON w.insight_tenant_id = bronze.insight_tenant_id
-      AND w.source_id = bronze.source_id
-{% endif %}
 WHERE email IS NOT NULL
   AND trim(email) != ''
   AND date IS NOT NULL
@@ -113,13 +87,14 @@ WHERE email IS NOT NULL
   -- ai_cost_metric_evidence requires credits > 0, so a zero never becomes a
   -- $0 charge.
 {% if is_incremental() %}
-  -- An instance this relation has never held reads everything: the LEFT JOIN
-  -- leaves latest_day NULL for it, and the whole predicate is skipped. One it
-  -- has read before is filtered by ITS OWN floor, three days back.
+  -- One floor per connector instance: a table-wide max(day) lets a busy
+  -- instance raise the floor for a quiet one and silently skip its days. An
+  -- instance this relation has never held gets the epoch, so it reads
+  -- everything; the lookback applies to real watermarks only, so that epoch
+  -- cannot wrap below 1970 into the far future and drop every row.
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243).
   AND (
-    w.latest_day IS NULL
-    OR toDate(bronze.date) > w.latest_day - INTERVAL 3 DAY
-    OR bronze._airbyte_extracted_at > w.latest_collected
+      toDate(bronze.date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'bronze.source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
+      OR bronze._airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'bronze.source_id'], ['insight_tenant_id', 'source_id']) }}
   )
 {% endif %}

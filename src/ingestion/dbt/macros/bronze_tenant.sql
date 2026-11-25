@@ -19,6 +19,8 @@
   project it into the model's output. A column a reader prunes (a subquery
   column nothing selects, a `count()` over it) is never computed, and a row
   another filter or the primary-key index drops first is never checked.
+  A view is evaluated only when read, so a view fails at its first reader (the
+  silver union, a test, an ad-hoc query), never at `dbt run`.
 -#}
 {% macro bronze_tenant(column='insight_tenant_id') -%}
     {%- set value = "ifNull(toString(" ~ column ~ "), '')" -%}

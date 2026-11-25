@@ -30,6 +30,7 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: source_id
         tests:
           - not_null

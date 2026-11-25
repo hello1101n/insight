@@ -31,7 +31,7 @@ WITH
 leaderboard AS (
 
     SELECT
-        coalesce(insight_tenant_id, '')                     AS insight_tenant_id,
+        {{ bronze_tenant() }}                       AS insight_tenant_id,
         coalesce(source_id, '')                     AS source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,
@@ -40,15 +40,18 @@ leaderboard AS (
     WHERE user_id IS NOT NULL
       AND trim(user_id) != ''
       AND date IS NOT NULL
+      -- An unparsable date would give day NULL, which the outer SELECT reads as
+      -- "this side is absent".
+      AND toDateOrNull(date) IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY coalesce(insight_tenant_id, ''), coalesce(source_id, ''), trim(user_id), toDateOrNull(date)
+    LIMIT 1 BY insight_tenant_id, source_id, trim(user_id), toDateOrNull(date)
 
 ),
 
 sessions AS (
 
     SELECT
-        coalesce(insight_tenant_id, '')                     AS insight_tenant_id,
+        {{ bronze_tenant() }}                       AS insight_tenant_id,
         coalesce(source_id, '')                     AS source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,
@@ -58,12 +61,17 @@ sessions AS (
     WHERE user_id IS NOT NULL
       AND trim(user_id) != ''
       AND date IS NOT NULL
+      -- An unparsable date would give day NULL, which the outer SELECT reads as
+      -- "this side is absent".
+      AND toDateOrNull(date) IS NOT NULL
 
 )
 
 SELECT
-    coalesce(l.insight_tenant_id, s.insight_tenant_id)  AS insight_tenant_id,
-    coalesce(l.source_id, s.source_id)                  AS source_id,
+    -- if(), not coalesce(): both sides are non-Nullable, so an unmatched side
+    -- of the FULL JOIN reads '' and coalesce() would keep it.
+    if(l.day IS NULL, s.insight_tenant_id, l.insight_tenant_id) AS insight_tenant_id,
+    if(l.day IS NULL, s.source_id, l.source_id)         AS source_id,
     coalesce(l.user_id, s.user_id)                      AS user_id,
     coalesce(l.day, s.day)                              AS day,
     multiIf(
