@@ -32,6 +32,10 @@ spec:
           # "false" runs incremental.
           - name: dbt_full_refresh
             default: "false"
+          # The step's deadline; the tenant cutover's whole-graph rebuild
+          # passes a longer one.
+          - name: active_deadline_seconds
+            default: "7200"
           # Operator-pinned values from umbrella chart. Submitter may override
           # per-call but typically just submits and gets these defaults baked in
           # at chart-render time. `insight.<dep>.host/port` helpers resolve the
@@ -49,7 +53,7 @@ spec:
       # PR #456 / ADR-0015) can rebuild the entire staging+silver
       # layer for a connector. 30m caps were observed killing the
       # job on hubspot full-refresh.
-      activeDeadlineSeconds: 7200
+      activeDeadlineSeconds: {{ `"{{inputs.parameters.active_deadline_seconds}}"` }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         # IfNotPresent so dev clusters use the locally-built `insight-toolbox:local`

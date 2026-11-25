@@ -182,9 +182,11 @@ ch_column_type() {
   printf '%s' "${type}" | tr -d '\n'
 }
 
-# The name of a relation's tenant column: `tenant_id` while that old name still
-# stands there (before `tenant_migration` or the cutover rebuild renames it),
-# `insight_tenant_id` otherwise. Fails when the lookup did not run.
+# The name of a staging or silver relation's tenant column: `tenant_id` while
+# that old name still stands there (until the cutover's post-upgrade rebuild
+# replaces the relation), `insight_tenant_id` otherwise. Bronze and the history
+# relations need no lookup: the pre-upgrade tenant_migration renamed them.
+# Fails when the lookup did not run.
 ch_tenant_column() {
   local old new
   new="$(ch_column_type "$1" "$2" insight_tenant_id)" || return 1
