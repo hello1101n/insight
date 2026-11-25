@@ -166,6 +166,7 @@ describe("frontxBoard", () => {
 
     expect(note.widget).toEqual({
       id: expect.stringContaining(".widget.markdown_card.v1~"),
+      title: "odd name",
       render: { body: String.raw`Unknown widget type\.` },
     });
     expect(note).not.toHaveProperty("larger_view");
@@ -1018,18 +1019,14 @@ describe("frontxBoard options", () => {
     }
   });
 
-  it.each<[string, Widget, Record<string, unknown>]>([
-    [
-      "an area by series as bars stacked by that column",
-      { type: "area", metric: "m", x: "team", y: "n", series: "outcome" },
-      { legend_position: "bottom", unlisted_stack_group: "outcome" },
-    ],
-    [
-      "a line by series as bars side by side",
-      { type: "line", metric: "m", x: "team", y: "n", series: "outcome" },
-      { legend_position: "bottom" },
-    ],
-  ])("draws %s, one series per value", (_, body, render) => {
+  it("draws an area by series as bars stacked by that column, one series per value", () => {
+    const body: Widget = {
+      type: "area",
+      metric: "m",
+      x: "team",
+      y: "n",
+      series: "outcome",
+    };
     const answer = {
       columns: ["team", "outcome", "n"],
       rows: [
@@ -1037,18 +1034,39 @@ describe("frontxBoard options", () => {
         ["Atlas", "failed", 1],
       ],
     };
-    const drawnRender = renderOf(body);
 
-    expect(drawnRender).toMatchObject(render);
-    if (!("unlisted_stack_group" in render)) {
-      expect(drawnRender).not.toHaveProperty("unlisted_stack_group");
-    }
-    expect(drawnRender).not.toHaveProperty("series");
+    expect(renderOf(body)).toEqual({
+      legend_position: "bottom",
+      unlisted_stack_group: "outcome",
+      x_axis: { type: "category" },
+      y_axis: { type: "value" },
+    });
     expect(drawnData(body, [], answer).data).toEqual({
       series: [
         { name: "failed", points: [{ x: "Atlas", y: 1 }] },
         { name: "ok", points: [{ x: "Atlas", y: 3 }] },
       ],
+    });
+  });
+
+  it("draws a line by series as a note to turn off planned sections", () => {
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      widget("w", {
+        type: "line",
+        metric: "m",
+        x: "bucket",
+        y: "n",
+        series: "team",
+      }),
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+
+    expect(cell.widget).toEqual({
+      id: expect.stringContaining(".widget.markdown_card.v1~"),
+      title: "w name",
+      render: {
+        body: String.raw`Turn off Show planned sections to see this chart\.`,
+      },
     });
   });
 });
@@ -1306,6 +1324,7 @@ describe("frontxBoard new types", () => {
 
     expect(cell.widget).toEqual({
       id: expect.stringContaining(".widget.markdown_card.v1~"),
+      title: "w name",
       render: {
         body: String.raw`Turn off Show planned sections to see this chart\.`,
       },

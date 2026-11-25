@@ -181,7 +181,6 @@ function oneSeries(
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
   percent: boolean,
-  stacked: boolean,
   render: Record<string, unknown> = {}
 ): Drawn {
   const values = `response.distinct[${cel(widget.series)}]`;
@@ -194,7 +193,7 @@ function seriesPerValue(
     {
       ...render,
       legend_position: "bottom",
-      ...(stacked ? { unlisted_stack_group: widget.series } : {}),
+      unlisted_stack_group: widget.series,
     },
     (point) =>
       `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${name}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
@@ -351,15 +350,16 @@ function drawn(
     case "line":
     case "area": {
       const lines = targetLines(widget.target, percent(widget.y));
-      if (widget.series) {
-        return seriesPerValue(
-          { ...widget, series: widget.series },
-          percent(widget.y),
-          widget.type === "area",
-          lines
-        );
+      if (!widget.series) {
+        return oneSeries(widget, widget.type, percent(widget.y), lines);
       }
-      return oneSeries(widget, widget.type, percent(widget.y), lines);
+      // INVARIANT: lines by series as bars side by side do not read as lines, and stacked bars keep an area's stack.
+      if (widget.type === "line") return { note: NEEDS_PLANNED_OFF };
+      return seriesPerValue(
+        { ...widget, series: widget.series },
+        percent(widget.y),
+        lines
+      );
     }
     case "bar": {
       const share = widget.series !== undefined && widget.stack === "percent";
@@ -372,7 +372,6 @@ function drawn(
         return seriesPerValue(
           { ...widget, series: widget.series },
           percent(widget.y),
-          true,
           render
         );
       }
@@ -470,11 +469,20 @@ const NEEDS_PLANNED_OFF = plain(
   "Turn off Show planned sections to see this chart."
 );
 
-function noteCell(dashboard: string, key: string, body: string): DashboardCell {
+function noteCell(
+  dashboard: string,
+  key: string,
+  body: string,
+  title?: string
+): DashboardCell {
   return {
     size: "medium",
     height: "low",
-    widget: { id: markdownId(`${dashboard}/${key}`), render: { body } },
+    widget: {
+      id: markdownId(`${dashboard}/${key}`),
+      ...(title ? { title } : {}),
+      render: { body },
+    },
   };
 }
 
@@ -563,7 +571,9 @@ export function frontxBoard(
     if (!widget) return [noteCell(id, key, GONE)];
 
     const shape = drawn(widget.body, widget.percents ?? [], daily);
-    if ("note" in shape) return [noteCell(id, key, shape.note)];
+    if ("note" in shape) {
+      return [noteCell(id, key, shape.note, widget.body.title ?? widget.name)];
+    }
 
     const cell = widgetCell(id, widget, shape, key, windowed);
     drawnWidgets.set(cell.widget.id, widget);
