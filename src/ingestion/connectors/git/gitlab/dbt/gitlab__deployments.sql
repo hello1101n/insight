@@ -17,7 +17,7 @@
 -- ordinary environment that gets stopped — so is_transient is 0 for every row.
 WITH environment_tiers AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         project_id,
         id AS environment_id,
@@ -28,7 +28,7 @@ WITH environment_tiers AS (
 
 latest_status AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         project_id,
         id,
@@ -48,7 +48,7 @@ latest_status AS (
 SELECT
     ls.insight_tenant_id,
     ls.source_id,
-    concat(COALESCE(ls.insight_tenant_id, ''), ':', COALESCE(ls.source_id, ''), ':', toString(COALESCE(ls.project_id, 0)), ':', toString(COALESCE(ls.id, 0))) AS unique_key,
+    concat(ls.insight_tenant_id, ':', COALESCE(ls.source_id, ''), ':', toString(COALESCE(ls.project_id, 0)), ':', toString(COALESCE(ls.id, 0))) AS unique_key,
     COALESCE(ls.repo_path, '') AS repo_full_name,
     toString(COALESCE(ls.id, 0)) AS deployment_id,
     COALESCE(ls.environment_name, '') AS environment,

@@ -10,7 +10,7 @@
 -- repo_path is path_with_namespace; everything before the last segment is the
 -- namespace, the last segment the project.
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     arrayStringConcat(arrayPopBack(splitByChar('/', COALESCE(repo_path, ''))), '/') AS project_key,

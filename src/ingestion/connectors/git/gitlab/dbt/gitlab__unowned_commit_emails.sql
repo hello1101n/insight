@@ -21,7 +21,7 @@ WITH walked_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_gitlab', 'commits') }} FINAL
@@ -35,7 +35,7 @@ request_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_gitlab', 'pull_request_commits') }} FINAL

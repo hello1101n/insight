@@ -28,7 +28,7 @@ WITH resolved_authors AS (
     SELECT
         lower(trimBoth(COALESCE(author_account_id, ''))) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_bitbucket_cloud.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -42,7 +42,7 @@ pull_request_commit_accounts AS (
     SELECT
         lower(trimBoth(COALESCE(author_account_id, ''))) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_bitbucket_cloud.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at

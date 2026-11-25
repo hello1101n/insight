@@ -26,7 +26,7 @@ WITH resolved_authors AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
@@ -41,7 +41,7 @@ WITH resolved_authors AS (
 directory_addresses AS (
     SELECT
         id,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         collected_at,
         address,
@@ -69,7 +69,7 @@ directory_emails AS (
 roster_addresses AS (
     SELECT
         id,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         collected_at,
         address,
@@ -101,7 +101,7 @@ noreply_commits AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
@@ -114,7 +114,7 @@ noreply_request_commits AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         'bronze_gitlab.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at

@@ -21,7 +21,7 @@
 -- FINAL: a pipeline is mutable while it runs (status and updated_at move), so
 -- a window re-fetch within one sync can leave a pre-merge duplicate in bronze.
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     COALESCE(repo_path, '') AS repo_full_name,
