@@ -118,6 +118,7 @@ manager_email_removed AS (
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -143,6 +144,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
@@ -168,6 +170,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -192,6 +195,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
@@ -216,6 +220,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
@@ -241,6 +246,7 @@ UNION ALL
 SELECT
     CAST(concat(
         coalesce(insight_tenant_id, ''), '-',
+        coalesce(source_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',

@@ -5,7 +5,7 @@
 ) }}
 
 SELECT
-    lr.insight_tenant_id                                            AS insight_tenant_id,
+    {{ bronze_tenant('lr.insight_tenant_id') }}             AS insight_tenant_id,
     lr.source_id,
     lr.unique_key,
     lr.employeeId                                           AS source_person_id,
