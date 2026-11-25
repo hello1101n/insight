@@ -533,6 +533,12 @@ it, or accept a bound token from `kubectl create token` plus a refresh mechanism
 — and note that a static GitHub secret cannot hold an expiring token, so this
 becomes a workflow change, not a secret change.
 
+**Server-side apply conflict during `helm upgrade`**
+
+Helm 4 uses server-side apply for fresh installs. A manual change with `kubectl scale`
+or `kubectl edit` can cause a field ownership conflict on a later upgrade.
+Rerun the deploy with `HELM_UPGRADE_FLAGS=--force-conflicts` to give the chart ownership of the field.
+
 **`attempt to grant extra privileges` during `helm upgrade`**
 RBAC escalation prevention: a subject cannot create a Role granting permissions
 it does not itself hold, and `admin` does not carry `escalate`. The chart renders

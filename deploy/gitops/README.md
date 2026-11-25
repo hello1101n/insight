@@ -130,7 +130,7 @@ Gateway creates per Gateway in `envoy-gateway-system`, labeled
 Before running any `make` target against a cluster:
 
 1. **Tooling** — `brew bundle install` then `make doctor`. Required:
-   `kubectl`, `helm`, `yq`, `jq`, `kubeseal`, plus whatever your
+   `kubectl`, Helm 4, `yq`, `jq`, `kubeseal`, plus whatever your
    password-manager backend needs. The default sample stub only needs
    `yq`.
 
@@ -380,8 +380,9 @@ real `*.yaml` siblings beside them, safe to commit.
    to promote a new chart version. The Makefile reads it as
    `INSIGHT_VERSION` and passes `--version $INSIGHT_VERSION` to every
    `helm` invocation.
-3. `make deploy` pulls the chart at the pinned semver and runs
-   `helm upgrade --install --atomic`.
+3. `make deploy` pulls the chart at the pinned version and runs `helm upgrade --install`.
+   Helm uses `--rollback-on-failure` unless `deploy.atomic` is `false`.
+   Set `deploy.wait` to select a Helm wait strategy. The default is `watcher`.
 
 ### Automating the `.insight-version` bump
 

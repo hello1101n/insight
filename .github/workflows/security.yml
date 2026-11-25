@@ -211,9 +211,8 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           # The version `publish-chart` packages with and `deploy-test-stand` installs
-          # with, so what this scans is what ships. The runner image carries a newer
-          # helm; rendering with that would report on output nothing deploys.
-          version: "3.14.0"
+          # with, so what this scans is what ships.
+          version: "4.3.2"
 
       - name: Resolve Python dependencies
         # Locks are generated in the workspace and discarded with the runner. Best-effort: one
@@ -318,16 +317,28 @@ jobs:
           mkdir -p .helm-rendered
           for chart in src/backend/services/*/helm src/frontend/helm; do
             [ -f "$chart/Chart.yaml" ] || continue
-            name="$(printf '%s' "$chart" | sed -E 's#^src/(backend/services|)/?##; s#/helm$##; s#/#-#g')"
-            helm template scan "$chart" \
-              --set existingSecret=dummy \
-              --set signingKeysSecret=dummy \
-              --set tlsDiscovery.issuerRef.name=dummy \
-              --set issuer=http://idp.invalid \
-              --set hostname=http://kc.invalid \
-              --set image.repository=ghcr.io/example/image \
-              --set image.tag=scan \
-              --set oidc.scopes=openid \
+            name="${chart%/helm}"
+            name="${name##*/}"
+            args=(
+              --set existingSecret=dummy
+              --set signingKeysSecret=dummy
+              --set tlsDiscovery.issuerRef.name=dummy
+              --set issuer=http://idp.invalid
+              --set hostname=http://kc.invalid
+              --set image.repository=ghcr.io/example/image
+              --set image.tag=scan
+              --set oidc.scopes=openid
+            )
+            if [ "$name" = keycloak ]; then
+              args+=(
+                --set admin.existingSecret=dummy
+                --set database.host=db.example.com
+                --set database.username=example
+                --set database.passwordSecret.name=dummy
+                --set database.passwordSecret.key=password
+              )
+            fi
+            helm template scan "$chart" "${args[@]}" \
               > ".helm-rendered/${name}.yaml" \
               || { echo "render failed — skipped ${chart}"; rm -f ".helm-rendered/${name}.yaml"; }
           done

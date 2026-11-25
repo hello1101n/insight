@@ -101,7 +101,7 @@ LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
 VALUES           ?= environments/$(ENV)/values.yaml
 # Covers rollout waits plus the post-upgrade clickhouse-migrate hook, whose
-# heals can mutate large relations — give it room before --atomic rolls back.
+# heals can mutate large relations — give it room before --rollback-on-failure rolls back.
 TIMEOUT          ?= 30m
 RENDER_DIR       := .deploy
 
@@ -109,6 +109,7 @@ RENDER_DIR       := .deploy
 # carry no fallback and read a missing key back as the literal "null".
 CREATE_NS        ?= $(shell yq -r '.bootstrap.namespaces' $(INVENTORY) 2>/dev/null)
 ATOMIC           ?= $(shell yq -r '.deploy.atomic'        $(INVENTORY) 2>/dev/null)
+DEPLOY_WAIT      ?= $(shell yq -r '.deploy.wait // ""'    $(INVENTORY) 2>/dev/null)
 
 KEYCLOAK_REALMS  := $(shell yq -r '.keycloak.realms'      $(INVENTORY) 2>/dev/null)
 SEALED_ENABLED   := $(shell yq -r '[.secrets.services[]? | select(.enabled == true)] | length' $(INVENTORY) 2>/dev/null)
@@ -119,9 +120,10 @@ OIDC_SECRET_KEY  := $(shell yq -r '.oidcClientSecret.key // "client-secret"' $(I
 CRED_MODE        := $(shell yq -r '.credentials.deploymentMode' $(VALUES) 2>/dev/null)
 
 HELM_NS_FLAG     := $(if $(filter false,$(CREATE_NS)),,--create-namespace)
-# `--atomic` rolls back to the PREVIOUS chart and deletes the pods holding the
+# `--rollback-on-failure` rolls back to the PREVIOUS chart and deletes the pods holding the
 # failure's evidence — a downgrade here. `deploy.atomic: false` turns it off.
-HELM_ATOMIC_FLAG := $(if $(filter false,$(ATOMIC)),,--atomic)
+HELM_ROLLBACK_FLAG := $(if $(filter false,$(ATOMIC)),,--rollback-on-failure)
+HELM_WAIT_FLAG     := $(if $(DEPLOY_WAIT),--wait=$(DEPLOY_WAIT),--wait)
 
 # Extra flags appended to helm invocations. Default empty.
 #
@@ -682,9 +684,8 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 	    echo "         helm uninstall $(RELEASE) -n $(NS_APP)  # if the stand is disposable"; \
 	    exit 1 ;; \
 	esac
-	@# `--wait` is explicit, not inherited from `--atomic`: on helm 4 an omitted
-	@# `--wait` waits on hooks only. `--set-file`, not `--set-string`, which
-	@# splits on commas and backslashes and would truncate a generated secret.
+	@# WORKAROUND: If you omit `--wait` and disable rollback, Helm 4 waits on hooks only.
+	@# INVARIANT: Use `--set-file`. `--set-string` splits on commas and backslashes and would truncate a generated secret.
 	@set -o pipefail; \
 	SET_ARGS=(); \
 	if [ -n "$(OIDC_SECRET)" ]; then \
@@ -705,7 +706,7 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 		--namespace $(NS_APP) $(HELM_NS_FLAG) \
 		-f $(VALUES) \
 		$$(cat $(REALIP_ARGS)) \
-		--wait $(HELM_ATOMIC_FLAG) --timeout $(TIMEOUT) \
+		$(HELM_WAIT_FLAG) $(HELM_ROLLBACK_FLAG) --timeout $(TIMEOUT) \
 		--history-max 10 \
 		2>&1 | tee $$LOG || rc=$$?; \
 	if [ "$$(yq -r '.system.loki // false' $(INVENTORY) 2>/dev/null)" = "true" ]; then \

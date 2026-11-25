@@ -108,7 +108,8 @@ Before going to prod:
   - **Auto-gen (default):** `credentials.autoGenerate: true` — the umbrella creates `insight-db-creds` with random 24-char passwords on first install and reuses them via `lookup` on every upgrade.
   - **BYO / Constructor Platform:** pre-create `insight-db-creds` with all required keys (`clickhouse-password`, `mariadb-password`, `mariadb-root-password`, `redis-password`) before the first `helm install`. The umbrella picks them up. Missing/empty keys fail fast.
     - Works regardless of `credentials.autoGenerate`: the chart auto-detects BYO via absence of the `app.kubernetes.io/managed-by=Helm` label on the existing Secret and skips its own Secret-template emission, so Helm never tries to take ownership of the customer-managed Secret. No manual labeling required.
-    - **Dry-run note**: `helm install --dry-run` (default, client-side) skips the `lookup` function, so the BYO preview will incorrectly show the chart emitting `insight-db-creds`. Use `helm install --dry-run=server` (Helm ≥3.13) for an accurate BYO sanity-check — it exercises `lookup` against the real cluster.
+    - **Dry run**. `helm install --dry-run=client` skips `lookup` and shows the chart creating `insight-db-creds`.
+      Use `helm install --dry-run=server` to check whether Helm finds your Secret.
   - Rendering under a GitOps controller (`helm template`): set `deploymentMode: gitops` and `autoGenerate: false`, and supply the config Secrets out-of-band — the validator refuses `gitops` + `autoGenerate: true`.
 - [ ] Configure OIDC under `authenticator.oidc.*`: `issuerUrl`, `clientId`, `redirectUri`, and the client secret via a Secret (never inline in a committed values file).
 - [ ] Provide `insight-authenticator-signing-keys` (ES256 `current.pem`) — not auto-generated.

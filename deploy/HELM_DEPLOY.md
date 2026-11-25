@@ -55,7 +55,7 @@ You supply one values file, secret files, and optionally one Secret per connecto
 ### Cluster and CLI tools
 
 - A Kubernetes cluster you can already reach with `kubectl`, with permission to create namespaces, Secrets, workloads, and Roles/RoleBindings — including in Airbyte's namespace when it differs from the app's, where the chart installs a Role letting its jobs read Airbyte's auth Secret. That namespace must exist before you install.
-- `helm` ≥ 3.8 — the chart is pulled as an OCI artifact, and OCI support is stable from 3.8 onward.
+- Helm 4 to pull and install the OCI chart.
 - `kubectl`, plus `openssl`, `uuidgen` (or `python3`) and `base64` for the commands in Steps 0–3.
 
 ### Cluster-level dependencies
@@ -371,13 +371,13 @@ Install the umbrella chart against your values file:
 
 ```sh
 helm upgrade --install insight oci://ghcr.io/hello1101n/charts/insight \
-  -n insight -f values/umbrella.yaml --wait --timeout 15m
+  -n insight -f values/umbrella.yaml --wait=legacy --timeout 15m
 ```
 
 - Add `--version <x.y.z>` to pin a chart release; omit it for the latest published one.
-- `--wait --timeout 15m` blocks until every resource is ready, giving a pass/fail signal instead of a detached rollout.
+- `--wait=legacy --timeout 15m` waits for Kubernetes resources that the legacy readiness checks cover.
 - The install also runs the `insight-clickhouse-migrate` hook Job. It applies `src/ingestion/scripts/migrations/*.sql` and the guarded heals that ALTER an already-created bronze, staging or silver table; the `insight-clickhouse-databases` hook creates the databases themselves. It pre-creates nothing and builds no dbt models — a connector sync does that, gold included — so it stays short on a cluster with real data. It fires on **every** upgrade (gated by `clickhouse.runMigrations`, default `true`) and a failure fails the upgrade; a failure points at Bronze/Silver schema or data. It refuses, before changing anything, a warehouse still holding relation shapes older than every release it upgrades from, and names them: deploy umbrella 0.7.66 (or 0.6.126 on release-2026.09) first, then this release.
-- If `--wait` stalls with the authenticator and analytics in `ContainerCreating`, the cert-manager Certificate `insight-authenticator-authn-tls` has not issued — `--wait` does not wait on Certificates. Check `kubectl -n insight describe certificate insight-authenticator-authn-tls`.
+- `--wait=legacy` does not wait on Certificates. If the authenticator and analytics stay in `ContainerCreating`, check the Certificate with `kubectl -n insight describe certificate insight-authenticator-authn-tls`.
 
 ## Step 5 — Verify the install
 

@@ -70,6 +70,8 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: '4.3.2'
 
       # The keycloak-realm Makefile target generates the roster realm with the
       # seed package's insight-seed-realm entry point, which runs under uv.
