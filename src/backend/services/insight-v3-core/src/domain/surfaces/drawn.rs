@@ -1,16 +1,24 @@
+use std::collections::BTreeMap;
+
+use serde::Serialize;
 use serde_json::Value;
 
 use super::{CustomError, Surfaces, not_found};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::kinds;
 use crate::domain::kinds::metric::answerable::EffectiveClock;
+use crate::domain::query::metric_query::{CompiledQuery, Unit};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) struct DrawnWidget {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) body: Value,
-    pub(crate) clock: Option<EffectiveClock>,
+    id: String,
+    name: String,
+    body: Value,
+    clock: Option<EffectiveClock>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    percents: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    units: BTreeMap<String, Unit>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,13 +47,18 @@ impl Surfaces<'_> {
             else {
                 continue;
             };
-            let clock = self.drawn_clock(&stored.body).await?;
+            let (clock, compiled) = self.drawn_reading(&stored.body).await?;
+            let (percents, units) = compiled
+                .map(|compiled| (compiled.percents().to_vec(), compiled.units().clone()))
+                .unwrap_or_default();
 
             drawn.push(DrawnWidget {
                 id: named,
                 name: stored.name,
                 body: stored.body,
                 clock,
+                percents,
+                units,
             });
         }
 
@@ -96,11 +109,14 @@ impl Surfaces<'_> {
             .ok_or_else(|| not_found(DefinitionKind::Dashboard, dashboard))
     }
 
-    async fn drawn_clock(&self, widget: &Value) -> Result<Option<EffectiveClock>, CustomError> {
+    async fn drawn_reading(
+        &self,
+        widget: &Value,
+    ) -> Result<(Option<EffectiveClock>, Option<CompiledQuery>), CustomError> {
         let Some(metric) =
             kinds::widget::drawn_metric(widget).and_then(|named| DefinitionId::parse(named).ok())
         else {
-            return Ok(None);
+            return Ok((None, None));
         };
         let Some(body) = self
             .definitions
@@ -108,9 +124,14 @@ impl Surfaces<'_> {
             .await
             .map_err(CustomError::Store)?
         else {
-            return Ok(None);
+            return Ok((None, None));
         };
 
-        Ok(self.clock_of(DefinitionKind::Metric, &body).await)
+        let clock = self.clock_of(DefinitionKind::Metric, &body).await;
+        let compiled = kinds::metric::compiled(&body, self.definitions, self.datasets, self.over)
+            .await
+            .ok();
+
+        Ok((clock, compiled))
     }
 }

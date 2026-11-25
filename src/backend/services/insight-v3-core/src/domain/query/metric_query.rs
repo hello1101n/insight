@@ -368,6 +368,10 @@ impl CompiledQuery {
         self.units.get(column).copied()
     }
 
+    pub(crate) fn units(&self) -> &BTreeMap<String, Unit> {
+        &self.units
+    }
+
     pub(crate) fn hidden(&self) -> &[String] {
         &self.hidden
     }
