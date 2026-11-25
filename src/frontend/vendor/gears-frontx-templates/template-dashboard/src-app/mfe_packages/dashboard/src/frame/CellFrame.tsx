@@ -157,6 +157,20 @@ export function StateBody({
   return <div className={styles.widget}>{children}</div>;
 }
 
+/** An action the host puts on a cell or on its larger view: a button that shows `label`, which is also its accessible name. */
+export interface CellAction {
+  label: string;
+  onSelect: () => void;
+}
+
+function ActionButtons({ actions }: { actions?: readonly CellAction[] }) {
+  return actions?.map((action, index) => (
+    <Button key={index} variant="ghost" size="sm" onClick={() => action.onSelect()}>
+      {action.label}
+    </Button>
+  ));
+}
+
 export interface LargerView {
   title: string;
   /** The larger-view widget's own line under its title; without it the overlay header shows the title alone. */
@@ -167,13 +181,15 @@ export interface LargerView {
   onOpenChange?: (open: boolean) => void;
   /** The element the overlay mounts in: the root's own container, or the host's `overlayContainer`. */
   container?: HTMLElement | ShadowRoot | null;
+  /** The host's actions on the larger view, drawn in the overlay header under its title. */
+  actions?: readonly CellAction[];
 }
 
 // @cpt-dod:cpt-frontx-dashboard-dod-dashboard-runtime-frame:p1
 /**
  * The frame the dashboard root draws around every cell whose `frame` is not false: the widget's title,
- * its optional description line under the title, the loader, the cannot-be-shown state and, only when the cell has a larger
- * view, the button that opens it in an overlay inside the root's container.
+ * its optional description line under the title, the loader, the cannot-be-shown state, the host's actions and, only when
+ * the cell has a larger view, the button that opens it in an overlay inside the root's container.
  */
 export function CellFrame({
   title,
@@ -184,6 +200,7 @@ export function CellFrame({
   texts = DEFAULT_FRAME_TEXTS,
   frame = true,
   onRetry,
+  actions,
 }: {
   /** Set while the cell's data request failed: the cannot-be-shown text gets a retry button that calls it. */
   onRetry?: () => void;
@@ -196,6 +213,8 @@ export function CellFrame({
   children?: ReactNode;
   largerView?: LargerView;
   texts?: FrameTexts;
+  /** The host's actions on the cell, drawn as buttons before the larger-view button. A frameless cell draws none. */
+  actions?: readonly CellAction[];
 }) {
   const focus = useRetryFocus(state, onRetry);
   if (!frame) {
@@ -219,7 +238,7 @@ export function CellFrame({
       className={styles.cell}
       aria-busy={state === 'loading' || undefined}
     >
-      {title || description || largerView ? (
+      {title || description || largerView || actions?.length ? (
         <CardHeader>
           {title ? <CardTitle>{title}</CardTitle> : null}
           {description ? (
@@ -227,22 +246,30 @@ export function CellFrame({
               {description}
             </CardDescription>
           ) : null}
-          {largerView ? (
-            <CardAction>
-              <Dialog onOpenChange={(open) => largerView.onOpenChange?.(open)}>
-                <DialogTrigger render={<Button variant="ghost" size="sm" aria-label={texts.openLarger(title ?? '')} icon={<ExpandIcon />} />} />
-                <DialogContent size="lg" container={largerView.container ?? undefined} closeLabel={texts.close} className={styles.overlay} aria-modal="true">
-                  <DialogHeader>
-                    <DialogTitle>{largerView.title}</DialogTitle>
-                    {largerView.description ? <DialogDescription>{largerView.description}</DialogDescription> : null}
-                  </DialogHeader>
-                  <div className={styles.overlayBody}>
-                    <StateBody state={largerView.state} texts={texts}>
-                      {largerView.content}
-                    </StateBody>
-                  </div>
-                </DialogContent>
-              </Dialog>
+          {largerView || actions?.length ? (
+            <CardAction className={styles.actions}>
+              <ActionButtons actions={actions} />
+              {largerView ? (
+                <Dialog onOpenChange={(open) => largerView.onOpenChange?.(open)}>
+                  <DialogTrigger render={<Button variant="ghost" size="sm" aria-label={texts.openLarger(title ?? '')} icon={<ExpandIcon />} />} />
+                  <DialogContent size="lg" container={largerView.container ?? undefined} closeLabel={texts.close} className={styles.overlay} aria-modal="true">
+                    <DialogHeader>
+                      <DialogTitle>{largerView.title}</DialogTitle>
+                      {largerView.description ? <DialogDescription>{largerView.description}</DialogDescription> : null}
+                      {largerView.actions?.length ? (
+                        <div className={styles.actions}>
+                          <ActionButtons actions={largerView.actions} />
+                        </div>
+                      ) : null}
+                    </DialogHeader>
+                    <div className={styles.overlayBody}>
+                      <StateBody state={largerView.state} texts={texts}>
+                        {largerView.content}
+                      </StateBody>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              ) : null}
             </CardAction>
           ) : null}
         </CardHeader>

@@ -99,3 +99,11 @@
   flex-direction: column;
   min-block-size: 0;
 }
+
+/* The host's actions in one row: before the larger-view button in the cell header, under the title in the overlay. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}

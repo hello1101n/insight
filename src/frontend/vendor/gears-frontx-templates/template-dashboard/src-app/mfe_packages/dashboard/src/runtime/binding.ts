@@ -1,4 +1,4 @@
-import type { DashboardRequest } from '../contract';
+import type { CellFailureKind, DashboardRequest } from '../contract';
 import { compileTransform } from './cel';
 import { isSameOriginPath, quotedPath, withTimeout, type DashboardHost } from './host';
 
@@ -34,17 +34,28 @@ export function variablesOfBinding(binding: Binding, shared: SharedRequests): st
   return form === 'shared' && typeof source === 'string' ? shared.variablesOf(source) : [];
 }
 
-/** A failure of one cell, with the developer-log text naming the failing step or request. */
-export class CellFailure extends Error {}
+/** A failure of one cell: its kind, and the developer-log text naming the failing step or request. */
+export class CellFailure extends Error {
+  readonly kind: CellFailureKind;
+
+  constructor(kind: CellFailureKind, message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
 
 /**
  * A cell failure because the data request itself failed after it left the root: the host rejected it (a network
  * error, an HTTP status outside 2xx, an answer that is not JSON or is over the cap, a redirect answer) or
  * it timed out. Sending it again may help, so the cell offers a retry. A request the root refused to build or send
  * (a variable the host gives no value for, an unknown source, a method other than GET or POST, a path that is not same-origin) is a plain
- * `CellFailure`.
+ * `CellFailure` of kind `request`.
  */
-export class RequestFailed extends CellFailure {}
+export class RequestFailed extends CellFailure {
+  constructor(message: string) {
+    super('request', message);
+  }
+}
 
 /** The outcome of a binding: the data, or nothing when the cell left before it finished. */
 export type BindingResult = { dropped: false; data: unknown } | { dropped: true };
@@ -87,18 +98,18 @@ export function buildRequest(request: DashboardRequest, values: VariableValues):
   const where = `request ${String(request.method)} ${request.path}`;
   const added = entries.map(([key, name]) => {
     const read = readValue(values, name);
-    if (read === UNREADABLE) throw new CellFailure(`${where}: the value of the variable ${name} cannot be read`);
-    if (!read) throw new CellFailure(`${where}: the host gives no value for the variable ${name}`);
+    if (read === UNREADABLE) throw new CellFailure('request', `${where}: the value of the variable ${name} cannot be read`);
+    if (!read) throw new CellFailure('request', `${where}: the host gives no value for the variable ${name}`);
     const { value } = read;
     const plainValue = typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value));
-    if (!plainValue) throw new CellFailure(`${where}: the value of the variable ${name} is not a string, a finite number or a boolean`);
+    if (!plainValue) throw new CellFailure('request', `${where}: the value of the variable ${name} is not a string, a finite number or a boolean`);
     return [key, value as string | number | boolean] as const;
   });
   if (request.method === 'POST') {
     const body = request.body === undefined ? {} : request.body;
-    if (!isPlainObject(body)) throw new CellFailure(`${where}: the body is not an object, so it cannot take the key ${added[0][0]}`);
+    if (!isPlainObject(body)) throw new CellFailure('request', `${where}: the body is not an object, so it cannot take the key ${added[0][0]}`);
     const taken = added.find(([key]) => Object.hasOwn(body, key));
-    if (taken) throw new CellFailure(`${where}: key ${taken[0]} is already set`);
+    if (taken) throw new CellFailure('request', `${where}: key ${taken[0]} is already set`);
     return { ...plain, body: { ...body, ...Object.fromEntries(added) } };
   }
   const hash = request.path.indexOf('#');
@@ -108,7 +119,7 @@ export function buildRequest(request: DashboardRequest, values: VariableValues):
   const query = mark < 0 ? '' : beforeHash.slice(mark + 1);
   const present = new URLSearchParams(query);
   const taken = added.find(([key]) => present.has(key));
-  if (taken) throw new CellFailure(`${where}: key ${taken[0]} is already set`);
+  if (taken) throw new CellFailure('request', `${where}: key ${taken[0]} is already set`);
   const appended = new URLSearchParams(added.map(([key, value]) => [key, String(value)])).toString();
   const path = `${mark < 0 ? beforeHash : beforeHash.slice(0, mark)}?${query ? `${query}&` : ''}${appended}${fragment}`;
   return { ...plain, path };
@@ -119,8 +130,8 @@ const keyOf = (request: DashboardRequest) => JSON.stringify([request.method, req
 
 /** Sends a request through the host, with the same-origin and method checks before anything leaves the root. */
 export function sendRequest(host: DashboardHost, request: DashboardRequest, origin: string): Promise<unknown> {
-  if (request.method !== 'GET' && request.method !== 'POST') return Promise.reject(new CellFailure(`request method ${String(request.method)} is not GET or POST`));
-  if (!isSameOriginPath(request.path, origin)) return Promise.reject(new CellFailure(`request ${quotedPath(request.path)} is not a same-origin path`));
+  if (request.method !== 'GET' && request.method !== 'POST') return Promise.reject(new CellFailure('request', `request method ${String(request.method)} is not GET or POST`));
+  if (!isSameOriginPath(request.path, origin)) return Promise.reject(new CellFailure('request', `request ${quotedPath(request.path)} is not a same-origin path`));
   return withTimeout((signal) => host.request(request, signal));
 }
 
@@ -154,7 +165,7 @@ export class SharedRequests {
 
   get(name: string, values: VariableValues = NO_VALUES): Promise<unknown> {
     const request = this.has(name) ? this.requests[name] : undefined;
-    if (!request) return Promise.reject(new CellFailure(`unknown source ${name}`));
+    if (!request) return Promise.reject(new CellFailure('request', `unknown source ${name}`));
     let built: DashboardRequest;
     try {
       built = buildRequest(request, values);
@@ -219,7 +230,7 @@ export async function runBinding({
   try {
     transform = compileTransform(binding.transform);
   } catch (error) {
-    throw new CellFailure(`transform does not parse or check: ${error instanceof Error ? error.message : String(error)}`);
+    throw new CellFailure('transform', `transform does not parse or check: ${error instanceof Error ? error.message : String(error)}`);
   }
   let variables: Record<string, unknown>;
   const form = formOf(binding);
@@ -232,15 +243,15 @@ export async function runBinding({
         response = await sendRequest(host, buildRequest((binding as { request: DashboardRequest }).request, values), origin);
       } else {
         const { source } = binding as { source: string };
-        if (!shared.has(source)) throw new CellFailure(`unknown source ${source}`);
+        if (!shared.has(source)) throw new CellFailure('request', `unknown source ${source}`);
         try {
           const answer = shared.get(source, values);
           onShared?.(answer);
           response = await answer;
         } catch (error) {
           // A refusal before sending stays a plain failure; anything the host or the timeout gave is a failed request.
-          const Failure = error instanceof CellFailure ? CellFailure : RequestFailed;
-          throw new Failure(`shared request ${source} failed: ${error instanceof Error ? error.message : String(error)}`);
+          const problem = `shared request ${source} failed: ${error instanceof Error ? error.message : String(error)}`;
+          throw error instanceof CellFailure ? new CellFailure(error.kind, problem) : new RequestFailed(problem);
         }
       }
     } catch (error) {
@@ -255,6 +266,6 @@ export async function runBinding({
   try {
     return { dropped: false, data: transform.evaluate(variables) };
   } catch (error) {
-    throw new CellFailure(`transform failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new CellFailure('transform', `transform failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

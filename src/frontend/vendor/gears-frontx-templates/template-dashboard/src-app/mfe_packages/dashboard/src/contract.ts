@@ -118,3 +118,24 @@ export interface ServedFile {
 
 /** What a host answers to the dashboard request: one served file, or the file in parts, the base file first, then one part per widget bundle. */
 export type ServedAnswer = ServedFile | ServedFile[];
+
+/**
+ * The step at which a cell or a larger view failed:
+ * - `registration`: the widget instance, its type's traits or its render does not register.
+ * - `mount`: the generated extension does not register or mount, for example because its widget bundle does not load.
+ * - `request`: the data request failed, or the root refused to build or send it.
+ * - `transform`: the transform does not parse or check, or it fails.
+ * - `data`: the transform result is not an object, or it fails the widget's data type.
+ * - `render_widget`: the widget refused `render_widget`, or did not take it in time.
+ */
+export type CellFailureKind = 'registration' | 'mount' | 'request' | 'transform' | 'data' | 'render_widget';
+
+/** Why a cell or a larger view shows the cannot-be-shown state. */
+export interface CellFailureReason {
+  kind: CellFailureKind;
+  /**
+   * The text of the failure's console line, on one line, its control characters escaped. The root puts no variable
+   * value of the host in it; it can quote the host's own error text and parts of the served file or of an answer.
+   */
+  message: string;
+}
