@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
-import { drawable, startsOver } from "@/lib/custom/drilldown";
+import { drawable, refusedForRebuiltSource } from "@/lib/custom/drilldown";
 import { nextSort } from "@/lib/metrics/evidence-rows";
 import { drilldownPagesQuery, metricQuery } from "@/queries/custom";
 import type { RunOptions } from "@/api/custom-client";
@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 
 type View =
   { kind: "rows" } | { kind: "widget" } | { kind: "metric"; id: string };
+
+const BESIDE_KIT_CLOSE_BUTTON = "absolute top-4 right-14";
 
 export function WidgetDrilldown({
   dashboard,
@@ -91,7 +93,7 @@ export function WidgetDrilldown({
             <span className="min-w-0 truncate">{heading}</span>
             <Button
               variant="ghost"
-              className="absolute top-4 right-14 z-[2] w-9"
+              className={cn(BESIDE_KIT_CLOSE_BUTTON, "z-[2] w-9")}
               aria-pressed={filling}
               aria-label={
                 filling ? "Shrink the dialog back" : "Fill the window"
@@ -288,7 +290,9 @@ function Rows({
         sort={shownSort}
         onSortChange={(key) => setSort(nextSort(shownSort, key))}
         fetchNextPage={() =>
-          startsOver(pages.error) ? pages.refetch() : pages.fetchNextPage()
+          refusedForRebuiltSource(pages.error)
+            ? pages.refetch()
+            : pages.fetchNextPage()
         }
         hasNextPage={pages.hasNextPage && !pageLimitReached}
         isFetchingNextPage={pages.isFetchingNextPage}

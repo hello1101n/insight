@@ -11,14 +11,18 @@ function initOfLastCall(): RequestInit {
   return (calls[calls.length - 1]?.[1] ?? {}) as RequestInit;
 }
 
+function clearSignInLatch(): void {
+  const restored = new Event("pageshow");
+  Object.defineProperty(restored, "persisted", { value: true });
+  window.dispatchEvent(restored);
+}
+
 describe("fetchWithAuth", () => {
   let assign: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     resetSessionProbe();
-    const restored = new Event("pageshow");
-    Object.defineProperty(restored, "persisted", { value: true });
-    window.dispatchEvent(restored);
+    clearSignInLatch();
     authStore.reset();
     authStore.setAuthenticated(makeSession());
     vi.stubGlobal("fetch", vi.fn());
@@ -63,6 +67,21 @@ describe("fetchWithAuth", () => {
     expect(authStore.getSnapshot().status).toBe("unauthenticated");
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign.mock.calls[0][0]).toMatch(/^\/auth\/login\?return_to=/);
+  });
+
+  it.each([
+    ["the store already failed closed", () => authStore.setUnauthenticated()],
+    ["the authenticator confirms the session ended", () => {}],
+  ])("returns the 401 response when the login redirect throws after %s", async (_, arrange) => {
+    arrange();
+    assign.mockImplementation(() => {
+      throw new DOMException("navigation blocked", "SecurityError");
+    });
+    const r401 = new Response(null, { status: 401 });
+    fetchMock().mockResolvedValue(r401);
+
+    await expect(fetchWithAuth("/x")).resolves.toBe(r401);
+    expect(assign).toHaveBeenCalledTimes(1);
   });
 
   function liveSession(): Response {

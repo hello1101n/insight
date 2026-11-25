@@ -172,9 +172,11 @@ describe("metric timeseries presentations", () => {
   it("keeps the grand total beside its label when the table is scrolled", () => {
     render(<MetricTimeseriesTable model={groupedTimeseriesModel()} />);
     const row = screen.getByText("Grand total").closest("tr")!;
+    const label = row.querySelectorAll("td")[0]!;
     const totals = row.querySelectorAll("td")[1]!.querySelector("span")!;
     expect(totals.className).toContain("sticky");
-    expect(totals.className).toContain("start-24");
+    expect(totals.className).toContain("start-(--bucket-col)");
+    expect(label.className).toContain("w-(--bucket-col)");
   });
 
   it("hides the grand-total row when every total is missing", () => {

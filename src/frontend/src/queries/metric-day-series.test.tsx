@@ -3,7 +3,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
+import type { SingleEntityEvidenceSelection } from "@/api/metric-drilldown-client";
 import * as client from "@/api/metric-results-client";
 
 vi.mock("@/api/metric-results-client");
@@ -21,7 +21,7 @@ import { useMetricDaySeries } from "./metric-day-series";
 
 const ME = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 
-const SELECTION: MetricEvidenceSelection = {
+const SELECTION: SingleEntityEvidenceSelection = {
   metric_key: "git.code_lines",
   entity: { type: "person", id: ME },
   period: { from: "2026-03-01", to: "2026-03-05" },
@@ -56,7 +56,7 @@ function harness() {
   return { wrapper };
 }
 
-async function series(selection: MetricEvidenceSelection = SELECTION) {
+async function series(selection: SingleEntityEvidenceSelection = SELECTION) {
   const { wrapper } = harness();
   const { result } = renderHook(() => useMetricDaySeries(selection), {
     wrapper,
@@ -65,7 +65,7 @@ async function series(selection: MetricEvidenceSelection = SELECTION) {
   return result.current.data;
 }
 
-async function readings(selection: MetricEvidenceSelection = SELECTION) {
+async function readings(selection: SingleEntityEvidenceSelection = SELECTION) {
   return (await series(selection))?.readings;
 }
 

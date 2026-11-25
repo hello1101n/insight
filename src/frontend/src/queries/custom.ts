@@ -300,7 +300,7 @@ export function datasetQuery(name: string) {
   });
 }
 
-export const PREVIEW_ROWS = 20;
+export const ASSUMED_FIRST_PAGE_ROWS = 20;
 
 export function datasetRecordsQuery(name: string, page: RecordPage) {
   return queryOptions({

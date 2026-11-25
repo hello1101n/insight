@@ -147,12 +147,13 @@ function ZoneGuard({ children }: { children: ReactNode }) {
   const { zone } = useNavLocation();
   const { canSeeOthers, isPending } = useViewerReach();
   const { isAdmin, isPending: adminPending, isError: adminError } = useIsAdmin();
+  const adminUnknown = adminPending || adminError;
   const homeShown = bareLandingZone(usePortalShowPlanned()) === "overview";
   const decision = landingDecision({
     zone,
     mgrPending: isPending,
     canSeeOthers,
-    adminPending: adminPending || adminError,
+    adminPending: adminUnknown,
     isAdmin,
     homeShown,
   });

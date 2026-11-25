@@ -40,17 +40,24 @@ export const PEER_FILL: Record<PeerStatusWithNeutral, string> = {
   neutral: "bg-muted-foreground/20",
 }
 
+type Quartiles = Pick<PeerStats, "p25" | "p50" | "p75">
+
+function beyondUpperQuartileAndMedian(value: number, stats: Quartiles): boolean {
+  return value >= stats.p75 && value > stats.p50
+}
+
+function beyondLowerQuartileAndMedian(value: number, stats: Quartiles): boolean {
+  return value <= stats.p25 && value < stats.p50
+}
+
 export function peerStatusVsQuartiles(
   value: number,
-  stats: Pick<PeerStats, "p25" | "p50" | "p75">,
+  stats: Quartiles,
   higherIsBetter: boolean
 ): PeerStatus {
-  if (higherIsBetter) {
-    if (value >= stats.p75 && value > stats.p50) return "top"
-    if (value <= stats.p25 && value < stats.p50) return "bottom"
-    return "in_pack"
-  }
-  if (value <= stats.p25 && value < stats.p50) return "top"
-  if (value >= stats.p75 && value > stats.p50) return "bottom"
+  const above = beyondUpperQuartileAndMedian(value, stats)
+  const below = beyondLowerQuartileAndMedian(value, stats)
+  if (above) return higherIsBetter ? "top" : "bottom"
+  if (below) return higherIsBetter ? "bottom" : "top"
   return "in_pack"
 }

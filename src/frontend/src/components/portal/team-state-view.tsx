@@ -38,6 +38,7 @@ import {
   usePortalSlice,
 } from "@/lib/portal/portal-nav";
 import type { TeamMember } from "@/types/insight";
+import { isAdditive } from "@/lib/portal/metric-stats";
 import { useCohortLabel } from "@/lib/portal/use-cohort-label";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useMemberGridData } from "@/queries/member-grid";
@@ -174,7 +175,7 @@ export function TeamStateView() {
           .map((id) => forEntity(r, id).value)
           .filter((v): v is number => v != null && Number.isFinite(v));
         if (vals.length === 0) return null;
-        const isSum = r.computation === "sum";
+        const isSum = isAdditive(r);
         const value = isSum
           ? vals.reduce((a, b) => a + b, 0)
           : quantile([...vals].sort((a, b) => a - b), 0.5);

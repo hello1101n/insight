@@ -14,6 +14,7 @@ import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as customClient from "@/api/custom-client";
+import type { Widget } from "@/api/custom-client";
 import { widgetListed } from "@/test/catalogue";
 import {
   scrollEndIntoView,
@@ -83,6 +84,19 @@ describe("/dashboards/widgets", () => {
       expect(screen.getByText("Commits per day")).toBeInTheDocument();
     }
   );
+
+  it("draws a widget of a kind this build does not know under its stored kind", async () => {
+    const future = { type: "heatmap", metric: "m-1" } as unknown as Widget;
+    vi.mocked(customClient.fetchWidgets).mockResolvedValue({
+      items: [widgetListed("w-1", "heat", future, "Commits per day")],
+      total: 1,
+    });
+
+    render(<Component />, { wrapper });
+
+    expect(await screen.findByText("heatmap")).toBeInTheDocument();
+    expect(screen.getByText("Commits per day")).toBeInTheDocument();
+  });
 
   it("names a widget by its title, or its name without one", async () => {
     vi.mocked(customClient.fetchWidgets).mockResolvedValue({

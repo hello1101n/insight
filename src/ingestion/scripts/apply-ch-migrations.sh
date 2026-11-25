@@ -111,6 +111,10 @@ for database in bronze_claude_admin bronze_figma bronze_github_copilot bronze_op
 done
 drop_retired_table_if_empty insight raw_data
 drop_retired_table_if_empty identity aliases
+# INVARIANT: bronze of zendesk connector 2.x, which 3.0.0 no longer writes; each drops only while empty.
+for table in support_tickets support_ticket_ids support_agents support_ticket_events zendesk_satisfaction_ratings; do
+  drop_retired_table_if_empty bronze_zendesk "${table}"
+done
 # INVARIANT: can fire at the floor: any dropped materialized view leaves its inner table behind.
 drop_orphaned_inner_tables insight
 
@@ -934,22 +938,6 @@ heal_collab_document_visited_page_count() {
 
 heal_collab_document_visited_page_count staging m365__collab_document_activity_sharepoint
 heal_collab_document_visited_page_count silver class_collab_document_activity
-
-# The HubSpot arm of the support class writes NULL where it measures no
-# comments and no CSAT, so the class union declares those counters Nullable.
-# A relation that only the Zendesk arm built keeps the plain UInt64. Widening,
-# no value moves.
-# INVARIANT: repairs releases without #112 (main before <first umbrella release carrying it>); delete once every CH_FLOOR_RELEASES release runs it.
-heal_support_activity_counters() {
-  local db="$1" table="$2" column
-  ch_table_exists "${db}" "${table}" || return 0
-  for column in public_comments private_comments csat_good csat_total; do
-    retype_column "${db}" "${table}" "${column}" 'Nullable(UInt64)'
-  done
-}
-
-heal_support_activity_counters staging zendesk__support_activity
-heal_support_activity_counters silver class_support_activity
 
 # The compose seed once pre-created silver.class_ai_overage from placeholder
 # DDL: String identity columns and a UInt64 version, where the model creates

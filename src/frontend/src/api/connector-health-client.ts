@@ -14,7 +14,7 @@ export type SyncStatus =
 
 export interface SyncFact {
   job_id: string;
-  status: SyncStatus | string;
+  status: string;
   started_at?: string | null;
   duration_ms?: number | null;
   records_reported?: number | null;

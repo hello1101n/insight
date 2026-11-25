@@ -90,6 +90,7 @@ WITH fixtures AS (
             ('thumbnail',         '',                  '',           '',                                                                'ignored'),
             ('customfield_000017','option-with-child', '',           'com.atlassian.jira.plugin.system.customfieldtypes:cascadingselect','ignored'),
             ('customfield_000018','sd-approvals',      '',           'com.atlassian.servicedesk.approvals-plugin:sd-approvals',          'ignored'),
+            ('customfield_000020','sd-servicelevelagreement','',     'com.atlassian.servicedesk:sd-sla-field',                           'ignored'),
 
             -- a structure nobody has classified
             ('customfield_000019','brand-new-type',    '',           '',                                                                'UNKNOWN')

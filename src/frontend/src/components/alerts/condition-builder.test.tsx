@@ -394,8 +394,9 @@ describe("ConditionBuilder", () => {
     });
 
     it("starts a picked day at midnight when no time is set, and shows it", async () => {
+      const pickerOpensOn = new Date(2026, 9, 15, 12);
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(2026, 9, 15, 12));
+      vi.setSystemTime(pickerOpensOn);
       try {
         const latest = at("");
 

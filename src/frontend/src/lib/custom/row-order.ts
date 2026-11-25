@@ -13,17 +13,19 @@ export function nextOrder(
   return undefined;
 }
 
-export function ordered(
+export function orderedThenCapped(
   rows: readonly unknown[][],
-  order: RowOrder | undefined
+  order: RowOrder | undefined,
+  cap: number
 ): readonly unknown[][] {
-  if (order === undefined) return rows;
+  if (order === undefined) return rows.slice(0, cap);
 
   const sign = order.direction === "ascending" ? 1 : -1;
-
-  return [...rows].sort((left, right) =>
+  const sorted = [...rows].sort((left, right) =>
     compare(left[order.column], right[order.column], sign)
   );
+
+  return sorted.slice(0, cap);
 }
 
 function absent(value: unknown): boolean {

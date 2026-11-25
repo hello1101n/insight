@@ -28,7 +28,6 @@ export default defineConfig(({ mode }) => {
   // WORKAROUND: process.env stores an assigned undefined as the string "undefined".
   if (release) process.env.VITE_APP_RELEASE = release;
   return {
-    base: "./",
     plugins: [
       tanstackRouter({ target: "react", autoCodeSplitting: true }),
       react(),

@@ -439,7 +439,7 @@ describe("orderAttentionItems", () => {
       "change",
     ]);
     expect(
-      orderAttentionItems(items, new Set(), true).map((i) => i.key)
+      orderAttentionItems(items, new Set(), "changes-first").map((i) => i.key)
     ).toEqual(["change", "standing"]);
   });
 });

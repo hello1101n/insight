@@ -11,7 +11,7 @@ import { Badge } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import type { AccountRef } from "@/lib/identities/account-key";
-import { isQueueItem } from "@/lib/identities/cases";
+import { holderCard, isQueueItem } from "@/lib/identities/cases";
 import { personDisplayName } from "@/lib/identities/person-display";
 import { accountTrail } from "@/lib/identities/trail";
 import { formatUtcAge, formatUtcInstant } from "@/lib/format";
@@ -31,13 +31,13 @@ const VERB_KEYS: Record<string, string> = {
 export function AccountDetail({
   accountRef,
   queueItem,
-  observed = false,
+  vouched = false,
   holder,
   onDecided,
 }: {
   accountRef: AccountRef;
   queueItem: AttentionItem | undefined;
-  observed?: boolean;
+  vouched?: boolean;
   holder?: PersonSummary | null;
   onDecided?: () => void;
 }) {
@@ -58,7 +58,7 @@ export function AccountDetail({
   if (!binding.data) return null;
 
   const neverSeen =
-    !observed &&
+    !vouched &&
     queueItem == null &&
     binding.data.person_id == null &&
     binding.data.history.length === 0;
@@ -73,10 +73,11 @@ export function AccountDetail({
   }
 
   const candidates = queueItem?.candidates ?? [];
-  const boundCard =
-    holder?.person_id === binding.data.person_id
-      ? holder
-      : candidates.find((c) => c.person_id === binding.data.person_id);
+  const boundCard = holderCard(
+    binding.data.person_id ?? null,
+    holder,
+    candidates
+  );
   const events = accountTrail(binding.data.history, binding.data.operations);
 
   return (
@@ -86,7 +87,7 @@ export function AccountDetail({
           accountRef={accountRef}
           binding={binding.data}
           candidates={candidates}
-          holder={boundCard ?? null}
+          holder={boundCard}
           queued={queueItem != null && isQueueItem(queueItem.kind)}
           onDecided={onDecided}
         />

@@ -38,7 +38,7 @@ import {
   sectionNeeds,
   type ResolveView,
 } from "./plan";
-import { tenantData } from "./data";
+import { hasRealReading, tenantData } from "./data";
 
 export function TenantLensView({ config, "data-testid": testId }: { config: TenantLensConfig; "data-testid"?: string }) {
   const { dateRange, compareTo } = usePortalPeriod();
@@ -121,14 +121,7 @@ export function TenantLensView({ config, "data-testid": testId }: { config: Tena
     .flatMap((section) => sectionNeeds(section, bucket))
     .some((need) => {
       const r = resolve(need);
-      if (!r) return false;
-      const e = tenantData(r);
-      return (
-        e.value != null ||
-        e.series.some((s) => s.points.some((p) => p.value != null)) ||
-        e.breakdown.some((v) => v.value != null) ||
-        e.histogram.some((h) => h.bins.length > 0)
-      );
+      return r != null && hasRealReading(tenantData(r));
     });
   if (!observed) return <Pending label={config.notIngested} />;
 

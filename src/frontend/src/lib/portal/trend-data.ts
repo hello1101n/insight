@@ -2,9 +2,11 @@ import type { MetricBucket } from "@/api/metric-results-client";
 import type { SectionTrendPoint } from "@/components/portal/section-trend";
 import {
   forEntity,
-  MAX_PROJECTED_ROWS,
+  PROJECTED_ROWS_BUDGET,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
+import { mondayFirstWeekday } from "@/lib/portal/day-hour-matrix";
+import { runningBucketStart } from "@/lib/portal/person-trend";
 
 const DAY_MS = 86_400_000;
 
@@ -14,11 +16,16 @@ export function pickTrendBucket(
   members: number,
   range: { from: string; to: string },
 ): MetricBucket | null {
-  const rowsPerBucket = Math.max(1, members);
-  const maxBuckets = Math.floor(MAX_PROJECTED_ROWS / rowsPerBucket) - 1;
-  if (maxBuckets < 1) return null;
+  const rows = (bucket: MetricBucket) =>
+    projectedTimeseriesRows(Math.max(1, members), bucketCount(range, bucket));
 
-  return BUCKETS.find((bucket) => bucketCount(range, bucket) <= maxBuckets) ?? null;
+  return BUCKETS.find((bucket) => rows(bucket) <= PROJECTED_ROWS_BUDGET) ?? null;
+}
+
+function projectedTimeseriesRows(members: number, buckets: number): number {
+  const bucketRows = members * buckets;
+  const totalRows = members;
+  return bucketRows + totalRows;
 }
 
 function bucketCount(range: { from: string; to: string }, bucket: MetricBucket): number {
@@ -37,13 +44,39 @@ function bucketCount(range: { from: string; to: string }, bucket: MetricBucket):
 }
 
 function mondayOf(timestamp: number): number {
-  const weekday = new Date(timestamp).getUTCDay();
-  return timestamp - ((weekday + 6) % 7) * DAY_MS;
+  return timestamp - mondayFirstWeekday(new Date(timestamp)) * DAY_MS;
 }
 
 function monthIndex(timestamp: number): number {
   const date = new Date(timestamp);
   return date.getUTCFullYear() * 12 + date.getUTCMonth();
+}
+
+export interface TrendWindow {
+  bucket: MetricBucket;
+  startsFrom: string;
+  finishedBefore: string;
+}
+
+export function firstUnfinishedBucket(lastDay: string, bucket: MetricBucket): string {
+  return runningBucketStart(dayAfter(lastDay), bucket);
+}
+
+function dayAfter(isoDate: string): string {
+  return new Date(Date.parse(`${isoDate}T00:00:00Z`) + DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function wholeBuckets<T extends { date: string }>(
+  rows: readonly T[],
+  trendWindow: TrendWindow
+): T[] {
+  return rows.filter(
+    (row) =>
+      row.date >= trendWindow.startsFrom &&
+      row.date < trendWindow.finishedBefore
+  );
 }
 
 export function buildActiveContributorData(

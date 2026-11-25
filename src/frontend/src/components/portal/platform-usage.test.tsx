@@ -236,6 +236,18 @@ describe("PlatformUsage", () => {
     expect(days(asked)).toBe(days({ since: shared.from, until: shared.to }));
   });
 
+  it("slides a preset whole to end on the UTC day, keeping its length", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-15T05:00:00Z"));
+    try {
+      render(<PlatformUsage />);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mocks.asked.at(-1)).toEqual({ since: "2026-07-16", until: "2026-08-15" });
+  });
+
   it.each([
     { period: "month", pick: null },
     { period: "week", pick: "pick-week" },

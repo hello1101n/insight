@@ -108,10 +108,10 @@ export function IdentitiesView({ mode }: { mode?: string }) {
 
 function ReviewQueue() {
   const { t } = useTranslation();
-  const [limit, setLimit] = useState(QUEUE_FIRST_PAGE);
-  const attention = useAttention(limit);
+  const [readLength, setReadLength] = useState(QUEUE_FIRST_PAGE);
+  const attention = useAttention(readLength);
 
-  const askedForMore = limit > QUEUE_FIRST_PAGE;
+  const askedForMore = readLength > QUEUE_FIRST_PAGE;
 
   if (attention.isLoading) return <CenteredSpinner className="min-h-[60vh]" />;
   if (attention.isError || !attention.data) {
@@ -127,7 +127,7 @@ function ReviewQueue() {
           )}
           onRetry={() =>
             askedForMore
-              ? setLimit(QUEUE_FIRST_PAGE)
+              ? setReadLength(QUEUE_FIRST_PAGE)
               : void attention.refetch()
           }
         />
@@ -137,9 +137,11 @@ function ReviewQueue() {
 
   const { items, rates, truncated, items_truncated: itemsTruncated } =
     attention.data;
+  const longerReadInFlight =
+    attention.isFetching && attention.isPlaceholderData;
   const loadMore =
-    itemsTruncated && limit < QUEUE_MAX_ITEMS
-      ? () => setLimit((asked) => Math.min(asked * 2, QUEUE_MAX_ITEMS))
+    itemsTruncated && readLength < QUEUE_MAX_ITEMS
+      ? () => setReadLength((asked) => Math.min(asked * 2, QUEUE_MAX_ITEMS))
       : null;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6">
@@ -165,7 +167,7 @@ function ReviewQueue() {
       <Queue
         items={items}
         onLoadMore={loadMore}
-        loadingMore={attention.isFetching && attention.isPlaceholderData}
+        loadingMore={longerReadInFlight}
       />
     </div>
   );
@@ -257,7 +259,9 @@ function Queue({
   const { acct } = usePortalSearch();
   const { setAcct } = usePortalNavActions();
   const listRef = useRef<HTMLDivElement>(null);
-  const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
+  const [seenThisSitting, setSeenThisSitting] = useState<ReadonlySet<string>>(
+    new Set()
+  );
   const groups: Array<{ kind: string; items: AttentionItem[] }> = KIND_ORDER.map(
     (kind) => ({ kind, items: items.filter((i) => i.kind === kind) }),
   ).filter((g) => g.items.length > 0);
@@ -266,7 +270,7 @@ function Queue({
   if (other.length > 0) groups.push({ kind: "other", items: other });
 
   const select = (key: string | null) => {
-    if (key) setVisited((seen) => new Set(seen).add(key));
+    if (key) setSeenThisSitting((seen) => new Set(seen).add(key));
     setAcct(key);
   };
 
@@ -310,7 +314,7 @@ function Queue({
             kind={group.kind}
             items={group.items}
             selectedKey={acct}
-            visited={visited}
+            seenThisSitting={seenThisSitting}
             onSelect={(key) => select(key === acct ? null : key)}
           />
         ))}
@@ -348,13 +352,13 @@ function QueueGroup({
   kind,
   items,
   selectedKey,
-  visited,
+  seenThisSitting,
   onSelect,
 }: {
   kind: string;
   items: AttentionItem[];
   selectedKey: string | undefined;
-  visited: ReadonlySet<string>;
+  seenThisSitting: ReadonlySet<string>;
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
@@ -395,7 +399,7 @@ function QueueGroup({
                 key={queueCase.key}
                 queueCase={queueCase}
                 selectedKey={selectedKey}
-                visited={visited}
+                seenThisSitting={seenThisSitting}
                 onSelect={onSelect}
               />
             ))}
@@ -440,12 +444,12 @@ function SourceCounts({ items }: { items: AttentionItem[] }) {
 function CaseBlock({
   queueCase,
   selectedKey,
-  visited,
+  seenThisSitting,
   onSelect,
 }: {
   queueCase: QueueCase;
   selectedKey: string | undefined;
-  visited: ReadonlySet<string>;
+  seenThisSitting: ReadonlySet<string>;
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
@@ -562,7 +566,9 @@ function CaseBlock({
                 <span
                   className={cn(
                     "truncate text-sm font-medium",
-                    visited.has(key) && !selected && "text-muted-foreground",
+                    seenThisSitting.has(key) &&
+                      !selected &&
+                      "text-muted-foreground",
                   )}
                 >
                   {label}

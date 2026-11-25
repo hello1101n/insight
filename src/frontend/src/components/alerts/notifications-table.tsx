@@ -16,6 +16,7 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { WitnessLines } from "@/components/alerts/witness";
 import { conditionText, statusText } from "@/lib/alerts/describe";
 import { formatUtcInstant } from "@/lib/format";
+import { withoutPagingRepeats } from "@/lib/paging";
 import { TEXT_BODY, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 import { alertNotificationsQuery } from "@/queries/alerts";
@@ -24,12 +25,6 @@ const DAY = "d MMM yyyy";
 const CLOCK = "HH:mm zzz";
 
 type Rule = Pick<Alert, "metric">;
-
-function distinct(notifications: AlertNotification[]): AlertNotification[] {
-  const seen = new Set<string>();
-
-  return notifications.filter(({ id }) => !seen.has(id) && seen.add(id));
-}
 
 export function NotificationsTable({ alert }: { alert: Alert }) {
   const history = useInfiniteQuery(alertNotificationsQuery(alert.id));
@@ -43,7 +38,7 @@ export function NotificationsTable({ alert }: { alert: Alert }) {
     );
   }
 
-  const notifications = distinct(
+  const notifications = withoutPagingRepeats(
     history.data.pages.flatMap((page) => page.notifications)
   );
   if (notifications.length === 0) {

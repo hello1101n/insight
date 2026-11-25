@@ -45,6 +45,7 @@ import {
   useReadAlert,
   useReplaceAlert,
 } from "@/queries/alerts";
+import { readAfterMount } from "@/queries/read-after-mount";
 
 export function NewAlertPage() {
   const destinations = useQuery(alertDestinationsQuery());
@@ -81,6 +82,7 @@ export function EditAlertPage({ id }: { id: string }) {
     refetchInterval: false,
     refetchOnWindowFocus: false,
   });
+  const fresh = readAfterMount(alert);
 
   if (alert.isError) {
     return (
@@ -91,7 +93,7 @@ export function EditAlertPage({ id }: { id: string }) {
       </Shell>
     );
   }
-  if (!alert.isFetchedAfterMount || !alert.isSuccess) {
+  if (fresh === undefined) {
     return (
       <CenteredSpinner
         data-testid="page-custom-alert-edit"
@@ -103,10 +105,10 @@ export function EditAlertPage({ id }: { id: string }) {
   return (
     <Shell
       data-testid="page-custom-alert-edit"
-      title={`Edit ${alert.data.name}`}
+      title={`Edit ${fresh.name}`}
       backTo={id}
     >
-      <AlertEditor key={id} existing={alert.data} />
+      <AlertEditor key={id} existing={fresh} />
     </Shell>
   );
 }
@@ -186,7 +188,7 @@ function AlertEditor({
     hold(existing ? formOf(existing) : (initial ?? blankForm()))
   );
   const [view, setView] = useState<"fields" | "text">("fields");
-  const [base, setBase] = useState<Alert | undefined>(existing);
+  const [filledFrom, setFilledFrom] = useState<Alert | undefined>(existing);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [focusAsked, setFocusAsked] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
@@ -202,7 +204,7 @@ function AlertEditor({
   const navigate = useNavigate();
 
   const saving = create.isPending || replace.isPending;
-  const failure = base ? replace.error : create.error;
+  const failure = filledFrom ? replace.error : create.error;
   const conflict = isRevisionConflict(failure);
   const general =
     failure && !conflict ? savingRefusal(failure).general : undefined;
@@ -287,11 +289,11 @@ function AlertEditor({
       });
     const refused = (error: unknown) => refuse(savingRefusal(error).fields);
 
-    if (base) {
+    if (filledFrom) {
       replace.mutate(
         {
-          id: base.id,
-          draft: { ...checked.draft, expected_revision: base.revision },
+          id: filledFrom.id,
+          draft: { ...checked.draft, expected_revision: filledFrom.revision },
         },
         { onSuccess: saved, onError: refused }
       );
@@ -377,7 +379,7 @@ function AlertEditor({
         </div>
       )}
 
-      {conflict && base ? (
+      {conflict && filledFrom ? (
         <div role="alert" className="flex flex-wrap items-center gap-3">
           <p className={cn(TEXT_BODY, "text-destructive")}>
             This alert was changed by someone else.
@@ -388,9 +390,9 @@ function AlertEditor({
             size="sm"
             disabled={reload.isPending}
             onClick={() =>
-              reload.mutate(base.id, {
+              reload.mutate(filledFrom.id, {
                 onSuccess: (data) => {
-                  setBase(data);
+                  setFilledFrom(data);
                   setHeld(hold(formOf(data)));
                   setErrors({});
                   replace.reset();
@@ -414,7 +416,7 @@ function AlertEditor({
 
       <div className="flex items-center gap-3">
         <Button type="submit" size="sm" disabled={!sendable(held)} loading={saving}>
-          {base ? "Save changes" : "Create alert"}
+          {filledFrom ? "Save changes" : "Create alert"}
         </Button>
         {held.unparsed ? (
           <span className={cn(TEXT_LABEL, "text-destructive")}>

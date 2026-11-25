@@ -20,7 +20,12 @@ export const Route = createFileRoute("/_shell/dashboards/widgets/")({
   component: WidgetsCatalogue,
 });
 
-const KIND: Record<Widget["type"], { label: string; icon: typeof Hash }> = {
+interface Kind {
+  label: string;
+  icon: typeof Hash;
+}
+
+const KIND: Record<Widget["type"], Kind> = {
   table: { label: "Table", icon: Table2 },
   line: { label: "Line chart", icon: ChartLine },
   bar: { label: "Bar chart", icon: ChartColumn },
@@ -28,6 +33,12 @@ const KIND: Record<Widget["type"], { label: string; icon: typeof Hash }> = {
   stat: { label: "Figure", icon: Hash },
   pie: { label: "Pie chart", icon: ChartPie },
 };
+
+function kindOf(type: string): Kind {
+  const known: Partial<Record<string, Kind>> = KIND;
+
+  return known[type] ?? { label: type, icon: LayoutGrid };
+}
 
 function WidgetsCatalogue() {
   const catalogue = useDefinitionCatalogue("widgets");
@@ -55,10 +66,7 @@ function WidgetsCatalogue() {
 }
 
 function WidgetCard({ item }: { item: WidgetListed }) {
-  const kind = KIND[item.body.type] ?? {
-    label: String(item.body.type),
-    icon: LayoutGrid,
-  };
+  const kind = kindOf(item.body.type);
 
   return (
     <CatalogueCard
@@ -68,7 +76,7 @@ function WidgetCard({ item }: { item: WidgetListed }) {
       title={item.body.title || item.name}
       icon={kind.icon}
       facts={[kind.label, item.metric_name ?? "Missing metric"]}
-      squeezed={1}
+      truncatedFactIndex={1}
       updatedAt={item.updated_at}
     />
   );

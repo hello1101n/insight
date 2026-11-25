@@ -7,10 +7,27 @@ export interface QueueCase {
   items: AttentionItem[];
 }
 
-export const KIND_SEARCH_MATCH = "match";
+export const CONSOLE_SEARCH_MATCH_KIND = "match";
 
 export function isQueueItem(kind: string): boolean {
-  return kind !== KIND_SEARCH_MATCH;
+  return kind !== CONSOLE_SEARCH_MATCH_KIND;
+}
+
+export function holderCard(
+  boundId: string | null,
+  holder: PersonSummary | null | undefined,
+  candidates: readonly PersonSummary[]
+): PersonSummary | null {
+  if (holder != null && holder.person_id === boundId) return holder;
+  return candidates.find((c) => c.person_id === boundId) ?? null;
+}
+
+export function detachOffered(
+  holderId: string | null,
+  holderAccountCount: number | undefined
+): boolean {
+  if (holderId == null) return true;
+  return holderAccountCount !== undefined && holderAccountCount > 1;
 }
 
 const CONFIRMABLE_KINDS: ReadonlySet<string> = new Set([

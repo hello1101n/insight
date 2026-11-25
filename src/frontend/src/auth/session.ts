@@ -1,10 +1,10 @@
 import { authStore } from "./auth-store";
 import type { AuthStatus } from "./types";
 
-function unixSeconds(value: unknown): number {
+export function unixSeconds(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
-    : 0;
+    : null;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -28,7 +28,6 @@ export async function loadSession(): Promise<AuthStatus> {
       csrf_token?: string;
       expires_at?: number;
       refresh_at?: number;
-      experiments_enabled?: boolean;
       impersonator_email?: string;
     };
     if (!body.csrf_token) {
@@ -46,7 +45,6 @@ export async function loadSession(): Promise<AuthStatus> {
       csrfToken: body.csrf_token,
       expiresAt: unixSeconds(body.expires_at),
       refreshAt: unixSeconds(body.refresh_at),
-      experimentsEnabled: body.experiments_enabled === true,
       impersonatorEmail: body.impersonator_email || null,
     });
     return "authenticated";
