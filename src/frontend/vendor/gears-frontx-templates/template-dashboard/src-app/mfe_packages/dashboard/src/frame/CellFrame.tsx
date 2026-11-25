@@ -157,16 +157,18 @@ export function StateBody({
   return <div className={styles.widget}>{children}</div>;
 }
 
-/** An action the host puts on a cell or on its larger view: a button that shows `label`, which is also its accessible name. */
+/** An action the host puts on a cell or on its larger view: a button whose accessible name is `label`. */
 export interface CellAction {
   label: string;
+  /** With an icon the button shows the icon only, as the larger-view button does; without one it shows `label`. */
+  icon?: ReactNode;
   onSelect: () => void;
 }
 
 function ActionButtons({ actions }: { actions?: readonly CellAction[] }) {
-  return actions?.map((action, index) => (
-    <Button key={index} variant="ghost" size="sm" onClick={() => action.onSelect()}>
-      {action.label}
+  return actions?.map(({ label, icon, onSelect }, index) => (
+    <Button key={index} variant="ghost" size="sm" icon={icon} aria-label={icon ? label : undefined} onClick={() => onSelect()}>
+      {icon ? null : label}
     </Button>
   ));
 }
