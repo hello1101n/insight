@@ -125,6 +125,7 @@ create_connector_bronze() {
 # silver; its own build-gold.sh still plays that.
 build_graph() {
   local tree="$1" venv="$2" label="$3"
+  shift 3
   local profiles="$WORKDIR/profiles-$label" target="$WORKDIR/dbt-$label"
   local path="$venv/bin:$PATH" project="$tree/src/ingestion/dbt" unbuildable excluded=()
   if ! syncs_the_buildable_graph "$tree"; then
@@ -139,7 +140,7 @@ build_graph() {
   read -r -a excluded <<< "$unbuildable"
   echo "=== dbt run over the buildable graph, excluding ${#excluded[@]} unbuildable model(s) ==="
   (cd "$project" && PATH="$path" dbt --no-use-colors run --profiles-dir "$profiles" \
-    --target-path "$target" --log-path "$target/logs" ${excluded[@]+--exclude "${excluded[@]}"})
+    --target-path "$target" --log-path "$target/logs" ${excluded[@]+--exclude "${excluded[@]}"} "$@")
 }
 
 echo "=== Step 1: install base $(git -C "$REPO_ROOT" rev-parse --short "$BASE_SHA") (warm state) ==="
@@ -425,7 +426,7 @@ assert_jira_catalogue_first_seen_kept() {
       arrayStringConcat(groupArray(row), ';'))
     FROM
     (
-        SELECT concat(unique_key, ',', tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
+        SELECT concat(unique_key, ',', insight_tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
         FROM staging.jira__catalogue_first_seen FINAL
         ORDER BY unique_key
     )" | _ch_http_query | tr -d '\n')"
@@ -491,10 +492,11 @@ assert_task_producer_tenants() {
   source "$REPO_ROOT/src/ingestion/scripts/lib/ch-exec.sh"
   local got
   local expected="jira__task_comments:2:Nullable(String);youtrack__task_issuetypes:2:Nullable(String);youtrack__task_links:2:String|"
+  # A producer that still names its tenant `tenant_id` has it renamed in place.
   got="$(printf "SELECT concat(
       (SELECT arrayStringConcat(groupArray(concat(table, ':', toString(position), ':', type)), ';')
        FROM (SELECT table, position, type FROM system.columns
-             WHERE database = 'staging' AND name = 'tenant_id'
+             WHERE database = 'staging' AND name = 'insight_tenant_id'
                AND table IN ('jira__task_comments', 'youtrack__task_issuetypes', 'youtrack__task_links') ORDER BY table)), '|',
       (SELECT arrayStringConcat(groupArray(name), ';')
        FROM (SELECT name FROM system.tables
@@ -545,7 +547,7 @@ assert_task_class_tenant() {
   local expected="2:Nullable(String)|1"
   got="$(printf "SELECT concat(
       (SELECT concat(toString(position), ':', type) FROM system.columns
-       WHERE database = 'silver' AND table = 'class_task_comments' AND name = 'tenant_id'), '|',
+       WHERE database = 'silver' AND table = 'class_task_comments' AND name = 'insight_tenant_id'), '|',
       toString((SELECT count() FROM silver.class_task_comments)))" | _ch_http_query | tr -d '\n')"
   if [[ "${got}" != "${expected}" ]]; then
     echo "::error title=warm upgrade left a task class without a tenant::Expected '${expected}' — a Nullable(String) tenant_id right after unique_key, never narrowed while a row lacks a tenant, and the class row kept — but got '${got}'."
@@ -610,8 +612,46 @@ assert_task_producer_tenants
 assert_task_class_tenant
 assert_worklog_snapshot_type_narrowed
 
+# The tenant cutover (deploy/TENANT_IDENTITY_UPGRADE.md) renames the tenant
+# column of Bronze and the history relations to `insight_tenant_id` before any
+# sync (`tenant_migration apply`, which tenant-cutover-sim.sh exercises), and
+# rebuilds every other relation in full. A base that predates the rename gets
+# the same here: the rename alone, since the fixtures' legacy tenant is not
+# what this lane tests, and a full refresh. Neither runs on a base that has it.
+rename_pre_cutover_tenant_columns() {
+  (cd "$REPO_ROOT/src/ingestion/scripts" && python3 - <<'PY'
+from tenant_migration import ddl
+from tenant_migration.apply import retarget
+from tenant_migration.clickhouse import ClickHouse
+from tenant_migration.inventory import Table, discover, history_relations
+
+# The copy `tenant_migration apply` makes, without moving any tenant: the
+# fixtures' legacy tenant is not what this lane tests.
+ch = ClickHouse.from_env()
+for table in discover(ch, history_relations()):
+    if not isinstance(table, Table) or not table.renames_tenant:
+        continue
+    print(f"  {table.relation}: tenant_id -> insight_tenant_id")
+    rel = table.rel
+    ch.execute(ddl.drop(rel, "__rename"))
+    ch.execute(ddl.tenant_renamed(retarget(ch.execute(ddl.show_create(rel), fmt="TabSeparatedRaw"), rel, "__rename")))
+    ch.execute(f"INSERT INTO {rel.sql('__rename')} SELECT * FROM {rel.sql()}")
+    ch.execute(ddl.exchange(rel, "", "__rename"))
+    ch.execute(ddl.drop(rel, "__rename"))
+PY
+  )
+}
+
+PRE_CUTOVER="$(printf "SELECT count() FROM system.columns WHERE name = 'tenant_id' AND database IN ('staging', 'silver', 'insight', 'identity', 'config') OR (name = 'tenant_id' AND database LIKE 'bronze\\_%%')" | _ch_http_query | tr -d '[:space:]')"
+REFRESH=()
+if [[ "${PRE_CUTOVER}" != "0" ]]; then
+  echo "=== The base predates the tenant column rename: rename it, then rebuild in full ==="
+  rename_pre_cutover_tenant_columns
+  REFRESH=(--full-refresh)
+fi
+
 echo "=== Step 3: the first sync after the upgrade — this tree's buildable graph over the warm warehouse ==="
-if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch; then
+if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch ${REFRESH[@]+"${REFRESH[@]}"}; then
   echo "::error title=first sync after the upgrade fails — forgotten heal::A model reads a bronze/silver/staging column this branch adds but no heal widens an existing relation with, so the first connector sync after this release fails on every installation that already holds data. Ship the companion ALTER — a ch_table_exists-guarded heal in src/ingestion/scripts/apply-ch-migrations.sh, for silver.class_* as for staging.* — per the Warehouse contract changes rules in AGENTS.md."
   exit 1
 fi

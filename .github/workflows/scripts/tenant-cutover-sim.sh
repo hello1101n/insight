@@ -12,10 +12,12 @@
 #      history relation, operator config and the sync ledger written under a
 #      legacy tenant that is not a UUID, and identity inputs the previous
 #      release stamped with a hashed tenant. The history relation is built by
-#      this tree's own dbt from that Bronze; the identity inputs model refuses
-#      to build over it, because tenant_uuid() refuses a tenant that is not a
-#      UUID, which is why dbt stays stopped until the migration.
-#   3. `tenant_migration plan` and `apply`: nothing lost, tenant and keys moved.
+#      the base tree's dbt from that Bronze, as the installed release built it:
+#      the tenant column is still `tenant_id` there; the identity inputs model
+#      refuses to build over it, because tenant_uuid() refuses a tenant that is
+#      not a UUID, which is why dbt stays stopped until the migration.
+#   3. `tenant_migration plan` and `apply`: nothing lost, tenant and keys moved,
+#      and the tenant column renamed to `insight_tenant_id` outside the ledger.
 #   4. `rollback`, then `restore` from the dump: each gives back the warm state
 #      exactly.
 #   5. Apply again and rebuild with `--full-refresh` the way a sync selects,
@@ -112,6 +114,13 @@ build_base_identity_maps() {
     ${excluded[@]+--exclude "${excluded[@]}"})
 }
 
+# The installed release's dbt, over its own project: the warm state's shape.
+dbt_base_run() {
+  (cd "$BASE/src/ingestion/dbt" && PATH="$WORKDIR/base-venv/bin:$PATH" dbt run \
+    --profiles-dir "$WORKDIR/base-profiles" --target-path "$WORKDIR/base-target" \
+    --log-path "$WORKDIR/base-target/logs" "$@")
+}
+
 dbt_venv_for "$SCRIPTS/bootstrap-db/pins.env" "$WORKDIR/venv"
 export PATH="$WORKDIR/venv/bin:$PATH"
 
@@ -134,7 +143,7 @@ fingerprint() {
 }
 
 map_views() {
-  query "SELECT arrayStringConcat(groupArray(concat(t.name, ':', toString(has(c.names, 'tenant_id')))), ',') FROM
+  query "SELECT arrayStringConcat(groupArray(concat(t.name, ':', toString(has(c.names, 'insight_tenant_id')))), ',') FROM
     (SELECT name FROM system.tables WHERE database = 'identity' AND name IN ('account_assignment', 'person_map') ORDER BY name) AS t
     LEFT JOIN (SELECT table, groupArray(name) AS names FROM system.columns WHERE database = 'identity' GROUP BY table) AS c
     ON c.table = t.name"
@@ -175,7 +184,7 @@ INSERT INTO ingestion_history.sync_events (tick_id, job_id, connector, tenant_id
 VALUES ('tick-1', 'job-1', 'zoom', '$OLD_TENANT', '$SOURCE', 'sync', 'succeeded');
 SQL
 
-dbt_run --select zoom__users_snapshot zoom__users_fields_history
+dbt_base_run --select zoom__users_snapshot zoom__users_fields_history
 
 # The config tables come from dbt's on-run-start, which the deploy no longer runs.
 run_ch <<SQL
@@ -189,19 +198,18 @@ INSERT INTO bronze_zoom.users ($USER_COLUMNS) VALUES
     ('$OLD_TENANT-$SOURCE-u1', '$OLD_TENANT', '$SOURCE', 'u1', 'Ada', 'Example', 'Ada Example',
      'ada@example.com', 'Research', 'active', '1', 'UTC', 'en', '', 'E-1', '1', 'raw-4', '2026-01-02 00:00:00', '{}', 0);
 SQL
-dbt_run --select zoom__users_snapshot
+dbt_base_run --select zoom__users_snapshot
 
-if dbt_run --select zoom__identity_inputs >"$WORKDIR/refused.log" 2>&1; then
+if dbt_base_run --select zoom__identity_inputs >"$WORKDIR/refused.log" 2>&1; then
   fail "zoom__identity_inputs built over Bronze stamped '$OLD_TENANT': tenant_uuid() must refuse a tenant that is not a UUID"
 fi
 grep -q "CANNOT_PARSE_UUID" "$WORKDIR/refused.log" \
   || fail "zoom__identity_inputs failed over Bronze stamped '$OLD_TENANT', but not on its tenant: $(tail -c 2000 "$WORKDIR/refused.log")"
 
 # What the previous release left in the identity inputs: the tenant hashed. The
-# base sync built the relation; this tree's producer refuses the legacy tenant,
-# so both are run empty — this tree's shape where it differs — and the relation
-# is given that row.
-dbt_run --empty --select zoom__identity_inputs identity_inputs
+# base sync built the relation; its producer refuses the legacy tenant, so both
+# are run empty and the relation is given that row.
+dbt_base_run --empty --select zoom__identity_inputs identity_inputs
 run_ch <<SQL
 INSERT INTO identity.identity_inputs (unique_key, insight_tenant_id, insight_source_id, insight_source_type,
     source_account_id, value_type, value, value_field_name, operation_type, _synced_at, _version)
@@ -227,12 +235,12 @@ assert_migrated() {
   local got expected="4:0:3|3:3|1:0|1:0|$NEW_TENANT-$SOURCE-u1"
   got="$(query "SELECT concat(
       toString((SELECT count() FROM staging.zoom__users_snapshot)), ':',
-      toString((SELECT countIf(tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT-$SOURCE-')) FROM staging.zoom__users_snapshot)), ':',
+      toString((SELECT countIf(insight_tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT-$SOURCE-')) FROM staging.zoom__users_snapshot)), ':',
       toString((SELECT uniqExact(unique_key) FROM staging.zoom__users_snapshot)), '|',
       toString((SELECT count() FROM bronze_zoom.users)), ':',
-      toString((SELECT countIf(tenant_id = '$NEW_TENANT' AND startsWith(unique_key, '$NEW_TENANT-$SOURCE-')) FROM bronze_zoom.users FINAL)), '|',
+      toString((SELECT countIf(insight_tenant_id = '$NEW_TENANT' AND startsWith(unique_key, '$NEW_TENANT-$SOURCE-')) FROM bronze_zoom.users FINAL)), '|',
       toString((SELECT count() FROM config.task_value_map)), ':',
-      toString((SELECT countIf(tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT:')) FROM config.task_value_map)), '|',
+      toString((SELECT countIf(insight_tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT:')) FROM config.task_value_map)), '|',
       toString((SELECT count() FROM ingestion_history.sync_events)), ':',
       toString((SELECT countIf(tenant_id != '$NEW_TENANT') FROM ingestion_history.sync_events)), '|',
       (SELECT min(unique_key) FROM bronze_zoom.users WHERE id = 'u1'))")"
