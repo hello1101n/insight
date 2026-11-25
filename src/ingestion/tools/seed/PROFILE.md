@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `7e27a58b0d7d99ff` |
+| seed_revision | `88e0365f8bfbf89f` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -155,6 +155,15 @@ only the shared board. Open a board at its path on the stand.
 | `shared` | Stand: board shared with the CEO | `/dashboards/stand-shared` | 2 | a board the admin operator owns and shares with the CEO as a viewer |
 | `starred` | Stand: starred board | `/dashboards/stand-starred` | 2 | a board the admin operator has starred |
 | `dataset_widgets` | Stand: widgets over a dataset | `/dashboards/stand-dataset-widgets` | 2 | bars and a table over a metric that reads the seeded dataset |
+| `stat_compare` | Stand: stats against the previous period | `/dashboards/stand-stat-compare` | 4 | stats compared with the previous period: higher, lower and neutral is better, a percent stat and a duration stat |
+| `bar_layouts` | Stand: horizontal and 100% stacked bars | `/dashboards/stand-bar-layouts` | 2 | horizontal bars, and bars stacked to 100% by a series |
+| `target_lines` | Stand: target lines | `/dashboards/stand-target-lines` | 3 | a target on a percent line and on percent bars, and a target without a label on an area |
+| `series_lines_and_areas` | Stand: lines and areas by series | `/dashboards/stand-series-lines-and-areas` | 2 | one line for each value of a series column, and areas stacked by it |
+| `heatmaps` | Stand: heatmaps by two columns and by day | `/dashboards/stand-heatmaps` | 2 | a heatmap with an x and a y column, and a calendar heatmap by the time bucket |
+| `funnel` | Stand: funnel from conditional counts | `/dashboards/stand-funnel` | 1 | a funnel whose stages are conditional counts in one row |
+| `treemap` | Stand: treemap with groups | `/dashboards/stand-treemap` | 1 | a treemap of pipelines grouped by repository |
+| `scatter` | Stand: scatter with labels and series | `/dashboards/stand-scatter` | 1 | a scatter of pipelines with a size, a series by repository and a label on each point |
+| `durations` | Stand: durations with a unit | `/dashboards/stand-durations` | 2 | a table column and bars whose metric reads durations in seconds |
 
 The folder is `Stand folder` and the dataset is `stand_sample_records`. A
 failing widget fails on purpose: its metric reads a column that the table

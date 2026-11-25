@@ -37,6 +37,14 @@ def _eq(column: str, value: str) -> Body:
     return {"column": column, "type": "string", "op": "eq", "value": value}
 
 
+def _ne(column: str, value: str) -> Body:
+    return {"column": column, "type": "string", "op": "ne", "value": value}
+
+
+def _seconds(as_name: str, agg: str) -> Body:
+    return _column("duration_s", "int", as_name, agg=agg, unit="s")
+
+
 def _ratio(numerator: str, denominator: str, as_name: str, *, percent: bool) -> Body:
     return {
         "type": "float",
@@ -211,6 +219,69 @@ METRICS: Final[tuple[Definition, ...]] = (
             **_PULL_REQUESTS,
             "fields": [_column(MISSING_COLUMN), _count("pr_id", "prs")],
             "group_by": [MISSING_COLUMN],
+        },
+    ),
+    Definition(
+        "stand-m-pipeline-duration-over-time",
+        "Stand: pipeline run duration over time",
+        {
+            **_CI_RUNS,
+            "time": {"column": "created_at"},
+            "fields": [_count("run_id", "runs"), _seconds("average_duration", "avg")],
+        },
+    ),
+    Definition(
+        "stand-m-runs-over-time-by-trigger",
+        "Stand: runs over time by trigger",
+        {
+            **_CI_RUNS,
+            "time": {"column": "created_at"},
+            "fields": [_column("trigger_category"), _count("run_id", "runs")],
+            "group_by": ["trigger_category"],
+        },
+    ),
+    Definition(
+        "stand-m-pull-request-funnel",
+        "Stand: pull request funnel",
+        {
+            **_PULL_REQUESTS,
+            "time": {"column": "created_on"},
+            "fields": [
+                _count("pr_id", "opened"),
+                _count("pr_id", "closed", when=[_ne("state", "OPEN")]),
+                _count("pr_id", "merged", when=[_eq("state", "MERGED")]),
+            ],
+        },
+    ),
+    Definition(
+        "stand-m-pipeline-load-by-repository",
+        "Stand: pipeline load by repository",
+        {
+            **_CI_RUNS,
+            "fields": [
+                _column("repo_full_name"),
+                _column("pipeline_name"),
+                _count("run_id", "runs"),
+                _count("run_id", "failed", when=[_eq("outcome", "failure")]),
+                _seconds("average_duration", "avg"),
+            ],
+            "group_by": ["repo_full_name", "pipeline_name"],
+            "order_by": {"field": "runs", "direction": "desc"},
+        },
+    ),
+    Definition(
+        "stand-m-run-duration-by-pipeline",
+        "Stand: run duration by pipeline",
+        {
+            **_CI_RUNS,
+            "time": {"column": "created_at"},
+            "fields": [
+                _column("pipeline_name"),
+                _seconds("average_duration", "avg"),
+                _seconds("longest_duration", "max"),
+            ],
+            "group_by": ["pipeline_name"],
+            "order_by": {"field": "pipeline_name"},
         },
     ),
     Definition(

@@ -22,6 +22,9 @@ _ANCHOR = _dt.date(2026, 6, 30)
 _METRICS = {metric.id: metric for metric in cc.METRICS}
 _WIDGETS = {widget.id: widget for widget in cc.WIDGETS}
 _RANGE_TOKENS = {"PDC", "P7D", "P30D", "PMC", "PQC", "P1Y", "inf"}
+_BOUNDED_TOKENS = _RANGE_TOKENS - {"inf"}
+_NUMBER_AGGREGATES = {"count", "sum", "avg"}
+_UNITS = {"ms", "s", "min", "h", "d"}
 
 
 #: The keys that name a metric column, per widget type, as the service reads them.
@@ -32,13 +35,21 @@ _COLUMN_KEYS = {
     "pie": ("label", "value"),
     "stat": ("value",),
     "table": (),
+    "heatmap": ("x", "y", "value"),
+    "funnel": (),
+    "treemap": ("label", "value", "group"),
+    "scatter": ("x", "y", "size", "series", "label"),
 }
 
 
 def _columns(widget: cc.Definition) -> list[str]:
     body = widget.body
     named = [body[key] for key in _COLUMN_KEYS[body["type"]] if key in body]
-    return named + list(body.get("columns", []))
+    return named + list(body.get("columns", [])) + list(body.get("stages", []))
+
+
+def _is_number(field: cc.Body) -> bool:
+    return field["type"] in {"int", "float"} or field.get("agg") in _NUMBER_AGGREGATES
 
 
 def _clocked(metric: cc.Definition) -> bool:
@@ -98,6 +109,53 @@ def test_a_board_without_time_ranges_draws_no_time_bucket() -> None:
         assert bucketed == [], f"{board.key} draws a bucket it never asks for"
 
 
+def _shape_problems(widget: cc.Definition) -> list[str]:
+    """The refusals that insight-v3-core makes on write, which a seeded row skips."""
+    body = widget.body
+    problems = []
+    if body.get("stack") is not None and (body["type"] != "bar" or "series" not in body):
+        problems.append("a 100% stack without a series")
+    if body["type"] == "heatmap" and "y" not in body and body["x"] != "bucket":
+        problems.append("a calendar heatmap not by bucket")
+    if body["type"] == "funnel":
+        stages = body["stages"]
+        if not 2 <= len(stages) <= 12 or len(set(stages)) != len(stages):
+            problems.append("a funnel without 2 to 12 distinct stages")
+    if body["type"] == "stat" and set(body.get("compare", {})) - {"better"}:
+        problems.append("a comparison with a key other than better")
+    if body.get("compare", {}).get("better", "higher") not in {"higher", "lower", "neutral"}:
+        problems.append("a comparison with no known better")
+    return problems
+
+
+def test_every_seeded_widget_has_the_shape_the_service_accepts_on_write() -> None:
+    problems = {w.id: _shape_problems(w) for w in cc.WIDGETS}
+
+    assert {w: p for w, p in problems.items() if p} == {}
+
+
+def test_every_field_read_as_a_duration_is_a_number_in_a_known_unit() -> None:
+    timed: list[tuple[str, cc.Body]] = []
+    for metric in cc.METRICS:
+        timed += [(metric.id, field) for field in metric.body["fields"] if "unit" in field]
+
+    assert timed, "no seeded field is read as a duration"
+    assert [m for m, field in timed if field["unit"] not in _UNITS or not _is_number(field)] == []
+
+
+def test_a_compared_stat_sits_on_a_bounded_board_and_reads_a_clocked_metric() -> None:
+    """The portal asks for the previous period only over a bounded range and a clock."""
+    compared = {w.id for w in cc.WIDGETS if "compare" in w.body}
+    homes = [board for board in cc.BOARDS if compared & set(board.widgets)]
+
+    assert compared
+    for widget in compared:
+        assert _clocked(_METRICS[_WIDGETS[widget].body["metric"]]), widget
+    for board in homes:
+        offered = set(board.body.get("time_ranges", []))
+        assert offered and offered <= _BOUNDED_TOKENS, board.key
+
+
 def test_the_failing_widgets_are_drawn_and_the_failing_board_has_a_working_neighbour() -> None:
     failing = _board("failing_widget")
 
@@ -144,6 +202,10 @@ def test_the_boards_cover_every_case_the_renderers_must_draw() -> None:
             _columns(widget)
         )
 
+    def duration_columns(widget: cc.Definition) -> set[str]:
+        metric = _METRICS[widget.body["metric"]]
+        return {f["as_name"] for f in metric.body["fields"] if "unit" in f} & set(_columns(widget))
+
     def drawn(board: cc.Board) -> list[cc.Definition]:
         return [_WIDGETS[w] for w in board.widgets]
 
@@ -163,6 +225,47 @@ def test_the_boards_cover_every_case_the_renderers_must_draw() -> None:
         ),
         "a percent column": lambda b: any(
             w.body["type"] == "table" and percent_columns(w) for w in drawn(b)
+        ),
+        "a stat compared, higher is better": lambda b: any(
+            w.body.get("compare", {}).get("better", "higher") == "higher" and "compare" in w.body
+            for w in drawn(b)
+        ),
+        "a stat compared, lower is better": lambda b: any(
+            w.body.get("compare", {}).get("better") == "lower" for w in drawn(b)
+        ),
+        "a percent stat compared": lambda b: any(
+            "compare" in w.body and percent_columns(w) for w in drawn(b)
+        ),
+        "horizontal bars": lambda b: any(w.body.get("horizontal") is True for w in drawn(b)),
+        "a target line on a percent column": lambda b: any(
+            "target" in w.body and w.body["y"] in percent_columns(w) for w in drawn(b)
+        ),
+        "bars stacked to 100%": lambda b: any(w.body.get("stack") == "percent" for w in drawn(b)),
+        "a line by series": lambda b: any(
+            w.body["type"] == "line" and "series" in w.body for w in drawn(b)
+        ),
+        "an area by series": lambda b: any(
+            w.body["type"] == "area" and "series" in w.body for w in drawn(b)
+        ),
+        "a heatmap with x and y": lambda b: any(
+            w.body["type"] == "heatmap" and "y" in w.body for w in drawn(b)
+        ),
+        "a calendar heatmap": lambda b: any(
+            w.body["type"] == "heatmap" and "y" not in w.body for w in drawn(b)
+        ),
+        "a funnel of conditional counts": lambda b: any(
+            w.body["type"] == "funnel"
+            and any("when" in f for f in _METRICS[w.body["metric"]].body["fields"])
+            for w in drawn(b)
+        ),
+        "a treemap with groups": lambda b: any(
+            w.body["type"] == "treemap" and "group" in w.body for w in drawn(b)
+        ),
+        "a scatter with labels and series": lambda b: any(
+            w.body["type"] == "scatter" and {"label", "series"} <= set(w.body) for w in drawn(b)
+        ),
+        "a duration column with a unit": lambda b: any(
+            duration_columns(w) for w in drawn(b) if w.body["type"] == "table"
         ),
         "over 500 rows": lambda b: any(
             _METRICS[w.body["metric"]].body.get("limit", 0) > 500 for w in drawn(b)

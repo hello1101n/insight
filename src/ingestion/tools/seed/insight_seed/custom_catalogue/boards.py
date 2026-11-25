@@ -238,6 +238,89 @@ BOARDS: Final[tuple[Board, ...]] = (
         "bars and a table over a metric that reads the seeded dataset",
         {"title": "Widgets over a dataset", "items": _w("sample-bar", "sample-table")},
     ),
+    Board(
+        "stat_compare",
+        "Stand: stats against the previous period",
+        "stats compared with the previous period: higher, lower and neutral is better, "
+        "a percent stat and a duration stat",
+        _ranged(
+            "Stats against the previous period",
+            _w(
+                "prs-compare-stat",
+                "merged-share-compare-stat",
+                "duration-compare-stat",
+                "runs-compare-stat",
+            ),
+            ["P7D", "P30D", "PMC"],
+            "P30D",
+        ),
+    ),
+    Board(
+        "bar_layouts",
+        "Stand: horizontal and 100% stacked bars",
+        "horizontal bars, and bars stacked to 100% by a series",
+        {
+            "title": "Horizontal and 100% stacked bars",
+            "items": _w("commits-horizontal-bar", "outcome-percent-bar"),
+        },
+    ),
+    Board(
+        "target_lines",
+        "Stand: target lines",
+        "a target on a percent line and on percent bars, and a target without a label on an area",
+        _ranged(
+            "Target lines",
+            _w("merged-share-target-line", "success-share-target-bar", "merged-target-area"),
+            ["P30D", "P1Y"],
+            "P1Y",
+        ),
+    ),
+    Board(
+        "series_lines_and_areas",
+        "Stand: lines and areas by series",
+        "one line for each value of a series column, and areas stacked by it",
+        _ranged(
+            "Lines and areas by series",
+            _w("trigger-series-line", "trigger-series-area"),
+            ["P7D", "P30D"],
+            "P30D",
+        ),
+    ),
+    Board(
+        "heatmaps",
+        "Stand: heatmaps by two columns and by day",
+        "a heatmap with an x and a y column, and a calendar heatmap by the time bucket",
+        _ranged(
+            "Heatmaps",
+            _w("outcome-heatmap", "prs-calendar"),
+            ["P30D", "PMC"],
+            "P30D",
+        ),
+    ),
+    Board(
+        "funnel",
+        "Stand: funnel from conditional counts",
+        "a funnel whose stages are conditional counts in one row",
+        {"title": "Funnel from conditional counts", "items": _w("pr-funnel")},
+    ),
+    Board(
+        "treemap",
+        "Stand: treemap with groups",
+        "a treemap of pipelines grouped by repository",
+        {"title": "Treemap with groups", "items": _w("load-treemap")},
+    ),
+    Board(
+        "scatter",
+        "Stand: scatter with labels and series",
+        "a scatter of pipelines with a size, a series by repository and a label on each point",
+        {"title": "Scatter with labels and series", "items": _w("load-scatter")},
+    ),
+    Board(
+        "durations",
+        "Stand: durations with a unit",
+        "a table column and bars whose metric reads durations in seconds",
+        {"title": "Durations with a unit", "items": _w("load-duration-table", "duration-bar")},
+    ),
 )
 
 FOLDER_NAME: Final = "Stand folder"
