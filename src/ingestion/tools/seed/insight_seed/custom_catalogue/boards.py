@@ -54,7 +54,8 @@ BOARDS: Final[tuple[Board, ...]] = (
     Board(
         "every_widget_type",
         "Stand: every widget type",
-        "line, area, bar, bar with labels, stacked bar, pie, stat and table, with time ranges",
+        "line, area, bar, bar with labels, stacked bar, pie, stat, table, heatmap, funnel and"
+        " treemap, with time ranges",
         _ranged(
             "Every widget type",
             [
@@ -64,6 +65,8 @@ BOARDS: Final[tuple[Board, ...]] = (
                 *_w("commits-bar", "state-bar-labels", "ci-stacked-bar", "state-pie"),
                 {"heading": "Figures"},
                 *_w("prs-stat", "ci-success-table"),
+                {"heading": "More chart types"},
+                *_w("outcome-heatmap", "pr-funnel", "load-treemap"),
             ],
             ["P7D", "P30D", "P1Y"],
             "P30D",

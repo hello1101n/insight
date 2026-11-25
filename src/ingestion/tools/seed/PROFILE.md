@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `88e0365f8bfbf89f` |
+| seed_revision | `3348789f6d9919a4` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -140,7 +140,7 @@ only the shared board. Open a board at its path on the stand.
 
 | key | name | path | widgets | covers |
 |---|---|---|---|---|
-| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 8 | line, area, bar, bar with labels, stacked bar, pie, stat and table, with time ranges |
+| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 11 | line, area, bar, bar with labels, stacked bar, pie, stat, table, heatmap, funnel and treemap, with time ranges |
 | `headings_and_texts` | Stand: headings and texts | `/dashboards/stand-headings-and-texts` | 2 | headings, texts, a long heading, and text with markdown-like characters |
 | `no_time_range` | Stand: no time range, widgets with and without a clock | `/dashboards/stand-no-time-range` | 4 | a board without time ranges; clocked and clockless widgets run over all rows |
 | `percents` | Stand: percent stat and percent column | `/dashboards/stand-percents` | 4 | a percent stat, a percent table column, a percent line and percent bars |
