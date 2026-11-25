@@ -47,7 +47,7 @@ unavailable_issues AS (
 
 SELECT
     c.unique_key                                        AS unique_key,
-    c.tenant_id                                         AS tenant_id,
+    {{ bronze_tenant('c.tenant_id') }}                  AS tenant_id,
     c.source_id                                         AS source_id,
     toString(c.comment_id)                              AS comment_id,
     c.id_readable                                       AS id_readable,

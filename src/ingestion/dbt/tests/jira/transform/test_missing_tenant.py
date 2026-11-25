@@ -1,9 +1,13 @@
-"""A bronze row without a tenant builds, and the tenant tests on the model that reads it report it.
+"""What a bronze row without a valid tenant does to the model that reads it.
 
-A key reads the tenant through `ifNull(tenant_id, '')`, so a missing one never makes a key
-Nullable; `not_null` and `not_empty` on each model's tenant are the guard. Each case builds
-the chain from rows that carry a tenant, adds one row that does not, and rebuilds only the
-model that reads it, so the finding is that model's own.
+A model that reads its tenant through `bronze_tenant()` fails to build over a NULL, empty or
+non-UUID tenant, naming itself; with `bronze_tenant_on_invalid: warn` it builds and its
+`not_empty` test reports the row. `jira__comment_state` is the converted model.
+
+A model not converted yet reads the tenant through `ifNull(tenant_id, '')`, so a missing one
+never makes a key Nullable; `not_null` and `not_empty` on each model's tenant are the guard.
+Each case builds the chain from rows that carry a tenant, adds one row that does not, and
+rebuilds only the model that reads it, so the finding is that model's own.
 """
 
 from __future__ import annotations
@@ -47,7 +51,8 @@ DROP_TENANTLESS = {
         "ALTER TABLE bronze_jira.jira_issue_history DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2"
     ),
     "bronze_jira.jira_comments": (
-        "ALTER TABLE bronze_jira.jira_comments DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2"
+        "ALTER TABLE bronze_jira.jira_comments DELETE WHERE startsWith(unique_key, 'no-tenant-')"
+        " SETTINGS mutations_sync = 2"
     ),
     "bronze_jira.jira_worklogs": (
         "ALTER TABLE bronze_jira.jira_worklogs DELETE WHERE tenant_id IS NULL SETTINGS mutations_sync = 2"
@@ -83,16 +88,11 @@ CASES: dict[str, tuple[str, Callable[[], dict[str, Any]]]] = {
     ),
     "jira__issue_availability_state": ("bronze_jira.jira_issue", _issue),
     "jira__task_field_kind": ("bronze_jira.jira_fields", lambda: field("customfield_10099", schema_type="number")),
-    "jira__comment_state": (
-        "bronze_jira.jira_comments",
-        lambda: comment("TST-9", 909, jira_id="TST-9", updated="2026-01-07T10:00:00.000+0000"),
-    ),
 }
 
 REPORTED_BY = {
     "jira__catalogue_first_seen": "not_null_jira__catalogue_first_seen_tenant_id",
     "jira__changelog_items": "not_empty_jira__changelog_items_tenant_id",
-    "jira__comment_state": "not_null_jira__comment_state_tenant_id",
     "jira__issue_availability_state": "not_null_jira__issue_availability_state_tenant_id",
     "jira__issue_key_ids": "not_null_jira__issue_key_ids_tenant_id",
     "jira__task_field_kind": "not_null_jira__task_field_kind_tenant_id",
@@ -192,3 +192,56 @@ def test_the_producers_and_their_classes_carry_a_string_tenant(built: Warehouse)
 
     expected = {f"staging.{name}": "String" for name in PRODUCERS} | {f"silver.{name}": "String" for name in CLASSES}
     assert types == expected, f"every producer and class should carry a String tenant: {types}"
+
+
+GUARDED = "jira__comment_state"
+GUARD_MESSAGE = "staging.jira__comment_state: a Bronze c.tenant_id is NULL, empty or not a UUID"
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
+
+
+def _comment(tenant: str | None) -> dict[str, Any]:
+    row = comment("TST-9", 909, jira_id="TST-9", updated="2026-01-07T10:00:00.000+0000")
+    return {**row, "tenant_id": tenant, "unique_key": f"no-tenant-{row['unique_key']}"}
+
+
+@pytest.mark.parametrize("tenant", [None, "", "not-a-uuid", "gbcdefab-1111-2222-3333-444455556666"])
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build_of_the_model_that_reads_it(
+    built: Warehouse, tenant: str | None
+) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment(tenant)])
+    try:
+        invocation = built.dbt_status("run", "--select", GUARDED)
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert not invocation.success, f"{GUARDED} should refuse a tenant of {tenant!r}"
+    assert GUARD_MESSAGE in invocation.log, f"the failure should name the model and the problem:\n{invocation.log}"
+
+
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_test_reports_it(built: Warehouse) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment(None)])
+    try:
+        invocation = built.dbt_status("run", "--select", GUARDED, *WARN)
+        failing = built.failing_tests(tenant_tests(GUARDED))
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert invocation.success, f"{GUARDED} should build in warn mode:\n{invocation.log}"
+    assert failing == {f"not_empty_{GUARDED}_tenant_id"}, f"warn mode should keep the row as '': {sorted(failing)}"
+
+
+def test_a_bronze_tenant_is_read_as_its_lowercase_canonical_uuid(built: Warehouse) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment("ABCDEFAB-1111-2222-3333-444455556666")])
+    try:
+        built.dbt("run", "--select", GUARDED)
+        rows = built.rows(
+            "SELECT tenant_id, toTypeName(tenant_id) AS type FROM staging.jira__comment_state"
+            " WHERE startsWith(unique_key, 'no-tenant-')"
+        )
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert rows == [{"tenant_id": "abcdefab-1111-2222-3333-444455556666", "type": "String"}]

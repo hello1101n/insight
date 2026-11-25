@@ -37,11 +37,12 @@ worklog streams — `scenario.seed(comments=..., worklogs=...)`, with rows from
 the `comment` and `worklog` builders — and it builds `LIFECYCLE_SELECTOR`, the
 two lifecycle producers and their ancestors, instead of the journal's.
 
-`test_missing_tenant.py` proves the other half of tenant isolation: a bronze
-row with no tenant still builds, and the `not_null` and `not_empty` tests on the
-tenant of the model that reads it report the row. A key reads the tenant as
-`ifNull(tenant_id, '')`, so the row never makes a key Nullable; a class producer
-carries it as `''`, which `not_empty` reports.
+`test_missing_tenant.py` proves the other half of tenant isolation. A model that
+reads its tenant through `bronze_tenant()` (`jira__comment_state`) fails to build
+over a NULL, empty or non-UUID bronze tenant, naming itself; with
+`--vars '{bronze_tenant_on_invalid: warn}'` it builds and `not_empty` reports the
+row. A model not converted yet still builds, and the `not_null` and `not_empty`
+tests on the tenant of the model that reads it report the row.
 
 Bronze is created by the Airbyte destination from the Jira connector's own
 catalogue, through the same scripts `bootstrap-db.sh` uses — so the tables carry
