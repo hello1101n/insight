@@ -59,8 +59,8 @@ the same story. That is the house style; match it.
 ## The catalogue, and why 401 lives in one place
 
 `operations.py` is read from the **route tables** in
-`src/backend/services/{analytics,identity-resolution}/src/api/`. Both services
-emit their own OpenAPI document, but the route tables stay the source
+`src/backend/services/{analytics,connectors,identity-resolution}/src/api/`. The
+services emit their own OpenAPI documents, but the route tables stay the source
 here: the catalogue must list what the gateway *routes*, which includes the
 `/internal/*` S2S pair that is deliberately outside the generated document.
 
@@ -81,8 +81,10 @@ operation by `test_gateway.py`, and spot-checked here so this module carries its
 own reason for using a session at all." One per module, never one per
 operation.
 
-Adding an operation means adding a row to `ANALYTICS_OPERATIONS` or
-`IDENTITY_OPERATIONS`. Path parameters use the `SOME_ID` stand-in so the
+Adding an operation means adding a row to `ANALYTICS_OPERATIONS`,
+`CONNECTORS_OPERATIONS` or `IDENTITY_OPERATIONS`, and a test that calls it: the
+coverage gate fails an operation the OpenAPI documents that no test calls.
+Path parameters use the `SOME_ID` stand-in so the
 `template` derives itself; the coverage gate groups by template, and a test
 hitting a real id would otherwise be reported as swept-only.
 

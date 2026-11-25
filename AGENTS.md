@@ -19,10 +19,15 @@ When a change touches what a deployed Insight serves — `src/backend/`, `src/fr
 ```bash
 ./dev-compose.sh test-stand up --instance=worktree
 ./dev-compose.sh test-stand test --instance=worktree --ignore=tests/stand/ui
+python3 tests/lib/insight_stand/coverage.py \
+  --observed test-results/stand_observed_endpoints.json \
+  --catalogue test-results/stand_operations.json \
+  --spec /api/connectors=docs/components/backend/connectors/openapi.json \
+  --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ./dev-compose.sh test-stand down --instance=worktree
 ```
 
-`--instance=worktree` names the stand after the checkout directory and raises it beside the default `./dev-compose.sh up` stack. Keep the flag on all three commands: `down` removes the stand's volumes, and without the flag those are the default stack's databases. `up` builds the services from the checkout. `up --pinned` pulls the released images instead and is valid only when nothing under `src/backend/` or `src/frontend/` differs from main. `--ignore=tests/stand/ui` runs the API lane; drop it when the change reaches the UI. The `insight-stand` skill covers aiming, seeding and triage.
+`coverage.py` is the endpoint coverage gate that release validation blocks on. It fails when an operation the OpenAPI documents has no stand test that calls it. `--instance=worktree` names the stand after the checkout directory and raises it beside the default `./dev-compose.sh up` stack. Keep the flag on all three `dev-compose.sh` commands: `down` removes the stand's volumes, and without the flag those are the default stack's databases. `up` builds the services from the checkout. `up --pinned` pulls the released images instead and is valid only when nothing under `src/backend/` or `src/frontend/` differs from main. `--ignore=tests/stand/ui` runs the API lane; drop it when the change reaches the UI. The `insight-stand` skill covers aiming, seeding and triage.
 
 This rule advises; it never blocks. When the suite cannot run — no Docker, not enough memory, no time — finish the work anyway. Tell your operator in your final report that the change is in the suite's scope, that the suite did not run, and the commands above. The pull request's **Verified** line names the same gap.
 

@@ -282,13 +282,18 @@ on the suite's result is backwards.
   `api/conftest.py`. A ui-only run therefore produces no catalogue at all, and
   the gate requires one.
 
-The gate compares the two. It is stdlib-only, so it runs on a machine with no
-stand, no uv and no browser:
+The gate compares the two, and with `--spec` it also fails an operation the
+OpenAPI documents that no test calls. Release validation runs it with both
+specs. It is stdlib-only, so it runs on a machine with no stand, no uv and no
+browser. `./dev-compose.sh test-stand test` writes both files to
+`test-results/` instead of `.artifacts/`:
 
 ```bash
 python3 tests/lib/insight_stand/coverage.py \
   --observed .artifacts/stand_observed_endpoints.json \
-  --catalogue .artifacts/stand_operations.json
+  --catalogue .artifacts/stand_operations.json \
+  --spec /api/connectors=docs/components/backend/connectors/openapi.json \
+  --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ```
 
 ## Hand off
