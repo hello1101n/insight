@@ -8,6 +8,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: ticket_id
         description: Native ticket id
         tests:
@@ -71,6 +76,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: ticket_id
         description: Native ticket id
         tests:
@@ -117,6 +127,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: interaction_id
         description: Comment id
         tests:
@@ -150,6 +165,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: ticket_id
         description: Native ticket id
         tests:
@@ -182,6 +202,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: policy_id
         description: Policy
         tests:
@@ -206,6 +231,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: rating_id
         description: Native id of the rating or survey response
         tests:
@@ -246,6 +276,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: agent_id
         description: Native user id
         tests:
@@ -260,6 +295,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: group_id
         description: Native group id
         tests:
@@ -272,6 +312,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: agent_id
         description: Native user id
         tests:
@@ -290,6 +335,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: customer_id
         description: Native id
         tests:
@@ -311,6 +361,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: field_id
         description: Native field id
         tests:
@@ -335,6 +390,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: schedule_id
         description: Native schedule id
         tests:
@@ -349,6 +409,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: article_id
         description: Native article id
         tests:
@@ -374,6 +439,11 @@ models:
         tests:
           - not_null
           - unique
+      - name: tenant_id
+        description: "Canonical tenant the row belongs to. Every key and join of a task relation includes it: two tenants may share a source label and the tracker's ids."
+        tests:
+          - not_null
+          - not_empty
       - name: ticket_id
         description: Native ticket id
         tests:
@@ -387,7 +457,7 @@ models:
                 values:
                   - jira
       - name: issue_id
-        description: Immutable issue id in the tracker; the join key to task tracking
+        description: Immutable issue id in the tracker; joins to task tracking on (`tenant_id`, `issue_id`)
         tests:
           - not_null
       - name: issue_key
