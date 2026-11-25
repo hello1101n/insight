@@ -64,6 +64,10 @@ spec:
               value: {{ include "insight.clickhouse.clusterMode" . | quote }}
             - name: CLICKHOUSE_CLUSTER_NAME
               value: {{ include "insight.clickhouse.clusterName" . | quote }}
+            # Every row is written under the install's tenant; the bundle's
+            # first column is ignored.
+            - name: INSIGHT_TENANT_ID
+              value: {{ include "insight.tenantId" . | quote }}
             - name: FIELD_VALUE_MAP_DIR
               value: "/config/field-value-map"
             - name: FIELD_VALUE_MAP_RECORDED_BY
