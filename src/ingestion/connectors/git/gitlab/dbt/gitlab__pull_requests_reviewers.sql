@@ -14,7 +14,7 @@
 -- cannot give. A reviewer who never acted stays a `requested` row.
 WITH projects AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
@@ -24,7 +24,7 @@ WITH projects AS (
 
 requested AS (
     SELECT
-        mr.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('mr.insight_tenant_id') }} AS insight_tenant_id,
         mr.source_id AS source_id,
         concat(mr.unique_key, ':reviewer:', toString(JSONExtractInt(reviewer, 'id'))) AS unique_key,
         mr.project_id AS project_id,
@@ -41,7 +41,7 @@ requested AS (
 
 verdicts AS (
     SELECT
-        n.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('n.insight_tenant_id') }} AS insight_tenant_id,
         n.source_id AS source_id,
         n.unique_key AS unique_key,
         n.project_id AS project_id,
