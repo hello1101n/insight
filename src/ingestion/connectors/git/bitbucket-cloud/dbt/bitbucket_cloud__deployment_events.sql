@@ -8,7 +8,7 @@
 ) }}
 
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     concat(unique_key, ':', toString(COALESCE(version, 0))) AS unique_key,
     COALESCE(repo_full_name, '') AS repo_full_name,

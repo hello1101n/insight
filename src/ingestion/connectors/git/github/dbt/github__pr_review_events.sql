@@ -24,7 +24,7 @@ WITH account_email AS (
 -- as well, so only the numbers that name a pull request are kept.
 pull_request_numbers AS (
     SELECT
-        insight_tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         source_id,
         repo_full_name,
         number,
@@ -35,7 +35,7 @@ pull_request_numbers AS (
 
 events AS (
     SELECT
-        r.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('r.insight_tenant_id') }} AS insight_tenant_id,
         r.source_id AS source_id,
         r.unique_key AS unique_key,
         splitByChar('/', COALESCE(r.repo_full_name, ''))[1] AS project_key,
@@ -54,7 +54,7 @@ events AS (
     UNION ALL
 
     SELECT
-        c.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('c.insight_tenant_id') }} AS insight_tenant_id,
         c.source_id AS source_id,
         c.unique_key AS unique_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,
@@ -74,7 +74,7 @@ events AS (
         greatest(c._airbyte_extracted_at, p.pull_request_extracted_at) AS _airbyte_extracted_at
     FROM {{ source('bronze_github', 'pull_request_comments') }} AS c FINAL
     INNER JOIN pull_request_numbers AS p
-        ON p.insight_tenant_id = c.insight_tenant_id
+        ON p.insight_tenant_id = {{ bronze_tenant('c.insight_tenant_id') }}
         AND p.source_id = c.source_id
         AND p.repo_full_name = c.repo_full_name
         AND p.number = c.issue_number
@@ -82,7 +82,7 @@ events AS (
     UNION ALL
 
     SELECT
-        rc.insight_tenant_id AS insight_tenant_id,
+        {{ bronze_tenant('rc.insight_tenant_id') }} AS insight_tenant_id,
         rc.source_id AS source_id,
         rc.unique_key AS unique_key,
         splitByChar('/', COALESCE(rc.repo_full_name, ''))[1] AS project_key,

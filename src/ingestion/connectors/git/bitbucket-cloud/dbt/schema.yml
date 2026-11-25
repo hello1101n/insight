@@ -35,10 +35,19 @@ sources:
 models:
   - name: bitbucket_cloud__item_events
     description: "Bitbucket pull-request lifecycle activity -> staging, feeds class_git_item_events"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__account_emails
     description: "Every (Bitbucket account, e-mail) pair the connector observed, one row per pair"
     columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
       - name: account_id
         description: "Bitbucket account_id the e-mail was observed under (ADR-0002 account id)"
         data_tests:
@@ -51,6 +60,10 @@ models:
   - name: bitbucket_cloud__unowned_commit_emails
     description: "Commit author e-mails no Bitbucket account claims, with the name their commits carry"
     columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
       - name: email
         description: "Lowercased commit author e-mail, and the account id it is published under. Unique per connection, not globally — the grain is (email, insight_tenant_id, source_id)"
         data_tests:
@@ -86,30 +99,75 @@ models:
 
   - name: bitbucket_cloud__repositories
     description: "Bitbucket Cloud repositories -> staging, feeds class_git_repositories"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__repository_branches
     description: "Bitbucket Cloud branches -> staging, feeds class_git_repository_branches"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__commits
     description: "Bitbucket Cloud commits -> staging, feeds class_git_commits"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__file_changes
     description: "Bitbucket Cloud file changes -> staging, feeds class_git_file_changes"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__pull_requests
     description: "Bitbucket Cloud pull requests -> staging, feeds class_git_pull_requests"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__pull_requests_reviewers
     description: "Bitbucket Cloud PR reviewers (from participants) -> staging, feeds class_git_pull_requests_reviewers"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__pull_requests_comments
     description: "Bitbucket Cloud PR comments -> staging, feeds class_git_pull_requests_comments"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__pull_requests_commits
     description: "Bitbucket Cloud PR commits -> staging, feeds class_git_pull_requests_commits"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__pr_review_events
     description: "Bitbucket Cloud review verdicts (from activity) and PR comments as one event stream -> staging, feeds class_git_pr_review_events"
+    columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
 
   - name: bitbucket_cloud__ci_runs
     description: "Bitbucket pipelines -> staging, feeds class_git_ci_runs. One row per run attempt a sync observed: bronze keeps a pipeline's latest attempt only"
@@ -121,6 +179,9 @@ models:
           - unique
       - name: insight_tenant_id
         description: "Tenant isolation field"
+        data_tests:
+          - not_null
+          - not_empty
       - name: source_id
         description: "Connector source instance id"
       - name: repo_full_name
@@ -177,6 +238,9 @@ models:
           - unique
       - name: insight_tenant_id
         description: "Tenant isolation field"
+        data_tests:
+          - not_null
+          - not_empty
       - name: source_id
         description: "Connector source instance id"
       - name: repo_full_name
@@ -212,6 +276,9 @@ models:
           - unique
       - name: insight_tenant_id
         description: "Tenant isolation field"
+        data_tests:
+          - not_null
+          - not_empty
       - name: source_id
         description: "Connector source instance id"
       - name: repo_full_name

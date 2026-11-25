@@ -10,7 +10,7 @@
 -- FINAL: a comment is editable, so a re-fetch within one sync can leave a
 -- pre-merge duplicate in bronze that ties the class dedup on `_version`.
 SELECT
-    insight_tenant_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
     source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,
