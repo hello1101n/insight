@@ -111,4 +111,22 @@ describe("FrontxBoard on the FrontX runtime", () => {
     ).toBeInTheDocument();
     expect(fx.roots).toBe(1);
   }, 20_000);
+
+  it("words a cell that cannot be shown and its larger view as the current board does", async () => {
+    render(
+      <FrontxBoard id="board-c" read={readOf(["w1"])} range={undefined} />,
+      { wrapper }
+    );
+
+    expect(
+      await screen.findByText(
+        "This widget couldn't be loaded.",
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Expand Deploys" })
+    ).toBeInTheDocument();
+  }, 20_000);
 });

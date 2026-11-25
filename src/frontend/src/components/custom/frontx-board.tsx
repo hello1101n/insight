@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   Dashboard,
   DashboardRoot,
@@ -82,6 +83,7 @@ interface FrontxBoardProps {
 }
 
 export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
+  const { t, i18n } = useTranslation();
   const widgets = useQuery(dashboardWidgetsQuery(id));
   const theme = useAppliedTheme();
   const board = useMemo(() => {
@@ -114,7 +116,20 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
       root={appRoot()}
       dashboardId={board.dashboardId}
       theme={theme}
-      language="en"
+      language={i18n.resolvedLanguage ?? "en"}
+      texts={{
+        dashboard: {
+          loading: "Loading",
+          cannotBeShown: "Couldn't load this dashboard.",
+        },
+        frame: {
+          loading: "Loading",
+          cannotBeShown: "This widget couldn't be loaded.",
+          openLarger: (title) => `Expand ${title}`,
+          close: t("common.actions.close"),
+          retry: t("common.actions.retry"),
+        },
+      }}
       variables={range ? { range } : {}}
       overlayContainer={document.body}
     />
