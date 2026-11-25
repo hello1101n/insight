@@ -304,7 +304,7 @@ describe("FrontxBoard", () => {
     expect(runs()).toHaveLength(2);
   });
 
-  it("gives an admin a Details action on a widget cell and its larger view, which opens the widget's drilldown", async () => {
+  it("gives an admin a Details action with the table icon on a widget cell and its larger view, which opens the widget's drilldown", async () => {
     const dashboard = await shownDashboard(await hostOf("board-a", WITH_PROSE));
     const [, , cell] = dashboard.layout.cells;
 
@@ -313,6 +313,13 @@ describe("FrontxBoard", () => {
 
     expect(onCell.map((action) => action.label)).toEqual(["Details"]);
     expect(onLarger.map((action) => action.label)).toEqual(["Details"]);
+    const icons = render(
+      <>
+        {onCell[0].icon}
+        {onLarger[0].icon}
+      </>
+    ).container;
+    expect(icons.querySelectorAll(".lucide-table-2")).toHaveLength(2);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     act(() => onLarger[0].onSelect());
     expect(

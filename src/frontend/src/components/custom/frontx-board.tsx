@@ -7,6 +7,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react";
+import { Table2 } from "lucide-react";
 import {
   Dashboard,
   DashboardRoot,
@@ -176,6 +177,7 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
     return [
       {
         label: "Details",
+        icon: <Table2 />,
         onSelect: () => setDrilldown({ widget, open: true }),
       },
     ];
