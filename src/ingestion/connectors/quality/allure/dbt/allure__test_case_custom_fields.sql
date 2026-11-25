@@ -9,7 +9,7 @@
 
 WITH bronze AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         unique_key AS test_case_unique_key,
         toInt64(COALESCE(id, 0)) AS test_case_id,
@@ -20,7 +20,7 @@ WITH bronze AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     concat(test_case_unique_key, '-', toString(JSONExtractInt(v, 'id'))) AS unique_key,
     test_case_id,

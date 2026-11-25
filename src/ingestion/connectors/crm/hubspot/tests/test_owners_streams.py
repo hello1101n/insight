@@ -89,7 +89,7 @@ class TestOwnersReadRecords:
         )
         out = list(owners_stream.read_records(sync_mode=None))
         assert out[0]["unique_key"] == f"{TENANT}-{SOURCE}-1"
-        assert out[0]["tenant_id"] == TENANT
+        assert out[0]["insight_tenant_id"] == TENANT
         assert json.loads(out[0]["raw_data"])["email"] == "o1@x"
         assert owners_stream.state == {"updatedAt": "2024-06-03T00:00:00Z"}
 

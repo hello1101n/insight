@@ -44,7 +44,7 @@ models:
       with bronze_jira.jira_user on accountId (NULL fallback when Jira is
       not provisioned).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -82,7 +82,7 @@ models:
       `minor_edits` were dropped per #260 — the upstream `minor_edit` flag
       is dead at the Atlassian Cloud API level.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -129,7 +129,7 @@ models:
       footer_comments, inline_comments, replies, unique_commenters,
       unresolved_inline_count.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id

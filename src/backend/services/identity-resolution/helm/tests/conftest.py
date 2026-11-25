@@ -48,8 +48,6 @@ UMBRELLA_BASE = [
     "--set",
     "redpanda.brokers=rp:9092",
     "--set",
-    "ingestion.reconcile.tenantId=default",
-    "--set",
     "authenticator.oidc.issuerUrl=https://idp",
     "--set",
     "authenticator.oidc.clientId=c",
@@ -82,11 +80,7 @@ def umbrella_deps() -> Path:
     this, and each run rewrites `charts/insight/charts/`.
     """
     proc = subprocess.run(
-        ["helm", "dependency", "update", str(UMBRELLA)],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
+        ["helm", "dependency", "update", str(UMBRELLA)], capture_output=True, text=True, timeout=300, check=False
     )
     assert proc.returncode == 0, proc.stderr
     return UMBRELLA

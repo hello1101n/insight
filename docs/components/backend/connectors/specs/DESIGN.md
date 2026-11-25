@@ -425,7 +425,7 @@ retention task runs.
 Configuration keys (`APP__gears__connectors__config__…`): `database_host`, `database_port`,
 `database_user`, `database_name`, `database_password` (or `database_url` in compose);
 `clickhouse_url`, `clickhouse_database`, `clickhouse_user`, `clickhouse_password`; `identity_url`;
-`tenant_id` (`ingestion.reconcile.tenantId`); `namespace`; `cluster__enabled` (subchart `cluster.enabled`, default true; false in compose);
+`tenant_id` (`authenticator.oidc.defaultTenantId`); `namespace`; `cluster__enabled` (subchart `cluster.enabled`, default true; false in compose);
 `reconcile_workflow_name` (`<release>-reconcile-loop` in the chart).
 
 The umbrella sets `cluster.enabled` from `ingestion.templates.enabled`. Only cluster integration

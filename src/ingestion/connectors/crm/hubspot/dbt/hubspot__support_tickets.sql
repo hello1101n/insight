@@ -40,11 +40,11 @@ stages AS (
 ),
 
 merge_targets AS (
-    SELECT tenant_id, insight_source_id, merged_id, any(ticket_id) AS merged_into_id
+    SELECT insight_tenant_id, insight_source_id, merged_id, any(ticket_id) AS merged_into_id
     FROM tickets
     ARRAY JOIN splitByChar(';', properties['hs_merged_object_ids']) AS merged_id
     WHERE merged_id != ''
-    GROUP BY tenant_id, insight_source_id, merged_id
+    GROUP BY insight_tenant_id, insight_source_id, merged_id
 ),
 
 custom_properties AS (
@@ -53,12 +53,12 @@ custom_properties AS (
         groupArray(name)                               AS names
     FROM {{ ref('hubspot__crm_property_definitions') }} FINAL
     WHERE object_type = 'tickets' AND is_custom = 1 AND name IS NOT NULL
-    GROUP BY tenant_id, insight_source_id
+    GROUP BY insight_tenant_id, insight_source_id
 )
 
 SELECT
     {{ hubspot_support_key(['t.ticket_id']) }}         AS unique_key,
-    t.tenant_id                                        AS tenant_id,
+    t.insight_tenant_id                                        AS insight_tenant_id,
     t.insight_source_id                                AS insight_source_id,
     'hubspot'                                          AS data_source,
     t.ticket_id                                        AS ticket_id,
@@ -88,8 +88,8 @@ SELECT
     {{ hubspot_support_version() }}                    AS _version
 FROM tickets AS t
 LEFT JOIN stages AS s
-    ON s.tenant_id = t.tenant_id AND s.insight_source_id = t.insight_source_id AND s.stage_id = t.stage_id
+    ON s.insight_tenant_id = t.insight_tenant_id AND s.insight_source_id = t.insight_source_id AND s.stage_id = t.stage_id
 LEFT JOIN merge_targets AS m
-    ON m.tenant_id = t.tenant_id AND m.insight_source_id = t.insight_source_id AND m.merged_id = t.ticket_id
+    ON m.insight_tenant_id = t.insight_tenant_id AND m.insight_source_id = t.insight_source_id AND m.merged_id = t.ticket_id
 LEFT JOIN custom_properties AS c
-    ON c.tenant_id = t.tenant_id AND c.insight_source_id = t.insight_source_id
+    ON c.insight_tenant_id = t.insight_tenant_id AND c.insight_source_id = t.insight_source_id

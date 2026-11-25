@@ -77,7 +77,8 @@ const FOLD_SQL_TEMPLATE: &str = r"
             AND lengthUTF8(value) <= {MAX_ID_CHARS}
         )                                               AS binding_id
     FROM identity.identity_inputs
-    WHERE source_account_id IS NOT NULL AND source_account_id != ''
+    WHERE insight_tenant_id = toUUID(?)
+      AND source_account_id IS NOT NULL AND source_account_id != ''
     GROUP BY source_type, source_id, account_id
 ";
 
@@ -166,31 +167,37 @@ pub struct AfterAccount<'a> {
 
 pub struct ClickHouseEvidenceReader {
     client: Client,
+    tenant: Uuid,
 }
 
 impl ClickHouseEvidenceReader {
     #[must_use]
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    pub fn new(client: Client, tenant: Uuid) -> Self {
+        Self { client, tenant }
     }
 
     #[must_use]
-    pub fn connect(url: &str, database: &str, user: &str, password: &str) -> Self {
+    pub fn connect(url: &str, database: &str, user: &str, password: &str, tenant: Uuid) -> Self {
         let mut config = Config::new(url, database).with_query_timeout(READ_TIMEOUT);
         if !user.is_empty() {
             config = config.with_auth(user, password);
         }
-        Self::new(Client::new(config))
+        Self::new(Client::new(config), tenant)
     }
 
-    // SAFETY: tenancy shortcut (#1550): no tenant predicate, for the same reason as `identity_inputs`.
     pub async fn accounts(&self) -> anyhow::Result<EvidenceSnapshot> {
         let fold = fold_sql();
         let sql = format!(
             "SELECT {FOLD_COLUMNS}, '' AS order_label FROM ({fold}) \
              ORDER BY source_type, source_id, account_id LIMIT {MAX_EVIDENCE_ACCOUNTS}"
         );
-        let rows: Vec<FoldedRow> = match self.client.query(&sql).fetch_all().await {
+        let read = self
+            .client
+            .query(&sql)
+            .bind(self.tenant.to_string())
+            .fetch_all()
+            .await;
+        let rows: Vec<FoldedRow> = match read {
             Ok(rows) => rows,
             Err(e) if MissingRelation::from_error(&e).is_some() => {
                 return Ok(EvidenceSnapshot {
@@ -234,7 +241,8 @@ impl ClickHouseEvidenceReader {
 const EXISTS_SQL: &str = r"
     SELECT count() AS hits
     FROM identity.identity_inputs
-    WHERE insight_source_type = ?
+    WHERE insight_tenant_id = toUUID(?)
+      AND insight_source_type = ?
       AND toString(insight_source_id) = ?
       AND source_account_id = ?
     LIMIT 1
@@ -243,7 +251,8 @@ const EXISTS_SQL: &str = r"
 const SOURCES_SQL: &str = r"
     SELECT DISTINCT ifNull(insight_source_type, '') AS source_type
     FROM identity.identity_inputs
-    WHERE source_account_id IS NOT NULL AND source_account_id != ''
+    WHERE insight_tenant_id = toUUID(?)
+      AND source_account_id IS NOT NULL AND source_account_id != ''
       AND ifNull(insight_source_type, '') != ''
     ORDER BY source_type
 ";
@@ -269,7 +278,8 @@ const OBSERVED_ACCOUNT_SQL: &str = r"
             value_type = 'email' AND operation_type = 'UPSERT' AND value != ''
         )                                               AS email
     FROM identity.identity_inputs
-    WHERE insight_source_type = ?
+    WHERE insight_tenant_id = toUUID(?)
+      AND insight_source_type = ?
       AND source_account_id = ?
     GROUP BY insight_source_type, source_account_id
 ";
@@ -350,7 +360,7 @@ impl ClickHouseEvidenceReader {
     ) -> anyhow::Result<AccountPage> {
         let sql = list_sql(needle.is_some(), !sources.is_empty(), after.is_some());
 
-        let mut query = self.client.query(&sql);
+        let mut query = self.client.query(&sql).bind(self.tenant.to_string());
         if !sources.is_empty() {
             query = query.bind(sources);
         }
@@ -397,6 +407,7 @@ impl ClickHouseEvidenceReader {
         let row: Result<Option<CountRow>, _> = self
             .client
             .query(EXISTS_SQL)
+            .bind(self.tenant.to_string())
             .bind(account.source_type.as_str())
             .bind(account.source_id.to_string())
             .bind(account.account_id.as_str())
@@ -411,7 +422,13 @@ impl ClickHouseEvidenceReader {
     }
 
     pub async fn sources(&self) -> anyhow::Result<Vec<String>> {
-        let rows: Vec<SourceTypeRow> = match self.client.query(SOURCES_SQL).fetch_all().await {
+        let read = self
+            .client
+            .query(SOURCES_SQL)
+            .bind(self.tenant.to_string())
+            .fetch_all()
+            .await;
+        let rows: Vec<SourceTypeRow> = match read {
             Ok(rows) => rows,
             Err(e) if MissingRelation::from_error(&e).is_some() => return Ok(Vec::new()),
             Err(e) => return Err(e.into()),
@@ -428,6 +445,7 @@ impl ClickHouseEvidenceReader {
         let row: Result<Option<ObservedRow>, _> = self
             .client
             .query(OBSERVED_ACCOUNT_SQL)
+            .bind(self.tenant.to_string())
             .bind(source_type)
             .bind(account_id)
             .fetch_optional()
@@ -467,6 +485,44 @@ fn non_empty(value: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TENANT_PREDICATE: &str = "insight_tenant_id = toUUID(?)";
+
+    #[test]
+    fn every_evidence_read_sees_only_the_callers_tenant() {
+        for (read, sql) in [
+            ("fold", fold_sql()),
+            ("listing", list_sql(true, true, true)),
+            ("sources", SOURCES_SQL.to_owned()),
+            ("existence", EXISTS_SQL.to_owned()),
+            ("login bootstrap", OBSERVED_ACCOUNT_SQL.to_owned()),
+        ] {
+            assert!(
+                sql.contains(TENANT_PREDICATE),
+                "should scope to one tenant: {read}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_tenant_is_the_first_value_every_evidence_read_binds() {
+        for (read, sql) in [
+            ("fold", fold_sql()),
+            ("listing", list_sql(true, true, true)),
+            ("sources", SOURCES_SQL.to_owned()),
+            ("existence", EXISTS_SQL.to_owned()),
+            ("login bootstrap", OBSERVED_ACCOUNT_SQL.to_owned()),
+        ] {
+            let first_placeholder = sql.find('?');
+            let tenant_placeholder = sql
+                .find(TENANT_PREDICATE)
+                .map(|at| at + TENANT_PREDICATE.len() - 2);
+            assert_eq!(
+                first_placeholder, tenant_placeholder,
+                "the tenant must be bound first: {read}"
+            );
+        }
+    }
 
     #[test]
     fn the_fold_reads_a_stated_id_as_bindable_and_a_missing_one_as_not() -> anyhow::Result<()> {
@@ -590,13 +646,13 @@ mod tests {
     #[test]
     fn every_placeholder_of_the_listing_has_a_value_bound_to_it() {
         for (case, filtered, by_source, resuming, expected) in [
-            ("browse", false, false, false, 1),
-            ("search", true, false, false, 1 + needle_probes()),
-            ("browse, resumed", false, false, true, 5),
-            ("search, resumed", true, false, true, 5 + needle_probes()),
-            ("browse one source", false, true, false, 2),
-            ("search one source", true, true, false, 2 + needle_probes()),
-            ("everything on", true, true, true, 6 + needle_probes()),
+            ("browse", false, false, false, 2),
+            ("search", true, false, false, 2 + needle_probes()),
+            ("browse, resumed", false, false, true, 6),
+            ("search, resumed", true, false, true, 6 + needle_probes()),
+            ("browse one source", false, true, false, 3),
+            ("search one source", true, true, false, 3 + needle_probes()),
+            ("everything on", true, true, true, 7 + needle_probes()),
         ] {
             assert_eq!(
                 list_sql(filtered, by_source, resuming).matches('?').count(),
@@ -636,12 +692,13 @@ mod tests {
     }
 
     #[test]
-    fn the_sources_read_is_distinct_ordered_and_skips_empty_account_ids() {
+    fn the_sources_read_is_tenant_scoped_distinct_ordered_and_skips_empty_account_ids() {
         let sql = SOURCES_SQL.split_whitespace().collect::<Vec<_>>().join(" ");
 
         for needle in [
             "SELECT DISTINCT",
             "FROM identity.identity_inputs",
+            "WHERE insight_tenant_id = toUUID(?)",
             "source_account_id IS NOT NULL AND source_account_id != ''",
             "ORDER BY source_type",
         ] {

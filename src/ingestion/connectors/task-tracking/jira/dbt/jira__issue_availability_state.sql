@@ -34,7 +34,7 @@
 WITH census AS (
     SELECT
         unique_key,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         project_key,
@@ -50,7 +50,7 @@ WITH census AS (
 known AS (
     SELECT
         unique_key,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         project_key,
@@ -60,12 +60,12 @@ known AS (
 
     UNION ALL
 
-    -- COALESCE keeps the key well-defined when a stamp column is NULL;
-    -- otherwise every unstamped row would collapse into one NULL-key group.
+    -- ifNull keeps the key well-defined when the tenant is NULL; otherwise every
+    -- such row would collapse into one NULL-key group.
     SELECT
-        concat(CAST(tenant_id AS String), '-', CAST(source_id AS String), '-',
+        concat(ifNull(insight_tenant_id, ''), '-', CAST(source_id AS String), '-',
                CAST(jira_id AS String))                      AS unique_key,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         project_key,
@@ -77,9 +77,9 @@ known AS (
 
     -- Jira project keys cannot contain '-', so the key prefix is the project.
     SELECT
-        concat(CAST(tenant_id AS String), '-', CAST(source_id AS String), '-',
+        concat(ifNull(insight_tenant_id, ''), '-', CAST(source_id AS String), '-',
                CAST(jira_id AS String))                      AS unique_key,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         splitByChar('-', assumeNotNull(id_readable))[1]      AS project_key,
@@ -92,7 +92,7 @@ known AS (
 issues AS (
     SELECT
         unique_key,
-        any(tenant_id)                                       AS tenant_id,
+        any(insight_tenant_id)                                       AS insight_tenant_id,
         any(source_id)                                       AS source_id,
         any(jira_id)                                         AS jira_id,
         argMax(project_key, seen_at)                         AS project_key,
@@ -104,19 +104,19 @@ issues AS (
 
 generation AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         max(seen_at)
             - INTERVAL {{ var('jira_census_tolerance_hours', 12) }} HOUR
                                                              AS observed_after
     FROM census
-    GROUP BY tenant_id, source_id
+    GROUP BY insight_tenant_id, source_id
 ),
 
 observed AS (
     SELECT
         i.unique_key                                         AS unique_key,
-        i.tenant_id                                          AS tenant_id,
+        i.insight_tenant_id                                          AS insight_tenant_id,
         i.source_id                                          AS source_id,
         i.jira_id                                            AS jira_id,
         i.project_key                                        AS project_key,
@@ -126,22 +126,22 @@ observed AS (
         i.last_seen_at >= g.observed_after                   AS is_present
     FROM issues AS i
     LEFT JOIN generation AS g
-        ON g.tenant_id = i.tenant_id AND g.source_id = i.source_id
+        ON g.insight_tenant_id = i.insight_tenant_id AND g.source_id = i.source_id
 ),
 
 project_absence AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_key,
         avg(NOT is_present)                                  AS absent_share
     FROM observed
-    GROUP BY tenant_id, source_id, project_key
+    GROUP BY insight_tenant_id, source_id, project_key
 )
 
 SELECT
     o.unique_key                                             AS unique_key,
-    o.tenant_id                                              AS tenant_id,
+    o.insight_tenant_id                                              AS insight_tenant_id,
     o.source_id                                              AS source_id,
     o.jira_id                                                AS jira_id,
     o.project_key                                            AS project_key,
@@ -161,10 +161,10 @@ SELECT
     o.last_seen_at                                           AS last_seen_at
 FROM observed AS o
 LEFT JOIN {{ ref('jira__project_visibility_state') }} AS p FINAL
-    ON p.tenant_id = o.tenant_id
+    ON p.insight_tenant_id = o.insight_tenant_id
     AND p.source_id = o.source_id
     AND p.project_key = o.project_key
 LEFT JOIN project_absence AS pa
-    ON pa.tenant_id = o.tenant_id
+    ON pa.insight_tenant_id = o.insight_tenant_id
     AND pa.source_id = o.source_id
     AND pa.project_key = o.project_key

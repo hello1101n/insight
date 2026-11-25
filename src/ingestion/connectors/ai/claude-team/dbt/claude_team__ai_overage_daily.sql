@@ -47,18 +47,18 @@ WITH latest_per_seat_day AS (
       AND trim(account_email) != ''
     ORDER BY _airbyte_extracted_at DESC
     -- Dedup on the full grain, as the monthly sibling does: one bronze schema
-    -- can hold the same account_uuid under different tenant_id/source_id, and
+    -- can hold the same account_uuid under different insight_tenant_id/source_id, and
     -- keying on the seat alone would drop those as false duplicates. The day
     -- comes from the extraction timestamp rather than from snapshot_date so
     -- rows written before 3.2.0 carried it in their key still land on a day.
-    LIMIT 1 BY tenant_id, source_id, account_uuid, toDate(_airbyte_extracted_at)
+    LIMIT 1 BY insight_tenant_id, source_id, account_uuid, toDate(_airbyte_extracted_at)
 )
 
 SELECT
-    tenant_id                                           AS insight_tenant_id,
+    insight_tenant_id,
     source_id,
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         coalesce(source_id, ''), '-',
         coalesce(account_uuid, ''), '-',
         formatDateTime(toDate(_airbyte_extracted_at), '%Y-%m-%d')
@@ -84,5 +84,5 @@ FROM latest_per_seat_day
 {% if is_incremental() %}
   -- Re-read the current and previous month: a reading inside the current month
   -- still arrives daily, and a correction can land after a month has turned.
-  WHERE toStartOfMonth(_airbyte_extracted_at) >= {{ instance_incremental_watermark('period_month', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '1 MONTH') }}
+  WHERE toStartOfMonth(_airbyte_extracted_at) >= {{ instance_incremental_watermark('period_month', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '1 MONTH') }}
 {% endif %}

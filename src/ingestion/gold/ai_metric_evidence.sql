@@ -4,7 +4,7 @@
 -- the analytics runtime resolves through `identity.person_map` while it serves.
 -- An unresolvable row stays and starts counting the moment it resolves.
 SELECT
-    src.tenant_id,
+    src.insight_tenant_id,
     src.source_key,
     src.entity_type,
     {{ normalized_email('src.entity_id') }} AS entity_id,
@@ -29,7 +29,7 @@ FROM (
 WITH
 ai_dev_usage_source AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         {{ normalized_email('email') }} AS entity_id,
         day AS metric_date,
         CAST(
@@ -55,7 +55,7 @@ ai_dev_usage_source AS (
 ),
 ai_assistant_usage_source AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         {{ normalized_email('email') }} AS entity_id,
         day AS metric_date,
         surface,
@@ -130,17 +130,17 @@ measure_observations AS (
 ),
 evidence_summaries AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         measure_key,
         toNullable(sum(value)) AS value,
         dimensions
     FROM measure_observations
-    GROUP BY tenant_id, entity_id, metric_date, measure_key, dimensions
+    GROUP BY insight_tenant_id, entity_id, metric_date, measure_key, dimensions
 )
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'ai_usage' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -162,7 +162,7 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM evidence_summaries
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src

@@ -94,7 +94,7 @@ class TestSchema:
         schema = deals_stream.get_json_schema()
         props = schema["properties"]
         assert props["properties_amount"] == {"type": ["string", "null"]}
-        for field in ("tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"):
+        for field in ("insight_tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"):
             assert field in props, f"missing envelope column: {field}"
         assert "custom_fields" not in props
         # deals registry declares [companies, contacts]

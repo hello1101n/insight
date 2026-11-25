@@ -1,7 +1,7 @@
 {{ metric_observations_table() }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -15,4 +15,4 @@ SELECT
     CAST(NULL AS Nullable(String)) AS subject_key,
     dimensions
 FROM {{ ref('wiki_metric_evidence') }}
-GROUP BY tenant_id, source_key, entity_type, entity_id, metric_date, measure_key, dimensions
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, metric_date, measure_key, dimensions

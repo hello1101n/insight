@@ -11,7 +11,7 @@
 -- so it is a floor that never fully recovers and would fail forever on any
 -- installation that predates the collection fix.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     data_source,
     source_id,
     recent_commits_requiring_file_changes,

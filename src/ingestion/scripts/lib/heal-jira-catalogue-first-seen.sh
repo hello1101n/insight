@@ -25,23 +25,26 @@ _catalogue_source_count() {
 _catalogue_tenants_select() {
   local bronze
   local shared
+  local tenant
   bronze="$(ch_scalar "SELECT count() FROM system.tables WHERE database = 'bronze_jira' AND name = 'jira_fields'")" || return 1
   if [[ "${bronze}" -eq 0 ]]; then
-    echo "SELECT '' AS insight_source_id, '' AS tenant_id WHERE 0"
+    echo "SELECT '' AS insight_source_id, '' AS insight_tenant_id WHERE 0"
     return 0
   fi
+  # Bronze says `tenant_id` until `tenant_migration` renames it.
+  tenant="$(ch_tenant_column bronze_jira jira_fields)" || return 1
   shared="$(ch_scalar "SELECT count() FROM (
       SELECT COALESCE(source_id, '') AS insight_source_id
       FROM bronze_jira.jira_fields
       WHERE COALESCE(source_id, '') IN (SELECT insight_source_id FROM staging.jira__catalogue_first_seen)
       GROUP BY insight_source_id
-      HAVING uniqExact(COALESCE(tenant_id, '')) > 1
+      HAVING uniqExact(COALESCE(${tenant}, '')) > 1
     )")" || return 1
   if [[ "${shared}" -ne 0 ]]; then
     echo "  staging.jira__catalogue_first_seen: ${shared} source(s) appear in bronze under several tenants — refusing to guess whose boundary each row is" >&2
     return 1
   fi
-  echo "SELECT DISTINCT COALESCE(source_id, '') AS insight_source_id, COALESCE(tenant_id, '') AS tenant_id
+  echo "SELECT DISTINCT COALESCE(source_id, '') AS insight_source_id, COALESCE(${tenant}, '') AS insight_tenant_id
           FROM bronze_jira.jira_fields"
 }
 
@@ -64,7 +67,7 @@ DROP TABLE IF EXISTS ${copy};
 CREATE TABLE ${copy}
 (
     unique_key String,
-    tenant_id String,
+    insight_tenant_id String,
     insight_source_id String,
     catalogue_first_sync DateTime64(3),
     recorded_at DateTime64(3),
@@ -75,8 +78,8 @@ ORDER BY unique_key
 SETTINGS replicated_deduplication_window = 0;
 INSERT INTO ${copy}
 SELECT
-    concat(t.tenant_id, '-', c.insight_source_id),
-    t.tenant_id,
+    concat(t.insight_tenant_id, '-', c.insight_source_id),
+    t.insight_tenant_id,
     c.insight_source_id,
     c.catalogue_first_sync,
     c.recorded_at,

@@ -32,7 +32,7 @@ WITH history AS (
     {% if is_incremental() %}
     WHERE updated_at > {{ instance_incremental_watermark(
         '_synced_at',
-        ["toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, ''))))", "toUUID(UUIDNumToString(sipHash128(coalesce(source_id, ''))))"],
+        [tenant_uuid('insight_tenant_id'), "toUUID(UUIDNumToString(sipHash128(coalesce(source_id, ''))))"],
         ['insight_tenant_id', 'insight_source_id']
     ) }}
     {% endif %}
@@ -44,7 +44,7 @@ current_users AS (
 
 manager_changes AS (
     SELECT
-        h.tenant_id,
+        h.insight_tenant_id,
         h.source_id,
         h.entity_id,
         h.new_value AS manager_dn,
@@ -55,7 +55,7 @@ manager_changes AS (
     FROM history h
     LEFT JOIN current_users mgr
         ON h.new_value = mgr.distinguishedName
-       AND h.tenant_id = mgr.tenant_id
+       AND h.insight_tenant_id = mgr.insight_tenant_id
        AND h.source_id = mgr.source_id
     WHERE h.field_name = 'managerDn'
       AND h.new_value != ''
@@ -63,7 +63,7 @@ manager_changes AS (
 
 manager_removed AS (
     SELECT
-        h.tenant_id,
+        h.insight_tenant_id,
         h.source_id,
         h.entity_id,
         h.updated_at
@@ -76,7 +76,7 @@ manager_removed AS (
 -- direct report (their managerDn still points at this manager's DN).
 manager_email_changes AS (
     SELECT DISTINCT
-        report.tenant_id AS tenant_id,
+        report.insight_tenant_id AS insight_tenant_id,
         report.source_id AS source_id,
         report.id AS entity_id,
         h.updated_at AS updated_at,
@@ -84,11 +84,11 @@ manager_email_changes AS (
     FROM history h
     INNER JOIN current_users mgr
         ON h.entity_id = mgr.id
-       AND h.tenant_id = mgr.tenant_id
+       AND h.insight_tenant_id = mgr.insight_tenant_id
        AND h.source_id = mgr.source_id
     INNER JOIN current_users report
         ON report.managerDn = mgr.distinguishedName
-       AND report.tenant_id = mgr.tenant_id
+       AND report.insight_tenant_id = mgr.insight_tenant_id
        AND report.source_id = mgr.source_id
     WHERE h.field_name IN ('mail', 'userPrincipalName')
 ),
@@ -97,18 +97,18 @@ manager_email_changes AS (
 -- so DELETE the stale parent_email instead of silently keeping the old value.
 manager_email_removed AS (
     SELECT DISTINCT
-        report.tenant_id AS tenant_id,
+        report.insight_tenant_id AS insight_tenant_id,
         report.source_id AS source_id,
         report.id AS entity_id,
         h.updated_at AS updated_at
     FROM history h
     INNER JOIN current_users mgr
         ON h.entity_id = mgr.id
-       AND h.tenant_id = mgr.tenant_id
+       AND h.insight_tenant_id = mgr.insight_tenant_id
        AND h.source_id = mgr.source_id
     INNER JOIN current_users report
         ON report.managerDn = mgr.distinguishedName
-       AND report.tenant_id = mgr.tenant_id
+       AND report.insight_tenant_id = mgr.insight_tenant_id
        AND report.source_id = mgr.source_id
     WHERE h.field_name IN ('mail', 'userPrincipalName')
       AND coalesce(mgr.mail, mgr.userPrincipalName, '') = ''
@@ -117,14 +117,14 @@ manager_email_removed AS (
 -- parent_email: resolved manager email for org_chart building
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
         'UPSERT-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,
@@ -142,14 +142,14 @@ UNION ALL
 -- parent_id: manager's source_person_id for direct parent_person_id resolution
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
         'UPSERT-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,
@@ -167,14 +167,14 @@ UNION ALL
 -- manager removed: DELETE the stale parent_email observation
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
         'DELETE-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,
@@ -191,14 +191,14 @@ UNION ALL
 -- manager removed: DELETE the stale parent_id observation
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_id', '-',
         'DELETE-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,
@@ -215,14 +215,14 @@ UNION ALL
 -- manager's own email changed: re-emit parent_email for every current direct report
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
         'UPSERT-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,
@@ -240,14 +240,14 @@ UNION ALL
 -- manager lost its last email signal: DELETE the stale parent_email for every current direct report
 SELECT
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         'active-directory', '-',
         coalesce(entity_id, ''), '-',
         'parent_email', '-',
         'DELETE-',
         toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
     ) AS String) AS unique_key,
-    toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
+    {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
     toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
     'active-directory' AS insight_source_type,
     entity_id AS source_account_id,

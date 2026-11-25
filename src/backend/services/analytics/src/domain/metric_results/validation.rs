@@ -91,7 +91,6 @@ pub struct ValidatedMetricResultsRequest {
     pub to: NaiveDate,
     pub compare_to: Option<DateWindow>,
     pub metrics: Vec<ValidatedMetricRequest>,
-    pub enforce_tenant_scope: bool,
 }
 
 impl ValidatedMetricResultsRequest {
@@ -252,7 +251,6 @@ pub async fn validate_request(
         to,
         compare_to,
         metrics,
-        enforce_tenant_scope: false,
     };
     validate_projected_view_limits(&validated)?;
     Ok(validated)
@@ -1567,7 +1565,6 @@ mod tests {
                     group_limit: None,
                 }],
             }],
-            enforce_tenant_scope: false,
         };
         assert!(validate_projected_view_limits(&validated).is_err());
     }
@@ -1599,7 +1596,6 @@ mod tests {
                     views: vec![view()],
                 })
                 .collect(),
-            enforce_tenant_scope: false,
         };
         assert!(validate_projected_view_limits(&validated).is_ok());
 
@@ -1630,7 +1626,6 @@ mod tests {
                 filters: vec![],
                 views: vec![ValidatedMetricView::Histogram { dimensions: vec![] }],
             }],
-            enforce_tenant_scope: false,
         };
         assert!(validate_projected_view_limits(&validated).is_err());
 
@@ -1662,7 +1657,6 @@ mod tests {
                     },
                 ],
             }],
-            enforce_tenant_scope: false,
         };
         assert!(validate_projected_view_limits(&validated).is_ok());
     }

@@ -30,7 +30,7 @@ models:
         description: Entra Object ID (oid). Equals JWT `oid` claim.
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id
@@ -84,7 +84,7 @@ models:
     description: >
       MS Entra users → class_people (Silver Step 1). Identity key: `email` (mail with UPN fallback). `source_person_id` is the Entra Object ID (oid) — stable, reusable across services via JWT `oid` claim. Maps accountEnabled to status (active/terminated); a NULL accountEnabled is `unknown`, never `active`, so it cannot silently inflate headcount. Current-state snapshot: entity-level `unique_key` (one row per user) and `valid_from` = createdDateTime. No `valid_to` — this model holds no version history; that lives in ms_entra__users_snapshot / ms_entra__users_fields_history. Reads bronze with FINAL because bronze is append-only RMT (see ADR-0001).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
       - name: source_id

@@ -1,7 +1,7 @@
 {{ metric_observations_table() }}
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -16,13 +16,13 @@ SELECT
     dimensions
 FROM {{ ref('task_metric_evidence') }}
 WHERE measure_key NOT IN ('resolution_days', 'pickup_days')
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id,
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id,
          metric_date, measure_key, dimensions
 
 UNION ALL
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
