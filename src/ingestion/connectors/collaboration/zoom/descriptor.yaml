@@ -40,7 +40,10 @@ name: zoom
 #   builds every meeting extracted after the newest extract it already built,
 #   so a gap of more than 3 days heals (#4317). MAJOR so reconcile runs the
 #   one-shot `dbt --full-refresh` that writes the extract time into history.
-version: "7.0.0"
+# 7.1.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "7.1.0"
 schedule: 0 3 * * *
 dbt_select: tag:zoom+
 workflow: sync

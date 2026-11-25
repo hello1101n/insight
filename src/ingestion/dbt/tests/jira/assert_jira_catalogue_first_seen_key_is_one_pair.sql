@@ -9,7 +9,7 @@
 
 SELECT
     unique_key,
-    uniqExact(tenant_id, insight_source_id) AS pairs
+    uniqExact(insight_tenant_id, insight_source_id) AS pairs
 FROM {{ ref('jira__catalogue_first_seen') }}
 GROUP BY unique_key
 HAVING pairs > 1

@@ -29,7 +29,7 @@ bronze:
   bronze_github.commits:
     - $ref: ../templates/git_activity.yaml#/templates/commit
       unique_key: gh-commit-mc1
-      tenant_id: "{{ tenant }}"
+      insight_tenant_id: "{{ tenant }}"
       source_id: github-test
       sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
       author_email: dev1@example.com

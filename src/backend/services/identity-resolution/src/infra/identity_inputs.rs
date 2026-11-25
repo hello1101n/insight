@@ -26,8 +26,9 @@ const STREAM_SQL: &str = r"
         toString(_synced_at)             AS synced_at,
         ifNull(operation_type, '')       AS op_type
     FROM identity.identity_inputs
-    WHERE (operation_type = 'UPSERT' AND value IS NOT NULL AND value != '')
-       OR operation_type = 'DELETE'
+    WHERE insight_tenant_id = toUUID(?)
+      AND ((operation_type = 'UPSERT' AND value IS NOT NULL AND value != '')
+           OR operation_type = 'DELETE')
     ORDER BY
         insight_source_type,
         insight_source_id,
@@ -71,10 +72,12 @@ impl ClickHouseIdentityInputsReader {
 #[async_trait]
 impl IdentityInputsReader for ClickHouseIdentityInputsReader {
     async fn stream(&self, tenant_id: Uuid) -> anyhow::Result<Vec<IdentityInputRow>> {
-        // SAFETY: tenancy shortcut (#1550): reads every tenant's rows, because the producer hashes tenant
-        // ids and there is nothing to filter on yet. Single-tenant deployments only.
-        let _ = tenant_id;
-        let rows: Vec<InputRow> = self.client.query(STREAM_SQL).fetch_all().await?;
+        let rows: Vec<InputRow> = self
+            .client
+            .query(STREAM_SQL)
+            .bind(tenant_id.to_string())
+            .fetch_all()
+            .await?;
         rows.into_iter().map(map_row).collect()
     }
 }
@@ -109,6 +112,14 @@ fn parse_ch_datetime(s: &str) -> anyhow::Result<DateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_sql_reads_one_tenant() {
+        assert!(
+            STREAM_SQL.contains("WHERE insight_tenant_id = toUUID(?)"),
+            "a seed files every row it reads under its own tenant, so it must read only that tenant's rows"
+        );
+    }
 
     #[test]
     fn stream_sql_keeps_empty_value_delete_rows() {

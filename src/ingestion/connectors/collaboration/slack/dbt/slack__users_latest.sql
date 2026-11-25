@@ -17,7 +17,7 @@ WITH
 {% if activity %}
 activity_users AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         insight_source_id AS source_id,
         user_id,
         nullIf(argMaxIf(assumeNotNull(email_address), date, coalesce(email_address, '') != ''), '') AS activity_email,
@@ -27,14 +27,14 @@ activity_users AS (
       AND insight_source_id IS NOT NULL
       AND coalesce(user_id, '') != ''
     GROUP BY
-        tenant_id,
+        insight_tenant_id,
         source_id,
         user_id
 ),
 {% else %}
 activity_users AS (
     SELECT
-        CAST(NULL AS Nullable(String)) AS tenant_id,
+        CAST(NULL AS Nullable(String)) AS insight_tenant_id,
         CAST(NULL AS Nullable(String)) AS source_id,
         CAST(NULL AS Nullable(String)) AS user_id,
         CAST(NULL AS Nullable(String)) AS activity_email,
@@ -46,7 +46,7 @@ activity_users AS (
 {% if members %}
 member_users AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         insight_source_id AS source_id,
         user_id,
         nullIf(coalesce(email, ''), '') AS member_email,
@@ -61,7 +61,7 @@ member_users AS (
 {% else %}
 member_users AS (
     SELECT
-        CAST(NULL AS Nullable(String)) AS tenant_id,
+        CAST(NULL AS Nullable(String)) AS insight_tenant_id,
         CAST(NULL AS Nullable(String)) AS source_id,
         CAST(NULL AS Nullable(String)) AS user_id,
         CAST(NULL AS Nullable(String)) AS member_email,
@@ -74,33 +74,33 @@ member_users AS (
 
 known_users AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         user_id
     FROM activity_users
     UNION DISTINCT
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         user_id
     FROM member_users
 )
 
 SELECT
-    k.tenant_id AS tenant_id,
+    k.insight_tenant_id AS insight_tenant_id,
     k.source_id AS source_id,
     k.user_id AS user_id,
     -- INVARIANT: the Activity email wins; the Members email is the fallback.
     coalesce(a.activity_email, m.member_email) AS email,
     m.member_display_name AS display_name,
-    concat(k.tenant_id, '-', k.source_id, '-', k.user_id) AS unique_key
+    concat(k.insight_tenant_id, '-', k.source_id, '-', k.user_id) AS unique_key
 FROM known_users AS k
 LEFT JOIN activity_users AS a
-    ON a.tenant_id = k.tenant_id
+    ON a.insight_tenant_id = k.insight_tenant_id
    AND a.source_id = k.source_id
    AND a.user_id = k.user_id
 LEFT JOIN member_users AS m
-    ON m.tenant_id = k.tenant_id
+    ON m.insight_tenant_id = k.insight_tenant_id
    AND m.source_id = k.source_id
    AND m.user_id = k.user_id
 -- INVARIANT: a bot or a proven guest never becomes an account. Each one would mint a person.

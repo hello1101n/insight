@@ -103,7 +103,9 @@ def event_order(at: str, band: int, rank: int) -> int:
 
 def journal_row(issue: str, field_id: str, value: str | None, *, at: str, rank: int, kind: str) -> dict[str, Any]:
     values = [] if value is None else [value]
-    event_id = {"synthetic_initial": f"initial:{issue}", "snapshot_diff": f"snapshot_diff:{issue}"}.get(kind, f"{issue}-{at}")
+    event_id = {"synthetic_initial": f"initial:{issue}", "snapshot_diff": f"snapshot_diff:{issue}"}.get(
+        kind, f"{issue}-{at}"
+    )
     return {
         "unique_key": f"{issue}-{field_id}-{event_id}",
         "insight_source_id": SOURCE,
@@ -164,7 +166,7 @@ def built(warehouse: Warehouse) -> Warehouse:
         [
             {
                 "unique_key": f"{SOURCE}-{ACTOR}",
-                "tenant_id": TENANT,
+                "insight_tenant_id": TENANT,
                 "insight_source_id": SOURCE,
                 "data_source": "jira",
                 "user_id": ACTOR,

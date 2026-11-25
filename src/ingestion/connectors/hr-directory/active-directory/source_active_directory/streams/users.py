@@ -112,8 +112,8 @@ class ActiveDirectoryUsersStream(Stream):
             "whenChanged": ldap_client.generalized_time_to_iso(self._scalar(attrs, "whenChanged")),
         }
 
-        # Framework fields (Connector Spec principle: mandatory tenant_id/source_id/unique_key).
-        record["tenant_id"] = self._tenant_id
+        # Framework fields (Connector Spec principle: mandatory insight_tenant_id/source_id/unique_key).
+        record["insight_tenant_id"] = self._tenant_id
         record["source_id"] = self._source_id
         record["unique_key"] = self._make_unique_key(object_guid)
         return record
@@ -185,7 +185,7 @@ class ActiveDirectoryUsersStream(Stream):
                 "managerDn": nullable_str,
                 "whenCreated": nullable_str,
                 "whenChanged": nullable_str,
-                "tenant_id": {"type": "string"},
+                "insight_tenant_id": {"type": "string"},
                 "source_id": {"type": "string"},
                 "unique_key": {"type": "string"},
             },

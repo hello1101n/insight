@@ -49,9 +49,10 @@ fn sum_graph(suffix: &str) -> CustomMetric {
         peer_cohort_key: Some("org_unit".to_owned()),
         transform: None,
         source_key: format!("custom_s{suffix}"),
-        observation_sql: "SELECT tenant_id, source_key, entity_type, entity_id, metric_date, \
+        observation_sql:
+            "SELECT insight_tenant_id, source_key, entity_type, entity_id, metric_date, \
             measure_key, observed_at, value, subject_key, dimensions FROM system.one"
-            .to_owned(),
+                .to_owned(),
         measures: vec!["events".to_owned()],
         dimensions: vec!["tool".to_owned(), "repository".to_owned()],
         tags: vec!["rate".to_owned(), "duration".to_owned()],

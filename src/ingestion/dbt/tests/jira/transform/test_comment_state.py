@@ -54,7 +54,7 @@ def _comment(case: CommentCase) -> dict[str, Any]:
     return {
         **_airbyte(case.extracted_at),
         "id": str(case.comment_id),
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{case.comment_id}",
         "comment_id": case.comment_id,
@@ -73,7 +73,7 @@ def _issue_key(key: str, extracted_at: str) -> dict[str, Any]:
         **_airbyte(extracted_at),
         "id": key,
         "key": key,
-        "tenant_id": TENANT_ID,
+        "insight_tenant_id": TENANT_ID,
         "source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{key}",
         "id_readable": key,

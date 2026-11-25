@@ -8,7 +8,7 @@
 
 WITH articles AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS article_id,
         {{ zendesk_id('payload', "'author_id'") }}     AS author_id,
@@ -19,17 +19,17 @@ WITH articles AS (
 ),
 
 events AS (
-    SELECT tenant_id, insight_source_id, article_id, author_id, 'created' AS event_type, created_at AS occurred_at, collected_at
+    SELECT insight_tenant_id, insight_source_id, article_id, author_id, 'created' AS event_type, created_at AS occurred_at, collected_at
     FROM articles
     UNION ALL
-    SELECT tenant_id, insight_source_id, article_id, author_id, 'updated' AS event_type, updated_at AS occurred_at, collected_at
+    SELECT insight_tenant_id, insight_source_id, article_id, author_id, 'updated' AS event_type, updated_at AS occurred_at, collected_at
     FROM articles
     WHERE updated_at > created_at
 )
 
 SELECT
     {{ zendesk_key(['article_id', 'event_type', 'toUnixTimestamp64Milli(occurred_at)']) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     article_id,

@@ -1,5 +1,5 @@
 {{- $service := .Subcharts.connectors }}
-{{- $values := mergeOverwrite (deepCopy $service.Values) (dict "mariadb" .Values.mariadb "clickhouse" .Values.clickhouse "tenantId" .Values.ingestion.reconcile.tenantId "cluster" (dict "enabled" .Values.ingestion.templates.enabled)) }}
+{{- $values := mergeOverwrite (deepCopy $service.Values) (dict "mariadb" .Values.mariadb "clickhouse" .Values.clickhouse "tenantId" (include "insight.tenantId" .) "cluster" (dict "enabled" .Values.ingestion.templates.enabled)) }}
 {{- with .Values.identityUrl }}
 {{- $_ := set $values "identityUrl" . }}
 {{- end }}

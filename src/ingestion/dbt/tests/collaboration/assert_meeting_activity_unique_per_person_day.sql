@@ -26,7 +26,7 @@
 -- (tenant, person_key, date), but flags >1 row for the same data_source.
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     person_key,
     date,
     data_source,
@@ -34,5 +34,5 @@ SELECT
     groupUniqArray(insight_source_id) AS source_ids
 FROM silver.class_collab_meeting_activity FINAL
 WHERE person_key IS NOT NULL AND person_key != ''
-GROUP BY tenant_id, person_key, date, data_source
+GROUP BY insight_tenant_id, person_key, date, data_source
 HAVING n > 1

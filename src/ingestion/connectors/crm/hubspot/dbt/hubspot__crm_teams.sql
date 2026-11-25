@@ -13,7 +13,7 @@
 WITH memberships AS (
     {% for tbl in hubspot_bronze_tables('owners') %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         team,
         data_source,
@@ -26,9 +26,9 @@ WITH memberships AS (
 
 src AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
-        concat(tenant_id, '-', source_id, '-', JSONExtractString(team, 'id')) AS unique_key,
+        concat(insight_tenant_id, '-', source_id, '-', JSONExtractString(team, 'id')) AS unique_key,
         JSONExtractString(team, 'id')                   AS team_id,
         JSONExtractString(team, 'name')                 AS name,
         data_source,

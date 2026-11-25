@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import os
 import shutil
 import urllib.error
@@ -86,7 +87,12 @@ class ClickHouse:
             path.open("wb") as out,
         ):
             if response.headers.get("Content-Encoding") != "gzip":
-                raise ClickHouseError("ClickHouse sent the dump uncompressed; refusing to write it as gzip")
+                # An empty table, which the migration now also moves to rename its tenant column:
+                # ClickHouse sends an empty reply uncompressed.
+                if response.read(1):
+                    raise ClickHouseError("ClickHouse sent the dump uncompressed; refusing to write it as gzip")
+                out.write(gzip.compress(b""))
+                return
             shutil.copyfileobj(response, out, CHUNK_BYTES)
 
     def load(self, table: str, path: Path) -> None:

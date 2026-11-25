@@ -26,7 +26,7 @@
 
 {% macro metric_serving_table(include_record_id, join_use_nulls=none, query_settings_overrides=none) %}
     {% set order_by = [
-        'tenant_id',
+        'insight_tenant_id',
         'source_key',
         'entity_type',
         'entity_id',

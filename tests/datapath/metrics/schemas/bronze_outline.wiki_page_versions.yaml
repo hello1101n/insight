@@ -9,7 +9,7 @@ schemas:
       _airbyte_meta: { type: string }
       _airbyte_generation_id: { type: integer }
       unique_key: { type: string }
-      tenant_id: { type: [string, "null"] }
+      insight_tenant_id: { type: [string, "null"] }
       source_id: { type: [string, "null"] }
       page_id: { type: [string, "null"] }
       revision_id: { type: [string, "null"] }

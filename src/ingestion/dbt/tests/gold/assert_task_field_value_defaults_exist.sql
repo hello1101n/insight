@@ -16,7 +16,7 @@
 WITH
 live_sources AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id
     FROM {{ ref('class_task_users') }} FINAL
 ),
@@ -24,13 +24,14 @@ live_sources AS (
 -- carries no resolution binding, and demanding its default would be noise.
 standardized AS (
     SELECT DISTINCT
-        s.tenant_id         AS tenant_id,
+        s.insight_tenant_id         AS insight_tenant_id,
         s.insight_source_id AS insight_source_id,
         r.data_source       AS data_source,
         roles.2             AS field
     FROM live_sources AS s
     INNER JOIN {{ ref('task_field_roles_current') }} AS r
-        ON r.insight_source_id = s.insight_source_id
+        ON r.insight_tenant_id = s.insight_tenant_id
+        AND r.insight_source_id = s.insight_source_id
     ARRAY JOIN [
         tuple('issuetype', 'issue_type'),
         tuple('resolution', 'resolution')
@@ -42,12 +43,12 @@ standardized AS (
 -- the decision it retracts.
 decided AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         field
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             insight_source_id,
             field,
             default_value,
@@ -56,19 +57,19 @@ decided AS (
         WHERE field IN ('issue_type', 'resolution')
           AND valid_from <= now64(3)
         ORDER BY valid_from DESC, recorded_at DESC
-        LIMIT 1 BY tenant_id, insight_source_id, field
+        LIMIT 1 BY insight_tenant_id, insight_source_id, field
     )
     WHERE is_deleted = 0
       AND ((field = 'issue_type' AND default_value IN ('bug', 'task', 'unknown'))
            OR (field = 'resolution' AND default_value IN ('fixed', 'duplicate', 'wontfix', 'unknown')))
 )
 SELECT
-    u.tenant_id         AS tenant_id,
+    u.insight_tenant_id         AS insight_tenant_id,
     u.insight_source_id AS insight_source_id,
     u.data_source       AS data_source,
     u.field             AS field
 FROM standardized AS u
 LEFT ANTI JOIN decided AS d
-    ON d.tenant_id = u.tenant_id
+    ON d.insight_tenant_id = u.insight_tenant_id
     AND d.insight_source_id = u.insight_source_id
     AND d.field = u.field

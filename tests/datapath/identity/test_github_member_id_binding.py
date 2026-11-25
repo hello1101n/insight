@@ -46,7 +46,7 @@ def _commit_author(
     source_id = _source_id(run_tag)
     return {
         **records.framing(),
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "source_id": source_id,
         "unique_key": f"{tenant}:{source_id}:{member_id}:{email}",
         "data_source": "insight_github",
@@ -65,7 +65,7 @@ def _commit(run_tag: str, *, author_name: str, author_email: str, tenant: str) -
     sha = "1" * 40
     return {
         **records.framing(),
-        "tenant_id": tenant,
+        "insight_tenant_id": tenant,
         "source_id": source_id,
         "unique_key": f"{tenant}:{source_id}:{sha}",
         "repository": REPO,

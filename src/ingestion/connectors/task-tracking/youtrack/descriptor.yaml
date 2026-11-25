@@ -24,7 +24,10 @@ name: youtrack
 #   `value_displays[1]` its first characters, `value_id_type = 'text_ref'` —
 #   and the bodies reach silver.class_task_field_text (#3895). MAJOR per
 #   ADR-0015: the meaning of history rows already written changes.
-version: "3.0.0"
+# 3.1.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "3.1.0"
 schedule: 0 2 * * *
 workflow: sync
 dbt_select: tag:youtrack+

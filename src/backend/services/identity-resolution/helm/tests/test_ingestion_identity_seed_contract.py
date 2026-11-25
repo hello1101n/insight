@@ -33,7 +33,7 @@ INGESTION = [
     "--set",
     "ingestion.toolboxImage=ghcr.io/example/insight-toolbox:0.0.0-test",
     "--set",
-    f"global.tenantDefaultId={TENANT}",
+    f"authenticator.oidc.defaultTenantId={TENANT}",
 ]
 
 

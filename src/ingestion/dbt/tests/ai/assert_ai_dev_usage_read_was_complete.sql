@@ -28,7 +28,7 @@
 WITH reference AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
@@ -59,7 +59,7 @@ first_reference AS (
 user_reads AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,

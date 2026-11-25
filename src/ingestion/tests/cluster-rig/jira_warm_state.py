@@ -70,28 +70,28 @@ def plant() -> None:
     prefix = "Replicated" if check.replicated() else ""
     statements = [
         f"""INSERT INTO bronze_jira.jira_issue
-            (unique_key, tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES ('{TENANT}-{SOURCE}-101', '{TENANT}', '{SOURCE}', 'WARM-1', '101', 'raw-i1', '2026-01-02 00:00:00')""",
         f"""INSERT INTO bronze_jira.jira_issue_keys
-            (unique_key, tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES ('{TENANT}-{SOURCE}-102', '{TENANT}', '{SOURCE}', 'WARM-2', '102', 'raw-k1', '2026-01-02 00:00:00')""",
         f"""INSERT INTO bronze_jira.jira_issue_history
-            (unique_key, tenant_id, source_id, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES
             ('warm-jira-h-current', '{TENANT}', '{SOURCE}', 'WARM-1', NULL, '[]', 'raw-h1', '2026-01-03 00:00:00'),
             ('warm-jira-h-unknown', '{TENANT}', '{SOURCE}', 'WARM-GONE-9', NULL, '[]', 'raw-h3', '2026-01-03 00:00:00'),
             ('warm-jira-h-known', '{TENANT}', '{SOURCE}', 'WARM-1', '999', '[]', 'raw-h4', '2026-01-03 00:00:00'),
             ('warm-jira-h-recent', '{TENANT}', '{SOURCE}', 'WARM-1', NULL, '[]', 'raw-h5', now())""",
         f"""INSERT INTO bronze_jira.jira_comments
-            (unique_key, tenant_id, source_id, id_readable, body, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, id_readable, body, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES ('warm-jira-c-keys', '{TENANT}', '{SOURCE}', 'WARM-2', 'comment', 'raw-c1', '2026-01-03 00:00:00')""",
         f"""INSERT INTO bronze_jira.jira_worklogs
-            (unique_key, tenant_id, source_id, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES
             ('warm-jira-w-own', '{TENANT}', '{SOURCE}', 'WARM-GONE-9', NULL, '777', 'raw-w1', '2026-01-03 00:00:00'),
             ('warm-jira-w-key', '{TENANT}', '{SOURCE}', 'WARM-1', NULL, NULL, 'raw-w2', '2026-01-03 00:00:00')""",
         f"""INSERT INTO bronze_jira.jira_fields
-            (unique_key, tenant_id, source_id, _airbyte_raw_id, _airbyte_extracted_at)
+            (unique_key, insight_tenant_id, source_id, _airbyte_raw_id, _airbyte_extracted_at)
             VALUES ('warm-jira-1-summary', '{TENANT}', '{SOURCE}', 'raw-f1', '2026-03-01 00:00:00')""",
         # The pre-history catalogue record: staging is a Replicated database on
         # a cluster, so the CREATE reaches every replica on its own.
@@ -144,7 +144,7 @@ def assert_healed() -> None:
                 (SELECT engine FROM system.tables WHERE database = 'staging' AND name = 'jira__catalogue_first_seen'), '|',
                 arrayStringConcat(groupArray(row), ';'))
             FROM (
-                SELECT concat(unique_key, ',', tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
+                SELECT concat(unique_key, ',', insight_tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
                 FROM staging.jira__catalogue_first_seen FINAL ORDER BY unique_key
             )""",
         ).strip()

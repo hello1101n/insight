@@ -9,7 +9,7 @@ models:
   - name: mock__events
     description: "Synthetic full-refresh records. No measure keys."
     columns: &columns
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant identity injected by reconcile."
       - name: source_id
         description: "Instance identity injected by reconcile."

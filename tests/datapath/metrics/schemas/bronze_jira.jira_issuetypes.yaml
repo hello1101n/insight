@@ -10,7 +10,7 @@ schemas:
     properties:
       unique_key: {type: string}
       source_id: {type: string}
-      tenant_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
       id: {type: [string, "null"]}
       name: {type: string}
       untranslatedName: {type: [string, "null"]}

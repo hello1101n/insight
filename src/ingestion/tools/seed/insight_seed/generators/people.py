@@ -136,7 +136,7 @@ def seed_bamboohr_employees(
         "jobTitle",
         "supervisorEmail",
         "supervisor",
-        "tenant_id",
+        "insight_tenant_id",
         "source_id",
         "raw_data",
     ]

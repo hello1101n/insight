@@ -7,7 +7,7 @@ templates:
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
     unique_key: bb-pipe-1
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: bitbucket-test
     data_source: insight_bitbucket_cloud
     collected_at: "2026-03-10T00:00:00Z"
@@ -39,7 +39,7 @@ templates:
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
     unique_key: bb-dep-1
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: bitbucket-test
     data_source: insight_bitbucket_cloud
     collected_at: "2026-03-10T00:00:00Z"

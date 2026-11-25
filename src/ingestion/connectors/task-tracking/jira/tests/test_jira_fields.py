@@ -60,7 +60,7 @@ def test_schema_flattening_and_stamping(http_mocker: HttpMocker) -> None:
 
     by_id = {r.record.data["field_id"]: r.record.data for r in output.records}
     sp = by_id["customfield_10101"]
-    assert sp["tenant_id"] == config["insight_tenant_id"]
+    assert sp["insight_tenant_id"] == config["insight_tenant_id"]
     assert sp["source_id"] == config["insight_source_id"]
     assert sp["unique_key"] == (f"{config['insight_tenant_id']}-{config['insight_source_id']}-customfield_10101")
     assert sp["custom"] is True

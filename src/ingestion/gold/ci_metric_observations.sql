@@ -4,7 +4,7 @@
 -- so unlike the person-grain observations there is no '' filter — every
 -- evidence row serves.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,
@@ -19,14 +19,14 @@ SELECT
     dimensions
 FROM {{ ref('ci_metric_evidence') }}
 WHERE measure_key != 'run_duration_min'
-GROUP BY tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions
+GROUP BY insight_tenant_id, source_key, entity_type, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions
 
 UNION ALL
 
 -- Duration stays at event grain: median/percentile metrics aggregate over
 -- individual runs at query time, and a pre-summed day would poison them.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_key,
     entity_type,
     entity_id,

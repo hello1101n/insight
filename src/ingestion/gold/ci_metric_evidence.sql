@@ -3,7 +3,7 @@
 -- CI evidence is TENANT-grain: a pipeline run belongs to the organization,
 -- not to a person (issue #2803, decision 5), so there is no identity join —
 -- entity_id IS the tenant id, the shape the results compiler expects for
--- entity_type='tenant' (`entity_id = tenant_id`).
+-- entity_type='tenant' (`entity_id = insight_tenant_id`).
 --
 -- One evidence row per RUN, not per attempt: the source lists only the
 -- latest attempt of a retried run, so the latest attempt is the run's state
@@ -11,7 +11,7 @@
 -- excluded — they re-arrive decided on a later sync.
 WITH known_commits AS (
     SELECT DISTINCT
-        tenant_id,
+        insight_tenant_id,
         commit_hash
     FROM {{ ref('class_git_commits') }} FINAL
     WHERE commit_hash != ''
@@ -19,7 +19,7 @@ WITH known_commits AS (
 
 runs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         repo_full_name,
         pipeline_key,
@@ -39,19 +39,19 @@ runs AS (
         -- stream. PR runs build synthetic merge refs and fork commits the
         -- stream never sees, so this is the honest joinability ceiling for
         -- any run-to-commit analysis — served as its own measure below.
-        (tenant_id, commit_sha) IN (
-            SELECT tenant_id, commit_hash FROM known_commits
+        (insight_tenant_id, commit_sha) IN (
+            SELECT insight_tenant_id, commit_hash FROM known_commits
         ) AS commit_known
     FROM {{ ref('class_git_ci_runs') }} FINAL
     WHERE outcome != ''
       AND started_at IS NOT NULL
     ORDER BY attempt DESC
-    LIMIT 1 BY tenant_id, source_id, repo_full_name, run_id
+    LIMIT 1 BY insight_tenant_id, source_id, repo_full_name, run_id
 ),
 
 run_rows AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         metric_date,
         repo_full_name,
@@ -88,21 +88,21 @@ run_rows AS (
 
 deployment_outcomes AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         deployment_id,
         -- The vendor status id breaks created_at ties: two events in one
         -- second would otherwise pick a nondeterministic outcome.
         argMax(state, (created_at, event_id)) AS state
     FROM {{ ref('class_git_deployment_events') }} FINAL
-    GROUP BY tenant_id, source_id, deployment_id
+    GROUP BY insight_tenant_id, source_id, deployment_id
 ),
 
 -- Outcome = the latest status event; a deployment with no event yet is
 -- 'pending' and stays visible rather than rounded away.
 deployment_rows AS (
     SELECT
-        d.tenant_id AS tenant_id,
+        d.insight_tenant_id AS insight_tenant_id,
         d.source_id AS source_id,
         toDate(d.created_at) AS metric_date,
         d.repo_full_name AS repo_full_name,
@@ -131,7 +131,7 @@ deployment_rows AS (
         ) AS deployment_dimensions
     FROM (
         SELECT
-            tenant_id,
+            insight_tenant_id,
             source_id,
             repo_full_name,
             deployment_id,
@@ -143,17 +143,17 @@ deployment_rows AS (
         WHERE created_at IS NOT NULL
     ) AS d
     LEFT JOIN deployment_outcomes AS o
-        ON d.tenant_id = o.tenant_id
+        ON d.insight_tenant_id = o.insight_tenant_id
        AND d.source_id = o.source_id
        AND d.deployment_id = o.deployment_id
 )
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'ci' AS source_key,
     'tenant' AS entity_type,
-    assumeNotNull(tenant_id) AS entity_id,
-    assumeNotNull(tenant_id) AS source_entity_id,
+    assumeNotNull(insight_tenant_id) AS entity_id,
+    assumeNotNull(insight_tenant_id) AS source_entity_id,
     '' AS account_source_type,
     '' AS account_source_id,
     '' AS account_id,
@@ -193,16 +193,16 @@ ARRAY JOIN
             tuple('runs_matched_commit', if(commit_known, toNullable(toFloat64(1)), NULL))
         ]
     ) AS measure
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'ci' AS source_key,
     'tenant' AS entity_type,
-    assumeNotNull(tenant_id) AS entity_id,
-    assumeNotNull(tenant_id) AS source_entity_id,
+    assumeNotNull(insight_tenant_id) AS entity_id,
+    assumeNotNull(insight_tenant_id) AS source_entity_id,
     '' AS account_source_type,
     '' AS account_source_id,
     '' AS account_id,
@@ -223,7 +223,7 @@ SELECT
         'env_kind', env_kind
     ) AS details
 FROM deployment_rows
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
 
 UNION ALL
 
@@ -232,11 +232,11 @@ UNION ALL
 -- runs_matched_commit it shows how far the two streams overlap, i.e. how much
 -- any commit-joined CI reading can be trusted.
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    assumeNotNull(insight_tenant_id) AS insight_tenant_id,
     'ci' AS source_key,
     'tenant' AS entity_type,
-    assumeNotNull(tenant_id) AS entity_id,
-    assumeNotNull(tenant_id) AS source_entity_id,
+    assumeNotNull(insight_tenant_id) AS entity_id,
+    assumeNotNull(insight_tenant_id) AS source_entity_id,
     '' AS account_source_type,
     '' AS account_source_id,
     '' AS account_id,
@@ -259,7 +259,7 @@ SELECT
     ) AS details
 FROM (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_key,
         repo_slug,
@@ -267,6 +267,6 @@ FROM (
         coalesce(committer_date, date) AS commit_date
     FROM {{ ref('class_git_commits') }} FINAL
 )
-WHERE tenant_id IS NOT NULL
+WHERE insight_tenant_id IS NOT NULL
   AND commit_hash != ''
   AND commit_date IS NOT NULL

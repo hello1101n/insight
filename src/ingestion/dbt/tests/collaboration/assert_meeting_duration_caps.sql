@@ -28,7 +28,7 @@
 
 SELECT
     data_source,
-    tenant_id,
+    insight_tenant_id,
     person_key,
     date,
     audio_duration_seconds,

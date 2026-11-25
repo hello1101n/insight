@@ -23,7 +23,7 @@ schemas:
       raw_data: { type: [object, "null"] }
       firstName: { type: [string, "null"] }
       source_id: { type: [string, "null"] }
-      tenant_id: { type: [string, "null"] }
+      insight_tenant_id: { type: [string, "null"] }
       workEmail: { type: [string, "null"] }
       department: { type: [string, "null"] }
       supervisor: { type: [string, "null"] }

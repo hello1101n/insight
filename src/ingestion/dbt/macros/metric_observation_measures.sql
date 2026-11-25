@@ -2,7 +2,7 @@
    beside the email) that the row grain keeps and the output carries. #}
 {% macro sum_measure(measure_key, relation, value_expr, dimensions_col, where=none, keys=[]) %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         {% for key in keys %}{{ key }},
         {% endfor %}metric_date,
@@ -11,7 +11,7 @@
         {{ dimensions_col }} AS dimensions
     FROM {{ relation }}
     {% if where %}WHERE {{ where }}
-    {% endif %}GROUP BY tenant_id, entity_id, {% for key in keys %}{{ key }}, {% endfor %}metric_date, {{ dimensions_col }}
+    {% endif %}GROUP BY insight_tenant_id, entity_id, {% for key in keys %}{{ key }}, {% endfor %}metric_date, {{ dimensions_col }}
     HAVING countIf(({{ value_expr }}) IS NOT NULL) > 0
 {% endmacro %}
 
@@ -21,7 +21,7 @@
    median/percentile-style metrics may bind these measures. #}
 {% macro event_measure(measure_key, relation, value_expr, dimensions_col, where=none) %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         '{{ measure_key }}' AS measure_key,
@@ -35,7 +35,7 @@
 
 {% macro presence_measure(measure_key, relations) %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         '{{ measure_key }}' AS measure_key,
@@ -44,7 +44,7 @@
     FROM (
         {%- for relation in relations %}
         SELECT DISTINCT
-            tenant_id,
+            insight_tenant_id,
             entity_id,
             metric_date
         FROM {{ relation }}
@@ -65,7 +65,7 @@
    distinct-count measures live in their own UNION branch. #}
 {% macro distinct_measure(measure_key, relation, subject_key_expr, dimensions_col, keys=[]) %}
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         {% for key in keys %}{{ key }},
         {% endfor %}metric_date,

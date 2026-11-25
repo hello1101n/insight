@@ -32,7 +32,7 @@
 -- otherwise produce a negative residual.
 
 SELECT
-    u.insight_tenant_id AS tenant_id,
+    u.insight_tenant_id AS insight_tenant_id,
     u.insight_source_id,
     MD5(concat(
         u.insight_tenant_id, '-',
@@ -96,7 +96,7 @@ WHERE u.user_id IS NOT NULL
     SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
     FROM {{ source('bronze_slack', 'users_details') }}
     WHERE _airbyte_extracted_at
-          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
   )
 {% endif %}
 -- INVARIANT: one row per key in the batch; delete+insert keeps one row per key across runs.

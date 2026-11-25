@@ -16,7 +16,7 @@ templates:
   jira_issue:
     id: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     jira_id: null
     unique_key: null
     id_readable: null
@@ -35,7 +35,7 @@ templates:
   jira_user:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     account_id: null
     email: null
     display_name: null
@@ -80,7 +80,7 @@ templates:
   jira_history:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     id_readable: null
     jira_id: null
     changelog_id: null
@@ -116,7 +116,7 @@ templates:
   jira_field:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     field_id: null
     name: null
     schema_type: ""
@@ -185,7 +185,7 @@ templates:
   jira_worklog:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     worklog_id: null
     id_readable: null
     jira_id: null
@@ -274,7 +274,7 @@ templates:
   jira_status:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     status_id: null
     name: null
     category_id: null
@@ -319,7 +319,7 @@ templates:
   jira_issuetype:
     unique_key: null
     source_id: jira-test
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     id: null
     name: null
     untranslatedName: null
@@ -394,7 +394,7 @@ templates:
   # expects classified, and a default row for the rest.
   # `display_name` records the name the decision was made against.
   jira_issue_type:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: jira-test
     data_source: jira
     field: issue_type
@@ -414,7 +414,7 @@ templates:
   # unclassified — the ordinary case, and the row every spec needs to keep
   # `assert_task_field_value_defaults_exist` green.
   jira_issue_type_default_unknown:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: jira-test
     field: issue_type
     valid_from: "1970-01-01 00:00:00.000"
@@ -435,7 +435,7 @@ templates:
 
   # The same row claiming unmapped ids as ordinary work instead.
   jira_issue_type_default:
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     insight_source_id: jira-test
     field: issue_type
     valid_from: "1970-01-01 00:00:00.000"
@@ -535,7 +535,7 @@ templates:
   # census row and the bronze-issue row merge into one availability entity.
   jira_census:
     id: null
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: jira-test
     unique_key: null
     jira_id: null
@@ -561,7 +561,7 @@ templates:
     style: classic
     isPrivate: false
     properties: "{}"
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: jira-test
     unique_key: null
     project_id: null
@@ -579,7 +579,7 @@ templates:
   jira_issue_key:
     id: null
     key: null
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: jira-test
     unique_key: null
     id_readable: null
@@ -598,7 +598,7 @@ templates:
     worklogId: null
     updatedTime: 1766700000000
     properties: "[]"
-    tenant_id: "{{ tenant }}"
+    insight_tenant_id: "{{ tenant }}"
     source_id: jira-test
     unique_key: null
     worklog_id: null
