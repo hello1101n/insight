@@ -18,23 +18,31 @@ _task_tenant_probe() {
 }
 
 # Added as Nullable, so rows predating the column read as tenantless, not under an empty tenant.
+# A column still named `tenant_id` is renamed in place first: these relations are keyed by
+# unique_key alone, so the rename touches no key and moves no row.
 # SAFETY: narrowing a column that holds a NULL fails its mutation and leaves the table unreadable.
 _heal_task_tenant_column() {
-  local relation="$1" tenantless
+  local relation="$1" tenantless column
+  column="$(ch_tenant_column "${relation%%.*}" "${relation#*.}")" || return 1
+  if [[ "${column}" == "tenant_id" ]]; then
+    run_ch <<SQL
+ALTER TABLE ${relation} RENAME COLUMN tenant_id TO insight_tenant_id;
+SQL
+  fi
   run_ch <<SQL
-ALTER TABLE ${relation} ADD COLUMN IF NOT EXISTS tenant_id Nullable(String) AFTER unique_key;
+ALTER TABLE ${relation} ADD COLUMN IF NOT EXISTS insight_tenant_id Nullable(String) AFTER unique_key;
 SQL
   tenantless="$(_task_tenant_probe "${relation} holds rows without a tenant" \
-    "SELECT count() FROM ${relation} WHERE tenant_id IS NULL")" || return 1
+    "SELECT count() FROM ${relation} WHERE insight_tenant_id IS NULL")" || return 1
   if [[ "${tenantless}" -gt 0 ]]; then
-    echo "  ${relation}: ${tenantless} row(s) without a tenant; tenant_id stays Nullable until a rebuild replaces them"
+    echo "  ${relation}: ${tenantless} row(s) without a tenant; insight_tenant_id stays Nullable until a rebuild replaces them"
     run_ch <<SQL
-ALTER TABLE ${relation} MODIFY COLUMN tenant_id Nullable(String) AFTER unique_key;
+ALTER TABLE ${relation} MODIFY COLUMN insight_tenant_id Nullable(String) AFTER unique_key;
 SQL
     return 0
   fi
   run_ch <<SQL
-ALTER TABLE ${relation} MODIFY COLUMN tenant_id String AFTER unique_key;
+ALTER TABLE ${relation} MODIFY COLUMN insight_tenant_id String AFTER unique_key;
 SQL
 }
 
@@ -61,8 +69,8 @@ heal_task_class_tenant() {
 # instead: the union skips a producer with no relation, and the view holds no rows.
 heal_task_producer_view() {
   local view="$1" stale
-  stale="$(_task_tenant_probe "staging.${view} is a view without tenant_id" \
-    "SELECT count() FROM system.tables AS t WHERE t.database = 'staging' AND t.name = '${view}' AND t.engine = 'View' AND NOT has((SELECT groupArray(name) FROM system.columns WHERE database = 'staging' AND table = '${view}'), 'tenant_id')")" || return 1
+  stale="$(_task_tenant_probe "staging.${view} is a view without insight_tenant_id" \
+    "SELECT count() FROM system.tables AS t WHERE t.database = 'staging' AND t.name = '${view}' AND t.engine = 'View' AND NOT has((SELECT groupArray(name) FROM system.columns WHERE database = 'staging' AND table = '${view}'), 'insight_tenant_id')")" || return 1
   [[ "${stale}" -gt 0 ]] || return 0
   echo "  staging.${view} (stale view dropped)"
   run_ch <<SQL

@@ -24,7 +24,11 @@ COPY, BACKUP, REJECTED, RESTORE = "__tenant_copy", "__tenant_backup", "__tenant_
 DUMP_CHECK = "__tenant_dumpcheck"
 WORK_SUFFIXES = (COPY, BACKUP, REJECTED, RESTORE, DUMP_CHECK)
 
-TENANT_COLUMNS = ("tenant_id", "insight_tenant_id")
+TENANT_COLUMN = "insight_tenant_id"
+OLD_TENANT_COLUMN = "tenant_id"
+TENANT_COLUMNS = (OLD_TENANT_COLUMN, TENANT_COLUMN)
+#: The sync ledger keeps `tenant_id`: it is a service table, not a warehouse layer.
+KEEPS_OLD_TENANT_COLUMN = ("ingestion_history",)
 SOURCE_COLUMNS = ("source_id", "insight_source_id")
 KEY_COLUMN = "unique_key"
 STRING_TYPES = ("String", "Nullable(String)", "LowCardinality(String)", "LowCardinality(Nullable(String))")
@@ -75,6 +79,11 @@ class Table:
     def replacing(self) -> bool:
         return "Replacing" in self.engine
 
+    @property
+    def renames_tenant(self) -> bool:
+        """The copy names the tenant column `insight_tenant_id`; the original still says `tenant_id`."""
+        return self.columns.tenant == OLD_TENANT_COLUMN and self.database not in KEEPS_OLD_TENANT_COLUMN
+
 
 @dataclass(frozen=True)
 class Unfit:
@@ -114,6 +123,8 @@ def classify(database: str, name: str, engine: str, types: dict[str, str], engin
     if _shares_keeper_path(engine_full):
         # SAFETY: a CREATE ... AS copy of a fixed Keeper path claims the original's replica.
         return Unfit(relation, "a replicated engine whose Keeper path names no {uuid} or {table}")
+    if all(c in types for c in TENANT_COLUMNS):
+        return Unfit(relation, f"both {OLD_TENANT_COLUMN} and {TENANT_COLUMN}")
     tenant = next((c for c in TENANT_COLUMNS if c in types), None)
     source = next((c for c in SOURCE_COLUMNS if c in types), None)
     key = KEY_COLUMN if KEY_COLUMN in types else None

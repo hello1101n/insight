@@ -20,22 +20,25 @@ _youtrack_table_present() {
 
 # INVARIANT: repairs releases without #3885 (main before its first release); delete once every CH_FLOOR_RELEASES release runs it.
 heal_youtrack_field_observation_tenant() {
-  local present tenants
+  local present tenants column bronze_column
   present="$(_youtrack_table_present staging youtrack__field_observations)" || return 1
   [[ "${present}" -gt 0 ]] || return 0
   echo "  staging.youtrack__field_observations"
-  run_ch <<'SQL'
-ALTER TABLE staging.youtrack__field_observations ADD COLUMN IF NOT EXISTS tenant_id Nullable(String) AFTER unique_key;
-ALTER TABLE staging.youtrack__field_observations MODIFY COLUMN tenant_id Nullable(String) AFTER unique_key;
+  # A history relation: until `tenant_migration` renames it, its tenant column is `tenant_id`.
+  column="$(ch_tenant_column staging youtrack__field_observations)" || return 1
+  run_ch <<SQL
+ALTER TABLE staging.youtrack__field_observations ADD COLUMN IF NOT EXISTS ${column} Nullable(String) AFTER unique_key;
+ALTER TABLE staging.youtrack__field_observations MODIFY COLUMN ${column} Nullable(String) AFTER unique_key;
 SQL
 
   present="$(_youtrack_table_present bronze_youtrack youtrack_custom_fields)" || return 1
   [[ "${present}" -gt 0 ]] || return 0
-  tenants="$(printf '%s' "SELECT arrayReverseSort(t -> length(t), groupUniqArray(assumeNotNull(tenant_id))) FROM bronze_youtrack.youtrack_custom_fields WHERE tenant_id IS NOT NULL FORMAT TabSeparatedRaw" | _ch_http_query)" || return 1
+  bronze_column="$(ch_tenant_column bronze_youtrack youtrack_custom_fields)" || return 1
+  tenants="$(printf '%s' "SELECT arrayReverseSort(t -> length(t), groupUniqArray(assumeNotNull(${bronze_column}))) FROM bronze_youtrack.youtrack_custom_fields WHERE ${bronze_column} IS NOT NULL FORMAT TabSeparatedRaw" | _ch_http_query)" || return 1
   # SAFETY: run_ch splits statements on `;`, so a tenant carrying one is refused rather than split.
   [[ "${tenants}" == \[*\] && "${tenants}" != *';'* ]] || { echo "ERROR: unreadable YouTrack tenants: ${tenants}" >&2; return 1; }
   [[ "${tenants}" != "[]" ]] || return 0
   run_ch <<SQL
-ALTER TABLE staging.youtrack__field_observations UPDATE tenant_id = nullIf(arrayFirst(t -> startsWith(unique_key, concat(t, '-', insight_source_id, '-')), ${tenants}), '') WHERE tenant_id IS NULL SETTINGS mutations_sync = 2;
+ALTER TABLE staging.youtrack__field_observations UPDATE ${column} = nullIf(arrayFirst(t -> startsWith(unique_key, concat(t, '-', insight_source_id, '-')), ${tenants}), '') WHERE ${column} IS NULL SETTINGS mutations_sync = 2;
 SQL
 }

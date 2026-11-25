@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tenant_migration import apply as migration
+from tenant_migration import ddl
 from tenant_migration.apply import MigrationError, retarget
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
 from tenant_migration.inventory import RESTORE, Relation, Table, Unfit, classify
@@ -88,11 +89,43 @@ def test_a_table_is_read_through_its_own_column_names(types: dict[str, str], exp
         {"unique_key": "String", "source_id": STRING},
         {"unique_key": "String", "tenant_id": "UUID", "source_id": STRING},
         {"unique_key": "String", "tenant_id": STRING},
+        {"unique_key": "String", "tenant_id": STRING, "insight_tenant_id": STRING, "source_id": STRING},
     ],
-    ids=["no tenant", "tenant not a string", "key without a source"],
+    ids=["no tenant", "tenant not a string", "key without a source", "both tenant columns"],
 )
 def test_a_table_the_migration_cannot_read_is_unfit(types: dict[str, str]) -> None:
     assert isinstance(classify("db", "t", "MergeTree", types), Unfit), f"should be unfit: {types}"
+
+
+@pytest.mark.parametrize(
+    ("database", "column", "renames"),
+    [
+        ("bronze_example", "tenant_id", True),
+        ("staging", "tenant_id", True),
+        ("config", "tenant_id", True),
+        ("bronze_example", "insight_tenant_id", False),
+        ("ingestion_history", "tenant_id", False),
+    ],
+)
+def test_the_tenant_column_is_renamed_everywhere_but_the_sync_ledger(database: str, column: str, renames: bool) -> None:
+    table = classify(database, "t", "MergeTree", {column: STRING, "source_id": STRING})
+
+    assert isinstance(table, Table) and table.renames_tenant is renames
+
+
+def test_the_renamed_ddl_names_the_new_column_in_its_definition_and_keys_only() -> None:
+    create = (
+        "CREATE TABLE `bronze_example`.`items__tenant_copy`\n(\n    `unique_key` String,\n"
+        "    `tenant_id` Nullable(String),\n    `azure_tenant_id` Nullable(String),\n"
+        "    `insight_source_id` Nullable(String)\n)\nENGINE = ReplacingMergeTree\n"
+        "ORDER BY (tenant_id, unique_key)\nSETTINGS allow_nullable_key = 1"
+    )
+
+    renamed = ddl.tenant_renamed(create)
+
+    assert "`insight_tenant_id` Nullable(String)" in renamed
+    assert "ORDER BY (insight_tenant_id, unique_key)" in renamed
+    assert "`azure_tenant_id`" in renamed and "`tenant_id`" not in renamed
 
 
 def _plan(**overrides: object) -> TablePlan:

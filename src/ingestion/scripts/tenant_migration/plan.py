@@ -35,7 +35,7 @@ class Plan:
 
     @property
     def changing(self) -> list[TablePlan]:
-        return [t for t in self.tables if t.moving]
+        return [t for t in self.tables if t.moving or t.table.renames_tenant]
 
 
 def _stats_sql(table: Table, tenants: Tenants) -> str:

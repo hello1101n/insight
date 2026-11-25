@@ -38,7 +38,7 @@ _ch_http_query() {
   [[ "$sql" == SELECT* ]] || return 0
   name="$(sed -nE "s/.*t\.name = '([a-z_]+)'.*/\1/p" <<< "$sql")"
   [[ "$sql" == *"t.database = 'identity'"* ]] || { echo 0; return; }
-  [[ "$sql" == *"NOT has("*"'tenant_id')"* ]] && lacks_tenant=1
+  [[ "$sql" == *"NOT has("*"'insight_tenant_id')"* ]] && lacks_tenant=1
   [[ "$sql" == *"t.engine = 'View'"* ]] && is_view=1
   case "$(_state "$name")" in
     stale_view) echo "$lacks_tenant" ;;

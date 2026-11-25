@@ -26,6 +26,7 @@ _ch_http_query() {
   sql="$(cat)"
   printf '%s\n;;\n' "$sql" >> "$LOG"
   case "$sql" in
+    "SELECT type FROM system.columns"*"name='tenant_id'"*) if [[ -n "${OLD_NAME:-}" ]]; then echo "Nullable(String)"; fi ;;
     *"name = 'youtrack__field_observations'"*) _answer "$STAGING" ;;
     *"name = 'youtrack_custom_fields'"*) _answer "$BRONZE" ;;
     *"groupUniqArray"*) echo "['0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f']" ;;
@@ -45,7 +46,7 @@ class Run:
         return [s for s in self.statements if s.lstrip().upper().startswith("ALTER")]
 
 
-def _heal(tmp_path: Path, *, staging: str, bronze: str) -> Run:
+def _heal(tmp_path: Path, *, staging: str, bronze: str, old_name: bool = False) -> Run:
     log = tmp_path / "statements.log"
     log.touch()
     result = subprocess.run(
@@ -56,6 +57,7 @@ def _heal(tmp_path: Path, *, staging: str, bronze: str) -> Run:
             "LOG": str(log),
             "STAGING": staging,
             "BRONZE": bronze,
+            "OLD_NAME": "1" if old_name else "",
             "CLICKHOUSE_URL": "http://clickhouse.invalid:8123",
             "CLICKHOUSE_USER": "test",
             "CLICKHOUSE_PASSWORD": "test",
@@ -76,8 +78,17 @@ def test_the_column_is_added_and_backfilled_when_both_tables_exist(tmp_path: Pat
     assert [s.split()[3] + " " + s.split()[4] for s in run.altered()] == [
         "ADD COLUMN",
         "MODIFY COLUMN",
-        "UPDATE tenant_id",
+        "UPDATE insight_tenant_id",
     ]
+
+
+def test_tables_tenant_migration_has_not_renamed_yet_are_healed_under_tenant_id(tmp_path: Path) -> None:
+    run = _heal(tmp_path, staging="1", bronze="1", old_name=True)
+
+    assert run.returncode == 0
+    assert "ADD COLUMN IF NOT EXISTS tenant_id Nullable(String)" in run.altered()[0]
+    assert "UPDATE tenant_id = " in run.altered()[2]
+    assert any("groupUniqArray(assumeNotNull(tenant_id))" in s for s in run.statements)
 
 
 @pytest.mark.parametrize(

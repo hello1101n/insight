@@ -56,8 +56,12 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def render(plan: Plan) -> str:
-    lines = [f"{'relation':<64} {'rows':>12} {'moving':>12}"]
-    lines += [f"{t.table.relation:<64} {t.rows:>12} {t.moving:>12}" for t in plan.tables if t.rows]
+    lines = [f"{'relation':<64} {'rows':>12} {'moving':>12}  tenant column"]
+    lines += [
+        f"{t.table.relation:<64} {t.rows:>12} {t.moving:>12}  {'renamed to insight_tenant_id' if t.table.renames_tenant else ''}"
+        for t in plan.tables
+        if t.rows or t.table.renames_tenant
+    ]
     if plan.tenants.empty_only:
         lines.append("old tenant equals the new one: only rows with a NULL or empty tenant move")
     lines.append(f"tables changing: {len(plan.changing)}; YouTrack comment ids to fill: {plan.comment_ids_to_fill}")

@@ -166,7 +166,7 @@ def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> N
             "unique_key",
             sorted([f"{NEW}-main-PROJ-7", f"{NEW}-main-PROJ-8", f"{NEW}-main-PROJ-9", "fixture-9", f"{NEW}-main"]),
         ),
-        ("bronze_example.items", "tenant_id", [NEW] * 5),
+        ("bronze_example.items", "insight_tenant_id", [NEW] * 5),
         ("bronze_example.colon_items", "unique_key", [f"{NEW}:main:org/repo:1"]),
         ("bronze_bamboohr.whos_out", "unique_key", [f'["{NEW}","bamboo"]']),
         ("bronze_youtrack.youtrack_comments", "id", ["4-17"]),
@@ -182,6 +182,79 @@ def test_apply_moves_every_key_form_to_the_new_tenant(
     _apply(warehouse, _plan(warehouse), tmp_path)
 
     assert _column(warehouse, table, column) == expected, f"{table}.{column}"
+
+
+def _columns(ch: ClickHouse, table: str) -> list[tuple[str, str]]:
+    database, name = table.split(".")
+    return [
+        (column, column_type)
+        for column, column_type in ch.rows(
+            f"SELECT name, type FROM system.columns WHERE database = '{database}' AND table = '{name}' ORDER BY position"
+        )
+    ]
+
+
+def test_apply_renames_the_tenant_column_in_place_and_keeps_its_type(warehouse: ClickHouse, tmp_path: Path) -> None:
+    _apply(warehouse, _plan(warehouse), tmp_path)
+
+    assert _columns(warehouse, "bronze_example.items") == [
+        ("unique_key", "String"),
+        ("insight_tenant_id", "Nullable(String)"),
+        ("source_id", "Nullable(String)"),
+        ("payload", "String"),
+        ("_airbyte_extracted_at", "DateTime64(3)"),
+    ]
+    assert ("insight_tenant_id", "String") in _columns(warehouse, "staging.jira__catalogue_first_seen")
+    assert ("tenant_id", "LowCardinality(String)") in _columns(warehouse, "ingestion_history.sync_events")
+
+
+def test_a_table_with_nothing_to_move_still_renames_its_tenant_column_even_in_its_key(
+    warehouse: ClickHouse, tmp_path: Path
+) -> None:
+    warehouse.execute(
+        "CREATE TABLE bronze_example.keyed (tenant_id Nullable(String), source_id Nullable(String), "
+        "unique_key String) ENGINE = MergeTree ORDER BY (tenant_id, unique_key) SETTINGS allow_nullable_key = 1"
+    )
+    warehouse.execute(f"INSERT INTO bronze_example.keyed VALUES ('{NEW}', 'main', '{NEW}-main-1')")
+
+    plan = _plan(warehouse)
+    keyed = next(t for t in plan.changing if t.table.relation == "bronze_example.keyed")
+    _apply(warehouse, plan, tmp_path)
+
+    assert keyed.moving == 0
+    assert warehouse.rows(
+        "SELECT sorting_key FROM system.tables WHERE database = 'bronze_example' AND name = 'keyed'"
+    ) == [["insight_tenant_id, unique_key"]]
+    assert _column(warehouse, "bronze_example.keyed", "insight_tenant_id") == [NEW]
+    assert all(t.table.relation != "bronze_example.keyed" for t in _plan(warehouse).changing)
+
+
+def test_an_empty_table_is_dumped_renamed_and_restored(warehouse: ClickHouse, tmp_path: Path) -> None:
+    warehouse.execute(
+        "CREATE TABLE bronze_example.empty (unique_key String, tenant_id Nullable(String), "
+        "source_id Nullable(String)) ENGINE = MergeTree ORDER BY unique_key"
+    )
+
+    _apply(warehouse, _plan(warehouse), tmp_path)
+    assert [c for c, _ in _columns(warehouse, "bronze_example.empty")] == [
+        "unique_key",
+        "insight_tenant_id",
+        "source_id",
+    ]
+
+    migration.finalize(warehouse)
+    migration.restore(warehouse, tmp_path / "dump")
+    assert [c for c, _ in _columns(warehouse, "bronze_example.empty")] == ["unique_key", "tenant_id", "source_id"]
+
+
+def test_a_table_holding_both_tenant_columns_is_refused(warehouse: ClickHouse) -> None:
+    warehouse.execute(
+        "CREATE TABLE bronze_example.both (tenant_id Nullable(String), insight_tenant_id Nullable(String)) "
+        "ENGINE = MergeTree ORDER BY tuple()"
+    )
+    warehouse.execute(f"INSERT INTO bronze_example.both VALUES ('{OLD}', NULL)")
+
+    assert any("both tenant_id and insight_tenant_id" in r for r in _plan(warehouse).refusals)
 
 
 def test_the_entity_written_twice_keeps_its_newest_row(warehouse: ClickHouse, tmp_path: Path) -> None:
@@ -334,7 +407,7 @@ def test_an_apply_cut_off_after_the_swap_can_be_kept_by_finalize(warehouse: Clic
     migration.finalize(warehouse)
 
     first = _first_migrated(warehouse)
-    assert _column(warehouse, first, "tenant_id") == [NEW] * len(_column(warehouse, first, "tenant_id"))
+    assert _column(warehouse, first, "insight_tenant_id") == [NEW] * len(_column(warehouse, first, "insight_tenant_id"))
     assert warehouse.scalar("SELECT count() FROM system.tables WHERE name LIKE '%\\_\\_tenant\\_%'") == 0
 
 
@@ -434,14 +507,14 @@ def test_an_install_already_on_the_uuid_moves_only_its_empty_tenant_rows(warehou
 
     _apply(warehouse, plan, tmp_path)
 
-    assert _column(warehouse, "bronze_example.items", "tenant_id") == [NEW] * 7
+    assert _column(warehouse, "bronze_example.items", "insight_tenant_id") == [NEW] * 7
     assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
     assert f"{NEW}:main:PROJ-21" in _column(warehouse, "bronze_example.items", "unique_key")
     assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW] * 3
     assert _plan(warehouse, old=NEW).changing == [], "a second run must find nothing to move"
     assert migration.rollback(warehouse) == ["bronze_example.items", "ingestion_history.sync_events"]
     migration.finalize(warehouse)
-    assert _column(warehouse, "bronze_example.items", "tenant_id").count(NEW) == 5
+    assert _column(warehouse, "bronze_example.items", "insight_tenant_id").count(NEW) == 5
 
 
 def test_an_install_already_on_the_uuid_still_refuses_a_second_tenant(warehouse: ClickHouse, tmp_path: Path) -> None:

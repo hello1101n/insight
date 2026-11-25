@@ -1,4 +1,4 @@
-"""The task tenant heals place tenant_id after unique_key on every task class and
+"""The task tenant heals place insight_tenant_id after unique_key on every task class and
 producer, narrow it to String only when no row lacks a tenant, leave what
 ClickHouse says is absent alone, and stop at a probe they cannot read.
 
@@ -71,7 +71,8 @@ PRODUCER_VIEWS = [
 # Each catalogue entry is `<name> <state>`; a name not listed does not exist.
 # The stub answers a probe the way ClickHouse would for that state, so a probe
 # that forgets to exclude views counts them. `tenantless` is a table holding rows
-# without a tenant; `nulls_<fail|unreadable>` a table whose NULL count cannot be read.
+# without a tenant; `nulls_<fail|unreadable>` a table whose NULL count cannot be read;
+# `old_name` a table whose tenant column is still named `tenant_id`.
 STUB = r"""
 set -euo pipefail
 source "$SCRIPTS/lib/ch-exec.sh"
@@ -85,7 +86,7 @@ _state() {
 }
 _table_probe() {
   case "$2" in
-    table | tenantless | nulls_*) echo 1 ;;
+    table | tenantless | nulls_* | old_name) echo 1 ;;
     stale_view | fresh_view) [[ "$1" == *"engine != 'View'"* ]] && echo 0 || echo 1 ;;
     fail) return 1 ;;
     unreadable) echo "not a number" ;;
@@ -94,7 +95,7 @@ _table_probe() {
 }
 _view_probe() {
   local lacks_tenant=0
-  [[ "$1" == *"NOT has("*"'tenant_id')"* ]] && lacks_tenant=1
+  [[ "$1" == *"NOT has("*"'insight_tenant_id')"* ]] && lacks_tenant=1
   case "$2" in
     stale_view) echo "$lacks_tenant" ;;
     fresh_view) echo "$((1 - lacks_tenant))" ;;
@@ -116,7 +117,16 @@ _ch_http_query() {
   sql="$(cat)"
   printf '%s\n;;\n' "$sql" >> "$LOG"
   [[ "$sql" == SELECT* ]] || return 0
-  if [[ "$sql" == *"WHERE tenant_id IS NULL"* ]]; then
+  if [[ "$sql" == "SELECT type FROM system.columns"* ]]; then
+    state="$(_state "$(sed -nE "s/.*table='([a-z_]+)'.*/\1/p" <<< "$sql")")"
+    if [[ "$state" == old_name ]]; then
+      [[ "$sql" == *"name='tenant_id'"* ]] && echo "Nullable(String)"
+    else
+      [[ "$sql" == *"name='insight_tenant_id'"* ]] && echo "Nullable(String)"
+    fi
+    return 0
+  fi
+  if [[ "$sql" == *"WHERE insight_tenant_id IS NULL"* ]]; then
     _null_probe "$(_state "$(sed -nE 's/.*FROM (staging|silver)\.([a-z_]+).*/\2/p' <<< "$sql")")"
     return
   fi
@@ -168,15 +178,15 @@ def _heal(tmp_path: Path, catalogue: dict[str, str], entry: str = "heal_task_pro
 
 def _added_and_narrowed(relation: str) -> list[str]:
     return [
-        f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS tenant_id Nullable(String) AFTER unique_key",
-        f"ALTER TABLE {relation} MODIFY COLUMN tenant_id String AFTER unique_key",
+        f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS insight_tenant_id Nullable(String) AFTER unique_key",
+        f"ALTER TABLE {relation} MODIFY COLUMN insight_tenant_id String AFTER unique_key",
     ]
 
 
 def _added_and_kept_nullable(relation: str) -> list[str]:
     return [
-        f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS tenant_id Nullable(String) AFTER unique_key",
-        f"ALTER TABLE {relation} MODIFY COLUMN tenant_id Nullable(String) AFTER unique_key",
+        f"ALTER TABLE {relation} ADD COLUMN IF NOT EXISTS insight_tenant_id Nullable(String) AFTER unique_key",
+        f"ALTER TABLE {relation} MODIFY COLUMN insight_tenant_id Nullable(String) AFTER unique_key",
     ]
 
 
@@ -188,7 +198,7 @@ def test_every_producer_table_gains_a_string_tenant_after_unique_key(tmp_path: P
     assert set(altered) == {f"staging.{table}" for table in PRODUCERS}
     for table in PRODUCERS:
         assert altered[f"staging.{table}"] == _added_and_narrowed(f"staging.{table}"), (
-            f"should add and narrow tenant_id: {table}"
+            f"should add and narrow insight_tenant_id: {table}"
         )
 
 
@@ -228,10 +238,32 @@ def test_an_unreadable_null_count_stops_the_heal_before_it_narrows_anything(
     run = _heal(tmp_path, catalogue, entry=entry)
 
     assert run.returncode != 0, f"should fail on a {state} NULL count"
-    assert run.statements[-1].endswith(f"FROM {database}.{relations[1]} WHERE tenant_id IS NULL"), (
+    assert run.statements[-1].endswith(f"FROM {database}.{relations[1]} WHERE insight_tenant_id IS NULL"), (
         "nothing is sent past the unreadable count"
     )
     assert not any("MODIFY" in statement for statement in run.altered()[f"{database}.{relations[1]}"])
+
+
+@pytest.mark.parametrize(
+    ("entry", "database", "relations"),
+    [("heal_task_producer_tenants", "staging", PRODUCERS), ("heal_task_class_tenants", "silver", CLASSES)],
+)
+def test_a_tenant_column_still_named_tenant_id_is_renamed_in_place_first(
+    tmp_path: Path, entry: str, database: str, relations: list[str]
+) -> None:
+    catalogue = dict.fromkeys(relations, "table")
+    catalogue[relations[1]] = "old_name"
+
+    run = _heal(tmp_path, catalogue, entry=entry)
+
+    assert run.returncode == 0
+    altered = run.altered()
+    relation = f"{database}.{relations[1]}"
+    assert altered[relation] == [
+        f"ALTER TABLE {relation} RENAME COLUMN tenant_id TO insight_tenant_id",
+        *_added_and_narrowed(relation),
+    ]
+    assert altered[f"{database}.{relations[0]}"] == _added_and_narrowed(f"{database}.{relations[0]}")
 
 
 @pytest.mark.parametrize("state", ["absent", "fresh_view"])
