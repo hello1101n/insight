@@ -210,7 +210,7 @@ def _check_analytics(target: MariaDb) -> list[str]:
 
 
 #: Column names a reset target may carry its tenant in, most specific first.
-TENANT_COLUMNS = ("insight_tenant_id", "tenant_id")
+TENANT_COLUMNS = ("insight_tenant_id",)
 
 _IDENTIFIER = re.compile(r"^[a-z0-9_]+$")
 

@@ -28,7 +28,7 @@
 
 WITH pages AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         unique_key,
         page_id,
@@ -55,7 +55,7 @@ WITH pages AS (
 
 spaces AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         space_id,
         name                                                                AS space_name,
@@ -66,7 +66,7 @@ spaces AS (
 
 users AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         user_id,
         lower(trim(email))                                                  AS email
@@ -77,10 +77,10 @@ users AS (
 
 -- Explicit `AS column_name` aliases are required: ClickHouse keeps the
 -- table-alias prefix in the projected column name otherwise (e.g. column
--- becomes `p.tenant_id` instead of `tenant_id`), which breaks downstream
+-- becomes `p.insight_tenant_id` instead of `insight_tenant_id`), which breaks downstream
 -- consumers and `not_null`/`unique` tests.
 SELECT
-    p.tenant_id                                                             AS tenant_id,
+    p.insight_tenant_id                                                             AS insight_tenant_id,
     p.source_id                                                             AS source_id,
     p.unique_key                                                            AS unique_key,
     p.page_id                                                               AS page_id,
@@ -103,14 +103,14 @@ SELECT
     p._version                                                              AS _version
 FROM pages p
 LEFT JOIN spaces s
-    ON p.tenant_id = s.tenant_id
+    ON p.insight_tenant_id = s.insight_tenant_id
    AND p.source_id = s.source_id
    AND p.space_id  = s.space_id
 LEFT JOIN users ua
-    ON p.tenant_id = ua.tenant_id
+    ON p.insight_tenant_id = ua.insight_tenant_id
    AND p.source_id = ua.source_id
    AND p.author_id = ua.user_id
 LEFT JOIN users ue
-    ON p.tenant_id      = ue.tenant_id
+    ON p.insight_tenant_id      = ue.insight_tenant_id
    AND p.source_id      = ue.source_id
    AND p.last_editor_id = ue.user_id

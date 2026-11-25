@@ -22,7 +22,12 @@ class TenantError(ValueError):
 
 @dataclass(frozen=True)
 class Tenants:
-    """The tenant rows move to, and the ones they move from: the old key and empty."""
+    """The tenant rows move to, and the ones they move from: the old key and empty.
+
+    An old tenant equal to the new one moves only the empty tenant: an install
+    already keyed by the UUID still stamps its NULL and empty rows, and the keys
+    written with them.
+    """
 
     new: str
     old: str
@@ -31,15 +36,25 @@ class Tenants:
     def parse(cls, new: str, old: str) -> Tenants:
         if not UUID.match(new):
             raise TenantError(f"the new tenant must be a lowercase UUID, got {new!r}")
-        if old == new:
-            raise TenantError("the old tenant equals the new one: there is nothing to move")
         if "'" in old or "\\" in old:
             raise TenantError("the old tenant must contain no quote or backslash")
         return cls(new=new, old=old)
 
     @property
+    def empty_only(self) -> bool:
+        return self.old == self.new
+
+    @property
     def moving(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys((self.old, "")))
+        return tuple(t for t in dict.fromkeys((self.old, "")) if t != self.new)
+
+
+def old_tenant_from(stored: set[str], new: str) -> str:
+    """The one tenant the stored rows carry besides the new one; the new one when there is none."""
+    others = sorted(stored - {new})
+    if len(others) > 1:
+        raise TenantError(f"the stored rows hold several tenants ({', '.join(others)}) — this install keeps several")
+    return others[0] if others else new
 
 
 @dataclass(frozen=True)

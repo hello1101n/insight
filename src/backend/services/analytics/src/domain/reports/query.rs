@@ -123,10 +123,6 @@ impl ReportQueryRunner for ClickHouseReportQueryRunner<'_> {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "query scope is explicit at the compiler boundary"
-)]
 pub(crate) fn compile_report_metric_query(
     metric_index: usize,
     metric: &MetricDefinition,
@@ -135,7 +131,6 @@ pub(crate) fn compile_report_metric_query(
     from: NaiveDate,
     to: NaiveDate,
     bucket: ReportBucket,
-    enforce_tenant_scope: bool,
 ) -> ReportMetricQuery {
     let entity = match &subject {
         ReportQuerySubject::People(ids) => ValidatedEntitySelection::Person { ids: ids.clone() },
@@ -152,15 +147,7 @@ pub(crate) fn compile_report_metric_query(
         ReportBucket::Quarter => QueryBucket::Quarter,
         ReportBucket::Year => QueryBucket::Year,
     };
-    let compiled = compile_report_timeseries_query(
-        metric,
-        tenant_id,
-        entity,
-        from,
-        to,
-        enforce_tenant_scope,
-        bucket,
-    );
+    let compiled = compile_report_timeseries_query(metric, tenant_id, entity, from, to, bucket);
 
     ReportMetricQuery {
         metric_index,
@@ -195,7 +182,6 @@ mod tests {
             date("2026-01-10"),
             date("2026-06-20"),
             ReportBucket::Quarter,
-            true,
         );
 
         assert!(

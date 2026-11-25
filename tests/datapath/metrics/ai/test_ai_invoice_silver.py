@@ -71,7 +71,7 @@ def _base(source_id: str, read_at: str) -> dict:
         "_airbyte_extracted_at": read_at,
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": None,
+        "insight_tenant_id": None,
         "source_id": source_id,
         "unique_key": None,
         "collected_at": read_at,
@@ -285,7 +285,7 @@ def _seed_and_build(
 ) -> None:
     schema_file = Path(__file__).parents[1] / "schemas" / f"{TABLE}.yaml"
     schemas = yaml.safe_load(schema_file.read_text(encoding="utf-8"))["schemas"]
-    ch_seeder.seed_bronze({TABLE: [{**row, "tenant_id": tenant} for row in rows]}, schemas)
+    ch_seeder.seed_bronze({TABLE: [{**row, "insight_tenant_id": tenant} for row in rows]}, schemas)
     dbt_runner.build(SELECTOR)
 
 

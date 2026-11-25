@@ -19,7 +19,7 @@
 
 WITH posted AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         toDate(parseDateTimeBestEffortOrNull(date)) AS day,
@@ -41,14 +41,14 @@ WITH posted AS (
           SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
           FROM {{ source('bronze_slack', 'messages') }}
           WHERE _airbyte_extracted_at
-                > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
+                > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
       )
 {% endif %}
 ),
 
 member_days AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         day,
@@ -58,7 +58,7 @@ member_days AS (
         max(_airbyte_extracted_at) AS extracted_at
     FROM posted
     GROUP BY
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         day
@@ -67,7 +67,7 @@ member_days AS (
 {% if members %}
 member_flags AS (
     SELECT
-        insight_tenant_id AS tenant_id,
+        insight_tenant_id,
         insight_source_id,
         user_id,
         email,
@@ -78,7 +78,7 @@ member_flags AS (
 {% else %}
 member_flags AS (
     SELECT
-        '' AS tenant_id,
+        '' AS insight_tenant_id,
         '' AS insight_source_id,
         '' AS user_id,
         CAST(NULL AS Nullable(String)) AS email,
@@ -90,7 +90,7 @@ member_flags AS (
 
 counted_days AS (
     SELECT
-        d.tenant_id,
+        d.insight_tenant_id,
         d.insight_source_id,
         d.user_id,
         d.day,
@@ -101,7 +101,7 @@ counted_days AS (
         m.email
     FROM member_days AS d
     LEFT JOIN member_flags AS m
-        ON m.tenant_id = d.tenant_id
+        ON m.insight_tenant_id = d.insight_tenant_id
        AND m.insight_source_id = d.insight_source_id
        AND m.user_id = d.user_id
     -- INVARIANT: a proven guest or bot is dropped; a member that the members list does not know is kept.
@@ -109,7 +109,7 @@ counted_days AS (
       AND NOT coalesce(m.is_guest, false)
 {%- if analytics %}
       -- INVARIANT: the analytics file wins. A day it reports for a member is not counted again.
-      AND (d.tenant_id, d.insight_source_id, d.user_id, d.day) NOT IN (
+      AND (d.insight_tenant_id, d.insight_source_id, d.user_id, d.day) NOT IN (
           SELECT
               insight_tenant_id,
               insight_source_id,
@@ -125,10 +125,10 @@ counted_days AS (
 )
 
 SELECT
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     MD5(concat(
-        tenant_id, '-',
+        insight_tenant_id, '-',
         insight_source_id, '-',
         user_id, '-',
         toString(day)

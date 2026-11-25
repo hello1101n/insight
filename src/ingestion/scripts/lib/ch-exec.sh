@@ -181,3 +181,17 @@ ch_column_type() {
     "$db" "$tbl" "$column" | _ch_http_query)" || return 1
   printf '%s' "${type}" | tr -d '\n'
 }
+
+# The name of a relation's tenant column: `tenant_id` while that old name still
+# stands there (before `tenant_migration` or the cutover rebuild renames it),
+# `insight_tenant_id` otherwise. Fails when the lookup did not run.
+ch_tenant_column() {
+  local old new
+  new="$(ch_column_type "$1" "$2" insight_tenant_id)" || return 1
+  old="$(ch_column_type "$1" "$2" tenant_id)" || return 1
+  if [[ -z "${new}" && -n "${old}" ]]; then
+    printf 'tenant_id'
+  else
+    printf 'insight_tenant_id'
+  fi
+}

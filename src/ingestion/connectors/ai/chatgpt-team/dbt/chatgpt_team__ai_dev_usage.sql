@@ -65,7 +65,7 @@ WITH reference AS (
     -- than it ends with, so judging an older read against a newer reference
     -- would reject sound reads.
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDateOrNull(date)                              AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
@@ -105,7 +105,7 @@ first_reference AS (
 read_state AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDateOrNull(date)                              AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
@@ -158,7 +158,7 @@ admitted_reads AS (
 codex_sessions AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         trim(user_id)                                   AS user_id,
         toDateOrNull(date)                              AS day,
@@ -208,10 +208,10 @@ codex_sessions AS (
 )
 
 SELECT
-    tenant_id                                           AS insight_tenant_id,
+    insight_tenant_id,
     source_id,
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         coalesce(source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(date, '')
@@ -371,7 +371,7 @@ FROM (
     -- The read this row came from has to have brought the whole day. Rejected
     -- whole rather than row by row: a short read is short in an unknown place,
     -- so the people it DID return say nothing about the ones it did not.
-    WHERE (coalesce(tenant_id, ''),
+    WHERE (coalesce(insight_tenant_id, ''),
            coalesce(source_id, ''),
            toDateOrNull(date),
            JSONExtractInt(_airbyte_meta, 'sync_id')) IN (
@@ -381,10 +381,10 @@ FROM (
     -- Dedup on the SAME normalized key the unique_key uses (lower(trim(email))),
     -- else two case-variant spellings of one address both survive and then
     -- collide on unique_key (unique-test failure).
-    LIMIT 1 BY tenant_id, source_id, lower(trim(email)), date
+    LIMIT 1 BY insight_tenant_id, source_id, lower(trim(email)), date
     ) AS lb
     LEFT JOIN codex_sessions AS s
-           ON coalesce(lb.tenant_id, '') = s.insight_tenant_id
+           ON coalesce(lb.insight_tenant_id, '') = s.insight_tenant_id
           AND coalesce(lb.source_id, '') = s.source_id
           AND trim(coalesce(lb.user_id, '')) = s.user_id
           AND toDateOrNull(lb.date) = s.day
@@ -408,7 +408,7 @@ WHERE email IS NOT NULL
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
   -- the day window keeps re-deriving recent days whose joined streams arrive late.
   AND (
-      toDate(date) > {{ instance_incremental_watermark('day', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+      toDate(date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
+      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
   )
 {% endif %}

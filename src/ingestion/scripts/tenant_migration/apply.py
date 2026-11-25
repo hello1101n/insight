@@ -139,7 +139,12 @@ def migrate_table(ch: ClickHouse, t: TablePlan, tenants: keys.Tenants) -> Measur
     expected = Measure(rows=before.rows, keys=measure(ch, table, key=new_key).keys if new_key else 0)
 
     try:
-        ch.execute(ddl.create_like(rel, COPY))
+        if table.renames_tenant:
+            # Positional: the copy keeps the original's column order, so the INSERT below still lines up.
+            original = ch.execute(ddl.show_create(rel), fmt="TabSeparatedRaw")
+            ch.execute(ddl.tenant_renamed(retarget(original, rel, COPY)))
+        else:
+            ch.execute(ddl.create_like(rel, COPY))
         _set_comment(ch, rel, COPY, MIGRATED)
         ch.execute(ddl.insert_rewritten(rel, COPY, _replacements(table, tenants)))
         copied = measure(ch, table, COPY)

@@ -19,7 +19,7 @@
 -- "changed nothing".
 WITH projects AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
@@ -30,7 +30,7 @@ WITH projects AS (
 
 diff_stats AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         project_id,
         mr_iid,
@@ -48,16 +48,16 @@ diff_stats AS (
 -- re-read; the account id below is what attribution rests on.
 account_email AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         account_id,
         argMin(email, (email LIKE '%@users.noreply.%', observed_at, email)) AS email
     FROM {{ ref('gitlab__account_emails') }}
-    GROUP BY tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, source_id, account_id
 )
 
 SELECT
-    mr.tenant_id AS tenant_id,
+    mr.insight_tenant_id AS insight_tenant_id,
     mr.source_id AS source_id,
     mr.unique_key AS unique_key,
     p.project_key AS project_key,
@@ -108,16 +108,16 @@ SELECT
 -- break a tie between them.
 FROM {{ source('bronze_gitlab', 'pull_requests') }} AS mr FINAL
 INNER JOIN projects AS p
-    ON p.tenant_id = mr.tenant_id
+    ON p.insight_tenant_id = mr.insight_tenant_id
     AND p.source_id = mr.source_id
     AND p.project_id = mr.project_id
 LEFT JOIN diff_stats AS ds
-    ON ds.tenant_id = mr.tenant_id
+    ON ds.insight_tenant_id = mr.insight_tenant_id
     AND ds.source_id = mr.source_id
     AND ds.project_id = mr.project_id
     AND ds.mr_iid = mr.iid
 LEFT JOIN account_email AS ae
-    ON ae.tenant_id = mr.tenant_id
+    ON ae.insight_tenant_id = mr.insight_tenant_id
     AND ae.source_id = mr.source_id
     AND ae.account_id = toString(COALESCE(mr.author_id, 0))
 {% if is_incremental() %}
@@ -127,5 +127,5 @@ WHERE greatest(
     mr._airbyte_extracted_at,
     COALESCE(ds._airbyte_extracted_at, mr._airbyte_extracted_at),
     p._airbyte_extracted_at
-) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['mr.tenant_id', 'mr.source_id']) }}
+) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['mr.insight_tenant_id', 'mr.source_id']) }}
 {% endif %}

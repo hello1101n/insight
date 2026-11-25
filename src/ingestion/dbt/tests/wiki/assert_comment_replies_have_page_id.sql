@@ -17,7 +17,7 @@ SELECT
     unique_key,
     comment_id,
     parent_comment_id,
-    tenant_id,
+    insight_tenant_id,
     source_id
 FROM {{ source('bronze_confluence', 'wiki_footer_comment_replies') }}
 WHERE page_id IS NULL OR page_id = ''
@@ -29,7 +29,7 @@ SELECT
     unique_key,
     comment_id,
     parent_comment_id,
-    tenant_id,
+    insight_tenant_id,
     source_id
 FROM {{ source('bronze_confluence', 'wiki_inline_comment_replies') }}
 WHERE page_id IS NULL OR page_id = ''

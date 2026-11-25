@@ -59,7 +59,7 @@ WITH reference AS (
     -- ends with, so judging an older read against a newer reference would reject
     -- sound reads.
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
@@ -100,7 +100,7 @@ first_reference AS (
 read_state AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
+        coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
         coalesce(source_id, '')                         AS source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
@@ -139,11 +139,11 @@ admitted_reads AS (
 )
 
 SELECT
-    tenant_id                                           AS insight_tenant_id,
+    insight_tenant_id,
     source_id,
     -- Unique key: tenant-source-email-day (mirrors claude_admin pattern)
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
+        coalesce(insight_tenant_id, ''), '-',
         coalesce(source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(metric_date, '')
@@ -205,7 +205,7 @@ WHERE email IS NOT NULL
   -- The read this row came from has to have brought the whole day. Rejected
   -- whole rather than row by row: a short read is short in an unknown place,
   -- so the people it DID return say nothing about the ones it did not.
-  AND (coalesce(tenant_id, ''),
+  AND (coalesce(insight_tenant_id, ''),
        coalesce(source_id, ''),
        toDate(metric_date),
        JSONExtractInt(_airbyte_meta, 'sync_id')) IN (
@@ -215,5 +215,5 @@ WHERE email IS NOT NULL
   -- INVARIANT: the boundary is the extraction time, not `day`. A read that
   -- backfills old days, or whose transform failed, carries days older than
   -- anything a later read stored; a business-date boundary strands them.
-  AND _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
+  AND _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
 {% endif %}

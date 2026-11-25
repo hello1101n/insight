@@ -10,7 +10,7 @@
 -- The proxy keys every row by the repository's https clone URL, whose last two
 -- path segments are the owner and the repo name.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     source_id,
     unique_key,
     arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,

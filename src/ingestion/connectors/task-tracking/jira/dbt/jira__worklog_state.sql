@@ -24,17 +24,17 @@ WITH worklogs AS (
 
 tombstones AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         toString(toInt64(worklog_id))                   AS worklog_id,
         max(toInt64(deleted_at_ms))                     AS deleted_at_ms
     FROM {{ source('bronze_jira', 'jira_worklog_deleted') }} FINAL
-    GROUP BY tenant_id, source_id, worklog_id
+    GROUP BY insight_tenant_id, source_id, worklog_id
 ),
 
 issues AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         source_id,
         jira_id,
         id_readable,
@@ -45,7 +45,7 @@ issues AS (
 
 SELECT
     w.unique_key                                        AS unique_key,
-    w.tenant_id                                         AS tenant_id,
+    w.insight_tenant_id                                         AS insight_tenant_id,
     w.source_id                                         AS source_id,
     toString(w.worklog_id)                              AS worklog_id,
     i.id_readable                                       AS id_readable,
@@ -65,10 +65,10 @@ SELECT
     ts.deleted_at_ms                                    AS deleted_at_ms
 FROM worklogs AS w
 LEFT JOIN tombstones AS ts
-    ON ts.tenant_id = w.tenant_id
+    ON ts.insight_tenant_id = w.insight_tenant_id
     AND ts.source_id = w.source_id
     AND ts.worklog_id = toString(w.worklog_id)
 INNER JOIN issues AS i
-    ON i.tenant_id = w.tenant_id
+    ON i.insight_tenant_id = w.insight_tenant_id
     AND i.source_id = w.source_id
     AND i.jira_id = w.jira_id

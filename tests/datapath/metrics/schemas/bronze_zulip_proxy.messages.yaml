@@ -14,6 +14,6 @@ schemas:
       sender_id: {type: [number, "null"]}
       count: {type: [number, "null"]}
       created_at: {type: [string, "null"]}
-      tenant_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
       source_id: {type: [string, "null"]}
       unique_key: {type: string}

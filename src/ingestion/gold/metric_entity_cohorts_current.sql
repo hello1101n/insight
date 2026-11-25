@@ -23,28 +23,28 @@
 -- shadowing the source column reads as an aggregate inside an aggregate
 -- (ILLEGAL_AGGREGATION, code 184).
 SELECT
-    tenant_id,
+    insight_tenant_id,
     entity_type,
     entity_id,
     cohort_key,
     resolved_cohort_id AS cohort_id
 FROM (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_type,
         entity_id,
         cohort_key,
         any(cohort_id) AS resolved_cohort_id
     FROM (
     SELECT
-        assumeNotNull(people.tenant_id) AS tenant_id,
+        assumeNotNull(people.insight_tenant_id) AS insight_tenant_id,
         'person' AS entity_type,
         toString(person_map.person_id) AS entity_id,
         'org_unit' AS cohort_key,
         people.cohort_id AS cohort_id
     FROM (
         SELECT
-            workspace_id AS tenant_id,
+            workspace_id AS insight_tenant_id,
             {{ normalized_email('assumeNotNull(email)') }} AS email,
             -- INVARIANT: the org cohort is the department NAME the frontend sends back
             -- as `org_unit_id`; any other id silently empties every peer metric.
@@ -55,22 +55,23 @@ FROM (
           AND workspace_id IS NOT NULL
           AND workspace_id != ''
         ORDER BY
-            tenant_id,
+            insight_tenant_id,
             email,
             coalesce(parseDateTimeBestEffortOrNull(toString(valid_from)), toDateTime('1970-01-01')) DESC,
             unique_key DESC
-        LIMIT 1 BY tenant_id, email
+        LIMIT 1 BY insight_tenant_id, email
     ) AS people
     -- INNER: an HR record whose email identity cannot resolve has no person to
     -- be a peer of, and a peer pool is exactly where a guessed identity would
     -- do damage.
     INNER JOIN {{ ref('person_map') }} AS person_map
-        ON person_map.email = people.email
-    WHERE people.tenant_id IS NOT NULL
-      AND people.tenant_id != ''
+        ON person_map.insight_tenant_id = people.insight_tenant_id
+       AND person_map.email = people.email
+    WHERE people.insight_tenant_id IS NOT NULL
+      AND people.insight_tenant_id != ''
       AND people.email != ''
       AND people.cohort_id IS NOT NULL
     ) AS resolved
-    GROUP BY tenant_id, entity_type, entity_id, cohort_key
+    GROUP BY insight_tenant_id, entity_type, entity_id, cohort_key
     HAVING uniqExact(cohort_id) = 1
 )

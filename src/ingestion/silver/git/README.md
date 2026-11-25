@@ -38,8 +38,8 @@ Git silver models. Two layers:
 
 | Model | Grain | Metrics |
 |---|---|---|
-| `mtr_git_person_totals` | `(tenant_id, person_key)` | `prs_created`, `prs_merged`, `avg_pr_cycle_time_h`, `commits`, `loc`, `clean_loc` |
-| `mtr_git_person_weekly` | `(tenant_id, person_key, week)` | `commits`, `prs_merged`, `code_loc`, `spec_lines`, `config_loc` |
+| `mtr_git_person_totals` | `(insight_tenant_id, person_key)` | `prs_created`, `prs_merged`, `avg_pr_cycle_time_h`, `commits`, `loc`, `clean_loc` |
+| `mtr_git_person_weekly` | `(insight_tenant_id, person_key, week)` | `commits`, `prs_merged`, `code_loc`, `spec_lines`, `config_loc` |
 
 ## Identity
 

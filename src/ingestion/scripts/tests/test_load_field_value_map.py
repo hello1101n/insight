@@ -40,7 +40,7 @@ from load_field_value_map import (
     task_values_insert_statement,
 )
 
-HEADER = "tenant_id\tinsight_source_id\tdata_source\tfield\tsource_key\tdisplay_name\ttarget_value\tnote"
+HEADER = "insight_tenant_id\tinsight_source_id\tdata_source\tfield\tsource_key\tdisplay_name\ttarget_value\tnote"
 ROW = "zz-test\tsrc-1\tjira\tissue_type\tstory\tStory\ttask"
 OTHER_ROW = "zz-test\tsrc-1\tgithub\tissue_type\t10404\tDefect\tbug"
 DEFAULT_ROW = "zz-test\tsrc-1\tissue_type\ttask"
@@ -221,12 +221,12 @@ class TestInsertStatement:
         sql = insert_statement(parse(f"{ROW}\tnote text"), recorded_by="gitops")
         head, _, body = sql.partition("FORMAT TSV\n")
         assert head.startswith(
-            "INSERT INTO config.field_value_map (tenant_id, insight_source_id, data_source, "
+            "INSERT INTO config.field_value_map (insight_tenant_id, insight_source_id, data_source, "
             "field, source_key, valid_from, recorded_at, target_value, display_name, note, recorded_by) "
         )
         assert "field, source_key, toDateTime64(0, 3), now64(3), target_value, display_name" in head
         assert head.endswith(
-            "note, 'gitops' FROM input('tenant_id String, insight_source_id String, "
+            "note, 'gitops' FROM input('insight_tenant_id String, insight_source_id String, "
             "data_source String, field String, source_key String, display_name String, "
             "target_value String, note String') "
         )
@@ -312,11 +312,11 @@ class TestDefaultsInsertStatement:
         head, _, body = sql.partition("FORMAT TSV\n")
         assert head.startswith(
             "INSERT INTO config.field_value_defaults "
-            "(tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
+            "(insight_tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
         )
         assert "toDateTime64(0, 3), now64(3)" in head
         assert head.endswith(
-            "'gitops' FROM input('tenant_id String, insight_source_id String, field String, default_value String') "
+            "'gitops' FROM input('insight_tenant_id String, insight_source_id String, field String, default_value String') "
         )
         assert body == "zz-test\tsrc-1\tissue_type\ttask\n"
 

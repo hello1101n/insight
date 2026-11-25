@@ -23,7 +23,7 @@ WITH ticket_properties AS (
 
 SELECT
     {{ hubspot_support_key(['name']) }}                AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     name                                               AS field_id,

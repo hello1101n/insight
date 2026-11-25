@@ -57,7 +57,7 @@ These fields are added to every record by the connector — do **not** put them 
 
 | Field | Source |
 |-------|--------|
-| `tenant_id` | `insight_tenant_id` from tenant YAML (`connections/<tenant>.yaml`) |
+| `insight_tenant_id` | `tenant_id` from tenant YAML (`connections/<tenant>.yaml`) |
 | `source_id` | `insight.cyberfabric.com/source-id` annotation on the K8s Secret |
 | `unique_key` | Composite primary key (varies per stream — see Streams below) |
 | `data_source` | Always `insight_claude_team` |

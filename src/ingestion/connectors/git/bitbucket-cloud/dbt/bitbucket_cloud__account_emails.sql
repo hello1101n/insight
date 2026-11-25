@@ -28,28 +28,28 @@ WITH resolved_authors AS (
     SELECT
         lower(trimBoth(COALESCE(author_account_id, ''))) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         'bronze_bitbucket_cloud.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'commit_authors') }} FINAL
     WHERE COALESCE(author_account_id, '') != ''
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, source_id, observed_in
 ),
 
 pull_request_commit_accounts AS (
     SELECT
         lower(trimBoth(COALESCE(author_account_id, ''))) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
+        insight_tenant_id,
         source_id,
         'bronze_bitbucket_cloud.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'pull_request_commits') }} FINAL
     WHERE COALESCE(author_account_id, '') != ''
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, source_id, observed_in
 ),
 
 observations AS (
@@ -70,7 +70,7 @@ every_pair AS (
 SELECT
     account_id,
     email,
-    tenant_id,
+    insight_tenant_id,
     source_id,
     -- Which source named the pair first, for provenance on the claim.
     -- assumeNotNull because argMin and min inherit the ordering column's
@@ -83,4 +83,4 @@ SELECT
 FROM every_pair
 -- The full connection scope, not just the pair: several Bitbucket connections
 -- share this bronze namespace, and an account id is only unique within one.
-GROUP BY account_id, email, tenant_id, source_id
+GROUP BY account_id, email, insight_tenant_id, source_id
