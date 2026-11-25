@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -226,7 +228,7 @@ def test_syncs_always_use_the_sync_user(charts: dict[str, dict]) -> None:
     }
     bootstrap = default["Secret", "contract-clickhouse-sync-bootstrap"]
     assert bootstrap["stringData"] == {"password": password}
-    assert bootstrap["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade"
+    assert bootstrap["metadata"]["annotations"]["helm.sh/hook"] == "pre-install,pre-upgrade,post-rollback"
     databases = default["Job", "contract-clickhouse-databases"]["metadata"]["annotations"]
     assert "pre-install" in databases["helm.sh/hook"]
     assert int(bootstrap["metadata"]["annotations"]["helm.sh/hook-weight"]) < int(databases["helm.sh/hook-weight"])
@@ -306,6 +308,94 @@ def test_a_release_that_creates_no_users_never_generates_the_sync_password() -> 
     assert ("Secret", "contract-clickhouse-sync-bootstrap") not in chart
 
 
+def test_sync_password_rollback_provisions_after_the_bootstrap_secret(charts: dict[str, dict]) -> None:
+    resources = charts["defaults"]
+    names = (
+        ("Secret", "contract-clickhouse-sync-bootstrap"),
+        ("Job", "contract-clickhouse-databases"),
+        ("Job", "contract-clickhouse-migrate"),
+    )
+    weights = []
+    for name in names:
+        annotations = resources[name]["metadata"]["annotations"]
+        assert "post-rollback" in annotations["helm.sh/hook"].split(","), name
+        weights.append(int(annotations["helm.sh/hook-weight"]))
+    assert weights[0] < weights[1] < weights[2]
+
+
+@pytest.fixture
+def lookup_chart(tmp_path: Path, charts: dict[str, dict]) -> Path:
+    return shutil.copytree(CHART, tmp_path / "insight")
+
+
+def substitute_sync_secret(
+    chart: Path, data: dict[str, str], *, name: str = "insight-db-creds", managed: bool = True
+) -> None:
+    template = chart / "templates/secrets.yaml"
+    source = template.read_text()
+    labels = {"app.kubernetes.io/managed-by": "Helm"}
+    metadata = {"labels": labels if managed else {}}
+    default_data = datastore_credentials() | {"example-key": base64.b64encode(b"unrelated-example-password").decode()}
+    secrets = {
+        "insight-db-creds": {"metadata": {"labels": labels}, "data": default_data},
+        name: {"metadata": metadata, "data": data},
+    }
+    lookups = f"({json.dumps(json.dumps(secrets))} | fromJson)"
+    for ref in ("$syncRef.name", '"insight-db-creds"'):
+        source = source.replace(f'lookup "v1" "Secret" .Release.Namespace {ref}', f"(get {lookups} {ref})")
+    template.write_text(source)
+
+
+@pytest.mark.parametrize("value", [None, ""])
+@pytest.mark.parametrize(
+    ("auto", "provision", "managed", "name", "key"),
+    [
+        (False, False, False, "insight-db-creds", "clickhouse-sync-password"),
+        (False, True, False, "insight-db-creds", "clickhouse-sync-password"),
+        (True, False, True, "insight-db-creds", "clickhouse-sync-password"),
+        (True, True, False, "insight-db-creds", "clickhouse-sync-password"),
+        (True, True, True, "example-sync-credentials", "example-key"),
+    ],
+)
+def test_existing_secret_requires_a_sync_password_when_helm_does_not_generate_it(
+    lookup_chart: Path, auto: bool, provision: bool, managed: bool, name: str, key: str, value: str | None
+) -> None:
+    data = datastore_credentials()
+    if value is not None:
+        data[key] = value
+    substitute_sync_secret(lookup_chart, data, name=name, managed=managed)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        render(
+            "--set",
+            f"credentials.autoGenerate={str(auto).lower()},clickhouse.provisionAccess={str(provision).lower()}",
+            "--set",
+            f"clickhouse.syncUser.passwordSecret.name={name},clickhouse.syncUser.passwordSecret.key={key}",
+            chart=lookup_chart,
+        )
+    assert f'Secret "{name}" requires a non-empty "{key}" key. Add the key before the upgrade.' in error.value.stderr
+
+
+def datastore_credentials() -> dict[str, str]:
+    keys = ("clickhouse-password", "mariadb-password", "mariadb-root-password", "redis-password")
+    return dict.fromkeys(keys, base64.b64encode(b"example-password").decode())
+
+
+@pytest.mark.parametrize("password", [None, "example-existing-password"])
+def test_helm_resolves_the_sync_password_for_an_existing_managed_secret(
+    lookup_chart: Path, password: str | None
+) -> None:
+    data = datastore_credentials()
+    if password is not None:
+        data["clickhouse-sync-password"] = base64.b64encode(password.encode()).decode()
+    substitute_sync_secret(lookup_chart, data)
+
+    resources = render(chart=lookup_chart)
+    result = resources["Secret", "insight-db-creds"]["stringData"]["clickhouse-sync-password"]
+    assert result == password if password is not None else len(result) == 24
+    assert resources["Secret", "contract-clickhouse-sync-bootstrap"]["stringData"]["password"] == result
+
+
 @pytest.mark.parametrize("exit_code", [42, 43, 44, 45])
 def test_airbyte_launch_does_not_retry_terminal_exit_codes(charts: dict[str, dict], exit_code: int) -> None:
     trigger = templates(charts["defaults"], "airbyte-sync")["trigger-sync"]
@@ -349,9 +439,9 @@ def test_memory_byte_values_from_a_values_file_render_as_integers(tmp_path: Path
         assert env["CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES"] == "1073741824"
 
 
-def render(*args: str) -> dict[tuple[str, str], dict]:
+def render(*args: str, chart: Path = CHART) -> dict[tuple[str, str], dict]:
     result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), "-f", str(CHART / "tests/values.yaml"), *args],
+        ["helm", "template", "contract", str(chart), "-f", str(chart / "tests/values.yaml"), *args],
         check=True,
         capture_output=True,
         text=True,

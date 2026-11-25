@@ -7,6 +7,91 @@ use crate::migration::Migrator;
 
 #[tokio::test]
 #[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn bronze_retry_closes_a_superseded_capacity_wait() -> anyhow::Result<()> {
+    let (latest, unsettled, retry) = save_bronze_retry(None).await?;
+    assert_eq!(latest.status, "succeeded");
+    let old = &latest.stages[0];
+    assert_eq!(old.status, "cancelled");
+    assert_eq!(old.reason.as_deref(), Some("workflow_not_found"));
+    assert_eq!(
+        old.finished_at.map(|time| time.timestamp_millis()),
+        Some(retry.timestamp_millis())
+    );
+    assert_eq!(
+        old.waits[0].ended_at.map(|time| time.timestamp_millis()),
+        Some(retry.timestamp_millis())
+    );
+    assert_eq!(latest.stages[1].status, "succeeded");
+    assert!(unsettled.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
+async fn bronze_retry_keeps_a_superseded_airbyte_job_available_for_lookup() -> anyhow::Result<()> {
+    let (latest, unsettled, _) = save_bronze_retry(Some(19)).await?;
+    assert_eq!(latest.stages[0].finished_at, None);
+    assert_eq!(unsettled.len(), 1);
+    assert_eq!(unsettled[0].job(), Some(19));
+    Ok(())
+}
+
+async fn save_bronze_retry(
+    old_job: Option<u64>,
+) -> anyhow::Result<(history::Run, Vec<UnsettledRun>, DateTime<Utc>)> {
+    let db = Database::connect(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?).await?;
+    Migrator::up(&db, None).await?;
+    let stand = uuid::Uuid::new_v4().to_string();
+    let queued = Utc::now() - chrono::Duration::hours(4);
+    let retry = queued + chrono::Duration::hours(1);
+    let finished = retry + chrono::Duration::minutes(1);
+    let mut bronze = StageSnapshot::new("bronze", 1, queued);
+    bronze.bronze_execution = Some(queued);
+    bronze.job = old_job;
+    bronze.status = "queued";
+    bronze.capacity_wait = Some(StageWait {
+        kind: WaitKind::Placement,
+        started_at: queued,
+        ended_at: None,
+        holder: None,
+    });
+    let mut run = RunSnapshot {
+        uid: uuid::Uuid::new_v4().to_string(),
+        name: "example".into(),
+        connector: "jira".into(),
+        tenant: "tenant".into(),
+        source: "source".into(),
+        created_at: queued,
+        execution: queued,
+        finished_at: None,
+        status: None,
+        stages: vec![bronze],
+    };
+    save(&db, &stand, &run, queued).await?;
+    let read = || history::runs(&db, &stand, "jira", Some("tenant"), Some("source"));
+    assert_eq!(read().await?[0].stages[0].status, "wait_warning");
+
+    let mut bronze = StageSnapshot::new("bronze", 2, retry);
+    bronze.bronze_execution = Some(retry);
+    bronze.started_at = Some(retry);
+    bronze.finished_at = Some(finished);
+    bronze.status = "succeeded";
+    bronze.job = Some(20);
+    let mut gold = StageSnapshot::new("transform-jira-silver", 1, finished);
+    gold.finished_at = Some(finished);
+    gold.status = "succeeded";
+    run.execution = retry;
+    run.finished_at = Some(finished);
+    run.status = Some("succeeded");
+    run.stages = vec![bronze, gold];
+    save(&db, &stand, &run, finished).await?;
+
+    let latest = read().await?.remove(0);
+    Ok((latest, unsettled(&db, &stand).await?, retry))
+}
+
+#[tokio::test]
+#[ignore = "requires INTEGRATION_TESTS_MARIADB_URL"]
 async fn history_keeps_each_attempt_once_after_replay_and_workflow_deletion() -> anyhow::Result<()>
 {
     let database_url = std::env::var("INTEGRATION_TESTS_MARIADB_URL")?;

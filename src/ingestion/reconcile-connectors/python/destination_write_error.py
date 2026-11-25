@@ -7,31 +7,51 @@ import re
 import sys
 from collections.abc import Iterator
 
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
 MASK = "[REDACTED]"
 MAX_BODY_BYTES = 512
 JSON_VALUE = TypeAdapter(JsonValue)
 
 
-def passwords(value: JsonValue, sensitive: bool = False) -> Iterator[str]:
+class DestinationWrite(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    connectionConfiguration: dict[str, JsonValue]
+
+
+def sensitive_key(key: str) -> bool:
+    key = key.casefold()
+    return any(part in key for part in ("password", "secret", "token"))
+
+
+def secret_values(value: JsonValue, sensitive: bool = False) -> Iterator[str]:
     if isinstance(value, dict):
         for key, item in value.items():
-            yield from passwords(item, sensitive or "password" in key.casefold())
+            yield from secret_values(item, sensitive or sensitive_key(key))
     elif isinstance(value, list):
         for item in value:
-            yield from passwords(item, sensitive)
+            yield from secret_values(item, sensitive)
     elif sensitive and isinstance(value, str) and value:
         yield value
 
 
+def encoded_character(char: str) -> str:
+    utf16 = char.encode("utf-16-be", errors="surrogatepass").hex()
+    unicode_escapes = "".join(r"\\[uU]" + utf16[index : index + 4] for index in range(0, len(utf16), 4))
+    percent_escapes = "".join(f"%{byte:02x}" for byte in char.encode(errors="surrogatepass"))
+    literals = {char, json.dumps(char, ensure_ascii=False)[1:-1], html.escape(char)}
+    if char == "/":
+        literals.add(r"\/")
+    if char == " ":
+        literals.add("+")
+    return "(?:" + "|".join([*map(re.escape, sorted(literals)), f"(?i:{unicode_escapes}|{percent_escapes})"]) + ")"
+
+
 def secret_pattern(secrets: set[str]) -> re.Pattern[str]:
-    spellings = set(secrets)
-    for secret in secrets:
-        spellings.add(html.escape(secret))
-        spellings.add(json.dumps(secret, ensure_ascii=True)[1:-1])
-        spellings.add(json.dumps(secret, ensure_ascii=False)[1:-1])
-    return re.compile("|".join(map(re.escape, sorted(spellings, key=len, reverse=True))) or r"(?!)")
+    values = secrets | {html.unescape(secret) for secret in secrets}
+    patterns = ["".join(map(encoded_character, secret)) for secret in sorted(values - {""}, key=len, reverse=True)]
+    return re.compile("|".join(patterns) or r"(?!)")
 
 
 def redact(value: JsonValue, pattern: re.Pattern[str]) -> JsonValue:
@@ -40,34 +60,41 @@ def redact(value: JsonValue, pattern: re.Pattern[str]) -> JsonValue:
     if isinstance(value, list):
         return [redact(item, pattern) for item in value]
     if isinstance(value, dict):
-        return {pattern.sub(MASK, key): redact(item, pattern) for key, item in value.items()}
+        return {
+            pattern.sub(MASK, key): MASK if sensitive_key(key) else redact(item, pattern) for key, item in value.items()
+        }
     return value
 
 
-def one_line(value: str, limit: int) -> str:
+def one_line(value: str, pattern: re.Pattern[str], limit: int) -> str:
     printable = "".join(char if char.isprintable() else " " for char in value)
-    return printable.encode(errors="replace")[:limit].decode(errors="ignore").strip()
+    masked = pattern.sub(MASK, printable)
+    return masked.encode(errors="replace")[:limit].decode(errors="ignore").strip()
 
 
 def main() -> None:
     operation, destination, status = sys.argv[1:]
-    request, response = sys.stdin.read().split("\0", 1)
-    configuration = json.loads(request)["connectionConfiguration"]
-    secrets = set(passwords(configuration))
-    for name in ("RECONCILE_DEST_CLICKHOUSE_PASSWORD", "AIRBYTE_TOKEN"):
-        if secret := os.environ.get(name):
+    request, token, response = sys.stdin.read().split("\0", 2)
+    try:
+        configuration = DestinationWrite.model_validate_json(request).connectionConfiguration
+    except ValidationError:
+        print(f"Airbyte destination {operation} failed. HTTP {status} body=[REDACTED]")
+        return
+    secrets = set(secret_values(configuration))
+    for secret in (os.environ.get("RECONCILE_DEST_CLICKHOUSE_PASSWORD"), token):
+        if secret:
             secrets.add(secret)
     pattern = secret_pattern(secrets)
 
     try:
         value = JSON_VALUE.validate_json(response)
     except ValidationError:
-        body = pattern.sub(MASK, html.unescape(response))
+        body = html.unescape(pattern.sub(MASK, response))
     else:
         body = json.dumps(redact(value, pattern), ensure_ascii=False)
 
-    target = one_line(pattern.sub(MASK, destination), 128)
-    reason = one_line(pattern.sub(MASK, body), MAX_BODY_BYTES)
+    target = one_line(pattern.sub(MASK, destination), pattern, 128)
+    reason = one_line(body, pattern, MAX_BODY_BYTES)
     print(f"Airbyte destination {operation} failed. destination={target} HTTP {status} body={reason}")
 
 

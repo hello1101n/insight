@@ -238,6 +238,13 @@ async fn save_stage(
             stage.started_at.into(), stage.finished_at.into(), waits.into(), stage.reason.clone().into(),
             stage.connection.clone().into(), stage.job.map(|id| id.to_string()).into(), stage.records.into(), key.into(), stage.query_pod.map(|id| id.to_string()).into(), resources.into(), replace_resources.into()],
     )).await?;
+
+    if stage.stage == "bronze"
+        && attempt > 1
+        && let Some(execution) = stage.bronze_execution
+    {
+        close_superseded_bronze(tx, uid, attempt, execution).await?;
+    }
     Ok(())
 }
 
@@ -295,6 +302,55 @@ struct OpenAttempt {
     waits: String,
 }
 
+async fn close_superseded_bronze(
+    tx: &DatabaseTransaction,
+    uid: &str,
+    attempt: u32,
+    execution: DateTime<Utc>,
+) -> Result<(), DbErr> {
+    let open = OpenAttempt::find_by_statement(sql(
+        "SELECT id,stage,status,attempt,airbyte_job_id,execution_key,CAST(waits AS CHAR) AS waits
+         FROM ingestion_stage_attempts WHERE sync_id=? AND stage='bronze' AND attempt<?
+         AND queued_at<? AND finished_at IS NULL AND airbyte_job_id IS NULL",
+        vec![uid.into(), attempt.into(), execution.into()],
+    ))
+    .all(tx)
+    .await?;
+    for attempt in open {
+        close_attempt(tx, &attempt, execution).await?;
+    }
+    Ok(())
+}
+
+async fn close_attempt(
+    tx: &DatabaseTransaction,
+    attempt: &OpenAttempt,
+    now: DateTime<Utc>,
+) -> Result<(), DbErr> {
+    let mut waits = stored_waits(&attempt.waits).map_err(|error| DbErr::Json(error.to_string()))?;
+    for wait in waits.iter_mut().filter(|wait| wait.ended_at.is_none()) {
+        wait.ended_at = Some(now.max(wait.started_at));
+    }
+    let waits = serde_json::to_string(&waits).map_err(|error| DbErr::Json(error.to_string()))?;
+    let (status, reason) = match attempt.status.as_str() {
+        "checking_start" => ("unknown", "workflow_not_found"),
+        "wait_timeout" => ("wait_timeout", "wait_timeout"),
+        _ => ("cancelled", "workflow_not_found"),
+    };
+    tx.execute_raw(sql(
+        "UPDATE ingestion_stage_attempts SET status=?,reason=?,finished_at=?,waits=? WHERE id=?",
+        vec![
+            status.into(),
+            reason.into(),
+            now.into(),
+            waits.into(),
+            attempt.id.into(),
+        ],
+    ))
+    .await?;
+    Ok(())
+}
+
 pub(super) async fn close_missing(
     db: &DatabaseConnection,
     uid: &str,
@@ -322,22 +378,7 @@ pub(super) async fn close_missing(
             continue;
         }
 
-        let mut waits: Vec<StageWait> =
-            stored_waits(&attempt.waits).map_err(|error| DbErr::Json(error.to_string()))?;
-        if let Some(wait) = waits.last_mut().filter(|wait| wait.ended_at.is_none()) {
-            wait.ended_at = Some(now.max(wait.started_at));
-        }
-        let waits =
-            serde_json::to_string(&waits).map_err(|error| DbErr::Json(error.to_string()))?;
-        let (status, reason) = match attempt.status.as_str() {
-            "checking_start" => ("unknown", "workflow_not_found"),
-            "wait_timeout" => ("wait_timeout", "wait_timeout"),
-            _ => ("cancelled", "workflow_not_found"),
-        };
-        tx.execute_raw(sql(
-            "UPDATE ingestion_stage_attempts SET status=?,reason=?,finished_at=?,waits=? WHERE id=?",
-            vec![status.into(), reason.into(), now.into(), waits.into(), attempt.id.into()],
-        )).await?;
+        close_attempt(&tx, &attempt, now).await?;
     }
     tx.commit().await
 }

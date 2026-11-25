@@ -139,19 +139,19 @@ reconcile_resolve_destination_id() {
       return 1
     fi
 
-    if ! dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")"; then
-      reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
+    dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")" || {
+      [[ "$?" -eq 3 ]] || reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
       return 1
-    fi
+    }
     if [[ -z "${dest_id}" ]]; then
       reconcile__log ERROR "${subject}" "ab_ensure_destination returned empty id for ${dest_name}"
       return 1
     fi
   else
-    if ! ab_converge_destination_credentials "${dest_id}"; then
-      reconcile__log ERROR "${subject}" "Airbyte destination credential update failed."
+    ab_converge_destination_credentials "${dest_id}" || {
+      [[ "$?" -eq 3 ]] || reconcile__log ERROR "${subject}" "Airbyte destination credential update failed."
       return 1
-    fi
+    }
   fi
   _RECONCILE_DESTINATION_ID="${dest_id}"
   printf '%s' "${dest_id}"
@@ -1099,10 +1099,14 @@ print("\n".join(sorted(i for i in ids if i)))')"
     if [[ "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
       local destination_id
       destination_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["destinationId"] or "")')"
-      if [[ -z "${destination_id}" ]] || ! ab_converge_destination_credentials "${destination_id}"; then
-        reconcile__log ERROR "${connector_name}" "Airbyte destination credential update failed."
+      if [[ -z "${destination_id}" ]]; then
+        reconcile__log ERROR "${connector_name}" "Airbyte connection has no destination ID."
         return 1
       fi
+      ab_converge_destination_credentials "${destination_id}" || {
+        [[ "$?" -eq 3 ]] || reconcile__log ERROR "${connector_name}" "Airbyte destination credential update failed."
+        return 1
+      }
     fi
     if [[ -n "${source_name}" ]]; then
       reconcile_converge_connection_name "${connector_name}" "${connection_id}" \

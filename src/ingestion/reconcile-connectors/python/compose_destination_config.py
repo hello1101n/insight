@@ -59,12 +59,18 @@ def topology(cluster_mode: str, cluster_name: str) -> dict[str, object]:
     return {"use_replicated_engines": True, "cluster_name": name}
 
 
-def compose(env: Mapping[str, str]) -> dict[str, object]:
+def warehouse_config(env: Mapping[str, str]) -> dict[str, str]:
     return {
         "host": env[_PREFIX + "HOST"],
         "port": env[_PREFIX + "PORT"],
         "protocol": env.get(_PREFIX + "PROTOCOL", "http"),
         "database": env[_PREFIX + "DATABASE"],
+    }
+
+
+def compose(env: Mapping[str, str]) -> dict[str, object]:
+    return {
+        **warehouse_config(env),
         "username": env[_PREFIX + "USERNAME"],
         "password": env[_PREFIX + "PASSWORD"],
         "enable_json": False,

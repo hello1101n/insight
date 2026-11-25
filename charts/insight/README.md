@@ -183,14 +183,15 @@ Use a distinct username for each stand that shares a ClickHouse server.
 With `credentials.autoGenerate: true`, Helm generates the password in the `clickhouse-sync-password` key of `insight-db-creds`.
 Helm also copies it into a pre-deploy hook Secret, so the database jobs can create the account before the pods roll.
 With `credentials.autoGenerate: false`, add that key to the pre-created `insight-db-creds` before the upgrade.
-A missing key stops the database job and the upgrade.
+If Helm finds the Secret and cannot generate the password, a missing or empty key stops the upgrade.
 With the default `clickhouse.provisionAccess: true`, the database job creates the account and applies its settings and grants.
 With `clickhouse.provisionAccess: false`, create the account and put its password in the key before the upgrade.
 Helm refuses to generate a password for an account it does not create.
 Analytics, application services, the reconcile sweep, and the independent scheduled data-quality catalog use their existing accounts.
 
-The next connector reconcile pass updates the ClickHouse destination on each existing managed Airbyte connection.
+The next reconcile pass updates the sync credentials on the ClickHouse destinations of managed Airbyte connections.
 The update preserves the destination ID, connection state, and other destination settings.
+Reconcile updates only destinations with the same host, port, database, and protocol as the configured warehouse.
 Airbyte can share a destination across connections. All connections that use that destination receive the credential change.
 Reconcile reads the password and its Secret revision together.
 Reconcile records each successful credential write in the release's `reconcile-destinations` ConfigMap.
@@ -205,6 +206,7 @@ Bronze loads can fail authentication for up to one reconcile interval, until the
 Without `clickhouse.syncUser.totalMemoryBytes`, the database job reads `max_server_memory_usage` from ClickHouse.
 It sets the sync total to 60% of that value, rounded down to whole bytes.
 In cluster mode, it uses the smallest value across the replicas that answer, and it stops if none answers.
+Give all replicas the same `max_server_memory_usage`, or set `clickhouse.syncUser.totalMemoryBytes`.
 
 Measure query peaks during a representative Jira sync while Analytics runs.
 Use the largest applicable dbt model cap for each writer group.
@@ -310,7 +312,7 @@ Before going to prod:
 
 - [ ] Decide on credentials strategy:
   - **Auto-gen (default):** `credentials.autoGenerate: true` — the umbrella creates `insight-db-creds` with random 24-char passwords on first install and reuses them via `lookup` on every upgrade.
-  - **BYO / Constructor Platform:** pre-create `insight-db-creds` with all required keys (`clickhouse-password`, `mariadb-password`, `mariadb-root-password`, `redis-password`) before the first `helm install`. The umbrella picks them up. Missing/empty keys fail fast.
+  - **BYO / Constructor Platform:** Create `insight-db-creds` before the first `helm install`. Add `clickhouse-password`, `clickhouse-sync-password`, `mariadb-password`, `mariadb-root-password`, and `redis-password`. A missing or empty key stops the install.
     - Works regardless of `credentials.autoGenerate`: the chart auto-detects BYO via absence of the `app.kubernetes.io/managed-by=Helm` label on the existing Secret and skips its own Secret-template emission, so Helm never tries to take ownership of the customer-managed Secret. No manual labeling required.
     - **Dry-run note**: `helm install --dry-run` (default, client-side) skips the `lookup` function, so the BYO preview will incorrectly show the chart emitting `insight-db-creds`. Use `helm install --dry-run=server` (Helm ≥3.13) for an accurate BYO sanity-check — it exercises `lookup` against the real cluster.
   - Rendering under a GitOps controller (`helm template`): set `deploymentMode: gitops` and `autoGenerate: false`, and supply the config Secrets out-of-band — the validator refuses `gitops` + `autoGenerate: true`.
