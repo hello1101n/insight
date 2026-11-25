@@ -9,92 +9,27 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tenant_migration import apply as migration
 from tenant_migration import ddl
-from tenant_migration.apply import MigrationError, retarget
-from tenant_migration.clickhouse import ClickHouse, ClickHouseError
-from tenant_migration.inventory import RESTORE, Relation, Table, Unfit, classify
-from tenant_migration.keys import Columns, TenantError, Tenants, old_tenant_from
-from tenant_migration.plan import Plan, TablePlan, refusals
+from tenant_migration.__main__ import main
+from tenant_migration.inventory import InventoryError, Relation, Table, classify
+from tenant_migration.keys import TenantError, parse_tenant
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
-
-
-@pytest.mark.parametrize(
-    ("new", "old"),
-    [("Example-Legacy", "example-legacy"), (NEW.upper(), "example-legacy"), (NEW, "it's"), (NEW, "a\\b")],
-    ids=["new not a uuid", "upper case", "quote", "backslash"],
-)
-def test_tenants_that_cannot_be_moved_safely_are_refused(new: str, old: str) -> None:
-    with pytest.raises(TenantError):
-        Tenants.parse(new, old)
-
-
-def test_an_empty_tenant_always_moves_beside_the_old_one() -> None:
-    assert Tenants.parse(NEW, "example-legacy").moving == ("example-legacy", "")
-    assert Tenants.parse(NEW, "").moving == ("",)
-
-
-def test_an_old_tenant_equal_to_the_new_one_moves_only_the_empty_tenant() -> None:
-    """An install already keyed by the UUID still stamps its NULL and empty rows."""
-    tenants = Tenants.parse(NEW, NEW)
-
-    assert tenants.moving == ("",)
-    assert tenants.empty_only
-    assert not Tenants.parse(NEW, "example-legacy").empty_only
-
-
-@pytest.mark.parametrize(
-    ("stored", "old"),
-    [(set(), NEW), ({NEW}, NEW), ({"example-legacy"}, "example-legacy"), ({"example-legacy", NEW}, "example-legacy")],
-    ids=["no tenant stored", "only the uuid", "one old tenant", "old tenant beside the uuid"],
-)
-def test_the_old_tenant_is_the_one_the_rows_hold_besides_the_new_one(stored: set[str], old: str) -> None:
-    assert old_tenant_from(stored, NEW) == old
-
-
-def test_two_stored_tenants_besides_the_new_one_are_refused_and_named() -> None:
-    with pytest.raises(TenantError, match="several tenants \\(a-legacy, b-legacy\\)"):
-        old_tenant_from({"b-legacy", "a-legacy", NEW}, NEW)
-
-
 STRING = "Nullable(String)"
 
 
-@pytest.mark.parametrize(
-    ("types", "expected"),
-    [
-        (
-            {"unique_key": "String", "tenant_id": STRING, "source_id": STRING},
-            Columns("tenant_id", "source_id", "unique_key"),
-        ),
-        (
-            {"unique_key": "String", "insight_tenant_id": STRING, "insight_source_id": "String"},
-            Columns("insight_tenant_id", "insight_source_id", "unique_key"),
-        ),
-        ({"tenant_id": "LowCardinality(String)", "source_id": "String"}, Columns("tenant_id", "source_id", None)),
-    ],
-    ids=["bronze", "silver-shaped", "no key"],
-)
-def test_a_table_is_read_through_its_own_column_names(types: dict[str, str], expected: Columns) -> None:
-    table = classify("db", "t", "ReplacingMergeTree", types)
-
-    assert isinstance(table, Table), table
-    assert table.columns == expected
+@pytest.mark.parametrize("value", [None, "", NEW.upper(), "example-legacy", f"{NEW} "])
+def test_only_a_lowercase_uuid_is_a_tenant(value: str | None) -> None:
+    with pytest.raises(TenantError):
+        parse_tenant(value, "INSIGHT_TENANT_ID")
 
 
-@pytest.mark.parametrize(
-    "types",
-    [
-        {"unique_key": "String", "source_id": STRING},
-        {"unique_key": "String", "tenant_id": "UUID", "source_id": STRING},
-        {"unique_key": "String", "tenant_id": STRING},
-        {"unique_key": "String", "tenant_id": STRING, "insight_tenant_id": STRING, "source_id": STRING},
-    ],
-    ids=["no tenant", "tenant not a string", "key without a source", "both tenant columns"],
-)
-def test_a_table_the_migration_cannot_read_is_unfit(types: dict[str, str]) -> None:
-    assert isinstance(classify("db", "t", "MergeTree", types), Unfit), f"should be unfit: {types}"
+def test_a_lowercase_uuid_is_the_tenant() -> None:
+    assert parse_tenant(NEW, "INSIGHT_TENANT_ID") == NEW
+
+
+def _classify(database: str, columns: dict[str, str], *, history: bool = False) -> Table | None:
+    return classify(database, "t", "ReplacingMergeTree", list(columns.items()), history=history)
 
 
 @pytest.mark.parametrize(
@@ -108,149 +43,81 @@ def test_a_table_the_migration_cannot_read_is_unfit(types: dict[str, str]) -> No
     ],
 )
 def test_the_tenant_column_is_renamed_everywhere_but_the_sync_ledger(database: str, column: str, renames: bool) -> None:
-    table = classify(database, "t", "MergeTree", {column: STRING, "source_id": STRING})
+    table = _classify(database, {column: STRING, "source_id": STRING})
 
-    assert isinstance(table, Table) and table.renames_tenant is renames
+    assert table is not None and table.renames is renames and not table.adds
+
+
+def test_a_history_relation_without_a_tenant_gains_one_and_any_other_table_is_out_of_scope() -> None:
+    columns = {"unique_key": "String", "insight_source_id": "String"}
+
+    history = _classify("staging", columns, history=True)
+
+    assert history is not None and history.adds and history.target == "insight_tenant_id"
+    assert _classify("bronze_example", columns) is None
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "UUID"}],
+    ids=["both tenant columns", "tenant not a string"],
+)
+def test_a_table_the_migration_cannot_read_stops_it(columns: dict[str, str]) -> None:
+    with pytest.raises(InventoryError):
+        _classify("bronze_example", columns)
+
+
+def test_only_the_youtrack_comments_fill_their_ids_from_the_key() -> None:
+    columns = [("unique_key", "String"), ("tenant_id", STRING), ("source_id", STRING), ("id", STRING)]
+
+    comments = classify("bronze_youtrack", "youtrack_comments", "ReplacingMergeTree", columns, history=False)
+    other = classify("bronze_youtrack", "youtrack_issues", "ReplacingMergeTree", columns, history=False)
+
+    assert comments is not None and comments.comment_id == "id"
+    assert other is not None and other.comment_id is None
 
 
 def test_the_renamed_ddl_names_the_new_column_in_its_definition_and_keys_only() -> None:
     create = (
-        "CREATE TABLE `bronze_example`.`items__tenant_copy`\n(\n    `unique_key` String,\n"
-        "    `tenant_id` Nullable(String),\n    `azure_tenant_id` Nullable(String),\n"
-        "    `insight_source_id` Nullable(String)\n)\nENGINE = ReplacingMergeTree\n"
-        "ORDER BY (tenant_id, unique_key)\nSETTINGS allow_nullable_key = 1"
+        "CREATE TABLE `bronze_example`.`items__tenant_backup`\n(\n    `unique_key` String,\n"
+        "    `tenant_id` Nullable(String),\n    `azure_tenant_id` Nullable(String)\n)\n"
+        "ENGINE = ReplacingMergeTree\nORDER BY (tenant_id, unique_key)"
     )
 
     renamed = ddl.tenant_renamed(create)
 
     assert "`insight_tenant_id` Nullable(String)" in renamed
+    assert "`azure_tenant_id` Nullable(String)" in renamed
     assert "ORDER BY (insight_tenant_id, unique_key)" in renamed
-    assert "`azure_tenant_id`" in renamed and "`tenant_id`" not in renamed
-
-
-def _plan(**overrides: object) -> TablePlan:
-    table = Table("bronze_example", "items", "ReplacingMergeTree", Columns("tenant_id", "source_id", "unique_key"))
-    fields = {"table": table, "rows": 10, "moving": 10, "ambiguous": 0, "foreign": (), "leftovers": ()}
-    return TablePlan(**(fields | overrides))  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    ("plan", "reason"),
-    [
-        (_plan(foreign=("other",)), "holds another tenant"),
-        (_plan(ambiguous=1), "start like a moving tenant"),
-        (_plan(leftovers=("bronze_example.items__tenant_backup",)), "finalize or roll back first"),
-    ],
-    ids=["second tenant", "ambiguous key", "earlier run"],
-)
-def test_a_plan_is_refused_for_every_reason_it_cannot_be_applied(plan: TablePlan, reason: str) -> None:
-    found = refusals([plan], [])
-
-    assert len(found) == 1 and reason in found[0], found
-
-
-def test_work_left_by_an_earlier_run_is_refused_even_where_nothing_moves() -> None:
-    """A finished run waits for finalize or rollback; a new one must not start beside it."""
-    found = refusals([_plan(moving=0, leftovers=("bronze_example.items__tenant_backup",))], [])
-
-    assert len(found) == 1 and "finalize or roll back first" in found[0], found
-
-
-def test_an_unfit_table_with_rows_is_refused_and_an_empty_one_is_not() -> None:
-    unfit = Unfit("bronze_example.legacy", "no tenant column")
-
-    assert refusals([], [(unfit, 3)]) == ["bronze_example.legacy: 3 row(s), and no tenant column"]
-    assert refusals([], []) == []
-
-
-def test_an_unreachable_clickhouse_is_reported_as_an_error_not_a_traceback() -> None:
-    unreachable = ClickHouse(url="http://127.0.0.1:1/", user="insight", password="insight")
-
-    with pytest.raises(ClickHouseError, match="unreachable"):
-        unreachable.execute("SELECT 1")
 
 
 @pytest.mark.parametrize(
     "saved",
     [
-        "CREATE TABLE bronze_example.items\n(`unique_key` String)\nENGINE = MergeTree ORDER BY unique_key",
-        (
-            "CREATE TABLE bronze_example.items UUID '5f1c0e3a-7b2d-4c8e-9a01-23456789abcd'\n(`unique_key` String)\n"
-            "ENGINE = MergeTree ORDER BY unique_key"
-        ),
+        "CREATE TABLE bronze_example.items\n(\n    `unique_key` String\n)\nENGINE = MergeTree",
+        "CREATE TABLE bronze_example.items UUID 'a5c2b1e4-0000-4000-8000-000000000001'\n(\n    `unique_key` String\n)",
     ],
-    ids=["without uuid", "with the dumped table's uuid"],
+    ids=["plain", "with its uuid"],
 )
-def test_the_saved_ddl_names_the_restore_table_and_no_uuid(saved: str) -> None:
-    rel = Relation("bronze_example", "items")
+def test_the_copy_ddl_names_the_backup_and_no_uuid(saved: str) -> None:
+    retargeted = ddl.retarget(saved, Relation("bronze_example", "items"), "__tenant_backup")
 
-    created = retarget(saved, rel, RESTORE)
-
-    assert created.startswith(f"CREATE TABLE {rel.sql(RESTORE)}\n(`unique_key` String)"), created
-    assert "UUID" not in created, f"should drop the dumped table's uuid: {created!r}"
+    assert retargeted.startswith("CREATE TABLE `bronze_example`.`items__tenant_backup`\n")
+    assert "UUID" not in retargeted
 
 
-def test_saved_ddl_that_is_not_a_create_table_is_refused() -> None:
-    with pytest.raises(MigrationError):
-        retarget("ATTACH TABLE bronze_example.items", Relation("bronze_example", "items"), RESTORE)
+def test_ddl_that_is_not_a_create_table_is_refused() -> None:
+    with pytest.raises(ddl.DdlError):
+        ddl.retarget("ATTACH TABLE x", Relation("bronze_example", "items"), "__tenant_backup")
 
 
-@pytest.mark.parametrize(
-    ("engine_full", "fit"),
-    [
-        ("ReplicatedMergeTree('/clickhouse/tables/x/items', '{replica}') ORDER BY unique_key", False),
-        ("ReplicatedReplacingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}', _version) ORDER BY k", True),
-        ("ReplicatedMergeTree('/clickhouse/{database}/{table}', '{replica}') ORDER BY unique_key", True),
-        ("ReplicatedReplacingMergeTree(_version) ORDER BY unique_key", True),
-        ("ReplicatedMergeTree ORDER BY unique_key", True),
-        ("ReplacingMergeTree(_version) ORDER BY unique_key", True),
-    ],
-    ids=[
-        "fixed Keeper path",
-        "path per uuid",
-        "path per table",
-        "no arguments",
-        "no arguments, unversioned",
-        "not replicated",
-    ],
-)
-def test_a_replicated_table_whose_keeper_path_names_no_table_is_unfit(engine_full: str, fit: bool) -> None:
-    types = {"unique_key": "String", "tenant_id": "String", "source_id": "String"}
-
-    table = classify("bronze_example", "items", engine_full.split("(")[0].split(" ")[0], types, engine_full)
-
-    assert isinstance(table, Table) is fit, f"should be {'fit' if fit else 'unfit'}: {engine_full!r}"
-
-
-def _table_plan(name: str) -> TablePlan:
-    table = Table(
-        "bronze_example", name, "ReplacingMergeTree", Columns(tenant="tenant_id", source="source_id", key="unique_key")
-    )
-    return TablePlan(table=table, rows=1, moving=1, ambiguous=0, foreign=(), leftovers=())
-
-
-@pytest.mark.parametrize(
-    ("failing", "named"),
-    [("first", []), ("third", ["bronze_example.first", "bronze_example.second"])],
-    ids=["nothing swapped yet", "two swapped before it"],
-)
-def test_a_failed_table_names_the_tables_already_swapped_before_it(
-    monkeypatch: pytest.MonkeyPatch, failing: str, named: list[str]
+def test_an_unreachable_clickhouse_is_reported_as_an_error_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def migrate(_ch: ClickHouse, table_plan: TablePlan, _tenants: Tenants) -> object:
-        if table_plan.table.name == failing:
-            raise MigrationError(f"{table_plan.table.relation}: not migrated, the table is unchanged")
-        return object()
+    monkeypatch.setenv("CLICKHOUSE_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("CLICKHOUSE_USER", "u")
+    monkeypatch.setenv("CLICKHOUSE_PASSWORD", "p")
+    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
 
-    monkeypatch.setattr(migration, "dump", lambda *_args: None)
-    monkeypatch.setattr(migration, "migrate_table", migrate)
-    plan = Plan(
-        tenants=Tenants.parse(NEW, "example-legacy"), tables=[_table_plan(n) for n in ("first", "second", "third")]
-    )
-
-    with pytest.raises(MigrationError) as raised:
-        migration.apply(ClickHouse("http://127.0.0.1:1/", "u", "p"), plan, Path(), before_rewrite=[])
-
-    message = str(raised.value)
-    assert all(relation in message for relation in named), f"should name {named}: {message}"
-    assert ("rollback" in message and "finalize" in message) is bool(named), message
+    assert main(["plan"]) == 2
+    assert "unreachable" in capsys.readouterr().err

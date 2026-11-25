@@ -1,5 +1,5 @@
-"""The tenant migration against a real ClickHouse: every key form, every refusal,
-and the way back.
+"""The tenant migration against a real ClickHouse: every key form, the skip rules,
+and the way back when a run fails part-way.
 
 Needs a throwaway server — it drops and recreates the databases it seeds:
 
@@ -10,10 +10,8 @@ Needs a throwaway server — it drops and recreates the databases it seeds:
 
 from __future__ import annotations
 
-import gzip
 import os
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,25 +20,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tenant_migration import apply as migration
-from tenant_migration import ddl
 from tenant_migration.__main__ import main
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
-from tenant_migration.inventory import Relation, discover, history_relations
-from tenant_migration.keys import Tenants
-from tenant_migration.plan import Plan, stored_tenants, survey
-from tenant_migration.prerequisites import fill_youtrack_comment_ids
+from tenant_migration.inventory import InventoryError, discover, history_relations
+from tenant_migration.plan import TablePlan, survey
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
 OLD = "example-main-legacy"
-DATABASES = (
-    "bronze_example",
-    "bronze_bamboohr",
-    "bronze_jira",
-    "bronze_youtrack",
-    "staging",
-    "config",
-    "ingestion_history",
-)
+DATABASES = ("bronze_example", "bronze_bamboohr", "bronze_youtrack", "staging", "config", "ingestion_history")
 RESET = [step for db in DATABASES for step in (f"DROP DATABASE IF EXISTS {db} SYNC", f"CREATE DATABASE {db}")]
 TABLES = (
     "bronze_example.items",
@@ -49,6 +36,7 @@ TABLES = (
     "bronze_youtrack.youtrack_comments",
     "staging.jira__catalogue_first_seen",
     "staging.slack__users_snapshot",
+    "staging.youtrack__field_observations",
     "config.task_value_map",
     "ingestion_history.sync_events",
 )
@@ -87,6 +75,11 @@ INSERT INTO staging.slack__users_snapshot VALUES
     ('{OLD}-slack-U1', '{OLD}', 'slack', 'first version', '2026-01-01 00:00:00'),
     ('{OLD}-slack-U1', '{OLD}', 'slack', 'second version', '2026-01-02 00:00:00'),
     (NULL, '{OLD}', 'slack', 'a row without a key', '2026-01-02 00:00:00');
+CREATE TABLE staging.youtrack__field_observations (unique_key String, insight_source_id String, field_id String,
+    observed_at DateTime64(3), _version UInt64)
+ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key SETTINGS allow_nullable_key = 1;
+INSERT INTO staging.youtrack__field_observations VALUES
+    ('{OLD}-yt-field-1-2026-01-01 00:00:00', 'yt', 'field-1', '2026-01-01 00:00:00', 1);
 CREATE TABLE config.task_value_map (unique_key String, tenant_id String, insight_source_id String, value String,
     _version DateTime64(3))
 ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key;
@@ -94,7 +87,7 @@ INSERT INTO config.task_value_map VALUES ('{OLD}:main:status:open', '{OLD}', 'ma
 CREATE TABLE ingestion_history.sync_events (ts DateTime64(3), tenant_id LowCardinality(String),
     source_id LowCardinality(String), event LowCardinality(String))
 ENGINE = MergeTree ORDER BY (event, ts);
-INSERT INTO ingestion_history.sync_events VALUES ('2026-01-01 00:00:00', '{OLD}', 'main', 'sync'), ('2026-01-01 00:00:01', '', 'main', 'sync');
+INSERT INTO ingestion_history.sync_events VALUES ('2026-01-01 00:00:00', '{OLD}', 'main', 'sync'), ('2026-01-01 00:00:01', '', 'main', 'sync')
 """
 
 
@@ -111,29 +104,31 @@ def ch() -> ClickHouse:
     return ClickHouse.from_env()
 
 
-def _statements(sql: str) -> list[str]:
-    return [s.strip() for s in sql.split(";\n") if s.strip()]
-
-
 @pytest.fixture
-def warehouse(ch: ClickHouse) -> ClickHouse:
+def warehouse(ch: ClickHouse, monkeypatch: pytest.MonkeyPatch) -> ClickHouse:
+    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
     for statement in RESET:
         ch.execute(statement)
-    for statement in _statements(SCHEMA):
-        ch.execute(statement)
+    for statement in (s.strip() for s in SCHEMA.split(";\n")):
+        if statement:
+            ch.execute(statement)
     return ch
 
 
-def _plan(ch: ClickHouse, old: str = OLD) -> Plan:
-    return survey(ch, discover(ch, history_relations()), Tenants.parse(NEW, old))
+def _plan(ch: ClickHouse) -> list[TablePlan]:
+    return survey(ch, discover(ch, history_relations()), NEW)
+
+
+def _apply(ch: ClickHouse) -> list[str]:
+    return migration.apply(ch, _plan(ch), NEW)
 
 
 def _fingerprint(ch: ClickHouse) -> dict[str, tuple[str, ...]]:
     return {t: tuple(ch.rows(f"SELECT count(), sum(cityHash64(*)) FROM {t}")[0]) for t in TABLES}
 
 
-def _apply(ch: ClickHouse, plan: Plan, tmp_path: Path) -> None:
-    migration.apply(ch, plan, tmp_path / "dump", before_rewrite=[lambda: fill_youtrack_comment_ids(ch, plan.tenants)])
+def _work_tables(ch: ClickHouse) -> list[str]:
+    return [name for (name,) in ch.rows("SELECT name FROM system.tables WHERE position(name, '__tenant_') > 0")]
 
 
 def _column(ch: ClickHouse, table: str, column: str) -> list[str]:
@@ -142,19 +137,27 @@ def _column(ch: ClickHouse, table: str, column: str) -> list[str]:
         f"SELECT count() FROM system.tables WHERE database = '{database}' AND name = '{name}' AND engine LIKE '%Replacing%'"
     )
     final = "FINAL" if replacing else ""
-    return [row[0] for row in ch.rows(f"SELECT ifNull({column}, 'NULL') FROM {table} {final} ORDER BY 1")]
+    return [row[0] for row in ch.rows(f"SELECT ifNull(toString({column}), 'NULL') FROM {table} {final} ORDER BY 1")]
+
+
+def _columns(ch: ClickHouse, table: str) -> list[tuple[str, str]]:
+    database, name = table.split(".")
+    return [
+        (column, column_type)
+        for column, column_type in ch.rows(
+            f"SELECT name, type FROM system.columns WHERE database = '{database}' AND table = '{name}' ORDER BY position"
+        )
+    ]
 
 
 def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> None:
     before = _fingerprint(warehouse)
 
-    plan = _plan(warehouse)
+    plans = {p.table.relation: p for p in _plan(warehouse)}
 
-    moving = {t.table.relation: t.moving for t in plan.tables}
-    assert plan.refusals == []
-    assert moving["bronze_example.items"] == 5, moving
-    assert moving["ingestion_history.sync_events"] == 2, moving
-    assert plan.comment_ids_to_fill == 1
+    assert plans["bronze_example.items"].moving == 5
+    assert plans["ingestion_history.sync_events"].moving == 2
+    assert all(plans[t].pending for t in TABLES)
     assert _fingerprint(warehouse) == before
 
 
@@ -172,30 +175,23 @@ def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> N
         ("bronze_youtrack.youtrack_comments", "id", ["4-17"]),
         ("staging.jira__catalogue_first_seen", "unique_key", [f"{NEW}-main"]),
         ("staging.slack__users_snapshot", "unique_key", sorted([f"{NEW}-slack-U1", f"{NEW}-slack-U1", "NULL"])),
+        ("staging.youtrack__field_observations", "insight_tenant_id", [NEW]),
         ("config.task_value_map", "unique_key", [f"{NEW}:main:status:open"]),
         ("ingestion_history.sync_events", "tenant_id", [NEW, NEW]),
     ],
 )
-def test_apply_moves_every_key_form_to_the_new_tenant(
-    warehouse: ClickHouse, tmp_path: Path, table: str, column: str, expected: list[str]
+def test_apply_moves_every_key_form_to_the_tenant(
+    warehouse: ClickHouse, table: str, column: str, expected: list[str]
 ) -> None:
-    _apply(warehouse, _plan(warehouse), tmp_path)
+    _apply(warehouse)
 
     assert _column(warehouse, table, column) == expected, f"{table}.{column}"
 
 
-def _columns(ch: ClickHouse, table: str) -> list[tuple[str, str]]:
-    database, name = table.split(".")
-    return [
-        (column, column_type)
-        for column, column_type in ch.rows(
-            f"SELECT name, type FROM system.columns WHERE database = '{database}' AND table = '{name}' ORDER BY position"
-        )
-    ]
-
-
-def test_apply_renames_the_tenant_column_in_place_and_keeps_its_type(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _apply(warehouse, _plan(warehouse), tmp_path)
+def test_the_tenant_column_is_renamed_in_place_with_its_type_and_the_ledger_keeps_its_name(
+    warehouse: ClickHouse,
+) -> None:
+    _apply(warehouse)
 
     assert _columns(warehouse, "bronze_example.items") == [
         ("unique_key", "String"),
@@ -208,477 +204,183 @@ def test_apply_renames_the_tenant_column_in_place_and_keeps_its_type(warehouse: 
     assert ("tenant_id", "LowCardinality(String)") in _columns(warehouse, "ingestion_history.sync_events")
 
 
-def test_a_table_with_nothing_to_move_still_renames_its_tenant_column_even_in_its_key(
-    warehouse: ClickHouse, tmp_path: Path
-) -> None:
+def test_a_history_relation_without_a_tenant_gains_it_after_its_key(warehouse: ClickHouse) -> None:
+    _apply(warehouse)
+
+    assert _columns(warehouse, "staging.youtrack__field_observations")[:2] == [
+        ("unique_key", "String"),
+        ("insight_tenant_id", "Nullable(String)"),
+    ]
+
+
+def test_the_tenant_column_is_renamed_in_a_sorting_key_too(warehouse: ClickHouse) -> None:
     warehouse.execute(
         "CREATE TABLE bronze_example.keyed (tenant_id Nullable(String), source_id Nullable(String), "
         "unique_key String) ENGINE = MergeTree ORDER BY (tenant_id, unique_key) SETTINGS allow_nullable_key = 1"
     )
     warehouse.execute(f"INSERT INTO bronze_example.keyed VALUES ('{NEW}', 'main', '{NEW}-main-1')")
 
-    plan = _plan(warehouse)
-    keyed = next(t for t in plan.changing if t.table.relation == "bronze_example.keyed")
-    _apply(warehouse, plan, tmp_path)
+    _apply(warehouse)
 
-    assert keyed.moving == 0
     assert warehouse.rows(
         "SELECT sorting_key FROM system.tables WHERE database = 'bronze_example' AND name = 'keyed'"
     ) == [["insight_tenant_id, unique_key"]]
-    assert _column(warehouse, "bronze_example.keyed", "insight_tenant_id") == [NEW]
-    assert all(t.table.relation != "bronze_example.keyed" for t in _plan(warehouse).changing)
 
 
-def test_an_empty_table_is_dumped_renamed_and_restored(warehouse: ClickHouse, tmp_path: Path) -> None:
-    warehouse.execute(
-        "CREATE TABLE bronze_example.empty (unique_key String, tenant_id Nullable(String), "
-        "source_id Nullable(String)) ENGINE = MergeTree ORDER BY unique_key"
-    )
-
-    _apply(warehouse, _plan(warehouse), tmp_path)
-    assert [c for c, _ in _columns(warehouse, "bronze_example.empty")] == [
-        "unique_key",
-        "insight_tenant_id",
-        "source_id",
-    ]
-
-    migration.finalize(warehouse)
-    migration.restore(warehouse, tmp_path / "dump")
-    assert [c for c, _ in _columns(warehouse, "bronze_example.empty")] == ["unique_key", "tenant_id", "source_id"]
-
-
-def test_a_table_holding_both_tenant_columns_is_refused(warehouse: ClickHouse) -> None:
-    warehouse.execute(
-        "CREATE TABLE bronze_example.both (tenant_id Nullable(String), insight_tenant_id Nullable(String)) "
-        "ENGINE = MergeTree ORDER BY tuple()"
-    )
-    warehouse.execute(f"INSERT INTO bronze_example.both VALUES ('{OLD}', NULL)")
-
-    assert any("both tenant_id and insight_tenant_id" in r for r in _plan(warehouse).refusals)
-
-
-def test_the_entity_written_twice_keeps_its_newest_row(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _apply(warehouse, _plan(warehouse), tmp_path)
+def test_the_entity_written_twice_keeps_its_newest_row(warehouse: ClickHouse) -> None:
+    _apply(warehouse)
 
     payload = warehouse.rows(f"SELECT payload FROM bronze_example.items FINAL WHERE unique_key = '{NEW}-main-PROJ-7'")
     assert payload == [["the old tenant, whose own key holds the source name"]]
 
 
-def test_a_second_run_waits_for_finalize_and_then_finds_nothing_to_move(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _apply(warehouse, _plan(warehouse), tmp_path)
-
-    waiting = _plan(warehouse)
-    migration.finalize(warehouse)
-    settled = _plan(warehouse)
-
-    assert waiting.changing == [] and any("finalize or roll back first" in r for r in waiting.refusals)
-    assert settled.changing == [] and settled.refusals == [], settled.refusals
-
-
-def test_finalize_gives_a_rewritten_table_its_own_comment_back(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _apply(warehouse, _plan(warehouse), tmp_path)
-
-    migration.finalize(warehouse)
-
-    assert _comment(warehouse, "bronze_example", "items") == "synthetic items"
-
-
-def test_rollback_puts_back_what_was_there_keeping_only_the_comment_ids_it_filled(
-    warehouse: ClickHouse, tmp_path: Path
-) -> None:
-    """The ids are read from the key before it changes, so they hold under either key."""
+def test_each_original_is_kept_as_its_backup(warehouse: ClickHouse) -> None:
     before = _fingerprint(warehouse)
-    _apply(warehouse, _plan(warehouse), tmp_path)
 
-    migration.rollback(warehouse)
+    _apply(warehouse)
 
+    backups = {
+        t: tuple(warehouse.rows(f"SELECT count(), sum(cityHash64(*)) FROM {t}__tenant_backup")[0]) for t in TABLES
+    }
+    assert backups == before
+
+
+def test_a_second_run_finds_nothing_and_changes_nothing(warehouse: ClickHouse) -> None:
+    _apply(warehouse)
     after = _fingerprint(warehouse)
-    others = [t for t in TABLES if t != "bronze_youtrack.youtrack_comments"]
-    assert {t: after[t] for t in others} == {t: before[t] for t in others}
-    assert _column(warehouse, "bronze_youtrack.youtrack_comments", "unique_key") == [f"{OLD}-yt-4-17"]
-    assert _column(warehouse, "bronze_youtrack.youtrack_comments", "id") == ["4-17"]
-    assert migration.finalize(warehouse), "the migrated tables are kept as rejected until finalize"
-    assert warehouse.scalar("SELECT count() FROM system.tables WHERE name LIKE '%\\\\_\\\\_tenant\\\\_%'") == 0
+
+    assert not any(p.pending for p in _plan(warehouse))
+    assert _apply(warehouse) == []
+    assert _fingerprint(warehouse) == after
 
 
-def test_the_dump_restores_the_original_after_backups_are_gone(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    _apply(warehouse, _plan(warehouse), tmp_path)
-    migration.finalize(warehouse)
+def test_a_later_run_leaves_an_earlier_backup_alone_and_takes_the_next_name(warehouse: ClickHouse) -> None:
+    _apply(warehouse)
+    first_backup = warehouse.rows("SELECT count(), sum(cityHash64(*)) FROM bronze_example.items__tenant_backup")
+    warehouse.execute(
+        "INSERT INTO bronze_example.items VALUES ('-main-PROJ-20', NULL, 'main', 'late, without a tenant', now())"
+    )
 
-    migration.restore(warehouse, tmp_path / "dump")
+    assert _apply(warehouse) == ["bronze_example.items"]
 
-    assert _fingerprint(warehouse) == before
-    assert _comment(warehouse, "bronze_example", "items") == "synthetic items"
+    assert warehouse.rows("SELECT count(), sum(cityHash64(*)) FROM bronze_example.items__tenant_backup") == first_backup
+    assert warehouse.scalar("SELECT uniqExact(unique_key) FROM bronze_example.items__tenant_backup_2") == 6
+    assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
 
 
-def test_the_dump_restores_a_table_that_is_gone(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    _apply(warehouse, _plan(warehouse), tmp_path)
-    migration.finalize(warehouse)
-    warehouse.execute("DROP TABLE staging.slack__users_snapshot")
+def test_a_table_holding_both_tenant_columns_stops_the_run_before_anything_changes(warehouse: ClickHouse) -> None:
+    warehouse.execute(
+        "CREATE TABLE bronze_example.both (tenant_id Nullable(String), insight_tenant_id Nullable(String)) "
+        "ENGINE = MergeTree ORDER BY tuple()"
+    )
 
-    migration.restore(warehouse, tmp_path / "dump")
-
-    assert _fingerprint(warehouse) == before
+    with pytest.raises(InventoryError, match="both tenant_id and insight_tenant_id"):
+        discover(warehouse, history_relations())
 
 
 @dataclass(frozen=True)
-class Interrupted(ClickHouse):
-    """ClickHouse that loses one reply: the statement runs, the caller hears nothing.
-
-    It fires at the first statement starting with `at`, or at the first one sent
-    after a statement starting with `after`. Unless `once`, every statement after
-    that fails too, as if the connection were gone.
-    """
+class Failing(ClickHouse):
+    """ClickHouse that fails the `nth` statement starting with `at`; with `lost`, after running it."""
 
     at: str = ""
-    after: str = ""
-    once: bool = False
+    nth: int = 1
+    lost: bool = False
     seen: list[str] = field(default_factory=list)
 
     def execute(self, sql: str, *, fmt: str | None = None) -> str:
-        statement = sql.lstrip()
-        fired = "lost" in self.seen
-        if fired and not self.once:
-            raise ClickHouseError("connection lost")
-        if not fired:
-            if self.after and statement.startswith(self.after) and "armed" not in self.seen:
-                self.seen.append("armed")
-                return super().execute(sql, fmt=fmt)
-            hit = statement.startswith(self.at) if self.at else "armed" in self.seen
-            if hit:
-                super().execute(sql, fmt=fmt)
-                self.seen.append("lost")
-                raise ClickHouseError("connection lost")
+        if sql.lstrip().startswith(self.at):
+            self.seen.append(sql)
+            if len(self.seen) == self.nth:
+                if self.lost:
+                    super().execute(sql, fmt=fmt)
+                raise ClickHouseError("synthetic failure")
         return super().execute(sql, fmt=fmt)
 
 
-def _interrupted(ch: ClickHouse, *, at: str = "", after: str = "", once: str = "") -> Interrupted:
-    return Interrupted(url=ch.url, user=ch.user, password=ch.password, at=at, after=after, once=bool(once))
-
-
-def _comment(ch: ClickHouse, database: str, name: str) -> str:
-    rows = ch.rows(f"SELECT base64Encode(comment) FROM system.tables WHERE database = '{database}' AND name = '{name}'")
-    return migration.decode_comment(rows[0][0]) if rows and rows[0] else ""
-
-
-WITHOUT_COMMENT_IDS = [t for t in TABLES if t != "bronze_youtrack.youtrack_comments"]
-
-BOUNDARIES = {
-    "the swap's reply is lost": {"at": "EXCHANGE TABLES"},
-    "the check after the swap fails": {"after": "EXCHANGE TABLES"},
-    "the rename after the swap is lost": {"at": "RENAME TABLE"},
+FAILURES = {
+    "the third copy fails": {"at": "INSERT INTO", "nth": 3},
+    "the fourth swap fails": {"at": "EXCHANGE TABLES", "nth": 4},
+    "the reply to the fourth swap is lost": {"at": "EXCHANGE TABLES", "nth": 4, "lost": True},
+    "the last swap's reply is lost": {"at": "EXCHANGE TABLES", "nth": len(TABLES), "lost": True},
 }
 
 
-@pytest.mark.parametrize("where", BOUNDARIES.values(), ids=BOUNDARIES.keys())
-def test_an_apply_cut_off_after_the_swap_is_rolled_back_by_a_later_run(
-    warehouse: ClickHouse, tmp_path: Path, where: dict[str, str]
+@pytest.mark.parametrize("where", FAILURES.values(), ids=FAILURES.keys())
+def test_a_run_that_fails_part_way_puts_every_table_back_and_leaves_no_copy(
+    warehouse: ClickHouse, where: dict[str, object]
 ) -> None:
     before = _fingerprint(warehouse)
-    plan = _plan(warehouse)
+    failing = Failing(url=warehouse.url, user=warehouse.user, password=warehouse.password, **where)
 
-    with pytest.raises(migration.MigrationError, match="run `rollback`"):
-        _apply(_interrupted(warehouse, **where), plan, tmp_path)
-    migration.rollback(warehouse)
-    migration.finalize(warehouse)
-
-    after = _fingerprint(warehouse)
-    assert {t: after[t] for t in WITHOUT_COMMENT_IDS} == {t: before[t] for t in WITHOUT_COMMENT_IDS}
-    assert warehouse.scalar("SELECT count() FROM system.tables WHERE name LIKE '%\\_\\_tenant\\_%'") == 0
-
-
-def test_an_apply_that_loses_one_reply_puts_the_original_back_itself(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    once = _interrupted(warehouse, at="RENAME TABLE", once="yes")
-
-    with pytest.raises(migration.MigrationError, match="The original is live again"):
-        _apply(once, _plan(warehouse), tmp_path)
-
-    after = _fingerprint(warehouse)
-    assert {t: after[t] for t in WITHOUT_COMMENT_IDS} == {t: before[t] for t in WITHOUT_COMMENT_IDS}
-
-
-def test_an_apply_cut_off_after_the_swap_can_be_kept_by_finalize(warehouse: ClickHouse, tmp_path: Path) -> None:
-    with pytest.raises(migration.MigrationError):
-        _apply(_interrupted(warehouse, at="RENAME TABLE"), _plan(warehouse), tmp_path)
-
-    migration.finalize(warehouse)
-
-    first = _first_migrated(warehouse)
-    assert _column(warehouse, first, "insight_tenant_id") == [NEW] * len(_column(warehouse, first, "insight_tenant_id"))
-    assert warehouse.scalar("SELECT count() FROM system.tables WHERE name LIKE '%\\_\\_tenant\\_%'") == 0
-
-
-def _first_migrated(ch: ClickHouse) -> str:
-    """The table an interrupted apply reached first: the first one with rows, in plan order."""
-    return next(t.table.relation for t in _plan(ch).tables if t.rows)
-
-
-def test_a_rollback_cut_off_mid_swap_is_finished_by_the_next_one(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    _apply(warehouse, _plan(warehouse), tmp_path)
-
-    with pytest.raises(ClickHouseError):
-        migration.rollback(_interrupted(warehouse, at="EXCHANGE TABLES"))
-    migration.rollback(warehouse)
-
-    after = _fingerprint(warehouse)
-    assert {t: after[t] for t in WITHOUT_COMMENT_IDS} == {t: before[t] for t in WITHOUT_COMMENT_IDS}
-
-
-def test_a_restore_cut_off_mid_swap_is_finished_by_the_next_one(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    _apply(warehouse, _plan(warehouse), tmp_path)
-    migration.finalize(warehouse)
-
-    with pytest.raises(ClickHouseError):
-        migration.restore(_interrupted(warehouse, at="EXCHANGE TABLES"), tmp_path / "dump")
-    migration.restore(warehouse, tmp_path / "dump")
+    with pytest.raises(migration.MigrationError, match="every table is back as it was"):
+        migration.apply(failing, _plan(warehouse), NEW)
 
     assert _fingerprint(warehouse) == before
-    displaced = _column(warehouse, "bronze_bamboohr.whos_out__tenant_rejected", "unique_key")
-    assert displaced == [f'["{NEW}","bamboo"]'], "the table the restore displaced is kept, not dropped"
+    assert _work_tables(warehouse) == []
+    assert ("tenant_id", "Nullable(String)") in _columns(warehouse, "bronze_example.items")
+
+
+def test_an_interrupt_mid_run_puts_every_table_back(warehouse: ClickHouse) -> None:
+    before = _fingerprint(warehouse)
+
+    @dataclass(frozen=True)
+    class Interrupted(Failing):
+        def execute(self, sql: str, *, fmt: str | None = None) -> str:
+            if sql.lstrip().startswith("EXCHANGE TABLES") and len(self.seen) == 2:
+                raise KeyboardInterrupt("stopped by signal 15")
+            if sql.lstrip().startswith("EXCHANGE TABLES"):
+                self.seen.append(sql)
+            return ClickHouse.execute(self, sql, fmt=fmt)
+
+    interrupted = Interrupted(url=warehouse.url, user=warehouse.user, password=warehouse.password)
+    with pytest.raises(migration.MigrationError, match="signal 15"):
+        migration.apply(interrupted, _plan(warehouse), NEW)
+
+    assert _fingerprint(warehouse) == before
+    assert _work_tables(warehouse) == []
+
+
+def test_finalize_drops_every_backup_and_only_backups(warehouse: ClickHouse) -> None:
+    _apply(warehouse)
+    after = _fingerprint(warehouse)
+
+    dropped = migration.finalize(warehouse)
+
+    assert len(dropped) == len(TABLES)
+    assert _work_tables(warehouse) == []
+    assert _fingerprint(warehouse) == after
+
+
+def test_the_command_line_plans_applies_and_finalizes(
+    warehouse: ClickHouse, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["plan", "--exit-code"]) == 1
+    assert main(["plan"]) == 0
+    assert f"tenant: {NEW} (from INSIGHT_TENANT_ID)" in capsys.readouterr().out
+    assert main(["apply"]) == 0
+    assert main(["plan", "--exit-code"]) == 0
+    assert "tables changing: 0" in capsys.readouterr().out
+    assert main(["finalize"]) == 0
+    assert _work_tables(warehouse) == []
 
 
 @pytest.mark.parametrize(
-    ("statement", "reason"),
-    [
-        (
-            "INSERT INTO bronze_example.items VALUES ('other-main-1', 'other', 'main', '', now())",
-            "holds another tenant",
-        ),
-        (
-            f"INSERT INTO bronze_example.items VALUES ('{OLD}-elsewhere-1', '{OLD}', 'main', '', now())",
-            "start like a moving tenant",
-        ),
-        (
-            (
-                "CREATE TABLE bronze_jira.jira_issue ENGINE = ReplacingMergeTree ORDER BY unique_key AS "
-                f"SELECT '{OLD}-main-PROJ-1' AS unique_key, '{OLD}' AS tenant_id, 'main' AS source_id, '101' AS jira_id"
-            ),
-            "keyed by the issue key",
-        ),
-    ],
-    ids=["second tenant", "ambiguous key", "jira heal pending"],
+    "value", [None, "", NEW.upper(), "example-legacy"], ids=["unset", "empty", "upper", "not a uuid"]
 )
-def test_a_refused_plan_changes_nothing(warehouse: ClickHouse, tmp_path: Path, statement: str, reason: str) -> None:
-    warehouse.execute(statement)
-    before = _fingerprint(warehouse)
-
-    plan = _plan(warehouse)
-
-    assert any(reason in r for r in plan.refusals), plan.refusals
-    with pytest.raises(migration.MigrationError):
-        _apply(warehouse, plan, tmp_path)
-    assert _fingerprint(warehouse) == before
-    assert not (tmp_path / "dump").exists()
-
-
-def test_the_command_line_plans_applies_and_refuses_a_bad_tenant(warehouse: ClickHouse, tmp_path: Path) -> None:
-    assert main(["plan", "--tenant", NEW, "--old-tenant", OLD]) == 0
-    assert main(["apply", "--tenant", NEW.upper(), "--old-tenant", OLD, "--dump-dir", str(tmp_path / "x")]) == 1
-    assert main(["apply", "--tenant", NEW, "--old-tenant", OLD, "--dump-dir", str(tmp_path / "dump")]) == 0
-    assert (tmp_path / "dump" / "manifest.json").is_file()
-    assert main(["finalize"]) == 0
-
-
-def _settle_on_the_uuid(ch: ClickHouse, tmp_path: Path) -> None:
-    """An install already keyed by the UUID, which then wrote rows without a tenant."""
-    _apply(ch, _plan(ch), tmp_path / "first")
-    migration.finalize(ch)
-    ch.execute(
-        "INSERT INTO bronze_example.items VALUES "
-        "('-main-PROJ-20', NULL, 'main', 'written without a tenant', '2026-01-03 00:00:00'), "
-        "(':main:PROJ-21', '', 'main', 'an empty tenant, colon key', '2026-01-03 00:00:00')"
-    )
-    ch.execute("INSERT INTO ingestion_history.sync_events VALUES ('2026-01-03 00:00:00', '', 'main', 'sync')")
-
-
-def test_an_install_already_on_the_uuid_moves_only_its_empty_tenant_rows(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _settle_on_the_uuid(warehouse, tmp_path)
-
-    plan = _plan(warehouse, old=NEW)
-
-    moving = {t.table.relation: t.moving for t in plan.tables if t.moving}
-    assert plan.refusals == []
-    assert moving == {"bronze_example.items": 2, "ingestion_history.sync_events": 1}, moving
-
-    _apply(warehouse, plan, tmp_path)
-
-    assert _column(warehouse, "bronze_example.items", "insight_tenant_id") == [NEW] * 7
-    assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
-    assert f"{NEW}:main:PROJ-21" in _column(warehouse, "bronze_example.items", "unique_key")
-    assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW] * 3
-    assert _plan(warehouse, old=NEW).changing == [], "a second run must find nothing to move"
-    assert migration.rollback(warehouse) == ["bronze_example.items", "ingestion_history.sync_events"]
-    migration.finalize(warehouse)
-    assert _column(warehouse, "bronze_example.items", "insight_tenant_id").count(NEW) == 5
-
-
-def test_an_install_already_on_the_uuid_still_refuses_a_second_tenant(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _settle_on_the_uuid(warehouse, tmp_path)
-    warehouse.execute(f"INSERT INTO bronze_example.items VALUES ('{OLD}-main-1', '{OLD}', 'main', '', now())")
-
-    plan = _plan(warehouse, old=NEW)
-
-    assert any("holds another tenant" in r for r in plan.refusals), plan.refusals
-
-
-def test_the_command_line_takes_the_uuid_as_both_tenants(warehouse: ClickHouse, tmp_path: Path) -> None:
-    _settle_on_the_uuid(warehouse, tmp_path)
-
-    assert main(["plan", "--tenant", NEW, "--old-tenant", NEW]) == 0
-    assert main(["apply", "--tenant", NEW, "--old-tenant", NEW, "--dump-dir", str(tmp_path / "dump")]) == 0
-    assert main(["finalize"]) == 0
-    assert "" not in _column(warehouse, "ingestion_history.sync_events", "tenant_id")
-
-
-def test_the_stored_rows_name_the_old_tenant_beside_the_uuid(warehouse: ClickHouse) -> None:
-    assert stored_tenants(warehouse, discover(warehouse, history_relations())) == {OLD, NEW}
-
-
-def test_the_command_line_takes_the_tenant_from_the_env_and_the_old_one_from_the_rows(
-    warehouse: ClickHouse, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
-
-    assert main(["plan"]) == 0
-    out = capsys.readouterr().out
-    assert f"new tenant: {NEW} (from INSIGHT_TENANT_ID)" in out, out
-    assert f"old tenant: '{OLD}' (from the stored rows)" in out, out
-    assert main(["apply", "--dump-dir", str(tmp_path / "dump")]) == 0
-    assert _column(warehouse, "ingestion_history.sync_events", "tenant_id") == [NEW, NEW]
-
-
-def test_the_command_line_finds_only_empty_tenants_on_an_install_already_on_the_uuid(
-    warehouse: ClickHouse, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    _settle_on_the_uuid(warehouse, tmp_path)
-    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
-    capsys.readouterr()
-
-    assert main(["plan"]) == 0
-    out = capsys.readouterr().out
-    assert f"old tenant: '{NEW}' (from the stored rows)" in out, out
-    assert "only rows with a NULL or empty tenant move" in out, out
-
-
-def test_the_command_line_flags_override_the_env_and_the_rows(
-    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("INSIGHT_TENANT_ID", "not-a-uuid")
-
-    assert main(["plan", "--tenant", NEW, "--old-tenant", OLD]) == 0
-    out = capsys.readouterr().out
-    assert "(from --tenant)" in out and "(from --old-tenant)" in out, out
-
-
-def test_the_command_line_refuses_two_old_tenants_and_names_them(
-    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv("INSIGHT_TENANT_ID", NEW)
-    warehouse.execute("INSERT INTO bronze_example.items VALUES ('other-main-1', 'other', 'main', '', now())")
-
-    assert main(["plan"]) == 1
-    err = capsys.readouterr().err
-    assert f"several tenants ({OLD}, other)" in err, err
-
-
-@pytest.mark.parametrize("value", [None, "", NEW.upper()], ids=["unset", "empty", "not lowercase"])
-def test_the_command_line_refuses_a_missing_or_malformed_env_tenant(
+def test_the_command_line_refuses_a_missing_or_malformed_tenant(
     warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: str | None
 ) -> None:
+    before = _fingerprint(warehouse)
     if value is None:
         monkeypatch.delenv("INSIGHT_TENANT_ID", raising=False)
     else:
         monkeypatch.setenv("INSIGHT_TENANT_ID", value)
 
-    assert main(["plan"]) == 1
-    err = capsys.readouterr().err
-    assert "INSIGHT_TENANT_ID" in err or "lowercase UUID" in err, err
-
-
-TAB_AND_NEWLINE = "synthetic\titems\nsecond line"
-
-
-def _set_items_comment(ch: ClickHouse, comment: str) -> None:
-    ch.execute(ddl.set_comment(Relation("bronze_example", "items"), "", comment))
-
-
-def _finalize(ch: ClickHouse, tmp_path: Path) -> None:
-    migration.finalize(ch)
-
-
-def _finalize_and_restore(ch: ClickHouse, tmp_path: Path) -> None:
-    migration.finalize(ch)
-    migration.restore(ch, tmp_path / "dump")
-
-
-@pytest.mark.parametrize("settle", [_finalize, _finalize_and_restore], ids=["finalize", "restore"])
-def test_a_comment_with_a_tab_and_a_newline_comes_back_whole(
-    warehouse: ClickHouse, tmp_path: Path, settle: Callable[[ClickHouse, Path], None]
-) -> None:
-    _set_items_comment(warehouse, TAB_AND_NEWLINE)
-    _apply(warehouse, _plan(warehouse), tmp_path)
-
-    settle(warehouse, tmp_path)
-
-    assert _comment(warehouse, "bronze_example", "items") == TAB_AND_NEWLINE
-
-
-@dataclass(frozen=True)
-class WithTableUuids(ClickHouse):
-    """ClickHouse whose SHOW CREATE names each table's UUID, as a server-wide profile setting would."""
-
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
-        params = {"show_table_uuid_in_table_create_query_if_not_nil": "1"}
-        if fmt:
-            params["default_format"] = fmt
-        with self._request(sql.encode("utf-8"), params=params) as response:
-            return str(response.read().decode("utf-8"))
-
-
-def test_a_dump_whose_ddl_names_the_table_uuid_still_restores(warehouse: ClickHouse, tmp_path: Path) -> None:
-    before = _fingerprint(warehouse)
-    with_uuids = WithTableUuids(url=warehouse.url, user=warehouse.user, password=warehouse.password)
-    _apply(with_uuids, _plan(warehouse), tmp_path)
-    assert " UUID '" in (tmp_path / "dump" / "bronze_example.items.sql").read_text()
-
-    migration.restore(warehouse, tmp_path / "dump")
-
+    assert main(["apply"]) == 2
+    assert "INSIGHT_TENANT_ID" in capsys.readouterr().err
     assert _fingerprint(warehouse) == before
 
 
-def _truncated(data: bytes) -> bytes:
-    return data[: len(data) // 2]
-
-
-def _exception_appended(data: bytes) -> bytes:
-    """What a reply that failed after its 200 leaves: the rows so far, then the error text."""
-    return gzip.compress(gzip.decompress(data) + b"Code: 241. DB::Exception: synthetic failure mid-stream")
-
-
-@dataclass(frozen=True)
-class CorruptingDump(ClickHouse):
-    corrupt: Callable[[bytes], bytes] = _truncated
-
-    def dump(self, sql: str, path: Path) -> None:
-        super().dump(sql, path)
-        path.write_bytes(self.corrupt(path.read_bytes()))
-
-
-@pytest.mark.parametrize("corrupt", [_truncated, _exception_appended], ids=["truncated", "exception appended"])
-def test_a_dump_that_does_not_load_back_stops_the_apply_before_anything_changes(
-    warehouse: ClickHouse, tmp_path: Path, corrupt: Callable[[bytes], bytes]
-) -> None:
-    before = _fingerprint(warehouse)
-    corrupting = CorruptingDump(url=warehouse.url, user=warehouse.user, password=warehouse.password, corrupt=corrupt)
-
-    with pytest.raises(migration.MigrationError, match="the dump does not load back"):
-        _apply(corrupting, _plan(warehouse), tmp_path)
-
-    assert _fingerprint(warehouse) == before
-    assert not (tmp_path / "dump" / "manifest.json").exists()
-    assert warehouse.scalar("SELECT count() FROM system.tables WHERE name LIKE '%\\_\\_tenant\\_%'") == 0
+def test_the_command_line_takes_no_tenant_flag(warehouse: ClickHouse) -> None:
+    with pytest.raises(SystemExit):
+        main(["apply", "--tenant", NEW])
