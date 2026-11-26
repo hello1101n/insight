@@ -183,6 +183,16 @@ jobs:
             --error \
             --baseline-commit "$BASE_SHA"
 
+      - name: Install Helm
+        if: ${{ !cancelled() }}
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "4.3.2"
+
+      - name: Render Helm charts (blocking)
+        if: ${{ !cancelled() }}
+        run: .github/workflows/scripts/render-scan-charts.sh "$RUNNER_TEMP/helm-rendered"
+
 
   report:
     name: report
@@ -311,42 +321,8 @@ jobs:
       # After the repository scan, so the rendered output is not swept into it. Values are
       # throwaway and only satisfy the `required` guards.
       - name: Render Helm charts
-        run: |
-          set -uo pipefail
-          mkdir -p .helm-rendered
-          failed=()
-          for chart in src/backend/services/*/helm src/frontend/helm; do
-            [ -f "$chart/Chart.yaml" ] || continue
-            name="${chart%/helm}"
-            name="${name##*/}"
-            args=(
-              --set existingSecret=dummy
-              --set signingKeysSecret=dummy
-              --set tlsDiscovery.issuerRef.name=dummy
-              --set issuer=http://idp.invalid
-              --set hostname=http://kc.invalid
-              --set image.repository=ghcr.io/example/image
-              --set image.tag=scan
-              --set oidc.scopes=openid
-            )
-            if [ "$name" = keycloak ]; then
-              args+=(
-                --set admin.existingSecret=dummy
-                --set database.host=db.example.com
-                --set database.username=example
-                --set database.passwordSecret.name=dummy
-                --set database.passwordSecret.key=password
-              )
-            fi
-            if ! helm template scan "$chart" "${args[@]}" > ".helm-rendered/${name}.yaml"; then
-              echo "::error::${chart} did not render, so the scan below cannot cover it"
-              rm -f ".helm-rendered/${name}.yaml"
-              failed+=("$chart")
-            fi
-          done
-          echo "Rendered:"
-          find .helm-rendered -name '*.yaml' -exec basename {} ';' | sed 's/^/  /'
-          [ "${#failed[@]}" -eq 0 ]
+        id: render
+        run: .github/workflows/scripts/render-scan-charts.sh .helm-rendered
 
       - name: Trivy scan — rendered charts
         if: ${{ !cancelled() }}
@@ -411,7 +387,7 @@ jobs:
 
       - name: Upload rendered-chart SARIF
         # Own category: `.helm-rendered/*` paths do not exist in the tree.
-        if: ${{ always() && hashFiles('trivy-helm.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ always() && steps.render.outcome == 'success' && hashFiles('trivy-helm.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-helm.sarif
