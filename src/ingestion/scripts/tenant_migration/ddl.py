@@ -51,6 +51,10 @@ def add_tenant(rel: Relation, suffix: str, after: str | None) -> str:
     return f"ALTER TABLE {rel.sql(suffix)} ADD COLUMN {quote(TENANT_COLUMN)} Nullable(String){place}"
 
 
+def drop_column(rel: Relation, suffix: str, column: str) -> str:
+    return f"ALTER TABLE {rel.sql(suffix)} DROP COLUMN {quote(column)}"
+
+
 def insert(rel: Relation, suffix: str, columns: list[str], expressions: list[str]) -> str:
     # A table partitioned finer than the default limit of 100 partitions per block refuses the copy otherwise.
     names = ", ".join(quote(c) for c in columns)

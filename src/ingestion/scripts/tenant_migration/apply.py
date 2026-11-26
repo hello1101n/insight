@@ -84,13 +84,15 @@ def _create_copy(ch: ClickHouse, table: Table) -> None:
         ch.execute(ddl.create_like(rel, COPY))
     if table.adds:
         ch.execute(ddl.add_tenant(rel, COPY, KEY_COLUMN if table.key else None))
+    for column in table.drops:
+        ch.execute(ddl.drop_column(rel, COPY, column))
 
 
 def _rows(table: Table) -> tuple[list[str], list[str]]:
     """The copy's columns, and the expression over the original row (`src`) that fills each."""
     columns, expressions = [], []
     for name, _ in table.columns:
-        if name in table.computed:
+        if name in table.computed or name in table.drops:
             continue
         columns.append(table.renamed(name))
         if name == table.tenant:
