@@ -6,17 +6,19 @@
 
 The tenant is INSIGHT_TENANT_ID (authenticator.oidc.defaultTenantId), a
 lowercase UUID; nothing else is read. Every MergeTree table in `bronze_*`,
-`config` and `ingestion_history`, and every history relation, that still names
-its tenant `tenant_id` (the ledger excepted) or holds a tenant other than the
-UUID, is copied with each row's tenant and key prefix moved to the UUID,
-checked, and EXCHANGEd in; the original stays as `<table>__tenant_backup`.
+`config`, `ingestion_history`, `staging`, `silver` and `insight` (gold), and
+every history relation, that still names its tenant `tenant_id` or its source
+`source_id` (the ledger keeps both), holds a tenant other than the UUID, or (in
+silver, or a history relation) has no tenant at all, is copied into
+`<table>__tenant_copy` with each row's tenant and key prefix moved to the UUID,
+checked, and EXCHANGEd in; the original is then renamed `<table>__tenant_backup`.
 A table already in that shape is skipped.
 
 `plan` reads only; with --exit-code it exits 1 while any table is pending.
-`apply` migrates every pending table or none: on any failure it swaps back
-each table it already exchanged and exits 2 (3 when that undo failed too). Run with every writer stopped
-(the chart's pre-upgrade hook does). `finalize` drops the backups, by hand,
-once the install is proven.
+`apply` migrates every pending table or none: on any failure it puts back each
+original it already swapped out and exits 2 (3 when that undo failed too). Run
+with every writer stopped (the chart's pre-upgrade hook does). `finalize` drops
+the backups, orphans included, by hand, once the install is proven.
 
 Required env: CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, INSIGHT_TENANT_ID.
 """
@@ -70,7 +72,10 @@ def run(args: argparse.Namespace, ch: ClickHouse) -> int:
     print(f"tenant: {tenant} (from {TENANT_ENV})")
     plans = _plan(ch, tenant)
     print(render(plans), flush=True)
-    pending = any(p.pending for p in plans)
+    leftovers = migration.leftover_copies(ch)
+    for rel in leftovers:
+        print(f"left by a killed run: {rel}__tenant_copy (apply settles it)")
+    pending = any(p.pending for p in plans) or bool(leftovers)
     if args.command == "plan":
         return PENDING if args.exit_code and pending else 0
     signal.signal(signal.SIGTERM, _interrupted)

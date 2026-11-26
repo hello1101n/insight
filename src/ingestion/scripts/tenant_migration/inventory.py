@@ -1,9 +1,16 @@
-"""Which tables hold a tenant the migration moves, and in which columns.
+"""Which tables the migration brings to the new shape, and in which columns.
 
-Bronze, operator config and the sync ledger are found by database; the dbt
-relations a rebuild cannot reproduce come from `history-tables.txt`, packaged
-beside this module. A table whose name carries `__tenant_` is the migration's
-own and never in scope.
+In scope is every MergeTree table in `bronze_*`, `config`, the sync ledger,
+`staging`, `silver` and gold (`insight`), plus every history relation listed in
+`history-tables.txt`, packaged beside this module. The migration's own tables
+(a name carrying `__tenant_`) and materialized views' inner tables (a name
+starting with `.`) never are; nor is any other database (`dbt_test__audit`,
+operator databases such as `presentation` or `backup_*`).
+
+A table changes when it names its tenant `tenant_id`, names its stamped source
+`source_id`, or holds a tenant other than the install's. A silver table or a
+history relation without any tenant column gains one. The ledger keeps both of
+its old names: it is a service table, not a warehouse layer.
 """
 
 from __future__ import annotations
@@ -32,12 +39,22 @@ def param_text(value: str) -> str:
 
 WORK_MARKER = "__tenant_"
 BACKUP = "__tenant_backup"
+COPY = "__tenant_copy"
 
 TENANT_COLUMN = "insight_tenant_id"
 OLD_TENANT_COLUMN = "tenant_id"
+SOURCE_COLUMN = "insight_source_id"
+OLD_SOURCE_COLUMN = "source_id"
+#: dbt's layers: staging, silver and gold. Gold is `insight` (the dbt var `gold_database`).
+DBT_DATABASES = ("staging", "silver", "insight")
+#: The layer whose every table carries a tenant: one built before it did gains it.
+TENANT_EVERYWHERE = "silver"
+#: Values that cannot be written by INSERT: the copy leaves them to the table.
+COMPUTED = ("MATERIALIZED", "ALIAS", "EPHEMERAL")
 #: The sync ledger keeps `tenant_id`: it is a service table, not a warehouse layer.
 LEDGER_DATABASE = "ingestion_history"
-SOURCE_COLUMNS = ("source_id", "insight_source_id")
+#: The stamped source column, old name first; a vendor column of another name is never touched.
+SOURCE_COLUMNS = (OLD_SOURCE_COLUMN, SOURCE_COLUMN)
 KEY_COLUMN = "unique_key"
 STRING_TYPES = ("String", "Nullable(String)", "LowCardinality(String)", "LowCardinality(Nullable(String))")
 #: Old YouTrack comment rows know their id only from the key; the copy writes it down.
@@ -76,6 +93,10 @@ class Table:
     tenant: str | None
     source: str | None
     key: str | None
+    #: No tenant column, and the table must have one (a silver table or a history relation).
+    needs_tenant: bool = False
+    #: Columns the table computes itself (MATERIALIZED, ALIAS): never inserted.
+    computed: frozenset[str] = frozenset()
 
     @property
     def relation(self) -> str:
@@ -91,13 +112,40 @@ class Table:
         return OLD_TENANT_COLUMN if self.rel.database == LEDGER_DATABASE else TENANT_COLUMN
 
     @property
-    def renames(self) -> bool:
+    def ledger(self) -> bool:
+        return self.rel.database == LEDGER_DATABASE
+
+    @property
+    def renames_tenant(self) -> bool:
         return self.tenant is not None and self.tenant != self.target
 
     @property
+    def source_target(self) -> str | None:
+        """The source column the migrated table has: `insight_source_id`, but the ledger keeps its name."""
+        if self.source is None or self.ledger:
+            return self.source
+        return SOURCE_COLUMN
+
+    @property
+    def renames_source(self) -> bool:
+        return self.source is not None and self.source != self.source_target
+
+    @property
+    def renames(self) -> bool:
+        return self.renames_tenant or self.renames_source
+
+    @property
     def adds(self) -> bool:
-        """A history relation built before it carried a tenant: every row is the install's."""
-        return self.tenant is None
+        """A table built before it carried a tenant: every row is the install's."""
+        return self.tenant is None and self.needs_tenant
+
+    def renamed(self, column: str) -> str:
+        """`column` as the migrated table names it."""
+        if column == self.tenant:
+            return self.target
+        if column == self.source and self.source_target:
+            return self.source_target
+        return column
 
     @property
     def replacing(self) -> bool:
@@ -119,7 +167,15 @@ def history_relations() -> list[tuple[str, str]]:
     return [(database, name) for database, name in relations]
 
 
-def classify(database: str, name: str, engine: str, columns: list[tuple[str, str]], *, history: bool) -> Table | None:
+def classify(
+    database: str,
+    name: str,
+    engine: str,
+    columns: list[tuple[str, str]],
+    *,
+    history: bool,
+    computed: frozenset[str] = frozenset(),
+) -> Table | None:
     """The table as the migration reads it; None when it has nothing to migrate."""
     rel = Relation(database, name)
     if engine.startswith("Replicated"):
@@ -133,31 +189,37 @@ def classify(database: str, name: str, engine: str, columns: list[tuple[str, str
     if len(tenants) == 2:
         raise InventoryError(f"{rel}: holds both {OLD_TENANT_COLUMN} and {TENANT_COLUMN}")
     tenant = tenants[0] if tenants else None
-    if tenant is None and not history:
-        return None
     if tenant is not None and types[tenant] not in STRING_TYPES:
         raise InventoryError(f"{rel}: {tenant} is {types[tenant]}, not a string")
+    # The old name while it stands alone; a table holding both keeps both as they are.
     source = next((c for c in SOURCE_COLUMNS if c in types), None)
+    if source == OLD_SOURCE_COLUMN and SOURCE_COLUMN in types:
+        source = SOURCE_COLUMN
     key = KEY_COLUMN if KEY_COLUMN in types else None
-    return Table(rel, engine, tuple(columns), tenant, source, key)
+    needs_tenant = history or database == TENANT_EVERYWHERE
+    table = Table(rel, engine, tuple(columns), tenant, source, key, needs_tenant, computed)
+    if tenant is None and not table.adds and not table.renames_source:
+        return None
+    return table
 
 
 SCOPE_SQL = (
-    "(t.database LIKE 'bronze\\\\_%' OR t.database IN ('config', {ledger:String}) "
+    "(t.database LIKE 'bronze\\\\_%' OR has({databases:Array(String)}, t.database) "
     "OR has({history:Array(Tuple(String, String))}, (t.database, t.name))) AND t.engine LIKE '%MergeTree' "
-    "AND position(t.name, {marker:String}) = 0"
+    "AND position(t.name, {marker:String}) = 0 AND NOT startsWith(t.name, '.')"
 )
 
 
 def _scope_params(history: list[tuple[str, str]]) -> dict[str, str]:
     pairs = ", ".join(f"({param_text(database)}, {param_text(name)})" for database, name in history)
-    return {"ledger": LEDGER_DATABASE, "history": f"[{pairs}]", "marker": WORK_MARKER}
+    databases = ", ".join(param_text(d) for d in ("config", LEDGER_DATABASE, *DBT_DATABASES))
+    return {"databases": f"[{databases}]", "history": f"[{pairs}]", "marker": WORK_MARKER}
 
 
 def discover(ch: ClickHouse, history: list[tuple[str, str]]) -> list[Table]:
     rows = ch.rows(
         f"""
-        SELECT t.database, t.name, t.engine, c.name, c.type
+        SELECT t.database, t.name, t.engine, c.name, c.type, c.default_kind
         FROM system.tables AS t
         INNER JOIN system.columns AS c ON c.database = t.database AND c.table = t.name
         WHERE {SCOPE_SQL}
@@ -166,14 +228,24 @@ def discover(ch: ClickHouse, history: list[tuple[str, str]]) -> list[Table]:
         params=_scope_params(history),
     )
     found: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
-    for database, name, engine, column, column_type in rows:
+    computed: dict[tuple[str, str, str], set[str]] = {}
+    for database, name, engine, column, column_type, default_kind in rows:
         found.setdefault((database, name, engine), []).append((column, column_type))
+        if default_kind in COMPUTED:
+            computed.setdefault((database, name, engine), set()).add(column)
     listed = set(history)
     tables = []
     for (database, name, engine), columns in found.items():
         if not (IDENTIFIER.match(database) and IDENTIFIER.match(name)):
             raise InventoryError(f"{database}.{name}: not a plain identifier")
-        table = classify(database, name, engine, columns, history=(database, name) in listed)
+        table = classify(
+            database,
+            name,
+            engine,
+            columns,
+            history=(database, name) in listed,
+            computed=frozenset(computed.get((database, name, engine), ())),
+        )
         if table is not None:
             tables.append(table)
     return tables
