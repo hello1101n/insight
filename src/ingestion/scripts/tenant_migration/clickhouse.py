@@ -68,13 +68,13 @@ class ClickHouse:
         with self._request(sql.encode("utf-8"), params=query) as response:
             return response.read().decode("utf-8")
 
-    def rows(self, sql: str) -> list[list[str]]:
-        text = self.execute(sql, fmt="TabSeparatedRaw")
+    def rows(self, sql: str, *, params: dict[str, str] | None = None) -> list[list[str]]:
+        text = self.execute(sql, fmt="TabSeparatedRaw", params=params)
         return [line.split("\t") for line in text.splitlines() if line]
 
-    def scalar(self, sql: str) -> int:
+    def scalar(self, sql: str, *, params: dict[str, str] | None = None) -> int:
         """One non-negative integer, or an error: a guard must never read garbage as zero."""
-        text = self.execute(sql).strip()
+        text = self.execute(sql, params=params).strip()
         if not text.isdigit():
             raise ClickHouseError(f"expected a number from {sql!r}, got {text!r}")
         return int(text)
