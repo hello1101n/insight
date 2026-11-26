@@ -273,7 +273,9 @@ Both are written at session end regardless of the run's verdict — a failing
 run's ledger is the more useful of the two, and making the gate's input depend
 on the suite's result is backwards.
 
-- `.artifacts/stand_observed_endpoints.json` — the coverage ledger. Recording
+- `.artifacts/stand_observed_endpoints.json` — the coverage ledger. Each run
+  merges its calls into the file already there; delete it before a run the
+  gate should judge alone. Recording
   happens in `ApiClient.request`, not at construction, so this is the **API
   suite's** ledger: a browser journey holds a `PersonaSession` — which does
   carry a client — but never issues a request through it, so a ui-only run

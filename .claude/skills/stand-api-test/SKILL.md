@@ -280,9 +280,13 @@ uv run --project tests --frozen python tests/generate_schemas.py --check
 A direct pytest run against an instance needs the variables `insight-stand`
 lists under Commands.
 
-Then reconcile the gate, which is what "closing a coverage gap" means:
+Then reconcile the gate, which is what "closing a coverage gap" means. Judge
+it on a full API run from an empty ledger: a filtered run leaves unrelated
+gaps, and the suite merges its calls into the ledger already on disk.
 
 ```bash
+rm -f .artifacts/stand_observed_endpoints.json
+./dev-compose.sh test-stand test --instance=worktree --ignore=tests/stand/ui
 python3 tests/lib/insight_stand/coverage.py \
   --observed .artifacts/stand_observed_endpoints.json \
   --catalogue .artifacts/stand_operations.json \
