@@ -147,7 +147,12 @@ class TestPropertySelection:
 
     def test_property_without_a_decision_is_not_requested(self):
         hs = make_client([properties_page("dealname", "new_field")])
+        hs.selection = selecting()
         assert hs.property_names("deals") == ("dealname",)
+
+    def test_instance_without_decisions_requests_every_non_money_property(self):
+        hs = make_client([descriptors_page(described("dealname"), described("my_custom"), described("amount"))])
+        assert hs.property_names("deals") == ("dealname", "my_custom")
 
     def test_ignored_property_is_not_requested(self):
         hs = make_client([properties_page("dealname", "notes_field")])
@@ -183,9 +188,10 @@ class TestPropertySelection:
         assert {"amount", "annualrevenue", "my_invoice_total"} <= money
         assert "dealname" not in money
 
-    def test_object_without_curated_properties_requests_nothing(self):
-        hs = make_client([properties_page("anything")])
-        assert hs.property_names("unknown_object") == ()
+    def test_property_a_dbt_model_reads_is_requested_without_a_decision(self):
+        hs = make_client([properties_page("subject", "hs_merged_object_ids", "other")])
+        hs.selection = selecting(object_type="tickets")
+        assert hs.property_names("tickets") == ("subject", "hs_merged_object_ids")
 
 
 class TestGenerateSchema:

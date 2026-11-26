@@ -19,6 +19,9 @@ The descriptor of the connector lists the permitted fields under
 The source then stays as it is, and the reconcile run reports the instance as
 failed.
 
+A Helm installation without this flow sets `ingestion.reconcile.connectorSettings`
+in the chart values instead; the chart renders the same ConfigMaps.
+
 Delete a ConfigMap with `kubectl delete configmap`. A deleted file does not
 delete its ConfigMap.
 

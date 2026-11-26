@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 from airbyte_cdk.models import FailureType
 from airbyte_cdk.utils import AirbyteTracedException
-from source_hubspot.constants import ALLOWED_PROPERTIES_BY_OBJECT
+from source_hubspot.constants import ALLOWED_PROPERTIES_BY_OBJECT, PROPERTY_DEFINITION_OBJECT_TYPES
 from source_hubspot.models import PropertyDescriptor
 from source_hubspot.money import MONEY_PROPERTY_NAMES
 from source_hubspot.selection import (
     ObjectDecisions,
     PropertySelection,
     Selection,
+    curated_property_names,
     parse_property_selection,
     selection_json,
     with_unreviewed_ignored,
@@ -21,10 +24,11 @@ from source_hubspot.selection import (
 
 DECISIONS = PropertySelection(
     objects={
+        "tickets": ObjectDecisions(),
         "deals": ObjectDecisions(
             collect=frozenset({"deal_type", "plan_total", "amount"}),
             ignore=frozenset({"internal_notes", "budget_note"}),
-        )
+        ),
     }
 )
 
@@ -123,3 +127,24 @@ def test_baseline_ignores_every_unreviewed_property_and_keeps_decisions():
 
 def test_written_value_parses_back_to_the_same_selection():
     assert parse_property_selection(selection_json(DECISIONS)) == DECISIONS
+
+
+def test_instance_without_decisions_collects_every_non_money_property():
+    no_decisions = PropertySelection()
+    assert no_decisions.status("deals", PropertyDescriptor(name="brand_new_field")) is Selection.COLLECTED
+    assert no_decisions.status("deals", PropertyDescriptor(name="hs_arr")) is Selection.FORBIDDEN
+    assert no_decisions.status("deals", PropertyDescriptor(name="x", showCurrencySymbol=True)) is Selection.FORBIDDEN
+
+
+def test_baseline_of_an_instance_without_decisions_ignores_every_uncurated_property():
+    defined = {"deals": (PropertyDescriptor(name="dealname"), PropertyDescriptor(name="new_field"))}
+    baseline = with_unreviewed_ignored(PropertySelection(), defined)
+    assert baseline.decisions("deals").ignore == frozenset({"new_field"})
+
+
+def test_every_property_a_dbt_model_reads_is_curated():
+    dbt_dir = Path(__file__).resolve().parents[1] / "dbt"
+    read = {m for sql in dbt_dir.glob("*.sql") for m in re.findall(r"properties\['([a-z0-9_]+)'\]", sql.read_text())}
+    curated = set().union(*(curated_property_names(o) for o in PROPERTY_DEFINITION_OBJECT_TYPES))
+    assert read, "the scan should find the properties the models read"
+    assert read <= curated, f"not requested: {sorted(read - curated)}"

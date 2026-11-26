@@ -40,7 +40,7 @@ def _literal_block(dumper: yaml.SafeDumper, value: _Literal) -> yaml.ScalarNode:
 
 def existing_selection(path: Path | None) -> PropertySelection:
     if path is None:
-        return PropertySelection()
+        return PropertySelection(objects={})
     document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return parse_property_selection((document.get("data") or {}).get(FIELD))
 

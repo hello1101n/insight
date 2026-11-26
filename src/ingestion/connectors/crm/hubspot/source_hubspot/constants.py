@@ -278,6 +278,11 @@ MISSING_CURSOR_TIMESTAMP = "1970-01-01T00:00:00Z"
 # Stream-name suffix used by the source to derive archived siblings.
 ARCHIVED_STREAM_SUFFIX = _ARCHIVED_STREAM_SUFFIX
 
+# Properties the dbt models read from ``raw_data`` that have no bronze column.
+# The connector requests them for every instance, like the column set below.
+# INVARIANT: tests/test_selection.py fails when a dbt model reads a property outside both sets.
+MODEL_PROPERTIES_BY_OBJECT: Mapping[str, frozenset[str]] = {"tickets": frozenset({"hs_merged_object_ids"})}
+
 # Bronze column scope: these properties get a dedicated
 # ``properties_{name}`` column, and they alone define the advertised schema —
 # it is identical for every portal, and a property the portal doesn't define

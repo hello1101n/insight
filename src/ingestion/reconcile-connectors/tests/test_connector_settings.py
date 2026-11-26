@@ -16,7 +16,7 @@ from reconcile_inputs import sync_user
 
 ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_DIR = ROOT.parent / "connectors" / "crm" / "hubspot"
-TENANT = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
+TENANT = "example-tenant"
 SOURCE_NAME = f"hubspot-main-{TENANT}"
 SECRET_HASH = "d" * 64
 DESTINATION = "dest-1"
