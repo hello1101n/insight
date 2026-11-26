@@ -43,7 +43,7 @@ attributed AS (
     FROM (
         SELECT
             coalesce(insight_tenant_id, '') AS tenant_key,
-            coalesce(source_id, '')         AS source_key,
+            coalesce(insight_source_id, '')         AS source_key,
             email,
             day,
             unique_key,
@@ -61,7 +61,7 @@ attributed AS (
 
 SELECT
     e.tenant_key    AS insight_tenant_id,
-    e.source_key    AS source_id,
+    e.source_key    AS insight_source_id,
     e.email         AS email,
     e.day           AS day,
     e.charged_cents AS unattributed_cents,

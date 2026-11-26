@@ -367,7 +367,7 @@ class Scenario:
         if self.source == SOURCE_ID:
             return records
         return [
-            {**r, "source_id": self.source, "unique_key": r["unique_key"].replace(SOURCE_ID, self.source, 1)}
+            {**r, "insight_source_id": self.source, "unique_key": r["unique_key"].replace(SOURCE_ID, self.source, 1)}
             for r in records
         ]
 

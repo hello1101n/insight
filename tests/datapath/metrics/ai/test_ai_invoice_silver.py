@@ -72,7 +72,7 @@ def _base(source_id: str, read_at: str) -> dict:
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
         "insight_tenant_id": None,
-        "source_id": source_id,
+        "insight_source_id": source_id,
         "unique_key": None,
         "collected_at": read_at,
         "data_source": "insight_claude_team",
@@ -290,7 +290,9 @@ def _seed_and_build(
 
 
 def _read_class(cfg: InstanceConfig, source_id: str, order_by: str = "unique_key") -> list[dict]:
-    rows = clickhouse.query(cfg, f"{_SELECT}WHERE source_id = '{source_id}' ORDER BY {order_by}")
+    rows = clickhouse.query(
+        cfg, f"{_SELECT}WHERE insight_source_id = '{source_id}' ORDER BY {order_by}"
+    )
     return [dict(zip(COLUMNS, row, strict=True)) for row in rows]
 
 

@@ -29,7 +29,7 @@ WITH reference AS (
 
     SELECT
         coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
-        coalesce(source_id, '')                         AS source_id,
+        coalesce(insight_source_id, '')                         AS insight_source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
         max(toInt64OrNull(toString(total_users)))       AS read_total_users
@@ -38,7 +38,7 @@ WITH reference AS (
     FROM {{ source('bronze_claude_team', 'claude_team_code_metrics_org') }} FINAL
     WHERE metric_date IS NOT NULL
       AND total_users IS NOT NULL
-    GROUP BY insight_tenant_id, source_id, day, read_id
+    GROUP BY insight_tenant_id, insight_source_id, day, read_id
 
 ),
 
@@ -49,10 +49,10 @@ first_reference AS (
     -- upgrade the per-user rows can predate the envelope that judges them.
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         min(read_id)                                    AS since_read
     FROM reference
-    GROUP BY insight_tenant_id, source_id
+    GROUP BY insight_tenant_id, insight_source_id
 
 ),
 
@@ -60,7 +60,7 @@ user_reads AS (
 
     SELECT
         coalesce(insight_tenant_id, '')                         AS insight_tenant_id,
-        coalesce(source_id, '')                         AS source_id,
+        coalesce(insight_source_id, '')                         AS insight_source_id,
         toDate(metric_date)                             AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
         -- Only people the serving layer could attribute, matching the gate.
@@ -69,7 +69,7 @@ user_reads AS (
         max(_airbyte_extracted_at)                      AS last_seen
     FROM {{ source('bronze_claude_team', 'claude_team_code_metrics') }}
     WHERE metric_date IS NOT NULL
-    GROUP BY insight_tenant_id, source_id, day, read_id
+    GROUP BY insight_tenant_id, insight_source_id, day, read_id
 
 ),
 
@@ -77,13 +77,13 @@ newest_user_read AS (
 
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         day,
         argMax(read_id, last_seen)                      AS read_id,
         argMax(people, last_seen)                       AS people,
         toUInt8(1)                                      AS had_rows
     FROM user_reads
-    GROUP BY insight_tenant_id, source_id, day
+    GROUP BY insight_tenant_id, insight_source_id, day
 
 ),
 
@@ -91,19 +91,19 @@ newest_reference_read AS (
 
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         day,
         max(read_id)                                    AS read_id
     FROM reference
-    GROUP BY insight_tenant_id, source_id, day
+    GROUP BY insight_tenant_id, insight_source_id, day
 
 ),
 
 candidates AS (
 
-    SELECT insight_tenant_id, source_id, day FROM reference
+    SELECT insight_tenant_id, insight_source_id, day FROM reference
     UNION DISTINCT
-    SELECT insight_tenant_id, source_id, day FROM user_reads
+    SELECT insight_tenant_id, insight_source_id, day FROM user_reads
 
 ),
 
@@ -111,7 +111,7 @@ judged AS (
 
     SELECT
         c.insight_tenant_id                             AS insight_tenant_id,
-        c.source_id                                     AS source_id,
+        c.insight_source_id                                     AS insight_source_id,
         c.day                                           AS day,
         -- The read that decides the day: the newest one that stored rows, or —
         -- when none did — the newest envelope, so a day that stored nothing is
@@ -122,18 +122,18 @@ judged AS (
     FROM candidates AS c
     LEFT JOIN newest_user_read AS u
            ON u.insight_tenant_id = c.insight_tenant_id
-          AND u.source_id = c.source_id
+          AND u.insight_source_id = c.insight_source_id
           AND u.day = c.day
     LEFT JOIN newest_reference_read AS nr
            ON nr.insight_tenant_id = c.insight_tenant_id
-          AND nr.source_id = c.source_id
+          AND nr.insight_source_id = c.insight_source_id
           AND nr.day = c.day
 
 )
 
 SELECT
     j.insight_tenant_id                                 AS insight_tenant_id,
-    j.source_id                                         AS source_id,
+    j.insight_source_id                                         AS insight_source_id,
     j.day                                               AS day,
     j.read_id                                           AS read_id,
     j.people                                            AS people_the_read_returned,
@@ -144,10 +144,10 @@ SELECT
 FROM judged AS j
 INNER JOIN first_reference AS f
         ON f.insight_tenant_id = j.insight_tenant_id
-       AND f.source_id = j.source_id
+       AND f.insight_source_id = j.insight_source_id
 LEFT JOIN reference AS r
        ON r.insight_tenant_id = j.insight_tenant_id
-      AND r.source_id = j.source_id
+      AND r.insight_source_id = j.insight_source_id
       AND r.day = j.day
       AND r.read_id = j.read_id
 -- Only reads that should have carried a reference: anything before this

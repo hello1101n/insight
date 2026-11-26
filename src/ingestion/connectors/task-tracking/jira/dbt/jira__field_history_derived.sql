@@ -76,14 +76,14 @@ WITH kinds AS (
 -- One row per issue: identity, creation time, reporter. Same two-pass dedup as
 -- the snapshot model — the aggregation carries only a raw id, never the JSON.
 -- Read-time dedup of the ReplacingMergeTree by the issue's stable key within a
--- tenant's source, (insight_tenant_id, source_id, jira_id): unmerged parts hold several
+-- tenant's source, (insight_tenant_id, insight_source_id, jira_id): unmerged parts hold several
 -- rows per issue,
 -- and `unique_key` exists for the merge alone.
 {%- set issue_winner_ids %}
         SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
         FROM {{ source('bronze_jira', 'jira_issue') }}
-        WHERE {{ jira_journal_in_batch(bronze_tenant(), "CAST(source_id AS String)", "CAST(jira_id AS String)") }}
-        GROUP BY insight_tenant_id, source_id, jira_id
+        WHERE {{ jira_journal_in_batch(bronze_tenant(), "CAST(insight_source_id AS String)", "CAST(jira_id AS String)") }}
+        GROUP BY insight_tenant_id, insight_source_id, jira_id
 {%- endset %}
 
 -- The scope predicate is repeated on every read of the issue table rather than
@@ -92,7 +92,7 @@ WITH kinds AS (
 issues AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
-        CAST(i.source_id AS String)                       AS insight_source_id,
+        CAST(i.insight_source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         COALESCE(toString(i.id_readable), '')             AS id_readable,
         COALESCE(parseDateTime64BestEffortOrNull(i.created, 3),
@@ -100,7 +100,7 @@ issues AS (
         i.reporter_id                                     AS reporter_id,
         toDateTime64(i._airbyte_extracted_at, 3)          AS observed_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.insight_source_id AS String)", "CAST(i.jira_id AS String)") }}
       AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
       )
 ),
@@ -111,7 +111,7 @@ issues AS (
 issue_json AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
-        CAST(i.source_id AS String)                       AS insight_source_id,
+        CAST(i.insight_source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         COALESCE(i.custom_fields_json, '{}')              AS custom_fields_json,
         toDateTime64(i._airbyte_extracted_at, 3)          AS observed_at,
@@ -119,7 +119,7 @@ issue_json AS (
             JSONExtractString(COALESCE(i.custom_fields_json, '{}'), 'resolutiondate'), 3)
                                                           AS resolved_at
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
-    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.source_id AS String)", "CAST(i.jira_id AS String)") }}
+    WHERE {{ jira_journal_in_batch(bronze_tenant('i.insight_tenant_id'), "CAST(i.insight_source_id AS String)", "CAST(i.jira_id AS String)") }}
       AND i._airbyte_raw_id IN ({{ issue_winner_ids }}
       )
 ),

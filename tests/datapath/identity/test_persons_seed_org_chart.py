@@ -78,7 +78,7 @@ def _entra_user(*, tenant: str, run_tag: str, account: str, email: str) -> dict[
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
         "insight_tenant_id": tenant,
-        "source_id": f"ms-entra-test-{run_tag}",
+        "insight_source_id": f"ms-entra-test-{run_tag}",
         "unique_key": f"ms-entra-test-{account}",
         "id": account,
         "mail": email,

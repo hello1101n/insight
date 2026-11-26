@@ -56,7 +56,7 @@ These fields are added to every record by the connector — do **not** put them 
 |-------|--------|
 | `insight_tenant_id` | `tenant_id` from tenant YAML (`connections/<tenant>.yaml`) |
 | `insight_source_id` | `insight.cyberfabric.com/source-id` annotation on the K8s Secret |
-| `insight_tenant_id` / `source_id` | Mirrored onto every Bronze row |
+| `insight_tenant_id` / `insight_source_id` | Mirrored onto every Bronze row |
 | `unique_key` | Composite PK — varies per stream (see DESIGN §3.7) |
 | `collected_at` | UTC ISO-8601 timestamp at extraction time |
 

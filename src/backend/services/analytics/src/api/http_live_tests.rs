@@ -426,9 +426,9 @@ async fn create_identity_relations(ch: &insight_clickhouse::Client) -> anyhow::R
     .await?;
     ch.query(
         "CREATE TABLE IF NOT EXISTS identity.account_assignment \
-         (insight_tenant_id String, source_type String, source_id UUID, account_id String, \
+         (insight_tenant_id String, source_type String, insight_source_id UUID, account_id String, \
           person_id UUID, created_at DateTime64(6)) \
-         ENGINE = MergeTree ORDER BY (insight_tenant_id, source_type, source_id, account_id)",
+         ENGINE = MergeTree ORDER BY (insight_tenant_id, source_type, insight_source_id, account_id)",
     )
     .execute()
     .await?;
@@ -451,7 +451,7 @@ async fn map_email(
 }
 
 /// Binds an account the way the identity journal does: the source instance is
-/// keyed by the hash of the connector's raw `source_id`.
+/// keyed by the hash of the connector's raw `insight_source_id`.
 async fn bind_account(
     ch: &insight_clickhouse::Client,
     tenant_id: Uuid,

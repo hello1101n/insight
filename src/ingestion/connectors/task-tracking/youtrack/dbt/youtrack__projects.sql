@@ -12,7 +12,7 @@
 
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     id AS project_id,
     name,

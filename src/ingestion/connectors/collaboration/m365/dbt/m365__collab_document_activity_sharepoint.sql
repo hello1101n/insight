@@ -17,8 +17,8 @@ WITH newest_extract AS (
 
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id AS insight_source_id,
-        MD5(concat(insight_tenant_id, '-', source_id, '-', lower(coalesce(userPrincipalName, '')), '-', toString(reportRefreshDate), '-', 'sharepoint')) AS unique_key,
+        insight_source_id,
+        MD5(concat(insight_tenant_id, '-', insight_source_id, '-', lower(coalesce(userPrincipalName, '')), '-', toString(reportRefreshDate), '-', 'sharepoint')) AS unique_key,
         lower(userPrincipalName) AS user_id,
         lower(userPrincipalName) AS user_name,
         lower(userPrincipalName) AS email,
@@ -48,7 +48,7 @@ WITH newest_extract AS (
         SELECT DISTINCT toDate(reportRefreshDate)
         FROM {{ source('bronze_m365', 'sharepoint_activity') }}
         WHERE _airbyte_extracted_at
-              > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+              > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
       )
     {% endif %}
     -- INVARIANT: Microsoft may return one account's UPN in a different letter case

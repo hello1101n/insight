@@ -20,7 +20,7 @@
 WITH items AS (
     SELECT
         COALESCE(h.insight_tenant_id, '')                         AS insight_tenant_id,
-        h.source_id                                       AS insight_source_id,
+        h.insight_source_id                                       AS insight_source_id,
         h.created                                         AS created,
         arrayJoin(JSONExtractArrayRaw(COALESCE(h.items, '[]')))  AS item
     FROM {{ source('bronze_jira', 'jira_issue_history') }} AS h FINAL

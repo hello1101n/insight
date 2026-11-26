@@ -120,7 +120,8 @@ def test_tasks_census_keys_keep_the_derived_source_formula() -> None:
     case = namespace(original, key="tasks/example", caller_email="lead@example.com")
     for row in case.seeded.bronze["bronze_jira.jira_issue_census"]:
         assert (
-            row["unique_key"] == f"{row['insight_tenant_id']}-{row['source_id']}-{row['jira_id']}"
+            row["unique_key"]
+            == f"{row['insight_tenant_id']}-{row['insight_source_id']}-{row['jira_id']}"
         )
     for table, rows in case.seeded.bronze.items():
         if table.startswith("config."):
@@ -140,16 +141,19 @@ def test_configuration_cannot_escape_the_scenarios_sources() -> None:
         namespace(original, key="tasks/example", caller_email="lead@example.com")
 
 
-@pytest.mark.parametrize("column", ["source_id", "insight_source_id"])
-def test_each_case_gets_its_own_bronze_source_whatever_the_platform_column_is_named(
-    column: str,
-) -> None:
+def test_each_case_gets_its_own_bronze_source() -> None:
     original = replace(
-        fixture(), bronze={"bronze_example.rows": [{column: "example-source", "unique_key": "k"}]}
+        fixture(),
+        bronze={
+            "bronze_example.rows": [{"insight_source_id": "example-source", "unique_key": "k"}]
+        },
     )
 
     first = namespace(original, key="a", caller_email="lead@example.com")
     second = namespace(original, key="b", caller_email="lead@example.com")
 
-    sources = {case.seeded.bronze["bronze_example.rows"][0][column] for case in (first, second)}
-    assert len(sources) == 2, f"should namespace {column}: {sources}"
+    sources = {
+        case.seeded.bronze["bronze_example.rows"][0]["insight_source_id"]
+        for case in (first, second)
+    }
+    assert len(sources) == 2, f"should namespace insight_source_id: {sources}"

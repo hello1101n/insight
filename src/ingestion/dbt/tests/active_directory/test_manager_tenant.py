@@ -50,7 +50,7 @@ def user(warehouse: Client, tenant: str | None, source: str, key: str, guid: str
             "_airbyte_raw_id",
             "_airbyte_extracted_at",
             "insight_tenant_id",
-            "source_id",
+            "insight_source_id",
             "unique_key",
             "id",
             "distinguishedName",
@@ -84,8 +84,8 @@ def test_a_manager_without_a_valid_tenant_fails_the_build(warehouse: Client, ten
         assert f"{MODEL}: a Bronze insight_tenant_id is NULL, empty or not a UUID" in result.stdout
     finally:
         for statement in (
-            "ALTER TABLE bronze_active_directory.users DELETE WHERE source_id = {source:String}",
-            "ALTER TABLE staging.active_directory__users_snapshot DELETE WHERE source_id = {source:String}",
-            "ALTER TABLE staging.active_directory__users_fields_history DELETE WHERE source_id = {source:String}",
+            "ALTER TABLE bronze_active_directory.users DELETE WHERE insight_source_id = {source:String}",
+            "ALTER TABLE staging.active_directory__users_snapshot DELETE WHERE insight_source_id = {source:String}",
+            "ALTER TABLE staging.active_directory__users_fields_history DELETE WHERE insight_source_id = {source:String}",
         ):
             warehouse.command(statement + " SETTINGS mutations_sync = 2", parameters={"source": source})

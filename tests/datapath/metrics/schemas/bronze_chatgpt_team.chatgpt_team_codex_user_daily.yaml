@@ -2,7 +2,7 @@
 # columns). Mirrors the connector catalog (connectors/ai/chatgpt-team,
 # configured_catalog.json — stream chatgpt_team_codex_user_daily, from
 # chatgpt.com /backend-api/wham/analytics/usage-leaderboard) plus the 4
-# _airbyte_* CDK columns. NOTE: identity columns (insight_tenant_id, source_id,
+# _airbyte_* CDK columns. NOTE: identity columns (insight_tenant_id, insight_source_id,
 # unique_key, collected_at, data_source, date, email) are non-null `string` in
 # the catalog; the numeric counters are `[number, null]`. `date` is a date
 # STRING ("2026-01-05") — Silver casts via toDate().
@@ -17,7 +17,7 @@ schemas:
       _airbyte_meta: { type: string }
       _airbyte_generation_id: { type: integer }
       insight_tenant_id: { type: string }
-      source_id: { type: string }
+      insight_source_id: { type: string }
       unique_key: { type: string }
       collected_at: { type: string }
       data_source: { type: string }

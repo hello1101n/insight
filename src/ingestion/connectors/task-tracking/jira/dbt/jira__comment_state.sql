@@ -27,18 +27,18 @@ WITH comments AS (
 issue_comment_reads AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         jira_id,
         max(_airbyte_extracted_at)                      AS last_read_at
     FROM comments
     WHERE jira_id IS NOT NULL
-    GROUP BY insight_tenant_id, source_id, jira_id
+    GROUP BY insight_tenant_id, insight_source_id, jira_id
 ),
 
 unavailable_issues AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         jira_id
     FROM {{ ref('jira__issue_availability_state') }} FINAL
     WHERE availability IN ('deleted', 'trashed')
@@ -48,7 +48,7 @@ unavailable_issues AS (
 SELECT
     c.unique_key                                        AS unique_key,
     {{ bronze_tenant('c.insight_tenant_id') }}                  AS insight_tenant_id,
-    c.source_id                                         AS source_id,
+    c.insight_source_id                                         AS insight_source_id,
     toString(c.comment_id)                              AS comment_id,
     c.id_readable                                       AS id_readable,
     c.author_account_id                                 AS author_id,
@@ -64,9 +64,9 @@ SELECT
 FROM comments AS c
 LEFT JOIN issue_comment_reads AS r
     ON r.insight_tenant_id = c.insight_tenant_id
-    AND r.source_id = c.source_id
+    AND r.insight_source_id = c.insight_source_id
     AND r.jira_id = c.jira_id
 LEFT JOIN unavailable_issues AS ui
     ON ui.insight_tenant_id = c.insight_tenant_id
-    AND ui.source_id = c.source_id
+    AND ui.insight_source_id = c.insight_source_id
     AND ui.jira_id = c.jira_id

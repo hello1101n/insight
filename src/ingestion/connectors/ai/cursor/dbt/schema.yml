@@ -78,7 +78,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
       - name: unique_key
         description: "Composite dedup key: tenant-source-userId-day"
         tests:
@@ -176,7 +176,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -210,7 +210,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
       - name: field_name

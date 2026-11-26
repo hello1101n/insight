@@ -8,8 +8,8 @@
 SELECT
     insight_tenant_id,
     data_source,
-    source_id,
+    insight_source_id,
     count() AS row_count
 FROM {{ ref('git_file_change_coverage') }}
-GROUP BY insight_tenant_id, data_source, source_id
+GROUP BY insight_tenant_id, data_source, insight_source_id
 HAVING count() > 1

@@ -30,7 +30,7 @@ WITH collapsed_file_changes AS (
         -- emit a row no repository reported.
         argMin(
             (file_extension, change_type, lines_added, lines_removed),
-            (source_id, project_key, repo_slug)
+            (insight_source_id, project_key, repo_slug)
         ) AS carrier
     FROM {{ ref('class_git_file_changes') }} FINAL
     -- INVARIANT: change_type is grouped case-folded and read back raw. Two
@@ -47,7 +47,7 @@ WITH collapsed_file_changes AS (
 )
 SELECT
     commits.insight_tenant_id AS insight_tenant_id,
-    commits.source_id AS source_id,
+    commits.insight_source_id AS insight_source_id,
     commits.project_key AS project_key,
     commits.repo_slug AS repo_slug,
     commits.commit_hash AS commit_hash,

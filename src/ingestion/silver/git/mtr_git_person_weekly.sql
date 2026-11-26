@@ -62,7 +62,7 @@ prs AS (
     FROM {{ ref('fct_git_pr') }} AS pr FINAL
     LEFT JOIN {{ ref('fct_git_commit') }} AS mc FINAL
         ON  mc.insight_tenant_id   = pr.insight_tenant_id
-        AND mc.source_id   = pr.source_id
+        AND mc.insight_source_id   = pr.insight_source_id
         AND mc.project_key = pr.project_key
         AND mc.repo_slug   = pr.repo_slug
         AND mc.commit_hash = pr.merge_commit_hash

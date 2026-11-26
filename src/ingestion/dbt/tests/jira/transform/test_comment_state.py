@@ -55,7 +55,7 @@ def _comment(case: CommentCase) -> dict[str, Any]:
         **_airbyte(case.extracted_at),
         "id": str(case.comment_id),
         "insight_tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{case.comment_id}",
         "comment_id": case.comment_id,
         "id_readable": case.issue,
@@ -74,7 +74,7 @@ def _issue_key(key: str, extracted_at: str) -> dict[str, Any]:
         "id": key,
         "key": key,
         "insight_tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{key}",
         "id_readable": key,
         "jira_id": key,
@@ -91,7 +91,7 @@ def test_a_comment_is_deleted_only_when_a_later_read_of_its_list_left_it_out(sce
     scenario.build(SELECTOR)
 
     rows = scenario.warehouse.rows(
-        "SELECT comment_id, is_deleted FROM staging.jira__comment_state FINAL WHERE source_id = {source:String}",
+        "SELECT comment_id, is_deleted FROM staging.jira__comment_state FINAL WHERE insight_source_id = {source:String}",
         {"source": SOURCE_ID},
     )
     deleted = {row["comment_id"]: row["is_deleted"] for row in rows}

@@ -27,7 +27,7 @@ SCHEMA: Mapping[str, Any] = {
         "name": NULLABLE_STR,
         "alias": NULLABLE_STR,
         "unique": NULLABLE_ID,
-        "source_id": NULLABLE_STR,
+        "insight_source_id": NULLABLE_STR,
         "insight_tenant_id": NULLABLE_STR,
         "deprecated": {"type": ["boolean", "null"]},
         "unique_key": {"type": "string"},
@@ -93,7 +93,7 @@ class MetaFieldsStream(Stream):
                 **row,
                 "unique": unique,
                 "insight_tenant_id": self._tenant_id,
-                "source_id": self._source_id,
+                "insight_source_id": self._source_id,
                 "unique_key": f"{self._tenant_id}-{self._source_id}-{unique}",
             }
 

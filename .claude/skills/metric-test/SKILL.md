@@ -76,7 +76,7 @@ templates:
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
     tenant_id: "{{ tenant }}"
-    source_id: m365-test
+    insight_source_id: m365-test
     sendCount: null
     # … every other column …
   alice_email:

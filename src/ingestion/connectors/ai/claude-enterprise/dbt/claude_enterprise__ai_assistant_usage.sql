@@ -28,7 +28,7 @@
 WITH base AS (
     SELECT
         {{ bronze_tenant() }}                       AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         toDate(date)                                AS day,
         lower(trim(user_email))                     AS email,
         chat_conversation_count,
@@ -62,7 +62,7 @@ WITH base AS (
         SELECT *
         FROM {{ source('bronze_claude_enterprise', 'claude_enterprise_users') }}
         ORDER BY _airbyte_extracted_at DESC
-        LIMIT 1 BY insight_tenant_id, source_id, user_id, date
+        LIMIT 1 BY insight_tenant_id, insight_source_id, user_id, date
     )
     WHERE user_email IS NOT NULL
       AND trim(user_email) != ''
@@ -70,8 +70,8 @@ WITH base AS (
       -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
       -- the day window keeps re-deriving recent days whose joined streams arrive late.
       AND (
-          toDate(date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-          OR toUnixTimestamp64Milli(_airbyte_extracted_at) > {{ instance_incremental_watermark('_version', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+          toDate(date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+          OR toUnixTimestamp64Milli(_airbyte_extracted_at) > {{ instance_incremental_watermark('_version', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id']) }}
       )
     {% endif %}
 ),
@@ -80,8 +80,8 @@ WITH base AS (
 chat AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-chat') AS String)
+        insight_source_id,
+        CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-chat') AS String)
                                                                         AS unique_key,
         email,
         day,
@@ -128,8 +128,8 @@ chat AS (
 excel AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-excel') AS String)
+        insight_source_id,
+        CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-excel') AS String)
                                                                         AS unique_key,
         email,
         day,
@@ -163,8 +163,8 @@ excel AS (
 powerpoint AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-powerpoint') AS String)
+        insight_source_id,
+        CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-powerpoint') AS String)
                                                                         AS unique_key,
         email,
         day,
@@ -198,8 +198,8 @@ powerpoint AS (
 cowork AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-cowork') AS String)
+        insight_source_id,
+        CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-cowork') AS String)
                                                                         AS unique_key,
         email,
         day,
@@ -241,8 +241,8 @@ cowork AS (
 cross_surface AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-cross') AS String)
+        insight_source_id,
+        CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(email, ''), '-', toString(day), '-cross') AS String)
                                                                         AS unique_key,
         email,
         day,

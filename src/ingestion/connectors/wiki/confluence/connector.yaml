@@ -78,7 +78,7 @@ definitions:
     fields:
       - path: [insight_tenant_id]
         value: "{{ config['insight_tenant_id'] }}"
-      - path: [source_id]
+      - path: [insight_source_id]
         value: "{{ config['insight_source_id'] }}"
       - path: [data_source]
         value: "insight_confluence"
@@ -98,11 +98,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       space_id: {type: ["string", "null"]}
       name: {type: ["string", "null"]}
@@ -120,11 +120,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}
       space_id: {type: ["string", "null"]}
@@ -145,11 +145,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}
       version_number: {type: ["integer", "null"]}
@@ -174,11 +174,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       comment_id: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}
@@ -195,11 +195,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       comment_id: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}
@@ -216,11 +216,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       comment_id: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}
@@ -239,11 +239,11 @@ definitions:
     required:
       - unique_key
       - insight_tenant_id
-      - source_id
+      - insight_source_id
     properties:
       unique_key: {type: ["string", "null"]}
       insight_tenant_id: {type: ["string", "null"]}
-      source_id: {type: ["string", "null"]}
+      insight_source_id: {type: ["string", "null"]}
       data_source: {type: ["string", "null"]}
       comment_id: {type: ["string", "null"]}
       page_id: {type: ["string", "null"]}

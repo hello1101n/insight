@@ -65,7 +65,7 @@ def test_a_tenant_still_picks_up_events_older_than_another_tenants_watermark(cas
     case.build("github__item_events")
 
     found = case.rows(
-        f"SELECT insight_tenant_id, event_id FROM staging.github__item_events WHERE source_id = '{SOURCE}' ORDER BY insight_tenant_id"
+        f"SELECT insight_tenant_id, event_id FROM staging.github__item_events WHERE insight_source_id = '{SOURCE}' ORDER BY insight_tenant_id"
     )
 
     assert found == [
@@ -84,7 +84,7 @@ def test_an_email_owned_only_in_another_tenant_is_still_unowned_here(case: Wareh
 
     found = case.rows(
         "SELECT insight_tenant_id, email FROM staging.github__unowned_commit_emails"
-        f" WHERE source_id = '{SOURCE}' ORDER BY insight_tenant_id, email"
+        f" WHERE insight_source_id = '{SOURCE}' ORDER BY insight_tenant_id, email"
     )
 
     assert found == [{"insight_tenant_id": TENANT, "email": "shared@example.com"}], found

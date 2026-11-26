@@ -142,7 +142,7 @@ orphan_removes AS (
 -- version, so the version timestamps bound the link.
 pr_observations AS (
     SELECT
-        COALESCE(s.source_id, '')                               AS insight_source_id,
+        COALESCE(s.insight_source_id, '')                               AS insight_source_id,
         {{ bronze_tenant('s.insight_tenant_id') }} AS insight_tenant_id,
         concat(COALESCE(s.repo_full_name, ''), '#', toString(COALESCE(s.item_number, 0))) AS id_readable,
         concat(
@@ -165,7 +165,7 @@ pr_observations AS (
 latest_observation AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        COALESCE(source_id, '')                                 AS insight_source_id,
+        COALESCE(insight_source_id, '')                                 AS insight_source_id,
         concat(COALESCE(repo_full_name, ''), '#', toString(COALESCE(item_number, 0))) AS id_readable,
         max(_tracked_at)                                        AS last_version_at
     FROM {{ ref('github__issue_links_snapshot') }}

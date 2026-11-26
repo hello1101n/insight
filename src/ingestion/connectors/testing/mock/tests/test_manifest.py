@@ -57,7 +57,7 @@ def test_pagination_preserves_identity_and_schema(http_mocker: HttpMocker, strea
     assert [row.record.data["id"] for row in output.records] == [f"{stream}-{i}" for i in range(3)]
     for row in output.records:
         assert row.record.data["insight_tenant_id"] == "test-tenant"
-        assert row.record.data["source_id"] == "test-source"
+        assert row.record.data["insight_source_id"] == "test-source"
         assert row.record.data["unique_key"] == f"test-tenant-test-source-{row.record.data['id']}"
     assert_records_conform(output.records, CONNECTOR, stream)
 

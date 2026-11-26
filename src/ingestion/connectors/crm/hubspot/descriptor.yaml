@@ -7,7 +7,10 @@ name: hubspot
 # 3.11.0: the support models move to the class_support_* contract. MINOR:
 #   new staging tables that each run rebuilds whole; the old support classes
 #   and their models are dropped by the deploy hook.
-version: "3.13.0"
+# 3.14.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "3.14.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync

@@ -132,7 +132,7 @@ transformations:
         value: "{{ config['insight_tenant_id'] }}"
       - type: AddedFieldDefinition
         path:
-          - source_id
+          - insight_source_id
         value: "{{ config['insight_source_id'] }}"
       - type: AddedFieldDefinition
         path:
@@ -142,12 +142,12 @@ transformations:
           }}-{{ record['<primary_field>'] }}
 ```
 
-Only inject: `tenant_id`, `source_id`, `unique_key`, and optionally `raw_data` for configurable streams. Do NOT add `_source` or `_extracted_at` — dbt models handle source tagging, and Airbyte auto-generates `_airbyte_extracted_at`.
+Only inject: `tenant_id`, `insight_source_id`, `unique_key`, and optionally `raw_data` for configurable streams. Do NOT add `_source` or `_extracted_at` — dbt models handle source tagging, and Airbyte auto-generates `_airbyte_extracted_at`.
 
 Two hard rules for every `AddFields` target, each learned from silent data loss:
 
 - **Declare every `AddFields` target as `string` in the inline schema** (plus `"null"`). Jinja renders to a string, and the destination's typing step coerces it into the declared type: numbers and booleans coerce fine, but a declared `object`/deep ADF shape cannot be built from a string — the destination NULLs the field and records `{"change":"NULLED","reason":"DESTINATION_SERIALIZATION_ERROR"}` in `_airbyte_meta`, on every sync, while the source still has the data. A `tojson` projection is a string; declare it `string`, never the shape of the JSON inside it.
-- **Do not re-project payload fields the record already carries** (`email` ← `emailAddress`-style snake_case aliases). It doubles storage, forces the schema to describe the same value twice, and creates exactly the type-mismatch surface above. Renames and typing belong in the dbt staging model. The only values that may be injected are the ones that exist solely at extraction time: config values (`tenant_id`, `source_id`), `unique_key`, `stream_partition.*` context (a substream's parent id), and cursor hoists for nested `cursor_field` (see Common failure modes).
+- **Do not re-project payload fields the record already carries** (`email` ← `emailAddress`-style snake_case aliases). It doubles storage, forces the schema to describe the same value twice, and creates exactly the type-mismatch surface above. Renames and typing belong in the dbt staging model. The only values that may be injected are the ones that exist solely at extraction time: config values (`tenant_id`, `insight_source_id`), `unique_key`, `stream_partition.*` context (a substream's parent id), and cursor hoists for nested `cursor_field` (see Common failure modes).
 
 Detection for the first rule on a live instance: `SELECT count() FROM <bronze_table> WHERE position(_airbyte_meta, 'NULLED') > 0` — anything non-zero means the destination is dropping fields.
 
@@ -166,7 +166,7 @@ schema_loader:
         type:
           - string
           - "null"
-      source_id:
+      insight_source_id:
         type:
           - string
           - "null"
@@ -206,7 +206,7 @@ MUST NOT:
 - Set `concurrency_level.default_concurrency: 1`. With a single worker the concurrent CDK **self-deadlocks** once one sync generates ≥ ~10k partitions (the CDK futures limit): the only worker thread runs `generate_partitions` and throttles on "futures limit reached" (`partition_enqueuer.py`), while the partition-read futures it waits on have no other worker to run them. Symptom: CPU-busy spin, zero I/O, zero records, forever — and the records counter freezing at exactly 10000 is the fingerprint. Full-window fan-out streams (e.g. `jira_issue_history`, `wiki_page_versions`) can reach that partition count. Use `default_concurrency: 4`.
 
 Substream-parent rules:
-- Reconcile auto-selects **every** discovered stream — there is no "helper, don't sync it" escape for top-level streams. A lightweight parent defined at top level WILL land as a bronze table, so it MUST carry the standard `tenant_id`/`source_id`/`unique_key` stamp like every other stream (catalog normalization fails on a keyless stream). Alternative: define the parent **inline inside `partition_router.parent_stream_configs[].stream`** (see `_scrum_boards` inside jira's `jira_sprints`) — inline parents are invisible to `discover`, so no table appears; they are still response-cached, so keep them lightweight too.
+- Reconcile auto-selects **every** discovered stream — there is no "helper, don't sync it" escape for top-level streams. A lightweight parent defined at top level WILL land as a bronze table, so it MUST carry the standard `tenant_id`/`insight_source_id`/`unique_key` stamp like every other stream (catalog normalization fails on a keyless stream). Alternative: define the parent **inline inside `partition_router.parent_stream_configs[].stream`** (see `_scrum_boards` inside jira's `jira_sprints`) — inline parents are invisible to `discover`, so no table appears; they are still response-cached, so keep them lightweight too.
 - The `cursor_field` of `DatetimeBasedCursor` is read from the **top level** of the emitted record. If the API nests it (Jira `/search/jql` returns `fields.updated`), hoist it via `AddFields` (`value: "{{ (record.get('fields') or {}).get('updated') }}"`) — otherwise the cursor never observes values and state never advances, silently re-reading the full window every sync.
 
 NOTE on integer-typed slots: Airbyte declarative CDK accepts BOTH integers AND Jinja-interpolated strings for `OffsetIncrement.page_size`, `CursorPagination.page_size`, and similar slots — `page_size: "{{ config.get('x_page_size', 100) }}"` is valid and recommended for config-driven pagination.
@@ -342,7 +342,7 @@ kubectl apply -f src/ingestion/secrets/connectors/<name>.yaml
 
 SELECT
     tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     -- source-specific field mappings
     '<connector_name>' AS source
@@ -356,7 +356,7 @@ WHERE <cursor_field> > (SELECT max(<mapped_field>) FROM {{ this }})
 
 Define source (bronze database) and model with tests:
 - `tenant_id`: not_null
-- `source_id`: not_null
+- `insight_source_id`: not_null
 - `unique_key`: not_null, unique
 
 #### 3.6b Identity Resolution inputs (REQUIRED when the source exposes a user directory)
@@ -548,13 +548,13 @@ class Source<Name>(AbstractSource):
         ]
 ```
 
-Each stream MUST inject `tenant_id`, `source_id`, `unique_key` in `parse_response()`:
+Each stream MUST inject `tenant_id`, `insight_source_id`, `unique_key` in `parse_response()`:
 
 ```python
 def parse_response(self, response, **kwargs):
     for record in response.json()["data"]:
         record["tenant_id"] = self.tenant_id
-        record["source_id"] = self.source_id
+        record["insight_source_id"] = self.source_id
         record["unique_key"] = f"{self.tenant_id}-{self.source_id}-{record['id']}"
         yield record
 ```
@@ -961,7 +961,7 @@ rm "$CONN/configured_catalog.json.bak"
 Acceptance criteria for each stream:
 - [ ] First-read record count > 0 (unless source genuinely has no data — rare).
 - [ ] Error count = 0 in both runs (any `ERROR` / `FATAL` log message is a runtime bug — fix before deploy).
-- [ ] Every emitted record has `tenant_id`, `source_id`, `unique_key`.
+- [ ] Every emitted record has `tenant_id`, `insight_source_id`, `unique_key`.
 - [ ] `null_cursor=0` for every stream that has a cursor field. The destination creates the cursor column NOT NULL, exactly like `unique_key`, so a single record without a cursor value fails every sync attempt (`An attempt to write null into not nullable column '<cursor>'`). Declaring the field in the schema is not enough — the API may omit it on some records (system-defined objects, never-modified rows). Stamp a fallback in the connector (e.g. `createdAt`, else a fixed sentinel that staging maps back to NULL) or pick a cursor every record carries.
 - [ ] For substreams, parent records are enumerated first and child records reference valid parent ids (use the parent's stable internal id field — e.g. `youtrack_id` from `record['id']` — for routing, NOT a nullable `record.get('idReadable')`-style field, since YouTrack/Jira can return `null` for human-readable IDs in some payloads).
 - [ ] Every `SubstreamPartitionRouter` parent requests a minimal field set; during a substream's `read`, the parent's SQLite requests-cache stays in the KB range (a cache growing to tens/hundreds of MB means a heavy parent — restructure before deploy, see MUST NOT list above).

@@ -33,7 +33,7 @@ WITH
 collected_branch_commits AS (
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         data_source,
@@ -44,7 +44,7 @@ collected_branch_commits AS (
 pull_request_links AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         data_source,
@@ -60,7 +60,7 @@ pull_request_links AS (
             )
         ) AS collected_branch_commit_count
     FROM {{ ref('class_git_pull_requests_commits') }} FINAL
-    GROUP BY insight_tenant_id, source_id, project_key, repo_slug, data_source, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug, data_source, pr_id
 ),
 -- The requests that produced a result commit at all. Narrowed before the
 -- resolution below, whose prefix test is a residual predicate: the join's only
@@ -69,7 +69,7 @@ pull_request_links AS (
 merged_requests AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         data_source,
@@ -91,7 +91,7 @@ resolved_results AS (
     FROM merged_requests AS prs
     INNER JOIN pull_request_links AS links
         ON links.insight_tenant_id = prs.insight_tenant_id
-        AND links.source_id = prs.source_id
+        AND links.insight_source_id = prs.insight_source_id
         AND links.project_key = prs.project_key
         AND links.repo_slug = prs.repo_slug
         AND links.pr_id = prs.pr_id
@@ -101,7 +101,7 @@ resolved_results AS (
       AND links.collected_branch_commit_count < length(links.linked_hashes)
     GROUP BY
         prs.insight_tenant_id,
-        prs.source_id,
+        prs.insight_source_id,
         prs.project_key,
         prs.repo_slug,
         prs.pr_id,

@@ -500,7 +500,7 @@ async fn pull_request_warehouse() -> (String, Seen) {
                             json!({ "title": title, "number": number, "__drilldown_twin": "1" });
                         for (column, value) in [
                             ("data_source", "insight_github"),
-                            ("source_id", source),
+                            ("insight_source_id", source),
                             ("project_key", "group"),
                             ("repo_slug", "app"),
                             ("pr_number", number),
@@ -566,7 +566,7 @@ async fn a_pull_request_row_links_to_its_page_and_shows_none_of_the_keys_behind_
     let sql = last_read(&seen);
     for column in [
         "data_source",
-        "source_id",
+        "insight_source_id",
         "project_key",
         "repo_slug",
         "pr_number",

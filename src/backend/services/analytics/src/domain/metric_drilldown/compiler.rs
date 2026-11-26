@@ -252,11 +252,11 @@ fn person_projection(
     PersonProjection {
         expression: resolved_person_expr().to_owned(),
         join: format!(
-            " LEFT JOIN (SELECT insight_tenant_id, source_type, source_id, account_id, person_id \
+            " LEFT JOIN (SELECT insight_tenant_id, source_type, insight_source_id, account_id, person_id \
                   FROM {account_map} WHERE person_id IN ({roster})) AS account_map \
                   ON account_map.insight_tenant_id = toString(evidence.insight_tenant_id) \
                  AND account_map.source_type = evidence.account_source_type \
-                 AND account_map.source_id = {account_source_uuid} \
+                 AND account_map.insight_source_id = {account_source_uuid} \
                  AND account_map.account_id = {account_id} \
               LEFT JOIN (SELECT insight_tenant_id, email, person_id FROM {person_map} \
                   WHERE person_id IN ({roster})) AS person_map \
@@ -351,7 +351,7 @@ fn compile_ratio_query(
                 FROM {database}.{table} AS evidence \
                 LEFT JOIN {account_map_relation} AS account_map \
                     ON account_map.insight_tenant_id = toString(evidence.insight_tenant_id) AND account_map.source_type = evidence.account_source_type \
-                   AND account_map.source_id = {account_source_uuid} \
+                   AND account_map.insight_source_id = {account_source_uuid} \
                    AND account_map.account_id = {account_id} \
                 LEFT JOIN {person_map_relation} AS person_map \
                     ON person_map.insight_tenant_id = toString(evidence.insight_tenant_id) AND person_map.email = evidence.entity_id \
@@ -488,9 +488,9 @@ fn entity_predicate(
             params.push(id.clone());
             params.push(id.clone());
             format!(
-                "({account_key} IN (SELECT insight_tenant_id, source_type, source_id, account_id \
+                "({account_key} IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id \
                  FROM {account_map} WHERE person_id = ?) \
-                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id \
+                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id \
                  FROM {account_map}) \
                  AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM {person_map} WHERE person_id = ?)))",
                 account_map = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
@@ -502,9 +502,9 @@ fn entity_predicate(
             params.extend(ids.iter().cloned());
             let id_params = vec!["?"; ids.len()].join(", ");
             format!(
-                "({account_key} IN (SELECT insight_tenant_id, source_type, source_id, account_id \
+                "({account_key} IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id \
                  FROM {account_map} WHERE person_id IN ({id_params})) \
-                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id \
+                 OR ({account_key} NOT IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id \
                  FROM {account_map}) \
                  AND (toString(evidence.insight_tenant_id), evidence.entity_id) IN (SELECT insight_tenant_id, email FROM {person_map} WHERE person_id IN ({id_params}))))",
                 account_map = crate::domain::metric_results::compiler::ACCOUNT_ASSIGNMENT_RELATION,
@@ -916,13 +916,13 @@ mod tests {
         );
         assert!(
             sql.contains(
-                "IN (SELECT insight_tenant_id, source_type, source_id, account_id FROM identity.account_assignment WHERE person_id = ?)"
+                "IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id FROM identity.account_assignment WHERE person_id = ?)"
             ),
             "the account binding is consulted first"
         );
         assert!(
             sql.contains(
-                "NOT IN (SELECT insight_tenant_id, source_type, source_id, account_id FROM identity.account_assignment)"
+                "NOT IN (SELECT insight_tenant_id, source_type, insight_source_id, account_id FROM identity.account_assignment)"
             ),
             "a bound account never falls back to the email map — an excluded binding terminates"
         );

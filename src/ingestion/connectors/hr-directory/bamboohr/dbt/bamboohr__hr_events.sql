@@ -6,7 +6,7 @@
 
 SELECT
     {{ bronze_tenant('lr.insight_tenant_id') }}             AS insight_tenant_id,
-    lr.source_id,
+    lr.insight_source_id,
     lr.unique_key,
     lr.employeeId                                           AS source_person_id,
     e.workEmail                                             AS email,
@@ -25,7 +25,7 @@ SELECT
     toUnixTimestamp64Milli(lr._airbyte_extracted_at)        AS _version
 FROM {{ source('bamboohr', 'leave_requests') }} lr
 -- The employees side is guarded too: a NULL tenant there would only fail to
--- match. INVARIANT: the join has no source_id, so two BambooHR connections under
+-- match. INVARIANT: the join has no insight_source_id, so two BambooHR connections under
 -- one tenant can cross-match employee ids (predates the tenant guard).
 LEFT JOIN (
     SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id)

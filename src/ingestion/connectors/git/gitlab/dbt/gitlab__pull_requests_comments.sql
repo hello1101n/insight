@@ -13,7 +13,7 @@
 WITH projects AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
         COALESCE(path, '') AS repo_slug
@@ -22,7 +22,7 @@ WITH projects AS (
 
 SELECT
     {{ bronze_tenant('n.insight_tenant_id') }} AS insight_tenant_id,
-    n.source_id AS source_id,
+    n.insight_source_id AS insight_source_id,
     n.unique_key AS unique_key,
     p.project_key AS project_key,
     p.repo_slug AS repo_slug,
@@ -42,9 +42,9 @@ SELECT
 FROM {{ source('bronze_gitlab', 'pull_request_notes') }} AS n FINAL
 INNER JOIN projects AS p
     ON p.insight_tenant_id = {{ bronze_tenant('n.insight_tenant_id') }}
-    AND p.source_id = n.source_id
+    AND p.insight_source_id = n.insight_source_id
     AND p.project_id = n.project_id
 WHERE NOT COALESCE(n.system, false)
 {% if is_incremental() %}
-  AND n._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['n.insight_tenant_id', 'n.source_id']) }}
+  AND n._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['n.insight_tenant_id', 'n.insight_source_id']) }}
 {% endif %}

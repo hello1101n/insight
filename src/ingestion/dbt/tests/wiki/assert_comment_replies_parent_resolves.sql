@@ -26,11 +26,11 @@ SELECT
     r.comment_id AS reply_comment_id,
     r.parent_comment_id,
     r.insight_tenant_id,
-    r.source_id
+    r.insight_source_id
 FROM {{ source('bronze_confluence', 'wiki_footer_comment_replies') }} r
 LEFT JOIN {{ source('bronze_confluence', 'wiki_footer_comments') }} p
     ON r.insight_tenant_id = p.insight_tenant_id
-   AND r.source_id = p.source_id
+   AND r.insight_source_id = p.insight_source_id
    AND r.parent_comment_id = p.comment_id
 WHERE r.parent_comment_id IS NOT NULL
   AND r.parent_comment_id != ''
@@ -44,11 +44,11 @@ SELECT
     r.comment_id AS reply_comment_id,
     r.parent_comment_id,
     r.insight_tenant_id,
-    r.source_id
+    r.insight_source_id
 FROM {{ source('bronze_confluence', 'wiki_inline_comment_replies') }} r
 LEFT JOIN {{ source('bronze_confluence', 'wiki_inline_comments') }} p
     ON r.insight_tenant_id = p.insight_tenant_id
-   AND r.source_id = p.source_id
+   AND r.insight_source_id = p.insight_source_id
    AND r.parent_comment_id = p.comment_id
 WHERE r.parent_comment_id IS NOT NULL
   AND r.parent_comment_id != ''

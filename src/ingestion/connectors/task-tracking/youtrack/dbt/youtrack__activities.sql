@@ -1,7 +1,7 @@
 {{ config(materialized='table', schema='staging', engine=insight_engine('MergeTree'), order_by=['insight_tenant_id', 'insight_source_id', 'issue_id', 'field_id', 'event_id'], tags=['youtrack', 'staging']) }}
 
 WITH raw AS (
-    SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(source_id, '') AS insight_source_id,
+    SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(insight_source_id, '') AS insight_source_id,
         coalesce(id, '') AS event_id,
         coalesce(_type, '') AS activity_type, author_id,
         fromUnixTimestamp64Milli(toInt64(assumeNotNull(timestamp))) AS event_at,
@@ -11,8 +11,8 @@ WITH raw AS (
         {{ youtrack_json('removed_json') }} AS removed,
         {{ youtrack_json('activity_json') }} AS payload,
         toDateTime64(_airbyte_extracted_at, 3) AS collected_at
-    FROM {{ source('bronze_youtrack', 'youtrack_activities') }} FINAL
-    WHERE throwIf(timestamp IS NULL OR toInt64OrNull(timestamp) IS NULL OR id IS NULL OR source_id IS NULL,
+    FROM {{ source('bronze_youtrack', 'youtrack_activities') }} AS b FINAL
+    WHERE throwIf(timestamp IS NULL OR toInt64OrNull(timestamp) IS NULL OR id IS NULL OR b.insight_source_id IS NULL,
                   'YouTrack activity requires identity and a millisecond timestamp') = 0
 ), field_types AS (
     SELECT insight_tenant_id, insight_source_id, field_id, observed_at, field_type
@@ -75,7 +75,7 @@ WITH raw AS (
     -- records membership only as that field's change, never as a
     -- SprintActivityItem. The field's values are bundle values named after the
     -- board's sprints.
-    SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(source_id, '') AS insight_source_id,
+    SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(insight_source_id, '') AS insight_source_id,
         assumeNotNull(id) AS agile_id,
         JSONExtractString({{ youtrack_json('agile_json') }}, 'sprintsSettings', 'sprintSyncField', 'id') AS sync_field_id,
         arrayMap(p -> JSONExtractString(p, 'id'), JSONExtractArrayRaw({{ youtrack_json('agile_json') }}, 'projects')) AS project_ids
@@ -96,7 +96,7 @@ WITH raw AS (
         FROM sync_boards AS b
         ARRAY JOIN b.project_ids AS project_id
         INNER JOIN (
-            SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(source_id, '') AS insight_source_id,
+            SELECT {{ bronze_tenant() }} AS insight_tenant_id, coalesce(insight_source_id, '') AS insight_source_id,
                 assumeNotNull(agile_id) AS agile_id,
                 assumeNotNull(id) AS id, assumeNotNull(name) AS name
             FROM {{ source('bronze_youtrack', 'youtrack_sprints') }} FINAL
