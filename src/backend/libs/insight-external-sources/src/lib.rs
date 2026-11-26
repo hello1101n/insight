@@ -64,6 +64,11 @@ impl ExternalSourceRegistry {
         Ok(Self { sources: registry })
     }
 
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.sources.is_empty()
+    }
+
     pub fn evidence_links(
         &self,
         provider: &str,

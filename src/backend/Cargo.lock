@@ -3901,6 +3901,7 @@ dependencies = [
  "clickhouse",
  "futures",
  "insight-clickhouse",
+ "insight-external-sources",
  "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",

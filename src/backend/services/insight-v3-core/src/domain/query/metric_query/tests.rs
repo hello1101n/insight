@@ -1611,6 +1611,7 @@ fn paged(value: serde_json::Value) -> CompiledQuery {
             &crate::domain::query::time_window::Window::legacy(),
             TableEngine::Other,
             None,
+            &[],
         )
         .unwrap_or_else(|error| panic!("compiles paged: {error}"))
 }
@@ -1777,7 +1778,13 @@ fn a_paged_plain_read_over_a_dataset_carries_the_records_id_beside_the_columns()
     }));
 
     let paged = plain
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
     assert!(
         paged.sql.contains(", `id` AS `__drilldown_record` FROM"),
@@ -1792,7 +1799,13 @@ fn a_paged_plain_read_over_a_dataset_carries_the_records_id_beside_the_columns()
     assert!(!whole.sql.contains("__drilldown_record"), "{}", whole.sql);
 
     let paged_grouped = grouped
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
     assert!(paged_grouped.hidden().is_empty());
 }
@@ -1817,7 +1830,13 @@ fn an_authored_limit_over_a_dataset_cuts_behind_the_records_id() {
     }));
 
     let paged = top
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(

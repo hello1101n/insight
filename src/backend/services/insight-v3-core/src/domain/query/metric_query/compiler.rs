@@ -8,7 +8,7 @@ use super::over::Over;
 use super::people::{People, PersonHandle};
 use super::{
     CompiledQuery, FACT_ALIAS, MetricQuery, MetricQueryError, RECORD_COLUMN, TWIN_COLUMN,
-    UndatedQuery,
+    UndatedQuery, carried_column,
 };
 use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
 use crate::domain::kinds::dataset::read::Form;
@@ -272,7 +272,7 @@ impl MetricQuery {
         engine: TableEngine,
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
-        self.assemble(people, window, engine, over, Bound::Whole)
+        self.assemble(people, window, engine, over, Bound::Whole, &[])
     }
 
     pub(crate) fn compile_subquery(
@@ -282,7 +282,7 @@ impl MetricQuery {
         engine: TableEngine,
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
-        self.assemble(people, window, engine, over, Bound::Subquery)
+        self.assemble(people, window, engine, over, Bound::Subquery, &[])
     }
 
     pub(crate) fn compile_paged(
@@ -291,8 +291,9 @@ impl MetricQuery {
         window: &Window,
         engine: TableEngine,
         over: Option<Over<'_>>,
+        carried: &[&str],
     ) -> Result<CompiledQuery, MetricQueryError> {
-        self.assemble(people, window, engine, over, Bound::Paged)
+        self.assemble(people, window, engine, over, Bound::Paged, carried)
     }
 
     fn assemble(
@@ -302,6 +303,7 @@ impl MetricQuery {
         engine: TableEngine,
         over: Option<Over<'_>>,
         bound: Bound,
+        carried: &[&str],
     ) -> Result<CompiledQuery, MetricQueryError> {
         if self.fields.is_empty() {
             return Err(MetricQueryError::NoFields);
@@ -338,7 +340,8 @@ impl MetricQuery {
 
         self.check_grouping(&as_names)?;
 
-        let (hidden, numbered) = self.distinguished(bound, over.is_some(), qualifier, &mut parts);
+        let (hidden, numbered) =
+            self.distinguished(bound, over.is_some(), qualifier, carried, &mut parts);
 
         let mut where_parts = Vec::with_capacity(self.filters.len() + 2);
         binds.reserve(self.filters.len() + 2);
@@ -412,13 +415,26 @@ impl MetricQuery {
         bound: Bound,
         over_a_dataset: bool,
         qualifier: Option<&str>,
+        carried: &[&str],
         parts: &mut Vec<String>,
     ) -> (Vec<String>, bool) {
         if bound != Bound::Paged || self.groups_its_rows() {
             return (Vec::new(), false);
         }
         if !over_a_dataset {
-            return (vec![TWIN_COLUMN.to_owned()], true);
+            let mut hidden = Vec::with_capacity(carried.len() + 1);
+            for column in carried {
+                let name = carried_column(column);
+                let read = match qualifier {
+                    Some(alias) => format!("`{alias}`.`{column}`"),
+                    None => format!("`{column}`"),
+                };
+                parts.push(format!("toString({read}) AS `{name}`"));
+                hidden.push(name);
+            }
+            hidden.push(TWIN_COLUMN.to_owned());
+
+            return (hidden, true);
         }
 
         let id = match qualifier {

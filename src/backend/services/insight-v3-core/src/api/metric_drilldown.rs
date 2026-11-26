@@ -142,6 +142,8 @@ struct ColumnOut {
 #[derive(Debug, Serialize, ToSchema)]
 struct RowOut {
     values: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -259,7 +261,10 @@ fn response(metric: &str, asked: &Asked, page: Page) -> DrilldownResponse {
         rows: page
             .rows
             .into_iter()
-            .map(|values| RowOut { values })
+            .map(|row| RowOut {
+                values: row.values,
+                link: row.link,
+            })
             .collect(),
         next_cursor: page.next_cursor,
     }

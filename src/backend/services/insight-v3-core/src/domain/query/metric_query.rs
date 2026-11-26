@@ -36,6 +36,16 @@ pub(crate) const RECORD_COLUMN: &str = "__drilldown_record";
 
 pub(crate) const TWIN_COLUMN: &str = "__drilldown_twin";
 
+const CARRIED_PREFIX: &str = "__drilldown_carried_";
+
+pub(crate) fn carried_column(column: &str) -> String {
+    format!("{CARRIED_PREFIX}{column}")
+}
+
+pub(crate) fn is_carried(name: &str) -> bool {
+    name.starts_with(CARRIED_PREFIX)
+}
+
 #[derive(Debug)]
 pub(crate) struct Reference<'a> {
     pub(crate) at: String,

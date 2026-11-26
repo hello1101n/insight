@@ -275,6 +275,7 @@ jobs:
               - 'src/backend/Dockerfile'
               - 'src/backend/.dockerignore'
               - 'src/backend/libs/insight-clickhouse/**'
+              - 'src/backend/libs/insight-external-sources/**'
               # The shared entrypoint is baked into the image.
               - 'src/backend/docker-entrypoint.sh'
               - 'src/backend/Cargo.toml'

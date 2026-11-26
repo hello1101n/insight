@@ -9,6 +9,7 @@ use super::definition::DefinitionId;
 use super::metric_run::{MetricRuns, Source};
 use super::query::metric_query::{ColumnKind, MetricRunner, Unit};
 use super::query::time_window::WindowRequest;
+use super::record_link::RecordLinks;
 use super::surfaces::CustomError;
 
 pub(crate) use cursor::CursorError;
@@ -42,9 +43,15 @@ pub(crate) struct Column {
 }
 
 #[derive(Debug)]
+pub(crate) struct Row {
+    pub(crate) values: serde_json::Map<String, serde_json::Value>,
+    pub(crate) link: Option<String>,
+}
+
+#[derive(Debug)]
 pub(crate) struct Page {
     pub(crate) columns: Vec<Column>,
-    pub(crate) rows: Vec<serde_json::Map<String, serde_json::Value>>,
+    pub(crate) rows: Vec<Row>,
     pub(crate) sort: Sort,
     pub(crate) next_cursor: Option<String>,
 }
@@ -69,11 +76,20 @@ pub(crate) enum DrilldownError {
 pub(crate) struct Drilldowns<'a> {
     runs: MetricRuns<'a>,
     runner: &'a MetricRunner,
+    links: &'a RecordLinks,
 }
 
 impl<'a> Drilldowns<'a> {
-    pub(crate) fn new(runs: MetricRuns<'a>, runner: &'a MetricRunner) -> Self {
-        Self { runs, runner }
+    pub(crate) fn new(
+        runs: MetricRuns<'a>,
+        runner: &'a MetricRunner,
+        links: &'a RecordLinks,
+    ) -> Self {
+        Self {
+            runs,
+            runner,
+            links,
+        }
     }
 
     pub(crate) async fn page(
@@ -92,7 +108,7 @@ impl<'a> Drilldowns<'a> {
         };
         let prepared = self
             .runs
-            .prepare(name, &window)
+            .prepare(name, &window, self.links)
             .await
             .map_err(DrilldownError::Custom)?;
         let columns: Vec<Column> = prepared
@@ -166,7 +182,12 @@ impl<'a> Drilldowns<'a> {
         };
         let rows = rows
             .into_iter()
-            .map(|row| order::presented(row, &columns, prepared.compiled.hidden()))
+            .map(|row| Row {
+                link: prepared
+                    .relation
+                    .and_then(|relation| self.links.link(relation, &row)),
+                values: order::presented(row, &columns, prepared.compiled.hidden()),
+            })
             .collect();
 
         Ok(Page {
