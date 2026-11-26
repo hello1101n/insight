@@ -4,6 +4,7 @@ import type { RenderWidgetPayload } from '@gears-frontx/frontx-dashboard-root/co
 
 import { formatShare, formatValue, textOf, nonFiniteProblemOf } from '../format';
 import { legendOf, PALETTE } from './legend';
+import { TONE_COLORS } from './palette';
 import { dateFormatOf, timeOf as timeOfText } from '../time';
 import { DEFAULT_WIDGET_TEXTS, ValuesText, WidgetCannotBeShown, WidgetEmpty, type WidgetTexts } from '../states';
 import type { CartesianData, CartesianRender, CartesianSeriesOption, ReferenceLineOption } from '../types';
@@ -424,7 +425,9 @@ export function CartesianChart({
   const axis = render.x_axis?.type ?? 'category';
   const optionOf = (name: string | null) => seriesOptionOf(render, name);
   const typeOf = (name: string | null) => optionOf(name)?.type ?? 'bar';
-  const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: PALETTE[index % PALETTE.length] }]));
+  const tones = render.series_tones ?? {};
+  const colorOf = (name: string | null, index: number) => (name !== null && Object.hasOwn(tones, name) ? TONE_COLORS[tones[name]] : PALETTE[index % PALETTE.length]);
+  const config: ChartConfig = Object.fromEntries(data.series.map((series, index) => [`s${index}`, { label: series.name ?? '', color: colorOf(series.name, index) }]));
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   const unit = render.y_axis_secondary?.unit ?? '';
   // A series on the secondary axis shows plain numbers with that axis's unit; the others follow value_format.
@@ -539,8 +542,23 @@ export function CartesianChart({
   const primaryWidth = valueAxisWidth('primary');
   const secondaryWidth = valueAxisWidth('secondary');
   const xTitle = render.x_axis?.label ? AXIS_TITLE : 0;
+  const rows = rowsOf(data, axis);
+  const secondary = data.series.some((_, index) => onSecondary(index));
+  // `auto` turns the category ticks only as far as each band needs to hold its whole label: level, then 45°, then 90°.
+  // When no turn fits every band, 90° wins only where it labels more bands: 45° keeps the axis lower.
+  const autoAngle = (): 0 | -45 | -90 => {
+    if (axis !== 'category' || rows.length === 0 || width === 0) return 0;
+    const plot = width - primaryWidth - (secondary ? secondaryWidth : 8);
+    const longest = rows.reduce((max, row) => Math.max(max, tickText(row.x ?? null).length), 0);
+    if (longest * TICK_CHAR_WIDTH + TICK_GAP.every <= plot / rows.length) return 0;
+    const overhang = Math.max(0, Math.ceil(tickText(rows[0].x ?? null).length * TICK_CHAR_WIDTH * Math.SQRT1_2) - primaryWidth);
+    const turned = (plot - overhang) / rows.length;
+    if (TICK_TEXT_HEIGHT * Math.SQRT2 <= turned) return -45;
+    return Math.ceil((TICK_TEXT_HEIGHT * rows.length) / plot) < Math.ceil((TICK_TEXT_HEIGHT * Math.SQRT2) / turned) ? -90 : -45;
+  };
+  const askedAngle = render.x_axis?.tick_angle ?? 0;
   // tick_angle turns the x ticks under the plot; a horizontal chart writes its categories level beside it.
-  const angle = compact || render.orientation === 'horizontal' ? 0 : (render.x_axis?.tick_angle ?? 0);
+  const angle = compact || render.orientation === 'horizontal' ? 0 : askedAngle === 'auto' ? autoAngle() : askedAngle;
   const legend = compact && data.series.length <= 1 ? 'none' : render.legend_position;
   const sine = Math.sin((Math.abs(angle) * Math.PI) / 180);
   // The x axis height for tick labels of up to `longest` characters at the tick angle, with the x title.
@@ -675,7 +693,6 @@ export function CartesianChart({
     );
   }
 
-  const rows = rowsOf(data, axis);
   const horizontal = render.orientation === 'horizontal';
   drawnValues(rows, data, axis, optionOf, (index) => (onSecondary(index) ? render.y_axis_secondary?.type : render.y_axis?.type) === 'log', percent);
   const stackTotals = render.stack_labels === 'total';
@@ -739,7 +756,6 @@ export function CartesianChart({
   };
   const formatColumn = (column: number) => (value: string | number | null) =>
     column === 0 ? xText(value) : column <= data.series.length ? formatSeries(column - 1)(value) : column <= data.series.length + labelledSeries.length ? format(value) : formatSize(value);
-  const secondary = data.series.some((_, index) => onSecondary(index));
   const share = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 });
 
   // Value labels: `auto` writes them when each bar is wide enough. Bars of one stack share a slot; Recharts gives the slots 80% of a category.

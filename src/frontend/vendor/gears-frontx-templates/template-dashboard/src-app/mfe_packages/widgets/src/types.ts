@@ -35,6 +35,8 @@ export interface CartesianRender {
   unlisted_type?: CartesianSeriesOption['type'];
   /** The stack group of each data series without an entry in `series`: such a series draws on the primary axis, stacked in this group. */
   unlisted_stack_group?: string;
+  /** The tone of each data series by its name, drawn in place of its palette colour; a series with no tone keeps its palette colour. */
+  series_tones?: Tones;
   x_axis?: {
     type?: 'category' | 'value' | 'time';
     label?: string;
@@ -46,7 +48,8 @@ export interface CartesianRender {
      * its room with an ellipsis.
      */
     tick_labels?: 'auto' | 'every';
-    tick_angle?: 0 | -45 | -90;
+    /** `auto` turns the ticks of a category axis only as far as each category needs to keep its whole label: 0, then -45, then -90; when none fits, the turn that labels more categories. */
+    tick_angle?: 0 | -45 | -90 | 'auto';
   };
   y_axis?: { type?: 'value' | 'log'; label?: string };
   y_axis_secondary?: { type?: 'value' | 'log'; label?: string; unit?: string };
