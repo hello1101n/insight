@@ -56,7 +56,8 @@ BOARDS: Final[tuple[Board, ...]] = (
         "Stand: every widget type",
         "every widget type and option once: lines and areas by series and with a target, plain,"
         " labelled, stacked, horizontal, 100% and duration bars, a pie, plain and compared stats,"
-        " tables, heatmaps, a funnel, a treemap and a scatter, with time ranges",
+        " tables, heatmaps, a funnel, a treemap and a scatter, with time ranges, and details"
+        " that list pull requests and commits one row each, linked to their source",
         _ranged(
             "Every widget type",
             [
@@ -88,6 +89,8 @@ BOARDS: Final[tuple[Board, ...]] = (
                 ),
                 {"heading": "More chart types"},
                 *_w("outcome-heatmap", "prs-calendar", "pr-funnel", "load-treemap", "load-scatter"),
+                {"heading": "Records linked to their source"},
+                *_w("pr-records-stat", "commit-records-bar"),
             ],
             ["P7D", "P30D", "P1Y"],
             "P30D",

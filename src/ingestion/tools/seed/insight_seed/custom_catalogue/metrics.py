@@ -165,6 +165,37 @@ METRICS: Final[tuple[Definition, ...]] = (
         },
     ),
     Definition(
+        "stand-m-pr-records",
+        "Stand: pull requests, one row each",
+        {
+            **_PULL_REQUESTS,
+            "time": {"column": "created_on"},
+            "fields": [
+                _column("pr_number", "int", "number"),
+                _column("title"),
+                _column("repo_slug", as_name="repository"),
+                _column("created_on", as_name="opened"),
+            ],
+            "order_by": {"field": "opened", "direction": "desc"},
+        },
+    ),
+    Definition(
+        "stand-m-commit-records",
+        "Stand: commits, one row each",
+        {
+            **_COMMITS,
+            "time": {"column": "date"},
+            "fields": [
+                _column("commit_hash"),
+                _column("message", as_name="title"),
+                _column("author_name"),
+                _column("repo_slug", as_name="repository"),
+                _column("date", as_name="committed"),
+            ],
+            "order_by": {"field": "committed", "direction": "desc"},
+        },
+    ),
+    Definition(
         "stand-m-deals-by-lead-source",
         "Stand: deals by lead source",
         {

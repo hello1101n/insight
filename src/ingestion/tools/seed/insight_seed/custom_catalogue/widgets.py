@@ -354,6 +354,24 @@ WIDGETS: Final[tuple[Definition, ...]] = (
         "sample-points-by-team",
         columns=["team", "points"],
     ),
+    _widget(
+        "pr-records-stat",
+        "Pull requests opened, each one linked",
+        "stat",
+        "prs-over-time",
+        value="prs",
+        label="opened",
+        detail="stand-m-pr-records",
+    ),
+    _widget(
+        "commit-records-bar",
+        "Commits by author, each commit linked",
+        "bar",
+        "commits-by-author",
+        x="author_name",
+        y="commits",
+        detail="stand-m-commit-records",
+    ),
 )
 
 #: The widget whose run fails, so a test knows which cell must show the failure.

@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `d8d416763deaee39` |
+| seed_revision | `f434be1e6a95c6b8` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -140,7 +140,7 @@ only the shared board. Open a board at its path on the stand.
 
 | key | name | path | widgets | covers |
 |---|---|---|---|---|
-| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 22 | every widget type and option once: lines and areas by series and with a target, plain, labelled, stacked, horizontal, 100% and duration bars, a pie, plain and compared stats, tables, heatmaps, a funnel, a treemap and a scatter, with time ranges |
+| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 24 | every widget type and option once: lines and areas by series and with a target, plain, labelled, stacked, horizontal, 100% and duration bars, a pie, plain and compared stats, tables, heatmaps, a funnel, a treemap and a scatter, with time ranges, and details that list pull requests and commits one row each, linked to their source |
 | `headings_and_texts` | Stand: headings and texts | `/dashboards/stand-headings-and-texts` | 2 | headings, texts, a long heading, and text with markdown-like characters |
 | `no_time_range` | Stand: no time range, widgets with and without a clock | `/dashboards/stand-no-time-range` | 4 | a board without time ranges; clocked and clockless widgets run over all rows |
 | `percents` | Stand: percent stat and percent column | `/dashboards/stand-percents` | 4 | a percent stat, a percent table column, a percent line and percent bars |

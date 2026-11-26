@@ -79,6 +79,9 @@ def test_every_id_is_unique_and_carries_the_prefix_the_store_clears() -> None:
 def test_every_reference_resolves_and_every_widget_column_is_answered() -> None:
     problems = []
     for widget in cc.WIDGETS:
+        detail = widget.body.get("detail")
+        if detail is not None and detail not in _METRICS:
+            problems.append(f"{widget.id}: no detail metric {detail}")
         metric = _METRICS.get(widget.body["metric"])
         if metric is None:
             problems.append(f"{widget.id}: no metric {widget.body['metric']}")
@@ -193,6 +196,27 @@ def test_the_board_of_every_widget_type_draws(
 ) -> None:
     every = _board("every_widget_type")
     assert any(predicate(_WIDGETS[w]) for w in every.widgets), f"no {case}"
+
+
+@pytest.mark.parametrize("table", ["class_git_pull_requests", "class_git_commits"])
+def test_the_board_of_every_widget_type_drills_into_records_one_row_each(table: str) -> None:
+    """The drilldown links a row to its record only when the detail reads one row per record."""
+    details = [
+        _METRICS[_WIDGETS[w].body["detail"]]
+        for w in _board("every_widget_type").widgets
+        if "detail" in _WIDGETS[w].body
+    ]
+
+    per_record = [
+        metric
+        for metric in details
+        if metric.body.get("database") == "silver"
+        and metric.body.get("table") == table
+        and not metric.body.get("group_by")
+        and not any("agg" in field for field in metric.body["fields"])
+        and _clocked(metric)
+    ]
+    assert per_record, f"no detail on the board lists {table} one row each"
 
 
 def test_the_boards_cover_every_case_the_renderers_must_draw() -> None:
