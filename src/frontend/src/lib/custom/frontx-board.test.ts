@@ -1013,25 +1013,30 @@ describe("frontxBoard duration columns", () => {
     ["every column in one unit", { a: "min", b: "min" }, MINUTES],
     ["columns in two units", { a: "min", b: "h" }, undefined],
     ["one column without a unit", { a: "min" }, undefined],
-  ])(
-    "shows a funnel and a scatter as durations only for %s",
-    (_, units, format) => {
-      const funnel: Widget = {
-        type: "funnel",
-        metric: "m",
-        stages: ["a", "b"],
-      };
-      const scatter: Widget = { type: "scatter", metric: "m", x: "a", y: "b" };
-      const answer = { columns: ["a", "b"], rows: [[1, 2]] };
+  ])("shows a funnel as durations only for %s", (_, units, format) => {
+    const funnel: Widget = {
+      type: "funnel",
+      metric: "m",
+      stages: ["a", "b"],
+    };
+    const answer = { columns: ["a", "b"], rows: [[1, 2]] };
 
-      for (const body of [funnel, scatter]) {
-        expect(
-          drawnData(body, [], answer, undefined, units).format,
-          body.type
-        ).toEqual(format);
-      }
-    }
-  );
+    expect(drawnData(funnel, [], answer, undefined, units).format).toEqual(
+      format
+    );
+  });
+
+  it.each<[string, DashboardWidget["units"], unknown]>([
+    ["a duration y", { b: "min" }, MINUTES],
+    ["a duration x only", { a: "min" }, undefined],
+  ])("formats a scatter by its y column, for %s", (_, units, format) => {
+    const scatter: Widget = { type: "scatter", metric: "m", x: "a", y: "b" };
+    const answer = { columns: ["a", "b"], rows: [[1, 2]] };
+
+    expect(drawnData(scatter, [], answer, undefined, units).format).toEqual(
+      format
+    );
+  });
 });
 
 describe("frontxBoard options", () => {
@@ -1512,12 +1517,16 @@ describe("frontxBoard new types", () => {
     });
   });
 
-  it("draws a scatter on two percent columns as fractions", () => {
+  it("draws a scatter's percent y as a fraction, and its x as the number it is", () => {
     const answer = { columns: ["size", "hours"], rows: [[40, 12.5]] };
 
     expect(drawnData(SCATTER, ["size", "hours"], answer)).toEqual({
       format: { value_type: "percent" },
-      data: { series: [{ name: "hours", points: [{ x: 0.4, y: 0.125 }] }] },
+      data: { series: [{ name: "hours", points: [{ x: 40, y: 0.125 }] }] },
+    });
+    expect(drawnData(SCATTER, ["size"], answer)).toEqual({
+      format: undefined,
+      data: { series: [{ name: "hours", points: [{ x: 40, y: 12.5 }] }] },
     });
   });
 

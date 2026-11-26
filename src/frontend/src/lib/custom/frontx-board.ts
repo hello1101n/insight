@@ -319,13 +319,12 @@ function treemap(
   };
 }
 
-// INVARIANT: no chart sets drill_down.
+// INVARIANT: no chart sets drill_down. A FrontX scatter writes x as a plain number and y in the value_format.
 function scatter(
   widget: Widget & { type: "scatter" },
   format: ValueFormat | undefined
 ): Drawn {
-  const percent = isPercent(format);
-  const coordinate = (name: string) =>
+  const coordinate = (name: string, percent = false) =>
     `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${percent ? " / 100.0" : ""}))`;
   const size =
     widget.size === undefined
@@ -335,7 +334,7 @@ function scatter(
     widget.label === undefined
       ? ""
       : `, 'label': (r[l] == null ? ${cel(NO_NAME)} : string(r[l]))`;
-  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y")}${size}${label}}`;
+  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y", isPercent(format))}${size}${label}}`;
   const drawnRows = "response.rows.filter(r, r[x] != null && r[y] != null)";
 
   const series =
@@ -469,7 +468,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
     case "treemap":
       return treemap(widget, format(widget.value));
     case "scatter":
-      return scatter(widget, format(widget.x, widget.y));
+      return scatter(widget, format(widget.y));
     default:
       return { note: UNKNOWN };
   }
