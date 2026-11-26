@@ -134,6 +134,11 @@ jobs:
       - name: Cold-start tests
         run: src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q src/ingestion/dbt/tests/cold_start
 
+      # Same rig and warehouse: absent and empty bronze are left out with a
+      # reason, and bronze with rows a model cannot read still fails.
+      - name: Absent-bronze tests
+        run: src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q src/ingestion/dbt/tests/absent_bronze
+
       - name: ClickHouse logs
         if: failure()
         run: docker logs --tail 200 "${CLICKHOUSE_CONTAINER}" || true
