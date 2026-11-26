@@ -682,16 +682,20 @@
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
-/* A markdown card: the body's CommonMark, styled with the kit's text tokens, in lines of at most 65 characters, a
-   reading width, however wide its cell. The markup comes from markdown-it, so these selectors carry it. */
+/* A markdown card: the body's CommonMark, styled with the kit's text tokens. Each block other than a heading runs in
+   lines of at most 65 characters, a reading width, however wide its cell. A heading runs the full width. The markup
+   comes from markdown-it, so these selectors carry it. */
 .markdown {
   flex: 1;
   min-block-size: 0;
-  max-inline-size: 65ch;
   overflow: auto;
   color: var(--foreground);
   font-size: var(--text-body-size);
   line-height: var(--text-body-line-height);
+}
+
+.markdown > :not(h1, h2, h3, h4, h5, h6) {
+  max-inline-size: 65ch;
 }
 
 .markdown > :first-child {
