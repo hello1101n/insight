@@ -96,7 +96,7 @@ it("labels every status cell and summarizes only finished outcomes", () => {
   expect(screen.getByText("25% succeeded")).toBeInTheDocument();
 });
 
-it("summarizes all fifty runs while the table defaults to ten aligned rows", () => {
+it("summarizes all fifty runs while the table defaults to five aligned rows", () => {
   const syncs = runs(50);
   syncs[49].status = "failed";
   history(syncs);
@@ -111,7 +111,7 @@ it("summarizes all fifty runs while the table defaults to ten aligned rows", () 
       .getAllByRole("columnheader")
       .map((header) => header.textContent)
   ).toEqual(["Status", "Started (UTC)", "Duration", "Records"]);
-  expect(within(table).getAllByRole("row")).toHaveLength(11);
+  expect(within(table).getAllByRole("row")).toHaveLength(6);
   expect(table).toHaveClass("table-fixed", "w-full");
   expect(table.parentElement).toBe(
     screen.getByRole("region", { name: "Recent syncs" })
@@ -119,35 +119,31 @@ it("summarizes all fifty runs while the table defaults to ten aligned rows", () 
   expect(within(table).queryByText("sync failed")).not.toBeInTheDocument();
 });
 
-it("expands the whole window and collapses from the keyboard without moving focus", async () => {
-  history(runs(50));
-  const table = screen.getByRole("table", { name: "Recent syncs" });
-  const toggle = screen.getByRole("button", { name: "Show all 50" });
-  expect(toggle).toHaveAttribute("aria-controls", table.id);
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await userEvent.tab();
-  await userEvent.tab();
-  expect(screen.getByRole("region", { name: "Recent syncs" })).toHaveFocus();
-  await userEvent.tab();
-  expect(toggle).toHaveFocus();
+it("pages through history from the keyboard without expanding the table", async () => {
+  history(runs(11));
+  const table = within(screen.getByRole("table", { name: "Recent syncs" }));
+  const newer = screen.getByRole("button", { name: "Newer runs" });
+  const older = screen.getByRole("button", { name: "Older runs" });
+  expect(newer).toBeDisabled();
+  expect(screen.getByText("1–5 of 11")).toBeVisible();
+  older.focus();
   await userEvent.keyboard("{Enter}");
-  expect(within(table).getAllByRole("row")).toHaveLength(51);
-  expect(screen.getByText("Latest 50")).toBeInTheDocument();
-  expect(toggle).toHaveAccessibleName("Show latest 10");
-  expect(toggle).toHaveAttribute("aria-expanded", "true");
-  expect(toggle).toHaveFocus();
+  expect(table.getAllByRole("row")).toHaveLength(6);
+  expect(screen.getByText("6–10 of 11")).toBeVisible();
+  expect(older).toHaveFocus();
   await userEvent.keyboard(" ");
-  expect(within(table).getAllByRole("row")).toHaveLength(11);
-  expect(toggle).toHaveAccessibleName("Show all 50");
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
-  expect(toggle).toHaveFocus();
+  expect(table.getAllByRole("row")).toHaveLength(2);
+  expect(screen.getByText("11 of 11")).toBeVisible();
+  expect(older).toBeDisabled();
+  await userEvent.click(newer);
+  expect(screen.getByText("6–10 of 11")).toBeVisible();
 });
 
 it.each([
   [0, "Latest 0"],
   [7, "Latest 7"],
   [10, "Latest 10"],
-  [50, "Latest 10 of 50 recorded"],
+  [50, "Latest 50"],
 ] as const)(
   "counts the available records honestly for %s runs",
   (count, heading) => {
@@ -156,7 +152,7 @@ it.each([
       screen.getByRole("heading", { name: "Recent syncs" })
     ).toBeInTheDocument();
     expect(screen.getByText(heading)).toBeInTheDocument();
-    if (count <= 10)
+    if (count <= 5)
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
     if (count === 0) {
       expect(
@@ -214,14 +210,12 @@ it("keeps the status strip on one line and lets the heading and totals wrap", ()
     );
   }
   expect(within(header).getByText("100% succeeded")).toBeInTheDocument();
-  expect(within(header).getByText("Latest 10 of 11 recorded")).toHaveClass(
-    "ml-auto"
-  );
+  expect(within(header).getByText("Latest 11")).toHaveClass("ml-auto");
   expect(Array.from(header.children)).toEqual([
     heading,
     strip,
     screen.getByText("100% succeeded").parentElement,
-    screen.getByText("Latest 10 of 11 recorded"),
+    screen.getByText("Latest 11"),
   ]);
 });
 
@@ -264,8 +258,8 @@ it("wraps headers and uses proportional columns within the full-width table", ()
   expect(columns[0]).toHaveClass("w-[23%]", "sm:w-1/4");
   expect(columns[1]).toHaveClass("w-[33%]", "sm:w-2/5");
   expect(columns[1]).not.toHaveClass("w-2/5");
-  expect(columns[2]).toHaveClass("w-[19%]", "sm:w-1/5");
-  expect(columns[3]).toHaveClass("w-1/4", "sm:w-[15%]");
+  expect(columns[2]).toHaveClass("w-[23%]", "sm:w-1/5");
+  expect(columns[3]).toHaveClass("w-[21%]", "sm:w-[15%]");
   expect(table.parentElement).toHaveClass(
     "min-w-0",
     "max-w-full",

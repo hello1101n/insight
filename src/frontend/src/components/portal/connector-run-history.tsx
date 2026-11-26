@@ -56,11 +56,7 @@ import {
   RunningSyncIndicator,
   RunTooltip,
 } from "./connector-run-state";
-import {
-  ConnectorSyncTable,
-  ConnectorSyncTableToggle,
-  INITIAL_HISTORY_ROWS,
-} from "./connector-sync-table";
+import { ConnectorSyncTable } from "./connector-sync-table";
 
 function RunMetrics({
   run,
@@ -74,6 +70,7 @@ function RunMetrics({
   asOf: string;
 }) {
   const { t } = useTranslation();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const timing = run && summarizeRun(run, asOf);
   const state = run && describeRunState(run, asOf, timing ?? undefined);
   const queuedLabel = t("connectors.runs.queued");
@@ -97,60 +94,86 @@ function RunMetrics({
     <Card
       size="sm"
       render={<section />}
-      className="min-w-0 items-start gap-2 p-3"
+      className="min-w-0 gap-1 px-2 py-1 sm:px-3 sm:py-1.5"
     >
-      <CardTitle render={<h3 />} className="text-sm">
-        {title}
-      </CardTitle>
-      {run == null ? (
-        <p className="text-xs text-muted-foreground">{empty}</p>
-      ) : (
-        <>
-          <p className="text-xs tabular-nums">
-            {formatStarted(run.started_at)}
-            {run.finished_at && <> – {formatStarted(run.finished_at)}</>}
-          </p>
-          {!metrics.some(({ label }) => label === state?.label) && (
-            <ConnectorRunState
-              run={run}
-              asOf={asOf}
-              timing={timing ?? undefined}
-              showRunning
-            />
-          )}
-          {metrics.length > 0 && (
-            <dl className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(5rem,100%),1fr))] gap-2 border-t pt-2">
-              {metrics.map(({ label, details, duration, tone }) => (
-                <div key={label}>
-                  <dt className="text-xs text-muted-foreground">
-                    {label === state?.label ? (
-                      <ConnectorRunState
-                        run={run}
-                        asOf={asOf}
-                        timing={timing ?? undefined}
-                        showRunning
-                      />
-                    ) : (
-                      <RunTooltip lines={details}>
-                        {tone ? (
-                          <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
-                            {label}
-                          </Badge>
-                        ) : (
-                          label
-                        )}
-                      </RunTooltip>
-                    )}
-                  </dt>
-                  <dd className="text-sm font-medium tabular-nums">
-                    {formatDuration(duration)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </>
-      )}
+      <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <div className="mb-0.5 flex flex-wrap items-center gap-x-2">
+          <CardTitle render={<h3 />} className="text-xs font-semibold">
+            {metrics.length > 0 || run?.finished_at ? (
+              <CollapsibleTrigger
+                type="button"
+                className="group inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-sm text-start focus-visible:outline-2"
+              >
+                {title}
+                <ChevronRight
+                  aria-hidden="true"
+                  className="size-3 shrink-0 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none"
+                />
+              </CollapsibleTrigger>
+            ) : (
+              title
+            )}
+          </CardTitle>
+          {run &&
+            run.status !== "succeeded" &&
+            (!detailsOpen ||
+              !metrics.some(({ label }) => label === state?.label)) && (
+              <ConnectorRunState
+                run={run}
+                asOf={asOf}
+                timing={timing ?? undefined}
+                showRunning
+              />
+            )}
+        </div>
+        {run == null ? (
+          <p className="text-xs text-muted-foreground">{empty}</p>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {formatStarted(run.started_at)}
+            </p>
+            <CollapsibleContent>
+              {run.finished_at && (
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {t("connectors.history.finished_at", {
+                    time: formatStarted(run.finished_at),
+                  })}
+                </p>
+              )}
+              <dl className="mt-1 grid w-full grid-cols-[repeat(auto-fit,minmax(min(5rem,100%),1fr))] gap-2 border-t pt-1">
+                {metrics.map(({ label, details, duration, tone }) => (
+                  <div key={label}>
+                    <dt className="text-xs text-muted-foreground">
+                      {label === state?.label ? (
+                        <ConnectorRunState
+                          run={run}
+                          asOf={asOf}
+                          timing={timing ?? undefined}
+                          showRunning
+                        />
+                      ) : (
+                        <RunTooltip lines={details}>
+                          {tone ? (
+                            <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
+                              {label}
+                            </Badge>
+                          ) : (
+                            label
+                          )}
+                        </RunTooltip>
+                      )}
+                    </dt>
+                    <dd className="text-sm font-medium tabular-nums">
+                      {formatDuration(duration)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </CollapsibleContent>
+          </>
+        )}
+      </Collapsible>
     </Card>
   );
 }
@@ -196,31 +219,31 @@ function StepEvent({
   return (
     <li
       aria-current={current ? "step" : undefined}
-      className="group grid grid-cols-[10ch_1.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2 text-sm sm:gap-x-3"
+      className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5 rounded-md border px-1.5 py-0.5 text-xs sm:px-2 sm:py-1"
     >
       <time
         dateTime={stamp}
         title={label}
         aria-label={label}
-        className="pt-0.5 text-xs text-muted-foreground tabular-nums"
+        className="col-span-3 row-start-2 flex flex-wrap gap-x-1 text-xs text-muted-foreground tabular-nums"
       >
         {stamp ? (
           <>
-            <span className="block">{label.slice(0, 10)}</span>
-            <span className="block">{label.slice(11)}</span>
+            <span className="whitespace-nowrap">{label.slice(0, 10)}</span>
+            <span className="whitespace-nowrap">{label.slice(11)}</span>
           </>
         ) : (
           label
         )}
       </time>
-      <span className="relative flex h-full min-h-5 justify-center after:absolute after:top-4 after:bottom-[-1.125rem] after:left-1/2 after:w-px after:bg-border group-last:after:hidden">
+      <span className="col-start-1 row-start-1 flex justify-center">
         <span
           role="img"
           aria-label={pending ? undefined : stateLabel}
           aria-hidden={pending || undefined}
           title={pending ? undefined : stateLabel}
           className={cn(
-            "relative z-1 grid size-5 place-items-center rounded-full",
+            "grid size-4 place-items-center rounded-full",
             pending
               ? "border border-dashed border-muted-foreground/50 bg-card"
               : TONE_STYLE[tone],
@@ -235,8 +258,8 @@ function StepEvent({
             ))}
         </span>
       </span>
-      <div className="min-w-0">{children}</div>
-      <span className="pt-0.5 text-right text-xs text-muted-foreground tabular-nums">
+      <div className="col-start-2 row-start-1 min-w-0">{children}</div>
+      <span className="col-start-3 row-start-1 text-right text-xs text-muted-foreground tabular-nums">
         {formatDuration(duration)}
       </span>
     </li>
@@ -281,8 +304,8 @@ function Timeline({
   const timing = summarizeRun(run, asOf);
   const heading = t("connectors.runs.timeline");
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-2 text-sm tabular-nums">
+    <section className="min-w-0 space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs tabular-nums sm:text-sm">
         <strong className="font-semibold">
           <time dateTime={run.started_at}>{startStamp}</time>
           {run.finished_at && (
@@ -303,7 +326,7 @@ function Timeline({
       </div>
       <ConnectorRunBands timing={timing} />
       {timing.steps.length > 0 || timing.trailingQueue ? (
-        <Card size="sm" className="min-w-0 p-3 sm:p-4">
+        <Card size="sm" className="min-w-0 px-2 py-1.5">
           <Collapsible open={stepsOpen} onOpenChange={onStepsOpenChange}>
             <CardTitle render={<h4 />} className="text-sm">
               <CollapsibleTrigger
@@ -318,7 +341,10 @@ function Timeline({
               </CollapsibleTrigger>
             </CardTitle>
             <CollapsibleContent className="motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0">
-              <ol aria-label={heading} className="pt-2">
+              <ol
+                aria-label={heading}
+                className="grid grid-cols-2 gap-1.5 pt-1.5 @lg:grid-cols-4"
+              >
                 {timing.steps.map(({ step, queued, failure, ...event }) => {
                   const state = describeRun(event.status);
                   return (
@@ -436,8 +462,7 @@ export function ConnectorRunHistory({
   const detailsId = `${heading}-detail`;
   const detailsRef = useRef<HTMLDivElement>(null);
   const [selectedId, select] = useState<string | null>(null);
-  const [stepsOpen, setStepsOpen] = useState(true);
-  const [showAll, setShowAll] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
 
   function openRun(id: string, scrollToDetails = false) {
     select(id);
@@ -446,7 +471,7 @@ export function ConnectorRunHistory({
       requestAnimationFrame(() => {
         const details = detailsRef.current;
         details?.focus({ preventScroll: true });
-        details?.scrollIntoView?.({ block: "start" });
+        details?.scrollIntoView?.({ block: "nearest" });
       });
   }
   const recent = latest ? projectRun(latest) : undefined;
@@ -466,10 +491,9 @@ export function ConnectorRunHistory({
       : recordedSuccess;
   const history = recentHistory(managed, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
-  const visible = showAll ? history : history.slice(0, INITIAL_HISTORY_ROWS);
   return (
-    <div className="@container min-w-0 space-y-4 whitespace-normal">
-      <div className="grid min-w-0 gap-2 @lg:grid-cols-2">
+    <div className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2">
+      <div className="grid min-w-0 grid-cols-2 gap-1.5">
         <RunMetrics
           title={t("connectors.runs.latest_success")}
           empty={t("connectors.runs.no_success")}
@@ -484,56 +508,62 @@ export function ConnectorRunHistory({
         />
       </div>
       <section aria-labelledby={heading} className="space-y-2">
-        <h3 id={heading} className="text-sm font-semibold">
-          {t("connectors.history.heading")}
-          {history.length > 0 && ` · ${history.length}`}
-        </h3>
-        <ol
-          aria-label={t("connectors.history.statuses_label")}
-          className="grid w-full min-w-0"
-          style={{ gridTemplateColumns: `repeat(${limit}, minmax(0, 1fr))` }}
-        >
-          {history.toReversed().map(({ id, record }) => {
-            const state =
-              "sync_id" in record
-                ? describeRunState(record, asOf)
-                : describeSync(record);
-            const severity =
-              "kind" in state && state.kind === "queued"
-                ? queueSeverity(state.tone)
-                : null;
-            const label = [
-              formatStarted(record.started_at),
-              state.label,
-              severity,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <li key={id} className="group min-w-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={<Button type="button" size="sm" variant="ghost" />}
-                    className="relative block h-7 w-full min-w-0 rounded-none border-0 bg-transparent p-0 hover:bg-transparent focus-visible:z-10 aria-pressed:after:absolute aria-pressed:after:inset-x-0 aria-pressed:after:bottom-0.5 aria-pressed:after:mx-auto aria-pressed:after:h-0.5 aria-pressed:after:w-full aria-pressed:after:max-w-6 aria-pressed:after:rounded-full aria-pressed:after:bg-foreground"
-                    aria-label={label}
-                    aria-controls={detailsId}
-                    aria-pressed={id === selected?.id}
-                    onClick={() => openRun(id)}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
-                        historySegmentStyle(record.status, state.tone)
-                      )}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent role="tooltip">{label}</TooltipContent>
-                </Tooltip>
-              </li>
-            );
-          })}
-        </ol>
+        <div className="flex items-center gap-3">
+          <h3 id={heading} className="shrink-0 text-sm font-semibold">
+            {t("connectors.history.heading")}
+            {history.length > 0 && ` · ${history.length}`}
+          </h3>
+          <ol
+            aria-label={t("connectors.history.statuses_label")}
+            className="grid max-w-xs min-w-0 flex-1"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(history.length, 1)}, minmax(0, 1fr))`,
+            }}
+          >
+            {history.toReversed().map(({ id, record }) => {
+              const state =
+                "sync_id" in record
+                  ? describeRunState(record, asOf)
+                  : describeSync(record);
+              const severity =
+                "kind" in state && state.kind === "queued"
+                  ? queueSeverity(state.tone)
+                  : null;
+              const label = [
+                formatStarted(record.started_at),
+                state.label,
+                severity,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <li key={id} className="group min-w-0">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button type="button" size="sm" variant="ghost" />
+                      }
+                      className="relative block h-7 w-full min-w-0 rounded-none border-0 bg-transparent p-0 hover:bg-transparent focus-visible:z-10 aria-pressed:after:absolute aria-pressed:after:inset-x-0 aria-pressed:after:bottom-0.5 aria-pressed:after:mx-auto aria-pressed:after:h-0.5 aria-pressed:after:w-full aria-pressed:after:max-w-6 aria-pressed:after:rounded-full aria-pressed:after:bg-foreground"
+                      aria-label={label}
+                      aria-controls={detailsId}
+                      aria-pressed={id === selected?.id}
+                      onClick={() => openRun(id)}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
+                          historySegmentStyle(record.status, state.tone)
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent role="tooltip">{label}</TooltipContent>
+                  </Tooltip>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
         {selected && (
           <div
             ref={detailsRef}
@@ -553,46 +583,38 @@ export function ConnectorRunHistory({
             )}
           </div>
         )}
-        {selected && visible.length > 0 && (
-          <>
-            <ConnectorSyncTable
-              id={`${heading}-table`}
-              selection={{
-                selectedId: selected.id,
-                detailsId,
-                onSelect: (id) => openRun(id, true),
-              }}
-              rows={visible.map(({ id, record }) => {
-                const started = formatStarted(record.started_at);
-                if ("sync_id" in record)
-                  return {
-                    id,
-                    status: describeRunState(record, asOf),
-                    started,
-                    duration: runDuration(record, asOf),
-                    inFlight: isActiveRun(record),
-                    records: record.records_reported,
-                  };
-
-                const state = describeSync(record);
-                const duration = describeDuration(record, asOf);
+        {selected && (
+          <ConnectorSyncTable
+            id={`${heading}-table`}
+            selection={{
+              selectedId: selected.id,
+              detailsId,
+              onSelect: (id) => openRun(id, true),
+            }}
+            rows={history.map(({ id, record }) => {
+              const started = formatStarted(record.started_at);
+              if ("sync_id" in record)
                 return {
                   id,
-                  status: state,
+                  status: describeRunState(record, asOf),
                   started,
-                  duration: duration.text,
-                  inFlight: duration.inFlight,
+                  duration: runDuration(record, asOf),
+                  inFlight: isActiveRun(record),
                   records: record.records_reported,
                 };
-              })}
-            />
-            <ConnectorSyncTableToggle
-              tableId={`${heading}-table`}
-              count={history.length}
-              showAll={showAll}
-              onToggle={() => setShowAll(!showAll)}
-            />
-          </>
+
+              const state = describeSync(record);
+              const duration = describeDuration(record, asOf);
+              return {
+                id,
+                status: state,
+                started,
+                duration: duration.text,
+                inFlight: duration.inFlight,
+                records: record.records_reported,
+              };
+            })}
+          />
         )}
       </section>
     </div>

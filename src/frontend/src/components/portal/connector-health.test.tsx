@@ -1408,6 +1408,10 @@ describe("connector workflow runs", () => {
     };
     render(<ConnectorHealthPane />);
     await userEvent.click(rowFor("example"));
+    const steps = screen.queryByRole("button", { name: "Run steps (UTC)" });
+    if (steps) await userEvent.click(steps);
+    const current = screen.queryByRole("button", { name: "Current run" });
+    if (current) await userEvent.click(current);
   }
 
   it("shows the UTC date for each step across midnight", async () => {
@@ -1507,12 +1511,12 @@ describe("connector workflow runs", () => {
     const steps = () => screen.getByRole("list", { name: "Run steps (UTC)" });
     const toggle = () =>
       screen.getByRole("button", { name: "Run steps (UTC)" });
+    expect(screen.queryByRole("list", { name: "Run steps (UTC)" })).toBeNull();
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(
-      steps().compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
+      toggle().compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
 
-    await userEvent.click(toggle());
-    expect(toggle()).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(
       within(olderRow).getByRole("cell", { name: "Ready" })
     );
@@ -1561,6 +1565,9 @@ describe("connector workflow runs", () => {
       expect(within(rows[index]).getByText(label)).toBeVisible();
       expect(within(rows[index]).getByText(duration)).toBeVisible();
     }
+    await userEvent.click(
+      screen.getByRole("button", { name: "Last successful sync" })
+    );
     const summary = screen
       .getByRole("heading", { name: "Last successful sync" })
       .closest("section")!;
@@ -2343,6 +2350,13 @@ describe("connector workflow runs", () => {
       within(
         screen.getByRole("heading", { name: heading }).closest("section")!
       );
+    await userEvent.click(screen.getByRole("button", { name: "Current run" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Last successful sync" })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Run steps (UTC)" })
+    );
     const current = card("Current run");
     expect(current.getAllByText("Queued")).toHaveLength(1);
     expect(current.getByText("1m 0s")).toBeVisible();
@@ -2412,6 +2426,11 @@ describe("connector workflow runs", () => {
     expect(marks.at(-2)).toHaveAccessibleName("2026-01-15 11:58:00Z · Failed");
     expect(marks.at(-1)).toHaveAccessibleName("2026-01-15 11:59:00Z · Ready");
     await userEvent.click(marks[0]!);
+    expect(screen.getByText("46–50 of 50")).toBeVisible();
+    const historyTable = screen.getByRole("table", { name: "Recent syncs" });
+    expect(
+      within(historyTable).getByRole("button", { name: "2026-01-15 11:10:00Z" })
+    ).toHaveAttribute("aria-pressed", "true");
     const details = within(
       screen.getByRole("heading", { name: "Bronze (UTC)" }).closest("section")!
     );

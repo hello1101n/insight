@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import { useTranslation } from "react-i18next";
-import { useId, useState } from "react";
+import { useId } from "react";
 
 import type {
   ConnectorHealth,
@@ -11,11 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ConnectorRunHistory } from "./connector-run-history";
-import {
-  ConnectorSyncTable,
-  ConnectorSyncTableToggle,
-  INITIAL_HISTORY_ROWS,
-} from "./connector-sync-table";
+import { ConnectorSyncTable } from "./connector-sync-table";
 import { historySegmentStyle } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
@@ -58,7 +54,6 @@ export function ConnectorSyncHistory({
 }) {
   const { t } = useTranslation();
   const { data, isPending, isError, refetch } = useConnectorSyncs(instance);
-  const [showAll, setShowAll] = useState(false);
   const id = useId();
 
   if (isPending) return <CenteredSpinner className="min-h-24" />;
@@ -89,14 +84,7 @@ export function ConnectorSyncHistory({
 
   const syncs = data.syncs.slice(0, MAX_RUNS);
   const totals = statusTotals(syncs);
-  const visible = showAll ? syncs : syncs.slice(0, INITIAL_HISTORY_ROWS);
-  const count =
-    syncs.length > visible.length
-      ? t("connectors.history.latest_recorded", {
-          shown: visible.length,
-          total: syncs.length,
-        })
-      : t("connectors.history.latest", { count: syncs.length });
+  const count = t("connectors.history.latest", { count: syncs.length });
 
   return (
     <section
@@ -164,29 +152,21 @@ export function ConnectorSyncHistory({
           {t("connectors.history.empty")}
         </p>
       ) : (
-        <>
-          <ConnectorSyncTable
-            id={`${id}-table`}
-            rows={visible.map((sync) => {
-              const state = describeSync(sync);
-              const duration = describeDuration(sync, asOf);
-              return {
-                id: sync.job_id,
-                status: state,
-                started: formatStarted(sync.started_at),
-                duration: duration.text,
-                inFlight: duration.inFlight,
-                records: sync.records_reported,
-              };
-            })}
-          />
-          <ConnectorSyncTableToggle
-            tableId={`${id}-table`}
-            count={syncs.length}
-            showAll={showAll}
-            onToggle={() => setShowAll(!showAll)}
-          />
-        </>
+        <ConnectorSyncTable
+          id={`${id}-table`}
+          rows={syncs.map((sync) => {
+            const state = describeSync(sync);
+            const duration = describeDuration(sync, asOf);
+            return {
+              id: sync.job_id,
+              status: state,
+              started: formatStarted(sync.started_at),
+              duration: duration.text,
+              inFlight: duration.inFlight,
+              records: sync.records_reported,
+            };
+          })}
+        />
       )}
     </section>
   );

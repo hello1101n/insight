@@ -1060,17 +1060,18 @@
     "history": {
       "succeeded_share": "{{percent}}% succeeded",
       "succeeded_counts": "{{succeeded}} of {{total}} finished syncs succeeded, {{failed}} failed",
-      "latest_recorded": "Latest {{shown}} of {{total}} recorded",
       "latest": "Latest {{count}}",
       "heading": "Recent syncs",
       "statuses_label": "Recorded sync statuses, newest on the right",
       "load_utc": "{{step}} (UTC)",
+      "finished_at": "Finished {{time}}",
       "run_label": "Run {{index}}: {{state}}, started {{started}}",
       "empty": "No sync has been recorded for this connector.",
       "started_utc": "Started (UTC)",
       "records": "Records",
-      "show_latest": "Show latest {{count}}",
-      "show_all": "Show all {{count}}",
+      "page_range": "{{range}} of {{total}}",
+      "newer_runs": "Newer runs",
+      "older_runs": "Older runs",
       "unmeasured": "{{value}} means the mover reported no count, not a count of zero"
     },
     "editor": {
