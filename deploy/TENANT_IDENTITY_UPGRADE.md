@@ -43,29 +43,52 @@ A fresh install does the same; its hooks find nothing to migrate.
 | `clickhouse-migrate`, `field-value-map` (post-upgrade) | 200, 300 | As every release. The field-value-map loader writes every row under the tenant and ignores the bundle's tenant column. |
 | `tenant-cutover-post` (post-upgrade) | 400 | If the ConfigMap exists, it submits one Workflow from the `tenant-cutover-rebuild` template and returns without waiting for it. |
 
-`tenant_migration apply` handles every MergeTree table in `bronze_*`, `config`
-and `ingestion_history`, and every history relation
-(`src/ingestion/scripts/tenant_migration/history-tables.txt`), that still has a
-`tenant_id` column or holds a tenant other than the UUID. For each one it
-creates a copy with the column named `insight_tenant_id`, with the same type and
-position (`ingestion_history` keeps `tenant_id`). It inserts every row with the
-tenant set to the UUID and the tenant prefix of `unique_key` rewritten. It then
-checks the row (or key) count and `EXCHANGE`s the copy in. The original stays
-beside it as `<table>__tenant_backup`, or as `__tenant_backup_<n>` when an
-earlier deploy left one. A history relation built before it had a tenant column
-gets one. A table already in the target shape is skipped.
+`tenant_migration apply` handles every MergeTree table in `bronze_*`, `config`,
+`ingestion_history`, `staging`, `silver` and `insight` (gold), and every history
+relation (`src/ingestion/scripts/tenant_migration/history-tables.txt`), that
+still has a `tenant_id` column, still names its stamped source `source_id`, or
+holds a tenant other than the UUID. It covers every stored table, whether or
+not its connector has synced. For each one it creates a copy,
+`<table>__tenant_copy`, with the columns named `insight_tenant_id` and
+`insight_source_id`, with the same type and position (`ingestion_history` keeps
+`tenant_id` and `source_id`). It inserts every row with the tenant set to the
+UUID and the tenant prefix of `unique_key` rewritten; the rest of the key is
+unchanged. It then checks the row (or key) count and `EXCHANGE`s the copy in.
+Only then is the original renamed `<table>__tenant_backup`, or
+`__tenant_backup_<n>` when an earlier deploy left one, so a backup always holds
+an original. A silver table or history relation built before it had a tenant
+column gets one. A table already in the target shape is skipped.
+
+What keeps `tenant_id`, by design: the sync ledger `ingestion_history.sync_events`;
+`dbt_test__audit` (dbt test results, rewritten by the next test run);
+materialized views' `.inner_id.*` tables; and every operator database outside
+the scope above, such as `presentation.*`, `ops_*` or `backup_*`. A view an
+operator wrote over a migrated table that names `tenant_id` or `source_id`
+must be updated by hand.
+
+Expect raw Bronze row counts (`count()`) to drop: the copy writes each
+ReplacingMergeTree table afresh, and ClickHouse collapses duplicate keys within
+an inserted block, which background merges had not yet done in the original.
+`count() FINAL` and the set of keys are unchanged; the migration checks the keys.
 
 If anything fails, including the hook's deadline, the hook swaps every table
 already exchanged back, resumes the writers it suspended and fails the deploy.
-The previous release keeps running as before.
+The previous release keeps running as before. If the pod is killed outright
+(SIGKILL), at most one `<table>__tenant_copy` is left: the next deploy drops it
+when its table was not yet swapped (a partial copy), and otherwise renames it
+`__tenant_backup` (it holds the original).
 
-The rebuild Workflow does a full dbt refresh of staging and
-`identity.identity_inputs`, runs the identity seed once, then fully refreshes
-everything else, gold included. History relations refuse the full refresh and
-run incrementally. Its last step resumes the writers as they were recorded and
-deletes the ConfigMap. A sync schedule named for the former tenant stays
-suspended: reconcile's next tick renames its Airbyte source and connection in
-place and replaces it with a schedule named for the UUID.
+The rebuild Workflow does a full dbt refresh of staging, everything upstream of
+it and `identity.identity_inputs`, runs the identity seed once, then fully
+refreshes everything else, gold included. History relations refuse the full
+refresh and run incrementally. A model whose Bronze is absent or empty is
+skipped by dbt and rebuilds on its connector's next sync; until then its
+migrated tables stay as they are. Every step runs even when an earlier one
+failed. When the Workflow ends, however it ends, its exit handler resumes the
+writers as they were recorded and deletes the ConfigMap. A sync schedule named
+for the former tenant stays suspended: reconcile's next tick renames its
+Airbyte source and connection in place and replaces it with a schedule named
+for the UUID.
 
 ## Progress and failures
 
@@ -83,13 +106,16 @@ kubectl -n <NS> get configmap <release>-tenant-cutover      # present = rebuild 
 - **`some table could not be put back`**: the writers stay suspended, and each
   original is in its `__tenant_backup*` table. Fix the cause and deploy again;
   the hook migrates forward from where it stopped.
-- **The rebuild Workflow fails**: the writers stay suspended and the ConfigMap
-  remains. Fix the cause and deploy again; the post hook submits the rebuild
-  again.
+- **The rebuild Workflow fails**: some models failed. Its `report` step says
+  which steps; each dbt step's log names the failed models under
+  `Completed with N errors`. Every other model was rebuilt, the writers were
+  resumed, and the ConfigMap is gone, so no deploy submits the rebuild again.
+  A failed model rebuilds on its connector's next sync; to rebuild it sooner,
+  run dbt-run for it by hand.
 
 ## Analytics until the rebuild finishes
 
-Between the deploy and the end of the rebuild, analytics reads empty or
+Between the deploy and the end of the rebuild, analytics may read stale or
 not-ready: staging, silver, gold and the identity maps are rebuilt from
 Bronze. No sync runs until the rebuild has finished. On a large install this
 takes hours; each dbt step's deadline is
@@ -97,9 +123,16 @@ takes hours; each dbt step's deadline is
 
 ## Once the stand is proven, drop the backups
 
-The backups use as much ClickHouse disk again as the migrated tables. Once
-the stand has run normally for a while, drop them by hand. No hook ever does.
-Leftover backups never block a later deploy.
+The backups use as much ClickHouse disk again as the migrated tables: 5–9 GiB
+on the stands migrated so far. Check there is room before the deploy:
+
+```sql
+SELECT formatReadableSize(sum(total_bytes)) FROM system.tables
+WHERE database LIKE 'bronze\_%' OR database IN ('config', 'ingestion_history', 'staging', 'silver', 'insight');
+```
+
+Once the stand has run normally for a while, drop them by hand. No hook ever
+does. Leftover backups never block a later deploy.
 
 ```sh
 kubectl -n <NS> run tenant-finalize --rm -it --restart=Never \
@@ -108,7 +141,9 @@ kubectl -n <NS> run tenant-finalize --rm -it --restart=Never \
   --command -- sh -c 'cd /ingestion/scripts && python3 -m tenant_migration finalize'
 ```
 
-`finalize` drops every `*__tenant_backup*` table whose live table exists.
-Until then, swapping a backup back by hand
-(`EXCHANGE TABLES <t> AND <t>__tenant_backup`) is the only way back. There is no
-rollback.
+`finalize` drops every `*__tenant_backup*` table, including an orphan whose
+live table no longer exists. Until then, a backup always holds the table as it
+was before the migration, and swapping it back by hand
+(`EXCHANGE TABLES <t> AND <t>__tenant_backup`) is the only way back. A
+`<t>__tenant_copy` is never a backup: it is a copy in progress, or what a killed
+run left, which the next deploy settles. There is no rollback.
