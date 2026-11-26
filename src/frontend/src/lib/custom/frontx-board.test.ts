@@ -440,6 +440,16 @@ describe("frontxBoard", () => {
     });
   });
 
+  it("labels every bar and lets FrontX turn the labels only when the names do not fit level", () => {
+    const [bar, stacked] = cells([{ widget: "bar" }, { widget: "stacked" }]);
+
+    for (const cell of [bar, stacked]) {
+      expect(cell.widget.render, cell.widget.title).toMatchObject({
+        x_axis: { type: "category", tick_labels: "every", tick_angle: "auto" },
+      });
+    }
+  });
+
   it("draws every x column on a category axis, as the current chart does, and titles no axis", () => {
     const [line, bar, stacked] = cells([
       { widget: "line" },
@@ -456,6 +466,10 @@ describe("frontxBoard", () => {
       x_axis: { type: "category" },
       y_axis: { type: "value" },
     });
+    expect(line.widget.render).toMatchObject({
+      x_axis: { type: "category" },
+    });
+    expect(line.widget.render).not.toHaveProperty("x_axis.tick_angle");
     for (const cell of [line, bar, stacked]) {
       const render = cell.widget.render as Record<string, object>;
       expect(render.x_axis, cell.widget.title).not.toHaveProperty("label");
@@ -1104,6 +1118,23 @@ describe("frontxBoard options", () => {
 
     return cell.widget.render;
   }
+
+  it("gives each series value the tone its bar widget names, and no tone without colors", () => {
+    const toned: Widget = {
+      type: "bar",
+      metric: "m",
+      x: "team",
+      y: "n",
+      series: "outcome",
+      colors: { failed: "danger", ok: "success" },
+    };
+    const plain: Widget = { ...toned, colors: undefined };
+
+    expect(renderOf(toned)).toMatchObject({
+      series_tones: { failed: "danger", ok: "success" },
+    });
+    expect(renderOf(plain)).not.toHaveProperty("series_tones");
+  });
 
   const STAT: Widget = { type: "stat", metric: "m", value: "n", label: "runs" };
   const now = { columns: ["n"], rows: [[125]] };

@@ -92,6 +92,10 @@ const formatted = (format: ValueFormat | undefined) =>
   format ? { value_format: format } : {};
 
 const BARS = { max_bar_width: BAR_MAX_PX };
+// Each bar keeps a whole label: FrontX turns the labels only when the names do not fit level.
+const BAR_TICKS = {
+  x_axis: { type: "category", tick_labels: "every", tick_angle: "auto" },
+};
 
 // INVARIANT: FrontX fixes a cell's format when it builds the board, so the format comes from the listed widget, not the run.
 function formatOf({ percents = [], units = {} }: DashboardWidget): FormatOf {
@@ -172,9 +176,9 @@ function chart(
     ...formatted(format),
     type: "cartesian_chart",
     render: {
-      ...render,
       x_axis: { type: "category" },
       y_axis: { type: "value" },
+      ...render,
     },
     transform: `cel.bind(x, ${column(x)}, cel.bind(w, ${spansYears}, cel.bind(y, ${column(y)}, {'series': ${series(point, cel(y))}})))`,
   };
@@ -417,6 +421,8 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
       const width = widget.labels && isDuration(shown) ? {} : BARS;
       const render = {
         ...width,
+        ...BAR_TICKS,
+        ...(widget.colors ? { series_tones: widget.colors } : {}),
         ...(widget.horizontal ? { orientation: "horizontal" } : {}),
         ...(share ? { stack_mode: "percent" } : {}),
         ...targetLines(widget.target, isPercent(shown) || share),

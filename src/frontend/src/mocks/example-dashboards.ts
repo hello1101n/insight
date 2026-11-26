@@ -208,6 +208,7 @@ export const EXAMPLE_WIDGETS: DashboardWidget[] = [
     x: "team",
     y: "incidents",
     series: "severity",
+    colors: { critical: "danger", major: "warning", minor: "info" },
   }),
   widget("bd-reviews", "Reviews by team", {
     type: "bar",
