@@ -171,6 +171,25 @@ function actionsOf(
   return fx.cellActions?.({ dashboardId: dashboard.id, widgetId, role }) ?? [];
 }
 
+// WORKAROUND: the React Compiler keeps a FrontX cell's actions until cellActions changes. The mocked Dashboard is not compiled, so this helper keeps them the same way.
+const held = new WeakMap<object, Map<string, readonly CellAction[]>>();
+
+function heldLabelsOf(
+  dashboard: FrontxDashboard,
+  widgetId: string,
+  role: CellActionTarget["role"] = "cell"
+): string[] {
+  const ask = fx.cellActions;
+  if (!ask) return [];
+  const byTarget = held.get(ask) ?? new Map<string, readonly CellAction[]>();
+  held.set(ask, byTarget);
+  const target = `${role} ${widgetId}`;
+  if (!byTarget.has(target)) {
+    byTarget.set(target, ask({ dashboardId: dashboard.id, widgetId, role }));
+  }
+  return byTarget.get(target)!.map((action) => action.label);
+}
+
 describe("FrontxBoard", () => {
   it("draws the board with the page theme and the selected range, and follows a theme switch", async () => {
     render(<FrontxBoard id="board-b" read={READ} range="P7D" />, { wrapper });
@@ -331,16 +350,19 @@ describe("FrontxBoard", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides Details on a widget cell whose run the warehouse refused as busy, and shows it again when the run starts once more", async () => {
+  it("hides Details on a widget cell and its larger view while the warehouse refuses its run as busy, and shows it again when the run starts once more", async () => {
     const host = await hostOf("board-b", READ, "P7D");
     const dashboard = await shownDashboard(host);
     const [cell] = dashboard.layout.cells;
+    const larger = cell.larger_view!.id;
     const { request } = cell.widget.data as { request: DashboardRequest };
     const run = () =>
       host.request(
         { ...request, body: { ...(request.body as object), range: "P7D" } },
         new AbortController().signal
       );
+    expect(heldLabelsOf(dashboard, cell.widget.id)).toEqual(["Details"]);
+    expect(heldLabelsOf(dashboard, larger, "larger_view")).toEqual(["Details"]);
     fetchWithAuth.mockImplementation(
       async (_url: string, init?: RequestInit) =>
         init?.method === "POST"
@@ -349,10 +371,10 @@ describe("FrontxBoard", () => {
     );
 
     await expect(run()).rejects.toMatchObject({ status: 429 });
-    expect(actionsOf(dashboard, cell.widget.id)).toEqual([]);
-    expect(actionsOf(dashboard, cell.larger_view!.id, "larger_view")).toEqual(
-      []
+    await waitFor(() =>
+      expect(heldLabelsOf(dashboard, cell.widget.id)).toEqual([])
     );
+    expect(heldLabelsOf(dashboard, larger, "larger_view")).toEqual([]);
 
     fetchWithAuth.mockImplementation(
       async (_url: string, init?: RequestInit) =>
@@ -361,13 +383,12 @@ describe("FrontxBoard", () => {
           : json({ items: WIDGETS })
     );
     const retried = run();
-    expect(
-      actionsOf(dashboard, cell.widget.id).map((action) => action.label)
-    ).toEqual(["Details"]);
+    await waitFor(() =>
+      expect(heldLabelsOf(dashboard, cell.widget.id)).toEqual(["Details"])
+    );
     await retried;
-    expect(
-      actionsOf(dashboard, cell.widget.id).map((action) => action.label)
-    ).toEqual(["Details"]);
+    expect(heldLabelsOf(dashboard, cell.widget.id)).toEqual(["Details"]);
+    expect(heldLabelsOf(dashboard, larger, "larger_view")).toEqual(["Details"]);
   });
 
   it("keeps Details on a widget cell whose run failed for another reason", async () => {

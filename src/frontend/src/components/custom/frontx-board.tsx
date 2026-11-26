@@ -117,6 +117,28 @@ function reportFailure({
   });
 }
 
+// INVARIANT: useSyncExternalStore compares snapshots by identity, so the busy widgets come as one string.
+function busyRuns(
+  widgets: Iterable<DashboardWidget>,
+  dashboard: string,
+  range: string | undefined
+): string {
+  return [...new Set(widgets)]
+    .filter((widget) => {
+      const { queryKey } = dashboardWidgetResultQuery(
+        dashboard,
+        widget.id,
+        runOptions(widget, range)
+      );
+      return isBusy(queryClient.getQueryState(queryKey)?.error);
+    })
+    .map((widget) => widget.id)
+    .join("\n");
+}
+
+const subscribeRuns = (onChange: () => void) =>
+  queryClient.getQueryCache().subscribe(onChange);
+
 const DRAW_FAILED = "Couldn't draw this widget.";
 
 function failureTexts(admin: boolean): FrameTexts["cannotBeShownFor"] {
@@ -169,6 +191,12 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
     const drawn = frontxBoard(id, read, widgets.data, range);
     return { ...drawn, id, key: JSON.stringify(drawn.file.instances) };
   }, [id, read, widgets.data, range]);
+  // WORKAROUND: the React Compiler keeps a FrontX cell's actions until cellActions changes, so a run that turns busy must change it.
+  const busy = new Set(
+    useSyncExternalStore(subscribeRuns, () =>
+      board ? busyRuns(board.widgets.values(), id, range) : ""
+    ).split("\n")
+  );
 
   // INVARIANT: a layout effect, so the shown file changes before the dashboard's own effect reads it.
   useLayoutEffect(() => {
@@ -191,14 +219,8 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
 
   const details = ({ widgetId }: CellActionTarget): CellAction[] => {
     const widget = board.widgets.get(widgetId);
-    if (!widget) return [];
-
-    const run = queryClient.getQueryState(
-      dashboardWidgetResultQuery(id, widget.id, runOptions(widget, range))
-        .queryKey
-    );
     // INVARIANT: the drilldown sends no query to a warehouse that refused this widget's run as busy.
-    if (isBusy(run?.error)) return [];
+    if (!widget || busy.has(widget.id)) return [];
 
     return [
       {
