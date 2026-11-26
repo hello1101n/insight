@@ -21,11 +21,14 @@ class TablePlan:
 
     @property
     def change(self) -> str:
-        if self.table.adds:
-            return f"adds {self.table.target}"
-        if self.table.renames:
-            return f"renames {self.table.tenant} to {self.table.target}"
-        return "sets the tenant"
+        table, parts = self.table, []
+        if table.adds:
+            parts.append(f"adds {table.target}")
+        if table.renames_tenant:
+            parts.append(f"renames {table.tenant} to {table.target}")
+        if table.renames_source:
+            parts.append(f"renames {table.source} to {table.source_target}")
+        return ", ".join(parts) or "sets the tenant"
 
 
 def survey_table(ch: ClickHouse, table: Table, tenant: str) -> TablePlan:

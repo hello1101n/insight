@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import re
 
-from tenant_migration.inventory import OLD_TENANT_COLUMN, TENANT_COLUMN, Relation, quote
+from tenant_migration.inventory import TENANT_COLUMN, Relation, Table, quote
 
-OLD_TENANT = re.compile(rf"(?<![A-Za-z0-9_]){OLD_TENANT_COLUMN}(?![A-Za-z0-9_])")
 CREATE_TABLE = re.compile(r"^CREATE TABLE \S+(?: UUID '[0-9A-Fa-f-]+')?")
 
 
@@ -34,9 +33,17 @@ def retarget(create: str, rel: Relation, suffix: str) -> str:
     return CREATE_TABLE.sub(f"CREATE TABLE {rel.sql(suffix)}", create, count=1)
 
 
-def tenant_renamed(create: str) -> str:
-    """A table's DDL with its tenant column named `insight_tenant_id`, in its definition and every key."""
-    return OLD_TENANT.sub(TENANT_COLUMN, create)
+def _word(name: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])")
+
+
+def renamed(create: str, table: Table) -> str:
+    """A table's DDL with its tenant and source columns under their new names, in the definition and
+    every key. Only the whole word changes: `azure_tenant_id` or `org_source_id` stay as they are."""
+    for column in (table.tenant, table.source):
+        if column and table.renamed(column) != column:
+            create = _word(column).sub(table.renamed(column), create)
+    return create
 
 
 def add_tenant(rel: Relation, suffix: str, after: str | None) -> str:
@@ -45,12 +52,20 @@ def add_tenant(rel: Relation, suffix: str, after: str | None) -> str:
 
 
 def insert(rel: Relation, suffix: str, columns: list[str], expressions: list[str]) -> str:
+    # A table partitioned finer than the default limit of 100 partitions per block refuses the copy otherwise.
     names = ", ".join(quote(c) for c in columns)
-    return f"INSERT INTO {rel.sql(suffix)} ({names}) SELECT {', '.join(expressions)} FROM {rel.sql()} AS src"
+    return (
+        f"INSERT INTO {rel.sql(suffix)} ({names}) SETTINGS max_partitions_per_insert_block = 0 "
+        f"SELECT {', '.join(expressions)} FROM {rel.sql()} AS src"
+    )
 
 
 def drop(rel: Relation, suffix: str) -> str:
     return f"DROP TABLE IF EXISTS {rel.sql(suffix)}"
+
+
+def rename(rel: Relation, suffix: str, to_suffix: str) -> str:
+    return f"RENAME TABLE {rel.sql(suffix)} TO {rel.sql(to_suffix)}"
 
 
 def exchange(rel: Relation, suffix: str) -> str:
