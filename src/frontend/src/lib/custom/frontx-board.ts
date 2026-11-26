@@ -77,7 +77,7 @@ type FormatOf = (...columns: string[]) => ValueFormat | undefined;
 
 const PERCENT = { value_type: "percent" } as const;
 
-const PREVIOUS_PERIOD = "Previous period";
+const SINCE_PREVIOUS = "since the previous period";
 
 const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 
@@ -441,7 +441,8 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
           ...(widget.compare
             ? {
                 better: widget.compare.better ?? "higher",
-                reference_label: PREVIOUS_PERIOD,
+                reference_display: "change",
+                reference_label: SINCE_PREVIOUS,
               }
             : {}),
         },

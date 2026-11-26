@@ -1109,7 +1109,8 @@ describe("frontxBoard options", () => {
     expect(renderOf(body)).toEqual({
       value_label: "runs",
       null_value: "dash",
-      reference_label: "Previous period",
+      reference_display: "change",
+      reference_label: "since the previous period",
       ...render,
     });
   });
