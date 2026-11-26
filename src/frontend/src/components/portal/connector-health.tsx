@@ -266,7 +266,7 @@ export function ConnectorHealthPane() {
                         inert={!open}
                         className="min-w-0 overflow-clip! [contain:inline-size] motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0"
                       >
-                        <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-2 py-1 [overflow-wrap:anywhere] whitespace-normal sm:py-2">
+                        <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-2 py-1 [overflow-wrap:anywhere] whitespace-normal sm:py-2 @4xl:has-[[data-slot=connector-schedule-editor]]:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] @4xl:has-[[data-slot=connector-schedule-editor]]:items-start">
                           {row.configured && (
                             <Card
                               size="sm"

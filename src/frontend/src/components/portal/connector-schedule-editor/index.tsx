@@ -19,6 +19,7 @@ import { scheduleTimePhrase } from "@/lib/portal/connector-schedule-time";
 import { validateScheduleCrons } from "@/lib/portal/connector-schedule-validation";
 import { isScheduleOverride } from "@/lib/portal/connector-schedule";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
+import { useHeightTransition } from "@/hooks/use-height-transition";
 import {
   Alert,
   Button,
@@ -78,7 +79,9 @@ export function ConnectorScheduleEditor({
   const [errorDetails, setErrorDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [validationAttempt, setValidationAttempt] = useState(0);
-  const form = useRef<HTMLFormElement>(null);
+  const value = choice.kind === "hours" ? `hours-${choice.hours}` : choice.kind;
+  const [form, capturePresetHeight] =
+    useHeightTransition<HTMLFormElement>(value);
   const runsControl = useRef<HTMLButtonElement>(null);
   const focusRefusal = useRef(false);
   useEffect(() => {
@@ -91,7 +94,7 @@ export function ConnectorScheduleEditor({
       'input[aria-invalid="true"], [data-refusal]'
     );
     target?.focus();
-  }, [busy, error, fieldErrors]);
+  }, [busy, error, fieldErrors, form]);
   const crons = choiceCrons(choice);
   const clientErrors =
     choice.kind === "custom" ? validateScheduleCrons(crons) : [];
@@ -102,7 +105,6 @@ export function ConnectorScheduleEditor({
     const index = rowIndex(violation);
     return choice.kind !== "custom" || index === null || index >= crons.length;
   });
-  const value = choice.kind === "hours" ? `hours-${choice.hours}` : choice.kind;
   const preset = options.find((option) => option.value === value);
   const person = useConnectorScheduleAuthor(
     current.schedule.requested?.updated_by
@@ -131,18 +133,19 @@ export function ConnectorScheduleEditor({
     setFieldErrors([]);
   }
 
-  function select(value: string) {
-    if (value === "custom") {
+  function select(nextValue: string) {
+    if (nextValue !== value) capturePresetHeight();
+    if (nextValue === "custom") {
       change({ kind: "custom", crons: crons.length ? crons : [""] });
-    } else if (value === "daily" || value === "weekdays") {
+    } else if (nextValue === "daily" || nextValue === "weekdays") {
       change({
-        kind: value,
+        kind: nextValue,
         time: choice.kind === "custom" ? "09:00" : choice.time,
       });
     } else {
       change({
         kind: "hours",
-        hours: Number(value.slice(6)),
+        hours: Number(nextValue.slice(6)),
         time: choice.kind === "custom" ? "00:00" : choice.time,
       });
     }
@@ -221,6 +224,7 @@ export function ConnectorScheduleEditor({
   return (
     <form
       ref={form}
+      data-slot="connector-schedule-editor"
       className="grid max-w-lg min-w-0 grid-cols-1 gap-3 [overflow-wrap:anywhere] whitespace-normal"
       onSubmit={(event) => {
         event.preventDefault();

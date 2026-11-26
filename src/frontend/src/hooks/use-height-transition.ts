@@ -1,7 +1,9 @@
 import { useLayoutEffect, useRef } from "react";
 
-export function useHeightTransition(change: string | boolean | undefined) {
-  const ref = useRef<HTMLDivElement>(null);
+export function useHeightTransition<T extends HTMLElement = HTMLDivElement>(
+  change: string | boolean | undefined
+) {
+  const ref = useRef<T>(null);
   const before = useRef<number | null>(null);
   const animation = useRef<Animation | null>(null);
 
