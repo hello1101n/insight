@@ -7,10 +7,37 @@ from dataclasses import dataclass
 
 from tenant_migration import keys
 from tenant_migration.clickhouse import ClickHouse
-from tenant_migration.inventory import InventoryError, Table
+from tenant_migration.inventory import InventoryError, Table, param_text
 
 #: One install holds one tenant; a few more (empty, the UUID, a legacy name) are what a key can lead with.
 MAX_TENANTS = 16
+#: Free disk `apply` needs, as a multiple of the bytes the tables it changes take: the copies (1x;
+#: the originals stay beside them as backups until `finalize`) plus the merges that settle each copy.
+#: Measured: a peak of 1.23x with the copies' short `old_parts_lifetime` (apply.COPY_OLD_PARTS_LIFETIME);
+#: at the default, 1.66x, and a dev run ran out of disk past 1.9x. 2x leaves room for a large table's
+#: last merge.
+DISK_HEADROOM = 2
+
+
+class DiskSpaceError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class Disk:
+    """A ClickHouse disk, its free bytes, and the bytes on it of the tables `apply` would copy."""
+
+    name: str
+    free: int
+    in_scope: int
+
+    @property
+    def needed(self) -> int:
+        return DISK_HEADROOM * self.in_scope
+
+    @property
+    def short(self) -> bool:
+        return self.free < self.needed
 
 
 @dataclass(frozen=True)
@@ -64,3 +91,48 @@ def render(plans: list[TablePlan]) -> str:
     lines += [f"{p.table.relation:<64} {p.rows:>12} {p.moving:>12}  {p.change}" for p in pending]
     lines.append(f"tables changing: {len(pending)}")
     return "\n".join(lines)
+
+
+def disks(ch: ClickHouse, plans: list[TablePlan]) -> list[Disk]:
+    """Each disk holding a pending table's active parts, with what those parts take."""
+    names = [p.table.relation for p in plans if p.pending]
+    if not names:
+        return []
+    rows = ch.rows(
+        """
+        SELECT p.disk_name, any(d.free_space), sum(p.bytes_on_disk)
+        FROM system.parts AS p
+        INNER JOIN system.disks AS d ON d.name = p.disk_name
+        WHERE p.active AND concat(p.database, '.', p.table) IN {tables:Array(String)}
+        GROUP BY p.disk_name
+        ORDER BY p.disk_name
+        """,
+        params={"tables": "[" + ", ".join(param_text(n) for n in names) + "]"},
+    )
+    return [Disk(name, int(free), int(in_scope)) for name, free, in_scope in rows]
+
+
+def _gib(n: int) -> str:
+    return f"{n / 2**30:.1f} GiB"
+
+
+def render_disks(found: list[Disk]) -> str:
+    return "\n".join(
+        f"disk {d.name}: {_gib(d.free)} free, the tables to migrate take {_gib(d.in_scope)}, "
+        f"apply needs {_gib(d.needed)} free ({DISK_HEADROOM}x){' — TOO LITTLE' if d.short else ''}"
+        for d in found
+    )
+
+
+def check_disks(found: list[Disk]) -> None:
+    """Refuse before anything changes when a disk lacks the room the copies need."""
+    short = [d for d in found if d.short]
+    if short:
+        raise DiskSpaceError(
+            "; ".join(
+                f"disk {d.name} has {_gib(d.free)} free, but the tables to migrate take {_gib(d.in_scope)} "
+                f"and apply needs {DISK_HEADROOM}x that ({_gib(d.needed)}) free"
+                for d in short
+            )
+            + ". Free disk space or grow the volume, then deploy again. Nothing was changed"
+        )

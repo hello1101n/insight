@@ -13,6 +13,7 @@ from tenant_migration import ddl
 from tenant_migration.__main__ import main
 from tenant_migration.inventory import InventoryError, Relation, Table, _scope_params, classify
 from tenant_migration.keys import TenantError, parse_tenant
+from tenant_migration.plan import DISK_HEADROOM, Disk, DiskSpaceError, check_disks, render_disks
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
 STRING = "Nullable(String)"
@@ -174,6 +175,40 @@ def test_the_copy_ddl_names_the_copy_and_no_uuid(saved: str) -> None:
 
     assert retargeted.startswith("CREATE TABLE `bronze_example`.`items__tenant_copy`\n")
     assert "UUID" not in retargeted
+
+
+def test_a_copy_sets_its_old_parts_lifetime_and_the_run_puts_the_originals_back() -> None:
+    rel = Relation("bronze_example", "items")
+
+    assert ddl.old_parts_lifetime(rel, "__tenant_copy", "10") == (
+        "ALTER TABLE `bronze_example`.`items__tenant_copy` MODIFY SETTING old_parts_lifetime = 10"
+    )
+    assert (
+        ddl.old_parts_lifetime(rel, "", None) == "ALTER TABLE `bronze_example`.`items` RESET SETTING old_parts_lifetime"
+    )
+    with pytest.raises(ddl.DdlError):
+        ddl.old_parts_lifetime(rel, "", "10; DROP TABLE x")
+
+
+def test_a_dropped_work_table_frees_its_disk_at_once() -> None:
+    assert ddl.drop(Relation("bronze_example", "items"), "__tenant_copy").endswith(" SYNC")
+
+
+def test_a_disk_with_less_free_than_the_headroom_stops_the_run_and_names_both_sizes() -> None:
+    gib = 2**30
+    roomy, tight = Disk("default", DISK_HEADROOM * 10 * gib, 10 * gib), Disk("cold", 15 * gib, 10 * gib)
+
+    check_disks([roomy])
+    assert "TOO LITTLE" not in render_disks([roomy])
+    assert "TOO LITTLE" in render_disks([tight])
+    with pytest.raises(DiskSpaceError) as refused:
+        check_disks([roomy, tight])
+    message = str(refused.value)
+    assert "disk cold has 15.0 GiB free" in message
+    assert "take 10.0 GiB" in message
+    assert f"needs {DISK_HEADROOM}x that ({DISK_HEADROOM * 10:.1f} GiB)" in message
+    assert "default" not in message
+    assert message.endswith("Nothing was changed")
 
 
 def test_ddl_that_is_not_a_create_table_is_refused() -> None:

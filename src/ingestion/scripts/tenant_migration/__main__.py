@@ -16,6 +16,8 @@ touched.
 A table already in that shape is skipped.
 
 `plan` reads only; with --exit-code it exits 1 while any table is pending.
+Both `plan` and `apply` exit 2 when a disk holding the tables to change has
+less free space than `DISK_HEADROOM` (2) times what those tables take.
 `apply` migrates every pending table or none: on any failure it puts back each
 original it already swapped out and exits 2 (3 when that undo failed too). Run
 with every writer stopped (the chart's pre-upgrade hook does). `finalize` drops
@@ -37,7 +39,7 @@ from tenant_migration.clickhouse import ClickHouse, ClickHouseError
 from tenant_migration.ddl import DdlError
 from tenant_migration.inventory import BACKUP, InventoryError, discover, history_relations
 from tenant_migration.keys import TenantError, parse_tenant
-from tenant_migration.plan import TablePlan, render, survey
+from tenant_migration.plan import DiskSpaceError, TablePlan, check_disks, disks, render, render_disks, survey
 
 TENANT_ENV = "INSIGHT_TENANT_ID"
 PENDING = 1
@@ -77,6 +79,10 @@ def run(args: argparse.Namespace, ch: ClickHouse) -> int:
     for rel in leftovers:
         print(f"left by a killed run: {rel}__tenant_copy (apply settles it)")
     pending = any(p.pending for p in plans) or bool(leftovers)
+    found = disks(ch, plans)
+    if found:
+        print(render_disks(found), flush=True)
+    check_disks(found)
     if args.command == "plan":
         return PENDING if args.exit_code and pending else 0
     signal.signal(signal.SIGTERM, _interrupted)
@@ -92,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     except migration.UndoError as error:
         print(f"error: {error}", file=sys.stderr)
         return UNDO_FAILED
-    except (TenantError, ClickHouseError, InventoryError, DdlError, migration.MigrationError) as error:
+    except (TenantError, ClickHouseError, InventoryError, DdlError, DiskSpaceError, migration.MigrationError) as error:
         print(f"error: {error}", file=sys.stderr)
         return FAILED
 
