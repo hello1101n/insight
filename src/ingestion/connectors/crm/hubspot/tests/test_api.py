@@ -11,6 +11,7 @@ from airbyte_cdk.utils import AirbyteTracedException
 from source_hubspot.api import Hubspot, _TimeoutSession
 from source_hubspot.constants import ALLOWED_PROPERTIES_BY_OBJECT, BASE_URL
 from source_hubspot.models import PropertiesPage, PropertyDescriptor
+from source_hubspot.selection import ObjectDecisions, PropertySelection
 from tests.conftest import FakeHttpClient, FakeResponse, assert_no_leak
 
 PERSONAL = "person@example.com"
@@ -132,11 +133,26 @@ def descriptors_page(*descriptors):
     return FakeResponse(PropertiesPage(results=list(descriptors)).model_dump(mode="json"))
 
 
+def selecting(object_type="deals", collect=(), ignore=()):
+    return PropertySelection(
+        objects={object_type: ObjectDecisions(collect=frozenset(collect), ignore=frozenset(ignore))}
+    )
+
+
 class TestPropertySelection:
-    def test_every_named_portal_property_is_requested(self):
-        names = ("dealname", "uncurated_std", "my_custom", None)
-        hs = make_client([properties_page(*names)])
-        assert hs.property_names("deals") == ("dealname", "uncurated_std", "my_custom")
+    def test_curated_and_collect_properties_are_requested(self):
+        hs = make_client([properties_page("dealname", "uncurated_std", "my_custom", None)])
+        hs.selection = selecting(collect={"my_custom"})
+        assert hs.property_names("deals") == ("dealname", "my_custom")
+
+    def test_property_without_a_decision_is_not_requested(self):
+        hs = make_client([properties_page("dealname", "new_field")])
+        assert hs.property_names("deals") == ("dealname",)
+
+    def test_ignored_property_is_not_requested(self):
+        hs = make_client([properties_page("dealname", "notes_field")])
+        hs.selection = selecting(ignore={"notes_field"})
+        assert hs.property_names("deals") == ("dealname",)
 
     @pytest.mark.parametrize(
         "money",
@@ -148,13 +164,15 @@ class TestPropertySelection:
             described("my_plan_value", numberDisplayHint="currency"),
         ],
     )
-    def test_money_property_is_never_requested(self, money):
+    def test_money_property_is_never_requested_even_when_collected(self, money):
         hs = make_client([descriptors_page(described("dealname"), money)])
+        hs.selection = selecting(collect={money.name})
         assert hs.property_names("deals") == ("dealname",), f"should not request: {money!r}"
 
-    def test_property_without_a_currency_flag_is_requested(self):
+    def test_collected_property_without_a_currency_flag_is_requested(self):
         plain = described("seats", showCurrencySymbol=False, numberDisplayHint="unformatted")
         hs = make_client([descriptors_page(plain)])
+        hs.selection = selecting(collect={"seats"})
         assert hs.property_names("deals") == ("seats",)
 
     def test_money_names_cover_standard_and_portal_flagged_properties(self):
@@ -165,9 +183,9 @@ class TestPropertySelection:
         assert {"amount", "annualrevenue", "my_invoice_total"} <= money
         assert "dealname" not in money
 
-    def test_property_names_independent_of_allowlist(self):
+    def test_object_without_curated_properties_requests_nothing(self):
         hs = make_client([properties_page("anything")])
-        assert hs.property_names("unknown_object") == ("anything",)
+        assert hs.property_names("unknown_object") == ()
 
 
 class TestGenerateSchema:

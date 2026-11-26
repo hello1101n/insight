@@ -37,6 +37,24 @@ own Airbyte upgrades.
 set it and skips the lookup; the version floor still applies, because the
 catalogues reconcile hands over run on that destination either way.
 
+## Connector settings
+
+A connector descriptor can list non-secret source config fields under
+`settings.fields`. For such a connector, reconcile reads the settings ConfigMap
+of each instance. The ConfigMap has the label `app.kubernetes.io/part-of=insight`
+and the same two annotations as the Secret: `insight.cyberfabric.com/connector`
+and `insight.cyberfabric.com/source-id`.
+
+Reconcile adds the `data` fields of the ConfigMap to the source config and to the
+cfg-hash (`python/connector_settings.py`). A changed ConfigMap moves the cfg-hash,
+so the next tick updates the source and starts a sync. An instance without a
+ConfigMap keeps its cfg-hash.
+
+Reconcile refuses a ConfigMap with a field that `settings.fields` does not list,
+a field that the Secret or the platform also sets, or a second ConfigMap for the
+same instance. The source then stays as it is, and the run counts the instance
+as failed.
+
 ## A tenant change
 
 Sources, connections and CronWorkflows are named `{connector}-{source_id}-{tenant}`

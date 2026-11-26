@@ -46,6 +46,7 @@ import requests
 from airbyte_cdk.models import SyncMode
 from airbyte_cdk.sources.streams.core import Stream, StreamData
 from airbyte_cdk.sources.streams.http import HttpClient
+from pydantic import ValidationError
 
 from source_hubspot.api import Hubspot, _TimeoutSession
 from source_hubspot.associations import AssociationFetcher
@@ -62,7 +63,15 @@ from source_hubspot.constants import (
     STREAM_REGISTRY,
 )
 from source_hubspot.envelope import envelope, inject_envelope_properties
-from source_hubspot.models import HistoryObject, HistoryPage, PropertyChange, RecordPage, parse_answer
+from source_hubspot.models import (
+    HistoryObject,
+    HistoryPage,
+    PropertyChange,
+    PropertyDescriptor,
+    RecordPage,
+    parse_answer,
+    unexpected_payload,
+)
 from source_hubspot.rate_limiting import HubspotErrorHandler
 
 logger = logging.getLogger("airbyte")
@@ -684,6 +693,7 @@ class PropertyDefinitionsStream(HubspotStream):
                 "updatedAt": {"type": ["string", "null"], "format": "date-time"},
                 "archived": {"type": ["boolean", "null"]},
                 "archivedAt": {"type": ["string", "null"], "format": "date-time"},
+                "selection": {"type": ["string", "null"]},
             },
         }
         return inject_envelope_properties(schema)
@@ -697,11 +707,13 @@ class PropertyDefinitionsStream(HubspotStream):
                     name = definition.get("name")
                     if not name:
                         continue
+                    descriptor = _property_descriptor(definition, self._stream_name)
                     record = {
                         **definition,
                         "id": f"{object_type}:{name}",
                         "objectType": object_type,
                         "archived": archived or bool(definition.get("archived")),
+                        "selection": self._hubspot.selection.status(object_type, descriptor).value,
                     }
                     yield _with_cursor(record, self.cursor_field)
 
@@ -790,6 +802,13 @@ class PropertyHistoryStream(CrmSearchStream):
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _property_descriptor(definition: Mapping[str, Any], stream_name: str) -> PropertyDescriptor:
+    try:
+        return PropertyDescriptor.model_validate(definition)
+    except ValidationError as exc:
+        raise unexpected_payload(f"property definition on '{stream_name}'", exc) from None
 
 
 def _after_exceeds_cap(after: str) -> bool:

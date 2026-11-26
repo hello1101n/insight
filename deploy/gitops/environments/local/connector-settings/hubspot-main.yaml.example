@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insight-hubspot-main-settings
+  labels:
+    app.kubernetes.io/part-of: insight
+  annotations:
+    insight.cyberfabric.com/connector: hubspot
+    insight.cyberfabric.com/source-id: main
+data:
+  hubspot_property_selection: |
+    {
+      "deals": {
+        "collect": ["deal_type"],
+        "ignore": ["internal_notes"]
+      },
+      "tickets": {
+        "collect": [],
+        "ignore": ["example_custom_field"]
+      }
+    }

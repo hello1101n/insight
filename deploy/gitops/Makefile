@@ -596,6 +596,19 @@ field-value-map: kube-ctx values-present
 	  kubectl --context $(KUBE_CTX) -n $(NS_APP) apply -f -; \
 	echo "$(C_GRN)applied$(C_RST) configmap $(RELEASE)-field-value-map → $(NS_APP)"
 
+.PHONY: connector-settings
+# Apply the connector settings ConfigMaps (environments/$(ENV)/connector-settings/*.yaml).
+# The reconciler adds their fields to the source config of the instance that
+# the annotations name, and updates the source on the next tick.
+# A deleted file does not delete its ConfigMap: delete it with kubectl.
+# Chained into deploy-insight. No-op when the directory has no files.
+connector-settings: kube-ctx
+	@set -e; DIR=environments/$(ENV)/connector-settings; \
+	for f in $$DIR/*.yaml; do \
+	  [ -e "$$f" ] || { echo "$(C_YEL)skip$(C_RST) connector-settings (no files in $$DIR/)"; exit 0; }; \
+	  kubectl --context $(KUBE_CTX) -n $(NS_APP) apply -f "$$f"; \
+	done
+
 .PHONY: deploy-app
 deploy-app: deploy-insight
 
@@ -656,7 +669,7 @@ validate-insight: values-present local-chart-present
 	@kubeconform -strict -summary < $(RENDER_DIR)/validate-render-$(ENV).yaml
 
 .PHONY: deploy-insight
-deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present gateway-realip-args apply-app-secrets keycloak-broker-realms field-value-map
+deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present gateway-realip-args apply-app-secrets keycloak-broker-realms field-value-map connector-settings
 	@mkdir -p $(RENDER_DIR)
 	@helm template $(RELEASE) $(CHART) --version $(INSIGHT_VERSION) $(HELM_EXTRA_FLAGS) \
 		-n $(NS_APP) -f $(VALUES) \
