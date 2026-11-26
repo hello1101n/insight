@@ -319,10 +319,11 @@ function treemap(
   };
 }
 
-// INVARIANT: no chart sets drill_down. A FrontX scatter writes x as a plain number and y in the value_format.
+// INVARIANT: no chart sets drill_down.
 function scatter(
   widget: Widget & { type: "scatter" },
-  format: ValueFormat | undefined
+  format: ValueFormat | undefined,
+  xFormat: ValueFormat | undefined
 ): Drawn {
   const coordinate = (name: string, percent = false) =>
     `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${percent ? " / 100.0" : ""}))`;
@@ -334,7 +335,7 @@ function scatter(
     widget.label === undefined
       ? ""
       : `, 'label': (r[l] == null ? ${cel(NO_NAME)} : string(r[l]))`;
-  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y", isPercent(format))}${size}${label}}`;
+  const point = `{'x': ${coordinate("x", isPercent(xFormat))}, 'y': ${coordinate("y", isPercent(format))}${size}${label}}`;
   const drawnRows = "response.rows.filter(r, r[x] != null && r[y] != null)";
 
   const series =
@@ -365,7 +366,7 @@ function scatter(
           }
         : { unlisted_type: "scatter", legend_position: "bottom" }),
       // INVARIANT: the FrontX scatter tooltip names x by the x axis label, and "x" without one.
-      x_axis: { type: "value", label: widget.x },
+      x_axis: { type: "value", label: widget.x, ...formatted(xFormat) },
       y_axis: { type: "value", label: widget.y },
       ...(widget.size === undefined ? {} : { size_label: widget.size }),
     },
@@ -478,7 +479,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
     case "treemap":
       return treemap(widget, format(widget.value));
     case "scatter":
-      return scatter(widget, format(widget.y));
+      return scatter(widget, format(widget.y), format(widget.x));
     default:
       return { note: UNKNOWN };
   }

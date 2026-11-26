@@ -1331,11 +1331,11 @@ describe("frontxBoard options", () => {
 });
 
 describe("frontxBoard new types", () => {
-  function cellOf(body: Widget, range?: string) {
+  function cellOf(body: Widget, range?: string, percents: string[] = []) {
     const board = frontxBoard(
       "board",
       read([{ widget: "w" }]),
-      [widget("w", body)],
+      [{ ...widget("w", body), percents }],
       range
     );
     return dashboardOf(board).layout.cells[0];
@@ -1579,16 +1579,42 @@ describe("frontxBoard new types", () => {
     });
   });
 
-  it("draws a scatter's percent y as a fraction, and its x as the number it is", () => {
+  it("draws a scatter's percent x and y as fractions, and formats each axis by its column", () => {
     const answer = { columns: ["size", "hours"], rows: [[40, 12.5]] };
 
     expect(drawnData(SCATTER, ["size", "hours"], answer)).toEqual({
       format: { value_type: "percent" },
+      data: { series: [{ name: "hours", points: [{ x: 0.4, y: 0.125 }] }] },
+    });
+    expect(cellOf(SCATTER, undefined, ["size"]).widget.render).toMatchObject({
+      x_axis: { value_format: { value_type: "percent" } },
+    });
+    expect(drawnData(SCATTER, ["hours"], answer)).toEqual({
+      format: { value_type: "percent" },
       data: { series: [{ name: "hours", points: [{ x: 40, y: 0.125 }] }] },
     });
-    expect(drawnData(SCATTER, ["size"], answer)).toEqual({
-      format: undefined,
-      data: { series: [{ name: "hours", points: [{ x: 40, y: 12.5 }] }] },
+    expect(cellOf(SCATTER, undefined, ["hours"]).widget.render).toMatchObject({
+      x_axis: { type: "value", label: "size" },
+    });
+    expect(
+      (
+        cellOf(SCATTER, undefined, ["hours"]).widget.render as {
+          x_axis: object;
+        }
+      ).x_axis
+    ).not.toHaveProperty("value_format");
+  });
+
+  it("formats a duration scatter x in two parts of its unit", () => {
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", SCATTER), units: { size: "h" } },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+
+    expect(cell.widget.render).toMatchObject({
+      x_axis: {
+        value_format: { value_type: "duration", unit: "h", compound: true },
+      },
     });
   });
 
