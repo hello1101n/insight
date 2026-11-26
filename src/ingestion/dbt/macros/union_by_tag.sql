@@ -14,6 +14,11 @@
     duplicates straight into silver and inflates metrics. Deduping here makes
     silver duplicate-free regardless of merge timing. See ADR-0001.
 
+  How: the latest `dedup_version_col` per `unique_key` is found over those two
+  columns alone, and each row is kept only if it holds it (`LIMIT 1 BY` breaks
+  a tie, as ROW_NUMBER did). A window over `SELECT *` sorted every whole row in
+  memory instead: on dev, 5.7 GiB for the 1.07M rows of class_crm_activities.
+
   Args:
     dedup_version_col: version column for "latest wins" dedup (default
       `_version`). Pass `none` for versionless RMT sources (full-refresh
@@ -75,13 +80,19 @@
       ) AS _ubt
       {#- A NULL unique_key (a NULL tenant or key part) collapses or vanishes in the dedup below. #}
       WHERE {{ tenant_guard_fail('unique_key IS NULL', 'unique_key is NULL before dedup') }} = 0
+      {#- One row per unique_key: with a version, one holding the latest; without
+          (versionless RMT), any. #}
       {% if dedup_version_col %}
-      {# One row per unique_key, latest version wins. #}
-      QUALIFY ROW_NUMBER() OVER (PARTITION BY unique_key ORDER BY {{ dedup_version_col }} DESC) = 1
-      {% else %}
-      {# Versionless RMT (no _version column): any row per unique_key. #}
-      LIMIT 1 BY unique_key
+        AND (unique_key, {{ dedup_version_col }}) IN (
+          SELECT unique_key, max({{ dedup_version_col }}) FROM (
+          {%- for m in models %}
+            SELECT unique_key, {{ dedup_version_col }} FROM {{ ref(m.name) }}
+            {%- if not loop.last %} UNION ALL {% endif %}
+          {%- endfor %}
+          ) GROUP BY unique_key
+        )
       {% endif %}
+      LIMIT 1 BY unique_key
     {%- endif -%}
   {%- else -%}
     SELECT 1 AS _placeholder WHERE FALSE
