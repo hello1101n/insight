@@ -145,6 +145,7 @@ describe("frontxBoard", () => {
         id: expect.stringContaining(".widget.markdown_card.v1~"),
         render: {
           body: String.raw`This widget is no longer on the dashboard\.`,
+          tone: "destructive",
         },
       },
     });

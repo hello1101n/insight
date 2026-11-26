@@ -523,7 +523,7 @@ const UNKNOWN = plain("Unknown widget type.");
 function noteCell(
   dashboard: string,
   key: string,
-  body: string,
+  render: { body: string; tone?: "destructive" },
   title?: string
 ): DashboardCell {
   return {
@@ -532,7 +532,7 @@ function noteCell(
     widget: {
       id: markdownId(`${dashboard}/${key}`),
       ...(title ? { title } : {}),
-      render: { body },
+      render,
     },
   };
 }
@@ -624,11 +624,20 @@ export function frontxBoard(
     }
 
     const widget = byId.get(item.widget);
-    if (!widget) return [noteCell(id, key, GONE)];
+    if (!widget) {
+      return [noteCell(id, key, { body: GONE, tone: "destructive" })];
+    }
 
     const shape = drawn(widget.body, formatOf(widget), daily);
     if ("note" in shape) {
-      return [noteCell(id, key, shape.note, widget.body.title ?? widget.name)];
+      return [
+        noteCell(
+          id,
+          key,
+          { body: shape.note },
+          widget.body.title ?? widget.name
+        ),
+      ];
     }
 
     const cell = widgetCell(id, widget, shape, key, windowed);
