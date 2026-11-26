@@ -80,6 +80,9 @@ SELECT
     toString(_table)                                   AS stream,
     _airbyte_extracted_at                              AS extracted_at
 FROM merge(REGEXP('^bronze_'), '.*')
+-- The tenant cutover's backups and copies (`<table>__tenant_backup*`, `__tenant_copy`) hold rows
+-- already counted under their live table.
+WHERE position(toString(_table), '__tenant_') = 0
 {% else %}
 -- Nothing has been ingested yet. Same columns and types, no rows, so every
 -- consumer reads "no extraction activity" instead of erroring.
