@@ -20,6 +20,7 @@ for chart in src/backend/services/*/helm src/frontend/helm; do
   )
   if [ "$name" = keycloak ]; then
     args+=(
+      --set admin.existingSecret=dummy
       --set database.host=db.example.com
       --set database.username=example
       --set database.passwordSecret.name=dummy
