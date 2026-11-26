@@ -485,7 +485,7 @@ describe("frontxBoard", () => {
     });
   });
 
-  it("captions a stat with its label, or with its value column when it has none, and keeps the caption under the dash of a null value", () => {
+  it("captions a stat with its label, leaves a stat without one uncaptioned, and keeps the caption under the dash of a null value", () => {
     const board = frontxBoard(
       "board",
       read([{ widget: "a" }, { widget: "b" }]),
@@ -500,10 +500,7 @@ describe("frontxBoard", () => {
       value_label: "runs",
       null_value: "dash",
     });
-    expect(bare.widget.render).toEqual({
-      value_label: "v",
-      null_value: "dash",
-    });
+    expect(bare.widget.render).toEqual({ null_value: "dash" });
   });
 
   it("titles the board and each widget, and falls back to their names", () => {

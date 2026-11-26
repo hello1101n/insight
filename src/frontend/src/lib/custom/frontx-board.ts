@@ -447,7 +447,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         type: "metric_card",
         ...formatted(shown),
         render: {
-          value_label: widget.label ?? widget.value,
+          ...(widget.label ? { value_label: widget.label } : {}),
           null_value: "dash",
           ...(widget.compare
             ? {

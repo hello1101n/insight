@@ -64,7 +64,7 @@ export function CustomStat({
   return (
     <div data-testid="custom-stat" className="flex flex-col gap-1">
       <span className={TEXT_FIGURE}>{groupedNumber(shown, unit)}</span>
-      <span className={TEXT_LABEL}>{label ?? value}</span>
+      {label ? <span className={TEXT_LABEL}>{label}</span> : null}
       {delta ? (
         <span className="text-xs">
           <ChangeBadge delta={delta} since="since the previous period" />

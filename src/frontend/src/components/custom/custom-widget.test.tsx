@@ -600,7 +600,7 @@ describe("<CustomWidget>", () => {
     expect(screen.getByTestId("custom-stat")).toHaveTextContent("Lines");
   });
 
-  it("falls back to the column name when a stat carries no label", () => {
+  it("shows no caption when a stat carries no label", () => {
     render(
       <CustomWidget
         widget={{ type: "stat", metric: "m", value: "lines" }}
@@ -608,7 +608,8 @@ describe("<CustomWidget>", () => {
       />
     );
 
-    expect(screen.getByTestId("custom-stat")).toHaveTextContent("lines");
+    expect(screen.getByTestId("custom-stat")).toHaveTextContent("7");
+    expect(screen.getByTestId("custom-stat")).not.toHaveTextContent("lines");
   });
 
   it("renders a pie widget as slices of its value", () => {
