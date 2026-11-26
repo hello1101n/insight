@@ -376,6 +376,11 @@ jobs:
           .github/workflows/scripts/verify-chart-candidate.sh dist "$GITHUB_SHA" "$VERSION"
           git apply --index dist/release.patch
 
+      # A descriptor pinning an image older than its connector's sources ships
+      # the old extraction: reconcile compares the image tag alone.
+      - name: Require connector images built from their current sources
+        run: scripts/ci/connector_images_current.sh
+
       # queue-gate drained the queue before this job started, and the steps
       # since took minutes. A short budget suffices: an entry that joined
       # within it cannot be far enough into its checks for a reset to cost.
@@ -587,6 +592,11 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "$GITHUB_REF_NAME"
           git reset --hard "origin/$GITHUB_REF_NAME"
+
+      # A descriptor pinning an image older than its connector's sources ships
+      # the old extraction: reconcile compares the image tag alone.
+      - name: Require connector images built from their current sources
+        run: scripts/ci/connector_images_current.sh
 
       # Per-service subchart appVersion bumps. Each is bumped INDEPENDENTLY,
       # only if the matching image was rebuilt this run. Services whose
