@@ -4,6 +4,9 @@
     GET  /v1/dashboards/{id}/widgets                  200, the widgets the manifest names, with
                                                       the percent and duration columns of each
     POST /v1/dashboards/{id}/widgets/{widget}/run     200, or a failure for a widget that fails on purpose
+    POST /v1/dashboards/{id}/widgets/{widget}/drilldown
+                                                      200, each row of a detail metric linked to
+                                                      its record in the source system
     GET  /v1/dashboards                               the CEO sees the shared board and no other
     GET  /v1/pins, GET /v1/folders                    the starred board and the folder read back
 
@@ -29,6 +32,10 @@ from pydantic import BaseModel, JsonValue
 pytestmark = [pytest.mark.requires_custom_catalogue, pytest.mark.requires_seed("admin_operator")]
 
 BUCKET = "bucket"
+
+#: The base URL that the compose stand gives the seeded git source, in
+#: `x-external-sources` of docker-compose.yml.
+SOURCE_BASE_URL = "https://git.example.com/"
 
 #: The keys that name a metric column, per widget type, as the portal reads them.
 COLUMN_KEYS: dict[str, tuple[str, ...]] = {
@@ -67,6 +74,15 @@ class DashboardWidgets(BaseModel):
 class RunResult(BaseModel):
     columns: list[str]
     rows: list[list[JsonValue]]
+
+
+class DrilldownRow(BaseModel):
+    values: dict[str, JsonValue]
+    link: str | None = None
+
+
+class DrilldownPage(BaseModel):
+    rows: list[DrilldownRow]
 
 
 class Listed(BaseModel):
@@ -204,6 +220,36 @@ def test_every_seeded_widget_runs_except_the_ones_that_fail_on_purpose(
 
     assert not wrong, "\n".join(wrong)
     assert failing_seen, "no seeded widget fails on purpose, so the failure path went unchecked"
+
+
+@pytest.mark.reliability
+def test_each_record_behind_a_detail_drilldown_links_to_the_source_system(
+    admin_operator_session: PersonaSession, stand_manifest: Manifest
+) -> None:
+    """A row that reads one commit or pull request carries the URL of that record."""
+    client = admin_operator_session.client
+    board = stand_manifest.custom_board("every_widget_type")
+    detailed = [widget for widget in _drawn(client, board) if "detail" in widget.body]
+    assert detailed, "no seeded widget names a detail metric, so the check would pass vacuously"
+
+    wrong = []
+    for widget in detailed:
+        path = v3_path(f"/v1/dashboards/{board.id}/widgets/{widget.id}/drilldown")
+        response = client.post(path, json_body={"limit": 50})
+        if response.status_code != 200:
+            wrong.append(f"{widget.id}: {response.status_code} {response.text[:200]}")
+            continue
+        rows = response.parse(DrilldownPage).rows
+        if not rows:
+            wrong.append(f"{widget.id}: the drilldown answered no row")
+        unlinked = [row for row in rows if not (row.link or "").startswith(SOURCE_BASE_URL)]
+        if unlinked:
+            wrong.append(
+                f"{widget.id}: {len(unlinked)} of {len(rows)} rows link elsewhere or nowhere, "
+                f"first {unlinked[0].link!r} for {unlinked[0].values}"
+            )
+
+    assert not wrong, "\n".join(wrong)
 
 
 @pytest.mark.security
