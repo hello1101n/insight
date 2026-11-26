@@ -16,5 +16,9 @@ saveExact: true
 
 engineStrict: true
 
+blockExoticSubdeps: true
+
+trustPolicy: no-downgrade
+
 # Transitive pins for advisories with no fixed release from the direct dependency
 # yet. exceljs 4.4.0 still asks for the vulnerable ranges.

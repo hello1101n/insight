@@ -226,10 +226,10 @@ describe("frontxBoard", () => {
   ])("draws a %s widget as a FrontX %s", (id, type) => {
     const [cell] = cells([{ widget: id }]);
 
-    expect(cell.widget.id, `widget ${id}`).toMatch(
-      new RegExp(
-        `^gts\\.frontx\\.dashboard\\.widget\\.widget\\.v1~frontx\\.dashboard\\.widget\\.data_widget\\.v1~frontx\\.dashboard\\.widget\\.${type}\\.v1~[0-9a-f-]{36}$`
-      )
+    const prefix = `gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.${type}.v1~`;
+    expect(cell.widget.id.startsWith(prefix), `widget ${id}`).toBe(true);
+    expect(cell.widget.id.slice(prefix.length), `widget ${id}`).toMatch(
+      /^[0-9a-f-]{36}$/
     );
   });
 
