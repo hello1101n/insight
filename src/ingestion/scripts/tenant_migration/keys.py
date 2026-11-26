@@ -89,5 +89,8 @@ def comment_id_expression(table: Table) -> str:
 
 
 def foreign(table: Table) -> str:
-    """The row's tenant is not the install's: NULL, empty or another value."""
-    return f"{old_tenant(table)} != {TENANT}" if table.tenant else "1"
+    """The row's tenant is not the install's: NULL, empty or another value. A table gaining
+    its tenant moves every row; one that keeps none (only its source is renamed) moves none."""
+    if table.tenant:
+        return f"{old_tenant(table)} != {TENANT}"
+    return "1" if table.adds else "0"
