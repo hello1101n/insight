@@ -7,35 +7,25 @@ import type {
   ConnectorInstanceRef,
   SyncFact,
 } from "@/api/connector-health-client";
-import {
-  Badge,
-  Button,
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableCell,
-  TableRow,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@gears-frontx/ui-kit";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ConnectorRunHistory } from "./connector-run-history";
-import { historySegmentStyle, TONE_BADGE } from "./connector-health-tone";
+import {
+  ConnectorSyncTable,
+  ConnectorSyncTableToggle,
+  INITIAL_HISTORY_ROWS,
+} from "./connector-sync-table";
+import { historySegmentStyle } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
-  UNMEASURED,
   describeDuration,
   describeSync,
-  formatRecords,
   formatStarted,
 } from "@/lib/portal/connector-health";
 import { cn } from "@/lib/utils";
 import { useConnectorSyncs } from "@/queries/connector-health";
 
-const INITIAL_ROWS = 10;
 const MAX_RUNS = 50;
 
 function statusTotals(syncs: readonly SyncFact[]) {
@@ -99,7 +89,7 @@ export function ConnectorSyncHistory({
 
   const syncs = data.syncs.slice(0, MAX_RUNS);
   const totals = statusTotals(syncs);
-  const visible = showAll ? syncs : syncs.slice(0, INITIAL_ROWS);
+  const visible = showAll ? syncs : syncs.slice(0, INITIAL_HISTORY_ROWS);
   const count =
     syncs.length > visible.length
       ? t("connectors.history.latest_recorded", {
@@ -175,103 +165,29 @@ export function ConnectorSyncHistory({
         </p>
       ) : (
         <>
-          <Table
+          <ConnectorSyncTable
             id={`${id}-table`}
-            label={t("connectors.history.heading")}
-            containerClassName="min-w-0 max-w-full whitespace-normal [overflow-wrap:anywhere]"
-            aria-label={t("connectors.history.heading")}
-            className="w-full max-w-full table-fixed text-xs sm:text-sm"
-          >
-            <colgroup>
-              <col className="w-1/4" />
-              <col className="w-[35%] sm:w-2/5" />
-              <col className="w-1/5" />
-              <col className="w-1/5 sm:w-[15%]" />
-            </colgroup>
-            <TableHeader className="[overflow-wrap:anywhere] [word-break:normal] whitespace-normal">
-              <TableRow className="border-b text-left text-muted-foreground">
-                <TableHead scope="col" className="px-1 py-2 font-medium">
-                  {t("common.table.status")}
-                </TableHead>
-                <TableHead
-                  scope="col"
-                  className="px-1 py-2 font-medium whitespace-normal"
-                >
-                  {t("connectors.history.started_utc")}
-                </TableHead>
-                <TableHead
-                  scope="col"
-                  className="px-1 py-2 text-right font-medium"
-                >
-                  {t("connectors.duration")}
-                </TableHead>
-                <TableHead
-                  scope="col"
-                  className="px-1 py-2 text-right font-medium"
-                >
-                  {t("connectors.history.records")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map((sync) => (
-                <SyncRow key={sync.job_id} sync={sync} asOf={asOf} />
-              ))}
-            </TableBody>
-          </Table>
-          {syncs.length > INITIAL_ROWS && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              aria-expanded={showAll}
-              aria-controls={`${id}-table`}
-              onClick={() => setShowAll(!showAll)}
-            >
-              {showAll
-                ? t("connectors.history.show_latest", { count: INITIAL_ROWS })
-                : t("connectors.history.show_all", { count: syncs.length })}
-            </Button>
-          )}
+            rows={visible.map((sync) => {
+              const state = describeSync(sync);
+              const duration = describeDuration(sync, asOf);
+              return {
+                id: sync.job_id,
+                status: state,
+                started: formatStarted(sync.started_at),
+                duration: duration.text,
+                inFlight: duration.inFlight,
+                records: sync.records_reported,
+              };
+            })}
+          />
+          <ConnectorSyncTableToggle
+            tableId={`${id}-table`}
+            count={syncs.length}
+            showAll={showAll}
+            onToggle={() => setShowAll(!showAll)}
+          />
         </>
       )}
     </section>
-  );
-}
-
-function SyncRow({ sync, asOf }: { sync: SyncFact; asOf: string }) {
-  const { t } = useTranslation();
-  const state = describeSync(sync);
-  const duration = describeDuration(sync, asOf);
-  return (
-    <TableRow className="border-b last:border-0">
-      <TableCell className="px-1 py-2 align-top">
-        <Badge
-          variant={TONE_BADGE[state.tone]}
-          className="max-w-full whitespace-normal"
-        >
-          {state.label}
-        </Badge>
-      </TableCell>
-      <TableCell className="px-1 py-2 align-top text-muted-foreground tabular-nums">
-        {formatStarted(sync.started_at)}
-      </TableCell>
-      <TableCell
-        className={cn(
-          "px-1 py-2 text-right align-top tabular-nums",
-          duration.inFlight ? "text-foreground" : "text-muted-foreground"
-        )}
-      >
-        {duration.text}
-      </TableCell>
-      <TableCell className="px-1 py-2 text-right align-top text-muted-foreground tabular-nums">
-        {formatRecords(sync.records_reported)}
-        {sync.records_reported == null && (
-          <span className="sr-only">
-            {t("connectors.history.unmeasured", { value: UNMEASURED })}
-          </span>
-        )}
-      </TableCell>
-    </TableRow>
   );
 }

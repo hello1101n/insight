@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -87,6 +88,7 @@ export function ConnectorRunState({
           data-tone={view.tone}
           className="whitespace-normal"
         >
+          {view.kind === "running" && <RunningSyncIndicator />}
           {label}
         </Badge>
       </RunTooltip>
@@ -96,5 +98,16 @@ export function ConnectorRunState({
         </span>
       )}
     </div>
+  );
+}
+
+export function RunningSyncIndicator() {
+  return (
+    <LoaderCircle
+      aria-hidden="true"
+      data-slot="running-sync-indicator"
+      className="size-3.5 shrink-0 motion-safe:animate-spin"
+      strokeWidth={2.5}
+    />
   );
 }

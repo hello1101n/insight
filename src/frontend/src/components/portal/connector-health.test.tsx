@@ -1410,6 +1410,131 @@ describe("connector workflow runs", () => {
     await userEvent.click(rowFor("example"));
   }
 
+  it("shows the UTC date for each step across midnight", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      started_at: "2026-01-14T23:59:30Z",
+      finished_at: "2026-01-15T00:00:40Z",
+      stages: [
+        {
+          ...step("bronze", -60, -55),
+          started_at: "2026-01-14T23:59:30Z",
+          queued_at: "2026-01-14T23:59:30Z",
+          finished_at: "2026-01-14T23:59:35Z",
+        },
+        {
+          ...step("transform-legacy", -55, -45),
+          started_at: "2026-01-15T00:00:30Z",
+          queued_at: "2026-01-15T00:00:30Z",
+          finished_at: "2026-01-15T00:00:40Z",
+        },
+      ],
+    });
+
+    const steps = within(screen.getByRole("list", { name: "Run steps (UTC)" }));
+    const bronze = steps.getByText("Bronze").closest("li")!;
+    const gold = steps.getByText("Gold").closest("li")!;
+    expect(within(bronze).getByText("2026-01-14")).toBeVisible();
+    expect(within(bronze).getByText("23:59:30Z")).toBeVisible();
+    expect(within(gold).getByText("2026-01-15")).toBeVisible();
+    expect(within(gold).getByText("00:00:30Z")).toBeVisible();
+  });
+
+  it("compares reported record counts for workflow runs and historical loads", async () => {
+    const latest = { ...run(1), records_reported: 0 };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "example", configured: true, latest_run: latest },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "example",
+      window: 50,
+      runs: [latest, { ...run(2), records_reported: 1_234 }, run(3)],
+      syncs: [
+        {
+          job_id: "old",
+          status: "succeeded",
+          started_at: stamp(-300),
+          records_reported: 78,
+        },
+      ],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("example"));
+
+    const table = within(screen.getByRole("table", { name: "Recent syncs" }));
+    expect(table.getByRole("columnheader", { name: "Records" })).toBeVisible();
+    const counts = table
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => within(row).getAllByRole("cell")[3]);
+    expect(counts).toHaveLength(4);
+    expect(counts[0]).toHaveTextContent(/^0$/);
+    expect(counts[1]).toHaveTextContent(/^1,234$/);
+    expect(counts[2]).toHaveTextContent(/^—/);
+    expect(counts[3]).toHaveTextContent(/^78$/);
+  });
+
+  it("opens the selected run steps above the table from the mouse or keyboard", async () => {
+    const latest = {
+      ...run(1),
+      status: "succeeded",
+      stages: [step("bronze", -60, -55)],
+    };
+    const older = {
+      ...run(2),
+      status: "succeeded",
+      stages: [step("bronze", -120, -110)],
+    };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "example", configured: true, latest_run: latest },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "example",
+      window: 50,
+      syncs: [],
+      runs: [latest, older],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("example"));
+
+    const table = screen.getByRole("table", { name: "Recent syncs" });
+    const [latestRow, olderRow] = within(table).getAllByRole("row").slice(1);
+    const steps = () => screen.getByRole("list", { name: "Run steps (UTC)" });
+    const toggle = () =>
+      screen.getByRole("button", { name: "Run steps (UTC)" });
+    expect(
+      steps().compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await userEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(
+      within(olderRow).getByRole("cell", { name: "Ready" })
+    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(within(steps()).getByText("11:58:00Z")).toBeVisible();
+    expect(olderRow).toHaveAttribute("data-state", "selected");
+    expect(within(olderRow).getByRole("button")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    await userEvent.click(toggle());
+    const date = within(latestRow).getByRole("button", {
+      name: "2026-01-15 11:59:00Z",
+    });
+    date.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(within(steps()).getByText("11:59:00Z")).toBeVisible();
+    expect(date).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("combines the working time of all six stages into four admin steps", async () => {
     await openRun({
       ...run(1),

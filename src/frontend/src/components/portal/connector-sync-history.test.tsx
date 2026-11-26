@@ -261,12 +261,11 @@ it("wraps headers and uses proportional columns within the full-width table", ()
     within(table).getByRole("columnheader", { name: "Started (UTC)" })
   ).toHaveClass("whitespace-normal");
   const columns = table.querySelectorAll("col");
-  expect(columns[0]).toHaveClass("w-1/4");
-  expect(columns[1]).toHaveClass("sm:w-2/5");
-  expect(columns[1]).toHaveClass("w-[35%]");
+  expect(columns[0]).toHaveClass("w-[23%]", "sm:w-1/4");
+  expect(columns[1]).toHaveClass("w-[33%]", "sm:w-2/5");
   expect(columns[1]).not.toHaveClass("w-2/5");
-  expect(columns[2]).toHaveClass("w-1/5");
-  expect(columns[3]).toHaveClass("w-1/5", "sm:w-[15%]");
+  expect(columns[2]).toHaveClass("w-[19%]", "sm:w-1/5");
+  expect(columns[3]).toHaveClass("w-1/4", "sm:w-[15%]");
   expect(table.parentElement).toHaveClass(
     "min-w-0",
     "max-w-full",

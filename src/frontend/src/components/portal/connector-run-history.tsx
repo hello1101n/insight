@@ -1,4 +1,4 @@
-import { Fragment, useId, useState, type ReactNode } from "react";
+import { Fragment, useId, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   Ban,
@@ -51,7 +51,16 @@ import {
   TONE_STYLE,
 } from "./connector-health-tone";
 import { ConnectorRunBands } from "./connector-run-bands";
-import { ConnectorRunState, RunTooltip } from "./connector-run-state";
+import {
+  ConnectorRunState,
+  RunningSyncIndicator,
+  RunTooltip,
+} from "./connector-run-state";
+import {
+  ConnectorSyncTable,
+  ConnectorSyncTableToggle,
+  INITIAL_HISTORY_ROWS,
+} from "./connector-sync-table";
 
 function RunMetrics({
   run,
@@ -187,7 +196,7 @@ function StepEvent({
   return (
     <li
       aria-current={current ? "step" : undefined}
-      className="group grid grid-cols-[8ch_1.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2 text-sm sm:gap-x-3"
+      className="group grid grid-cols-[10ch_1.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2 text-sm sm:gap-x-3"
     >
       <time
         dateTime={stamp}
@@ -195,7 +204,14 @@ function StepEvent({
         aria-label={label}
         className="pt-0.5 text-xs text-muted-foreground tabular-nums"
       >
-        {stamp ? label.slice(11, 19) : label}
+        {stamp ? (
+          <>
+            <span className="block">{label.slice(0, 10)}</span>
+            <span className="block">{label.slice(11)}</span>
+          </>
+        ) : (
+          label
+        )}
       </time>
       <span className="relative flex h-full min-h-5 justify-center after:absolute after:top-4 after:bottom-[-1.125rem] after:left-1/2 after:w-px after:bg-border group-last:after:hidden">
         <span
@@ -211,9 +227,12 @@ function StepEvent({
             current && "ring-2 ring-current/45 ring-offset-2 ring-offset-card"
           )}
         >
-          {!pending && (
-            <Icon className="size-3" aria-hidden="true" strokeWidth={2.5} />
-          )}
+          {!pending &&
+            (kind === "running" && current ? (
+              <RunningSyncIndicator />
+            ) : (
+              <Icon className="size-3" aria-hidden="true" strokeWidth={2.5} />
+            ))}
         </span>
       </span>
       <div className="min-w-0">{children}</div>
@@ -244,7 +263,17 @@ function QueuedEvent({
   );
 }
 
-function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
+function Timeline({
+  run,
+  asOf,
+  stepsOpen,
+  onStepsOpenChange,
+}: {
+  run: ConnectorRun;
+  asOf: string;
+  stepsOpen: boolean;
+  onStepsOpenChange: (open: boolean) => void;
+}) {
   const { t } = useTranslation();
   const startStamp = formatStarted(run.started_at).replace(/Z$/, "");
   const endStamp = formatStarted(run.finished_at).replace(/Z$/, "");
@@ -275,7 +304,7 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
       <ConnectorRunBands timing={timing} />
       {timing.steps.length > 0 || timing.trailingQueue ? (
         <Card size="sm" className="min-w-0 p-3 sm:p-4">
-          <Collapsible defaultOpen>
+          <Collapsible open={stepsOpen} onOpenChange={onStepsOpenChange}>
             <CardTitle render={<h4 />} className="text-sm">
               <CollapsibleTrigger
                 type="button"
@@ -284,11 +313,11 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
                 {heading}
                 <ChevronRight
                   aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-foreground group-aria-expanded:rotate-90"
+                  className="size-4 shrink-0 text-muted-foreground transition-transform duration-350 group-aria-expanded:rotate-90 motion-reduce:transition-none"
                 />
               </CollapsibleTrigger>
             </CardTitle>
-            <CollapsibleContent>
+            <CollapsibleContent className="motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0">
               <ol aria-label={heading} className="pt-2">
                 {timing.steps.map(({ step, queued, failure, ...event }) => {
                   const state = describeRun(event.status);
@@ -404,7 +433,22 @@ export function ConnectorRunHistory({
 }: Props) {
   const { t } = useTranslation();
   const heading = useId();
+  const detailsId = `${heading}-detail`;
+  const detailsRef = useRef<HTMLDivElement>(null);
   const [selectedId, select] = useState<string | null>(null);
+  const [stepsOpen, setStepsOpen] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+
+  function openRun(id: string, scrollToDetails = false) {
+    select(id);
+    setStepsOpen(true);
+    if (scrollToDetails)
+      requestAnimationFrame(() => {
+        const details = detailsRef.current;
+        details?.focus({ preventScroll: true });
+        details?.scrollIntoView?.({ block: "start" });
+      });
+  }
   const recent = latest ? projectRun(latest) : undefined;
   const managed = runs.map(projectRun);
   if (recent && !managed.some((run) => run.sync_id === recent.sync_id))
@@ -422,6 +466,7 @@ export function ConnectorRunHistory({
       : recordedSuccess;
   const history = recentHistory(managed, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
+  const visible = showAll ? history : history.slice(0, INITIAL_HISTORY_ROWS);
   return (
     <div className="@container min-w-0 space-y-4 whitespace-normal">
       <div className="grid min-w-0 gap-2 @lg:grid-cols-2">
@@ -471,8 +516,9 @@ export function ConnectorRunHistory({
                     render={<Button type="button" size="sm" variant="ghost" />}
                     className="relative block h-7 w-full min-w-0 rounded-none border-0 bg-transparent p-0 hover:bg-transparent focus-visible:z-10 aria-pressed:after:absolute aria-pressed:after:inset-x-0 aria-pressed:after:bottom-0.5 aria-pressed:after:mx-auto aria-pressed:after:h-0.5 aria-pressed:after:w-full aria-pressed:after:max-w-6 aria-pressed:after:rounded-full aria-pressed:after:bg-foreground"
                     aria-label={label}
+                    aria-controls={detailsId}
                     aria-pressed={id === selected?.id}
-                    onClick={() => select(id)}
+                    onClick={() => openRun(id)}
                   >
                     <span
                       aria-hidden="true"
@@ -488,12 +534,66 @@ export function ConnectorRunHistory({
             );
           })}
         </ol>
-        {selected &&
-          ("sync_id" in selected.record ? (
-            <Timeline run={selected.record} asOf={asOf} />
-          ) : (
-            <HistoricalLoad sync={selected.record} asOf={asOf} />
-          ))}
+        {selected && (
+          <div
+            ref={detailsRef}
+            id={detailsId}
+            tabIndex={-1}
+            className="scroll-mt-16 focus:outline-none"
+          >
+            {"sync_id" in selected.record ? (
+              <Timeline
+                run={selected.record}
+                asOf={asOf}
+                stepsOpen={stepsOpen}
+                onStepsOpenChange={setStepsOpen}
+              />
+            ) : (
+              <HistoricalLoad sync={selected.record} asOf={asOf} />
+            )}
+          </div>
+        )}
+        {selected && visible.length > 0 && (
+          <>
+            <ConnectorSyncTable
+              id={`${heading}-table`}
+              selection={{
+                selectedId: selected.id,
+                detailsId,
+                onSelect: (id) => openRun(id, true),
+              }}
+              rows={visible.map(({ id, record }) => {
+                const started = formatStarted(record.started_at);
+                if ("sync_id" in record)
+                  return {
+                    id,
+                    status: describeRunState(record, asOf),
+                    started,
+                    duration: runDuration(record, asOf),
+                    inFlight: isActiveRun(record),
+                    records: record.records_reported,
+                  };
+
+                const state = describeSync(record);
+                const duration = describeDuration(record, asOf);
+                return {
+                  id,
+                  status: state,
+                  started,
+                  duration: duration.text,
+                  inFlight: duration.inFlight,
+                  records: record.records_reported,
+                };
+              })}
+            />
+            <ConnectorSyncTableToggle
+              tableId={`${heading}-table`}
+              count={history.length}
+              showAll={showAll}
+              onToggle={() => setShowAll(!showAll)}
+            />
+          </>
+        )}
       </section>
     </div>
   );
