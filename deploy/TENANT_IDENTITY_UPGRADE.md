@@ -124,7 +124,7 @@ takes hours; each dbt step's deadline is
 ## Once the stand is proven, drop the backups
 
 The backups use as much ClickHouse disk again as the migrated tables: 5–9 GiB
-on the stands migrated so far. Check there is room before the deploy:
+on vz and dev, under 1 GiB on cfabric. Check there is room before the deploy:
 
 ```sql
 SELECT formatReadableSize(sum(total_bytes)) FROM system.tables
