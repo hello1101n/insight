@@ -16,6 +16,7 @@ import {
   stageFailureDetails,
   stageFailureReason,
 } from "@/lib/portal/connector-runs";
+import { cn } from "@/lib/utils";
 import { TONE_BADGE } from "./connector-health-tone";
 
 export function RunTooltip({
@@ -55,11 +56,13 @@ export function ConnectorRunState({
   asOf,
   timing,
   showRunning = false,
+  inlineReason = false,
 }: {
   run: ConnectorRun;
   asOf: string;
   timing?: RunTiming;
   showRunning?: boolean;
+  inlineReason?: boolean;
 }) {
   const { t } = useTranslation();
   const view = describeRunState(run, asOf, timing);
@@ -81,19 +84,31 @@ export function ConnectorRunState({
       ? t("connectors.runs.reason.wait_timeout")
       : null;
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1",
+        inlineReason && "sm:flex-nowrap"
+      )}
+    >
       <RunTooltip lines={detail}>
         <Badge
           variant={TONE_BADGE[view.tone]}
           data-tone={view.tone}
-          className="whitespace-normal"
+          className={
+            inlineReason ? "sm:whitespace-nowrap" : "whitespace-normal"
+          }
         >
           {view.kind === "running" && <RunningSyncIndicator />}
           {label}
         </Badge>
       </RunTooltip>
       {view.kind === "failed" && reason && (
-        <span className="basis-full text-xs whitespace-normal text-muted-foreground">
+        <span
+          className={cn(
+            "basis-full text-xs whitespace-normal text-muted-foreground",
+            inlineReason && "sm:basis-auto"
+          )}
+        >
           {reason}
         </span>
       )}

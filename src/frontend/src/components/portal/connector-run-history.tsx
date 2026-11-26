@@ -1,4 +1,11 @@
-import { Fragment, useId, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
   Ban,
@@ -319,9 +326,14 @@ function Timeline({
           )}{" "}
           UTC
         </strong>
-        <div className="flex flex-wrap items-start gap-2 text-xs text-muted-foreground">
-          {runDuration(run, asOf)}
-          <ConnectorRunState run={run} asOf={asOf} timing={timing} />
+        <div className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">{runDuration(run, asOf)}</span>
+          <ConnectorRunState
+            run={run}
+            asOf={asOf}
+            timing={timing}
+            inlineReason
+          />
         </div>
       </div>
       <ConnectorRunBands timing={timing} />
@@ -461,10 +473,14 @@ export function ConnectorRunHistory({
   const heading = useId();
   const detailsId = `${heading}-detail`;
   const detailsRef = useRef<HTMLDivElement>(null);
+  const previousDetailsHeight = useRef<number | null>(null);
+  const detailsAnimation = useRef<Animation | null>(null);
   const [selectedId, select] = useState<string | null>(null);
   const [stepsOpen, setStepsOpen] = useState(false);
 
   function openRun(id: string, scrollToDetails = false) {
+    if (stepsOpen && id !== selected?.id)
+      previousDetailsHeight.current = detailsRef.current?.offsetHeight ?? null;
     select(id);
     setStepsOpen(true);
     if (scrollToDetails)
@@ -491,6 +507,30 @@ export function ConnectorRunHistory({
       : recordedSuccess;
   const history = recentHistory(managed, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
+
+  useLayoutEffect(() => {
+    const details = detailsRef.current;
+    const previousHeight = previousDetailsHeight.current;
+    previousDetailsHeight.current = null;
+    if (
+      !details?.animate ||
+      previousHeight == null ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+
+    detailsAnimation.current?.cancel();
+    const height = details.offsetHeight;
+    if (height !== previousHeight)
+      detailsAnimation.current = details.animate(
+        [
+          { height: `${previousHeight}px`, overflow: "clip" },
+          { height: `${height}px`, overflow: "clip" },
+        ],
+        { duration: 240, easing: "ease-in-out" }
+      );
+  }, [selected?.id]);
+
   return (
     <div className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2">
       <div className="grid min-w-0 grid-cols-2 gap-1.5">
@@ -507,7 +547,7 @@ export function ConnectorRunHistory({
           asOf={asOf}
         />
       </div>
-      <section aria-labelledby={heading} className="space-y-2">
+      <section aria-labelledby={heading} className="space-y-1.5 sm:space-y-2">
         <div className="flex items-center gap-3">
           <h3 id={heading} className="shrink-0 text-sm font-semibold">
             {t("connectors.history.heading")}
