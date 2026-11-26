@@ -239,7 +239,7 @@ function StepEvent({
             pending
               ? "border border-dashed border-muted-foreground/50 bg-card"
               : TONE_STYLE[tone],
-            current && "ring-2 ring-current/45 ring-offset-2 ring-offset-card"
+            current && "inset-ring-1 inset-ring-current/45"
           )}
         >
           {!pending &&
