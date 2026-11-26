@@ -61,9 +61,7 @@ def main() -> int:
     # "tag:jira-staging" matched NO model (no such tag exists — they are tagged
     # ['staging', 'jira']), so the nightly staging step ran zero models and the
     # enrich/silver steps ran on empty/stale staging (jira_issue_field_snapshot
-    # stayed at 0 rows, changelog_items frozen). Manual run-sync.sh uses
-    # "tag:jira", which is why local runs worked but reconcile-rendered crons
-    # did not.
+    # stayed at 0 rows, changelog_items frozen).
     dbt_select_staging = "tag:staging,tag:jira" if args.connector == "jira" else ""
 
     schedules = [line.strip() for line in args.schedule.splitlines() if line.strip()]

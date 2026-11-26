@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -10,6 +12,16 @@ use crate::domain::kinds::metric::answerable::effective_clock;
 use crate::domain::kinds::metric::composite;
 use crate::domain::query::metric::Metric;
 use crate::domain::query::metric_query::MetricQuery;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Tone {
+    Success,
+    Danger,
+    Warning,
+    Info,
+    Neutral,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -40,6 +52,12 @@ enum Widget {
             reason = "parsed only to refuse a `labels` that is not a flag"
         )]
         labels: bool,
+        #[serde(default)]
+        #[expect(
+            dead_code,
+            reason = "parsed only to refuse a colour that is not a named tone"
+        )]
+        colors: BTreeMap<String, Tone>,
         #[serde(default)]
         detail: Option<String>,
     },
@@ -167,7 +185,8 @@ pub(crate) enum WidgetError {
         "a widget needs a metric, a type of `table`, `line`, `bar`, `area`, `stat` or `pie`, \
          and the columns that type draws: columns for a table, x and y for a line, bar or \
          area, value for a stat, label and value for a pie; a bar may add a `series` column \
-         to stack by and `labels: true` to print each bar's total"
+         to stack by, `labels: true` to print each bar's total, and `colors` giving a series \
+         value one tone of `success`, `danger`, `warning`, `info` or `neutral`"
     )]
     Shape(#[from] serde_json::Error),
     #[error("`{column}` is not a column of metric `{metric}`; its columns are: {available}")]

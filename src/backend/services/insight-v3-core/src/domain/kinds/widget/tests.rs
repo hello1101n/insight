@@ -93,6 +93,30 @@ fn a_bar_says_whether_it_labels_its_totals_with_a_flag() {
 }
 
 #[test]
+fn a_bar_colours_its_series_values_with_named_tones() {
+    let drawn = widget(json!({
+        "type": "bar", "metric": "runs_per_week", "x": "bucket", "y": "runs",
+        "series": "outcome",
+        "colors": {
+            "completed": "success", "gate_refused": "danger", "error": "warning",
+            "submitted": "info", "aborted": "neutral"
+        }
+    }));
+
+    assert!(drawn.check_against(&stacked_metric(), CLOCKED).is_ok());
+}
+
+#[test]
+fn a_bar_colour_outside_the_named_tones_is_refused() {
+    let refused: Result<Widget, _> = serde_json::from_value(json!({
+        "type": "bar", "metric": "runs_per_week", "x": "bucket", "y": "runs",
+        "series": "outcome", "colors": { "completed": "#00ff00" }
+    }));
+
+    assert!(refused.is_err());
+}
+
+#[test]
 fn a_stat_reads_one_value() {
     let drawn = widget(json!({
         "type": "stat", "metric": "lines_per_day", "value": "total_lines", "label": "Lines"

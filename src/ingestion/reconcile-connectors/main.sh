@@ -220,7 +220,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   # without this a crashed tick would leave NO terminal event in Loki and
   # look identical to "never ran". reconcile.completed still owns the
   # normal path (including errors counted by the loop).
-  trap '_rc=$?; if [[ ${_rc} -ne 0 ]]; then
+  trap '_rc=$?; ab_destination_credentials_close; if [[ ${_rc} -ne 0 ]]; then
           log_event reconcile.failed "reconcile aborted with exit code ${_rc}" \
             "{\"status\":\"aborted\",\"exit_code\":${_rc}}" || true
         fi' EXIT

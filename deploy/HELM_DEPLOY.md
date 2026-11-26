@@ -314,7 +314,10 @@ Check these before installing:
 
 ### secrets/insight-db-creds.yaml
 
-Create this Secret with all four datastore passwords — the chart fails fast if any key is missing. Use the passwords your datastores already run with, but check them first: the chart composes DSNs by string interpolation and rejects any password containing `@ : / ? # %`, so those must be rotated to `[A-Za-z0-9._~-]` before you install.
+Create this Secret with the four datastore passwords and the ClickHouse sync user's password.
+Use the current passwords for the datastores. Use only `[A-Za-z0-9._~-]` characters in the datastore passwords.
+Generate the sync user's password once with `openssl rand -hex 16`.
+If ClickHouse runs without a container memory limit, for example on its own VM, set `clickhouse.syncUser.totalMemoryBytes` before the upgrade. Otherwise the `clickhouse-databases` hook stops the upgrade.
 
 ```yaml
 apiVersion: v1
@@ -323,6 +326,7 @@ metadata: { name: insight-db-creds, namespace: insight }
 type: Opaque
 stringData:
   clickhouse-password:   "CHANGE_ME"   # password of clickhouse.username -> Analytics + hooks
+  clickhouse-sync-password: "CHANGE_ME"
   mariadb-password:      "CHANGE_ME"   # MariaDB app-user password    -> Analytics + Identity
   mariadb-root-password: "CHANGE_ME"   # password of the account literally named `root` -> identity-DB init hook
   redis-password:        "CHANGE_ME"   # Redis password               -> Analytics + Authenticator
@@ -360,8 +364,10 @@ kubectl create namespace insight
 kubectl -n insight apply -f secrets/
 
 # verify
-kubectl -n insight get secret insight-db-creds insight-authenticator-signing-keys   # expect 4 keys / 1 key (current.pem)
+kubectl -n insight get secret insight-db-creds insight-authenticator-signing-keys
 ```
+
+Check for five keys in `insight-db-creds` and one key (`current.pem`) in `insight-authenticator-signing-keys`.
 
 Do **not** copy Airbyte's own `airbyte-auth-secrets` into `insight`. The reconcile loop and the airbyte-sync workflows read it from Airbyte's namespace at run time — that is what `airbyte.namespace` in Step 1 is for, and the chart renders a Role/RoleBinding there granting `get` on that one Secret. A copy would freeze credentials Airbyte regenerates on reinstall.
 
@@ -486,6 +492,7 @@ Other notable (non-placeholder) settings in this file:
 | Key | Meaning | Consumed by |
 |-----|---------|--------------|
 | `clickhouse-password` | Password of the `clickhouse.username` account | Analytics, Identity, and the init/migrate hooks |
+| `clickhouse-sync-password` | Hex password of `clickhouse.syncUser.username`. Generate it once. | Bronze, dbt, identity seed, and connector checks |
 | `mariadb-password` | MariaDB app-user password | Analytics + Identity |
 | `mariadb-root-password` | Password of the account literally named `root` — the hook runs `mariadb -uroot` and no values key renames it. A wrong one surfaces as `MariaDB did not become reachable within 2 minutes`, not as an auth error | identity-DB init hook |
 | `redis-password` | Redis password | Analytics + Authenticator |

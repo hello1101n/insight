@@ -734,7 +734,7 @@ Configuration is the gears-rust host config: YAML section
 | `expand_subordinates` | `true` | Recursive subordinates subtree on profile responses. |
 | `max_depth` | `16` | Max org-tree recursion depth (cycle-safe). |
 | `clickhouse_url`, `clickhouse_database`, `clickhouse_user`, `clickhouse_password` | `""` / `identity` / `""` / `""` | ClickHouse HTTP coordinates (port 8123) for reading `identity_inputs` (persons-seed input). |
-| `clickhouse_cluster_mode`, `clickhouse_cluster_name` | `false` / `""` | Warehouse topology: whether the relations the persons-sync creates must replicate (`Replicated*` engines, read-after-write settings on the swap). The name is the chart's shared contract; the service never emits `ON CLUSTER`. |
+| `clickhouse_cluster_mode`, `clickhouse_cluster_name` | `false` / `""` | Warehouse topology: whether the relations the persons-sync creates must replicate (`Replicated*` engines, read-after-write settings on the publish). The name is the chart's shared contract; the service never emits `ON CLUSTER`. |
 | `tenant_default_id` | _empty_ | Optional; opt-in for single-tenant clusters and the bootstrap-admin seed. |
 | `bootstrap_admin_person_id` | _empty_ | Optional; migrate-time first-admin bootstrap. |
 

@@ -29,6 +29,9 @@ ROOT = Path(__file__).parent.parent.parent.absolute()
 # Base branch for the diff-cover patch gate and the changed-component matrix.
 COMPARE_BRANCH = "origin/main"
 
+CONNECTOR_RESOURCE_FIXTURE = "tests/fixtures/connector-resource-parameters.json"
+RECONCILE_GUARD_PATHS = ("src/ingestion/reconcile-connectors", CONNECTOR_RESOURCE_FIXTURE)
+
 COMPONENTS = [
     # Rust: `cargo llvm-cov --package <package>` run in <root>. Each --package
     # report includes cross-crate files and the gate merges all reports (max
@@ -126,6 +129,7 @@ COMPONENTS = [
         # migrator to prove idempotency and skip cleanly when unset).
         "live_db": True,
         "live_db_name": "identity",
+        "live_ch": True,
         "cover_ignore_regex": "src/backend/libs/",
         "paths": [
             "src/backend/services/identity-resolution",
@@ -153,6 +157,7 @@ COMPONENTS = [
             "src/backend/services/connectors",
             "docs/components/backend/connectors/openapi.json",
             "src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql",
+            CONNECTOR_RESOURCE_FIXTURE,
         ],
         "triggered_by": ["insight-clickhouse", "insight-migration"],
     },

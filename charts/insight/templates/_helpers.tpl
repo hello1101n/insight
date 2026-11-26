@@ -116,6 +116,16 @@ default
 {{- end -}}
 {{- end -}}
 
+{{- define "insight.clickhouse.syncPasswordNeedsBootstrap" -}}
+{{- $ref := .Values.clickhouse.syncUser.passwordSecret -}}
+{{- if and .Values.credentials.autoGenerate .Values.clickhouse.provisionAccess (eq $ref.name "insight-db-creds") (eq $ref.key "clickhouse-sync-password") -}}
+  {{- $secret := lookup "v1" "Secret" .Release.Namespace $ref.name -}}
+  {{- if or (not $secret) (and (eq (dig "metadata" "labels" "app.kubernetes.io/managed-by" "" $secret) "Helm") (not (index ($secret.data | default dict) $ref.key | default "" | b64dec))) -}}
+true
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{/* The environment a toolbox Job needs to issue ClickHouse DDL: the
      connection, the topology, and the password of every grant-less user
      create-databases.sh provisions. Shared by the two Jobs that run it — the
@@ -123,6 +133,8 @@ default
      `clickhouse-migrate` Hook, which reaches it through apply-ch-migrations.sh
      — so neither can drift into provisioning a different set of users. */}}
 {{- define "insight.clickhouse.ddlEnv" -}}
+{{- $bootstrap := .bootstrap }}
+{{- with .root }}
 # CLICKHOUSE_URL selects the HTTP backend in lib/ch-exec.sh.
 - name: CLICKHOUSE_URL
   value: {{ include "insight.clickhouse.url" . | quote }}
@@ -153,6 +165,30 @@ default
       name: {{ default "insight-db-creds" .Values.clickhouse.passwordSecret.name | quote }}
       key:  "clickhouse-presentation-password"
       optional: true
+{{- if .Values.clickhouse.provisionAccess }}
+- name: CLICKHOUSE_SYNC_USER
+  value: {{ include "insight.clickhouse.syncUser" . | quote }}
+- name: CLICKHOUSE_SYNC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      {{- $ref := .Values.clickhouse.syncUser.passwordSecret }}
+      {{- if $bootstrap }}
+      name: {{ include "insight.fullname" . }}-clickhouse-sync-bootstrap
+      key: password
+      {{- else }}
+      name: {{ $ref.name | quote }}
+      key: {{ $ref.key | quote }}
+      {{- end }}
+      optional: true
+{{- with .Values.clickhouse.syncUser.totalMemoryBytes }}
+- name: CLICKHOUSE_SYNC_TOTAL_MEMORY_BYTES
+  value: {{ int64 . | quote }}
+{{- end }}
+{{- with .Values.clickhouse.syncUser.queryMemoryBytes }}
+- name: CLICKHOUSE_SYNC_QUERY_MEMORY_BYTES
+  value: {{ int64 . | quote }}
+{{- end }}
+{{- end }}
 - name: MCP_ENABLED
   value: {{ .Values.global.mcp.enabled | quote }}
 - name: SQL_API_ENABLED
@@ -191,6 +227,7 @@ default
       key:  "clickhouse-grafana-password"
       optional: true
 {{- end -}}
+{{- end -}}
 
 {{/* ---------- MariaDB (external) ---------- */}}
 {{- define "insight.mariadb.host" -}}
@@ -227,6 +264,17 @@ redis://{{ include "insight.redis.host" . }}:{{ include "insight.redis.port" . }
 {{- required "redpanda.brokers is required" .Values.redpanda.brokers -}}
 {{- end -}}
 
+{{- define "insight.clickhouse.syncUser" -}}
+{{- required "clickhouse.syncUser.username is required" .Values.clickhouse.syncUser.username -}}
+{{- end -}}
+
+{{- define "insight.clickhouse.syncPasswordRef" -}}
+valueFrom:
+  secretKeyRef:
+    name: {{ required "clickhouse.syncUser.passwordSecret.name is required" .Values.clickhouse.syncUser.passwordSecret.name | quote }}
+    key: {{ required "clickhouse.syncUser.passwordSecret.key is required" .Values.clickhouse.syncUser.passwordSecret.key | quote }}
+{{- end -}}
+
 {{/*
 ==============================================================================
  AIRBYTE (separate release; airbyte.namespace="" = same namespace as the app)
@@ -234,6 +282,15 @@ redis://{{ include "insight.redis.host" . }}:{{ include "insight.redis.port" . }
 */}}
 {{- define "insight.airbyte.namespace" -}}
 {{- default .Release.Namespace .Values.airbyte.namespace -}}
+{{- end -}}
+
+{{- define "insight.airbyteCapacity.namespaces" -}}
+{{- $airbyte := include "insight.airbyte.namespace" . -}}
+{{- $namespaces := .Values.ingestion.airbyteSync.capacityCheck.podNamespaces | default (list .Release.Namespace $airbyte) | uniq -}}
+{{- if not (has $airbyte $namespaces) -}}
+{{- fail "ingestion.airbyteSync.capacityCheck.podNamespaces must include the Airbyte namespace." -}}
+{{- end -}}
+{{- join "," $namespaces -}}
 {{- end -}}
 
 {{- define "insight.airbyte.url" -}}

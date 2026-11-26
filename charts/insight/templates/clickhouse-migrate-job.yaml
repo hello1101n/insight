@@ -84,5 +84,5 @@ spec:
             - "-c"
             - "bash /ingestion/scripts/apply-ch-migrations.sh"
           env:
-            {{- include "insight.clickhouse.ddlEnv" . | nindent 12 }}
+            {{- include "insight.clickhouse.ddlEnv" (dict "root" .) | nindent 12 }}
 {{- end }}

@@ -20,6 +20,38 @@ export interface SyncFact {
   records_reported?: number | null;
 }
 
+export interface ConnectorRunStage {
+  waits?: {
+    kind: "lock" | "placement";
+    holder?: string | null;
+    started_at: string;
+    ended_at?: string | null;
+  }[];
+  stage: string;
+  attempt: number;
+  airbyte_job_id?: string | null;
+  status: string;
+  queued_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  reason?: string | null;
+}
+
+export interface ConnectorRun {
+  sync_id: string;
+  execution_started_at?: string;
+  status: string;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  wait_ms?: number | null;
+  load_ms?: number | null;
+  transform_ms?: number | null;
+  records_reported?: number | null;
+  stages: ConnectorRunStage[];
+}
+
 export interface ConnectorInstance {
   tenant_id?: string | null;
   source_id?: string | null;
@@ -49,6 +81,8 @@ export interface ConnectorHealth extends ConnectorInstance {
   schedule?: AppliedSchedule | null;
   schedule_request?: ScheduleRequestState | null;
   last_sync?: SyncFact | null;
+  latest_run?: ConnectorRun | null;
+  last_successful_run?: ConnectorRun | null;
 }
 
 export type SchedulePendingReason =
@@ -72,7 +106,26 @@ export interface ScheduleRequestState {
   } | null;
 }
 
+export interface ConnectorResources {
+  airbyte_cpu_millis?: number;
+  airbyte_memory_bytes?: number;
+  dbt_cpu_millis?: number;
+  dbt_memory_bytes?: number;
+  identity_cpu_millis?: number;
+  identity_memory_bytes?: number;
+  dbt_query_memory_bytes?: number;
+}
+
+export interface ConnectorResourceState {
+  requested: ConnectorResources;
+  live: ConnectorResources | null;
+  inherited: ConnectorResources | null;
+  status: ScheduleStatus | null;
+  read_error: string | null;
+}
+
 export interface ConnectorSchedule {
+  resources?: ConnectorResourceState;
   connector: string;
   source_id: string;
   revision: number;
@@ -138,6 +191,7 @@ export interface ConnectorInstanceRef extends ConnectorInstance {
 
 export interface ConnectorHealthSummary {
   schedule_read_error?: string | null;
+  history_read_error?: string | null;
   as_of: string;
   checked_at?: string | null;
   typical_read_interval_ms?: number | null;
@@ -148,6 +202,8 @@ export interface ConnectorHealthSummary {
 export interface ConnectorSyncHistory extends ConnectorInstance {
   connector: string;
   syncs: SyncFact[];
+  runs?: ConnectorRun[];
+  history_read_error?: string | null;
   window: number;
 }
 

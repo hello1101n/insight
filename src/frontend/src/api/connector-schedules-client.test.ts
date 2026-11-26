@@ -18,6 +18,13 @@ const instance = {
   tenant_id: "example-tenant",
 };
 const body: ConnectorSchedule = {
+  resources: {
+    requested: {},
+    live: null,
+    inherited: null,
+    status: "pending",
+    read_error: null,
+  },
   connector: instance.connector,
   source_id: instance.source_id,
   revision: 3,

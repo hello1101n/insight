@@ -11,7 +11,7 @@ use crate::infra::cluster_stub::Scenario;
 async fn saves_bound_repository_pool_waits_and_database_statements() -> R {
     let url = std::env::var("INTEGRATION_TESTS_MARIADB_URL")?;
     let db = crate::infra::db::connect(&url).await?;
-    Migration.up(&SchemaManager::new(&db)).await?;
+    crate::migration::Migrator::up(&db, None).await?;
     let started = tokio::time::Instant::now();
     let statement = db.query_one_raw(Statement::from_string(DbBackend::MySql, "SELECT SLEEP(10)"));
     assert!(

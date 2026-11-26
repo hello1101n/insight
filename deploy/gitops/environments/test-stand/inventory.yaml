@@ -80,9 +80,7 @@ protected: true
 
 # ─── Namespaces ────────────────────────────────────────────────────────
 namespaces:
-  # The umbrella release namespace. Everything this env touches lives here,
-  # which is why a namespace-scoped ServiceAccount is enough for CI to deploy —
-  # no cluster-scoped grant is needed or wanted.
+  # The umbrella release namespace. The CI ServiceAccount also needs cluster grants for the deploy.
   services: insight
 
   # Read the warning before changing this.
@@ -170,10 +168,8 @@ oidcClientSecret:
 # against this stand would install a second, competing copy of something
 # the cluster already has:
 #
-#   namespaces    — `insight` exists; the CI ServiceAccount is scoped to
-#                   it and cannot create namespaces anyway. `helm upgrade
-#                   --install --create-namespace` covers the only case
-#                   this toggle would have handled.
+#   namespaces    — The CI ServiceAccount needs an existing release namespace.
+#                   Its cluster grants do not permit it to create namespaces.
 #   ingressNginx  — the edge is Envoy Gateway. Installing ingress-nginx
 #                   would put a second LoadBalancer in front of the same
 #                   hostname.

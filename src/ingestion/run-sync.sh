@@ -70,7 +70,7 @@ DATA_SOURCE="$CONNECTOR"
 # dbt_select_staging only fires when data_source=jira.
 DBT_SELECT_STAGING=""
 if [[ "$DATA_SOURCE" == "jira" ]]; then
-  DBT_SELECT_STAGING="tag:jira"
+  DBT_SELECT_STAGING="tag:staging,tag:jira"
 fi
 
 TENANT_DASHED="${TENANT//_/-}"

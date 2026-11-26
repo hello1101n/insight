@@ -56,6 +56,7 @@ pub(crate) struct ScheduleResponse {
     pub connector: String,
     pub source_id: String,
     pub revision: u64,
+    pub resources: super::resources::ResourceState,
     pub requested: Option<RequestedSchedule>,
     pub live: Option<LiveSchedule>,
     pub inherited: Option<InheritedSchedule>,

@@ -27,9 +27,12 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+
+QueryFn = Callable[[str], tuple[bool, str]]
 
 CH_URL = os.environ.get("PRESENTATION_ROLE_TEST_CH_URL")
 CH_USER = os.environ.get("PRESENTATION_ROLE_TEST_CH_USER", "default")
@@ -44,7 +47,8 @@ ROLE_SQL = BOOTSTRAP_DIR / "presentation-role.sql"
 PROVISION_SCRIPT = BOOTSTRAP_DIR / "provision-presentation-access.sh"
 
 # The read-only contract databases the role grants SELECT on.
-CONTRACT_DBS = ("silver", "person", "identity", "insight")
+CONTRACT_DBS = ("silver", "identity", "insight")
+PROBE_DBS = (*CONTRACT_DBS, "person")
 
 # Append-only: SELECT + INSERT, but no CREATE — its DDL comes from migrations.
 USAGE_DB = "product_usage"
@@ -101,12 +105,12 @@ def _apply(path: Path) -> None:
 
 
 @pytest.fixture(scope="module")
-def probe():
+def probe() -> Iterator[QueryFn]:
     """Provision the contract + presentation objects and a probe user carrying
     only the presentation_ro role. Torn down afterwards."""
-    for db in (*CONTRACT_DBS, "presentation", USAGE_DB, HISTORY_DB):
+    for db in (*PROBE_DBS, "presentation", USAGE_DB, HISTORY_DB):
         assert _admin(f"CREATE DATABASE IF NOT EXISTS {db}")[0]
-    for db in CONTRACT_DBS:
+    for db in PROBE_DBS:
         assert _admin(f"CREATE TABLE IF NOT EXISTS {db}.probe (x UInt8) ENGINE=MergeTree ORDER BY x")[0]
 
     _apply(ROLE_SQL)
@@ -123,24 +127,32 @@ def probe():
         _admin("DROP TABLE IF EXISTS presentation.scratch")
         _admin(f"DROP TABLE IF EXISTS {USAGE_DB}.probe")
         _admin(f"DROP TABLE IF EXISTS {HISTORY_DB}.probe")
-        for db in CONTRACT_DBS:
+        for db in PROBE_DBS:
             _admin(f"DROP TABLE IF EXISTS {db}.probe")
         _admin(f"DROP USER IF EXISTS {PROBE_USER}")
 
 
-@pytest.mark.parametrize("db", CONTRACT_DBS)
-def test_contract_is_read_only(probe, db: str) -> None:
-    """SELECT on every contract database is allowed; every write/DDL is denied."""
-    assert probe(f"SELECT count() FROM {db}.probe")[0], f"{db} SELECT must be allowed"
+def _assert_access_denied(query: QueryFn, sql: str) -> None:
+    ok, resp = query(sql)
+    assert not ok, f"must reject: {sql!r}"
+    assert "ACCESS_DENIED" in resp, resp
+
+
+def _assert_contract_writes_denied(query: QueryFn, db: str) -> None:
     for sql in (
         f"INSERT INTO {db}.probe VALUES (1)",
         f"DROP TABLE {db}.probe",
         f"ALTER TABLE {db}.probe ADD COLUMN y UInt8",
         f"TRUNCATE TABLE {db}.probe",
     ):
-        ok, resp = probe(sql)
-        assert not ok, f"{db} must reject: {sql!r}"
-        assert "ACCESS_DENIED" in resp, resp
+        _assert_access_denied(query, sql)
+
+
+@pytest.mark.parametrize("db", CONTRACT_DBS)
+def test_contract_is_read_only(probe: QueryFn, db: str) -> None:
+    """SELECT on every contract database is allowed; every write/DDL is denied."""
+    assert probe(f"SELECT count() FROM {db}.probe")[0], f"{db} SELECT must be allowed"
+    _assert_contract_writes_denied(probe, db)
 
 
 def test_presentation_is_create_insert_only(probe) -> None:
@@ -168,9 +180,7 @@ def test_usage_is_append_only(probe) -> None:
     define a table anywhere. A regression that granted CREATE back would let the
     schema drift away from the migration silently.
     """
-    assert _admin(
-        f"CREATE TABLE IF NOT EXISTS {USAGE_DB}.probe (x UInt8) ENGINE=MergeTree ORDER BY x"
-    )[0]
+    assert _admin(f"CREATE TABLE IF NOT EXISTS {USAGE_DB}.probe (x UInt8) ENGINE=MergeTree ORDER BY x")[0]
     assert probe(f"INSERT INTO {USAGE_DB}.probe VALUES (7)")[0], "usage INSERT must be allowed"
     assert probe(f"SELECT sum(x) FROM {USAGE_DB}.probe")[0], "usage SELECT must be allowed"
     for sql in (
@@ -193,9 +203,7 @@ def test_sync_history_is_read_only(probe) -> None:
     grant letting the query path write here would be a grant nothing uses — and
     the surface reporting on ingestion could edit its own evidence.
     """
-    assert _admin(
-        f"CREATE TABLE IF NOT EXISTS {HISTORY_DB}.probe (x UInt8) ENGINE=MergeTree ORDER BY x"
-    )[0]
+    assert _admin(f"CREATE TABLE IF NOT EXISTS {HISTORY_DB}.probe (x UInt8) ENGINE=MergeTree ORDER BY x")[0]
     assert probe(f"SELECT sum(x) FROM {HISTORY_DB}.probe")[0], "history SELECT must be allowed"
     for sql in (
         f"INSERT INTO {HISTORY_DB}.probe VALUES (7)",
@@ -214,7 +222,7 @@ def test_sync_history_is_read_only(probe) -> None:
 
 
 @pytest.fixture(scope="module")
-def presentation_user():
+def presentation_user() -> Iterator[QueryFn]:
     """Run provision-presentation-access.sh against the live server and yield a
     query fn bound to the `presentation` user it creates. Proves the user
     analytics actually connects as (#1964) carries exactly the role's grant
@@ -222,9 +230,9 @@ def presentation_user():
     if not (shutil.which("bash") and shutil.which("curl")):
         pytest.skip("provision-presentation-access.sh needs bash + curl")
 
-    for db in (*CONTRACT_DBS, "presentation", USAGE_DB, HISTORY_DB):
+    for db in (*PROBE_DBS, "presentation", USAGE_DB, HISTORY_DB):
         assert _admin(f"CREATE DATABASE IF NOT EXISTS {db}")[0]
-    for db in CONTRACT_DBS:
+    for db in PROBE_DBS:
         assert _admin(f"CREATE TABLE IF NOT EXISTS {db}.probe (x UInt8) ENGINE=MergeTree ORDER BY x")[0]
 
     # The script talks to CH over curl (lib/ch-exec.sh) using these env names.
@@ -246,24 +254,24 @@ def presentation_user():
         yield _query_as_pres
     finally:
         _admin("DROP TABLE IF EXISTS presentation.scratch_1964")
-        for db in CONTRACT_DBS:
+        for db in PROBE_DBS:
             _admin(f"DROP TABLE IF EXISTS {db}.probe")
         _admin(f"DROP USER IF EXISTS {PRES_USER}")
 
 
 @pytest.mark.parametrize("db", CONTRACT_DBS)
-def test_provisioned_user_contract_is_read_only(presentation_user, db: str) -> None:
+def test_provisioned_user_contract_is_read_only(presentation_user: QueryFn, db: str) -> None:
     """The `presentation` user reads every contract DB but cannot write/alter it."""
     assert presentation_user(f"SELECT count() FROM {db}.probe")[0], f"{db} SELECT must be allowed"
-    for sql in (
-        f"INSERT INTO {db}.probe VALUES (1)",
-        f"DROP TABLE {db}.probe",
-        f"ALTER TABLE {db}.probe ADD COLUMN y UInt8",
-        f"TRUNCATE TABLE {db}.probe",
-    ):
-        ok, resp = presentation_user(sql)
-        assert not ok, f"{db} must reject: {sql!r}"
-        assert "ACCESS_DENIED" in resp, resp
+    _assert_contract_writes_denied(presentation_user, db)
+
+
+@pytest.mark.parametrize("role_fixture", ("probe", "presentation_user"))
+def test_person_access_is_denied(request: pytest.FixtureRequest, role_fixture: str) -> None:
+    query: QueryFn = request.getfixturevalue(role_fixture)
+
+    _assert_access_denied(query, "SELECT count() FROM person.probe")
+    _assert_contract_writes_denied(query, "person")
 
 
 def test_provisioned_user_presentation_is_create_insert_only(presentation_user) -> None:

@@ -244,7 +244,8 @@ def test_leaving_access_to_the_operator_reaches_every_job_that_provisions_it(
     """The migrate hook runs the same script as the pre-install Job; a value
     that reached only one would leave the other provisioning onto a cluster
     whose access storage cannot take it."""
-    found = _values(_render(template, [*CLUSTERED, "--set", "clickhouse.provisionAccess=false"]), PROVISION_ACCESS)
+    operator = "clickhouse.provisionAccess=false,credentials.autoGenerate=false,credentials.deploymentMode=gitops"
+    found = _values(_render(template, [*CLUSTERED, "--set", operator]), PROVISION_ACCESS)
 
     assert found == {"CLICKHOUSE_PROVISION_ACCESS": "false"}, f"{template} missed the access decision"
 

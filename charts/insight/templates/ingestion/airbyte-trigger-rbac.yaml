@@ -1,0 +1,37 @@
+{{- if .Values.ingestion.templates.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "insight.fullname" . }}-airbyte-trigger
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "insight.fullname" . }}-airbyte-trigger
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [workflows]
+    verbs: [get, patch]
+  - apiGroups: [argoproj.io]
+    resources: [workflowtaskresults]
+    verbs: [create, patch]
+  {{- if .Values.ingestion.airbyteSync.capacityCheck.enabled }}
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    resourceNames: [{{ include "insight.fullname" . }}-airbyte-capacity]
+    verbs: [get, patch]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "insight.fullname" . }}-airbyte-trigger
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "insight.fullname" . }}-airbyte-trigger
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "insight.fullname" . }}-airbyte-trigger
+{{- end }}

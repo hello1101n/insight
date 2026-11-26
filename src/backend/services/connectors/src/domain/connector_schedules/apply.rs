@@ -2,7 +2,7 @@ use kube::api::DynamicObject;
 use sea_orm::DatabaseConnection;
 
 use super::dto::{InheritedSchedule, LiveSchedule, ScheduleResponse};
-use super::{Error, Instance, repository, workflow};
+use super::{Error, Instance, Resources, repository, workflow};
 use crate::infra::cluster::Cluster;
 
 const UNREADABLE: &str = "the CronWorkflow could not be read back";
@@ -13,13 +13,35 @@ pub(crate) struct Observation {
     pub(crate) live: Option<LiveSchedule>,
     pub(crate) inherited: Option<InheritedSchedule>,
     pub(crate) read_error: Option<String>,
+    pub(crate) resources: Option<Resources>,
+    pub(super) pod_patches: [Option<String>; 2],
+    pub(crate) resource_defaults: Option<Resources>,
+    pub(crate) resource_read_error: Option<String>,
+}
+
+impl Observation {
+    pub(super) fn matches_resources(&self, target: &Resources) -> bool {
+        self.resources.as_ref() == Some(target)
+            && self.pod_patches == target.pod_patches().map(Some)
+    }
 }
 
 pub(crate) fn observation(object: Option<&DynamicObject>) -> Result<Observation, Error> {
+    let resources = object.map(workflow::live_resources).transpose();
+    let resource_defaults = object.map(workflow::resource_defaults).transpose();
+    let resource_read_error = resources
+        .as_ref()
+        .err()
+        .or_else(|| resource_defaults.as_ref().err())
+        .map(ToString::to_string);
     Ok(Observation {
         live: object.map(workflow::live).transpose()?,
         inherited: object.and_then(workflow::inherited),
         read_error: None,
+        resources: resources.ok().flatten(),
+        pod_patches: object.map_or_else(Default::default, workflow::live_pod_patches),
+        resource_defaults: resource_defaults.ok().flatten(),
+        resource_read_error,
     })
 }
 
@@ -66,6 +88,7 @@ pub(super) async fn stored(
     db: &DatabaseConnection,
     cluster: &Cluster,
     instance: &Instance,
+    resources_only: bool,
 ) -> Result<ScheduleResponse, Error> {
     let row = repository::read(db, instance).await?;
     let revision = row.as_ref().map_or(0, |r| r.revision);
@@ -74,11 +97,105 @@ pub(super) async fn stored(
         .map(|r| serde_json::from_value::<Vec<String>>(r.crons.clone()).map_err(Error::StoredCrons))
         .transpose()?
         .unwrap_or_default();
-    let (observed, failure) = attempt(cluster, instance, &requested, revision).await;
+    let resources = Resources::stored(row.as_ref().and_then(|r| r.resources.as_ref()))?;
+    let intent = if resources_only {
+        Intent::Resources(&resources)
+    } else {
+        Intent::Schedule(&requested)
+    };
+    let (observed, failure) = attempt_change(cluster, instance, intent, revision).await;
     if let Some(reason) = failure {
-        return Err(Error::NotChanged(reason));
+        return Err(if resources_only {
+            Error::ResourcesNotChanged(reason)
+        } else {
+            Error::NotChanged(reason)
+        });
     }
     super::response(instance, row, observed)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Intent<'a> {
+    Schedule(&'a [String]),
+    Resources(&'a Resources),
+}
+
+impl Intent<'_> {
+    fn target(self, observed: &Observation) -> Option<Target> {
+        match self {
+            Self::Schedule(requested) => workflow::desired(
+                requested,
+                observed
+                    .inherited
+                    .as_ref()
+                    .map(|schedule| InheritedSchedule {
+                        crons: schedule.crons.clone(),
+                        origin: schedule.origin,
+                    }),
+            )
+            .map(Target::Schedule),
+            Self::Resources(requested) => observed
+                .resource_defaults
+                .as_ref()
+                .map(|defaults| Target::Resources(requested.resolve(defaults))),
+        }
+    }
+
+    fn unchanged(self, live: &Observation, previous: &Observation) -> bool {
+        match self {
+            Self::Schedule(_) => {
+                live.live
+                    .as_ref()
+                    .zip(previous.live.as_ref())
+                    .is_some_and(|(live, previous)| {
+                        live.crons == previous.crons
+                            && live.timezone == previous.timezone
+                            && live.origin == previous.origin
+                    })
+            }
+            Self::Resources(_) => {
+                live.resources == previous.resources && live.pod_patches == previous.pod_patches
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Target {
+    Schedule(InheritedSchedule),
+    Resources(Resources),
+}
+
+impl Target {
+    fn matches(&self, observed: &Observation) -> bool {
+        match self {
+            Self::Schedule(target) => observed
+                .live
+                .as_ref()
+                .is_some_and(|live| workflow::matches(live, target)),
+            Self::Resources(target) => observed.matches_resources(target),
+        }
+    }
+
+    fn patch(&self, object: &DynamicObject) -> Result<serde_json::Value, Error> {
+        match self {
+            Self::Schedule(target) => workflow::patch(object, target),
+            Self::Resources(target) => workflow::patch_resources(object, target),
+        }
+    }
+
+    fn log_change(&self, revision: u64, instance: &Instance, previous: &Observation) {
+        match self {
+            Self::Schedule(target) => {
+                log_change(revision, instance, previous.live.as_ref(), target);
+            }
+            Self::Resources(target) => tracing::info!(
+                connector = instance.connector.as_str(), source_id = instance.source_id.as_str(),
+                from_resources = ?previous.resources, to_resources = ?target, revision,
+                "The sync job resource settings changed."
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -86,22 +203,35 @@ enum PatchOutcome {
     #[default]
     NotSent,
     Refused,
-    Unconfirmed(LiveSchedule),
-    Accepted(LiveSchedule),
+    Unconfirmed(Observation),
+    Accepted(Observation),
 }
 
+#[cfg(test)]
 async fn attempt(
     cluster: &Cluster,
     instance: &Instance,
     requested: &[String],
     revision: u64,
 ) -> (Observation, Option<String>) {
-    let mut target = workflow::desired(requested, None);
+    attempt_change(cluster, instance, Intent::Schedule(requested), revision).await
+}
+
+async fn attempt_change(
+    cluster: &Cluster,
+    instance: &Instance,
+    intent: Intent<'_>,
+    revision: u64,
+) -> (Observation, Option<String>) {
+    let mut target = match intent {
+        Intent::Schedule(_) => intent.target(&Observation::default()),
+        Intent::Resources(_) => None,
+    };
     let mut outcome = PatchOutcome::NotSent;
     let (observed, failure) = attempt_once(
         cluster,
         instance,
-        requested,
+        intent,
         revision,
         &mut target,
         &mut outcome,
@@ -121,26 +251,19 @@ async fn attempt(
     };
     if target
         .as_ref()
-        .zip(confirmed.live.as_ref())
-        .is_some_and(|(target, live)| workflow::matches(live, target))
+        .is_some_and(|target| target.matches(&confirmed))
     {
         if let PatchOutcome::Unconfirmed(previous) = &outcome
             && let Some(target) = &target
         {
-            log_change(revision, instance, Some(previous), target);
+            target.log_change(revision, instance, previous);
         }
         return (confirmed, None);
     }
     let (PatchOutcome::Unconfirmed(previous) | PatchOutcome::Accepted(previous)) = &outcome else {
         return (observed, failure);
     };
-    let Some(live) = confirmed.live.as_ref() else {
-        return (confirmed, None);
-    };
-    let unchanged = live.crons == previous.crons
-        && live.timezone == previous.timezone
-        && live.origin == previous.origin;
-    if !unchanged {
+    if confirmed.live.is_none() || !intent.unchanged(&confirmed, previous) {
         return (confirmed, None);
     }
     let Ok(Some(object)) = object else {
@@ -152,12 +275,9 @@ async fn attempt(
     let observed = observe(cluster, instance).await.unwrap_or_default();
     if let PatchOutcome::Unconfirmed(previous) = &outcome
         && let Some(target) = &target
-        && observed
-            .live
-            .as_ref()
-            .is_some_and(|live| workflow::matches(live, target))
+        && target.matches(&observed)
     {
-        log_change(revision, instance, Some(previous), target);
+        target.log_change(revision, instance, previous);
     }
     (observed, None)
 }
@@ -190,9 +310,9 @@ async fn fence(cluster: &Cluster, object: &DynamicObject) -> Result<(), Error> {
 async fn attempt_once(
     cluster: &Cluster,
     instance: &Instance,
-    requested: &[String],
+    intent: Intent<'_>,
     revision: u64,
-    attempted_target: &mut Option<InheritedSchedule>,
+    attempted_target: &mut Option<Target>,
     outcome: &mut PatchOutcome,
 ) -> (Observation, Option<String>) {
     for retry in [true, false] {
@@ -205,21 +325,20 @@ async fn attempt_once(
             Ok(observed) => observed,
             Err(error) => return unreadable(&error.to_string()),
         };
-        let Some(target) = workflow::desired(requested, workflow::inherited(&object)) else {
-            return (observed, Some("Reset requires the deployment schedule annotation; run reconcile before resetting".to_owned()));
+        let Some(target) = intent.target(&observed) else {
+            let message = match intent {
+                Intent::Schedule(_) => {
+                    "Reset requires the deployment schedule annotation; run reconcile before resetting"
+                }
+                Intent::Resources(_) => "the deployment resource settings are invalid",
+            };
+            return (observed, Some(message.to_owned()));
         };
-        *attempted_target = Some(InheritedSchedule {
-            crons: target.crons.clone(),
-            origin: target.origin,
-        });
-        if observed
-            .live
-            .as_ref()
-            .is_some_and(|l| workflow::matches(l, &target))
-        {
+        let target = attempted_target.insert(target);
+        if target.matches(&observed) {
             return (observed, None);
         }
-        let patch = match workflow::patch(&object, &target) {
+        let patch = match target.patch(&object) {
             Ok(patch) => patch,
             Err(error) => {
                 return (
@@ -229,9 +348,6 @@ async fn attempt_once(
             }
         };
         let name = object.metadata.name.as_deref().unwrap_or_default();
-        let Some(previous) = observed.live else {
-            return unreadable(UNREADABLE);
-        };
         #[cfg(test)]
         super::save_hooks::checkpoint(instance, "patch").await;
         match cluster.patch(name, &patch).await {
@@ -250,7 +366,7 @@ async fn attempt_once(
                     format!("the cluster did not answer in time or its answer was lost: {error}")
                 };
                 if !error.refused() {
-                    *outcome = PatchOutcome::Unconfirmed(previous);
+                    *outcome = PatchOutcome::Unconfirmed(observed);
                 }
                 let observed = observation(Some(&object)).unwrap_or_default();
                 return (observed, Some(message));
@@ -259,17 +375,18 @@ async fn attempt_once(
         }
         #[cfg(test)]
         super::save_hooks::checkpoint(instance, "readback").await;
-        log_change(revision, instance, Some(&previous), &target);
-        *outcome = PatchOutcome::Accepted(previous);
+        target.log_change(revision, instance, &observed);
+        *outcome = PatchOutcome::Accepted(observed);
         return match read(cluster, instance).await {
             Ok(Some(readback)) if readback.metadata.uid == object.metadata.uid => {
                 match observation(Some(&readback)) {
                     Ok(observation) => {
-                        let matched = observation
-                            .live
-                            .as_ref()
-                            .is_some_and(|l| workflow::matches(l, &target));
-                        (observation, (!matched).then(|| MISMATCH.to_owned()))
+                        let matched = target.matches(&observation);
+                        let mismatch = match target {
+                            Target::Schedule(_) => MISMATCH,
+                            Target::Resources(_) => "the sync job uses different resource settings",
+                        };
+                        (observation, (!matched).then(|| mismatch.to_owned()))
                     }
                     Err(error) => unreadable(&error.to_string()),
                 }
