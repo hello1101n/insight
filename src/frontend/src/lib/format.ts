@@ -44,6 +44,15 @@ export function formatTimeMetricValue(
     : null;
 }
 
+export function displayStepsPerUnit(
+  v: number,
+  fmt: MetricFormat,
+  unit?: string | null,
+): number {
+  if (isDurationUnit(unit)) return Math.abs(v) >= WHOLE_HOURS_FROM ? 1 : 60;
+  return fmt === "decimal" ? 10 : 1;
+}
+
 export function formatHoursDuration(hours: number): string {
   const sign = hours < 0 ? "-" : "";
   const abs = Math.abs(hours);
