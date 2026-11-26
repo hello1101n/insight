@@ -357,7 +357,9 @@ export interface DrilldownColumn extends MetricEvidenceColumn {
   exact: boolean;
 }
 
-export type DrilldownRow = Pick<MetricEvidenceRow, "values">;
+export type DrilldownRow = Pick<MetricEvidenceRow, "values"> & {
+  link?: string;
+};
 
 export interface DrilldownPage {
   selection: {

@@ -29,7 +29,17 @@ export function drawable(
       links[column.key] = value;
     }
   }
+  const linked = recordColumn(columns);
+  if (row.link && linked && !links[linked.key]) {
+    links[linked.key] = row.link;
+  }
   return { values, links };
+}
+
+function recordColumn(
+  columns: readonly DrilldownColumn[]
+): DrilldownColumn | undefined {
+  return columns.find((column) => column.type === "string") ?? columns[0];
 }
 
 function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
