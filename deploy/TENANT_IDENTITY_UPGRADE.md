@@ -17,6 +17,14 @@ stored tenant that is not lowercase would get new keys and be re-read from the
 watermark epoch; after the cutover every stored tenant is the lowercase UUID, so
 this does not arise.
 
+## Before the deploy
+
+- [ ] Check that the hubspot, bamboohr, active-directory, claude-team-invoices
+  and slack descriptors pin images built after #164. From the checkout of the
+  chart being deployed, `scripts/ci/connector_images_current.sh` must print
+  nothing and exit 0; any connector it names has an image built before its
+  sources last changed.
+
 ## Deploy as usual
 
 1. Bump the version.
@@ -118,7 +126,10 @@ suspended: a sync on the catalog Airbyte held before the cutover would drop
 `insight_tenant_id` and `insight_source_id` from the migrated Bronze.
 Reconcile's next tick (within 15 min) refreshes each connection's catalog and
 only then re-applies its schedule, unsuspended; a connection whose refresh
-fails keeps its schedule suspended until a later tick succeeds.
+fails keeps its schedule suspended until a later tick succeeds. Reconcile
+records a refresh as the connection tag `catalog:<hash>`; no connection carries
+it before the cutover, so the first pass refreshes every connection before any
+sync.
 
 ## Progress and failures
 
