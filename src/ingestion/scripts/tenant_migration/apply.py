@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from tenant_migration import ddl, keys
 from tenant_migration.clickhouse import ClickHouse
-from tenant_migration.inventory import BACKUP, KEY_COLUMN, Relation, Table
+from tenant_migration.inventory import BACKUP, KEY_COLUMN, Relation, Table, quote
 from tenant_migration.plan import TablePlan
 
 NIL_UUID = "00000000-0000-0000-0000-000000000000"
@@ -48,7 +48,8 @@ class Copy:
 
 def table_uuid(ch: ClickHouse, rel: Relation, suffix: str = "") -> str | None:
     rows = ch.rows(
-        f"SELECT toString(uuid) FROM system.tables WHERE database = '{rel.database}' AND name = '{rel.name}{suffix}'"
+        "SELECT toString(uuid) FROM system.tables WHERE database = {database:String} AND name = {name:String}",
+        params={"database": rel.database, "name": rel.name + suffix},
     )
     return rows[0][0] if rows else None
 
@@ -58,8 +59,8 @@ def backup_suffix(ch: ClickHouse, rel: Relation) -> str:
     taken = {
         name
         for (name,) in ch.rows(
-            f"SELECT name FROM system.tables WHERE database = '{rel.database}' "
-            f"AND startsWith(name, '{rel.name}{BACKUP}')"
+            "SELECT name FROM system.tables WHERE database = {database:String} AND startsWith(name, {prefix:String})",
+            params={"database": rel.database, "prefix": rel.name + BACKUP},
         )
     }
     for n in range(1, MAX_BACKUPS):
@@ -81,21 +82,21 @@ def _create_copy(ch: ClickHouse, table: Table, suffix: str) -> None:
         ch.execute(ddl.add_tenant(rel, suffix, KEY_COLUMN if table.key else None))
 
 
-def _insert(table: Table, suffix: str, tenant: str) -> str:
+def _insert(table: Table, suffix: str) -> str:
     columns, expressions = [], []
     for name, _ in table.columns:
         columns.append(table.target if name == table.tenant else name)
         if name == table.tenant:
-            expressions.append(keys.lit(tenant))
+            expressions.append(keys.TENANT)
         elif name == table.key and table.tenant:
-            expressions.append(keys.key_expression(table, tenant))
+            expressions.append(keys.key_expression(table))
         elif name == table.comment_id:
             expressions.append(keys.comment_id_expression(table))
         else:
             expressions.append(keys.col(name))
     if table.adds:
         columns.append(table.target)
-        expressions.append(keys.lit(tenant))
+        expressions.append(keys.TENANT)
     return ddl.insert(table.rel, suffix, columns, expressions)
 
 
@@ -103,8 +104,10 @@ def _check(ch: ClickHouse, table: Table, suffix: str, tenant: str) -> None:
     """The copy holds every row (every key, where merges may collapse rows), all under the tenant."""
     rel = table.rel
     if table.replacing and table.key and table.tenant:
-        expected = ch.scalar(f"SELECT uniqExact({keys.key_expression(table, tenant)}) FROM {rel.sql()} AS src")
-        actual = ch.scalar(f"SELECT uniqExact(`{table.key}`) FROM {rel.sql(suffix)}")
+        expected = ch.scalar(
+            f"SELECT uniqExact({keys.key_expression(table)}) FROM {rel.sql()} AS src", params=keys.tenant_params(tenant)
+        )
+        actual = ch.scalar(f"SELECT uniqExact({quote(table.key)}) FROM {rel.sql(suffix)}")
         what = "keys"
     else:
         expected = ch.scalar(f"SELECT count() FROM {rel.sql()}")
@@ -113,7 +116,8 @@ def _check(ch: ClickHouse, table: Table, suffix: str, tenant: str) -> None:
     if actual != expected:
         raise MigrationError(f"{rel}: the copy holds {actual} {what}, the original {expected}")
     foreign = ch.scalar(
-        f"SELECT count() FROM {rel.sql(suffix)} WHERE ifNull(toString(`{table.target}`), '') != '{tenant}'"
+        f"SELECT count() FROM {rel.sql(suffix)} WHERE ifNull(toString({quote(table.target)}), '') != {keys.TENANT}",
+        params=keys.tenant_params(tenant),
     )
     if foreign:
         raise MigrationError(f"{rel}: the copy still holds {foreign} row(s) under another tenant")
@@ -129,7 +133,7 @@ def migrate_table(ch: ClickHouse, table: Table, tenant: str, copies: list[Copy])
         ch.execute(ddl.drop(rel, suffix))
         raise MigrationError(f"{rel}: the copy has no UUID — EXCHANGE needs an Atomic database")
     copies.append(Copy(rel, suffix, uuid))
-    ch.execute(_insert(table, suffix, tenant))
+    ch.execute(_insert(table, suffix), params=keys.tenant_params(tenant))
     _check(ch, table, suffix, tenant)
     ch.execute(ddl.exchange(rel, suffix))
     if table_uuid(ch, rel) != uuid:
@@ -178,8 +182,8 @@ def finalize(ch: ClickHouse) -> list[str]:
     """Drop every `__tenant_backup*` table whose live table stands."""
     dropped = []
     rows = ch.rows(
-        f"SELECT database, name FROM system.tables WHERE match(name, '^[A-Za-z0-9_]+{BACKUP}(_[0-9]+)?$') "
-        "ORDER BY database, name"
+        "SELECT database, name FROM system.tables WHERE match(name, {pattern:String}) ORDER BY database, name",
+        params={"pattern": f"^[A-Za-z0-9_]+{BACKUP}(_[0-9]+)?$"},
     )
     for database, name in rows:
         base = name[: name.index(BACKUP)]

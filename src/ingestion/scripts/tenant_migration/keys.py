@@ -7,18 +7,21 @@ the row's own tenant value, NULL read as empty; only that segment changes, and
 only when the row's source follows it. A key of any other shape stays.
 
 Every column is read qualified by the alias `src`, so no expression can pick up
-an output column of the same name.
+an output column of the same name. The install's tenant is never in the SQL text:
+it is the placeholder `TENANT`, bound by the caller as `params=tenant_params(tenant)`.
 """
 
 from __future__ import annotations
 
 import re
 
-from tenant_migration.inventory import Table
+from tenant_migration.inventory import Table, quote
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SEPARATORS = ("-", ":")
 SOURCE_ALIAS = "src"
+#: The install's tenant in every statement; bound by `tenant_params`.
+TENANT = "{tenant:String}"
 
 
 class TenantError(ValueError):
@@ -33,13 +36,12 @@ def parse_tenant(value: str | None, origin: str) -> str:
     return value
 
 
+def tenant_params(tenant: str) -> dict[str, str]:
+    return {"tenant": tenant}
+
+
 def col(name: str) -> str:
-    return f"{SOURCE_ALIAS}.`{name}`"
-
-
-def lit(value: str) -> str:
-    """A string literal; a tenant is a UUID and a separator is fixed, so nothing needs escaping."""
-    return f"'{value}'"
+    return f"{SOURCE_ALIAS}.{quote(name)}"
 
 
 def old_tenant(table: Table) -> str:
@@ -51,10 +53,10 @@ def _key_value(table: Table) -> str:
     return f"ifNull({col(table.key)}, '')"
 
 
-def new_key(table: Table, tenant: str) -> str:
+def new_key(table: Table) -> str:
     """The row's key with its leading tenant replaced; a key of another shape stays."""
     key, old = _key_value(table), old_tenant(table)
-    rest = f"concat({lit(tenant)}, substring({key}, length({old}) + 1))"
+    rest = f"concat({TENANT}, substring({key}, length({old}) + 1))"
     branches = []
     if table.source:
         source = f"ifNull(toString({col(table.source)}), '')"
@@ -63,19 +65,19 @@ def new_key(table: Table, tenant: str) -> str:
                 f"startsWith({key}, concat({old}, '{sep}', {source}, '{sep}')) OR {key} = concat({old}, '{sep}', {source})",
                 rest,
             ]
-        branches += [f"{key} = toJSONString([{old}, {source}])", f"toJSONString([{lit(tenant)}, {source}])"]
+        branches += [f"{key} = toJSONString([{old}, {source}])", f"toJSONString([{TENANT}, {source}])"]
     else:
         for sep in SEPARATORS:
             branches += [f"{old} != '' AND startsWith({key}, concat({old}, '{sep}'))", rest]
     return f"multiIf({', '.join(branches)}, {key})"
 
 
-def key_expression(table: Table, tenant: str) -> str:
+def key_expression(table: Table) -> str:
     """`new_key`, except that a NULL key stays NULL."""
     assert table.key is not None
     if table.types[table.key].startswith("Nullable"):
-        return f"if({col(table.key)} IS NULL, NULL, {new_key(table, tenant)})"
-    return new_key(table, tenant)
+        return f"if({col(table.key)} IS NULL, NULL, {new_key(table)})"
+    return new_key(table)
 
 
 def comment_id_expression(table: Table) -> str:
@@ -86,6 +88,6 @@ def comment_id_expression(table: Table) -> str:
     return f"if({comment} IS NULL AND startsWith({key}, {prefix}), substring({key}, length({prefix}) + 1), {comment})"
 
 
-def foreign(table: Table, tenant: str) -> str:
+def foreign(table: Table) -> str:
     """The row's tenant is not the install's: NULL, empty or another value."""
-    return f"{old_tenant(table)} != {lit(tenant)}" if table.tenant else "1"
+    return f"{old_tenant(table)} != {TENANT}" if table.tenant else "1"

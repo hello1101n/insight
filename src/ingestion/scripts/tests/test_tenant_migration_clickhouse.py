@@ -218,7 +218,10 @@ def test_the_tenant_column_is_renamed_in_a_sorting_key_too(warehouse: ClickHouse
         "CREATE TABLE bronze_example.keyed (tenant_id Nullable(String), source_id Nullable(String), "
         "unique_key String) ENGINE = MergeTree ORDER BY (tenant_id, unique_key) SETTINGS allow_nullable_key = 1"
     )
-    warehouse.execute(f"INSERT INTO bronze_example.keyed VALUES ('{NEW}', 'main', '{NEW}-main-1')")
+    warehouse.execute(
+        "INSERT INTO bronze_example.keyed SELECT {tenant:String}, 'main', {key:String}",
+        params={"tenant": NEW, "key": f"{NEW}-main-1"},
+    )
 
     _apply(warehouse)
 
@@ -287,14 +290,14 @@ class Failing(ClickHouse):
     lost: bool = False
     seen: list[str] = field(default_factory=list)
 
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
+    def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
         if sql.lstrip().startswith(self.at):
             self.seen.append(sql)
             if len(self.seen) == self.nth:
                 if self.lost:
-                    super().execute(sql, fmt=fmt)
+                    super().execute(sql, fmt=fmt, params=params)
                 raise ClickHouseError("synthetic failure")
-        return super().execute(sql, fmt=fmt)
+        return super().execute(sql, fmt=fmt, params=params)
 
 
 FAILURES = {
@@ -325,13 +328,13 @@ def test_an_interrupt_mid_run_puts_every_table_back(warehouse: ClickHouse) -> No
 
     @dataclass(frozen=True)
     class Interrupted(Failing):
-        def execute(self, sql: str, *, fmt: str | None = None) -> str:
+        def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
             if sql.lstrip().startswith("EXCHANGE TABLES") and len(self.seen) == 2:
                 self.seen.append("interrupted")  # the signal arrives once
                 raise KeyboardInterrupt("stopped by signal 15")
             if sql.lstrip().startswith("EXCHANGE TABLES"):
                 self.seen.append(sql)
-            return ClickHouse.execute(self, sql, fmt=fmt)
+            return ClickHouse.execute(self, sql, fmt=fmt, params=params)
 
     interrupted = Interrupted(url=warehouse.url, user=warehouse.user, password=warehouse.password)
     with pytest.raises(migration.MigrationError, match="signal 15"):
@@ -394,8 +397,8 @@ def test_a_replicated_table_in_scope_fails_plan_and_apply_before_anything_change
     before = _fingerprint(warehouse)
     real_rows = ClickHouse.rows
 
-    def replicated(self: ClickHouse, sql: str) -> list[list[str]]:
-        rows = real_rows(self, sql)
+    def replicated(self: ClickHouse, sql: str, *, params: dict[str, str] | None = None) -> list[list[str]]:
+        rows = real_rows(self, sql, params=params)
         if "FROM system.tables AS t" in sql:
             return [[r[0], r[1], "Replicated" + r[2] if r[1] == "items" else r[2], *r[3:]] for r in rows]
         return rows
