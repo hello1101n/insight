@@ -75,9 +75,9 @@ Discovered N streams:
 
 Parse output and verify:
 - [ ] Every RECORD has `tenant_id` field (not null, not empty)
-- [ ] Every RECORD has `source_id` field (not null, not empty)
+- [ ] Every RECORD has `insight_source_id` field (not null, not empty)
 - [ ] Every RECORD has `unique_key` field (not null, not empty)
-- [ ] `unique_key` contains `tenant_id` and `source_id`
+- [ ] `unique_key` contains `tenant_id` and `insight_source_id`
 - [ ] Every RECORD of a stream with a cursor carries a non-null value in its `cursor_field` — the destination creates that column NOT NULL, and one null fails every sync attempt. The per-stream script in create.md §5.6 reports it as `null_cursor`; CDK connectors are checked the same way, not only nocode ones.
 - [ ] Expected streams are present in output
 - [ ] Records have expected fields from API
@@ -89,8 +89,8 @@ If `read` emits nothing for minutes while the process stays CPU-busy, do NOT jus
 Show sample:
 ```
 Stream: email_activity (N records)
-  Sample: tenant_id=example_tenant, source_id=m365-main, unique_key=example_tenant-m365-main-...
-  Fields: tenant_id, source_id, unique_key, userPrincipalName, sendCount, ...
+  Sample: tenant_id=example_tenant, insight_source_id=m365-main, unique_key=example_tenant-m365-main-...
+  Fields: tenant_id, insight_source_id, unique_key, userPrincipalName, sendCount, ...
 ```
 
 ## Phase 7: Verify Schema Completeness
@@ -120,8 +120,8 @@ This prevents ClickHouse destination NPE on deploy.
   Discover:  PASS (N streams)
   Read:      PASS (N records)
   tenant_id: PASS (present in all records)
-  source_id: PASS (present in all records)
-  unique_key: PASS (contains tenant_id + source_id)
+  insight_source_id: PASS (present in all records)
+  unique_key: PASS (contains tenant_id + insight_source_id)
   Cursor:    PASS (no record with a null cursor value)
   Schema:    PASS (all cursor fields present)
 
