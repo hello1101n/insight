@@ -89,7 +89,9 @@ def test_the_rebuild_runs_every_step_and_always_resumes_the_writers_at_its_end(m
     assert steps[-1]["template"] == "report" and all(
         f"'{{{{steps.{s['name']}.status}}}}' != 'Succeeded'" in steps[-1]["when"] for s in steps[:-1]
     ), "any failed step fails the Workflow"
-    assert {"name": "dbt_select", "value": "+tag:staging +identity_inputs"} in staging["arguments"]["parameters"]
+    assert {"name": "dbt_select", "value": "+tag:staging +identity_inputs tag:identity:map"} in staging["arguments"][
+        "parameters"
+    ]
     assert all(
         {"name": "dbt_full_refresh", "value": "true"} in s["arguments"]["parameters"]
         for s in steps
@@ -164,7 +166,81 @@ def test_the_field_value_map_loader_is_given_the_tenant(manifests: list[dict[str
     assert env["INSIGHT_TENANT_ID"] == TENANT
 
 
-def test_disabling_the_cutover_renders_none_of_it() -> None:
-    manifests = _render([*ENABLED, "--set", "ingestion.tenantCutover.enabled=false"])
+def _render_failure(overrides: list[str]) -> str:
+    result = subprocess.run(
+        ["helm", "template", "insight", str(CHART), "--values", str(CHART / "tests" / "values.yaml"), *overrides],
+        capture_output=True, text=True, timeout=300, check=False,
+    )  # fmt: skip
+    assert result.returncode != 0, "the render must fail"
+    return result.stderr
 
-    assert not [d["metadata"]["name"] for d in manifests if "tenant-cutover" in d["metadata"]["name"]]
+
+def test_an_upgrade_whose_helm_gives_up_before_the_migration_fails_the_render() -> None:
+    """A helm that times out or rolls back mid-migration leaves the old release on renamed columns."""
+    stderr = _render_failure(["--is-upgrade", "--set", "ingestion.tenantCutover.helmTimeoutSeconds=600"])
+
+    assert "helmTimeoutSeconds is 600" in stderr and "without --rollback-on-failure" in stderr
+
+
+def test_an_upgrade_with_a_timeout_that_outwaits_the_pre_hook_renders(manifests: list[dict[str, Any]]) -> None:
+    spec = _by_name(manifests, "Job", "insight-tenant-cutover-pre")["spec"]
+    needed = spec["activeDeadlineSeconds"] + spec["template"]["spec"]["terminationGracePeriodSeconds"]
+
+    upgraded = _render(
+        [*ENABLED, "--is-upgrade", "--set", f"ingestion.tenantCutover.helmTimeoutSeconds={HELM_TIMEOUT_SECONDS}"]
+    )
+    assert needed < HELM_TIMEOUT_SECONDS
+    assert _by_name(upgraded, "Job", "insight-tenant-cutover-pre")
+    assert _render([*ENABLED, "--set", "ingestion.tenantCutover.helmTimeoutSeconds=600"]), (
+        "a fresh install migrates nothing"
+    )
+
+
+def test_a_cluster_mode_upgrade_fails_the_render() -> None:
+    """The migration refuses replicated tables: every such deploy would fail at its pre-upgrade hook."""
+    stderr = _render_failure(
+        ["--is-upgrade", "--set", "clickhouse.clusterMode=true", "--set", "clickhouse.clusterName=insight_cluster"]
+    )
+
+    assert "single-node ClickHouse only" in stderr
+
+
+def test_the_cutover_always_renders_and_has_no_switch(manifests: list[dict[str, Any]]) -> None:
+    """The heals after the migration assume it ran; with nothing pending it is a no-op."""
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+
+    assert "enabled" not in values["ingestion"]["tenantCutover"]
+    assert _by_name(manifests, "Job", "insight-tenant-cutover-pre")
+    assert _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")
+
+
+def test_the_rebuild_outlasts_its_steps_so_its_exit_handler_resumes_the_writers(
+    manifests: list[dict[str, Any]],
+) -> None:
+    spec = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]
+    templates = {t["name"]: t for t in spec["templates"]}
+    steps = [group[0] for group in spec["templates"][0]["steps"]]
+    deadlines = [
+        int(p["value"])
+        for s in steps
+        for p in s.get("arguments", {}).get("parameters", [])
+        if p["name"] == "active_deadline_seconds"
+    ]
+    seed = templates["identity-seed"]["activeDeadlineSeconds"]
+
+    assert len(deadlines) == 2 and seed
+    assert spec["activeDeadlineSeconds"] > sum(deadlines) + seed, "a step's own deadline must come first"
+    assert spec["onExit"] == "resume-writers"
+    assert "activeDeadlineSeconds" not in templates["resume-writers"]
+
+
+def test_the_identity_map_views_are_rebuilt_in_the_first_step(manifests: list[dict[str, Any]]) -> None:
+    """Until rebuilt they read columns the migration renamed, and analytics person queries fail."""
+    spec = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]
+    first = spec["templates"][0]["steps"][0][0]
+    rest = spec["templates"][0]["steps"][2][0]
+    select = next(p["value"] for p in first["arguments"]["parameters"] if p["name"] == "dbt_select")
+    exclude = next(p["value"] for p in rest["arguments"]["parameters"] if p["name"] == "dbt_exclude")
+
+    assert "tag:identity:map" in select.split()
+    assert exclude == select

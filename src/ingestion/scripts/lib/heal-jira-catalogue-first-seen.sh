@@ -32,8 +32,6 @@ _catalogue_tenants_select() {
     echo "SELECT '' AS insight_source_id, '' AS insight_tenant_id WHERE 0"
     return 0
   fi
-  # tenant_migration renames bronze's source column before this runs; a bronze it did not touch keeps the old name.
-  [[ -n "$(ch_column_type bronze_jira jira_fields insight_source_id)" ]] || source=source_id
   shared="$(ch_scalar "SELECT count() FROM (
       SELECT COALESCE(${source}, '') AS insight_source_id
       FROM bronze_jira.jira_fields

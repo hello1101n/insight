@@ -13,8 +13,10 @@
 #   tenant-cutover.sh report  rebuild step, only when an earlier step failed:
 #                             say so and fail the Workflow.
 #   tenant-cutover.sh resume  the rebuild's exit handler, however it ended:
-#                             restore the recorded suspend state and delete
-#                             the ConfigMap.
+#                             restore the recorded suspend state of every
+#                             writer but the connection syncs (reconcile
+#                             resumes each after refreshing its catalog) and
+#                             delete the ConfigMap.
 #
 # The ConfigMap is the one piece of state: while it exists, a rebuild is owed
 # and the writers stay suspended. Only the rebuild's exit handler deletes it, so
@@ -55,8 +57,7 @@ writer_state() {
     cronworkflows: [$w.items[] | {
       name: .metadata.name,
       suspend: (.spec.suspend // false),
-      component: (.metadata.labels["app.kubernetes.io/component"] // ""),
-      tenant: (.metadata.labels["insight.cyberfabric.com/tenant"] // "")}],
+      component: (.metadata.labels["app.kubernetes.io/component"] // "")}],
     cronjobs: [$j.items[] | {name: .metadata.name, suspend: (.spec.suspend // false)}]}'
 }
 
@@ -82,17 +83,18 @@ suspend_writers() {
 }
 
 # Back to the recorded state. With `all` (a failed `pre`: the previous release
-# keeps running) every writer is. After the cutover (`resume`), a connection's
-# sync schedule named for another tenant stays suspended: it still syncs with
-# that tenant's Airbyte config, and reconcile's next tick replaces it with one
-# named for this tenant.
+# keeps running) every writer is. After the cutover (`resume`) only the writers
+# that are not syncs are: every connection's sync schedule stays suspended. A
+# sync on the catalog of before the cutover would make the destination drop the
+# tenant and source columns from the migrated Bronze; reconcile refreshes each
+# connection's catalog and only then re-applies, and unsuspends, its schedule.
 restore_writers() {
   local mode="$1" state resume skip cronjobs name
   state="$(recorded_state)" || return 1
-  resume="$(jq -r --arg t "$INSIGHT_TENANT_ID" --arg mode "$mode" '.cronworkflows[] | select(.suspend == false
-      and ($mode == "all" or .component != "connector-sync" or .tenant == $t)) | .name' <<<"$state")" || return 1
-  skip="$(jq -r --arg t "$INSIGHT_TENANT_ID" --arg mode "$mode" '.cronworkflows[] | select(.suspend == false
-      and $mode != "all" and .component == "connector-sync" and .tenant != $t) | .name' <<<"$state")" || return 1
+  resume="$(jq -r --arg mode "$mode" '.cronworkflows[] | select(.suspend == false
+      and ($mode == "all" or .component != "connector-sync")) | .name' <<<"$state")" || return 1
+  skip="$(jq -r --arg mode "$mode" '.cronworkflows[] | select(.suspend == false
+      and $mode != "all" and .component == "connector-sync") | .name' <<<"$state")" || return 1
   cronjobs="$(jq -r '.cronjobs[] | select(.suspend == false) | .name' <<<"$state")" || return 1
   for name in $resume; do
     if k get cronworkflow "$name" -o name >/dev/null 2>&1; then
@@ -101,7 +103,7 @@ restore_writers() {
     fi
   done
   for name in $skip; do
-    log "left cronworkflow/$name suspended: reconcile replaces it with the schedule named for $INSIGHT_TENANT_ID"
+    log "left cronworkflow/$name suspended: reconcile resumes it once it has refreshed the connection's catalog"
   done
   for name in $cronjobs; do
     if k get cronjob "$name" -o name >/dev/null 2>&1; then
@@ -293,7 +295,7 @@ cmd_resume() {
   fi
   restore_writers cutover
   k delete configmap "$CUTOVER_CONFIGMAP" >/dev/null
-  log "cutover complete: writers resumed, configmap/$CUTOVER_CONFIGMAP deleted"
+  log "cutover complete: writers resumed, syncs left to reconcile, configmap/$CUTOVER_CONFIGMAP deleted"
 }
 
 case "${1:-}" in

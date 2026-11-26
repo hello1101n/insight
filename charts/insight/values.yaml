@@ -272,7 +272,12 @@ ingestion:
   # post-upgrade hook then submits a background full dbt rebuild. Both exit at
   # once on an install with nothing to migrate.
   tenantCutover:
-    enabled: true
+    # The helm --timeout of this deploy, in seconds (`make deploy` sets it from
+    # TIMEOUT). An upgrade fails the render below 10800 (3h): the pre-upgrade
+    # hook may migrate for 2h50m, and a helm that gives up or rolls back meanwhile
+    # leaves the previous release on migrated tables. A deploy that can cut
+    # over must also run without --rollback-on-failure.
+    helmTimeoutSeconds: 10800
     # How long the pre-upgrade hook waits for running workflows and Airbyte
     # jobs to finish before it fails the deploy (and resumes everything).
     idleTimeoutSeconds: 1800
