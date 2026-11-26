@@ -26,22 +26,22 @@ check() {
 }
 
 echo "Tooling:"
-check helm     helm     "3.14"  "brew install helm"            'helm version --short | sed s/^v//'
 
-# Refuse helm v4.2.1 — known regression where `--wait` hangs the full
-# --timeout on fast hook-resource deletions, turning every
-# `before-hook-creation` lifecycle into a 5–10 minute stall. Affects
-# every bootstrap-* / system-* step. See helm/helm#32214 (regression)
-# and helm/helm#32230 (proposed revert). Pin to v4.2.0 or v3.x until a
-# v4.2.2+ release lands the fix.
-if command -v helm >/dev/null 2>&1; then
-  _helm_ver="$(helm version --short 2>/dev/null | sed 's/+.*//; s/^v//')"
-  if [ "$_helm_ver" = "4.2.1" ]; then
-    echo "${C_RED}BAD${C_RST}     helm $_helm_ver — known --wait regression"
-    echo "          https://github.com/helm/helm/issues/32214"
-    echo "          Pin to v4.2.0: curl -fL https://get.helm.sh/helm-v4.2.0-\$(uname -s | tr A-Z a-z)-\$(uname -m | sed s/x86_64/amd64/).tar.gz | tar -xz"
-    echo "          Or v3.21.1: brew install helm@3 (and brew link --overwrite helm@3)"
+# Helm 4.2.1 waits for the full timeout after fast hook deletions (helm/helm#32214).
+if ! command -v helm >/dev/null 2>&1; then
+  echo "${C_RED}MISSING${C_RST} Helm 4. Install it with 'brew install helm'."
+  _fail=$((_fail + 1))
+else
+  _helm_ver="$(helm version --short 2>/dev/null || true)"
+  _helm_ver="${_helm_ver%%+*}"
+  if ! [[ "$_helm_ver" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+$ && ${BASH_REMATCH[1]} -ge 4 ]]; then
+    echo "${C_RED}BAD${C_RST}     Helm ${_helm_ver:-version unknown}. Install Helm 4.0 or later."
     _fail=$((_fail + 1))
+  elif [ "$_helm_ver" = "v4.2.1" ]; then
+    echo "${C_RED}BAD${C_RST}     Helm $_helm_ver has a hook deletion wait regression. Install Helm 4.2.2 or later."
+    _fail=$((_fail + 1))
+  else
+    echo "${C_GRN}OK${C_RST}      Helm $_helm_ver (need 4.0+)"
   fi
 fi
 
@@ -77,7 +77,7 @@ fi
 
 echo
 if [ "$_fail" -gt 0 ]; then
-  echo "${C_RED}${_fail} required tool(s) missing.${C_RST}"
+  echo "${C_RED}${_fail} required tool(s) need attention.${C_RST}"
   exit 1
 fi
 

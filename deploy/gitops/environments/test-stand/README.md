@@ -108,7 +108,7 @@ helm upgrade --install insight \
   --values deploy/gitops/environments/test-stand/values.yaml \
   --set-string authenticator.oidc.clientSecret="$(kubectl -n insight \
       get secret insight-oidc -o jsonpath='{.data.client-secret}' | base64 --decode)" \
-  --wait --timeout 10m --history-max 10
+  --wait=legacy --timeout 10m --history-max 10
 ```
 
 Three load-bearing details:
@@ -118,8 +118,7 @@ Three load-bearing details:
   authenticator config Secret, so omitting it produces a blank client secret —
   pods Ready, release `deployed`, every login broken. Read it from the cluster
   so there's one source of truth.
-- **`--wait` but deliberately no `--atomic`.** A failed upgrade is left in place;
-  rolling back destroys the evidence this stand exists to produce.
+- **`--wait=legacy`** uses the same readiness checks as CI. Keep a failed upgrade in place to preserve diagnostic evidence.
 - **`--timeout 10m`**, not the Makefile's 30m — a doomed deploy should fail
   inside the CI budget.
 
@@ -297,12 +296,11 @@ difference is now a **declaration this environment makes**:
 | `secrets.services … enabled: false` | `inventory.yaml` | the sealed-manifest apply + controller wait |
 | `credentials.deploymentMode: helm` | `values.yaml` | `compose-app-secrets.sh` |
 | `keycloak.realms: external` | `inventory.yaml` | packing a realm ConfigMap owned elsewhere |
-| `deploy.atomic: false` | `inventory.yaml` | `--atomic` (rollback-on-failure) |
+| `deploy.atomic: false` | `inventory.yaml` | `--rollback-on-failure` |
 | `bootstrap.namespaces: false` | `inventory.yaml` | `--create-namespace` (the CI credential cannot create namespaces) |
 | `oidcClientSecret` | `inventory.yaml` | nothing — it says where to READ the client secret at deploy time |
 
-`local` and `functional-ci` declare none of these and render byte-identical helm
-invocations to before. One deploy procedure; step 3 above is the command CI runs.
+`deploy.wait: legacy` in `inventory.yaml` selects `--wait=legacy` for CI and operator deploys. Step 3 uses the same wait strategy.
 
 **What CI does:** the deploy is a reusable workflow called from the
 chart-publishing workflow after publish, on `main` only, with the chart version

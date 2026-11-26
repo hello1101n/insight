@@ -20,8 +20,6 @@ export function roundMetricValue(v: number, fmt: MetricFormat): number {
 
 export const HOURS_UNIT = "h";
 
-const WHOLE_HOURS_FROM = 100;
-
 export function isDurationUnit(unit?: string | null): boolean {
   return unit === HOURS_UNIT;
 }
@@ -44,18 +42,24 @@ export function formatTimeMetricValue(
     : null;
 }
 
+export function displayStepsPerUnit(
+  fmt: MetricFormat,
+  unit?: string | null,
+): number {
+  if (isDurationUnit(unit)) return 60;
+  return fmt === "decimal" ? 10 : 1;
+}
+
 export function formatHoursDuration(hours: number): string {
   const sign = hours < 0 ? "-" : "";
   const abs = Math.abs(hours);
-  if (abs >= WHOLE_HOURS_FROM) {
-    return `${sign}${NF_THOUSANDS.format(Math.round(abs))} ${HOURS_UNIT}`;
-  }
   const totalMinutes = Math.round(abs * 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
+  const wholeHours = NF_THOUSANDS.format(h);
   if (h === 0) return `${sign}${m} min`;
-  if (m === 0) return `${sign}${h} ${HOURS_UNIT}`;
-  return `${sign}${h} ${HOURS_UNIT} ${m} min`;
+  if (m === 0) return `${sign}${wholeHours} ${HOURS_UNIT}`;
+  return `${sign}${wholeHours} ${HOURS_UNIT} ${m} min`;
 }
 
 export function formatMetricNumber(
