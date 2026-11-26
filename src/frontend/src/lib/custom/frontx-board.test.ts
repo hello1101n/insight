@@ -400,51 +400,17 @@ describe("frontxBoard", () => {
     }
   });
 
-  it("shows every row a table gets on one page, so the pager offers no page size", () => {
+  it("sizes each table column to its widest value, and shows every row a table gets on one page", () => {
     const [table] = cells([{ widget: "table" }]);
 
-    expect(table.widget.render).toMatchObject({ page_sizes: [500] });
-  });
-
-  it("sizes each table column from its title, so a few short columns fit the cell", () => {
-    const board = frontxBoard("board", read([{ widget: "t" }]), [
-      widget("t", {
-        type: "table",
-        metric: "m",
-        columns: ["id", "pipeline", "duration_min"],
-      }),
-    ]);
-    const [cell] = dashboardOf(board).layout.cells;
-    const { columns } = cell.widget.render as {
-      columns: { title: string; width: number }[];
-    };
-
-    expect(columns.map(({ title, width }) => [title, width])).toEqual([
-      ["id", 62],
-      ["pipeline", 104],
-      ["duration_min", 132],
-    ]);
-  });
-
-  it("leaves every column of a table too wide for its cell at the FrontX width", () => {
-    const columns = [
-      "run_id",
-      "pipeline",
-      "branch",
-      "commit",
-      "author",
-      "started",
-    ];
-    const board = frontxBoard("board", read([{ widget: "t" }]), [
-      widget("t", { type: "table", metric: "m", columns }),
-    ]);
-    const [cell] = dashboardOf(board).layout.cells;
-    const render = cell.widget.render as { columns: object[] };
-
-    expect(render.columns).toHaveLength(columns.length);
-    for (const column of render.columns) {
-      expect(column).not.toHaveProperty("width");
-    }
+    expect(table.widget.render).toEqual({
+      columns: [
+        { key: "c0", title: "bucket" },
+        { key: "c1", title: "deploys" },
+      ],
+      column_widths: "content",
+      page_sizes: [500],
+    });
   });
 
   it("draws a pie whole, with its legend under it, as the current chart does", () => {
@@ -863,18 +829,16 @@ describe("frontxBoard percent columns", () => {
     ]);
     const [cell] = dashboardOf(board).layout.cells;
 
-    expect(cell.widget.render).toEqual({
+    expect(cell.widget.render).toMatchObject({
       columns: [
-        { key: "c0", title: "team", width: 76 },
+        { key: "c0", title: "team" },
         {
           key: "c1",
           title: "rate",
-          width: 76,
           value_format: { value_type: "percent", decimals: 1 },
         },
-        { key: "c2", title: "runs", width: 76 },
+        { key: "c2", title: "runs" },
       ],
-      page_sizes: [500],
     });
     expect(drawnData(table, ["rate"], answer)).toEqual({
       format: undefined,
@@ -1012,23 +976,20 @@ describe("frontxBoard duration columns", () => {
     ]);
     const [cell] = dashboardOf(board).layout.cells;
 
-    expect(cell.widget.render).toEqual({
+    expect(cell.widget.render).toMatchObject({
       columns: [
-        { key: "c0", title: "team", width: 76 },
+        { key: "c0", title: "team" },
         {
           key: "c1",
           title: "wait",
-          width: 76,
           value_format: { value_type: "duration", unit: "s", compound: true },
         },
         {
           key: "c2",
           title: "rate",
-          width: 76,
           value_format: { value_type: "percent", decimals: 1 },
         },
       ],
-      page_sizes: [500],
     });
     expect(
       drawnData(table, ["rate"], {
