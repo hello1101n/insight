@@ -55,25 +55,32 @@ class ClickHouse:
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
             raise ClickHouseError(f"ClickHouse unreachable at {self.url}: {error}") from error
 
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
-        """Run one statement; `fmt` names the output format without touching the SQL."""
-        params = {"query_id": f"{self.run_id}-{next(self._counter)}"}
+    def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
+        """Run one statement; `fmt` names the output format without touching the SQL.
+
+        `params` binds each `{name:Type}` placeholder in `sql` server-side, sent as `param_<name>`.
+        """
+        query = {"query_id": f"{self.run_id}-{next(self._counter)}"}
         if fmt:
-            params["default_format"] = fmt
-        with self._request(sql.encode("utf-8"), params=params) as response:
+            query["default_format"] = fmt
+        for name, value in (params or {}).items():
+            query[f"param_{name}"] = value
+        with self._request(sql.encode("utf-8"), params=query) as response:
             return response.read().decode("utf-8")
 
-    def rows(self, sql: str) -> list[list[str]]:
-        text = self.execute(sql, fmt="TabSeparatedRaw")
+    def rows(self, sql: str, *, params: dict[str, str] | None = None) -> list[list[str]]:
+        text = self.execute(sql, fmt="TabSeparatedRaw", params=params)
         return [line.split("\t") for line in text.splitlines() if line]
 
-    def scalar(self, sql: str) -> int:
+    def scalar(self, sql: str, *, params: dict[str, str] | None = None) -> int:
         """One non-negative integer, or an error: a guard must never read garbage as zero."""
-        text = self.execute(sql).strip()
+        text = self.execute(sql, params=params).strip()
         if not text.isdigit():
             raise ClickHouseError(f"expected a number from {sql!r}, got {text!r}")
         return int(text)
 
     def cancel_running(self) -> None:
         """Stop a statement this run left running server-side, e.g. a copy cut off by SIGTERM."""
-        self.execute(f"KILL QUERY WHERE startsWith(query_id, '{self.run_id}-') SYNC")
+        self.execute(
+            "KILL QUERY WHERE startsWith(query_id, {prefix:String}) SYNC", params={"prefix": f"{self.run_id}-"}
+        )

@@ -29,7 +29,10 @@ class TablePlan:
 
 
 def survey_table(ch: ClickHouse, table: Table, tenant: str) -> TablePlan:
-    ((rows, moving),) = ch.rows(f"SELECT count(), countIf({keys.foreign(table, tenant)}) FROM {table.rel.sql()} AS src")
+    ((rows, moving),) = ch.rows(
+        f"SELECT count(), countIf({keys.foreign(table)}) FROM {table.rel.sql()} AS src",
+        params=keys.tenant_params(tenant),
+    )
     return TablePlan(table=table, rows=int(rows), moving=int(moving))
 
 
