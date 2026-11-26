@@ -93,7 +93,7 @@ export function FunnelChart({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data, value_format } = payload;
-  const label = labelProp ?? texts.chart;
+  const label = labelProp ?? payload.title ?? texts.chart;
   const [measure, { height }] = useElementSize();
   // The stages share the list's own box, which leaves out the data view button of a chart with drill-down.
   const [measureList, list] = useElementSize<HTMLOListElement>();
@@ -104,7 +104,7 @@ export function FunnelChart({
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   const { stages } = data;
   const largest = stages.reduce((most, stage) => Math.max(most, stage.value ?? 0), 0);
-  if (!(largest > 0)) return <WidgetEmpty texts={texts} />;
+  if (!(largest > 0)) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   const showConversion = render.show_conversion !== false;
   const valueLabels = render.value_labels ?? 'auto';

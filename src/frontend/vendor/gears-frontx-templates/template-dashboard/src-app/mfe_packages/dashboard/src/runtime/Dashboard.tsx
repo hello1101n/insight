@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 
-import { intlLocaleOf, kitScopeOf, type DashboardCell, type WidgetInstance } from '../contract';
+import { intlLocaleOf, kitScopeOf, type CellFailureKind, type DashboardCell, type WidgetInstance } from '../contract';
 import { DashboardArea, DEFAULT_DASHBOARD_TEXTS, type DashboardTexts } from '../DashboardArea';
 import { CellFrame, DEFAULT_FRAME_TEXTS, StateBody, useRetryFocus, type CellAction, type CellState, type FrameTexts } from '../frame/CellFrame';
 import { readValue, SharedRequests, UNREADABLE, variablesOfBinding, type VariableValues } from './binding';
@@ -242,6 +242,8 @@ function useWidget(
   const [state, setState] = useState<CellState | 'placing'>('loading');
   // True while the cannot-be-shown state came from a failed data request: the frame then offers a retry.
   const [retryable, setRetryable] = useState(false);
+  // The kind of the failure while the cell is cannot-be-shown, for the frame's text.
+  const [failureKind, setFailureKind] = useState<CellFailureKind>();
   const [placement, setPlacement] = useState<{ container: HTMLElement; placed: () => void }>();
   const slot = useRef<HTMLDivElement>(null);
   const run = useRef<CellRun>(undefined);
@@ -258,7 +260,8 @@ function useWidget(
       update: (change) => {
         if (!('state' in change)) return setPlacement(change);
         setState(change.state);
-        setRetryable(change.retry === true);
+        setRetryable(change.state === 'cannot-be-shown' && change.retry === true);
+        setFailureKind(change.state === 'cannot-be-shown' ? change.kind : undefined);
       },
     });
     run.current = cell;
@@ -298,7 +301,7 @@ function useWidget(
       observer.disconnect();
     };
   }, [state, placement]);
-  return { state, slot, retryable };
+  return { state, slot, retryable, failureKind };
 }
 
 function Cell({
@@ -328,7 +331,7 @@ function Cell({
   retry: (slotId: string) => void;
   cellActions?: DashboardProps['cellActions'];
 }) {
-  const { state, slot, retryable } = useWidget(root, dashboardId, cell.widget, 'cell', failed.get(slotOf(index, 'cell')), shared, values, runs, slotOf(index, 'cell'));
+  const { state, slot, retryable, failureKind } = useWidget(root, dashboardId, cell.widget, 'cell', failed.get(slotOf(index, 'cell')), shared, values, runs, slotOf(index, 'cell'));
   const [open, setOpen] = useState(false);
   // A frameless cell has no button to open a larger view; one that names a larger view failed its registration.
   const frame = cell.frame !== false;
@@ -340,6 +343,7 @@ function Cell({
       title={cell.widget.title}
       description={cell.widget.description}
       state={state === 'placing' ? 'shown' : state}
+      failure={failureKind}
       texts={texts}
       onRetry={retryable ? () => retry(slotOf(index, 'cell')) : undefined}
       actions={frame ? cellActions?.({ dashboardId, widgetId: cell.widget.id, role: 'cell' }) : undefined}
@@ -403,13 +407,13 @@ function LargerView({
   slotId: string;
   retry: (slotId: string) => void;
 }) {
-  const { state, slot, retryable } = useWidget(root, dashboardId, widget, 'larger_view', failure, shared, values, runs, slotId);
+  const { state, slot, retryable, failureKind } = useWidget(root, dashboardId, widget, 'larger_view', failure, shared, values, runs, slotId);
   const shown = state === 'placing' ? 'shown' : state;
   // Inside the dialog too, a retry keeps focus in place: on this wrapper while it loads, then on the new button or here.
   const focus = useRetryFocus(shown, retryable ? () => retry(slotId) : undefined);
   return (
     <div ref={focus.wrapper} tabIndex={-1} style={SLOT}>
-      <StateBody state={shown} texts={texts} onRetry={focus.retry} title={title} retryRef={focus.button}>
+      <StateBody state={shown} failure={failureKind} texts={texts} onRetry={focus.retry} title={title} retryRef={focus.button}>
         <WidgetSlot state={state} slot={slot} texts={texts} />
       </StateBody>
     </div>

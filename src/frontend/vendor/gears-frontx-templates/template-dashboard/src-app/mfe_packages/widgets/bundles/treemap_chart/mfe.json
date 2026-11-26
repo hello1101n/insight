@@ -98,7 +98,7 @@
                 "never"
               ],
               "default": "auto",
-              "description": "Where a tile writes its label and value, formatted by value_format: auto when the label fits its tile, and its value with it when both fit (estimated from their lengths); a tile too small for even the label writes neither, and its name and value stay in its tooltip, the text alternative and the data view. always writes both whatever the tile fits, and never writes neither. Without it, auto."
+              "description": "Where a tile writes its label and value, formatted by value_format: auto writes the label, cut with an ellipsis when it is longer than its tile, and the value under it where the tile fits the value (estimated from their lengths); a tile too small for even the first three characters of the label and the ellipsis writes neither, and its name and value stay in its tooltip, the text alternative and the data view. always writes both whatever the tile fits, and never writes neither. Without it, auto."
             },
             "show_share": {
               "type": "boolean",

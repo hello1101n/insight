@@ -35,10 +35,26 @@
             "body"
           ],
           "properties": {
+            "tone": {
+              "enum": [
+                "default",
+                "destructive"
+              ],
+              "default": "default",
+              "description": "Optional tone of the card: destructive writes the body in the kit's destructive colour and marks the card as an alert (role alert), for a note that something is wrong, such as a widget that is no longer on the dashboard. default (the default) writes it in the text colour."
+            },
             "body": {
               "type": "string",
               "minLength": 1,
               "description": "The markdown to show: CommonMark, including links and images. Embedded HTML is shown as text."
+            },
+            "heading_style": {
+              "enum": [
+                "default",
+                "section"
+              ],
+              "default": "default",
+              "description": "Optional look of the body's headings: default draws them as titles; section draws each one as a small uppercase section heading in the muted colour, at the kit's label size and weight, as a dashboard draws the heading over a group of cells. The heading level stays the one the markdown gives."
             }
           }
         }

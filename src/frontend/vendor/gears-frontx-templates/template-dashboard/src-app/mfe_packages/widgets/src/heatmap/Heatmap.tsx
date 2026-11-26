@@ -12,6 +12,8 @@ import styles from '../widgets.module.css';
 
 /** From this much of the scale up, a tile's fill is dark enough for its value to read in the foreground over it. */
 const STRONG_FROM = 60;
+// INVARIANT: the scale legend starts at this mix too (--heat-floor), so its low end matches the lowest tile.
+const FLOOR_MIX = 20;
 /** The least room between two x labels of a matrix that names only every second (or third, ...) column. */
 const LABEL_SPACE = 4;
 
@@ -138,7 +140,7 @@ export function Heatmap({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data, value_format } = payload;
-  const label = labelProp ?? texts.chart;
+  const label = labelProp ?? payload.title ?? texts.chart;
   // Calendar mode measures its box as it is laid out: whether it scrolls sideways, and which values fit their tiles.
   const [calendarBox, setCalendarBox] = useState<HTMLDivElement | null>(null);
   const [calendarScrolls, setCalendarScrolls] = useState(false);
@@ -189,7 +191,7 @@ export function Heatmap({
   const problem = checkHeatmap(render, data);
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   // The empty condition of the data type: no rows.
-  if (data.rows.length === 0) return <WidgetEmpty texts={texts} />;
+  if (data.rows.length === 0) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   const rows = data.rows;
   const calendar = render.mode === 'calendar';
@@ -204,12 +206,14 @@ export function Heatmap({
   // Half the span, from the halves of the ends: the span of two ends far apart (1.5e308 and -1.5e308) is beyond the
   // largest number, its half never is, and a place on the scale is the same ratio of halves.
   const halfSpan = scaleMax / 2 - scaleMin / 2;
-  // The value's place on the scale, as the percent of the kit colour the tile mixes over the card surface.
-  // A scale of one point: with only min_value set every value sits at or under it and is empty; otherwise a value at
-  // or above the point is full (all delivered values equal, or only max_value set) and one below it is empty.
+  // The value's place on the scale, from 0 to 1: the tile mixes FLOOR_MIX percent of the kit colour over the card
+  // surface at 0 and all of it at 1. A scale of one point: with only min_value set every value sits at or under it, at
+  // 0; otherwise a value at or above the point is at 1 (all delivered values equal, or only max_value set) and one
+  // below it at 0.
   const onlyMin = render.min_value != null && render.max_value == null;
-  const mixOf = (value: number) =>
-    halfSpan > 0 ? Math.min(100, Math.max(0, Math.round(((value / 2 - scaleMin / 2) / halfSpan) * 100))) : !onlyMin && value >= scaleMax ? 100 : 0;
+  const placeOf = (value: number) =>
+    halfSpan > 0 ? Math.min(1, Math.max(0, (value / 2 - scaleMin / 2) / halfSpan)) : !onlyMin && value >= scaleMax ? 1 : 0;
+  const mixOf = (value: number) => Math.round(FLOOR_MIX + (100 - FLOOR_MIX) * placeOf(value));
   const shown = (value: number | null) => formatValue(value, value_format, locale);
 
   // The values table of the data view and the text alternative: calendar rows carry no y.
@@ -245,6 +249,20 @@ export function Heatmap({
     );
   };
 
+  // The colour scale, with its ends as numbers.
+  const legend =
+    Number.isFinite(scaleMin) && Number.isFinite(scaleMax) && halfSpan >= 0 ? (
+      <div className={styles.heatLegend}>
+        <Text typography="micro" tone="muted" render={<span />}>
+          {shown(scaleMin)}
+        </Text>
+        <span className={styles.heatScale} style={{ '--heat-floor': `${FLOOR_MIX}%` } as CSSProperties} aria-hidden="true" />
+        <Text typography="micro" tone="muted" render={<span />}>
+          {shown(scaleMax)}
+        </Text>
+      </div>
+    ) : null;
+
   let draw: (onPick: ((row: number) => void) | undefined) => ReactNode;
   if (calendar) {
     // The span alone is checked against the tile limit first: two far dates must not build their grid.
@@ -263,7 +281,7 @@ export function Heatmap({
       >
         <div
           className={render.show_cell_values === true ? `${styles.heatGrid} ${styles.heatCalendar} ${styles.heatValues}` : `${styles.heatGrid} ${styles.heatCalendar}`}
-          style={{ '--heat-weeks': layout.weeks, gridTemplateColumns: `var(--heat-day-label) repeat(${layout.weeks}, var(--heat-tile))` } as CSSProperties}
+          style={{ '--heat-weeks': layout.weeks, gridTemplateColumns: `var(--heat-day-label) repeat(${layout.weeks}, var(--heat-tile-inline))` } as CSSProperties}
         >
           {/* The month labels stand over the first week of each month, each as wide as the weeks up to the next one. */}
           <span aria-hidden="true" />
@@ -305,6 +323,7 @@ export function Heatmap({
             ),
           )}
         </div>
+        {legend}
       </div>
       {render.x_axis_label !== undefined ? (
         <Text typography="meta" tone="muted" render={<span />} className={`${styles.heatTitle} ${styles.heatTitleX}`}>
@@ -322,11 +341,17 @@ export function Heatmap({
     // The last delivered row of a pair sets its tile, and is the row its tile picks.
     const rowAt = new Map(rows.map((row, index) => [tileKey(row.x, row.y ?? null), index] as const));
     const place = (x: string | number | null, y: string | number | null) => [textOf(x, undefined, locale), textOf(y, undefined, locale)].filter(Boolean).join(', ');
+    const rowTracks = [
+      ...(render.y_axis_label !== undefined ? ['auto'] : []),
+      `repeat(${ys.length}, minmax(var(--heat-row-min), 1fr))`,
+      'auto',
+      ...(render.x_axis_label !== undefined ? ['auto'] : []),
+    ].join(' ');
     draw = (onPick) => (
       <div
         ref={setMatrixGrid}
         className={render.show_cell_values === true ? `${styles.heatGrid} ${styles.heatValues}` : styles.heatGrid}
-        style={{ gridTemplateColumns: `auto repeat(${xs.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `auto repeat(${xs.length}, minmax(0, 1fr))`, gridTemplateRows: rowTracks }}
       >
         {/* The y-axis title stands over the row labels; the row of x categories, and the x-axis title under it, leave their first cell empty. */}
         {render.y_axis_label !== undefined ? (
@@ -389,20 +414,6 @@ export function Heatmap({
     );
   }
 
-  // The colour scale, with its ends as numbers.
-  const legend =
-    Number.isFinite(scaleMin) && Number.isFinite(scaleMax) && halfSpan >= 0 ? (
-      <div className={styles.heatLegend}>
-        <Text typography="micro" tone="muted" render={<span />}>
-          {shown(scaleMin)}
-        </Text>
-        <span className={styles.heatScale} aria-hidden="true" />
-        <Text typography="micro" tone="muted" render={<span />}>
-          {shown(scaleMax)}
-        </Text>
-      </div>
-    ) : null;
-
   return (
     <div className={styles.heat} role="figure" aria-label={label}>
       {render.drill_down === true ? (
@@ -417,14 +428,14 @@ export function Heatmap({
           draw={(onPick) => (
             <div className={styles.heatBody}>
               {draw(onPick)}
-              {legend}
+              {calendar ? null : legend}
             </div>
           )}
         />
       ) : (
         <>
           {draw(undefined)}
-          {legend}
+          {calendar ? null : legend}
         </>
       )}
       {/* A text alternative of the delivered values, in delivered order. */}

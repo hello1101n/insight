@@ -23,7 +23,9 @@ export function MarkdownCard({
   label?: string;
   container?: HTMLElement | ShadowRoot | null;
 }) {
-  const body = payload.render.body;
+  const { body, heading_style: headingStyle, tone } = payload.render;
   const html = useMemo(() => renderMarkdown(body), [body]);
-  return <div className={styles.markdown} dangerouslySetInnerHTML={{ __html: html }} />;
+  const destructive = tone === 'destructive';
+  const className = [styles.markdown, headingStyle === 'section' ? styles.markdownSection : null, destructive ? styles.markdownDestructive : null].filter(Boolean).join(' ');
+  return <div className={className} role={destructive ? 'alert' : undefined} dangerouslySetInnerHTML={{ __html: html }} />;
 }

@@ -15,8 +15,8 @@ import styles from '../widgets.module.css';
 
 /*
  * The `treemap_chart` widget: squarified tiles of its measured box, drawn with no chart library, like the funnel
- * and the heatmap. Recharts' treemap draws SVG text and takes no rule a tile's text follows (a label that hides
- * when it cannot fit, a group header over nested tiles, kit tokens on every colour), so the layout of Bruls,
+ * and the heatmap. Recharts' treemap draws SVG text and takes no rule a tile's text follows (a label cut to its
+ * tile, a group header over nested tiles, kit tokens on every colour), so the layout of Bruls,
  * Huizing and van Wijk is laid out here over plain HTML instead, and this bundle carries no chart library.
  */
 
@@ -43,9 +43,13 @@ const PAD = 8;
 // at least the least tile height (8 px, the funnel bar's floor) under it.
 const HEADER = LINE + LINE_GAP;
 const LEAST_TILE = 8;
+// A label too long for its tile is cut with an ellipsis: it shows while its tile fits its first three characters and
+// the ellipsis, or the whole label when it is that short.
+const LEAST_LABEL_CHARS = 4;
 const widthOf = (text: string) => estimateWidth(text, TEXT_PX);
 // The text room the fit above counts with, handed to the styles, so the two cannot drift apart.
 const TEXT_ROOM = { '--treemap-pad': `${PAD}px`, '--treemap-gap': `${LINE_GAP}px` } as CSSProperties;
+const GROUP_SEPARATOR = ' · ';
 
 /** The treemap's own check of its data: the first item with a negative value, by its position, or null. */
 export function checkTreemap(data: TreemapData): string | null {
@@ -174,7 +178,7 @@ export function TreemapChart({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data, value_format } = payload;
-  const label = labelProp ?? texts.chart;
+  const label = labelProp ?? payload.title ?? texts.chart;
   // The cell the tiles fill, as it is laid out: no tiles into a box taken out of the page, which measures 0 by 0.
   const [measure, size] = useElementSize();
   // The tiles share the box's own measure, which leaves out the data view button of a chart with drill-down.
@@ -190,7 +194,7 @@ export function TreemapChart({
   // The shares and the areas go over the largest value, so a total beyond the largest number (two 1.5e308 items)
   // divides by finite numbers only.
   const most = items.reduce((largest, item) => Math.max(largest, item.value ?? 0), 0);
-  if (!(most > 0)) return <WidgetEmpty texts={texts} />;
+  if (!(most > 0)) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
   const unitTotal = items.reduce((sum, item) => sum + (item.value ?? 0) / most, 0);
   const shareOf = (value: number) => value / most / unitTotal;
   const percentOf = (share: number | null) => formatValue(share, { value_type: 'percent' }, locale);
@@ -237,7 +241,7 @@ export function TreemapChart({
       const head = face.height >= HEADER + LEAST_TILE && widthOf(group.name) + 2 * PAD <= face.width ? { x: face.x, y: face.y, width: face.width, height: HEADER } : null;
       const totalText = Number.isFinite(group.total) ? valueOf(group.total) : null;
       const headText = [totalText, ...(showShare ? [groupShareOf(group)] : [])].filter((part) => part !== null).join(' ');
-      const withTotal = head !== null && headText !== '' && widthOf(`${group.name}, ${headText}`) + 2 * PAD <= face.width;
+      const withTotal = head !== null && headText !== '' && widthOf(`${group.name}${GROUP_SEPARATOR}${headText}`) + 2 * PAD <= face.width;
       const area = head ? { x: face.x, y: face.y + HEADER, width: face.width, height: face.height - HEADER } : face;
       const boxes = squarified(
         group.tiles.map((tile) => tile.value),
@@ -263,12 +267,13 @@ export function TreemapChart({
     [`${tile.label}: ${valueOf(tile.value)}`, ...(tile.group ? [tile.group] : []), ...(showShare ? [`${shareTextOf(tile.value)} ${texts.treemap.ofTotal}`] : [])].join(', ');
   const valueTextOf = (tile: Tile) => (showShare ? `${valueOf(tile.value)} ${shareTextOf(tile.value)}` : valueOf(tile.value));
 
-  // The text a tile shows: the label, and the value under it, only where the tile fits them (`auto`); `always`
-  // writes both whatever the tile fits (the tile clips), `never` writes neither.
+  // The text a tile shows (`auto`): the label, cut where the tile is narrower than it, and the value under it where the
+  // tile fits the value; `always` writes both whatever the tile fits (the tile clips), `never` writes neither.
   const textOfTile = (tile: Tile) => {
     if (valueLabels === 'never') return { label: null as string | null, value: null as string | null };
     if (valueLabels === 'always') return { label: tile.label, value: valueTextOf(tile) };
-    if (!(widthOf(tile.label) + 2 * PAD <= tile.box.width) || tile.box.height < LINE + 2 * PAD) return { label: null, value: null };
+    const leastLabel = widthOf(tile.label.slice(0, LEAST_LABEL_CHARS));
+    if (!(leastLabel + 2 * PAD <= tile.box.width) || tile.box.height < LINE + 2 * PAD) return { label: null, value: null };
     const valueText = valueTextOf(tile);
     const valueFits = widthOf(valueText) + 2 * PAD <= tile.box.width && tile.box.height >= 2 * LINE + LINE_GAP + 2 * PAD;
     return { label: tile.label, value: valueFits ? valueText : null };
@@ -358,15 +363,18 @@ export function TreemapChart({
                         style={{ ...place(group.head), '--tile': group.colour } as CSSProperties}
                         title={[group.totalText === null ? group.name : `${group.name}: ${group.totalText}`, ...(showShare ? [`${groupShareOf(group)} ${texts.treemap.ofTotal}`] : [])].join(', ')}
                       >
-                        {group.name}
-                        {group.withTotal ? (
-                          <>
-                            {', '}
-                            {group.totalText !== null ? <span className={styles.treemapValue}>{group.totalText}</span> : null}
-                            {showShare && group.totalText !== null ? ' ' : null}
-                            {showShare ? <span className={styles.treemapShare}>{groupShareOf(group)}</span> : null}
-                          </>
-                        ) : null}
+                        {/* INVARIANT: one inline run, as a flex container drops the spaces at the edges of its text runs. */}
+                        <span>
+                          {group.name}
+                          {group.withTotal ? (
+                            <>
+                              {GROUP_SEPARATOR}
+                              {group.totalText !== null ? <span className={styles.treemapValue}>{group.totalText}</span> : null}
+                              {showShare && group.totalText !== null ? ' ' : null}
+                              {showShare ? <span className={styles.treemapShare}>{groupShareOf(group)}</span> : null}
+                            </>
+                          ) : null}
+                        </span>
                       </Text>
                     ) : null}
                     {group.tiles.map((tile) => tileOf(tile, onPick))}

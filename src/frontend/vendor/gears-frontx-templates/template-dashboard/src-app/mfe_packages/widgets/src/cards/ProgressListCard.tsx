@@ -49,7 +49,7 @@ export function ProgressListCard({
   if (!data) return <WidgetCannotBeShown texts={texts} problem="progress_list_card: no data" />;
   const nonFinite = nonFiniteProblemOf('progress_list_card', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
-  if (data.rows.length === 0) return <WidgetEmpty texts={texts} />;
+  if (data.rows.length === 0) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   return (
     <ul className={styles.progressList}>

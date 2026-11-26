@@ -40,11 +40,13 @@ export interface WidgetInstance {
   /** Combined anonymous id: the widget type chain followed by a lowercase UUID. */
   id: string;
   title?: string;
-  /** A short line under the title; without it the header shows the title alone. */
+  /** A short text in a badge beside the cell's actions; without it the header shows the title alone. */
   description?: string;
   render: Record<string, unknown>;
   /** Data widgets only. */
   value_format?: ValueFormat;
+  /** Data widgets only: the text of the widget's empty state, in place of its own English one. */
+  empty_text?: string;
   /** Data widgets only: the binding (ADR-0011). */
   data?: unknown;
 }
@@ -79,7 +81,11 @@ export interface Dashboard {
 /** The payload of the `render_widget` action: everything a widget gets. */
 export interface RenderWidgetPayload<TRender = Record<string, unknown>, TData = unknown> {
   render: TRender;
+  /** The widget instance's title: the widget's accessible name, in place of its own English default. */
+  title?: string;
   value_format?: ValueFormat;
+  /** The text of the widget's empty state; without it, the widget's own English text. */
+  empty_text?: string;
   data?: TData;
 }
 

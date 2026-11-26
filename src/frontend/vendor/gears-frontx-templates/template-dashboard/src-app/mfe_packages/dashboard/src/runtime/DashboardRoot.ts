@@ -29,9 +29,13 @@ export type LoadOutcome = { ok: true; dashboard: Dashboard; failed: ReadonlyMap<
 
 /**
  * What a cell shows; the root reports each change to the cell's frame. `placing`: the data is ready and the cell lays out the widget's container, still under its loader, before `render_widget` goes out.
- * `retry` is true on a cannot-be-shown state that came from a failed data request (`RequestFailed`): the frame offers a retry.
+ * A cannot-be-shown state names its failure `kind`, for the frame's text; `retry` is true when it came from a failed data
+ * request (`RequestFailed`): the frame offers a retry.
  */
-export type CellUpdate = { state: 'loading' | 'placing' | 'shown' | 'cannot-be-shown'; retry?: boolean } | { container: HTMLElement; placed: () => void };
+export type CellUpdate =
+  | { state: 'loading' | 'placing' | 'shown' }
+  | { state: 'cannot-be-shown'; kind: CellFailureKind; retry?: boolean }
+  | { container: HTMLElement; placed: () => void };
 
 /**
  * A running cell: `leave` unmounts its extension; `rerun` runs its binding again with new variable values; `ended` is
@@ -350,7 +354,7 @@ export class DashboardRoot {
       if (!live) return;
       console.error(`[dashboard] ${escapeControls(`dashboard ${dashboardId}, widget ${widget.id} (${typeId}), ${role}: ${problem}`)}`);
       requestFailed = request && !ended;
-      update(requestFailed ? { state: 'cannot-be-shown', retry: true } : { state: 'cannot-be-shown' });
+      update(requestFailed ? { state: 'cannot-be-shown', kind, retry: true } : { state: 'cannot-be-shown', kind });
       try {
         this.onFailure?.({ dashboardId, widgetId: widget.id, widgetType: typeId, role, reason: { kind, message: escapeControls(problem) } });
       } catch (error) {
@@ -504,7 +508,7 @@ export class DashboardRoot {
     fellBack: (problem: string) => void;
     update: (change: CellUpdate) => void;
   }): Promise<void> {
-    let payload: Record<string, unknown> = { render };
+    let payload: Record<string, unknown> = { render, ...(typeof widget.title === 'string' && widget.title.trim() ? { title: widget.title } : {}) };
     try {
       const result = await data;
       if (result.dropped || !isCurrent()) return;
@@ -519,7 +523,7 @@ export class DashboardRoot {
         } catch (error) {
           throw new CellFailure('data', `the data fails ${dataType}: ${String(error).split('\n').slice(0, 2).join(' ')}`);
         }
-        payload = { ...payload, ...(widget.value_format ? { value_format: widget.value_format } : {}), data: stamped };
+        payload = { ...payload, ...(widget.value_format ? { value_format: widget.value_format } : {}), ...(widget.empty_text ? { empty_text: widget.empty_text } : {}), data: stamped };
       }
     } catch (error) {
       if (!isCurrent()) return;

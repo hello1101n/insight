@@ -14,21 +14,23 @@
 }
 
 /* A frameless cell: a full-width block between the grid groups, as tall as its content, with no border or background.
-   Its content starts where a small card's content starts (the card's border and its inline spacing), so a section
+   Its content starts where a card's content starts (the card's border and its inline spacing), so a section
    heading lines up with the cards around it. */
 .frameless {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding-inline: calc(var(--border-width) + var(--space-3));
+  padding-inline: calc(var(--border-width) + var(--space-4));
 }
 
-/* The description under the title stays on one line; the full text is in its title attribute. */
 .description {
+  max-inline-size: 10rem;
+}
+
+.descriptionText {
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .body {

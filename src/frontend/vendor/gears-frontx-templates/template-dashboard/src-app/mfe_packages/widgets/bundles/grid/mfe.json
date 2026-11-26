@@ -132,7 +132,7 @@
                   "width": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Optional width in pixels. The table is at least as wide as the sum of its column widths, counting 160 pixels for a column without one; a grid wider than its cell scrolls sideways inside it."
+                    "description": "Optional width in pixels. The table is at least as wide as the sum of its column widths, counting 160 pixels for a column without one; a grid wider than its cell scrolls sideways inside it. With column_widths content, a width is the column's least width, and a wider value widens it."
                   },
                   "format": {
                     "type": "object",
@@ -206,7 +206,7 @@
                 100,
                 500
               ],
-              "description": "Optional page sizes offered. The first entry is the initial page size. Defaults to [10, 25, 50, 100, 500]."
+              "description": "Optional page sizes offered. The first entry is the initial page size. Defaults to [10, 25, 50, 100, 500]. When every row fits the smallest page size, the grid shows no pager."
             },
             "frozen_columns": {
               "type": "integer",
@@ -248,6 +248,11 @@
               "type": "boolean",
               "default": false,
               "description": "Optional search box above the grid. It keeps the rows whose shown text (formatted numbers, badge text, progress percents and link text; sparklines are not searched) contains the typed text, ignoring case, in any column, and shows the first page. Without it, false."
+            },
+            "column_widths": {
+              "enum": ["shared", "content"],
+              "default": "shared",
+              "description": "Optional way the columns get their widths. shared (the default): the columns share the grid's width, each column's width is its track, and a long value wraps. content: each column is as wide as its widest value or its title, every value stays on one line, and a grid wider than its cell scrolls sideways inside it."
             }
           }
         }

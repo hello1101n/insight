@@ -205,13 +205,17 @@
                   "type": "string",
                   "description": "A title written under the x axis ticks, and the x column heading of the data view and the text alternative."
                 },
+                "value_format": {
+                  "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+                  "description": "Optional format of the x numbers on a value axis, of the shared value_format type: the ticks in compact notation, as the y ticks, and the tooltip, the data view and the text alternative in full. A category or time axis ignores it. Without it, the x numbers show as plain numbers."
+                },
                 "tick_labels": {
                   "enum": [
                     "auto",
                     "every"
                   ],
                   "default": "auto",
-                  "description": "auto skips tick labels that would collide; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. On a category axis, with either value, a level label longer than its room is first cut with an ellipsis: on a vertical chart to its category's band, on a horizontal chart to its category column. A cut label keeps at least 10 characters and as many more as two categories need to read apart; the tooltip, the data view and the text alternative show the whole name. Without it, auto."
+                  "description": "auto skips tick labels that would collide, and on a category axis keeps the first and the last category labelled; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. On a category axis, with either value, a level label longer than its room is first cut with an ellipsis: on a vertical chart to its category's band, on a horizontal chart to its category column. A cut label keeps at least 10 characters and as many more as two categories need to read apart; the tooltip, the data view and the text alternative show the whole name. Without it, auto."
                 },
                 "tick_angle": {
                   "enum": [
@@ -284,6 +288,19 @@
               ],
               "default": "never",
               "description": "Values written at the end of the bars (above a bar that grows up, below one that grows down; a zero bar has none): always, never, or auto when every bar is wide enough for its value. Without it, never."
+            },
+            "stack_labels": {
+              "enum": [
+                "segments",
+                "total"
+              ],
+              "default": "segments",
+              "description": "What a value label of a stacked bar shows: segments, each segment's value at its end; total, one label per stack, the sum of the delivered values of its bars at that x, at the end of the stack. A bar outside any stack writes its own value either way, and value_labels decides whether labels show. Without it, segments."
+            },
+            "max_bar_width": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional largest thickness of a bar in pixels: its width on a vertical chart, its height on a horizontal one. A bar stays centred in its band, and the band keeps its width. value_labels auto judges the drawn width. Without it, a bar takes its share of 80% of its band."
             },
             "drill_down": {
               "type": "boolean",

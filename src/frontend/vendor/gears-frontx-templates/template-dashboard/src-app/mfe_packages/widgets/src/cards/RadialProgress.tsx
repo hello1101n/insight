@@ -59,7 +59,7 @@ export function RadialProgress({
   const problem = checkRadialProgress(data);
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   // A ring with no current value or no target has nothing to fill, as a data type's empty condition.
-  if (data.current === null || data.target === null) return <WidgetEmpty texts={texts} />;
+  if (data.current === null || data.target === null) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   // A negative zero reads as 0.
   const current = data.current || 0;
@@ -120,7 +120,7 @@ export function RadialProgress({
       ref={measure}
       className={styles.radial}
       role="progressbar"
-      aria-label={label ?? texts.radial.name}
+      aria-label={label ?? payload.title ?? texts.radial.name}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={filled}

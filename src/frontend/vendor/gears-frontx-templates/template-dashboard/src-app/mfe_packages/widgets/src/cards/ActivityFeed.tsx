@@ -142,7 +142,7 @@ export function ActivityFeed({
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
   const problem = checkActivityFeed(data);
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
-  if (data.items.length === 0) return <WidgetEmpty texts={texts} />;
+  if (data.items.length === 0) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   const shown = paging.version === version ? paging.shown : pageSize;
   const visible = data.items.slice(0, shown);
@@ -155,7 +155,7 @@ export function ActivityFeed({
 
   return (
     <div className={styles.feed}>
-      <ul ref={list} className={styles.feedList} aria-label={label ?? texts.feed.name}>
+      <ul ref={list} className={styles.feedList} aria-label={label ?? payload.title ?? texts.feed.name}>
         {visible.map((item, index) => {
           const time = timeOf(item.time) as number;
           const dateTime = ISO_DATE_TIME.test(item.time);

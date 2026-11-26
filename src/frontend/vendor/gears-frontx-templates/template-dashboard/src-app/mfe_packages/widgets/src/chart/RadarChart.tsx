@@ -16,8 +16,9 @@ import styles from '../widgets.module.css';
 /** The bounds the widget checks itself, as the data type cannot count the distinct axes and series of the long format. */
 const MIN_AXES = 3;
 const MAX_AXES = 12;
-// One series per tone of the palette: polygons overlap by design, so no two series may share a colour.
-const MAX_SERIES = PALETTE.length;
+// One series per --chart-N token, the first five steps of the palette: polygons overlap by design, so no two series may
+// share a colour.
+const MAX_SERIES = 5;
 
 // The area of a series, over its stroke of the same tone, when `fill` keeps it.
 const AREA_OPACITY = 0.25;
@@ -147,7 +148,7 @@ export function RadarChart({
   container?: HTMLElement | ShadowRoot | null;
 }) {
   const { render, data, value_format } = payload;
-  const label = labelProp ?? texts.chart;
+  const label = labelProp ?? payload.title ?? texts.chart;
   const [measure, { width, height }] = useElementSize();
   if (!data) return <WidgetCannotBeShown texts={texts} problem="radar_chart: no data" />;
   const nonFinite = nonFiniteProblemOf('radar_chart', payload);
@@ -155,7 +156,7 @@ export function RadarChart({
   const problem = checkRadar(data);
   if (problem) return <WidgetCannotBeShown texts={texts} problem={problem} />;
   // Every value null or 0 draws every vertex at the centre, which shows nothing: the empty state.
-  if (data.points.every((point) => !point.value)) return <WidgetEmpty texts={texts} />;
+  if (data.points.every((point) => !point.value)) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   const format = (value: string | number | null) => (typeof value === 'number' ? formatValue(value, value_format, locale) : (value ?? ''));
   // The axes in first-seen order, and the series in first-seen order; a null series is the one unnamed series.

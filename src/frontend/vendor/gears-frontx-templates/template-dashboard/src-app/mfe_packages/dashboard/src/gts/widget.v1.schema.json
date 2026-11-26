@@ -20,7 +20,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 160,
-      "description": "A short line under the title. Without it the header shows the title alone."
+      "description": "A short text the cell frame shows in a badge beside its actions. Without it the header shows the title alone."
     },
     "render": {
       "$ref": "gts://gts.frontx.dashboard.widget.render.v1~",

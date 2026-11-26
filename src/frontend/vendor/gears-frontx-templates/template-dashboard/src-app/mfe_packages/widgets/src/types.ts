@@ -38,9 +38,12 @@ export interface CartesianRender {
   x_axis?: {
     type?: 'category' | 'value' | 'time';
     label?: string;
+    /** A value axis only: the format of its numbers, in its ticks, the tooltip, the data view and the text alternative. */
+    value_format?: ValueFormat;
     /**
-     * `auto` skips labels that would collide; `every` labels every category, thinning out only when they cannot fit. On a
-     * category axis either first cuts a level label longer than its room with an ellipsis.
+     * `auto` skips labels that would collide and keeps the first and the last category labelled; `every` labels every
+     * category, thinning out only when they cannot fit. On a category axis either first cuts a level label longer than
+     * its room with an ellipsis.
      */
     tick_labels?: 'auto' | 'every';
     tick_angle?: 0 | -45 | -90;
@@ -50,6 +53,10 @@ export interface CartesianRender {
   legend_position?: LegendPosition;
   /** Values written at the bars' ends (below a bar that grows down): `auto` when every bar is wide enough. */
   value_labels?: 'auto' | 'always' | 'never';
+  /** What a value label of a stacked bar shows: `segments` (the default) each segment's value, `total` one sum per stack at its end. */
+  stack_labels?: 'segments' | 'total';
+  /** The largest thickness of a bar in pixels: its width on a vertical chart, its height on a horizontal one. */
+  max_bar_width?: number;
   /** Marks open the data view with the picked row expanded, and a button opens the whole data view. */
   drill_down?: boolean;
   /** `horizontal` puts the categories on the vertical axis and the values on the horizontal one; a category x axis only. */
@@ -92,7 +99,7 @@ export interface PieData {
 export interface GridColumn {
   key: string;
   title?: string;
-  /** Width in pixels; the table is at least the sum of the widths (a floor for a column without one) and scrolls sideways in a narrower cell. */
+  /** Width in pixels; the table is at least the sum of the widths (a floor for a column without one) and scrolls sideways in a narrower cell. With `column_widths: content`, the column's least width. */
   width?: number;
   format?: { notation?: 'standard' | 'compact' };
   /** The format of the column's numbers, in place of the widget's `value_format`; a progress column takes none. */
@@ -118,6 +125,8 @@ export interface GridRender {
   row_color?: string;
   /** A search box above the grid that keeps the rows whose shown text contains the query, in any column. */
   search?: boolean;
+  /** `shared` (the default): the columns share the grid's width and a long value wraps; `content`: each column is as wide as its widest value, on one line. */
+  column_widths?: 'shared' | 'content';
 }
 
 /** A grid value drawn as a link through the shared link rule of the widgets. */
@@ -152,15 +161,22 @@ export interface MetricCardRender {
   value_label?: string;
   /** The direction of an improvement, for the trend's colour: `higher` when absent; `neutral` paints no change as better or worse. */
   better?: 'higher' | 'lower' | 'neutral';
-  /** What `reference_value` is, such as last week. */
+  /** What `reference_value` is, such as last week; under `reference_display: change`, the words after the change, such as since last week. */
   reference_label?: string;
+  /**
+   * How the comparison with `reference_value` reads: `values` (the default) as the reference's name and value with the
+   * difference; `change` as the direction and the change in whole units (points for a percent value), then the name.
+   */
+  reference_display?: 'values' | 'change';
   /** A link at the card's foot. */
   link?: WidgetLink;
+  /** What a null `value` shows: the empty state (`empty`, when absent), or a dash as the headline with the rest of the card (`dash`). */
+  null_value?: 'empty' | 'dash';
 }
 
 export interface MetricCardData {
-  /** The headline. Null is the data type's empty condition. */
-  value: number | null;
+  /** The headline. Absent is the data type's empty condition, and so is null unless the render's `null_value` is `dash`. */
+  value?: number | null;
   /**
    * The value the trend compares with. Absent or null shows no trend; 0 shows
    * the direction icon alone, without a change.
@@ -230,7 +246,11 @@ export interface HeatmapData {
 
 /** The `markdown_card` render: the CommonMark body to show, with embedded HTML as text. It carries no data. */
 export interface MarkdownCardRender {
+  /** `destructive` writes the body in the destructive colour and makes the card an alert; `default` (when absent) does neither. */
+  tone?: 'default' | 'destructive';
   body: string;
+  /** `section` draws each heading of the body as a small uppercase section heading; `default` (when absent) as a title. */
+  heading_style?: 'default' | 'section';
 }
 
 /** The `progress_list_card` render. */

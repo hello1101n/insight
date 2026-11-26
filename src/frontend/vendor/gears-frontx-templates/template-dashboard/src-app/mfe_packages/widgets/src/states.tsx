@@ -36,8 +36,12 @@ export interface WidgetTexts {
    * ring, whose tick stands at the ring's nearer end.
    */
   radial: { name: string; of: string; goal: string; overTarget: string; goalOutside: string };
-  /** A metric_card reference: its name when the render gives none, and the accessible name of its difference. */
-  metric: { reference: string; difference: (reference: string) => string };
+  /**
+   * A metric_card: the name of its reference when the render gives none, the accessible name of its difference, the
+   * accessible name of the dash a null value shows under `null_value: dash`, and a change of a percent value in points
+   * under `reference_display: change`, such as "-3 pp".
+   */
+  metric: { reference: string; difference: (reference: string) => string; noValue: string; points: (points: string) => string };
   /** The pie_chart total, in the text alternative when the render gives no centre caption. */
   pie: { total: string };
   /**
@@ -95,7 +99,7 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   ranked: { value: 'Value', secondary: 'Secondary' },
   progress: { of: 'of', goal: 'Goal', goalOutside: 'outside the bar' },
   radial: { name: 'Progress', of: 'of', goal: 'Goal', overTarget: 'over the target', goalOutside: 'outside the ring' },
-  metric: { reference: 'Reference', difference: (reference) => `Difference from ${reference}` },
+  metric: { reference: 'Reference', difference: (reference) => `Difference from ${reference}`, noValue: 'No value', points: (points) => `${points} pp` },
   pie: { total: 'Total' },
   funnel: { conversion: 'Conversion', ofPrevious: 'of the previous stage' },
   radar: { axis: 'Axis' },
@@ -112,12 +116,12 @@ export const DEFAULT_WIDGET_TEXTS: WidgetTexts = {
   },
 };
 
-/** The empty state every widget owns: valid data that meets its data type's empty condition. */
-export function WidgetEmpty({ texts }: { texts: WidgetTexts }) {
+/** The empty state every widget owns: valid data that meets its data type's empty condition, with the cell's text when it gives one. */
+export function WidgetEmpty({ texts, text }: { texts: WidgetTexts; text?: string }) {
   return (
     <Empty className={styles.fill}>
       <EmptyHeader>
-        <EmptyTitle>{texts.empty}</EmptyTitle>
+        <EmptyTitle>{text || texts.empty}</EmptyTitle>
       </EmptyHeader>
     </Empty>
   );

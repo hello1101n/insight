@@ -42,7 +42,7 @@ function durationPartsOf(value: number, unit: DurationUnit): DurationPart[] | nu
 
 /** Duration parts as the host language lists units in their narrow form, such as 2d 4h in English. */
 function formatDurationParts(parts: DurationPart[], locale: string): string {
-  const texts = parts.map(([amount, unit]) => new Intl.NumberFormat(locale, { style: 'unit', unit: UNIT[unit], unitDisplay: 'narrow' }).format(amount));
+  const texts = parts.map(([amount, unit]) => new Intl.NumberFormat(locale, { style: 'unit', unit: UNIT[unit], unitDisplay: 'narrow', useGrouping: false }).format(amount));
   return new Intl.ListFormat(locale, { type: 'unit', style: 'narrow' }).format(texts);
 }
 

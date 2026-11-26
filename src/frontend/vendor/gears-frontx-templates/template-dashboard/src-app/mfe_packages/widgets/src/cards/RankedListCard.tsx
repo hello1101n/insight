@@ -29,7 +29,7 @@ export function RankedListCard({
   if (!data) return <WidgetCannotBeShown texts={texts} problem="ranked_list_card: no data" />;
   const nonFinite = nonFiniteProblemOf('ranked_list_card', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
-  if (data.rows.length === 0) return <WidgetEmpty texts={texts} />;
+  if (data.rows.length === 0) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   // `secondary` is omitted when the data has no secondary value: then its column and heading hide. An
   // explicit null is a delivered value that shows as an empty one, and the column stays.

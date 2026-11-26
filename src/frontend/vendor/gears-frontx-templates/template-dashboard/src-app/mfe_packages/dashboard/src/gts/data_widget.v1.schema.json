@@ -31,6 +31,12 @@
           "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
           "description": "How the widget formats the numbers it shows. percent 0.25 means 25%."
         },
+        "empty_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "The text the widget shows in its empty state, in place of its own English No data to show."
+        },
         "data": {
           "oneOf": [
             {

@@ -26,7 +26,7 @@ export function SummaryCard({
   if (!data) return <WidgetCannotBeShown texts={texts} problem="summary_card: no data" />;
   const nonFinite = nonFiniteProblemOf('summary_card', payload);
   if (nonFinite) return <WidgetCannotBeShown texts={texts} problem={nonFinite} />;
-  if (data.rows.length === 0) return <WidgetEmpty texts={texts} />;
+  if (data.rows.length === 0) return <WidgetEmpty texts={texts} text={payload.empty_text} />;
 
   return (
     <dl className={styles.summary}>

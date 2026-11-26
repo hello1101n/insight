@@ -499,7 +499,9 @@
 }
 
 .heatGrid {
+  --heat-row-min: 1rem;
   display: grid;
+  flex: 1;
   gap: 2px;
   align-items: stretch;
 }
@@ -553,7 +555,6 @@
 .heatCell {
   display: grid;
   min-inline-size: var(--space-3);
-  block-size: 1rem;
   overflow: hidden;
   place-items: center;
   border-radius: var(--radius-xs);
@@ -577,9 +578,9 @@
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
-/* With the values in the cells, a cell is as tall as its number needs. */
-.heatValues .heatCell {
-  block-size: 1.5rem;
+/* With the values in the cells, a row is at least as tall as its number needs. */
+.heatValues {
+  --heat-row-min: 1.5rem;
 }
 
 /* The heatmap with drill-down: the tiles and the scale, in the chart place of the chart shell. */
@@ -606,16 +607,22 @@
   outline-offset: 1px;
 }
 
-/* Calendar mode. The box takes the room the cell leaves and measures it: a tile is the largest square
-   that lets every week fit the box's width and the month row and seven weekdays fit its height, at
-   least 4px and at most 1.25rem (2rem with the values in the tiles, so a value has room when the box
-   has it). The weekday labels take a fixed column so the arithmetic holds. When even 4px tiles are
-   too wide, the box scrolls sideways inside the cell; it never scrolls up and down, so a wheel over it
-   still scrolls the page. It is never lower than the month row and seven 4px tiles with their gaps, so a
-   low cell keeps the whole calendar in view and scrolls the cell instead of cutting it. */
+/* Calendar mode. The box takes the room the cell leaves and measures it: a tile is as tall as the room each weekday row
+   has in the box's height, after the month row and the colour scale, and as wide as the room each week has in its
+   width; never taller than wide, at most twice as wide as tall, and at least 4px each way. The weekday labels take a
+   fixed column so the arithmetic holds. The calendar and its scale stand centred in the box, the scale under the
+   calendar's end. When even 4px tiles are too wide, the box scrolls sideways inside the cell from the calendar's
+   start; it never scrolls up and down, so a wheel over it still scrolls the page. It is never lower than the month
+   row, seven 4px tiles with their gaps and the scale, so a low cell keeps the whole calendar in view and scrolls the
+   cell instead of cutting it. */
 .heatCalendarBox {
+  --heat-legend-room: calc(var(--text-micro-line-height) + var(--space-2));
+  display: grid;
   flex: 1;
-  min-block-size: calc(1rem + 7 * (4px + 2px));
+  grid-template-columns: max-content;
+  place-content: safe center;
+  gap: var(--space-2);
+  min-block-size: calc(1rem + 7 * (4px + 2px) + var(--heat-legend-room));
   min-inline-size: 0;
   container-type: size;
   overflow-x: auto;
@@ -629,24 +636,16 @@
 
 .heatCalendar {
   --heat-day-label: 2rem;
-  --heat-tile-max: 1.25rem;
-  --heat-tile: clamp(
-    4px,
-    min((100cqi - var(--heat-day-label)) / var(--heat-weeks) - 2px, (100cqb - 1rem) / 7 - 2px),
-    var(--heat-tile-max)
-  );
-  grid-template-rows: 1rem repeat(7, var(--heat-tile));
-  justify-content: start;
+  --heat-week-room: calc((100cqi - var(--heat-day-label)) / var(--heat-weeks) - 2px);
+  --heat-day-room: calc((100cqb - 1rem - var(--heat-legend-room)) / 7 - 2px);
+  --heat-tile-block: max(4px, min(var(--heat-day-room), var(--heat-week-room)));
+  --heat-tile-inline: max(4px, min(var(--heat-week-room), 2 * var(--heat-tile-block)));
+  grid-template-rows: 1rem repeat(7, var(--heat-tile-block));
 }
 
 .heatCalendar .heatCell {
   min-inline-size: 0;
-  block-size: auto;
   border-radius: 2px;
-}
-
-.heatCalendar.heatValues {
-  --heat-tile-max: 2rem;
 }
 
 .heatCalendar .heatRowAxis {
@@ -676,18 +675,19 @@
   border-radius: var(--radius-xs);
   background: linear-gradient(
     to right,
-    color-mix(in oklab, var(--chart-5) 0%, var(--card)),
-    color-mix(in oklab, var(--chart-5) 50%, var(--card)),
+    color-mix(in oklab, var(--chart-5) var(--heat-floor), var(--card)),
+    color-mix(in oklab, var(--chart-5) calc((var(--heat-floor) + 100%) / 2), var(--card)),
     color-mix(in oklab, var(--chart-5) 100%, var(--card))
   );
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
-/* A markdown card: the body's CommonMark, styled with the kit's text tokens. The markup comes from
-   markdown-it, so these selectors carry it. */
+/* A markdown card: the body's CommonMark, styled with the kit's text tokens, in lines of at most 65 characters, a
+   reading width, however wide its cell. The markup comes from markdown-it, so these selectors carry it. */
 .markdown {
   flex: 1;
   min-block-size: 0;
+  max-inline-size: 65ch;
   overflow: auto;
   color: var(--foreground);
   font-size: var(--text-body-size);
@@ -700,6 +700,12 @@
 
 .markdown > :last-child {
   margin-block-end: 0;
+}
+
+/* A note that something is wrong: the body and its headings in the kit's destructive colour. */
+.markdown.markdownDestructive,
+.markdown.markdownDestructive :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--destructive);
 }
 
 .markdown p {
@@ -728,6 +734,17 @@
 .markdown h6 {
   font-size: var(--text-body-size);
   font-weight: var(--text-label-weight);
+}
+
+/* A section heading over a group of cells: the kit's label role in the muted colour, in capitals. */
+.markdown.markdownSection :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-line-height);
+  letter-spacing: var(--text-label-tracking);
+  text-transform: uppercase;
 }
 
 .markdown ul,

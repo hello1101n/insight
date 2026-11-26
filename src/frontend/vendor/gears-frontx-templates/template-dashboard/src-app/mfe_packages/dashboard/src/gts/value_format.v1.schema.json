@@ -28,7 +28,7 @@
     },
     "compound": {
       "type": "boolean",
-      "description": "Optional, for a duration only. When true, the value shows as its two largest whole parts with narrow unit labels: 52 h shows as 2d 4h and 90 s as 1m 30s. Each part rounds to the precision of the part after it and carries, so 59.6 s shows as 1m. A value below one second shows in whole milliseconds. Not allowed with decimals when true. Without it, or when false, the value shows in its unit."
+      "description": "Optional, for a duration only. When true, the value shows as its two largest whole parts with narrow unit labels: 52 h shows as 2d 4h and 90 s as 1m 30s. Each part rounds to the precision of the part after it and carries, so 59.6 s shows as 1m. A part has no group separator: 1234.5 d shows as 1234d 12h. A value below one second shows in whole milliseconds. Not allowed with decimals when true. Without it, or when false, the value shows in its unit."
     },
     "currency": {
       "type": "string",
