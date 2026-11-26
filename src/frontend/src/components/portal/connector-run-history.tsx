@@ -42,7 +42,6 @@ import { describeRunState } from "@/lib/portal/connector-run-view";
 import {
   describeRun,
   isActiveRun,
-  projectRun,
   queueDetails,
   queueSeverity,
   runDuration,
@@ -65,118 +64,6 @@ import {
 } from "./connector-run-state";
 import { ConnectorSyncTable } from "./connector-sync-table";
 import { ConnectorRunPeriod, ConnectorTimestamp } from "./connector-timestamp";
-
-function RunMetrics({
-  run,
-  title,
-  empty,
-  asOf,
-}: {
-  run?: ConnectorRun | null;
-  title: string;
-  empty: string;
-  asOf: string;
-}) {
-  const { t } = useTranslation();
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const timing = run && summarizeRun(run, asOf);
-  const state = run && describeRunState(run, asOf, timing ?? undefined);
-  const queuedLabel = t("connectors.runs.queued");
-  const metrics = timing
-    ? timing.steps.map((step) => ({
-        label: stepLabel(step.step),
-        details: [stepDetail(step.step)],
-        duration: step.duration,
-        tone: null as ConnectorTone | null,
-      }))
-    : [];
-  if (timing?.queued)
-    metrics.unshift({
-      label: queuedLabel,
-      details: queueDetails(timing.queued.reasons, timing.queued.tone),
-      duration: timing.queued.duration,
-      tone: timing.queued.tone === "idle" ? null : timing.queued.tone,
-    });
-
-  return (
-    <section className="min-w-0 py-1">
-      <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <CardTitle render={<h3 />} className="text-xs font-semibold">
-            {metrics.length > 0 || run?.finished_at ? (
-              <CollapsibleTrigger
-                type="button"
-                className="group inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-sm text-start focus-visible:outline-2"
-              >
-                {title}
-                <ChevronRight
-                  aria-hidden="true"
-                  className="size-3 shrink-0 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none"
-                />
-              </CollapsibleTrigger>
-            ) : (
-              title
-            )}
-          </CardTitle>
-          {run &&
-            run.status !== "succeeded" &&
-            (!detailsOpen ||
-              !metrics.some(({ label }) => label === state?.label)) && (
-              <ConnectorRunState
-                run={run}
-                asOf={asOf}
-                timing={timing ?? undefined}
-                showRunning
-              />
-            )}
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {run ? (
-              <ConnectorRunPeriod
-                startedAt={run.started_at}
-                finishedAt={detailsOpen ? run.finished_at : null}
-              />
-            ) : (
-              empty
-            )}
-          </p>
-        </div>
-        {run && metrics.length > 0 && (
-          <CollapsibleContent>
-            <dl className="mt-1 grid w-full grid-cols-[repeat(auto-fit,minmax(min(6rem,100%),1fr))] gap-2 border-t pt-1">
-              {metrics.map(({ label, details, duration, tone }) => (
-                <div key={label}>
-                  <dt className="text-xs text-muted-foreground">
-                    {label === state?.label ? (
-                      <ConnectorRunState
-                        run={run}
-                        asOf={asOf}
-                        timing={timing ?? undefined}
-                        showRunning
-                      />
-                    ) : (
-                      <RunTooltip lines={details}>
-                        {tone ? (
-                          <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
-                            {label}
-                          </Badge>
-                        ) : (
-                          label
-                        )}
-                      </RunTooltip>
-                    )}
-                  </dt>
-                  <dd className="text-sm font-medium tabular-nums">
-                    {formatDuration(duration)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </CollapsibleContent>
-        )}
-      </Collapsible>
-    </section>
-  );
-}
 
 function StepEvent({
   at,
@@ -377,8 +264,6 @@ interface Props {
   runs: ConnectorRun[];
   syncs: SyncFact[];
   limit: number;
-  latest?: ConnectorRun | null;
-  lastSuccess?: ConnectorRun | null;
   asOf: string;
 }
 
@@ -432,14 +317,7 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   );
 }
 
-export function ConnectorRunHistory({
-  runs,
-  syncs,
-  limit,
-  latest,
-  lastSuccess,
-  asOf,
-}: Props) {
+export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
   const { t } = useTranslation();
   const heading = useId();
   const detailsId = `${heading}-detail`;
@@ -464,22 +342,7 @@ export function ConnectorRunHistory({
     return () => observer.disconnect();
   }, []);
 
-  const recent = latest ? projectRun(latest) : undefined;
-  const managed = runs.map(projectRun);
-  if (recent && !managed.some((run) => run.sync_id === recent.sync_id))
-    managed.unshift(recent);
-
-  const current = recent ?? managed[0];
-  const recordedSuccess = lastSuccess && projectRun(lastSuccess);
-  const newestSuccess = managed.find((run) => run.status === "succeeded");
-  const successful =
-    newestSuccess &&
-    (!recordedSuccess ||
-      Date.parse(newestSuccess.started_at) >
-        Date.parse(recordedSuccess.started_at))
-      ? newestSuccess
-      : recordedSuccess;
-  const history = recentHistory(managed, syncs, limit);
+  const history = recentHistory(runs, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
 
   const [detailsRef, captureDetailsHeight] = useHeightTransition<HTMLElement>(
@@ -527,22 +390,6 @@ export function ConnectorRunHistory({
       ref={container}
       className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2"
     >
-      {(current || successful) && (
-        <div className="divide-y border-b @min-[1040px]:grid @min-[1040px]:grid-cols-2 @min-[1040px]:divide-x @min-[1040px]:divide-y-0 @min-[1040px]:[&>section:first-child]:pr-4 @min-[1040px]:[&>section:last-child]:pl-4">
-          <RunMetrics
-            title={t("connectors.runs.current")}
-            empty={t("connectors.runs.no_current")}
-            run={current && isActiveRun(current) ? current : null}
-            asOf={asOf}
-          />
-          <RunMetrics
-            title={t("connectors.runs.latest_success")}
-            empty={t("connectors.runs.no_success")}
-            run={successful}
-            asOf={asOf}
-          />
-        </div>
-      )}
       <section aria-labelledby={heading} className="space-y-1.5 sm:space-y-2">
         <div className="flex items-center gap-3">
           <h3 id={heading} className="shrink-0 text-sm font-semibold">

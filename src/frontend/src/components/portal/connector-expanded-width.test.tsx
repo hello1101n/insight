@@ -98,7 +98,7 @@ it("bounds expanded schedules, the editor and older history pages without wideni
       "max-w-full",
       "min-w-0",
       "grid-cols-1",
-      "@min-[58rem]:grid-cols-[clamp(20rem,32%,22rem)_minmax(0,1fr)]",
+      "@min-[58rem]:grid-cols-[clamp(19rem,24%,26rem)_minmax(0,1fr)]",
       "[overflow-wrap:anywhere]",
       "whitespace-normal"
     );

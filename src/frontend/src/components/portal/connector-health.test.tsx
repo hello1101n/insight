@@ -2421,6 +2421,12 @@ describe("connector workflow runs", () => {
     const success = card("Last successful sync");
     expect(success.getByText("2m 0s")).toBeVisible();
     expect(success.getByText("20s")).toBeVisible();
+    const schedule = screen
+      .getByRole("heading", { name: "Schedule" })
+      .closest("[data-slot=connector-schedule-pane]")!;
+    expect(schedule.parentElement).toContainElement(
+      screen.getByRole("heading", { name: "Last successful sync" })
+    );
     const history = screen.getByRole("list", { name: /status/i });
     const marks = within(history).getAllByRole("listitem");
     expect(marks).toHaveLength(50);
