@@ -87,7 +87,9 @@ it("opens every stored expression as a row and warns before a preset replaces th
     "At 18:30, only on Sunday UTC",
   ])
     expect(screen.queryByText(reading), reading).not.toBeInTheDocument();
-  expect(screen.getByText("Replaces all 3 expressions")).toBeInTheDocument();
+  expect(
+    screen.queryByText("Replaces all 3 expressions")
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByText("Syncs on 3 expressions (all UTC).")
   ).not.toBeInTheDocument();

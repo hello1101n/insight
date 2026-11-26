@@ -40,8 +40,13 @@ function CronRow({
   }, [cron, edited, showClientErrors, hasClientErrors]);
 
   const rowErrors = [...(showClientErrors ? clientErrors : []), ...errors];
+  const hint = rowErrors.length
+    ? rowErrors.map((error) => error.description).join(" ")
+    : !cron.trim()
+      ? t("connectors.editor.empty_expression")
+      : null;
   return (
-    <div className="flex min-w-0 flex-wrap items-start gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <Input
         ref={inputRef}
         aria-label={t("connectors.editor.expression_label", {
@@ -60,22 +65,12 @@ function CronRow({
           if (cron.trim()) setRevealed(true);
         }}
       />
-      <p
-        id={id}
-        role={rowErrors.length ? "alert" : undefined}
-        className={`min-w-0 flex-1 basis-32 pt-2 text-xs ${rowErrors.length ? "text-destructive" : "text-muted-foreground"}`}
-      >
-        {rowErrors.length
-          ? rowErrors.map((error) => error.description).join(" ")
-          : !cron.trim()
-            ? t("connectors.editor.empty_expression")
-            : null}
-      </p>
       {onRemove && (
         <Button
           type="button"
           size="sm"
           variant="ghost"
+          className="shrink-0"
           icon="×"
           aria-label={t("connectors.editor.remove_expression", {
             index: index + 1,
@@ -83,6 +78,14 @@ function CronRow({
           onClick={onRemove}
         />
       )}
+      <p
+        id={id}
+        hidden={!hint}
+        role={rowErrors.length ? "alert" : undefined}
+        className={`min-w-0 basis-full text-xs ${rowErrors.length ? "text-destructive" : "text-muted-foreground"}`}
+      >
+        {hint}
+      </p>
     </div>
   );
 }
@@ -115,7 +118,7 @@ export function CronRows({
 
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>{t("connectors.editor.fields")}</span>
         <a
           href="https://crontab.guru"
