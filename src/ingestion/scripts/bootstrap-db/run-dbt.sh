@@ -39,9 +39,14 @@ cd "${DBT_DIR}"
 
 # A model whose bronze has not arrived yet cannot be built, and dbt fixes its
 # node set before the first model runs — so the skip is decided here, not in the
-# model. On a warehouse that has everything this resolves to nothing.
-UNBUILDABLE="$("${DBT_BIN}" --quiet run-operation list_unbuildable_models --profiles-dir "${PROFILES_DIR}")"
-read -r -a _unbuildable <<< "${UNBUILDABLE}"
+# model. On a warehouse that has everything this resolves to nothing. Each
+# left-out model is printed with its reason, so none is skipped silently.
+REPORT="$("${DBT_BIN}" --quiet run-operation list_unbuildable_models --profiles-dir "${PROFILES_DIR}" \
+  --args '{reasons: true}')"
+if [[ -n "${REPORT}" ]]; then
+  sed 's/^/not built: /' <<< "${REPORT}"
+fi
+read -r -a _unbuildable <<< "$(cut -f1 <<< "${REPORT}" | tr '\n' ' ')"
 _exclude=()
 if [[ ${#_unbuildable[@]} -gt 0 ]]; then
   _exclude=(--exclude "${_unbuildable[@]}")
