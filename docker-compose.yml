@@ -58,6 +58,12 @@ x-backend-env: &backend-env
   ENABLE_AUTO_RELOAD: ${ENABLE_AUTO_RELOAD:-}
   RUST_LOG: ${RUST_LOG:-info}
 
+# The source system of the seeded git data, on an example host. analytics and
+# insight-v3-core link drilldown rows to records through it. The id is the
+# `source_id` that the seed writes. The value is one inline list, which the
+# config loader reads from a single environment variable.
+x-external-sources: &external-sources '[{id = "74feab6d-c93d-5859-60c5-892b64471c08", provider = "github", web_base_url = "https://git.example.com"}]'
+
 x-backend-common: &backend-common
   !!merge <<: *restart-policy
   init: true
@@ -296,6 +302,7 @@ services:
       APP__gears__analytics__config__mcp__max_concurrent_queries: "${MCP_MAX_CONCURRENT_QUERIES:-16}"
       APP__gears__analytics__config__mcp__clickhouse_user: "insight_mcp"
       APP__gears__analytics__config__mcp__clickhouse_password: "${CLICKHOUSE_MCP_PASSWORD:-}"
+      APP__gears__analytics__config__external_sources: *external-sources
       # Gateway-JWT verification (NGINX_BFF R1) is done by the upstream
       # cf-gears-oidc-authn-plugin. Its config is nested/list-shaped (not
       # env-injectable) and resolves the JWKS via OIDC discovery over HTTPS ONLY,
@@ -561,6 +568,7 @@ services:
       # Add them to a compose override; none ships here.
       APP__gears__insight_v3_core__config__alerts__enabled: "${INSIGHT_V3_ALERTS_ENABLED:-true}"
       APP__gears__insight_v3_core__config__alerts__redis_url: "redis://${REDIS_HOST:-redis}:${REDIS_INTERNAL_PORT:-6379}"
+      APP__gears__insight_v3_core__config__external_sources: *external-sources
     command:
       - "/app/insight-v3-core" # <watched path>
       - "--"
