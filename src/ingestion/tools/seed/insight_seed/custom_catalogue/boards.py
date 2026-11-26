@@ -54,19 +54,40 @@ BOARDS: Final[tuple[Board, ...]] = (
     Board(
         "every_widget_type",
         "Stand: every widget type",
-        "line, area, bar, bar with labels, stacked bar, pie, stat, table, heatmap, funnel and"
-        " treemap, with time ranges",
+        "every widget type and option once: lines and areas by series and with a target, plain,"
+        " labelled, stacked, horizontal, 100% and duration bars, a pie, plain and compared stats,"
+        " tables, heatmaps, a funnel, a treemap and a scatter, with time ranges",
         _ranged(
             "Every widget type",
             [
                 {"heading": "Trends"},
-                *_w("prs-line", "merged-area"),
+                *_w(
+                    "prs-line",
+                    "trigger-series-line",
+                    "merged-share-target-line",
+                    "merged-area",
+                    "trigger-series-area",
+                ),
                 {"heading": "Breakdowns"},
-                *_w("commits-bar", "state-bar-labels", "ci-stacked-bar", "state-pie"),
+                *_w(
+                    "commits-bar",
+                    "state-bar-labels",
+                    "ci-stacked-bar",
+                    "commits-horizontal-bar",
+                    "outcome-percent-bar",
+                    "duration-bar",
+                    "state-pie",
+                ),
                 {"heading": "Figures"},
-                *_w("prs-stat", "ci-success-table"),
+                *_w(
+                    "prs-stat",
+                    "prs-compare-stat",
+                    "duration-compare-stat",
+                    "ci-success-table",
+                    "load-duration-table",
+                ),
                 {"heading": "More chart types"},
-                *_w("outcome-heatmap", "pr-funnel", "load-treemap"),
+                *_w("outcome-heatmap", "prs-calendar", "pr-funnel", "load-treemap", "load-scatter"),
             ],
             ["P7D", "P30D", "P1Y"],
             "P30D",
