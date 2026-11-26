@@ -105,6 +105,16 @@ function formatOf({ percents = [], units = {} }: DashboardWidget): FormatOf {
 // INVARIANT: the kit table header takes at most 7 px a letter, 32 px of padding and 16 px for the sort mark.
 const columnWidth = (title: string) => 7 * title.length + 48;
 
+// INVARIANT: a medium cell at desktop width holds about 480 px of table.
+const CELL_TABLE_WIDTH = 480;
+
+// WORKAROUND: a FrontX cell narrower than its value breaks the value mid-word. A table that scrolls sideways anyway keeps the 160 px columns.
+function columnWidths(titles: readonly string[]): (number | undefined)[] {
+  const widths = titles.map(columnWidth);
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  return total <= CELL_TABLE_WIDTH ? widths : titles.map(() => undefined);
+}
+
 const DATE = cel(String.raw`^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])`);
 
 const MONTHS = cel(
@@ -379,13 +389,14 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         const shown = format(name);
         return isPercent(shown) ? PERCENT_COLUMN : shown;
       });
+      const widths = columnWidths(widget.columns);
       return {
         type: "grid",
         render: {
           columns: widget.columns.map((name, index) => ({
             key: `c${index}`,
             title: name,
-            width: columnWidth(name),
+            ...(widths[index] === undefined ? {} : { width: widths[index] }),
             ...formatted(formats[index]),
           })),
           // WORKAROUND: the FrontX grid always shows the kit pager. One page of every row hides its size choice and page list.

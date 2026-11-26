@@ -426,6 +426,27 @@ describe("frontxBoard", () => {
     ]);
   });
 
+  it("leaves every column of a table too wide for its cell at the FrontX width", () => {
+    const columns = [
+      "run_id",
+      "pipeline",
+      "branch",
+      "commit",
+      "author",
+      "started",
+    ];
+    const board = frontxBoard("board", read([{ widget: "t" }]), [
+      widget("t", { type: "table", metric: "m", columns }),
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+    const render = cell.widget.render as { columns: object[] };
+
+    expect(render.columns).toHaveLength(columns.length);
+    for (const column of render.columns) {
+      expect(column).not.toHaveProperty("width");
+    }
+  });
+
   it("draws a pie whole, with its legend under it, as the current chart does", () => {
     const [pie] = cells([{ widget: "pie" }]);
 
