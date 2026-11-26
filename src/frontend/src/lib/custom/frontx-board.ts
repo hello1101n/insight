@@ -417,6 +417,9 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         return seriesPerValue({ ...widget, series: widget.series }, shown, {
           ...render,
           unlisted_stack_group: widget.series,
+          ...(widget.labels
+            ? { value_labels: "always", stack_labels: "total" }
+            : {}),
         });
       }
       return oneSeries(widget, "bar", shown, {

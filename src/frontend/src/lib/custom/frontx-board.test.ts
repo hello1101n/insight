@@ -403,8 +403,23 @@ describe("frontxBoard", () => {
       unlisted_stack_group: "outcome",
     });
     expect(stacked.widget.render).not.toHaveProperty("series");
+    expect(stacked.widget.render).not.toHaveProperty("value_labels");
+    expect(stacked.widget.render).not.toHaveProperty("stack_labels");
     expect(bar.widget.render).not.toHaveProperty("unlisted_stack_group");
     expect(plain.widget.render).not.toHaveProperty("unlisted_stack_group");
+  });
+
+  it("writes one total over each stack of a labelled stacked bar, as the current chart does", () => {
+    const board = frontxBoard("board", read([{ widget: "s" }]), [
+      widget("s", { ...WIDGETS.stacked.body, labels: true } as Widget),
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+
+    expect(cell.widget.render).toMatchObject({
+      unlisted_stack_group: "outcome",
+      value_labels: "always",
+      stack_labels: "total",
+    });
   });
 
   it("draws every x column on a category axis, as the current chart does, and titles no axis", () => {
