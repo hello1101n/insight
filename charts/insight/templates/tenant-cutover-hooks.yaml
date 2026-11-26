@@ -20,10 +20,32 @@ the rebuild ends, so no sync runs before it ends and a failed rebuild is not
 submitted again.
 
 Deadlines fit a 3h helm --timeout: the pre hook is cut at 2h50m, which sends
-SIGTERM, and the migration puts the tables back before the pod goes.
+SIGTERM, and the migration puts the tables back before the pod goes. Helm
+must outwait it: a helm that gives up (or rolls back) while the hook migrates
+leaves the previous release's code on the renamed columns. So an upgrade (a
+fresh install has nothing to migrate) fails the render unless
+ingestion.tenantCutover.helmTimeoutSeconds, the deploy's --timeout in seconds,
+covers the hook's deadline, its grace period and a margin; and a deploy must
+not pass --rollback-on-failure (deploy/TENANT_IDENTITY_UPGRADE.md).
+
+The migration refuses replicated tables, so a cluster-mode upgrade fails the
+render here instead of failing at the hook.
 */}}
-{{- if and .Values.ingestion.templates.enabled .Values.ingestion.toolboxImage .Values.ingestion.tenantCutover.enabled }}
+{{- if and .Values.ingestion.templates.enabled .Values.ingestion.toolboxImage }}
 {{- $name := printf "%s-tenant-cutover-hook" (include "insight.fullname" .) }}
+{{- $preDeadline := 10200 }}
+{{- $preGrace := 300 }}
+{{- $helmTimeoutNeeded := add $preDeadline $preGrace 300 }}
+{{- $helmTimeout := .Values.ingestion.tenantCutover.helmTimeoutSeconds | toString }}
+{{- if not (regexMatch "^[0-9]+$" $helmTimeout) }}
+{{- fail (printf "ingestion.tenantCutover.helmTimeoutSeconds must be the deploy's helm --timeout in whole seconds, got %q" $helmTimeout) }}
+{{- end }}
+{{- if and .Release.IsUpgrade (lt (atoi $helmTimeout) $helmTimeoutNeeded) }}
+{{- fail (printf "ingestion.tenantCutover.helmTimeoutSeconds is %s: the tenant cutover's pre-upgrade hook may migrate for up to %ds, and a helm that gives up first leaves the old release on migrated tables. Deploy with helm --timeout of at least %ds (3h), without --rollback-on-failure, and set this value to that timeout (deploy/TENANT_IDENTITY_UPGRADE.md)." $helmTimeout (add $preDeadline $preGrace) $helmTimeoutNeeded) }}
+{{- end }}
+{{- if and .Release.IsUpgrade (eq (include "insight.clickhouse.clusterMode" . | toString) "true") }}
+{{- fail "clickhouse.clusterMode: the tenant cutover supports a single-node ClickHouse only (it refuses replicated tables, which would fail every deploy at its pre-upgrade hook)" }}
+{{- end }}
 {{- $airbyteNs := include "insight.airbyte.namespace" . }}
 apiVersion: v1
 kind: ServiceAccount
@@ -131,7 +153,7 @@ spec:
   # No retry: a failed run has put everything back; a retry would only repeat it.
   backoffLimit: 0
   # 2h50m, inside a 3h helm --timeout: the pod gets SIGTERM and undoes the run.
-  activeDeadlineSeconds: 10200
+  activeDeadlineSeconds: {{ $preDeadline }}
   template:
     metadata:
       labels:
@@ -142,7 +164,7 @@ spec:
       restartPolicy: Never
       serviceAccountName: {{ $name }}
       # Room to swap back every table already exchanged.
-      terminationGracePeriodSeconds: 300
+      terminationGracePeriodSeconds: {{ $preGrace }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

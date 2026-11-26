@@ -102,7 +102,12 @@ INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
 VALUES           ?= environments/$(ENV)/values.yaml
 # Covers rollout waits plus the post-upgrade clickhouse-migrate hook, whose
 # heals can mutate large relations — give it room before --rollback-on-failure rolls back.
-TIMEOUT          ?= 30m
+# An upgrade that can cut the tenant over needs at least 3h, and no
+# --rollback-on-failure (deploy/TENANT_IDENTITY_UPGRADE.md): the chart is told
+# the timeout and refuses to render an upgrade below it.
+TIMEOUT          ?= 3h
+# TIMEOUT in seconds, for the chart: a Go duration of h, m and s parts (e.g. 3h, 2h30m, 10800s).
+TIMEOUT_SECONDS   = $(shell echo '$(TIMEOUT)' | awk '{ t = 0; s = $$0; while (match(s, /^[0-9]+[hms]/)) { n = substr(s, 1, RLENGTH - 1); u = substr(s, RLENGTH, 1); t += n * (u == "h" ? 3600 : u == "m" ? 60 : 1); s = substr(s, RLENGTH + 1) } if (s != "") t = 0; print t }')
 RENDER_DIR       := .deploy
 
 # yq trap: `//` treats an explicit `false` as absent, so CREATE_NS/ATOMIC
@@ -707,6 +712,7 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 		-f $(VALUES) \
 		$$(cat $(REALIP_ARGS)) \
 		$(HELM_WAIT_FLAG) $(HELM_ROLLBACK_FLAG) --timeout $(TIMEOUT) \
+		--set ingestion.tenantCutover.helmTimeoutSeconds=$(TIMEOUT_SECONDS) \
 		--history-max 10 \
 		2>&1 | tee $$LOG || rc=$$?; \
 	if [ "$$(yq -r '.system.loki // false' $(INVENTORY) 2>/dev/null)" = "true" ]; then \
