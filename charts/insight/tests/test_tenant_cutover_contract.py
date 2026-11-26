@@ -5,6 +5,7 @@ Run: pytest charts/insight/tests
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -77,12 +78,18 @@ def test_the_pre_hook_fails_inside_the_helm_timeout_and_never_retries(manifests:
     assert env["INSIGHT_TENANT_ID"] == TENANT
 
 
-def test_the_rebuild_resumes_the_writers_only_as_its_last_step(manifests: list[dict[str, Any]]) -> None:
-    template = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")
-    steps = [group[0] for group in template["spec"]["templates"][0]["steps"]]
+def test_the_rebuild_runs_every_step_and_always_resumes_the_writers_at_its_end(manifests: list[dict[str, Any]]) -> None:
+    spec = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]
+    steps = [group[0] for group in spec["templates"][0]["steps"]]
+    staging = next(s for s in steps if s["name"] == "staging")
 
-    assert [s["name"] for s in steps] == ["staging", "identity-seed", "everything-else", "resume-writers"]
-    assert steps[-1]["template"] == "resume-writers"
+    assert [s["name"] for s in steps] == ["staging", "identity-seed", "everything-else", "report"]
+    assert spec["onExit"] == "resume-writers", "the writers resume however the Workflow ends"
+    assert all(s.get("continueOn") == {"failed": True} for s in steps[:-1]), "a failed step stops none after it"
+    assert steps[-1]["template"] == "report" and all(
+        f"'{{{{steps.{s['name']}.status}}}}' != 'Succeeded'" in steps[-1]["when"] for s in steps[:-1]
+    ), "any failed step fails the Workflow"
+    assert {"name": "dbt_select", "value": "+tag:staging +identity_inputs"} in staging["arguments"]["parameters"]
     assert all(
         {"name": "dbt_full_refresh", "value": "true"} in s["arguments"]["parameters"]
         for s in steps
@@ -97,9 +104,15 @@ def test_no_input_reaches_a_command_and_only_the_two_cutover_steps_run_as_its_ac
     spec = _by_name(manifests, "WorkflowTemplate", "tenant-cutover-rebuild")["spec"]
     templates = {t["name"]: t for t in spec["templates"]}
 
+    report = spec["templates"][0]["steps"][-1][0]
+    expressions = re.findall(r"\{\{[^}]*\}\}", yaml.safe_dump(spec))
+
     assert spec["serviceAccountName"] == "argo-workflow"
     assert not any("inputs" in t for t in templates.values())
-    assert "{{" not in yaml.safe_dump(spec), "no parameter or expression is substituted anywhere"
+    assert expressions, "the report step reads step statuses"
+    assert all(re.fullmatch(r"\{\{steps\.[a-z-]+\.status\}\}", e) for e in expressions), expressions
+    assert all(e in report["when"] for e in expressions), "a status is read only by the report step's condition"
+    assert templates["report"]["container"]["command"] == ["bash", "/ingestion/scripts/tenant-cutover.sh", "report"]
     assert {n: t.get("serviceAccountName") for n, t in templates.items() if t.get("serviceAccountName")} == {
         "identity-seed": "insight-tenant-cutover",
         "resume-writers": "insight-tenant-cutover",

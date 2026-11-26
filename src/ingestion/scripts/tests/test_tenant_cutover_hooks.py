@@ -221,3 +221,19 @@ def test_a_redeploy_while_a_rebuild_is_owed_keeps_the_first_recorded_state(tmp_p
 
     assert again["configmaps"][CM] == recorded, "a failed later run must not forget or overwrite the state"
     assert set(_suspended(again).values()) == {True}
+
+
+def test_a_failed_rebuild_reports_loudly_resumes_the_writers_and_is_not_submitted_again(tmp_path: Path) -> None:
+    _, migrated = _run(tmp_path, "pre", _cluster())
+    _, submitted = _run(tmp_path, "post", migrated)
+    submitted["workflows"]["tenant-cutover-rebuild-x"]["phase"] = "Failed"
+
+    report, reported = _run(tmp_path, "report", submitted)
+    _, resumed = _run(tmp_path, "resume", reported)
+    post, after = _run(tmp_path, "post", resumed)
+
+    assert report.returncode != 0 and "THE REBUILD FAILED" in report.stderr
+    assert not any(c.startswith(("patch", "create", "delete")) for c in reported["calls"][len(submitted["calls"]) :])
+    assert _suspended(resumed)["insight-reconcile-loop"] is False
+    assert post.returncode == 0 and "no rebuild" in post.stdout
+    assert list(after["workflows"]) == ["tenant-cutover-rebuild-x"]
