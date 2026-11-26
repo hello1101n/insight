@@ -400,6 +400,12 @@ describe("frontxBoard", () => {
     }
   });
 
+  it("shows every row a table gets on one page, so the pager offers no page size", () => {
+    const [table] = cells([{ widget: "table" }]);
+
+    expect(table.widget.render).toMatchObject({ page_sizes: [500] });
+  });
+
   it("sizes each table column from its title, so a few short columns fit the cell", () => {
     const board = frontxBoard("board", read([{ widget: "t" }]), [
       widget("t", {
@@ -847,6 +853,7 @@ describe("frontxBoard percent columns", () => {
         },
         { key: "c2", title: "runs", width: 76 },
       ],
+      page_sizes: [500],
     });
     expect(drawnData(table, ["rate"], answer)).toEqual({
       format: undefined,
@@ -1000,6 +1007,7 @@ describe("frontxBoard duration columns", () => {
           value_format: { value_type: "percent", decimals: 1 },
         },
       ],
+      page_sizes: [500],
     });
     expect(
       drawnData(table, ["rate"], {

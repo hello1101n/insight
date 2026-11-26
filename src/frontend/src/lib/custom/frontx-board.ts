@@ -388,6 +388,8 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
             width: columnWidth(name),
             ...formatted(formats[index]),
           })),
+          // WORKAROUND: the FrontX grid always shows the kit pager. One page of every row hides its size choice and page list.
+          page_sizes: [TABLE_ROWS],
         },
         transform: `{'rows': response.shownRows.map(r, [${widget.columns.map((name, index) => (isPercent(formats[index]) ? number("r", column(name), true) : `r[${column(name)}]`)).join(", ")}]), 'total_rows': size(response.rows)}`,
       };
