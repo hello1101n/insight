@@ -162,7 +162,7 @@ def test_pass_waits_then_fails_or_applies_the_fresh_row(tmp_path: Path, mode: st
                 reconcile_connections() {{
                   touch {shlex.quote(str(barrier))}
                   while [[ ! -f {shlex.quote(str(resume))} ]]; do sleep 0.05; done
-                  printf 'noop\\texample-connection\\n'
+                  printf 'noop\\texample-connection\\tcatalog:example\\n'
                 }}
                 """
                 if mode == "unreachable":

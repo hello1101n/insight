@@ -65,6 +65,8 @@ _MUTATION_WAIT_CLUSTER = "2"
 #: A replica that cannot answer the catalogue read is left out of it: the rows
 #: are on every replica, and any one that answers says whether they exist.
 _SKIP_UNAVAILABLE_REPLICAS = "SETTINGS skip_unavailable_shards = 1"
+# The tenant cutover's backup and working copies of a Bronze table.
+_NOT_CUTOVER_TABLE = "AND position(name, '__tenant_') = 0"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -271,6 +273,9 @@ class Ledger:
         its Secret is gone. Read from the relation the descriptor names, never
         from a name derived off the connector's slug.
 
+        The tenant cutover's `<table>__tenant_backup` / `__tenant_copy` tables
+        still carry the old column names, so they are never the one read.
+
         None when nothing can be read straight: no relation, no rows, or more
         than one identity in them. More than one is not a majority to take — it
         would mean the era this recovers from was not single-instance after all.
@@ -280,7 +285,7 @@ class Ledger:
         if self._cluster is None:
             tables = self._select(
                 "SELECT name FROM system.tables "
-                f"WHERE database = {_quote(namespace)} AND total_rows > 0 "
+                f"WHERE database = {_quote(namespace)} AND total_rows > 0 {_NOT_CUTOVER_TABLE} "
                 "ORDER BY total_rows DESC LIMIT 1"
             )
         else:
@@ -289,7 +294,7 @@ class Ledger:
             # has the rows say so.
             tables = self._select(
                 f"SELECT name FROM clusterAllReplicas({_quote(self._cluster)}, system.tables) "
-                f"WHERE database = {_quote(namespace)} AND total_rows > 0 "
+                f"WHERE database = {_quote(namespace)} AND total_rows > 0 {_NOT_CUTOVER_TABLE} "
                 f"GROUP BY name ORDER BY max(total_rows) DESC LIMIT 1 {_SKIP_UNAVAILABLE_REPLICAS}"
             )
         if not tables:
