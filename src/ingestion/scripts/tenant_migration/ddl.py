@@ -2,14 +2,14 @@
 
 ClickHouse takes no parameters for identifiers, so names are interpolated.
 SAFETY: a `Relation` admits only plain identifiers (see inventory.IDENTIFIER)
-and every name is backquoted.
+and every name is backquoted by `inventory.quote`. Values are bound as query parameters.
 """
 
 from __future__ import annotations
 
 import re
 
-from tenant_migration.inventory import OLD_TENANT_COLUMN, TENANT_COLUMN, Relation
+from tenant_migration.inventory import OLD_TENANT_COLUMN, TENANT_COLUMN, Relation, quote
 
 OLD_TENANT = re.compile(rf"(?<![A-Za-z0-9_]){OLD_TENANT_COLUMN}(?![A-Za-z0-9_])")
 CREATE_TABLE = re.compile(r"^CREATE TABLE \S+(?: UUID '[0-9A-Fa-f-]+')?")
@@ -40,12 +40,12 @@ def tenant_renamed(create: str) -> str:
 
 
 def add_tenant(rel: Relation, suffix: str, after: str | None) -> str:
-    place = f" AFTER `{after}`" if after else " FIRST"
-    return f"ALTER TABLE {rel.sql(suffix)} ADD COLUMN `{TENANT_COLUMN}` Nullable(String){place}"
+    place = f" AFTER {quote(after)}" if after else " FIRST"
+    return f"ALTER TABLE {rel.sql(suffix)} ADD COLUMN {quote(TENANT_COLUMN)} Nullable(String){place}"
 
 
 def insert(rel: Relation, suffix: str, columns: list[str], expressions: list[str]) -> str:
-    names = ", ".join(f"`{c}`" for c in columns)
+    names = ", ".join(quote(c) for c in columns)
     return f"INSERT INTO {rel.sql(suffix)} ({names}) SELECT {', '.join(expressions)} FROM {rel.sql()} AS src"
 
 
