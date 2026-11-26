@@ -24,7 +24,8 @@ def test_a_record_stating_no_payload_gets_its_own_fields() -> None:
 
 
 @pytest.mark.parametrize(
-    "framing", ["insight_tenant_id", "source_id", "unique_key", "_airbyte_raw_id", "_airbyte_meta"]
+    "framing",
+    ["insight_tenant_id", "insight_source_id", "unique_key", "_airbyte_raw_id", "_airbyte_meta"],
 )
 def test_the_columns_the_warehouse_adds_are_not_part_of_the_payload(framing: str) -> None:
     payload = _derive({"id": "e1", framing: "v"})

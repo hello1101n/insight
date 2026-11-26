@@ -84,7 +84,7 @@ def test_records_stamped_with_tenant_source_and_launch_value_key(http_mocker: Ht
 
     record = output.records[0].record.data
     assert record["insight_tenant_id"] == "test-tenant"
-    assert record["source_id"] == "test-source"
+    assert record["insight_source_id"] == "test-source"
     assert record["unique_key"] == "test-tenant-test-source-101-61"
 
 

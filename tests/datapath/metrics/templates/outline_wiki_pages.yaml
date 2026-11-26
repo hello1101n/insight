@@ -7,7 +7,7 @@ templates:
     _airbyte_generation_id: 0
     unique_key: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "wiki-test"
+    insight_source_id: "wiki-test"
     page_id: null
     space_id: null
     title: null

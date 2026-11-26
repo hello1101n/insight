@@ -53,7 +53,7 @@ definitions:
         fields:
           - path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
-          - path: [source_id]
+          - path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - path: [unique_key]
             value: "{{ config['insight_tenant_id'] }}-{{ config['insight_source_id'] }}-{{ record['id'] }}"
@@ -98,7 +98,7 @@ schemas:
   record:
     type: object
     additionalProperties: true
-    required: [id, value, checksum, last_updated_at, scenario_revision, insight_tenant_id, source_id, unique_key]
+    required: [id, value, checksum, last_updated_at, scenario_revision, insight_tenant_id, insight_source_id, unique_key]
     properties:
       id: {type: string}
       value: {type: integer}
@@ -106,7 +106,7 @@ schemas:
       last_updated_at: {type: string, format: date-time}
       scenario_revision: {type: integer}
       insight_tenant_id: {type: string}
-      source_id: {type: string}
+      insight_source_id: {type: string}
       unique_key: {type: string}
 spec:
   type: Spec

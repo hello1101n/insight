@@ -37,7 +37,7 @@ _eligible = git_history.eligible
 # One logical git source for the whole seed. This MUST be written to every
 # git silver table: gold/git_metric_observations builds its project and
 # repository dimension values with
-# `concat(toString(prs.source_id), ':', prs.project_key)`, and `toString`
+# `concat(toString(prs.insight_source_id), ':', prs.project_key)`, and `toString`
 # of a NULL is NULL, which makes the whole dimension array NULL and fails
 # its CAST to a non-nullable Tuple. It is also part of the join key between
 # class_git_pull_requests_commits and class_git_commits, and NULL never
@@ -75,7 +75,13 @@ AIRBYTE_COLS = [
     "_airbyte_meta",
     "_airbyte_generation_id",
 ]
-IDENTITY_COLS = ["unique_key", "insight_tenant_id", "source_id", "data_source", "collected_at"]
+IDENTITY_COLS = [
+    "unique_key",
+    "insight_tenant_id",
+    "insight_source_id",
+    "data_source",
+    "collected_at",
+]
 
 
 def _positioned(cols: list[str], fields: dict[str, object]) -> tuple[object, ...]:
@@ -89,7 +95,7 @@ def _envelope(tenant_uuid: str) -> dict[str, object]:
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
         "insight_tenant_id": tenant_uuid,
-        "source_id": SOURCE_ID,
+        "insight_source_id": SOURCE_ID,
         "data_source": "insight_github",
         "collected_at": read_at.isoformat(),
     }

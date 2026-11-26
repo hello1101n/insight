@@ -52,6 +52,6 @@ schemas:
       total_jointime_cost: {type: [number, "null"]}
       is_original_host: {type: [boolean, "null"]}
       insight_tenant_id: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       meeting_uuid: {type: [string, "null"]}
       unique_key: {type: [string, "null"]}

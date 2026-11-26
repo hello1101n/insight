@@ -37,7 +37,7 @@ def airbyte_write(directory: Path, env: dict[str, str], url: str, user: str, pas
     hubspot = {
         "unique_key": "example-owner",
         "insight_tenant_id": TENANT,
-        "source_id": "example",
+        "insight_source_id": "example",
         "teams": '[{"id":"example","name":"Example"}]',
         "data_source": "hubspot",
         "updatedAt": "2026-01-01T00:00:00Z",

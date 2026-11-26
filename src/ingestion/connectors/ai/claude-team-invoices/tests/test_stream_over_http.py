@@ -137,7 +137,7 @@ def test_the_chain_yields_the_invoice_row_and_one_record_per_line(stream: Invoic
     # The framework fields every bronze row carries (ADR-0004).
     for record in records:
         assert record["insight_tenant_id"] == CONFIG.insight_tenant_id
-        assert record["source_id"] == CONFIG.insight_source_id
+        assert record["insight_source_id"] == CONFIG.insight_source_id
         assert record["data_source"] == "insight_claude_team"
         assert record["unique_key"].startswith(f"{CONFIG.insight_tenant_id}-{CONFIG.insight_source_id}-")
     assert own["unique_key"] != line["unique_key"]

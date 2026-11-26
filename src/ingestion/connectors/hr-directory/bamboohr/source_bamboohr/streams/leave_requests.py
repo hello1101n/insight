@@ -52,7 +52,7 @@ SCHEMA: Mapping[str, Any] = {
             },
         },
         "created": NULLABLE_STR,
-        "source_id": NULLABLE_STR,
+        "insight_source_id": NULLABLE_STR,
         "insight_tenant_id": NULLABLE_STR,
         "employeeId": NULLABLE_STR,
         "unique_key": {"type": "string"},
@@ -96,7 +96,7 @@ class LeaveRequestsStream(Stream):
             yield {
                 **row,
                 "insight_tenant_id": self._tenant_id,
-                "source_id": self._source_id,
+                "insight_source_id": self._source_id,
                 "unique_key": f"{self._tenant_id}-{self._source_id}-{request.id}",
             }
 

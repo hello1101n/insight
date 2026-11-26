@@ -16,7 +16,7 @@ schemas:
         type: integer
       unique_key: *id001
       insight_tenant_id: *id001
-      source_id: *id001
+      insight_source_id: *id001
       data_source: *id001
       collected_at: *id001
       repo_full_name: *id001

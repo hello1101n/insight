@@ -3,7 +3,7 @@
 Paginated stream, read once per account status (`active`, then `inactive`,
 since /v2/users omits deactivated accounts unless asked): GET /v2/users behind a Server-to-Server OAuth token
 exchange (SessionTokenAuthenticator), CursorPagination on `next_page_token`,
-`users` extract field, AddFields stamping insight_tenant_id / source_id /
+`users` extract field, AddFields stamping insight_tenant_id / insight_source_id /
 unique_key = "{tenant}-{source}-{id}".
 
 Coverage matrix rows: full_refresh_single_page, schema_conformance,
@@ -72,7 +72,7 @@ def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
 
     rec = output.records[0].record.data
     assert rec["insight_tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["unique_key"] == (f"{config['insight_tenant_id']}-{config['insight_source_id']}-usr-1")
 
 

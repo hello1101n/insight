@@ -93,7 +93,7 @@ build_configured_catalog() {
   local keyless
   keyless="$(jq -r '[.streams[] | select((.json_schema.properties // {}) | has("unique_key") | not) | .name] | join(", ")' "${workdir}/catalog.json")"
   if [[ -n "${keyless}" ]]; then
-    echo "[${name}] streams without a unique_key schema property: ${keyless} — every stream must carry the identity stamp (tenant_id, source_id, unique_key)" >&2
+    echo "[${name}] streams without a unique_key schema property: ${keyless} — every stream must carry the identity stamp (insight_tenant_id, insight_source_id, unique_key)" >&2
     return 1
   fi
 

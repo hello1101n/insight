@@ -154,7 +154,7 @@ def _envelope(source_id: str, tenant_uuid: str) -> dict[str, object]:
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
         "insight_tenant_id": tenant_uuid,
-        "source_id": source_id,
+        "insight_source_id": source_id,
         "data_source": DATA_SOURCE,
         "collected_at": read_at.isoformat(),
     }
@@ -170,7 +170,13 @@ AIRBYTE_COLS = [
     "_airbyte_meta",
     "_airbyte_generation_id",
 ]
-IDENTITY_COLS = ["unique_key", "insight_tenant_id", "source_id", "data_source", "collected_at"]
+IDENTITY_COLS = [
+    "unique_key",
+    "insight_tenant_id",
+    "insight_source_id",
+    "data_source",
+    "collected_at",
+]
 
 
 def seed_wiki_users(

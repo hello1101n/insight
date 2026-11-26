@@ -109,7 +109,7 @@ def test_terminal_summary_reports_coverage_table(monkeypatch, tmp_path) -> None:
 
 
 def test_assert_records_conform_flags_type_violation_and_undeclared_field() -> None:
-    good = {"unique_key": "t-s-1", "insight_tenant_id": "t", "source_id": "s", "key": "P1"}
+    good = {"unique_key": "t-s-1", "insight_tenant_id": "t", "insight_source_id": "s", "key": "P1"}
     with pytest.raises(AssertionError, match="not declared"):
         assert_records_conform([dict(good, bogus_field=1)], "task-tracking/jira", "jira_projects")
     # non-strict tolerates undeclared fields but still type-checks

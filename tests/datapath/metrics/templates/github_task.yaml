@@ -176,7 +176,7 @@ templates:
   issue_type_task:
     unique_key: gh-type-task
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-01-01T00:00:00Z"
     org: acme
@@ -213,7 +213,7 @@ templates:
   commit_author:
     unique_key: gh-author
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-01T00:00:00Z"
     repo_full_name: acme/app
@@ -231,7 +231,7 @@ templates:
   issue:
     unique_key: gh-issue
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
     id: 1
@@ -264,7 +264,7 @@ templates:
   project_field_status:
     unique_key: gh-project-field-status
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-01T00:00:00Z"
     project_id: PVT_board1
@@ -290,7 +290,7 @@ templates:
   board_status_event:
     unique_key: gh-board-event
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
     event_id: PSE_1
@@ -326,7 +326,7 @@ templates:
   project_item:
     unique_key: gh-project-item
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
     project_id: PVT_board1
@@ -351,7 +351,7 @@ templates:
   closed_event:
     unique_key: gh-event
     insight_tenant_id: "{{ tenant }}"
-    source_id: github-test
+    insight_source_id: github-test
     data_source: github
     collected_at: "2026-03-31T00:00:00Z"
     event_id: CE_1
