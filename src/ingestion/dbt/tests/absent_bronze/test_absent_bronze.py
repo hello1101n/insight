@@ -43,9 +43,12 @@ def _bronze(warehouse: Warehouse, database: str, table: str, columns: str, engin
     """A bronze table holding `columns` and the Airbyte ones, in that order."""
     columns = f"{columns}, {AIRBYTE_COLUMNS}"
     warehouse.execute("CREATE DATABASE IF NOT EXISTS {database:Identifier}", {"database": database})
-    # Spelled out: ClickHouse binds an identifier where a statement reads one,
-    # not as the object a CREATE TABLE names. Both are this module's constants.
-    warehouse.execute(f"CREATE TABLE `{database}`.`{table}` ({columns}) ENGINE = {engine} ORDER BY unique_key")
+    # The column list and engine are DDL text, so they cannot be bound; every
+    # piece is one of this module's constants.
+    warehouse.execute(  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
+        f"CREATE TABLE {{database:Identifier}}.{{table:Identifier}} ({columns}) ENGINE = {engine} ORDER BY unique_key",
+        {"database": database, "table": table},
+    )
 
 
 def _zulip_users(
@@ -68,9 +71,10 @@ def _zulip_users(
     )
     if rows:
         warehouse.execute(
-            f"INSERT INTO `{database}`.`{table}` VALUES "
-            f"('zulip-1', '{TENANT}', 'zulip-main', 'zulip-main', 1, 'Ada Lovelace', 'ada@example.com', true, "
-            "400, 10, 'u-1', 'raw-1', now64(3), '{}', 1)"
+            "INSERT INTO {database:Identifier}.{table:Identifier} VALUES "
+            "('zulip-1', {tenant:String}, 'zulip-main', 'zulip-main', 1, 'Ada Lovelace', 'ada@example.com', true, "
+            "400, 10, 'u-1', 'raw-1', now64(3), '{}', 1)",
+            {"database": database, "table": table, "tenant": TENANT},
         )
 
 
@@ -116,7 +120,10 @@ def test_a_model_already_built_is_rebuilt_when_its_bronze_empties(fresh_install:
     # is rebuilt to match its bronze rather than left holding stale rows.
     _zulip_users(fresh_install, rows=True)
     _run(fresh_install)
-    fresh_install.execute(f"TRUNCATE TABLE `{ZULIP_BRONZE[0]}`.`{ZULIP_BRONZE[1]}`")
+    fresh_install.execute(
+        "TRUNCATE TABLE {database:Identifier}.{table:Identifier}",
+        {"database": ZULIP_BRONZE[0], "table": ZULIP_BRONZE[1]},
+    )
 
     assert not set(ZULIP_CHAIN) & unbuildable(fresh_install).keys()
     _run(fresh_install)
@@ -159,10 +166,11 @@ def test_a_class_with_no_contributor_and_no_table_is_left_out(fresh_install: War
 
 def test_a_class_with_no_contributor_keeps_the_table_it_has(fresh_install: Warehouse) -> None:
     fresh_install.execute(
-        f"CREATE TABLE silver.{LONE_CLASS} (unique_key String, team_id String, _version UInt64) "
-        "ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key"
+        "CREATE TABLE silver.{name:Identifier} (unique_key String, team_id String, _version UInt64) "
+        "ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key",
+        {"name": LONE_CLASS},
     )
-    fresh_install.execute(f"INSERT INTO silver.{LONE_CLASS} VALUES ('team-1', 'team-1', 1)")
+    fresh_install.execute("INSERT INTO silver.{name:Identifier} VALUES ('team-1', 'team-1', 1)", {"name": LONE_CLASS})
 
     assert LONE_CLASS in unbuildable(fresh_install)
     _run(fresh_install)
@@ -189,7 +197,8 @@ def test_bronze_with_rows_the_model_cannot_read_still_fails(fresh_install: Wareh
     # so its failure must reach the run, loudly.
     _bronze(fresh_install, *ISSUETYPES_BRONZE, "unique_key String", engine="ReplacingMergeTree")
     fresh_install.execute(
-        f"INSERT INTO `{ISSUETYPES_BRONZE[0]}`.`{ISSUETYPES_BRONZE[1]}` VALUES ('it-1', 'raw-1', now64(3), '{{}}', 1)"
+        "INSERT INTO {database:Identifier}.{table:Identifier} VALUES ('it-1', 'raw-1', now64(3), '{}', 1)",
+        {"database": ISSUETYPES_BRONZE[0], "table": ISSUETYPES_BRONZE[1]},
     )
 
     assert ISSUETYPES_MODEL not in unbuildable(fresh_install)
