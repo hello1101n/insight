@@ -86,7 +86,8 @@ def _create_copy(ch: ClickHouse, table: Table) -> None:
         ch.execute(ddl.add_tenant(rel, COPY, KEY_COLUMN if table.key else None))
 
 
-def _insert(table: Table) -> str:
+def _rows(table: Table) -> tuple[list[str], list[str]]:
+    """The copy's columns, and the expression over the original row (`src`) that fills each."""
     columns, expressions = [], []
     for name, _ in table.columns:
         if name in table.computed:
@@ -94,7 +95,7 @@ def _insert(table: Table) -> str:
         columns.append(table.renamed(name))
         if name == table.tenant:
             expressions.append(keys.TENANT)
-        elif name == table.key and table.tenant:
+        elif name == table.key and table.rekeys:
             expressions.append(keys.key_expression(table))
         elif name == table.comment_id:
             expressions.append(keys.comment_id_expression(table))
@@ -103,18 +104,34 @@ def _insert(table: Table) -> str:
     if table.adds:
         columns.append(table.target)
         expressions.append(keys.TENANT)
-    return ddl.insert(table.rel, COPY, columns, expressions)
+    return columns, expressions
 
 
-def _check(ch: ClickHouse, table: Table, tenant: str) -> None:
-    """The copy holds every row (every key, where merges may collapse rows), all under the tenant."""
+def _insert(table: Table) -> str:
+    return ddl.insert(table.rel, COPY, *_rows(table))
+
+
+def _sorting_key(ch: ClickHouse, rel: Relation, suffix: str) -> str:
+    rows = ch.rows(
+        "SELECT sorting_key FROM system.tables WHERE database = {database:String} AND name = {name:String}",
+        params={"database": rel.database, "name": rel.name + suffix},
+    )
+    return rows[0][0] if rows else ""
+
+
+def _check(ch: ClickHouse, table: Table, params: dict[str, str]) -> None:
+    """The copy holds every row, all under the tenant. A ReplacingMergeTree may collapse rows of one
+    sorting key at any time, on insert or in a merge, so there the copy holds every distinct sorting
+    key the rewritten original rows have."""
     rel = table.rel
-    if table.replacing and table.key and table.tenant:
-        expected = ch.scalar(
-            f"SELECT uniqExact({keys.key_expression(table)}) FROM {rel.sql()} AS src", params=keys.tenant_params(tenant)
-        )
-        actual = ch.scalar(f"SELECT uniqExact({quote(table.key)}) FROM {rel.sql(COPY)}")
-        what = "keys"
+    if table.replacing:
+        sorting_key = _sorting_key(ch, rel, COPY)
+        distinct = f"uniqExact(tuple({sorting_key}))" if sorting_key else "least(count(), 1)"
+        columns, expressions = _rows(table)
+        rewritten = ", ".join(f"{e} AS {quote(c)}" for c, e in zip(columns, expressions, strict=True))
+        expected = ch.scalar(f"SELECT {distinct} FROM (SELECT {rewritten} FROM {rel.sql()} AS src)", params=params)
+        actual = ch.scalar(f"SELECT {distinct} FROM {rel.sql(COPY)}")
+        what = "sorting keys"
     else:
         expected = ch.scalar(f"SELECT count() FROM {rel.sql()}")
         actual = ch.scalar(f"SELECT count() FROM {rel.sql(COPY)}")
@@ -125,13 +142,13 @@ def _check(ch: ClickHouse, table: Table, tenant: str) -> None:
         return
     foreign = ch.scalar(
         f"SELECT count() FROM {rel.sql(COPY)} WHERE ifNull(toString({quote(table.target)}), '') != {keys.TENANT}",
-        params=keys.tenant_params(tenant),
+        params=params,
     )
     if foreign:
         raise MigrationError(f"{rel}: the copy still holds {foreign} row(s) under another tenant")
 
 
-def migrate_table(ch: ClickHouse, table: Table, tenant: str, copies: list[Copy]) -> None:
+def migrate_table(ch: ClickHouse, table: Table, params: dict[str, str], copies: list[Copy]) -> None:
     """Copy, check, swap, then name the original a backup; the copy is in `copies` as soon as it exists."""
     rel = table.rel
     backup = backup_suffix(ch, rel)
@@ -142,8 +159,8 @@ def migrate_table(ch: ClickHouse, table: Table, tenant: str, copies: list[Copy])
         ch.execute(ddl.drop(rel, COPY))
         raise MigrationError(f"{rel}: the copy has no UUID — EXCHANGE needs an Atomic database")
     copies.append(Copy(rel, uuid, original, backup))
-    ch.execute(_insert(table), params=keys.tenant_params(tenant))
-    _check(ch, table, tenant)
+    ch.execute(_insert(table), params=params)
+    _check(ch, table, params)
     ch.execute(ddl.exchange(rel, COPY))
     if table_uuid(ch, rel) != uuid:
         raise MigrationError(f"{rel}: after the swap the live table is not the copy")
@@ -206,10 +223,11 @@ def apply(ch: ClickHouse, plans: list[TablePlan], tenant: str) -> list[str]:
     recover(ch, plans)
     copies: list[Copy] = []
     migrated: list[str] = []
+    params = keys.tenant_params(tenant, tuple(sorted({t for p in plans for t in p.tenants})))
     try:
         for plan in (p for p in plans if p.pending):
             print(f"migrating {plan.table.relation} ({plan.change}, {plan.rows} rows)", flush=True)
-            migrate_table(ch, plan.table, tenant, copies)
+            migrate_table(ch, plan.table, params, copies)
             migrated.append(plan.table.relation)
     except BaseException as error:
         with contextlib.suppress(Exception):

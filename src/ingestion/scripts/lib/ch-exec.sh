@@ -182,10 +182,10 @@ ch_column_type() {
   printf '%s' "${type}" | tr -d '\n'
 }
 
-# The name of a staging or silver relation's tenant column: `tenant_id` while
-# that old name still stands there (until the cutover's post-upgrade rebuild
-# replaces the relation), `insight_tenant_id` otherwise. Bronze and the history
-# relations need no lookup: the pre-upgrade tenant_migration renamed them.
+# The name of a relation's tenant column: `tenant_id` while only that old name
+# stands (a release before the tenant cutover), `insight_tenant_id` otherwise.
+# The deploy needs no lookup, as the pre-upgrade tenant_migration renamed every
+# table in scope; the upgrade sims read a base release's shape with it.
 # Fails when the lookup did not run.
 ch_tenant_column() {
   local old new

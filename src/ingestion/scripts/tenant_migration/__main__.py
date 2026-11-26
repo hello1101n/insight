@@ -6,12 +6,13 @@
 
 The tenant is INSIGHT_TENANT_ID (authenticator.oidc.defaultTenantId), a
 lowercase UUID; nothing else is read. Every MergeTree table in `bronze_*`,
-`config`, `ingestion_history`, `staging`, `silver` and `insight` (gold), and
-every history relation, that still names its tenant `tenant_id` or its source
-`source_id` (the ledger keeps both), holds a tenant other than the UUID, or (in
-silver, or a history relation) has no tenant at all, is copied into
-`<table>__tenant_copy` with each row's tenant and key prefix moved to the UUID,
-checked, and EXCHANGEd in; the original is then renamed `<table>__tenant_backup`.
+`config`, `staging`, `silver` and `insight` (gold), and every history relation,
+that still names its tenant `tenant_id` or its source `source_id`, holds a
+tenant other than the UUID, or (in silver, or a history relation) has no tenant
+at all, is copied into `<table>__tenant_copy` with each row's tenant and key
+prefix moved to the UUID, checked, and EXCHANGEd in; the original is then
+renamed `<table>__tenant_backup`. The sync ledger (`ingestion_history`) is not
+touched.
 A table already in that shape is skipped.
 
 `plan` reads only; with --exit-code it exits 1 while any table is pending.

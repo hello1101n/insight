@@ -388,7 +388,10 @@ real `*.yaml` siblings beside them, safe to commit.
    `INSIGHT_VERSION` and passes `--version $INSIGHT_VERSION` to every
    `helm` invocation.
 3. `make deploy` pulls the chart at the pinned version and runs `helm upgrade --install`.
-   Helm uses `--rollback-on-failure` unless `deploy.atomic` is `false`.
+   Helm uses `--rollback-on-failure` only when `deploy.atomic` is `true`: a rollback
+   during or after the tenant cutover leaves the previous release on migrated
+   tables (see [TENANT_IDENTITY_UPGRADE.md](../TENANT_IDENTITY_UPGRADE.md)).
+   `TIMEOUT` defaults to `3h`, which an upgrade that may cut over needs.
    Set `deploy.wait` to select a Helm wait strategy. The default is `watcher`.
 
 ### Automating the `.insight-version` bump
