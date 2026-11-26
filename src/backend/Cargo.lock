@@ -99,6 +99,7 @@ dependencies = [
  "futures-util",
  "hex",
  "insight-clickhouse",
+ "insight-external-sources",
  "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
@@ -3798,6 +3799,16 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "insight-external-sources"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "thiserror 2.0.21",
+ "url",
 ]
 
 [[package]]
