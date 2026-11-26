@@ -14,7 +14,7 @@
 
 SELECT
     {{ bronze_tenant() }}                           AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     -- Entity-level grain: bronze `unique_key` is already
     -- `{tenant}-{source}-{employee_id}`, so silver `class_people` (versionless
     -- RMT ORDER BY unique_key) collapses to one row per employee. Do NOT add a

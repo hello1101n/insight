@@ -11,7 +11,7 @@ SELECT
     {{ normalized_email('src.entity_id') }} AS entity_id,
     src.account_source_type,
     -- INVARIANT: every account column is a plain String in every evidence
-    -- relation. The class PR source_id is Nullable, and one family typing it
+    -- relation. The class PR insight_source_id is Nullable, and one family typing it
     -- differently fails the service's exact-column probe, blanking its metrics.
     coalesce(src.account_source_id, '') AS account_source_id,
     src.account_id,
@@ -37,13 +37,13 @@ WITH
 repository_default_branches AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         min(branch_name) AS branch_name
     FROM {{ ref('class_git_repository_branches') }} FINAL
     WHERE is_default = 1
-    GROUP BY insight_tenant_id, source_id, project_key, repo_slug
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug
 ),
 -- A commit's own line stats, less the lines of the file changes that lost the
 -- content dedup. The stats stay the base — a source can report a commit's
@@ -65,7 +65,7 @@ authored_commit_file_lines AS (
 authored_commits AS (
     SELECT
         commits.insight_tenant_id AS insight_tenant_id,
-        commits.source_id AS source_id,
+        commits.insight_source_id AS insight_source_id,
         commits.entity_id AS entity_id,
         commits.metric_date AS metric_date,
         commits.observed_at AS observed_at,
@@ -142,7 +142,7 @@ file_changes_source AS (
         file_changes.lines_removed AS lines_removed,
         commits.repository_value AS repository_value,
         commits.repository_label AS repository_label,
-        commits.source_id AS commit_source_id,
+        commits.insight_source_id AS commit_source_id,
         commits.source_value AS source_value,
         commits.commit_hash AS commit_hash,
         commits.message AS message,
@@ -160,7 +160,7 @@ file_changes_source AS (
                 tuple('change_type', change_type, change_type_label),
                 tuple('repository', repository_value, repository_label),
                 tuple('project', commits.project_value, commits.project_label),
-                tuple('source_id', coalesce(toString(commits.source_id), ''), coalesce(toString(commits.source_id), '')),
+                tuple('source_id', coalesce(toString(commits.insight_source_id), ''), coalesce(toString(commits.insight_source_id), '')),
                 tuple('source', commits.source_value, commits.source_label)
             ] AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS file_source_dimensions,
@@ -172,14 +172,14 @@ file_changes_source AS (
                 tuple('change_type', change_type, change_type_label),
                 tuple('repository', repository_value, repository_label),
                 tuple('project', commits.project_value, commits.project_label),
-                tuple('source_id', coalesce(toString(commits.source_id), ''), coalesce(toString(commits.source_id), '')),
+                tuple('source_id', coalesce(toString(commits.insight_source_id), ''), coalesce(toString(commits.insight_source_id), '')),
                 tuple('source', commits.source_value, commits.source_label)
             ] AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS category_source_dimensions
     FROM (
         SELECT
             insight_tenant_id,
-            source_id,
+            insight_source_id,
             project_key,
             repo_slug,
             commit_hash,
@@ -200,11 +200,11 @@ file_changes_source AS (
             sum(lines_added) AS lines_added,
             sum(lines_removed) AS lines_removed
         FROM {{ ref('git_deduplicated_file_changes') }} AS raw_file_change
-        GROUP BY insight_tenant_id, source_id, project_key, repo_slug, commit_hash, category, file_extension_value, file_extension_label, change_type_value, change_type_label
+        GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug, commit_hash, category, file_extension_value, file_extension_label, change_type_value, change_type_label
     ) AS file_changes
     INNER JOIN {{ ref('git_authored_commits') }} AS commits
         ON commits.insight_tenant_id = file_changes.insight_tenant_id
-        AND commits.source_id = file_changes.source_id
+        AND commits.insight_source_id = file_changes.insight_source_id
         AND commits.project_key = file_changes.project_key
         AND commits.repo_slug = file_changes.repo_slug
         AND commits.commit_hash = file_changes.commit_hash
@@ -225,7 +225,7 @@ unattributed_line_measures AS (
         insight_tenant_id,
         entity_id,
         metric_date,
-        source_id AS commit_source_id,
+        insight_source_id AS commit_source_id,
         source_value,
         commit_hash,
         message,
@@ -249,7 +249,7 @@ unattributed_line_measures AS (
                 tuple('change_type', '__unknown__', 'Unknown'),
                 tuple('repository', repository_value, repository_label),
                 tuple('project', project_value, project_label),
-                tuple('source_id', coalesce(toString(source_id), ''), coalesce(toString(source_id), '')),
+                tuple('source_id', coalesce(toString(insight_source_id), ''), coalesce(toString(insight_source_id), '')),
                 tuple('source', source_value, source_label)
             ] AS Array(Tuple(key String, value String, label Nullable(String)))
         ) AS dimensions
@@ -285,18 +285,18 @@ unattributed_line_measures AS (
 pr_commit_counts AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         pr_id,
         uniqExact(commit_hash) AS linked_commit_count
     FROM {{ ref('class_git_pull_requests_commits') }} FINAL
-    GROUP BY insight_tenant_id, source_id, project_key, repo_slug, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug, pr_id
 ),
 pull_request_review_summary AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         pr_id,
@@ -308,12 +308,12 @@ pull_request_review_summary AS (
         minIfOrNull(reviewed_at, reviewed_at IS NOT NULL) AS first_reviewed_at,
         maxIfOrNull(reviewed_at, approved = 1 AND reviewed_at IS NOT NULL) AS last_approved_at
     FROM {{ ref('class_git_pull_requests_reviewers') }} FINAL
-    GROUP BY insight_tenant_id, source_id, project_key, repo_slug, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug, pr_id
 ),
 pull_requests_source AS (
     SELECT
         prs.insight_tenant_id AS insight_tenant_id,
-        prs.source_id AS source_id,
+        prs.insight_source_id AS insight_source_id,
         prs.pr_id AS pr_id,
         prs.pr_number AS pr_number,
         prs.title AS title,
@@ -338,7 +338,7 @@ pull_requests_source AS (
             prs.data_source = 'insight_gitlab', 'gitlab',
             ''
         ) AS account_source_type,
-        prs.source_id AS account_source_id,
+        prs.insight_source_id AS account_source_id,
         prs.author_account_id AS account_id,
         prs.state AS state,
         prs.created_on AS created_on,
@@ -386,9 +386,9 @@ pull_requests_source AS (
             dateDiff('second', review_summary.last_approved_at, prs.closed_on_reported) / 3600.0,
             CAST(NULL AS Nullable(Float64))
         ) AS approval_to_merge_hours,
-        if(coalesce(prs.project_key, '') = '', '__unknown__', concat(coalesce(toString(prs.source_id), ''), ':', prs.project_key)) AS project_value,
+        if(coalesce(prs.project_key, '') = '', '__unknown__', concat(coalesce(toString(prs.insight_source_id), ''), ':', prs.project_key)) AS project_value,
         if(coalesce(prs.project_key, '') = '', 'Unknown', prs.project_key) AS project_label,
-        concat(coalesce(toString(prs.source_id), ''), ':', coalesce(prs.project_key, ''), '/', coalesce(prs.repo_slug, '')) AS repository_value,
+        concat(coalesce(toString(prs.insight_source_id), ''), ':', coalesce(prs.project_key, ''), '/', coalesce(prs.repo_slug, '')) AS repository_value,
         if(coalesce(prs.project_key, '') = '', coalesce(prs.repo_slug, ''), concat(prs.project_key, '/', prs.repo_slug)) AS repository_label,
         if(prs.destination_branch = '', '__unknown__', prs.destination_branch) AS destination_branch_value,
         if(prs.destination_branch = '', 'Unknown', prs.destination_branch) AS destination_branch_label,
@@ -411,7 +411,7 @@ pull_requests_source AS (
                 tuple('destination_branch', destination_branch_value, destination_branch_label),
                 tuple('repository', repository_value, repository_label),
                 tuple('project', project_value, project_label),
-                tuple('source_id', coalesce(toString(source_id), ''), coalesce(toString(source_id), '')),
+                tuple('source_id', coalesce(toString(insight_source_id), ''), coalesce(toString(insight_source_id), '')),
                 tuple('source', source_value, source_label)
             ]
             AS Array(Tuple(key String, value String, label Nullable(String)))
@@ -419,19 +419,19 @@ pull_requests_source AS (
     FROM {{ ref('class_git_pull_requests') }} AS prs FINAL
     LEFT JOIN pr_commit_counts
         ON pr_commit_counts.insight_tenant_id = prs.insight_tenant_id
-        AND pr_commit_counts.source_id = prs.source_id
+        AND pr_commit_counts.insight_source_id = prs.insight_source_id
         AND pr_commit_counts.project_key = prs.project_key
         AND pr_commit_counts.repo_slug = prs.repo_slug
         AND pr_commit_counts.pr_id = prs.pr_id
     LEFT JOIN pull_request_review_summary AS review_summary
         ON review_summary.insight_tenant_id = prs.insight_tenant_id
-        AND review_summary.source_id = prs.source_id
+        AND review_summary.insight_source_id = prs.insight_source_id
         AND review_summary.project_key = prs.project_key
         AND review_summary.repo_slug = prs.repo_slug
         AND review_summary.pr_id = prs.pr_id
     LEFT JOIN repository_default_branches AS defaults
         ON defaults.insight_tenant_id = prs.insight_tenant_id
-        AND defaults.source_id = prs.source_id
+        AND defaults.insight_source_id = prs.insight_source_id
         AND defaults.project_key = prs.project_key
         AND defaults.repo_slug = prs.repo_slug
 ),
@@ -442,7 +442,7 @@ pull_requests_source AS (
 pull_request_measures AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         pr_id,
         pr_number,
         title,
@@ -765,7 +765,7 @@ SELECT
         )
     ) AS dimensions,
     map(
-        'source_id', coalesce(toString(source_id), ''),
+        'source_id', coalesce(toString(insight_source_id), ''),
         'ref', commit_hash,
         'title', message,
         'repository', repository_label,
@@ -814,7 +814,7 @@ SELECT
     CAST(NULL AS Nullable(String)) AS subject_key,
     source_dimensions AS dimensions,
     map(
-        'source_id', coalesce(toString(source_id), ''),
+        'source_id', coalesce(toString(insight_source_id), ''),
         'ref', toString(pr_number),
         'title', title,
         'repository', repository_label,
@@ -855,7 +855,7 @@ SELECT
     CAST(NULL AS Nullable(String)) AS subject_key,
     source_dimensions AS dimensions,
     map(
-        'source_id', coalesce(toString(source_id), ''),
+        'source_id', coalesce(toString(insight_source_id), ''),
         'ref', toString(pr_number),
         'title', title,
         'repository', repository_label,

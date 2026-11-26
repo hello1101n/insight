@@ -14,7 +14,7 @@ WITH owners AS (
     {% for tbl in hubspot_bronze_tables('owners') %}
     SELECT
         {{ bronze_tenant() }}                           AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         id                                              AS owner_id,
         lower(trim(coalesce(email, '')))                AS email,
@@ -28,7 +28,7 @@ WITH owners AS (
 
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     owner_id,
     email,

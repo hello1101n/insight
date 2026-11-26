@@ -14,18 +14,18 @@ WITH bronze AS (
     FROM {{ source('bronze_allure', 'defect_test_results') }} AS b FINAL
     {% if is_incremental() %}
     LEFT JOIN (
-        SELECT insight_tenant_id, source_id, max(_airbyte_extracted_at) AS watermark
+        SELECT insight_tenant_id, insight_source_id, max(_airbyte_extracted_at) AS watermark
         FROM {{ this }}
-        GROUP BY insight_tenant_id, source_id
+        GROUP BY insight_tenant_id, insight_source_id
     ) AS w
-        ON w.insight_tenant_id = {{ bronze_tenant('b.insight_tenant_id') }} AND w.source_id = b.source_id
+        ON w.insight_tenant_id = {{ bronze_tenant('b.insight_tenant_id') }} AND w.insight_source_id = b.insight_source_id
     WHERE b._airbyte_extracted_at > coalesce(w.watermark, toDateTime64(0, 3))
     {% endif %}
 )
 
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     toInt64(COALESCE(defect_id, 0)) AS defect_id,
     toInt64(COALESCE(project_id, 0)) AS project_id,

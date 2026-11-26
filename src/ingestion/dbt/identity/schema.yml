@@ -49,7 +49,7 @@ models:
   - name: account_assignment
     description: >
       Current binding of every source account to a canonical person: one row
-      per (insight_tenant_id, source_type, source_id, account_id), from the newest
+      per (insight_tenant_id, source_type, insight_source_id, account_id), from the newest
       `value_type='id'` observation in the identity journal. A view, so an
       operator correction is visible as soon as the persons-sync publishes it.
       Carries `created_at` and the whole account triple so effective-dated
@@ -63,7 +63,7 @@ models:
         description: "Source family the account belongs to (e.g. github, jira)"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Source instance UUID (journal-side tenant/source identity)"
         tests:
           - not_null

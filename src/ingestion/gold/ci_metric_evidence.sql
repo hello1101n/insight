@@ -20,7 +20,7 @@ WITH known_commits AS (
 runs AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         repo_full_name,
         pipeline_key,
         pipeline_name,
@@ -46,13 +46,13 @@ runs AS (
     WHERE outcome != ''
       AND started_at IS NOT NULL
     ORDER BY attempt DESC
-    LIMIT 1 BY insight_tenant_id, source_id, repo_full_name, run_id
+    LIMIT 1 BY insight_tenant_id, insight_source_id, repo_full_name, run_id
 ),
 
 run_rows AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         metric_date,
         repo_full_name,
         pipeline_key,
@@ -89,13 +89,13 @@ run_rows AS (
 deployment_outcomes AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         deployment_id,
         -- The vendor status id breaks created_at ties: two events in one
         -- second would otherwise pick a nondeterministic outcome.
         argMax(state, (created_at, event_id)) AS state
     FROM {{ ref('class_git_deployment_events') }} FINAL
-    GROUP BY insight_tenant_id, source_id, deployment_id
+    GROUP BY insight_tenant_id, insight_source_id, deployment_id
 ),
 
 -- Outcome = the latest status event; a deployment with no event yet is
@@ -103,7 +103,7 @@ deployment_outcomes AS (
 deployment_rows AS (
     SELECT
         d.insight_tenant_id AS insight_tenant_id,
-        d.source_id AS source_id,
+        d.insight_source_id AS insight_source_id,
         toDate(d.created_at) AS metric_date,
         d.repo_full_name AS repo_full_name,
         d.deployment_id AS deployment_id,
@@ -132,7 +132,7 @@ deployment_rows AS (
     FROM (
         SELECT
             insight_tenant_id,
-            source_id,
+            insight_source_id,
             repo_full_name,
             deployment_id,
             environment,
@@ -144,7 +144,7 @@ deployment_rows AS (
     ) AS d
     LEFT JOIN deployment_outcomes AS o
         ON d.insight_tenant_id = o.insight_tenant_id
-       AND d.source_id = o.source_id
+       AND d.insight_source_id = o.insight_source_id
        AND d.deployment_id = o.deployment_id
 )
 
@@ -160,9 +160,9 @@ SELECT
     assumeNotNull(metric_date) AS metric_date,
     toNullable(toDateTime64(started_at, 3)) AS observed_at,
     measure.1 AS measure_key,
-    -- source_id leads the id: two source instances can cover the same
+    -- insight_source_id leads the id: two source instances can cover the same
     -- repository, and record_id must stay unique for stable drilldown order.
-    concat(coalesce(source_id, ''), ':', repo_full_name, ':', toString(run_id), ':', measure.1) AS record_id,
+    concat(coalesce(insight_source_id, ''), ':', repo_full_name, ':', toString(run_id), ':', measure.1) AS record_id,
     'ci_run' AS record_kind,
     'event' AS granularity,
     concat(pipeline_name, ' #', toString(run_number)) AS record_label,
@@ -208,7 +208,7 @@ SELECT
     assumeNotNull(metric_date) AS metric_date,
     CAST(NULL AS Nullable(DateTime64(3))) AS observed_at,
     'deployments' AS measure_key,
-    concat(coalesce(source_id, ''), ':', repo_full_name, ':', deployment_id, ':deployments') AS record_id,
+    concat(coalesce(insight_source_id, ''), ':', repo_full_name, ':', deployment_id, ':deployments') AS record_id,
     'deployment' AS record_kind,
     'event' AS granularity,
     concat(environment, ' · ', outcome) AS record_label,
@@ -245,7 +245,7 @@ SELECT
     assumeNotNull(toDate(commit_date)) AS metric_date,
     toNullable(toDateTime64(commit_date, 3)) AS observed_at,
     'commits_observed' AS measure_key,
-    concat(coalesce(source_id, ''), ':', project_key, '/', repo_slug, ':', commit_hash, ':commits_observed') AS record_id,
+    concat(coalesce(insight_source_id, ''), ':', project_key, '/', repo_slug, ':', commit_hash, ':commits_observed') AS record_id,
     'commit' AS record_kind,
     'event' AS granularity,
     concat(project_key, '/', repo_slug, ' ', substring(commit_hash, 1, 10)) AS record_label,
@@ -258,7 +258,7 @@ SELECT
 FROM (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_hash,

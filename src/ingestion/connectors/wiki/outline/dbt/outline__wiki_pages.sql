@@ -29,7 +29,7 @@
 WITH pages AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         page_id,
         -- Outline connector.yaml emits '' when a field is absent from the
@@ -56,7 +56,7 @@ WITH pages AS (
 spaces AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         space_id,
         name                                                                AS space_name,
         url                                                                 AS space_url
@@ -67,7 +67,7 @@ spaces AS (
 users AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         user_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_outline', 'wiki_users') }}
@@ -81,7 +81,7 @@ users AS (
 -- consumers and `not_null`/`unique` tests.
 SELECT
     p.insight_tenant_id                                                             AS insight_tenant_id,
-    p.source_id                                                             AS source_id,
+    p.insight_source_id                                                             AS insight_source_id,
     p.unique_key                                                            AS unique_key,
     p.page_id                                                               AS page_id,
     p.space_id                                                              AS space_id,
@@ -104,13 +104,13 @@ SELECT
 FROM pages p
 LEFT JOIN spaces s
     ON p.insight_tenant_id = s.insight_tenant_id
-   AND p.source_id = s.source_id
+   AND p.insight_source_id = s.insight_source_id
    AND p.space_id  = s.space_id
 LEFT JOIN users ua
     ON p.insight_tenant_id = ua.insight_tenant_id
-   AND p.source_id = ua.source_id
+   AND p.insight_source_id = ua.insight_source_id
    AND p.author_id = ua.user_id
 LEFT JOIN users ue
     ON p.insight_tenant_id      = ue.insight_tenant_id
-   AND p.source_id      = ue.source_id
+   AND p.insight_source_id      = ue.insight_source_id
    AND p.last_editor_id = ue.user_id

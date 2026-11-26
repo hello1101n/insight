@@ -12,11 +12,11 @@
 WITH account_email AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         account_id,
         argMin(email, (observed_at, email)) AS email
     FROM {{ ref('bitbucket_cloud__account_emails') }}
-    GROUP BY insight_tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, insight_source_id, account_id
 ),
 
 events AS (
@@ -26,7 +26,7 @@ events AS (
     -- stay out.
     SELECT
         {{ bronze_tenant('a.insight_tenant_id') }} AS insight_tenant_id,
-        a.source_id AS source_id,
+        a.insight_source_id AS insight_source_id,
         a.unique_key AS unique_key,
         splitByChar('/', COALESCE(a.repo_full_name, ''))[1] AS project_key,
         splitByChar('/', COALESCE(a.repo_full_name, ''))[2] AS repo_slug,
@@ -46,7 +46,7 @@ events AS (
 
     SELECT
         {{ bronze_tenant('c.insight_tenant_id') }} AS insight_tenant_id,
-        c.source_id AS source_id,
+        c.insight_source_id AS insight_source_id,
         c.unique_key AS unique_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[2] AS repo_slug,
@@ -64,7 +64,7 @@ events AS (
 
 SELECT
     e.insight_tenant_id AS insight_tenant_id,
-    e.source_id AS source_id,
+    e.insight_source_id AS insight_source_id,
     e.unique_key AS unique_key,
     e.project_key AS project_key,
     e.repo_slug AS repo_slug,
@@ -86,8 +86,8 @@ FROM events AS e
 -- bronze row is re-extracted.
 LEFT JOIN account_email AS ae
     ON ae.insight_tenant_id = e.insight_tenant_id
-    AND ae.source_id = e.source_id
+    AND ae.insight_source_id = e.insight_source_id
     AND ae.account_id = e.actor_account_id
 {% if is_incremental() %}
-WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.source_id']) }}
+WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.insight_source_id']) }}
 {% endif %}

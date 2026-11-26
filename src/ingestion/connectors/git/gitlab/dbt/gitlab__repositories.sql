@@ -12,7 +12,7 @@
 -- how every other GitLab model names the project.
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     COALESCE(namespace_full_path, '') AS project_key,
     COALESCE(path, '') AS repo_slug,

@@ -21,7 +21,7 @@
 
 SELECT
     {{ bronze_tenant('f.insight_tenant_id') }}                           AS insight_tenant_id,
-    CAST(f.source_id AS String)           AS insight_source_id,
+    CAST(f.insight_source_id AS String)           AS insight_source_id,
     CAST('jira' AS String)                AS data_source,
     COALESCE(f.field_id, '')              AS field_id,
     COALESCE(f.name, '')                  AS field_name,

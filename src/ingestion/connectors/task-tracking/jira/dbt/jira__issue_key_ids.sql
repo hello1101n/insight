@@ -30,7 +30,7 @@ WITH issue_rows AS (
     -- Every row, not the newest: bronze keeps one per key the connector saw.
     SELECT
         {{ bronze_tenant() }}                                         AS insight_tenant_id,
-        CAST(source_id AS String)                                     AS insight_source_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(1)                                                    AS precedence
@@ -40,7 +40,7 @@ WITH issue_rows AS (
 
     SELECT
         {{ bronze_tenant() }}                                         AS insight_tenant_id,
-        CAST(source_id AS String)                                     AS insight_source_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(1)                                                    AS precedence
@@ -53,7 +53,7 @@ WITH issue_rows AS (
     -- update, so a key outside the sync window still resolves.
     SELECT
         {{ bronze_tenant() }}                                         AS insight_tenant_id,
-        CAST(source_id AS String)                                     AS insight_source_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(2)                                                    AS precedence
@@ -79,7 +79,7 @@ moves AS (
     FROM (
         SELECT
             {{ bronze_tenant() }}                                     AS insight_tenant_id,
-            CAST(source_id AS String)                                 AS insight_source_id,
+            CAST(insight_source_id AS String)                                 AS insight_source_id,
             COALESCE(toString(jira_id), '')                           AS issue_id,
             arrayJoin(JSONExtractArrayRaw(COALESCE(items, '[]')))     AS item
         FROM {{ source('bronze_jira', 'jira_issue_history') }}

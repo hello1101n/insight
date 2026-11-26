@@ -13,7 +13,7 @@
 -- the latest event per deployment_id (argMax on created_at, event_id).
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     COALESCE(repo_path, '') AS repo_full_name,
     toString(COALESCE(id, 0)) AS deployment_id,

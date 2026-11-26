@@ -18,7 +18,7 @@
 
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     jira_id,
     availability
 FROM staging.jira__issue_availability_state FINAL

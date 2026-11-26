@@ -49,7 +49,7 @@
 WITH versions AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         page_id,
         author_id,
         toUInt32(coalesce(version_number, 0))                                AS version_number,
@@ -70,7 +70,7 @@ versions_with_gap AS (
         dateDiff(
             'second',
             lagInFrame(created_at_ts) OVER (
-                PARTITION BY insight_tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ),
             created_at_ts
@@ -88,7 +88,7 @@ versions_with_session AS (
         *,
         sum(CASE WHEN gap_seconds IS NULL OR gap_seconds > {{ session_gap_seconds }} THEN 1 ELSE 0 END)
             OVER (
-                PARTITION BY insight_tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ) AS session_id
     FROM versions_with_gap
@@ -97,7 +97,7 @@ versions_with_session AS (
 agg AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         author_id,
         day,
         -- uniqExact (not uniq): uniq is HyperLogLog and can miscount by a
@@ -116,7 +116,7 @@ agg AS (
         max(extracted_at)                                                   AS extracted_at_max
     FROM versions_with_session
     WHERE day IS NOT NULL
-    GROUP BY insight_tenant_id, source_id, author_id, day
+    GROUP BY insight_tenant_id, insight_source_id, author_id, day
 )
 
 {%- if jira_user %}
@@ -133,10 +133,10 @@ agg AS (
 
 SELECT
     a.insight_tenant_id,
-    a.source_id,
+    a.insight_source_id,
     CAST(concat(
         a.insight_tenant_id, '-',
-        coalesce(a.source_id, ''), '-',
+        coalesce(a.insight_source_id, ''), '-',
         a.author_id, '-',
         toString(a.day)
     ) AS String)                                                            AS unique_key,

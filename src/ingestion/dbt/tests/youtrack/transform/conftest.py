@@ -80,7 +80,7 @@ class Warehouse:
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
             "insight_tenant_id": TENANT,
-            "source_id": SOURCE,
+            "insight_source_id": SOURCE,
             **row,
         }
         self.client.insert("bronze_youtrack." + table, [list(values.values())], column_names=list(values))

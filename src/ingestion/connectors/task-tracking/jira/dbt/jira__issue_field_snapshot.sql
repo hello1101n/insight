@@ -53,7 +53,7 @@
 WITH unpivoted AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}                    AS insight_tenant_id,
-        CAST(i.source_id AS String)                                   AS insight_source_id,
+        CAST(i.insight_source_id AS String)                                   AS insight_source_id,
         CAST(i.jira_id AS String)                                     AS issue_id,
         COALESCE(toString(i.id_readable), '')                         AS id_readable,
         COALESCE(parseDateTime64BestEffortOrNull(i.created, 3),
@@ -63,12 +63,12 @@ WITH unpivoted AS (
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
-    -- within a tenant's source, (insight_tenant_id, source_id, jira_id): unmerged parts
+    -- within a tenant's source, (insight_tenant_id, insight_source_id, jira_id): unmerged parts
     -- hold several rows per issue, and `unique_key` exists for the merge alone.
     WHERE i._airbyte_raw_id IN (
         SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
         FROM {{ source('bronze_jira', 'jira_issue') }}
-        GROUP BY insight_tenant_id, source_id, jira_id
+        GROUP BY insight_tenant_id, insight_source_id, jira_id
     )
 ),
 

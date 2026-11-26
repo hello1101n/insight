@@ -30,7 +30,7 @@ WITH
 pages AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         page_id,
         lower(author_email) AS entity_id
     FROM {{ ref('class_wiki_pages') }} FINAL
@@ -39,7 +39,7 @@ pages AS (
 page_creations AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         page_id,
         title,
         lower(author_email) AS entity_id,
@@ -73,7 +73,7 @@ engagement AS (
     FROM (
         SELECT
             insight_tenant_id,
-            source_id,
+            insight_source_id,
             page_id,
             day,
             total_comments
@@ -82,7 +82,7 @@ engagement AS (
     ) AS e
     INNER JOIN pages AS p
         ON e.insight_tenant_id = p.insight_tenant_id
-       AND e.source_id = p.source_id
+       AND e.insight_source_id = p.insight_source_id
        AND e.page_id = p.page_id
 ),
 value_measures AS (
@@ -132,7 +132,7 @@ SELECT
     assumeNotNull(metric_date) AS metric_date,
     toNullable(toDateTime64(observed_at, 3)) AS observed_at,
     'pages_created' AS measure_key,
-    concat(coalesce(toString(source_id), ''), ':', assumeNotNull(page_id), ':pages_created') AS record_id,
+    concat(coalesce(toString(insight_source_id), ''), ':', assumeNotNull(page_id), ':pages_created') AS record_id,
     'page' AS record_kind,
     'event' AS granularity,
     if(coalesce(title, '') = '', assumeNotNull(page_id), assumeNotNull(title)) AS record_label,

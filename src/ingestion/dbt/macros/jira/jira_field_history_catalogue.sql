@@ -149,7 +149,7 @@
             sources is absent from their union. -#}
         DELETE FROM {{ this }}
         WHERE (insight_tenant_id, insight_source_id, issue_id) NOT IN (
-                  SELECT {{ bronze_tenant() }}, CAST(source_id AS String), CAST(jira_id AS String)
+                  SELECT {{ bronze_tenant() }}, CAST(insight_source_id AS String), CAST(jira_id AS String)
                   FROM {{ source('bronze_jira', 'jira_issue') }}
               )
           AND (insight_tenant_id, insight_source_id, issue_id) NOT IN (

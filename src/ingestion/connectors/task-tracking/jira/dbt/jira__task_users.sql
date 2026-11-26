@@ -12,7 +12,7 @@
 SELECT
     u.unique_key                                AS unique_key,
     {{ bronze_tenant('u.insight_tenant_id') }}                                 AS insight_tenant_id,
-    u.source_id                                 AS insight_source_id,
+    u.insight_source_id                                 AS insight_source_id,
     CAST('jira' AS String)                      AS data_source,
     u.account_id                                AS user_id,
     u.email                                     AS email,

@@ -23,11 +23,11 @@ SELECT
 FROM silver.class_task_field_history fh FINAL
 -- INVARIANT: `matched` marks a joined row under either join_use_nulls setting.
 LEFT JOIN (
-    SELECT insight_tenant_id, source_id, toString(jira_id) AS jira_id, 1 AS matched
+    SELECT insight_tenant_id, insight_source_id, toString(jira_id) AS jira_id, 1 AS matched
     FROM {{ source('bronze_jira', 'jira_issue') }}
 ) i
     ON fh.insight_tenant_id         = i.insight_tenant_id
-   AND fh.insight_source_id = i.source_id
+   AND fh.insight_source_id = i.insight_source_id
    AND fh.issue_id          = i.jira_id
 WHERE fh.data_source = 'jira'
   AND fh.event_kind  = 'synthetic_initial'

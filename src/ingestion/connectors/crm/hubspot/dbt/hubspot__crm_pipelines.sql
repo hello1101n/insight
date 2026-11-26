@@ -17,8 +17,8 @@ WITH polls AS (
 src AS (
     SELECT
         insight_tenant_id,
-        source_id,
-        concat(insight_tenant_id, '-', source_id, '-', object_type, '-', pipeline_id) AS unique_key,
+        insight_source_id,
+        concat(insight_tenant_id, '-', insight_source_id, '-', object_type, '-', pipeline_id) AS unique_key,
         pipeline_id,
         object_type,
         label,

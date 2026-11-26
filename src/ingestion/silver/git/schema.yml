@@ -96,7 +96,7 @@ models:
         description: >
           First-attempt creation time. On a retry, started_at moves to the
           last attempt while this stays put — duration must never mix the two.
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the run belongs to, vendor-native full name"
@@ -144,7 +144,7 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the deployment belongs to"
@@ -186,7 +186,7 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the deployment belongs to"
@@ -387,7 +387,7 @@ models:
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "The connector instance the event was collected through"
       - name: project_key
         description: "Repository owner or Bitbucket workspace"

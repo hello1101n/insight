@@ -42,7 +42,7 @@
 WITH observations AS (
     SELECT
         {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'github' AS insight_source_type,
         account_id AS source_account_id,
         'email' AS value_type,
@@ -64,7 +64,7 @@ WITH observations AS (
     -- and a value to search on.
     SELECT
         {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'github-commit-email' AS insight_source_type,
         email AS source_account_id,
         'email' AS value_type,
@@ -81,7 +81,7 @@ WITH observations AS (
     -- person it mints from this.
     SELECT
         {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'github-commit-email' AS insight_source_type,
         email AS source_account_id,
         'display_name' AS value_type,

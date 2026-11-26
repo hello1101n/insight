@@ -35,7 +35,7 @@ WITH key_ids AS (
 epic_link_fields AS (
     SELECT DISTINCT
         {{ bronze_tenant() }}                                         AS insight_tenant_id,
-        CAST(source_id AS String)                                     AS insight_source_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         field_id
     FROM {{ source('bronze_jira', 'jira_fields') }} FINAL
     WHERE schema_custom = 'com.pyxis.greenhopper.jira:gh-epic-link'

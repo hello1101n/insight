@@ -72,7 +72,7 @@ SELECT DISTINCT
     'unparseable_last_activity' AS problem,
     '{{ stream }}' AS feeder,
     ifNull(insight_tenant_id, '') AS insight_tenant_id,
-    ifNull(source_id, '') AS insight_source_id,
+    ifNull(insight_source_id, '') AS insight_source_id,
     toDate(reportRefreshDate) AS date
 FROM {{ source('bronze_m365', stream) }} FINAL
 WHERE ifNull(lastActivityDate, '') != ''

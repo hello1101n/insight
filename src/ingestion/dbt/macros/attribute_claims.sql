@@ -40,7 +40,7 @@ WITH versioned AS (
     SELECT
         unique_key,
         {{ bronze_tenant() }}                            AS insight_tenant_id,
-        coalesce(source_id, '')                          AS insight_source_id,
+        coalesce(insight_source_id, '')                          AS insight_source_id,
         coalesce(toString({{ entity_id_col }}), '')      AS source_account_id,
         toDateTime64(_tracked_at, 3)                     AS observed_at,
         _airbyte_extracted_at                            AS ingested_at,

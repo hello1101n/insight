@@ -22,7 +22,7 @@ SELECT
 FROM silver.class_task_worklogs AS w FINAL
 INNER JOIN bronze_jira.jira_worklog_deleted AS t FINAL
     ON t.insight_tenant_id = w.insight_tenant_id
-    AND t.source_id = w.insight_source_id
+    AND t.insight_source_id = w.insight_source_id
     AND toString(toInt64(t.worklog_id)) = w.worklog_id
 WHERE w.data_source = 'jira'
   AND ifNull(w.is_deleted, 0) = 0

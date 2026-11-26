@@ -50,7 +50,7 @@ def leaderboard(warehouse: Client, tenant: str | None, source: str, user: str, d
             "_airbyte_raw_id",
             "_airbyte_extracted_at",
             "insight_tenant_id",
-            "source_id",
+            "insight_source_id",
             "unique_key",
             "date",
             "email",
@@ -79,7 +79,7 @@ def sessions(warehouse: Client, tenant: str, source: str, user: str, day: str, c
             "_airbyte_raw_id",
             "_airbyte_extracted_at",
             "insight_tenant_id",
-            "source_id",
+            "insight_source_id",
             "unique_key",
             "date",
             "user_id",
@@ -107,7 +107,7 @@ def days(warehouse: Client, tenant: str, source: str) -> list[str]:
         row[0]
         for row in warehouse.query(
             f"SELECT toString(day) FROM {CREDITS} FINAL "
-            "WHERE insight_tenant_id = {tenant:String} AND source_id = {source:String} ORDER BY day",
+            "WHERE insight_tenant_id = {tenant:String} AND insight_source_id = {source:String} ORDER BY day",
             parameters={"tenant": tenant, "source": source},
         ).result_rows
     ]
@@ -158,7 +158,7 @@ def test_reconciliation_keeps_the_tenant_of_a_one_sided_row(warehouse: Client) -
     leaderboard(warehouse, tenant, source, dave, "not-a-date", 2)
     build("chatgpt_team__codex_reconciliation")
     rows = warehouse.query(
-        "SELECT user_id, seen_in, insight_tenant_id, source_id FROM staging.chatgpt_team__codex_reconciliation "
+        "SELECT user_id, seen_in, insight_tenant_id, insight_source_id FROM staging.chatgpt_team__codex_reconciliation "
         "WHERE user_id IN {users:Array(String)} ORDER BY user_id",
         parameters={"users": [alice, bob, carol, dave]},
     ).result_rows
@@ -188,7 +188,7 @@ def test_a_bronze_row_without_a_valid_tenant_fails_the_build(warehouse: Client, 
         assert "is NULL, empty or not a UUID" in result.stdout
     finally:
         warehouse.command(
-            "ALTER TABLE bronze_chatgpt_team.chatgpt_team_codex_user_daily DELETE WHERE source_id = {marker:String}"
+            "ALTER TABLE bronze_chatgpt_team.chatgpt_team_codex_user_daily DELETE WHERE insight_source_id = {marker:String}"
             " SETTINGS mutations_sync = 2",
             parameters={"marker": marker},
         )

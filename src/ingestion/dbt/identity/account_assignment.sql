@@ -19,7 +19,7 @@
 SELECT
     toString(insight_tenant_id)          AS insight_tenant_id,
     insight_source_type                  AS source_type,
-    insight_source_id                    AS source_id,
+    insight_source_id,
     lower(trimBoth(assumeNotNull(value_effective))) AS account_id,
     person_id,
     created_at
@@ -30,8 +30,8 @@ WHERE value_type = 'id'
 ORDER BY
     insight_tenant_id,
     source_type,
-    source_id,
+    insight_source_id,
     account_id,
     created_at DESC,
     id DESC
-LIMIT 1 BY insight_tenant_id, source_type, source_id, account_id
+LIMIT 1 BY insight_tenant_id, source_type, insight_source_id, account_id
