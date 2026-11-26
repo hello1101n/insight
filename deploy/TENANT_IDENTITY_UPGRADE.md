@@ -49,8 +49,8 @@ this does not arise.
      seconds (`make deploy` sets it from `TIMEOUT`). The pre-upgrade hook may
      migrate for up to 2h50m; an upgrade whose value is below 10800 fails to
      render.
-   - **without `--rollback-on-failure`** (in `make deploy`, `deploy.atomic:
-     false` in the inventory). A rollback while the hook migrates, or after a
+   - **without `--rollback-on-failure`** (`make deploy` passes it only when
+     the inventory sets `deploy.atomic: true`; leave that unset). A rollback while the hook migrates, or after a
      post-upgrade hook fails, puts the previous release's code on the
      migrated tables, whose columns it does not know.
 

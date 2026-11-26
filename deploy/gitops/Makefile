@@ -101,8 +101,8 @@ LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
 VALUES           ?= environments/$(ENV)/values.yaml
 # Covers rollout waits plus the post-upgrade clickhouse-migrate hook, whose
-# heals can mutate large relations — give it room before --rollback-on-failure rolls back.
-# An upgrade that can cut the tenant over needs at least 3h, and no
+# heals can mutate large relations. Helm returns as soon as the release is ready,
+# so a long timeout costs only a failing deploy its wait. An upgrade that can cut the tenant over needs at least 3h, and no
 # --rollback-on-failure (deploy/TENANT_IDENTITY_UPGRADE.md): the chart is told
 # the timeout and refuses to render an upgrade below it.
 TIMEOUT          ?= 3h
@@ -126,8 +126,10 @@ CRED_MODE        := $(shell yq -r '.credentials.deploymentMode' $(VALUES) 2>/dev
 
 HELM_NS_FLAG     := $(if $(filter false,$(CREATE_NS)),,--create-namespace)
 # `--rollback-on-failure` rolls back to the PREVIOUS chart and deletes the pods holding the
-# failure's evidence — a downgrade here. `deploy.atomic: false` turns it off.
-HELM_ROLLBACK_FLAG := $(if $(filter false,$(ATOMIC)),,--rollback-on-failure)
+# failure's evidence — a downgrade here. It is off unless `deploy.atomic: true`:
+# a rollback during or after the tenant cutover's migration puts the previous
+# release on tables it cannot read (deploy/TENANT_IDENTITY_UPGRADE.md).
+HELM_ROLLBACK_FLAG := $(if $(filter true,$(ATOMIC)),--rollback-on-failure,)
 HELM_WAIT_FLAG     := $(if $(DEPLOY_WAIT),--wait=$(DEPLOY_WAIT),--wait)
 
 # Extra flags appended to helm invocations. Default empty.
