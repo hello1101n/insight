@@ -80,7 +80,7 @@ fn compile(request: &ValidatedMetricResultsRequest) -> Option<CompiledQuery> {
          INNER JOIN identity.account_assignment AS binding
              ON binding.insight_tenant_id = a.insight_tenant_id
             AND binding.source_type = a.account_source_type
-            AND binding.source_id = {source_id}
+            AND binding.insight_source_id = {source_id}
             AND binding.account_id = {account_id}
          WHERE toString(binding.person_id) IN splitByChar(',', ?)
            AND a.start_date <= toDate(?) AND a.end_date >= toDate(?)
@@ -137,9 +137,9 @@ mod tests {
             "CREATE DATABASE IF NOT EXISTS identity",
             "CREATE DATABASE IF NOT EXISTS silver",
             "CREATE TABLE IF NOT EXISTS identity.account_assignment
-             (insight_tenant_id String, source_type String, source_id UUID, account_id String,
+             (insight_tenant_id String, source_type String, insight_source_id UUID, account_id String,
               person_id UUID, created_at DateTime64(6))
-             ENGINE = MergeTree ORDER BY (source_type, source_id, account_id)",
+             ENGINE = MergeTree ORDER BY (source_type, insight_source_id, account_id)",
             ABSENCE_TABLE,
         ] {
             client.query(statement).execute().await?;
@@ -247,7 +247,7 @@ mod tests {
         client
             .query(
                 "INSERT INTO identity.account_assignment
-             (insight_tenant_id, source_type, source_id, account_id, person_id, created_at)
+             (insight_tenant_id, source_type, insight_source_id, account_id, person_id, created_at)
              SELECT ?, 'bamboohr', toUUID(UUIDNumToString(sipHash128(?))),
                     'account-example', toUUID(?), now64(6)",
             )
