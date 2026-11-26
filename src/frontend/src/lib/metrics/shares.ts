@@ -1,5 +1,5 @@
 import type { MetricFormat } from "@/api/metric-results-client";
-import { roundMetricValue } from "@/lib/format";
+import { displayStepsPerUnit } from "@/lib/format";
 
 export function percentShareLabels(values: number[]): string[] {
   const total = values.reduce((sum, value) => sum + value, 0);
@@ -28,13 +28,14 @@ export function displayedParts(
   parts: number[],
   total: number,
   fmt: MetricFormat,
+  unit?: string | null,
 ): number[] {
   const partsSum = parts.reduce((sum, value) => sum + value, 0);
   const additive = Math.abs(partsSum - total) <= 1e-6 * Math.max(1, Math.abs(total));
   if (!additive || !(partsSum > 0)) return parts;
 
-  const scale = fmt === "decimal" ? 10 : 1;
-  const units = Math.round(roundMetricValue(total, fmt) * scale);
+  const scale = displayStepsPerUnit(total, fmt, unit);
+  const units = Math.round(total * scale);
   return largestRemainder(parts, partsSum, units).map((value) => value / scale);
 }
 
