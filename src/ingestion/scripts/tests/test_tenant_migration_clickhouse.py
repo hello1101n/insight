@@ -218,7 +218,10 @@ def test_the_tenant_column_is_renamed_in_a_sorting_key_too(warehouse: ClickHouse
         "CREATE TABLE bronze_example.keyed (tenant_id Nullable(String), source_id Nullable(String), "
         "unique_key String) ENGINE = MergeTree ORDER BY (tenant_id, unique_key) SETTINGS allow_nullable_key = 1"
     )
-    warehouse.execute(f"INSERT INTO bronze_example.keyed VALUES ('{NEW}', 'main', '{NEW}-main-1')")
+    warehouse.execute(
+        "INSERT INTO bronze_example.keyed SELECT {tenant:String}, 'main', {key:String}",
+        params={"tenant": NEW, "key": f"{NEW}-main-1"},
+    )
 
     _apply(warehouse)
 

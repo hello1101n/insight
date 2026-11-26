@@ -55,12 +55,17 @@ class ClickHouse:
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
             raise ClickHouseError(f"ClickHouse unreachable at {self.url}: {error}") from error
 
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
-        """Run one statement; `fmt` names the output format without touching the SQL."""
-        params = {"query_id": f"{self.run_id}-{next(self._counter)}"}
+    def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
+        """Run one statement; `fmt` names the output format without touching the SQL.
+
+        `params` binds each `{name:Type}` placeholder in `sql` server-side, sent as `param_<name>`.
+        """
+        query = {"query_id": f"{self.run_id}-{next(self._counter)}"}
         if fmt:
-            params["default_format"] = fmt
-        with self._request(sql.encode("utf-8"), params=params) as response:
+            query["default_format"] = fmt
+        for name, value in (params or {}).items():
+            query[f"param_{name}"] = value
+        with self._request(sql.encode("utf-8"), params=query) as response:
             return response.read().decode("utf-8")
 
     def rows(self, sql: str) -> list[list[str]]:
@@ -76,4 +81,6 @@ class ClickHouse:
 
     def cancel_running(self) -> None:
         """Stop a statement this run left running server-side, e.g. a copy cut off by SIGTERM."""
-        self.execute(f"KILL QUERY WHERE startsWith(query_id, '{self.run_id}-') SYNC")
+        self.execute(
+            "KILL QUERY WHERE startsWith(query_id, {prefix:String}) SYNC", params={"prefix": f"{self.run_id}-"}
+        )
