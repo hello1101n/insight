@@ -182,7 +182,8 @@
   side table (no inline comments, no group members yet) is ordinary data, and
   leaving the model out would drop the rows the other tables hold. So is one
   already built whose bronze has since emptied: it is rebuilt to match, rather
-  than left holding rows its bronze no longer has.
+  than left holding rows its bronze no longer has. With the var
+  `skip_empty_bronze` set to 'false', empty bronze never leaves a model out.
 -#}
 {% macro bronze_gap(node, bronze, built) %}
   {%- set absent = [] -%}
@@ -209,7 +210,7 @@
   {%- endfor -%}
   {%- if absent -%}
     {{ return('bronze absent: ' ~ (absent | unique | sort | join(', '))) }}
-  {%- elif empty and not fed.value and not built -%}
+  {%- elif empty and not fed.value and not built and (var('skip_empty_bronze', 'true') | string | lower) != 'false' -%}
     {{ return('bronze empty: ' ~ (empty | unique | sort | join(', '))) }}
   {%- endif -%}
   {{ return('') }}

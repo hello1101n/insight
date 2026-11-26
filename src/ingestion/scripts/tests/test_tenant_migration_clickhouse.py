@@ -279,8 +279,13 @@ def test_a_replacing_table_with_unmerged_duplicates_is_copied(warehouse: ClickHo
     warehouse.execute("SYSTEM STOP MERGES staging.dup_commits")
     warehouse.execute("SYSTEM STOP MERGES bronze_example.dup_events")
     for version in (1, 2):
-        warehouse.execute(f"INSERT INTO staging.dup_commits VALUES ('{NEW}-gh-abc', 'gh', {version})")
-        warehouse.execute(f"INSERT INTO bronze_example.dup_events VALUES ('{NEW}', 'main', 'push', 1)")
+        warehouse.execute(
+            "INSERT INTO staging.dup_commits VALUES ({key:String}, 'gh', {version:UInt64})",
+            params={"key": f"{NEW}-gh-abc", "version": str(version)},
+        )
+        warehouse.execute(
+            "INSERT INTO bronze_example.dup_events VALUES ({tenant:String}, 'main', 'push', 1)", params={"tenant": NEW}
+        )
     assert warehouse.scalar("SELECT count() FROM staging.dup_commits") == 2
 
     _apply(warehouse)

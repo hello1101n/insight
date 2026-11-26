@@ -109,7 +109,9 @@ EOF
 
 until curl -sf "http://localhost:8123/ping" >/dev/null; do sleep 1; done
 
-./bootstrap-db.sh connectors-config.yaml
+# Bronze is never synced here, so it is all empty: build over it anyway, or the
+# audit has nothing to read (dbt var skip_empty_bronze, dbt_project.yml).
+DBT_SKIP_EMPTY_BRONZE=false ./bootstrap-db.sh connectors-config.yaml
 
 set -a; source .env; set +a   # check-field-parity.py expects the CLICKHOUSE_* vars exported
 ./check-field-parity.py    # exit 1 on field-contract failures
@@ -146,7 +148,7 @@ Contributors whose physical table is not owned by dbt would be covered too: an e
 | `create-connector-tables.sh <connector-dir> <config.json>` | One connector: `discover` → configured catalog (append_dedup, primary key `unique_key`) → `destination-clickhouse write` with a zero-record stream-status input (creates empty ReplacingMergeTree tables). The destination config comes from `reconcile-connectors/python/compose_destination_config.py`, the composer reconcile's Airbyte destination and the seed Job also use, so `CLICKHOUSE_CLUSTER_MODE=true` + `CLICKHOUSE_CLUSTER_NAME=<cluster>` (default `false` / empty: a standalone server) creates `ReplicatedReplacingMergeTree` tables `ON CLUSTER`. Set `DOCKER_NETWORK` when `CLICKHOUSE_HOST` is an address only a container on that network can reach — a compose stand, whose published port is the host's, not the destination's. |
 | `lib/connector-catalog.sh` | Sourced, not run. Builds the configured catalogue from a connector's `discover`, and resolves a connector's config block. Needs Docker; needs no ClickHouse — which is what lets a cluster with no Docker apply the same catalogue through a Job (`tools/seed/seed-stand.sh`) instead of a container here. |
 | `bootstrap-db.sh <config.yaml>` | Sources `pins.env` and `.env` (if present), runs `seed-connectors.sh`, runs all dbt models, runs `../apply-ch-migrations.sh`. |
-| `run-dbt.sh [dbt args]` | Helper: writes a profiles.yml from the `CLICKHOUSE_*` variables through `../dbt_profiles.py` — the one writer every dbt step shares — and runs `dbt run` in `src/ingestion/dbt`. Models whose bronze has not arrived yet are asked for first (`dbt run-operation list_unbuildable_models`) and passed to `--exclude`, so a warehouse missing a connector builds what it can instead of failing: silver is a projection of bronze, and a class nobody feeds is not built at all. `src/ingestion/dbt/tests/cold_start` covers that path. |
+| `run-dbt.sh [dbt args]` | Helper: writes a profiles.yml from the `CLICKHOUSE_*` variables through `../dbt_profiles.py` — the one writer every dbt step shares — and runs `dbt run` in `src/ingestion/dbt`. Models whose bronze has not arrived yet are asked for first (`dbt run-operation list_unbuildable_models`) and passed to `--exclude`, so a warehouse missing a connector builds what it can instead of failing (`DBT_SKIP_EMPTY_BRONZE=false` keeps models over empty bronze in): silver is a projection of bronze, and a class nobody feeds is not built at all. `src/ingestion/dbt/tests/cold_start` covers that path. |
 | `check-field-parity.py [--manifest PATH]` | Audits every staging contributor against its silver union target (column set, positional order, exact type) plus manifest-vs-warehouse coverage. Same `CLICKHOUSE_*` env contract as the other scripts. Non-zero exit on any finding. |
 
 ## Image pins (pins.env)
