@@ -174,8 +174,22 @@ spec:
           # decided here, not in the model. A graph walk (`tag:X+`) reaches gold
           # models reading classes no connector on this install feeds; without
           # this the whole run dies on them.
+          # The check is handed this run's own node set: a model outside it is
+          # not built here, so it counts only if it can be read now. A run split
+          # into steps then never reads a relation neither step put there.
+          # Each left-out model is printed with its reason (absent or empty
+          # bronze, a parent not built) so no model is skipped silently.
+          read -r -a STEP_EXCLUDE <<< "${DBT_EXCLUDE:-}"
           if [[ "$RC" -eq 0 ]]; then
-            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir .)" || RC=$?
+            IN_RUN="$(dbt --quiet ls --profiles-dir . --resource-type model --output name ${DBT_SELECT:+--select "$DBT_SELECT"} ${STEP_EXCLUDE[@]+--exclude "${STEP_EXCLUDE[@]}"})" || RC=$?
+          fi
+          if [[ "$RC" -eq 0 ]]; then
+            UNBUILDABLE_REPORT="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir . \
+              --args "{selected: '$(tr '\n' ' ' <<< "${IN_RUN:-}")', reasons: true}")" || RC=$?
+            if [[ -n "${UNBUILDABLE_REPORT:-}" ]]; then
+              sed 's/^/not built: /' <<< "$UNBUILDABLE_REPORT"
+            fi
+            UNBUILDABLE="$(cut -f1 <<< "${UNBUILDABLE_REPORT:-}" | tr '\n' ' ')"
           fi
           read -r -a EXCLUDED <<< "${DBT_EXCLUDE:-} ${UNBUILDABLE:-}"
           EXCLUDE_ARGS=()
