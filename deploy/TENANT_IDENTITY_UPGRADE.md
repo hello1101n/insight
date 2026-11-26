@@ -6,7 +6,10 @@ one tenant: the lowercase UUID in `authenticator.oidc.defaultTenantId`. Bronze,
 the history relations, operator config, the sync ledger, identity resolution and
 analytics all key on it. An install that already holds data written under the
 old `ingestion.reconcile.tenantId` (often not a UUID) moves to it on its next
-deploy, by the chart's hooks. Nothing is done by hand except the final
+deploy, by the chart's hooks. The same migration renames every stored
+table's tenant column `tenant_id` to `insight_tenant_id` and its stamped source
+column `source_id` to `insight_source_id` (the sync ledger keeps both old
+names). Nothing is done by hand except the final
 [clean-up](#once-the-stand-is-proven-drop-the-backups).
 
 dbt reads every Bronze tenant through `bronze_tenant()`, which lowercases it. A

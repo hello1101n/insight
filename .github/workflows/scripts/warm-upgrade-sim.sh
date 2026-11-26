@@ -65,12 +65,15 @@ trap 'rm -rf "$WORKDIR"' EXIT
 source "$REPO_ROOT/src/ingestion/scripts/lib/ch-topology.sh"
 
 # The install's tenant, a UUID as every release since #3661 requires, and the
-# name the base gives its tenant column (`tenant_id` before #3661).
+# names the base gives its tenant column (`tenant_id` before #3661) and its
+# stamped source column (`source_id` before tenant_migration renamed it).
 WARM_TENANT="7e57a7e5-0000-4000-8000-000000000001"
 WARM_TENANT_COLUMN=insight_tenant_id
+WARM_SOURCE_COLUMN=source_id
 
 warm_sql() {
-  sed -e "s/__TENANT_COLUMN__/${WARM_TENANT_COLUMN}/g" -e "s/__WARM_TENANT__/${WARM_TENANT}/g" \
+  sed -e "s/__TENANT_COLUMN__/${WARM_TENANT_COLUMN}/g" -e "s/__SOURCE_COLUMN__/${WARM_SOURCE_COLUMN}/g" \
+    -e "s/__WARM_TENANT__/${WARM_TENANT}/g" \
     | ch_render_topology | run_ch
 }
 
@@ -166,7 +169,10 @@ if syncs_the_buildable_graph "$WORKDIR" && ! create_connector_bronze "$WORKDIR";
 fi
 
 WARM_TENANT_COLUMN="$(ch_tenant_column bronze_github pull_requests)"
-echo "=== The base names its tenant column ${WARM_TENANT_COLUMN} ==="
+if [[ -n "$(ch_column_type bronze_github pull_requests insight_source_id)" ]]; then
+  WARM_SOURCE_COLUMN=insight_source_id
+fi
+echo "=== The base names its tenant column ${WARM_TENANT_COLUMN} and its source column ${WARM_SOURCE_COLUMN} ==="
 
 # A base tree from before #3561 built gold inside the hook above; a later one
 # leaves it to the sync. Either way the warm state needs the base's silver and
@@ -196,7 +202,7 @@ CREATE DATABASE IF NOT EXISTS bronze_github /*@@ON_CLUSTER@@*/;
 CREATE DATABASE IF NOT EXISTS bronze_gitlab /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_github.pull_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
@@ -204,7 +210,7 @@ CREATE TABLE IF NOT EXISTS bronze_github.pull_requests /*@@ON_CLUSTER@@*/
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_gitlab.pull_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
@@ -221,7 +227,7 @@ seed_git_close_time_warm_state() {
 -- answer from the later one, so a lookup that takes whichever row a part merge
 -- left behind fails here.
 INSERT INTO bronze_github.pull_requests
-    (unique_key, __TENANT_COLUMN__, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
     ('warm-gh-reopened', '__WARM_TENANT__', 'warm', 'closed',
@@ -236,28 +242,28 @@ VALUES
 -- legacy row here is deliberately the MORE recently extracted of the two.
 CREATE TABLE IF NOT EXISTS bronze_gitlab.merge_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key Nullable(String), __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key Nullable(String), __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
 )
 ENGINE = /*@@REPLICATED@@*/MergeTree ORDER BY _airbyte_raw_id;
 INSERT INTO bronze_gitlab.merge_requests
-    (unique_key, __TENANT_COLUMN__, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
     ('warm-gl-reopened', '__WARM_TENANT__', 'warm', 'closed',
      '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z', '',
      'warm-raw-legacy', '2026-01-09 00:00:00', '{}', 0);
 INSERT INTO bronze_gitlab.pull_requests
-    (unique_key, __TENANT_COLUMN__, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
     ('warm-gl-reopened', '__WARM_TENANT__', 'warm', 'merged',
      '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z', '2026-01-04T09:00:00Z',
      'warm-raw-new', '2026-01-05 00:00:00', '{}', 0);
 INSERT INTO silver.class_git_pull_requests
-    (__TENANT_COLUMN__, source_id, unique_key, pr_id, state, created_on, closed_on, data_source, _version)
+    (__TENANT_COLUMN__, __SOURCE_COLUMN__, unique_key, pr_id, state, created_on, closed_on, data_source, _version)
 VALUES
     ('__WARM_TENANT__', 'warm', 'warm-gh-reopened', 9001, 'MERGED',
      '2026-01-01 00:00:00', '2026-01-01 02:00:00', 'insight_github', 1),
@@ -306,7 +312,7 @@ seed_jira_issue_identity_warm_state() {
 CREATE DATABASE IF NOT EXISTS bronze_jira /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
@@ -314,37 +320,37 @@ ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY un
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue_keys /*@@ON_CLUSTER@@*/ AS bronze_jira.jira_issue;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue_history /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), items Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_comments /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), body Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_worklogs /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), issueId Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 
 INSERT INTO bronze_jira.jira_issue
-    (unique_key, __TENANT_COLUMN__, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
     ('warm-jira-1-101', '__WARM_TENANT__', 'jira-1', 'WARM-1', '101', 'raw-i1', '2026-01-02 00:00:00');
 INSERT INTO bronze_jira.jira_issue_keys
-    (unique_key, __TENANT_COLUMN__, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
     ('warm-jira-1-102', '__WARM_TENANT__', 'jira-1', 'WARM-2', '102', 'raw-k1', '2026-01-02 00:00:00');
 
 INSERT INTO bronze_jira.jira_issue_history
-    (unique_key, __TENANT_COLUMN__, source_id, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
     ('warm-jira-h-current', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h1', '2026-01-03 00:00:00'),
     ('warm-jira-h-unknown', '__WARM_TENANT__', 'jira-1', 'WARM-GONE-9', NULL, '[]', 'raw-h3', '2026-01-03 00:00:00'),
@@ -354,11 +360,11 @@ VALUES
     -- deploy filled like the rest, not reinstated as the connector wrote it.
     ('warm-jira-h-recent', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h5', now());
 INSERT INTO bronze_jira.jira_comments
-    (unique_key, __TENANT_COLUMN__, source_id, id_readable, jira_id, body, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, body, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
     ('warm-jira-c-keys', '__WARM_TENANT__', 'jira-1', 'WARM-2', NULL, 'comment', 'raw-c1', '2026-01-03 00:00:00');
 INSERT INTO bronze_jira.jira_worklogs
-    (unique_key, __TENANT_COLUMN__, source_id, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
     ('warm-jira-w-own', '__WARM_TENANT__', 'jira-1', 'WARM-GONE-9', NULL, '777', 'raw-w1', '2026-01-03 00:00:00'),
     ('warm-jira-w-key', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, NULL, 'raw-w2', '2026-01-03 00:00:00');
@@ -408,11 +414,11 @@ seed_jira_catalogue_first_seen_warm_state() {
 CREATE DATABASE IF NOT EXISTS bronze_jira /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_fields /*@@ON_CLUSTER@@*/
 (
-    unique_key String, __TENANT_COLUMN__ Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
-INSERT INTO bronze_jira.jira_fields (unique_key, __TENANT_COLUMN__, source_id, _airbyte_raw_id, _airbyte_extracted_at)
+INSERT INTO bronze_jira.jira_fields (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES ('warm-jira-1-summary', '__WARM_TENANT__', 'jira-1', 'raw-f1', '2026-03-01 00:00:00');
 
 DROP TABLE IF EXISTS staging.jira__catalogue_first_seen;
@@ -454,7 +460,7 @@ assert_jira_catalogue_first_seen_kept() {
 seed_youtrack_field_observation_warm_state() {
   echo "=== Seeding the pre-tenant YouTrack field observations ==="
   warm_sql <<'SQL'
-INSERT INTO bronze_youtrack.youtrack_custom_fields (unique_key, __TENANT_COLUMN__, source_id, _airbyte_raw_id, _airbyte_extracted_at)
+INSERT INTO bronze_youtrack.youtrack_custom_fields (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES ('warm-yt-1-field-1', '__WARM_TENANT__', 'yt-1', 'raw-y1', '2026-01-01 00:00:00');
 INSERT INTO staging.youtrack__field_observations
     (unique_key, insight_source_id, field_id, field_name, field_type, observed_at, _version)
@@ -563,6 +569,13 @@ if ! migration apply; then
   echo "::error title=warm upgrade fails — the tenant cutover does not converge::tenant_migration apply failed against relations an earlier release created."
   exit 1
 fi
+for relation in bronze_github.pull_requests bronze_jira.jira_fields; do
+  if [[ -z "$(ch_column_type "${relation%%.*}" "${relation##*.}" insight_source_id)" \
+      || -n "$(ch_column_type "${relation%%.*}" "${relation##*.}" source_id)" ]]; then
+    echo "::error title=warm upgrade fails — the source column is not renamed::${relation} must carry insight_source_id and no source_id after tenant_migration apply."
+    exit 1
+  fi
+done
 
 if ! PATH="$WORKDIR/branch-venv/bin:$PATH" \
     bash "$REPO_ROOT/src/ingestion/scripts/apply-ch-migrations.sh"; then
