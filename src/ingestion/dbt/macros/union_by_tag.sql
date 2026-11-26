@@ -32,6 +32,7 @@
 -#}
 {% macro union_by_tag(tag_name, dedup_version_col='_version') %}
   {%- if execute -%}
+    {%- set bronze = bronze_tables() -%}
     {%- set models = [] -%}
     {%- for node in graph.nodes.values() -%}
       {%- if tag_name in node.tags and node.resource_type == 'model' and node.unique_id != model.unique_id -%}
@@ -39,24 +40,32 @@
             still has a relation, and unioning it fails the whole class. The
             rule is `unbuildable_models`' own, so an arm this run excludes is
             the same arm the union leaves out. -#}
-        {%- if relation_is_readable(node) -%}
+        {%- if relation_is_readable(node, bronze) -%}
           {%- do models.append(node) -%}
         {%- else -%}
-          {{ log("union_by_tag: skipping " ~ node.name ~ " (not materialised, or it reads a relation that is gone)", info=True) }}
+          {{ log("union_by_tag: skipping " ~ node.name ~ " (not materialised, or it reads a relation that is gone or bronze that is empty)", info=True) }}
         {%- endif -%}
       {%- endif -%}
     {%- endfor -%}
 
-    {%- if models | length == 0 -%}
-      {#- No source staging tables for this tag: hand the surrounding model SQL
-          the target's own schema with zero rows, so the materialise is a no-op
-          and the outer "WHERE _version > ..." still compiles.
-
-          A class nobody feeds and no earlier run materialised has no shape to
-          emit at all — `unbuildable_models` keeps it out of the run, and
-          reaching here means something selected it by hand. -#}
+    {%- if models | length == 0 and load_relation(this) is not none -%}
+      {#- No contributor to read: hand the surrounding model SQL the target's
+          own schema with zero rows, so the materialise is a no-op and the
+          outer "WHERE _version > ..." still compiles. The table stays as is. -#}
       {{ log("union_by_tag: no source tables for tag '" ~ tag_name ~ "' — emitting empty select from the target to preserve schema", info=True) }}
       SELECT * FROM {{ this }} WHERE 1 = 0
+    {%- elif models | length == 0 -%}
+      {#- No contributor and no table yet: there is no shape to emit — silver
+          is a projection of its contributors, and no column list is declared
+          anywhere else. A model body cannot skip itself, so the skip is
+          `unbuildable_models`', which leaves such a class out of every run that
+          passes it the run's selection. Reaching here means a run that did
+          not (a hand-picked `--select`); say so instead of failing on a
+          table that is not there. -#}
+      {{ exceptions.raise_compiler_error(
+           "union_by_tag: no contributor tagged '" ~ tag_name ~ "' is materialised and " ~ this
+           ~ " does not exist yet, so there is nothing to build it from. Exclude what"
+           ~ " `dbt run-operation list_unbuildable_models` lists, or select a contributor too.") }}
     {%- else -%}
       SELECT * FROM (
       {%- for m in models %}

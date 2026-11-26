@@ -6,10 +6,12 @@ AND: the class becomes buildable the moment ANY of its arms can be built, and
 the arms still waiting on their connector stay out of the union and out of the
 run.
 
-The bronze tables here are empty stubs rather than a connector's real output.
-Only their existence is read — `list_unbuildable_models` probes whether a
-relation is there, never what shape it has — and the suites that care about the
-shape create bronze through the destination, the one creator a deployment has.
+The bronze tables here are one-row stubs rather than a connector's real
+output. Only their existence and row count are read — `list_unbuildable_models`
+probes whether a relation is there and holds rows, never what shape it has (an
+empty one counts as absent; tests/absent_bronze covers that) — and the suites
+that care about the shape create bronze through the destination, the one
+creator a deployment has.
 """
 
 from __future__ import annotations
@@ -36,6 +38,10 @@ def after_arrival(fresh_install: Warehouse) -> tuple[set[str], set[str]]:
         fresh_install.execute(
             "CREATE TABLE IF NOT EXISTS {database:Identifier}.{name:Identifier} "
             "(unique_key String) ENGINE = MergeTree ORDER BY unique_key",
+            {"database": ARRIVED_BRONZE, "name": table},
+        )
+        fresh_install.execute(
+            "INSERT INTO {database:Identifier}.{name:Identifier} VALUES ('arrived')",
             {"database": ARRIVED_BRONZE, "name": table},
         )
 
