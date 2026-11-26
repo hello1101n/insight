@@ -82,8 +82,9 @@ an original. A silver table or history relation built before it had a tenant
 column gets one, and a key there that leads with a tenant other tables' rows
 held, followed by `-<source>-`, moves to the UUID. A table holding both
 `tenant_id` and `insight_tenant_id`, or both `source_id` and
-`insight_source_id`, stops the run before anything changes. A table already in
-the target shape is skipped.
+`insight_source_id` (a connector added the new names to an old table), loses
+the old column if it is empty; if it has rows, it stops the run before anything
+changes. A table already in the target shape is skipped.
 
 What keeps `tenant_id`, by design: the sync ledger `ingestion_history.sync_events`
 (a service table: reconcile's sweep writes it, with an empty tenant on its

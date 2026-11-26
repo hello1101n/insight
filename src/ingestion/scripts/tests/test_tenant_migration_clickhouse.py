@@ -382,14 +382,74 @@ def test_a_later_run_leaves_an_earlier_backup_alone_and_takes_the_next_name(ware
     assert f"{NEW}-main-PROJ-20" in _column(warehouse, "bronze_example.items", "unique_key")
 
 
-def test_a_table_holding_both_tenant_columns_stops_the_run_before_anything_changes(warehouse: ClickHouse) -> None:
-    warehouse.execute(
-        "CREATE TABLE bronze_example.both (tenant_id Nullable(String), insight_tenant_id Nullable(String)) "
-        "ENGINE = MergeTree ORDER BY tuple()"
-    )
+#: An old Slack table a newer connector added the new names (and a column) to.
+BOTH = (
+    "CREATE TABLE bronze_example.users (unique_key String, tenant_id Nullable(String), source_id Nullable(String), "
+    "name String, insight_tenant_id Nullable(String), insight_source_id Nullable(String), user_id Nullable(String)) "
+    "ENGINE = ReplacingMergeTree ORDER BY unique_key"
+)
 
-    with pytest.raises(InventoryError, match="both tenant_id and insight_tenant_id"):
-        discover(warehouse, history_relations())
+
+def test_an_empty_table_holding_both_names_loses_the_old_ones(
+    warehouse: ClickHouse, capsys: pytest.CaptureFixture[str]
+) -> None:
+    warehouse.execute(BOTH)
+    before = _columns(warehouse, "bronze_example.users")
+
+    assert main(["plan", "--exit-code"]) == 1
+    assert "drops the empty tenant_id, source_id" in capsys.readouterr().out
+    assert main(["apply"]) == 0
+    assert main(["plan", "--exit-code"]) == 0
+
+    assert [c for c, _ in _columns(warehouse, "bronze_example.users")] == [
+        "unique_key", "name", "insight_tenant_id", "insight_source_id", "user_id",
+    ]  # fmt: skip
+    assert _columns(warehouse, "bronze_example.users__tenant_backup") == before
+    assert not any(p.pending for p in _plan(warehouse))
+
+
+def test_a_table_holding_both_names_and_rows_stops_the_run_before_anything_changes(
+    warehouse: ClickHouse, capsys: pytest.CaptureFixture[str]
+) -> None:
+    warehouse.execute(BOTH)
+    warehouse.execute("INSERT INTO bronze_example.users (unique_key, name) VALUES ('k', 'n')")
+    before = _fingerprint(warehouse)
+
+    assert main(["plan"]) == 2
+    assert main(["apply"]) == 2
+
+    assert "bronze_example.users: holds tenant_id beside insight_tenant_id" in capsys.readouterr().err
+    with pytest.raises(InventoryError, match="has 1 row"):
+        _plan(warehouse)
+    assert _fingerprint(warehouse) == before
+    assert ("tenant_id", "Nullable(String)") in _columns(warehouse, "bronze_example.users")
+    assert _work_tables(warehouse) == []
+
+
+def test_a_failed_run_puts_back_a_table_whose_copy_dropped_columns(warehouse: ClickHouse) -> None:
+    warehouse.execute(BOTH)
+    before = _columns(warehouse, "bronze_example.users")
+    # bronze_example.users is the fourth table swapped; the fifth swap fails.
+    failing = Failing(url=warehouse.url, user=warehouse.user, password=warehouse.password, at="EXCHANGE TABLES", nth=5)
+
+    with pytest.raises(migration.MigrationError, match="every table is back as it was"):
+        migration.apply(failing, _plan(warehouse), NEW)
+
+    assert _columns(warehouse, "bronze_example.users") == before
+    assert _work_tables(warehouse) == []
+
+
+def test_a_table_whose_copy_dropped_columns_is_settled_after_a_killed_run(warehouse: ClickHouse) -> None:
+    warehouse.execute(BOTH)
+    before = _columns(warehouse, "bronze_example.users")
+    _apply(warehouse)
+    # Killed between the swap and the rename: the original stands under the copy's name.
+    warehouse.execute("RENAME TABLE bronze_example.users__tenant_backup TO bronze_example.users__tenant_copy")
+
+    assert main(["apply"]) == 0
+
+    assert _columns(warehouse, "bronze_example.users__tenant_backup") == before
+    assert main(["plan", "--exit-code"]) == 0
 
 
 @dataclass(frozen=True)

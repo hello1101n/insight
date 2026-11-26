@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from tenant_migration import keys
 from tenant_migration.clickhouse import ClickHouse
-from tenant_migration.inventory import Table
+from tenant_migration.inventory import InventoryError, Table
 
 #: One install holds one tenant; a few more (empty, the UUID, a legacy name) are what a key can lead with.
 MAX_TENANTS = 16
@@ -23,7 +23,7 @@ class TablePlan:
 
     @property
     def pending(self) -> bool:
-        return self.table.renames or self.table.adds or self.moving > 0
+        return self.table.renames or self.table.adds or bool(self.table.drops) or self.moving > 0
 
     @property
     def change(self) -> str:
@@ -34,6 +34,8 @@ class TablePlan:
             parts.append(f"renames {table.tenant} to {table.target}")
         if table.renames_source:
             parts.append(f"renames {table.source} to {table.source_target}")
+        if table.drops:
+            parts.append(f"drops the empty {', '.join(table.drops)}")
         return ", ".join(parts) or "sets the tenant"
 
 
@@ -43,6 +45,12 @@ def survey_table(ch: ClickHouse, table: Table, tenant: str) -> TablePlan:
         f"SELECT count(), countIf({keys.foreign(table)}), toJSONString({held}) FROM {table.rel.sql()} AS src",
         params=keys.tenant_params(tenant),
     )
+    if table.drops and int(rows):
+        held = ", ".join(f"{c} beside insight_{c}" for c in table.drops)
+        raise InventoryError(
+            f"{table.rel}: holds {held} and has {rows} row(s) — the old columns are dropped only from an empty "
+            "table; settle its rows by hand. Nothing was changed"
+        )
     return TablePlan(table=table, rows=int(rows), moving=int(moving), tenants=tuple(sorted(json.loads(tenants))))
 
 
