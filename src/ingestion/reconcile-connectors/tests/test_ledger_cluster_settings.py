@@ -225,3 +225,13 @@ class TestTheTopologyComesFromTheReconcileEnv:
                     "RECONCILE_DEST_CLICKHOUSE_CLUSTER_NAME": name,
                 }
             )
+
+
+@pytest.mark.parametrize("ledger", [_standalone, _clustered], ids=["standalone", "clustered"])
+def test_the_tenant_cutover_copies_are_never_the_relation_read(requests: list[_Request], ledger: Callable) -> None:
+    """`<t>__tenant_backup` / `__tenant_copy` keep the old column names and
+    may hold the most rows; the real-server case is in the sweep suite."""
+    ledger().recorded_instance("bronze_example_tracker")
+
+    (request,) = requests
+    assert "position(name, '__tenant_') = 0" in request.sql

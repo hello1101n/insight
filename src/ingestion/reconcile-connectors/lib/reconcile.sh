@@ -1139,10 +1139,12 @@ print("\n".join(sorted(i for i in ids if i)))')"
       fi
       # Caller's `tail -1 | cut -f1` reads this to decide whether to fire
       # a sync trigger. Emit the action so cfg-hash rotations are seen.
-      printf 'patch_tags\t%s\n' "${connection_id}"
+      # The third field is the catalog tag (see reconcile_catalog_tag);
+      # adopt_tag_connection keeps it.
+      printf 'patch_tags\t%s\t%s\n' "${connection_id}" "$(reconcile__catalog_tag_of "${existing_tags_json}")"
     else
       _RECONCILE_NOOP=$((_RECONCILE_NOOP + 1))
-      printf 'noop\t%s\n' "${connection_id}"
+      printf 'noop\t%s\t%s\n' "${connection_id}" "$(reconcile__catalog_tag_of "${existing_tags_json}")"
     fi
     # @cpt-end:cpt-insightspec-algo-reconcile-diff-connection-tags:p2:inst-dct-if-drift
   done <<<"${filtered}"
@@ -1170,9 +1172,59 @@ reconcile_converge_connection_name() {
 }
 
 # ---------------------------------------------------------------------------
+# reconcile_catalog_tag <type> <version> <cdk_image>
+# The connection tag that says its sync_catalog was discovered from this
+# definition: `catalog:` + 12 hex of what reconcile_definitions compares
+# (the version for nocode, the image for cdk). Airbyte caps a tag at 30
+# characters. A connection without it has a catalog of unknown age.
+# ---------------------------------------------------------------------------
+reconcile_catalog_tag() {
+  local key="$1|$2"
+  [[ "$1" == "cdk" ]] && key="$1|$3"
+  python3 -c 'import hashlib, sys
+print("catalog:" + hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12])' "${key}"
+}
+
+# reconcile__catalog_tag_of <tags_json> — the `catalog:` tag among them, or "".
+reconcile__catalog_tag_of() {
+  python3 -c 'import json, sys
+for t in json.loads(sys.argv[1] or "[]"):
+    n = t.get("name") if isinstance(t, dict) else t
+    if isinstance(n, str) and n.startswith("catalog:"):
+        print(n)
+        break' "$1"
+}
+
+# ---------------------------------------------------------------------------
+# reconcile_record_catalog <connector_name> <connection_id> <catalog_tag>
+# Replaces the connection's `catalog:` tag with <catalog_tag>, keeping every
+# other tag. Written last, once the catalog is refreshed and the schedule
+# released, so a pass cut off before then is redone by the next one.
+# ---------------------------------------------------------------------------
+reconcile_record_catalog() {
+  local connector_name="$1" connection_id="$2" catalog_tag="$3"
+  local conn_json names_json tags_json
+  if ! conn_json="$(ab_get_connection "${connection_id}")" \
+      || ! names_json="$(python3 -c 'import json, sys
+names = []
+for t in json.load(sys.stdin).get("tags") or []:
+    n = t.get("name") if isinstance(t, dict) else t
+    if isinstance(n, str) and not n.startswith("catalog:") and n not in names:
+        names.append(n)
+print(json.dumps(names + [sys.argv[1]]))' "${catalog_tag}" <<<"${conn_json}")" \
+      || ! tags_json="$(ab_resolve_tags "$(ab_workspace_id)" "${names_json}")" \
+      || ! ab_patch_connection_tags "${connection_id}" "${tags_json}" >/dev/null; then
+    reconcile__log ERROR "${connector_name}" \
+      "failed to tag connection ${connection_id} with ${catalog_tag}; the next pass refreshes its catalog again"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # reconcile_refresh_catalog <connector_name> <source_id> <connection_id>
 # Per ADR-0015 / cpt-insightspec-algo-reconcile-refresh-catalog-on-republish:
-# called whenever the definition was republished and a connection already
+# called whenever the definition was republished, or the connection's
+# catalog tag does not name the current definition, and a connection already
 # exists. Re-discovers the source schema, normalizes to append_dedup with
 # every stream and field selected, then POSTs /connections/update to PATCH
 # the sync_catalog in place. State (per-stream cursors) survives the
@@ -1620,13 +1672,27 @@ _reconcile_one_connector() {
       ;;
   esac
 
-  # Per ADR-0015: every version bump that resulted in a republish (any
-  # bump_kind != none) refreshes the connection's sync_catalog so new
-  # streams and fields advertised by the connector land in bronze on the
-  # next sync. Bootstrap path (conn_action == created) already discovered
-  # the catalog as part of ab_create_connection, so skip there.
-  if [[ "${def_action}" == "republish" && "${conn_action}" != "created" ]]; then
-    if ! reconcile_refresh_catalog "${name}" "${src_id}" "${conn_id}"; then
+  # Per ADR-0015 the sync_catalog is refreshed whenever the definition
+  # changed: the ClickHouse destination drops every column a sync's catalog
+  # does not list, so a sync on a catalog older than the definition can wipe
+  # columns the new definition renamed. "Changed" is read from the
+  # connection's catalog tag, not from this pass's republish alone, so a
+  # refresh that fails is retried every pass until it succeeds. Until then
+  # the schedule is left as it is (a schedule the cutover suspended stays
+  # suspended, one not yet created is not created) and no sync is triggered.
+  # A connection created this pass was created from a fresh discover.
+  local catalog_tag catalog_have catalog="current"
+  catalog_tag="$(reconcile_catalog_tag "${type}" "${version}" "${cdk_image}")"
+  catalog_have="$(printf '%s' "${conn_result}" | tail -1 | awk -F'\t' '{print $3}')"
+  if [[ "${conn_action}" == "created" ]]; then
+    catalog="refreshed"
+  elif [[ -n "${conn_id}" && ( "${def_action}" == "republish" || "${catalog_have}" != "${catalog_tag}" ) ]]; then
+    if reconcile_refresh_catalog "${name}" "${src_id}" "${conn_id}"; then
+      catalog="refreshed"
+      data_changed=1
+    else
+      catalog="stale"
+      log_line ERROR "${name}: catalog refresh failed; schedule left as it is and no sync triggered until a later pass refreshes it"
       rc=1
     fi
   fi
@@ -1635,7 +1701,7 @@ _reconcile_one_connector() {
   local conn_name schedule tenant schedule_details schedule_origin
   conn_name="$(reconcile_compute_connection_name "${name}" "${source_id_label}")"
   tenant="$(reconcile_compute_tenant "${name}")"
-  if connector_schedules_writable; then
+  if [[ "${catalog}" != "stale" ]] && connector_schedules_writable; then
     local deployment
     if ! deployment="$(reconcile_resolve_deployment_schedule "${name}" "${secret_name}")" \
         || ! schedule_details="$(reconcile_resolve_schedule "${name}" "${secret_name}" "${source_id_label}" "${deployment}")"; then
@@ -1662,6 +1728,16 @@ _reconcile_one_connector() {
         elif ! argo_delete_former_tenant_cronworkflows "${name}" "${tenant}" "${source_id_label}" >/dev/null; then
           log_line ERROR "${name}: applied Argo CronWorkflow but failed to remove the ones named for a former tenant"
           rc=1
+        elif [[ "${catalog}" == "refreshed" ]]; then
+          # The catalog now matches the definition, so the schedule may run:
+          # this releases one the tenant cutover left suspended. Any other
+          # pass leaves `suspend` to whoever set it.
+          if ! argo_resume_cronworkflow "${name}" "${tenant}" "${source_id_label}" >/dev/null; then
+            log_line ERROR "${name}: refreshed the catalog but failed to unsuspend its CronWorkflow"
+            rc=1
+          elif [[ -n "${conn_id}" ]] && ! reconcile_record_catalog "${name}" "${conn_id}" "${catalog_tag}"; then
+            rc=1
+          fi
         fi
       fi
     fi
@@ -1671,7 +1747,7 @@ _reconcile_one_connector() {
   # Per ADR-0015: bump_kind=major dispatches a one-shot dbt --full-refresh
   # on the auto-triggered sync only. Scoped to this connector's
   # descriptor.dbt_select — no cross-connector cascade.
-  if [[ "${data_changed}" -eq 1 && "${opt_no_sync_trigger}" -ne 1 ]]; then
+  if [[ "${data_changed}" -eq 1 && "${catalog}" != "stale" && "${opt_no_sync_trigger}" -ne 1 ]]; then
     if [[ "${RECONCILE_DRY_RUN:-0}" -eq 1 ]]; then  # RULE-DEFAULTS-OK: feature flag — OFF when caller doesn't opt in
       if [[ "${def_bump_kind}" == "major" ]]; then
         log_line INFO "${name}: would trigger a one-shot sync with dbt --full-refresh (bump_kind=major)"
