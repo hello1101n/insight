@@ -20,7 +20,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance identifier"
         tests:
           - not_null
@@ -103,7 +103,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance identifier"
         tests:
           - not_null
@@ -184,7 +184,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance identifier"
         tests:
           - not_null

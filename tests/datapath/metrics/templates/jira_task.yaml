@@ -15,7 +15,7 @@
 templates:
   jira_issue:
     id: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     jira_id: null
     unique_key: null
@@ -34,7 +34,7 @@ templates:
 
   jira_user:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     account_id: null
     email: null
@@ -79,7 +79,7 @@ templates:
   # journal reads its `to` side as the state after it, so final_close_at = this event.
   jira_history:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     id_readable: null
     jira_id: null
@@ -115,7 +115,7 @@ templates:
   # assignee and issuetype are structured (id+name); duedate is a scalar date.
   jira_field:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     field_id: null
     name: null
@@ -184,7 +184,7 @@ templates:
   # sums duration per (author, day) as the worklog_logging_accuracy numerator.
   jira_worklog:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     worklog_id: null
     id_readable: null
@@ -273,7 +273,7 @@ templates:
   # so these three rows let close-detection resolve every seeded transition.
   jira_status:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     status_id: null
     name: null
@@ -318,7 +318,7 @@ templates:
   # issue references one of these ids in custom_fields_json `issuetype.id`.
   jira_issuetype:
     unique_key: null
-    source_id: jira-test
+    insight_source_id: jira-test
     insight_tenant_id: "{{ tenant }}"
     id: null
     name: null
@@ -536,7 +536,7 @@ templates:
   jira_census:
     id: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: jira-test
+    insight_source_id: jira-test
     unique_key: null
     jira_id: null
     project_key: TST
@@ -562,7 +562,7 @@ templates:
     isPrivate: false
     properties: "{}"
     insight_tenant_id: "{{ tenant }}"
-    source_id: jira-test
+    insight_source_id: jira-test
     unique_key: null
     project_id: null
     project_key: null
@@ -580,7 +580,7 @@ templates:
     id: null
     key: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: jira-test
+    insight_source_id: jira-test
     unique_key: null
     id_readable: null
     jira_id: null
@@ -599,7 +599,7 @@ templates:
     updatedTime: 1766700000000
     properties: "[]"
     insight_tenant_id: "{{ tenant }}"
-    source_id: jira-test
+    insight_source_id: jira-test
     unique_key: null
     worklog_id: null
     deleted_at_ms: 1766700000000

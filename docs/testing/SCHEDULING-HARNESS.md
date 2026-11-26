@@ -172,7 +172,7 @@ timestamps, while changing the seed changes payloads. Cursor filtering is
 exclusive (`last_updated_at > cursor`). An exhausted window returns an empty
 page. Use an epoch before the connector's current time.
 
-The connector stamps `tenant_id`, `source_id` and
+The connector stamps `insight_tenant_id`, `insight_source_id` and
 `unique_key = tenant-source-id` (where the final id includes the stream).
 Both tagged staging models rebuild from bronze with `FINAL`, preserving value
 and checksum. They introduce new relations, with no older mock schema to heal.

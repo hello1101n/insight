@@ -17,7 +17,7 @@ templates:
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
     insight_tenant_id: "{{ tenant }}"
-    source_id: "claude-team-invoices-test"
+    insight_source_id: "claude-team-invoices-test"
     unique_key: null
     collected_at: "2026-12-10T00:00:00Z"
     data_source: "insight_claude_team"

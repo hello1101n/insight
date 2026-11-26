@@ -120,7 +120,10 @@ name: claude-team
 # 5.1.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
 # MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
 # catalog, and `tenant_migration` renames the column of stored Bronze first.
-version: "5.1.0"
+# 5.2.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "5.2.0"
 # Daily at 23:50 UTC, as late in the day as the boundary allows. The seat
 # endpoint reports the billing month in progress and carries no history, so a
 # month's spend is frozen at the last read INSIDE it and whatever follows is

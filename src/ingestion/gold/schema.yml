@@ -132,7 +132,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance of the surviving carrier"
       - name: project_key
         description: "Project the repository belongs to"
@@ -354,7 +354,7 @@ models:
                   - commits_observed
       - name: record_id
         description: >
-          Deterministic total-order key within the measure scope; source_id
+          Deterministic total-order key within the measure scope; insight_source_id
           leads it, so two source instances covering the same repository
           cannot collide.
         tests:
@@ -1391,7 +1391,7 @@ models:
       changes — the measuring device for diff collection, since the size
       metrics report a commit's own total when its changes were never collected
       and so no longer show the gap themselves. Measured on the class relations
-      and grouped per source_id on purpose: collection is a property of a
+      and grouped per insight_source_id on purpose: collection is a property of a
       connector instance, and the gold commit set deliberately collapses one
       hash across a fork and its upstream, which would let a healthy instance
       hide a broken one. Merge commits are excluded — every connector skips
@@ -1407,7 +1407,7 @@ models:
         description: "Git source discriminator (insight_github, insight_gitlab, ...)"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance the commits were collected by"
       - name: commits
         description: "Non-merge commits the instance delivered"

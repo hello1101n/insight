@@ -15,4 +15,4 @@
 SELECT candidate.* FROM (
     {{ union_by_tag('silver:class_git_pull_requests_commits') }}
 ) AS candidate
-{{ silver_incremental_watermark(['insight_tenant_id', 'source_id', 'data_source']) }}
+{{ silver_incremental_watermark(['insight_tenant_id', 'insight_source_id', 'data_source']) }}

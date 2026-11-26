@@ -26,11 +26,11 @@ WITH walked_commits AS (
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_github', 'commits') }} FINAL
     WHERE COALESCE(author_email, '') != ''
-    GROUP BY email, author_name, insight_tenant_id, source_id
+    GROUP BY email, author_name, insight_tenant_id, insight_source_id
 ),
 
 -- A fork's head commits live under refs/pull/*, which a clone never fetches, so
@@ -40,11 +40,11 @@ pull_request_commits AS (
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
     WHERE COALESCE(author_email, '') != ''
-    GROUP BY email, author_name, insight_tenant_id, source_id
+    GROUP BY email, author_name, insight_tenant_id, insight_source_id
 ),
 
 every_author AS (
@@ -66,7 +66,7 @@ SELECT
     -- ways, and the freshest spelling is the one an operator will recognise.
     assumeNotNull(argMax(c.author_name, c.seen_at)) AS author_name,
     c.insight_tenant_id AS insight_tenant_id,
-    any(c.source_id) AS source_id,
+    any(c.insight_source_id) AS insight_source_id,
     assumeNotNull(max(c.seen_at)) AS last_committed_at,
     sum(1) AS commit_idents
 FROM candidates AS c

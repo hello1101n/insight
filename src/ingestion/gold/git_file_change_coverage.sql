@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['insight_tenant_id', 'data_source', 'source_id'],
+    order_by=['insight_tenant_id', 'data_source', 'insight_source_id'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -17,7 +17,7 @@
 -- number to serve and the wrong place to keep a collection alarm.
 --
 -- Measured on the CLASS relations, not the gold commit set, and grouped per
--- source_id: collection is a property of a connector instance, and by the time
+-- insight_source_id: collection is a property of a connector instance, and by the time
 -- a commit reaches git_authored_commits the same hash from a fork and its
 -- upstream is deliberately collapsed to one row carrying the copy that
 -- landed, else whichever source sorted first. A healthy instance would hide
@@ -41,11 +41,11 @@
 -- INVARIANT: join_use_nulls=1 is what makes the membership test mean anything.
 -- file_change_rows is a count, so under the default setting an unmatched LEFT
 -- JOIN would fill it with 0 rather than NULL and every commit would read as
--- collected. insight_tenant_id and source_id are Nullable on the class, so they join
+-- collected. insight_tenant_id and insight_source_id are Nullable on the class, so they join
 -- null-safe — a plain `=` never matches NULL to NULL and would report a whole
 -- instance as uncollected.
 --
--- INVARIANT: the membership key carries data_source. source_id is Nullable, so
+-- INVARIANT: the membership key carries data_source. insight_source_id is Nullable, so
 -- two providers whose rows both leave it NULL join null-safe to each other on
 -- shared repository coordinates, and one provider's file change would answer
 -- for another provider's commit — the hiding this model is grouped to prevent.
@@ -54,19 +54,19 @@ WITH collected AS (
     SELECT
         insight_tenant_id,
         data_source,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_hash,
         count() AS file_change_rows
     FROM {{ ref('class_git_file_changes') }} FINAL
-    GROUP BY insight_tenant_id, data_source, source_id, project_key, repo_slug, commit_hash
+    GROUP BY insight_tenant_id, data_source, insight_source_id, project_key, repo_slug, commit_hash
 ),
 classified AS (
     SELECT
         commits.insight_tenant_id AS insight_tenant_id,
         commits.data_source AS data_source,
-        commits.source_id AS source_id,
+        commits.insight_source_id AS insight_source_id,
         -- INVARIANT: the COMMITTER date, unlike the metrics. This panel asks
         -- how completely collection is keeping up, and its window is real
         -- time — an old repository imported yesterday carries old author
@@ -85,7 +85,7 @@ classified AS (
     LEFT JOIN collected
         ON collected.insight_tenant_id IS NOT DISTINCT FROM commits.insight_tenant_id
         AND collected.data_source = commits.data_source
-        AND collected.source_id IS NOT DISTINCT FROM commits.source_id
+        AND collected.insight_source_id IS NOT DISTINCT FROM commits.insight_source_id
         AND collected.project_key = commits.project_key
         AND collected.repo_slug = commits.repo_slug
         AND collected.commit_hash = commits.commit_hash
@@ -95,7 +95,7 @@ classified AS (
 SELECT
     insight_tenant_id,
     data_source,
-    source_id,
+    insight_source_id,
     count() AS commits,
     countIf(size_class = 'requires') AS commits_requiring_file_changes,
     countIf(size_class = 'known_zero') AS known_zero_size_commits,
@@ -126,4 +126,4 @@ SELECT
     ) AS recent_collected_pct,
     sumIf(reported_size, size_class = 'requires' AND NOT has_file_changes) AS uncollected_lines
 FROM classified
-GROUP BY insight_tenant_id, data_source, source_id
+GROUP BY insight_tenant_id, data_source, insight_source_id

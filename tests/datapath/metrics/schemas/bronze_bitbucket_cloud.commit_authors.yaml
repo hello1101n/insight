@@ -7,7 +7,7 @@ schemas:
     properties:
       unique_key: { type: [string, "null"] }
       insight_tenant_id: { type: [string, "null"] }
-      source_id: { type: [string, "null"] }
+      insight_source_id: { type: [string, "null"] }
       data_source: { type: [string, "null"] }
       collected_at: { type: [string, "null"] }
       repo_full_name: { type: [string, "null"] }

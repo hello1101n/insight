@@ -28,7 +28,7 @@ class TestEnvelope:
         assert out["properties_amount"] == "10"
         assert "properties" not in out
         assert out["insight_tenant_id"] == "T"
-        assert out["source_id"] == "S"
+        assert out["insight_source_id"] == "S"
         assert out["unique_key"] == "T-S-1"
         assert out["data_source"] == "hubspot"
         # collected_at is a UTC second-precision ISO timestamp.
@@ -212,7 +212,14 @@ class TestInjectEnvelopeProperties:
         schema = {"type": "object", "properties": {"id": {"type": "string"}}}
         out = inject_envelope_properties(schema)
         assert out is schema  # mutates and returns the same mapping
-        for field in ("insight_tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"):
+        for field in (
+            "insight_tenant_id",
+            "insight_source_id",
+            "unique_key",
+            "data_source",
+            "collected_at",
+            "raw_data",
+        ):
             assert field in schema["properties"], f"missing envelope field: {field}"
         assert "custom_fields" not in schema["properties"]
         assert schema["properties"]["id"] == {"type": "string"}

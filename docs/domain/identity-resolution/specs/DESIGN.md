@@ -701,7 +701,7 @@ Identity-attribute observation history for persons, stored in MariaDB. Each row 
 | `id` | `BIGINT UNSIGNED AUTO_INCREMENT` | PK (row identifier for operator references) |
 | `value_type` | `VARCHAR(50) NOT NULL` | Attribute kind — canonical: `id`, `email`, `username`, `display_name`. Known custom: `employee_id`, `platform_id`, etc. (free-form, extensible) |
 | `insight_source_type` | `VARCHAR(30) NOT NULL` | Source system: `bamboohr`, `zoom`, `cursor`, `claude_admin`, `gitlab`, etc. Tiny tier — connector keys are short, owned vocabulary (longest today is `claude_enterprise` = 17 chars) |
-| `insight_source_id` | `BINARY(16) NOT NULL` | Connector instance UUID (temporary: sipHash128 from Bronze string `source_id` until `sources` table exists — see REC-IR-04) |
+| `insight_source_id` | `BINARY(16) NOT NULL` | Connector instance UUID (temporary: sipHash128 from Bronze string `insight_source_id` until `sources` table exists — see REC-IR-04) |
 | `insight_tenant_id` | `BINARY(16) NOT NULL` | Canonical tenant UUID, as Bronze `tenant_id` carries it — see REC-IR-04 |
 | `value_id` | `VARCHAR(320) COLLATE utf8mb4_unicode_ci NULL` | Value for `value_type IN ('id', 'email', 'username')`. Case-insensitive comparison (migration 004; see component ADR-0011); hot-path lookup target. Size 320 covers RFC 5321/5322 email maximum (64 local + `@` + 255 domain) |
 | `value_full_text` | `VARCHAR(512) COLLATE utf8mb4_unicode_ci NULL` | Value for `value_type='display_name'`. Case- and accent-insensitive collation for operator search; leaves room for future FULLTEXT index |
@@ -1154,7 +1154,7 @@ Reason: identical structure (both carry `insight_tenant_id`, `insight_source_id`
 
 Bronze `tenant_id` is the canonical tenant UUID — the install's `authenticator.oidc.defaultTenantId`, the same value the session carries. Seed and connector models type it with the `tenant_uuid()` macro (`toUUID(coalesce(<col>, ''))`); a value that is not a UUID fails the build rather than resolving under a tenant nobody signs in to. `insight_tenant_id` is therefore joinable across `identity_inputs`, the journal and every gold relation.
 
-`insight_source_id` is still derived from the Bronze string `source_id` with `toUUID(UUIDNumToString(sipHash128(coalesce(<col>, ''))))`, a deterministic hash that stands in for a `sources` table:
+`insight_source_id` is still derived from the Bronze string `insight_source_id` with `toUUID(UUIDNumToString(sipHash128(coalesce(<col>, ''))))`, a deterministic hash that stands in for a `sources` table:
 - `sipHash128(...)` — deterministic 128-bit hash (returns `FixedString(16)`)
 - `UUIDNumToString(...)` — formats the 16 bytes as a UUID-shaped string
 - `toUUID(...)` — parses the string into ClickHouse `UUID` type — **required**: without this outer cast the value is `String` and breaks `UNION ALL` in `identity.identity_inputs` view (error `NO_COMMON_TYPE: UUID, UUID, String, String`). Both the `identity_inputs_from_history` macro (connector models) and all seed models must emit UUID.

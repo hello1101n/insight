@@ -325,7 +325,7 @@ definitions:
       value: "{{ config['insight_tenant_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
-      path: [source_id]
+      path: [insight_source_id]
       value: "{{ config['insight_source_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
@@ -673,7 +673,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           id: {type: [integer, "null"]}
@@ -790,7 +790,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -922,7 +922,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1035,7 +1035,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1115,7 +1115,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           id: {type: [integer, "null"]}
@@ -1311,7 +1311,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1443,7 +1443,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1607,7 +1607,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1732,7 +1732,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1834,7 +1834,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -1949,7 +1949,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           scope: {type: [string, "null"]}
@@ -2028,7 +2028,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -2226,7 +2226,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -2440,7 +2440,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -2526,7 +2526,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}
@@ -2668,7 +2668,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           id: {type: [integer, "null"]}
@@ -2801,7 +2801,7 @@ streams:
         properties:
           unique_key: {type: string}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           data_source: {type: [string, "null"]}
           collected_at: {type: [string, "null"]}
           project_id: {type: [integer, "null"]}

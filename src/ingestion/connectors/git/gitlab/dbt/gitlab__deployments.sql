@@ -18,7 +18,7 @@
 WITH environment_tiers AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_id,
         id AS environment_id,
         tier,
@@ -29,7 +29,7 @@ WITH environment_tiers AS (
 latest_status AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_id,
         id,
         repo_path,
@@ -42,13 +42,13 @@ latest_status AS (
         _airbyte_extracted_at
     FROM {{ source('bronze_gitlab', 'deployments') }} FINAL
     ORDER BY parseDateTimeBestEffortOrNull(updated_at) DESC
-    LIMIT 1 BY insight_tenant_id, source_id, project_id, id
+    LIMIT 1 BY insight_tenant_id, insight_source_id, project_id, id
 )
 
 SELECT
     ls.insight_tenant_id,
-    ls.source_id,
-    concat(ls.insight_tenant_id, ':', COALESCE(ls.source_id, ''), ':', toString(COALESCE(ls.project_id, 0)), ':', toString(COALESCE(ls.id, 0))) AS unique_key,
+    ls.insight_source_id,
+    concat(ls.insight_tenant_id, ':', COALESCE(ls.insight_source_id, ''), ':', toString(COALESCE(ls.project_id, 0)), ':', toString(COALESCE(ls.id, 0))) AS unique_key,
     COALESCE(ls.repo_path, '') AS repo_full_name,
     toString(COALESCE(ls.id, 0)) AS deployment_id,
     COALESCE(ls.environment_name, '') AS environment,
@@ -70,12 +70,12 @@ SELECT
 FROM latest_status AS ls
 LEFT JOIN environment_tiers AS et
     ON et.insight_tenant_id = ls.insight_tenant_id
-    AND et.source_id = ls.source_id
+    AND et.insight_source_id = ls.insight_source_id
     AND et.project_id = ls.project_id
     AND et.environment_id = ls.environment_id
 {% if is_incremental() %}
 WHERE greatest(
     ls._airbyte_extracted_at,
     COALESCE(et._airbyte_extracted_at, ls._airbyte_extracted_at)
-) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['ls.insight_tenant_id', 'ls.source_id']) }}
+) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['ls.insight_tenant_id', 'ls.insight_source_id']) }}
 {% endif %}

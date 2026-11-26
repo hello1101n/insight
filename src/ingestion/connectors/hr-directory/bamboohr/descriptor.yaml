@@ -5,7 +5,10 @@ type: cdk
 #   shape and the RMT promotion step is gone (#2877). MINOR per ADR-0015:
 #   reconcile must republish this connector so the connection catalog is
 #   refreshed; nothing already stored changes meaning.
-version: "2.21.0"
+# 2.22.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "2.22.0"
 schedule: 0 * * * *
 dbt_select: tag:bamboohr+
 workflow: sync

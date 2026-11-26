@@ -34,7 +34,7 @@ WITH
 --
 -- Each price carries the seat population it may reach. One tenant can hold
 -- several instances of a vendor's connector, and the invoice instance and the
--- seat instance are separate connectors whose source_id never matches — so the
+-- seat instance are separate connectors whose insight_source_id never matches — so the
 -- only thing that can say which seats an invoice billed is the operator's
 -- binding. `invoice_sources` counts the instances that priced anything, which is
 -- what tells an unscoped price whether it is the tenant's only one.
@@ -43,7 +43,7 @@ priced_lines AS (
         invoice.insight_tenant_id               AS insight_tenant_id,
         invoice.source                          AS source,
         invoice.period_month                    AS period_month,
-        invoice.source_id                       AS invoice_source_id,
+        invoice.insight_source_id                       AS invoice_source_id,
         -- The seat connector instance this price applies to. Empty when the
         -- binding names none, which only a single-instance tenant can use.
         coalesce(binding.seat_source_id, '')    AS seat_source_id,
@@ -69,7 +69,7 @@ priced_lines AS (
         WHERE is_deleted = 0
     ) AS binding
         ON  binding.insight_tenant_id = invoice.insight_tenant_id
-        AND binding.insight_source_id = invoice.source_id
+        AND binding.insight_source_id = invoice.insight_source_id
         AND binding.source = invoice.source
         AND binding.tier_ref = invoice.tier_ref
     WHERE invoice.line_id IS NOT NULL
@@ -108,7 +108,7 @@ seat_billed_states AS (
     SELECT
         reading.insight_tenant_id               AS insight_tenant_id,
         reading.source                          AS source,
-        reading.source_id                       AS source_id,
+        reading.insight_source_id                       AS insight_source_id,
         reading.account_id                      AS account_id,
         starts.period_month                     AS period_month,
         argMax(reading.seat_tier, reading.collected_at) AS billed_tier,
@@ -120,13 +120,13 @@ seat_billed_states AS (
         AND starts.source = reading.source
     -- An unscoped start reaches every population; the offers below decide
     -- whether its price may.
-    WHERE has([reading.source_id, ''], starts.seat_source_id)
+    WHERE has([reading.insight_source_id, ''], starts.seat_source_id)
       AND reading.collected_at <= starts.period_started_at
       AND reading.collected_at > starts.period_started_at - INTERVAL 1 MONTH
     GROUP BY
         reading.insight_tenant_id,
         reading.source,
-        reading.source_id,
+        reading.insight_source_id,
         reading.account_id,
         starts.period_month
 ),
@@ -134,7 +134,7 @@ seat_month_source AS (
     SELECT
         insight_tenant_id,
         source,
-        source_id,
+        insight_source_id,
         account_id,
         lower(email)                            AS entity_id,
         seat_tier,
@@ -165,7 +165,7 @@ month_seat_populations AS (
         insight_tenant_id,
         source,
         period_month,
-        uniqExact(source_id)                    AS seat_sources
+        uniqExact(insight_source_id)                    AS seat_sources
     FROM seat_month_source
     GROUP BY insight_tenant_id, source, period_month
 ),
@@ -192,7 +192,7 @@ seat_month_offers AS (
     SELECT
         scoped.* EXCEPT (seat_sources),
         arrayFilter(
-            p -> p.1 = scoped.source_id
+            p -> p.1 = scoped.insight_source_id
                  OR (p.1 = '' AND prices.invoice_sources = 1 AND scoped.seat_sources = 1),
             prices.scoped_prices
         )                                       AS offers
@@ -215,7 +215,7 @@ seat_month_billed AS (
     LEFT JOIN seat_billed_states AS billed
         ON  billed.insight_tenant_id = offered.insight_tenant_id
         AND billed.source = offered.source
-        AND billed.source_id = offered.source_id
+        AND billed.insight_source_id = offered.insight_source_id
         AND billed.account_id = offered.account_id
         AND billed.period_month = offered.period_month
 ),
@@ -250,7 +250,7 @@ seat_day_source AS (
     SELECT
         insight_tenant_id,
         source,
-        source_id,
+        insight_source_id,
         account_id,
         lower(email)                            AS entity_id,
         snapshot_date                           AS metric_date,
@@ -282,7 +282,7 @@ seat_day_held AS (
             greatest(
                 used_amount_cents,
                 lagInFrame(used_amount_cents, 1, toUInt32(0)) OVER (
-                    PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
+                    PARTITION BY insight_tenant_id, source, insight_source_id, account_id, period_month
                     ORDER BY metric_date
                 )
             ),
@@ -296,7 +296,7 @@ seat_day_corrected AS (
     SELECT
         *,
         min(held_cents) OVER (
-            PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
+            PARTITION BY insight_tenant_id, source, insight_source_id, account_id, period_month
             ORDER BY metric_date
             ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
         )                                       AS corrected_cents
@@ -316,7 +316,7 @@ seat_day_step AS (
         ))                                      AS covers_days
     FROM seat_day_corrected
     WINDOW w AS (
-        PARTITION BY insight_tenant_id, source, source_id, account_id, period_month
+        PARTITION BY insight_tenant_id, source, insight_source_id, account_id, period_month
         ORDER BY metric_date
     )
 )
@@ -336,7 +336,7 @@ SELECT
     -- order.
     concat(
         toString(period_month), ':', seat_measure.1, ':',
-        hex(sipHash64(concat(coalesce(source_id, ''), ':', coalesce(account_id, ''))))
+        hex(sipHash64(concat(coalesce(insight_source_id, ''), ':', coalesce(account_id, ''))))
     )                                           AS record_id,
     'seat_month'                                AS record_kind,
     'source_summary'                            AS granularity,
@@ -390,7 +390,7 @@ SELECT
     -- Keyed on the read day: unlike the month rows, the day IS the grain here.
     concat(
         toString(metric_date), ':daily_extra_usage_usd:',
-        hex(sipHash64(concat(coalesce(source_id, ''), ':', coalesce(account_id, ''))))
+        hex(sipHash64(concat(coalesce(insight_source_id, ''), ':', coalesce(account_id, ''))))
     )                                           AS record_id,
     'seat_day'                                  AS record_kind,
     'source_summary'                            AS granularity,
@@ -445,7 +445,7 @@ SELECT
     -- drilldown row under the month it belongs to.
     concat(
         toString(day), ':', credit_measure.1, ':',
-        hex(sipHash64(concat(coalesce(source_id, ''), ':', coalesce(source, ''))))
+        hex(sipHash64(concat(coalesce(insight_source_id, ''), ':', coalesce(source, ''))))
     )                                           AS record_id,
     credit_measure.3                            AS record_kind,
     'source_summary'                            AS granularity,
@@ -479,7 +479,7 @@ FROM (
         SELECT
             credit.insight_tenant_id            AS insight_tenant_id,
             credit.email                        AS entity_id,
-            credit.source_id                    AS source_id,
+            credit.insight_source_id                    AS insight_source_id,
             credit.source                       AS source,
             credit.day                          AS day,
             credit.credits                      AS credits,
@@ -509,7 +509,7 @@ FROM (
             toDecimal128(credit.credits, 6) * pricing.credit_price_minor_units
                                             * pricing.native_minor_to_usd_cents_rate AS usd_cents,
             row_number() OVER (
-                PARTITION BY credit.insight_tenant_id, credit.source_id,
+                PARTITION BY credit.insight_tenant_id, credit.insight_source_id,
                              credit.source, credit.day, credit.email
                 -- An instance-scoped configuration wins over the vendor default.
                 ORDER BY (pricing.insight_source_id != '') DESC
@@ -533,7 +533,7 @@ FROM (
           -- Empty binds every instance of the vendor, as in ai_seat_tier_map.
           -- IN is unsupported with a column on the right, and OR would put a
           -- disjunction back into the join, so the scope test is has().
-          AND has([credit.source_id, ''], pricing.insight_source_id)
+          AND has([credit.insight_source_id, ''], pricing.insight_source_id)
     )
     WHERE pick = 1
 ) AS priced_day

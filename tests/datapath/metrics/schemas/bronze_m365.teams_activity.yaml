@@ -13,7 +13,7 @@ schemas:
       _airbyte_meta: {type: string}
       _airbyte_generation_id: {type: integer}
       insight_tenant_id: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       unique_key: {type: [string, "null"]}
       userPrincipalName: {type: [string, "null"]}
       reportRefreshDate: {type: [string, "null"]}

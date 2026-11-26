@@ -303,11 +303,12 @@ class Ledger:
         # replica too: one still fetching could answer with half of them.
         if self._cluster is None:
             found = self._select(
-                f"SELECT DISTINCT insight_tenant_id AS tenant_id, source_id FROM {namespace}.{table} LIMIT 2"
+                "SELECT DISTINCT insight_tenant_id AS tenant_id, insight_source_id AS source_id "
+                f"FROM {namespace}.{table} LIMIT 2"
             )
         else:
             found = self._select(
-                f"SELECT insight_tenant_id AS tenant_id, source_id "
+                f"SELECT insight_tenant_id AS tenant_id, insight_source_id AS source_id "
                 f"FROM clusterAllReplicas({_quote(self._cluster)}, {namespace}.{table}) "
                 f"GROUP BY tenant_id, source_id LIMIT 2 {_SKIP_UNAVAILABLE_REPLICAS}"
             )

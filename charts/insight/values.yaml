@@ -122,8 +122,8 @@ global:
     deploy: false
   # The source systems that drilldown rows link to. analytics and
   # insight-v3-core both read this list. Each entry has an `id` (the
-  # `source_id` that the connector writes), a `provider` (github, gitlab,
-  # bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
+  # `insight_source_id` that the connector writes), a `provider` (github,
+  # gitlab, bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
   #   - id: <source id>
   #     provider: github
   #     webBaseUrl: https://github.example.com

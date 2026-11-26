@@ -2,7 +2,7 @@
 
 Plain paginated stream: GET /rest/api/3/project/search, OffsetIncrement
 paginator (page_size 50, maxResults/startAt request params), `values` extract
-field, AddFields stamping insight_tenant_id / source_id / unique_key + flattened
+field, AddFields stamping insight_tenant_id / insight_source_id / unique_key + flattened
 project fields.
 
 Coverage matrix rows: full_refresh_single_page, pagination_multi_page,
@@ -69,7 +69,7 @@ def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
 
     rec = output.records[0].record.data
     assert rec["insight_tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["unique_key"] == (f"{config['insight_tenant_id']}-{config['insight_source_id']}-10001")
     # Flattening transformations declared in the manifest. CDK interpolation
     # literal-evals the rendered Jinja value, so the numeric-string API id

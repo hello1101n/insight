@@ -25,7 +25,7 @@
 -- in bronze.
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     COALESCE(repo_full_name, '') AS repo_full_name,
     -- The workflow FILE identifies the pipeline; the display name is not

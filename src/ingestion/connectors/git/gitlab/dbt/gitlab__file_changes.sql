@@ -9,7 +9,7 @@
 
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     arrayStringConcat(arrayPopBack(splitByChar('/', COALESCE(repo_path, ''))), '/') AS project_key,
     arrayElement(splitByChar('/', COALESCE(repo_path, '')), -1) AS repo_slug,

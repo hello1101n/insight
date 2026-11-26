@@ -643,7 +643,7 @@ const ACCOUNT_ASSIGNMENT_TABLE: (&str, &str) = ("identity", "account_assignment"
 const ACCOUNT_ASSIGNMENT_COLUMNS: &[&str] = &[
     "insight_tenant_id",
     "source_type",
-    "source_id",
+    "insight_source_id",
     "account_id",
     "person_id",
 ];

@@ -22,7 +22,7 @@
 WITH diffstat_rows AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         repo_full_name,
         pr_id,
         COALESCE(parseDateTimeBestEffortOrNull(pr_updated_on), toDateTime(0)) AS generation,
@@ -35,18 +35,18 @@ WITH diffstat_rows AS (
 diffstat_newest_generation AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         repo_full_name,
         pr_id,
         max(generation) AS generation
     FROM diffstat_rows
-    GROUP BY insight_tenant_id, source_id, repo_full_name, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, repo_full_name, pr_id
 ),
 
 diff_stats AS (
     SELECT
         stat.insight_tenant_id AS insight_tenant_id,
-        stat.source_id AS source_id,
+        stat.insight_source_id AS insight_source_id,
         stat.repo_full_name AS repo_full_name,
         stat.pr_id AS pr_id,
         count() AS files_changed,
@@ -57,11 +57,11 @@ diff_stats AS (
     FROM diffstat_rows AS stat
     INNER JOIN diffstat_newest_generation AS newest
         ON newest.insight_tenant_id = stat.insight_tenant_id
-        AND newest.source_id = stat.source_id
+        AND newest.insight_source_id = stat.insight_source_id
         AND newest.repo_full_name = stat.repo_full_name
         AND newest.pr_id = stat.pr_id
     WHERE stat.generation = newest.generation
-    GROUP BY stat.insight_tenant_id, stat.source_id, stat.repo_full_name, stat.pr_id
+    GROUP BY stat.insight_tenant_id, stat.insight_source_id, stat.repo_full_name, stat.pr_id
 ),
 
 -- A pull request records no close time of its own; the terminal update event
@@ -69,7 +69,7 @@ diff_stats AS (
 terminal_activity AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         repo_full_name,
         pr_id,
         max(event_date) AS closed_on,
@@ -77,7 +77,7 @@ terminal_activity AS (
     FROM {{ source('bronze_bitbucket_cloud', 'pull_request_activity') }} FINAL
     WHERE kind = 'update'
       AND update_state IN ('MERGED', 'DECLINED', 'SUPERSEDED')
-    GROUP BY insight_tenant_id, source_id, repo_full_name, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, repo_full_name, pr_id
 ),
 
 -- Every entry in the activity that is NOT a terminal state change. What it
@@ -87,14 +87,14 @@ terminal_activity AS (
 non_terminal_activity AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         repo_full_name,
         pr_id,
         max(parseDateTimeBestEffortOrNull(event_date)) AS last_seen_at,
         max(_airbyte_extracted_at) AS _airbyte_extracted_at
     FROM {{ source('bronze_bitbucket_cloud', 'pull_request_activity') }} FINAL
     WHERE NOT (kind = 'update' AND update_state IN ('MERGED', 'DECLINED', 'SUPERSEDED'))
-    GROUP BY insight_tenant_id, source_id, repo_full_name, pr_id
+    GROUP BY insight_tenant_id, insight_source_id, repo_full_name, pr_id
 ),
 
 -- WORKAROUND: a merge reached by pushing a commit that carries the request's
@@ -111,7 +111,7 @@ non_terminal_activity AS (
 merge_commit_times AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_prefix,
@@ -124,7 +124,7 @@ merge_commit_times AS (
     FROM (
         SELECT
             {{ bronze_tenant() }} AS insight_tenant_id,
-            source_id,
+            insight_source_id,
             arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,
             replaceRegexpOne(arrayElement(splitByChar('/', COALESCE(repository, '')), -1), '\\.git$', '') AS repo_slug,
             substring(COALESCE(sha, ''), 1, 12) AS commit_prefix,
@@ -148,7 +148,7 @@ merge_commit_times AS (
               WHERE state = 'MERGED' AND COALESCE(merge_commit_sha, '') != ''
           )
     )
-    GROUP BY insight_tenant_id, source_id, project_key, repo_slug, commit_prefix
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug, commit_prefix
     -- A prefix is a weak key. Two commits sharing it in one repository leave
     -- nothing to say which merge this was, so such a prefix resolves nothing
     -- rather than guessing.
@@ -157,7 +157,7 @@ merge_commit_times AS (
 
 SELECT
     {{ bronze_tenant('pr.insight_tenant_id') }} AS insight_tenant_id,
-    pr.source_id AS source_id,
+    pr.insight_source_id AS insight_source_id,
     pr.unique_key AS unique_key,
     splitByChar('/', COALESCE(pr.repo_full_name, ''))[1] AS project_key,
     splitByChar('/', COALESCE(pr.repo_full_name, ''))[2] AS repo_slug,
@@ -248,24 +248,24 @@ SELECT
 FROM {{ source('bronze_bitbucket_cloud', 'pull_requests') }} AS pr FINAL
 LEFT JOIN diff_stats AS ds
     ON ds.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
-    AND ds.source_id = pr.source_id
+    AND ds.insight_source_id = pr.insight_source_id
     AND ds.repo_full_name = pr.repo_full_name
     AND ds.pr_id = pr.id
 LEFT JOIN terminal_activity AS activity
     ON activity.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
-    AND activity.source_id = pr.source_id
+    AND activity.insight_source_id = pr.insight_source_id
     AND activity.repo_full_name = pr.repo_full_name
     AND activity.pr_id = pr.id
 LEFT JOIN non_terminal_activity AS seen
     ON seen.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
-    AND seen.source_id = pr.source_id
+    AND seen.insight_source_id = pr.insight_source_id
     AND seen.repo_full_name = pr.repo_full_name
     AND seen.pr_id = pr.id
 -- Scoped to the request's own repository: a 12-character prefix is a weak key,
 -- and a commit elsewhere that happens to share it is another repository's work.
 LEFT JOIN merge_commit_times AS merge_commit
     ON merge_commit.insight_tenant_id = {{ bronze_tenant('pr.insight_tenant_id') }}
-    AND merge_commit.source_id = pr.source_id
+    AND merge_commit.insight_source_id = pr.insight_source_id
     AND merge_commit.project_key = splitByChar('/', COALESCE(pr.repo_full_name, ''))[1]
     AND merge_commit.repo_slug = splitByChar('/', COALESCE(pr.repo_full_name, ''))[2]
     AND merge_commit.commit_prefix = substring(COALESCE(pr.merge_commit_sha, ''), 1, 12)
@@ -276,5 +276,5 @@ WHERE greatest(
     COALESCE(activity._airbyte_extracted_at, pr._airbyte_extracted_at),
     COALESCE(seen._airbyte_extracted_at, pr._airbyte_extracted_at),
     COALESCE(merge_commit._airbyte_extracted_at, pr._airbyte_extracted_at)
-) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.insight_tenant_id', 'pr.source_id']) }}
+) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['pr.insight_tenant_id', 'pr.insight_source_id']) }}
 {% endif %}

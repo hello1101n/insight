@@ -22,7 +22,7 @@
 -- a window re-fetch within one sync can leave a pre-merge duplicate in bronze.
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     COALESCE(repo_path, '') AS repo_full_name,
     COALESCE(repo_path, '') AS pipeline_key,

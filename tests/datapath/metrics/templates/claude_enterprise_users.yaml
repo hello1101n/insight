@@ -13,7 +13,7 @@ templates:
     _airbyte_generation_id: 0
     unique_key: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "claude-enterprise-test"
+    insight_source_id: "claude-enterprise-test"
     date: null
     user_id: null
     user_email: null
@@ -51,7 +51,7 @@ templates:
     data_source: "insight_claude_enterprise"
 
   # user_id MUST be distinct per person: the staging model dedups with
-  # `LIMIT 1 BY insight_tenant_id, source_id, user_id, date`, so a shared/NULL user_id
+  # `LIMIT 1 BY insight_tenant_id, insight_source_id, user_id, date`, so a shared/NULL user_id
   # collapses all three seats into one row (cohort of 1 → wrong team median).
   alice:
     $ref: "#/templates/ent_user"

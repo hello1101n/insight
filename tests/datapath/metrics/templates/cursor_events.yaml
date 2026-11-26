@@ -20,7 +20,7 @@ templates:
     _airbyte_meta: "{}"
     _airbyte_generation_id: 0
     insight_tenant_id: "{{ tenant }}"
-    source_id: "cursor-test"
+    insight_source_id: "cursor-test"
     unique_key: null
     userEmail: null
     timestamp: null

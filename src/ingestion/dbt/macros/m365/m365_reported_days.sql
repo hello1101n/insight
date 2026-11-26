@@ -37,7 +37,7 @@ ifNull({{ column }}, 0){% if not loop.last %} + {% endif %}
 {% macro m365_reported_days(stream) %}
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    ifNull(source_id, '') AS insight_source_id,
+    ifNull(insight_source_id, '') AS insight_source_id,
     toDate(reportRefreshDate) AS report_day
 FROM {{ source('bronze_m365', stream) }} FINAL
 GROUP BY insight_tenant_id, insight_source_id, report_day
@@ -48,7 +48,7 @@ HAVING countIf(
 {%- endmacro %}
 
 {% macro m365_day_was_reported(stream) %}
-({{ bronze_tenant() }}, ifNull(source_id, ''), toDate(reportRefreshDate)) IN (
+({{ bronze_tenant() }}, ifNull(insight_source_id, ''), toDate(reportRefreshDate)) IN (
     {{ m365_reported_days(stream) }}
 )
 {%- endmacro %}

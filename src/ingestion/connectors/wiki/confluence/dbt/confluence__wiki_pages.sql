@@ -25,7 +25,7 @@
 WITH pages AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         page_id,
         space_id,
@@ -50,7 +50,7 @@ WITH pages AS (
 spaces AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         space_id,
         name                                                                AS space_name,
         url                                                                 AS space_url
@@ -76,7 +76,7 @@ spaces AS (
 -- consumers and `not_null`/`unique` tests.
 SELECT
     p.insight_tenant_id                                                             AS insight_tenant_id,
-    p.source_id                                                             AS source_id,
+    p.insight_source_id                                                             AS insight_source_id,
     p.unique_key                                                            AS unique_key,
     p.page_id                                                               AS page_id,
     p.space_id                                                              AS space_id,
@@ -99,7 +99,7 @@ SELECT
 FROM pages p
 LEFT JOIN spaces s
     ON p.insight_tenant_id = s.insight_tenant_id
-   AND p.source_id = s.source_id
+   AND p.insight_source_id = s.insight_source_id
    AND p.space_id  = s.space_id
 {%- if jira_user %}
 LEFT JOIN users ua

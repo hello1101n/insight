@@ -12,7 +12,7 @@ templates:
     count: null
     created_at: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "zulip-test"
+    insight_source_id: "zulip-test"
     unique_key: null
 
   zulip_user:
@@ -28,5 +28,5 @@ templates:
     is_active: true
     recipient_id: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "zulip-test"
+    insight_source_id: "zulip-test"
     unique_key: null

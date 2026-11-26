@@ -6,7 +6,7 @@
 
 SELECT
     {{ bronze_tenant() }}     AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     id                        AS source_person_id,
     workEmail                 AS email,

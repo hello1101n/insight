@@ -71,7 +71,7 @@ kubectl apply -f src/ingestion/secrets/connectors/zulip-proxy.yaml
 - `staging.zulip_proxy__users_fields_history` — field-level history for SCD2 columns.
 - `staging.zulip_proxy__identity_inputs` — feeds Identity Manager (email → person).
 - `staging.zulip_proxy__collab_chat_activity` — `class_collab_chat_activity` daily roll-up
-  per (`insight_tenant_id`, `source_id`, `email`, `date`).
+  per (`insight_tenant_id`, `insight_source_id`, `email`, `date`).
 
 ## Operational notes
 

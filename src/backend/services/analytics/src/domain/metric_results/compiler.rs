@@ -1925,7 +1925,7 @@ fn resolved_observation_from(
             LEFT JOIN {ACCOUNT_ASSIGNMENT_RELATION} AS account_map
                 ON account_map.insight_tenant_id = toString(obs.insight_tenant_id)
                AND account_map.source_type = obs.account_source_type
-               AND account_map.source_id = {account_source_uuid}
+               AND account_map.insight_source_id = {account_source_uuid}
                AND account_map.account_id = {account_id}
             LEFT JOIN {PERSON_MAP_RELATION} AS person_map
                 ON person_map.insight_tenant_id = toString(obs.insight_tenant_id)

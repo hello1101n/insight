@@ -26,7 +26,7 @@
 --     "to": "...", "toString": "..." }
 --
 -- ClickHouse strategy: arrayJoin() on JSONExtractArrayRaw, then JSONExtract* on each element.
--- Bronze dedup is handled by argMax on the natural key (insight_tenant_id, source_id, changelog_id) picking the
+-- Bronze dedup is handled by argMax on the natural key (insight_tenant_id, insight_source_id, changelog_id) picking the
 -- latest Airbyte emission, then the final GROUP BY below collapses content-identical items
 -- within a single changelog.
 --
@@ -40,7 +40,7 @@
 
 WITH exploded AS (
     SELECT
-        CAST(h.source_id AS String)                              AS insight_source_id,
+        CAST(h.insight_source_id AS String)                              AS insight_source_id,
         {{ bronze_tenant('h.insight_tenant_id') }}               AS insight_tenant_id,
         COALESCE(h.id_readable, '')                              AS id_readable,
         h.jira_id                                                AS jira_id,
@@ -54,7 +54,7 @@ WITH exploded AS (
       AND h._airbyte_raw_id IN (
           SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
           FROM {{ source('bronze_jira', 'jira_issue_history') }}
-          GROUP BY insight_tenant_id, source_id, changelog_id
+          GROUP BY insight_tenant_id, insight_source_id, changelog_id
       )
 ),
 parsed AS (

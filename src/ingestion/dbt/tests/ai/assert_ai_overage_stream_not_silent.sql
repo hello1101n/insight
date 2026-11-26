@@ -26,7 +26,7 @@ reported_last_month AS (
 
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         source
     FROM {{ ref('class_ai_overage') }} FINAL
     WHERE period_month = billing_month - INTERVAL 1 MONTH
@@ -37,7 +37,7 @@ reporting_this_month AS (
 
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         source
     FROM {{ ref('class_ai_overage') }} FINAL
     WHERE period_month = billing_month
@@ -46,12 +46,12 @@ reporting_this_month AS (
 
 SELECT
     p.insight_tenant_id AS insight_tenant_id,
-    p.source_id         AS source_id,
+    p.insight_source_id         AS insight_source_id,
     p.source            AS source,
     billing_month       AS period_month
 FROM reported_last_month AS p
 LEFT ANTI JOIN reporting_this_month AS c
     ON p.insight_tenant_id = c.insight_tenant_id
-   AND p.source_id = c.source_id
+   AND p.insight_source_id = c.insight_source_id
    AND p.source = c.source
 WHERE today() >= billing_month + 2

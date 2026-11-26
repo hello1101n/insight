@@ -96,7 +96,7 @@ def test_the_corrected_reading_is_what_silver_stores(
         SELECT toString(credits)
         FROM silver.class_ai_credit_usage FINAL
         WHERE insight_tenant_id = '{spec.tenant}'
-          AND source_id = 'chatgpt-team-test'
+          AND insight_source_id = 'chatgpt-team-test'
           AND email = '{ALICE}'
           AND day = toDate('2026-12-02')
         """,

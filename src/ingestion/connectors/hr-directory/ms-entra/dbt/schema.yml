@@ -34,7 +34,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
       - name: field_name
@@ -89,7 +89,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key

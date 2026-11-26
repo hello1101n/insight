@@ -137,7 +137,7 @@ def seed_bamboohr_employees(
         "supervisorEmail",
         "supervisor",
         "insight_tenant_id",
-        "source_id",
+        "insight_source_id",
         "raw_data",
     ]
     rows: list[tuple[object, ...]] = []

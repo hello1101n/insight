@@ -99,7 +99,7 @@
 
   Types:
     `insight_tenant_id` is the canonical tenant UUID Bronze is stamped with;
-    `insight_source_id` is derived from the raw `source_id` string via sipHash128.
+    `insight_source_id` is derived from the raw `insight_source_id` string via sipHash128.
     `_synced_at` is emitted as DateTime64(3). All three match what the seed-
     style identity inputs (seed_identity_inputs_from_cursor /
     _from_claude_admin) emit so the `silver/_shared/identity_inputs.sql`
@@ -107,8 +107,8 @@
     String with error code 386 NO_COMMON_TYPE.
 
   unique_key is
-  `{tenant}-{source_id}-{source_type}-{source_account_id}-{value_type}-{operation}-{updated_at_ms}`
-  — uniquely identifies one observation event. source_id is part of the key:
+  `{tenant}-{insight_source_id}-{source_type}-{source_account_id}-{value_type}-{operation}-{updated_at_ms}`
+  — uniquely identifies one observation event. insight_source_id is part of the key:
   two connections under one tenant can legitimately hold the same entity_id
   (numeric vendor ids collide across hosts), and without it the silver RMT
   would silently keep one scope's row and drop the other's. RMT(_version)
@@ -133,7 +133,7 @@ identity_field_events AS (
     SELECT DISTINCT
         CAST(concat(
             coalesce(insight_tenant_id, ''), '-',
-            coalesce(source_id, ''), '-',
+            coalesce(r.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(entity_id, ''), '-',
             '{{ f.value_type }}', '-',
@@ -141,7 +141,7 @@ identity_field_events AS (
             toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(r.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         entity_id AS source_account_id,
         '{{ f.value_type }}' AS value_type,
@@ -150,7 +150,7 @@ identity_field_events AS (
         if(new_value = '', 'DELETE', 'UPSERT') AS operation_type,
         toDateTime64(updated_at, 3) AS _synced_at,
         toUnixTimestamp64Milli(toDateTime64(updated_at, 3)) AS _version
-    FROM history
+    FROM history AS r
     WHERE field_name = '{{ f.field }}'
       -- A row without an account key can never bind (the persons-seed fails
       -- the whole run on a NULL source_account_id).
@@ -180,7 +180,7 @@ upserts AS (
 account_deactivation_events AS (
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         entity_id,
         updated_at
     FROM history
@@ -196,7 +196,7 @@ account_deactivation_events AS (
 roster_inactivation_events AS (
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         entity_id,
         updated_at
     FROM history
@@ -212,7 +212,7 @@ roster_membership_upserts AS (
     SELECT DISTINCT
         CAST(concat(
             coalesce(h.insight_tenant_id, ''), '-',
-            coalesce(h.source_id, ''), '-',
+            coalesce(h.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(h.entity_id, ''), '-',
             'roster_membership-',
@@ -220,7 +220,7 @@ roster_membership_upserts AS (
             toString(toUnixTimestamp64Milli(toDateTime64(h.updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('h.insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(h.source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(h.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         h.entity_id AS source_account_id,
         'roster_membership' AS value_type,
@@ -232,7 +232,7 @@ roster_membership_upserts AS (
     FROM history h
     LEFT ANTI JOIN roster_inactivation_events d
         ON  d.insight_tenant_id  = h.insight_tenant_id
-        AND d.source_id  = h.source_id
+        AND d.insight_source_id  = h.insight_source_id
         AND d.entity_id  = h.entity_id
         AND d.updated_at = h.updated_at
     WHERE ({{ roster_active_condition }})
@@ -243,7 +243,7 @@ roster_membership_deletes AS (
     SELECT DISTINCT
         CAST(concat(
             coalesce(d.insight_tenant_id, ''), '-',
-            coalesce(d.source_id, ''), '-',
+            coalesce(d.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
             'roster_membership-',
@@ -251,7 +251,7 @@ roster_membership_deletes AS (
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(d.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,
         'roster_membership' AS value_type,
@@ -290,7 +290,7 @@ deletes AS (
     SELECT
         CAST(concat(
             coalesce(d.insight_tenant_id, ''), '-',
-            coalesce(d.source_id, ''), '-',
+            coalesce(d.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
             '{{ f.value_type }}', '-',
@@ -298,7 +298,7 @@ deletes AS (
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(d.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,
         '{{ f.value_type }}' AS value_type,
@@ -323,7 +323,7 @@ id_upserts AS (
     SELECT DISTINCT
         CAST(concat(
             coalesce(insight_tenant_id, ''), '-',
-            coalesce(source_id, ''), '-',
+            coalesce(r.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(entity_id, ''), '-',
             'id-',
@@ -331,7 +331,7 @@ id_upserts AS (
             toString(toUnixTimestamp64Milli(toDateTime64(updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(r.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         entity_id AS source_account_id,
         'id' AS value_type,
@@ -340,7 +340,7 @@ id_upserts AS (
         'UPSERT' AS operation_type,
         toDateTime64(updated_at, 3) AS _synced_at,
         toUnixTimestamp64Milli(toDateTime64(updated_at, 3)) AS _version
-    FROM history
+    FROM history AS r
     WHERE entity_id IS NOT NULL AND entity_id != ''
 ),
 
@@ -349,7 +349,7 @@ id_deletes AS (
     SELECT DISTINCT
         CAST(concat(
             coalesce(d.insight_tenant_id, ''), '-',
-            coalesce(d.source_id, ''), '-',
+            coalesce(d.insight_source_id, ''), '-',
             '{{ source_type }}', '-',
             coalesce(d.entity_id, ''), '-',
             'id-',
@@ -357,7 +357,7 @@ id_deletes AS (
             toString(toUnixTimestamp64Milli(toDateTime64(d.updated_at, 3)))
         ) AS String) AS unique_key,
         {{ tenant_uuid('d.insight_tenant_id') }} AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(d.source_id, '')))) AS insight_source_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(d.insight_source_id, '')))) AS insight_source_id,
         '{{ source_type }}' AS insight_source_type,
         d.entity_id AS source_account_id,
         'id' AS value_type,

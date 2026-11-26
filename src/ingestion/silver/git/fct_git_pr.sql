@@ -11,7 +11,7 @@
 
 SELECT
     pr.insight_tenant_id,
-    pr.source_id,
+    pr.insight_source_id,
     pr.unique_key,
     pr.project_key,
     pr.repo_slug,
@@ -47,4 +47,4 @@ SELECT
     pr._airbyte_extracted_at
 FROM {{ ref('class_git_pull_requests') }} AS pr FINAL
 -- INVARIANT: the class mixes connectors with independent `_version` clocks, so the boundary is per source.
-{{ silver_incremental_watermark(['insight_tenant_id', 'source_id', 'data_source'], alias='pr') }}
+{{ silver_incremental_watermark(['insight_tenant_id', 'insight_source_id', 'data_source'], alias='pr') }}

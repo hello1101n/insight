@@ -56,7 +56,7 @@ priced_populations AS (
         WHERE is_deleted = 0
     ) AS binding
         ON  binding.insight_tenant_id = invoice.insight_tenant_id
-        AND binding.insight_source_id = invoice.source_id
+        AND binding.insight_source_id = invoice.insight_source_id
         AND binding.source = invoice.source
         AND binding.tier_ref = invoice.tier_ref
     WHERE invoice.line_id IS NOT NULL
@@ -80,7 +80,7 @@ tiered_seats_per_population AS (
     SELECT
         insight_tenant_id,
         source,
-        source_id,
+        insight_source_id,
         tool,
         period_month,
         coalesce(seat_tier, 'unknown')          AS seat_tier,
@@ -90,7 +90,7 @@ tiered_seats_per_population AS (
       AND email IS NOT NULL
       AND email != ''
       AND insight_tenant_id IS NOT NULL
-    GROUP BY insight_tenant_id, source, source_id, tool, period_month, seat_tier
+    GROUP BY insight_tenant_id, source, insight_source_id, tool, period_month, seat_tier
 ),
 
 tiered_seats AS (
@@ -116,7 +116,7 @@ priced_tiered_seats AS (
         seat_tier,
         sum(seats)                              AS seats
     FROM tiered_seats_per_population
-    WHERE (insight_tenant_id, source, period_month, source_id) IN (
+    WHERE (insight_tenant_id, source, period_month, insight_source_id) IN (
             SELECT insight_tenant_id, source, period_month, seat_source_id FROM priced_populations
         )
        OR (insight_tenant_id, source, period_month, '') IN (
@@ -164,7 +164,7 @@ no_tiered_seats AS (
     -- and would read as a real answer.
     WHERE (seat_source_id != ''
            AND (insight_tenant_id, source, period_month, seat_source_id) NOT IN (
-               SELECT insight_tenant_id, source, period_month, source_id FROM tiered_seats_per_population
+               SELECT insight_tenant_id, source, period_month, insight_source_id FROM tiered_seats_per_population
            ))
        OR (seat_source_id = ''
            AND (insight_tenant_id, source, period_month) NOT IN (

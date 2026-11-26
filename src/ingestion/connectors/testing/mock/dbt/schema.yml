@@ -14,7 +14,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         description: "Instance identity injected by reconcile."
       - name: unique_key
         description: "Tenant, source and stable source-native id."

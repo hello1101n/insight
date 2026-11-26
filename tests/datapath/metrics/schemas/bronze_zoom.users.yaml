@@ -22,7 +22,7 @@ schemas:
       verified: {type: [number, "null"]}
       group_ids: {type: [string, "null"]}
       last_name: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       insight_tenant_id: {type: [string, "null"]}
       created_at: {type: [string, "null"]}
       first_name: {type: [string, "null"]}

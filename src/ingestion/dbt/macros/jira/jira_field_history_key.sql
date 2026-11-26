@@ -10,6 +10,6 @@
   model. `assert_jira_field_history_key_is_issue_keyed` recomputes this over
   every row.
 #}
-{% macro jira_history_key(insight_tenant_id, source_id, issue_id, field_id, event_id) -%}
-concat(ifNull({{ insight_tenant_id }}, ''), '-', {{ source_id }}, '-jira-', {{ issue_id }}, '-', {{ field_id }}, '-', {{ event_id }})
+{% macro jira_history_key(insight_tenant_id, insight_source_id, issue_id, field_id, event_id) -%}
+concat(ifNull({{ insight_tenant_id }}, ''), '-', {{ insight_source_id }}, '-jira-', {{ issue_id }}, '-', {{ field_id }}, '-', {{ event_id }})
 {%- endmacro %}

@@ -45,7 +45,7 @@ def test_every_stream_has_stable_bronze_stamps() -> None:
 
             for field in transform["fields"]:
                 fields.add(field["path"][0])
-        if not {"insight_tenant_id", "source_id", "unique_key"} <= fields:
+        if not {"insight_tenant_id", "insight_source_id", "unique_key"} <= fields:
             missing.append(stream["name"])
 
     assert not missing

@@ -47,7 +47,7 @@ def snapshot(warehouse: Client, tenant: str | None, source: str, entries: list[o
             "unique_key",
             "_airbyte_extracted_at",
             "insight_tenant_id",
-            "source_id",
+            "insight_source_id",
             "entries_json",
             "window_start",
             "window_end",
@@ -147,7 +147,7 @@ def test_a_snapshot_without_a_valid_tenant_fails_the_build(warehouse: Client, te
         )
     finally:
         warehouse.command(
-            "ALTER TABLE bronze_bamboohr.whos_out DELETE WHERE source_id = {source:String} SETTINGS mutations_sync = 2",
+            "ALTER TABLE bronze_bamboohr.whos_out DELETE WHERE insight_source_id = {source:String} SETTINGS mutations_sync = 2",
             parameters={"source": source},
         )
 
@@ -163,7 +163,7 @@ def test_attribute_claims_fail_on_an_employee_without_a_valid_tenant(warehouse: 
             "_airbyte_raw_id",
             "_airbyte_extracted_at",
             "insight_tenant_id",
-            "source_id",
+            "insight_source_id",
             "unique_key",
             "id",
             "jobTitle",
@@ -191,11 +191,11 @@ def test_attribute_claims_fail_on_an_employee_without_a_valid_tenant(warehouse: 
         )
     finally:
         warehouse.command(
-            "ALTER TABLE bronze_bamboohr.employees DELETE WHERE source_id = {source:String} SETTINGS mutations_sync = 2",
+            "ALTER TABLE bronze_bamboohr.employees DELETE WHERE insight_source_id = {source:String} SETTINGS mutations_sync = 2",
             parameters={"source": source},
         )
         warehouse.command(
-            "ALTER TABLE staging.bamboohr__employees_snapshot DELETE WHERE source_id = {source:String}"
+            "ALTER TABLE staging.bamboohr__employees_snapshot DELETE WHERE insight_source_id = {source:String}"
             " SETTINGS mutations_sync = 2",
             parameters={"source": source},
         )

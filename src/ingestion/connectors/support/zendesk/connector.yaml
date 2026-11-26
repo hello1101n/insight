@@ -91,7 +91,7 @@ definitions:
       path: [insight_tenant_id]
       value: "{{ config['insight_tenant_id'] }}"
     - type: AddedFieldDefinition
-      path: [source_id]
+      path: [insight_source_id]
       value: "{{ config['insight_source_id'] }}"
     - type: AddedFieldDefinition
       path: [unique_key]
@@ -169,7 +169,7 @@ definitions:
 
   base_properties: &base_properties
     insight_tenant_id: { type: string }
-    source_id: { type: string }
+    insight_source_id: { type: string }
     unique_key: { type: string }
     payload_json: { type: string }
 
@@ -811,7 +811,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]

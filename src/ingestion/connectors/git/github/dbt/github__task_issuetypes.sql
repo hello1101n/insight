@@ -15,7 +15,7 @@
 SELECT
     CAST(t.unique_key AS Nullable(String))                  AS unique_key,
     {{ bronze_tenant('t.insight_tenant_id') }}                                 AS insight_tenant_id,
-    CAST(t.source_id AS Nullable(String))                   AS insight_source_id,
+    CAST(t.insight_source_id AS Nullable(String))                   AS insight_source_id,
     CAST('github' AS String)                                AS data_source,
     CAST(t.issue_type_id AS Nullable(String))               AS issue_type_id,
     CAST(t.issue_type_name AS Nullable(String))             AS issue_type_name,
