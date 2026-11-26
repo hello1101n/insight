@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tenant_migration import ddl
 from tenant_migration.__main__ import main
-from tenant_migration.inventory import InventoryError, Relation, Table, classify
+from tenant_migration.inventory import InventoryError, Relation, Table, _scope_params, classify
 from tenant_migration.keys import TenantError, parse_tenant
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
@@ -41,10 +41,9 @@ def _classify(database: str, columns: dict[str, str], *, history: bool = False) 
         ("insight", "tenant_id", True),
         ("config", "tenant_id", True),
         ("bronze_example", "insight_tenant_id", False),
-        ("ingestion_history", "tenant_id", False),
     ],
 )
-def test_the_tenant_column_is_renamed_everywhere_but_the_sync_ledger(database: str, column: str, renames: bool) -> None:
+def test_the_tenant_column_is_renamed_in_every_layer(database: str, column: str, renames: bool) -> None:
     table = _classify(database, {column: STRING, "insight_source_id": STRING})
 
     assert table is not None and table.renames_tenant is renames and not table.adds
@@ -57,18 +56,21 @@ def test_the_tenant_column_is_renamed_everywhere_but_the_sync_ledger(database: s
         ("staging", {"source_id": STRING}, True),
         ("insight", {"tenant_id": STRING, "source_id": STRING}, True),
         ("bronze_example", {"insight_tenant_id": STRING, "insight_source_id": STRING}, False),
-        ("bronze_example", {"insight_tenant_id": STRING, "source_id": STRING, "insight_source_id": STRING}, False),
-        ("ingestion_history", {"tenant_id": STRING, "source_id": STRING}, False),
     ],
-    ids=["bronze", "staging without a tenant", "gold", "converged", "both names", "the ledger"],
+    ids=["bronze", "staging without a tenant", "gold", "converged"],
 )
-def test_the_stamped_source_column_is_renamed_everywhere_but_the_sync_ledger(
+def test_the_stamped_source_column_is_renamed_in_every_layer(
     database: str, columns: dict[str, str], renamed: bool
 ) -> None:
     table = _classify(database, columns)
 
     assert table is not None and table.renames_source is renamed
     assert table.renamed(table.source or "") == ("insight_source_id" if renamed else table.source)
+
+
+def test_the_sync_ledger_is_out_of_scope() -> None:
+    """Its sweep writes a seal with an empty tenant every tick: in scope, every deploy would be a cutover."""
+    assert "ingestion_history" not in _scope_params([])["databases"]
 
 
 def test_a_vendor_column_named_like_the_source_is_out_of_scope() -> None:
@@ -89,8 +91,12 @@ def test_a_silver_table_or_history_relation_without_a_tenant_gains_one_and_no_ot
 
 @pytest.mark.parametrize(
     "columns",
-    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "Int64"}],
-    ids=["both tenant columns", "tenant not a string"],
+    [
+        {"tenant_id": STRING, "insight_tenant_id": STRING},
+        {"tenant_id": "Int64"},
+        {"insight_tenant_id": STRING, "source_id": STRING, "insight_source_id": STRING},
+    ],
+    ids=["both tenant columns", "tenant not a string", "both source columns"],
 )
 def test_a_table_the_migration_cannot_read_stops_it(columns: dict[str, str]) -> None:
     with pytest.raises(InventoryError):
@@ -171,7 +177,7 @@ def test_an_unreachable_clickhouse_is_reported_as_an_error_not_a_traceback(
 
 
 @pytest.mark.parametrize("engine", ["ReplicatedReplacingMergeTree", "ReplicatedMergeTree"])
-@pytest.mark.parametrize("database", ["bronze_example", "staging", "ingestion_history"])
+@pytest.mark.parametrize("database", ["bronze_example", "staging", "silver"])
 def test_a_replicated_table_stops_the_migration_before_anything_changes(engine: str, database: str) -> None:
     columns = [("unique_key", "String"), ("tenant_id", STRING), ("source_id", STRING)]
 

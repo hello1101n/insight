@@ -1,16 +1,17 @@
 """Which tables the migration brings to the new shape, and in which columns.
 
-In scope is every MergeTree table in `bronze_*`, `config`, the sync ledger,
-`staging`, `silver` and gold (`insight`), plus every history relation listed in
-`history-tables.txt`, packaged beside this module. The migration's own tables
-(a name carrying `__tenant_`) and materialized views' inner tables (a name
-starting with `.`) never are; nor is any other database (`dbt_test__audit`,
-operator databases such as `presentation` or `backup_*`).
+In scope is every MergeTree table in `bronze_*`, `config`, `staging`, `silver`
+and gold (`insight`), plus every history relation listed in `history-tables.txt`,
+packaged beside this module. The migration's own tables (a name carrying
+`__tenant_`) and materialized views' inner tables (a name starting with `.`)
+never are; nor is any other database: not the sync ledger (`ingestion_history`,
+a service table that keeps `tenant_id` and `source_id` and whose sweep writes
+rows with an empty tenant every tick), `dbt_test__audit`, or operator databases
+such as `presentation` or `backup_*`.
 
 A table changes when it names its tenant `tenant_id`, names its stamped source
 `source_id`, or holds a tenant other than the install's. A silver table or a
-history relation without any tenant column gains one. The ledger keeps both of
-its old names: it is a service table, not a warehouse layer.
+history relation without any tenant column gains one.
 """
 
 from __future__ import annotations
@@ -51,10 +52,6 @@ DBT_DATABASES = ("staging", "silver", "insight")
 TENANT_EVERYWHERE = "silver"
 #: Values that cannot be written by INSERT: the copy leaves them to the table.
 COMPUTED = ("MATERIALIZED", "ALIAS", "EPHEMERAL")
-#: The sync ledger keeps `tenant_id`: it is a service table, not a warehouse layer.
-LEDGER_DATABASE = "ingestion_history"
-#: The stamped source column, old name first; a vendor column of another name is never touched.
-SOURCE_COLUMNS = (OLD_SOURCE_COLUMN, SOURCE_COLUMN)
 KEY_COLUMN = "unique_key"
 STRING_TYPES = ("String", "Nullable(String)", "LowCardinality(String)", "LowCardinality(Nullable(String))")
 #: A tenant column dbt already types as a UUID; it is read and written as text like the rest.
@@ -111,11 +108,7 @@ class Table:
     @property
     def target(self) -> str:
         """The tenant column the migrated table has."""
-        return OLD_TENANT_COLUMN if self.rel.database == LEDGER_DATABASE else TENANT_COLUMN
-
-    @property
-    def ledger(self) -> bool:
-        return self.rel.database == LEDGER_DATABASE
+        return TENANT_COLUMN
 
     @property
     def renames_tenant(self) -> bool:
@@ -123,10 +116,8 @@ class Table:
 
     @property
     def source_target(self) -> str | None:
-        """The source column the migrated table has: `insight_source_id`, but the ledger keeps its name."""
-        if self.source is None or self.ledger:
-            return self.source
-        return SOURCE_COLUMN
+        """The source column the migrated table has, when it has one."""
+        return SOURCE_COLUMN if self.source else None
 
     @property
     def renames_source(self) -> bool:
@@ -148,6 +139,11 @@ class Table:
         if column == self.source and self.source_target:
             return self.source_target
         return column
+
+    @property
+    def rekeys(self) -> bool:
+        """The key leads with the tenant the copy moves: the row's own, or, gaining one, the key's."""
+        return self.key is not None and (self.tenant is not None or (self.adds and self.source is not None))
 
     @property
     def replacing(self) -> bool:
@@ -193,10 +189,10 @@ def classify(
     tenant = tenants[0] if tenants else None
     if tenant is not None and types[tenant] not in TENANT_TYPES:
         raise InventoryError(f"{rel}: {tenant} is {types[tenant]}, not a string or UUID")
-    # The old name while it stands alone; a table holding both keeps both as they are.
-    source = next((c for c in SOURCE_COLUMNS if c in types), None)
-    if source == OLD_SOURCE_COLUMN and SOURCE_COLUMN in types:
-        source = SOURCE_COLUMN
+    sources = [c for c in (OLD_SOURCE_COLUMN, SOURCE_COLUMN) if c in types]
+    if len(sources) == 2:
+        raise InventoryError(f"{rel}: holds both {OLD_SOURCE_COLUMN} and {SOURCE_COLUMN}")
+    source = sources[0] if sources else None
     key = KEY_COLUMN if KEY_COLUMN in types else None
     needs_tenant = history or database == TENANT_EVERYWHERE
     table = Table(rel, engine, tuple(columns), tenant, source, key, needs_tenant, computed)
@@ -214,7 +210,7 @@ SCOPE_SQL = (
 
 def _scope_params(history: list[tuple[str, str]]) -> dict[str, str]:
     pairs = ", ".join(f"({param_text(database)}, {param_text(name)})" for database, name in history)
-    databases = ", ".join(param_text(d) for d in ("config", LEDGER_DATABASE, *DBT_DATABASES))
+    databases = ", ".join(param_text(d) for d in ("config", *DBT_DATABASES))
     return {"databases": f"[{databases}]", "history": f"[{pairs}]", "marker": WORK_MARKER}
 
 
