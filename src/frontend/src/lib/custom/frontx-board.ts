@@ -455,7 +455,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         ...formatted(shown),
         render: {
           radius: ["80%"],
-          legend_position: "bottom",
+          legend_position: "right",
         },
         transform: `cel.bind(l, ${column(widget.label)}, cel.bind(v, ${column(widget.value)}, {'slices': response.rows.map(r, {'label': r[l], 'value': ${number("r", "v", isPercent(shown))}})}))`,
       };

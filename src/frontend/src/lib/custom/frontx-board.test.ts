@@ -443,12 +443,12 @@ describe("frontxBoard", () => {
     });
   });
 
-  it("draws a pie whole, with its legend under it, as the current chart does", () => {
+  it("draws a pie whole, with its legend beside it", () => {
     const [pie] = cells([{ widget: "pie" }]);
 
     expect(pie.widget.render).toEqual({
       radius: ["80%"],
-      legend_position: "bottom",
+      legend_position: "right",
     });
   });
 
