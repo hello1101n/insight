@@ -52,14 +52,14 @@
 WITH stitched AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         id,
         uuid,
         has_video,
         has_screen_share,
         sum(CASE WHEN gap_seconds IS NULL OR gap_seconds > {{ session_gap_seconds }} THEN 1 ELSE 0 END)
             OVER (
-                PARTITION BY insight_tenant_id, source_id, id
+                PARTITION BY insight_tenant_id, insight_source_id, id
                 ORDER BY start_ts
             ) AS cluster_idx
     FROM (
@@ -68,7 +68,7 @@ WITH stitched AS (
             dateDiff(
                 'second',
                 lagInFrame(end_ts) OVER (
-                    PARTITION BY insight_tenant_id, source_id, id
+                    PARTITION BY insight_tenant_id, insight_source_id, id
                     ORDER BY start_ts
                 ),
                 start_ts
@@ -76,7 +76,7 @@ WITH stitched AS (
         FROM (
             SELECT
                 {{ bronze_tenant() }} AS insight_tenant_id,
-                source_id,
+                insight_source_id,
                 toString(id)                                            AS id,
                 uuid,
                 parseDateTimeBestEffortOrNull(coalesce(start_time, '')) AS start_ts,
@@ -92,7 +92,7 @@ WITH stitched AS (
                   AND _airbyte_extracted_at >= now() - INTERVAL {{ lookback_days }} DAY
                 {% endif %}
                 ORDER BY _airbyte_extracted_at DESC
-                LIMIT 1 BY insight_tenant_id, source_id, uuid
+                LIMIT 1 BY insight_tenant_id, insight_source_id, uuid
             ) AS deduped
         ) AS with_dates
         WHERE start_ts IS NOT NULL
@@ -100,9 +100,9 @@ WITH stitched AS (
 )
 
 SELECT
-    concat(insight_tenant_id, '-', source_id, '-', uuid)                AS unique_key,
+    concat(insight_tenant_id, '-', insight_source_id, '-', uuid)                AS unique_key,
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     uuid,
     id,
     concat(id, '#', toString(cluster_idx))                      AS logical_meeting_id,

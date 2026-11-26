@@ -9,7 +9,7 @@ schemas:
     properties:
       unique_key: { type: string }
       insight_tenant_id: { type: string }
-      source_id: { type: string }
+      insight_source_id: { type: string }
       insight_tenant_id: { type: string }
       field_id: { type: string }
       name: { type: string }

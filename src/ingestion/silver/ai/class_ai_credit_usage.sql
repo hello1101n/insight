@@ -34,4 +34,4 @@
 SELECT candidate.* FROM (
     {{ union_by_tag('silver:class_ai_credit_usage') }}
 ) AS candidate
-{{ silver_incremental_watermark(['insight_tenant_id', 'source_id']) }}
+{{ silver_incremental_watermark(['insight_tenant_id', 'insight_source_id']) }}

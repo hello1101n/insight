@@ -26,7 +26,7 @@
 WITH activity AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         repo_full_name,
         pr_id,
@@ -56,7 +56,7 @@ status_change AS (
 
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[2] AS repo_slug,

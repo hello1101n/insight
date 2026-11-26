@@ -55,7 +55,7 @@ def test_records_stamped_with_tenant_and_source(http_mocker: HttpMocker) -> None
 
     record = output.records[0].record.data
     assert record["insight_tenant_id"] == "test-tenant"
-    assert record["source_id"] == "test-source"
+    assert record["insight_source_id"] == "test-source"
 
 
 def test_records_conform_to_schema(http_mocker: HttpMocker) -> None:

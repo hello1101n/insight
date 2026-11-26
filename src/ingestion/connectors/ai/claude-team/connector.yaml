@@ -49,7 +49,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -85,7 +85,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -113,7 +113,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -144,7 +144,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -180,7 +180,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           # The reading's own date, so the grain is in the data and not only in
           # the key. `collected_at` beside it keeps the time of that reading.
@@ -260,7 +260,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           # The read day belongs in the key. This endpoint reports the billing
           # month in progress and carries no history, so a month exists only in
@@ -322,7 +322,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -413,7 +413,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -462,7 +462,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -542,7 +542,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]

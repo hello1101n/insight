@@ -494,7 +494,7 @@ HIDDEN_READ_SQL = "2026-04-01 12:00:00.000"
 def _availability(scenario: Scenario) -> str:
     rows = scenario.warehouse.rows(
         "SELECT availability FROM staging.jira__issue_availability_state FINAL"
-        " WHERE source_id = {src:String} AND jira_id = '1002'",
+        " WHERE insight_source_id = {src:String} AND jira_id = '1002'",
         {"src": scenario.source},
     )
     return rows[0]["availability"]
@@ -551,7 +551,7 @@ def test_a_missing_link_only_closes_when_other_issue_availability_allows_it(
     assert rows[0]["evidence"] == ("observation" if closes else "event"), availability
     snapshots = scenario.warehouse.rows(
         "SELECT toDateTime64(_tracked_at, 3) > parseDateTime64BestEffort({read:String}, 3) AS tracked_after_read"
-        " FROM staging.jira__project_visibility_snapshot WHERE source_id = {src:String} AND project_key = 'GONE'",
+        " FROM staging.jira__project_visibility_snapshot WHERE insight_source_id = {src:String} AND project_key = 'GONE'",
         {"src": scenario.source, "read": read_at},
     )
     assert snapshots == [{"tracked_after_read": 1}] * (2 if availability == "access_lost" else 1)

@@ -586,7 +586,7 @@ def test_issue_observation_watermark_is_scoped_to_the_source(case: Warehouse) ->
             "idReadable": "OT-1",
             "created": 1767225600000,
             "unique_key": TENANT + "-other-source-issue-1",
-            "source_id": "other-source",
+            "insight_source_id": "other-source",
             "project_id": "project-1",
             "custom_fields_json": "[]",
             "issue_json": "{}",

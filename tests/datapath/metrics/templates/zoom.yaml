@@ -36,7 +36,7 @@ templates:
     has_meeting_summary: null
     avg_jointime_cost: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "zoom-test"
+    insight_source_id: "zoom-test"
     unique_key: null
     video_quality: null
     screen_share_quality: null
@@ -89,7 +89,7 @@ templates:
     total_jointime_cost: null
     is_original_host: null
     insight_tenant_id: "{{ tenant }}"
-    source_id: "zoom-test"
+    insight_source_id: "zoom-test"
     meeting_uuid: null
     unique_key: null
 
@@ -126,7 +126,7 @@ templates:
     verified: null
     group_ids: null
     last_name: null
-    source_id: "zoom-test"
+    insight_source_id: "zoom-test"
     insight_tenant_id: "{{ tenant }}"
     created_at: null
     first_name: null

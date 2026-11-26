@@ -24,7 +24,7 @@ sources:
 models:
   - name: slack__users_latest
     description: >
-      One row per Slack member (insight_tenant_id, source_id, user_id), built from the
+      One row per Slack member (insight_tenant_id, insight_source_id, user_id), built from the
       Activity file (bronze_slack.users_details) and the Members list
       (bronze_slack.users). The Activity email wins; the Members email is the
       fallback. Bots and proven guests are left out. Feeds slack__users_snapshot.
@@ -34,7 +34,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         description: "The raw source string from bronze insight_source_id."
         tests:
           - not_null
@@ -58,7 +58,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -75,7 +75,7 @@ models:
         tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         tests:
           - not_null
 

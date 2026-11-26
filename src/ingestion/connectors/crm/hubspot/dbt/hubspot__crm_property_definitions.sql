@@ -13,7 +13,7 @@
 WITH src AS (
     SELECT
         {{ bronze_tenant() }}                           AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         objectType                                      AS object_type,
         name,

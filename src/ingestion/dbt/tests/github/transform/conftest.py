@@ -87,7 +87,7 @@ class Warehouse:
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
             "insight_tenant_id": tenant,
-            "source_id": SOURCE,
+            "insight_source_id": SOURCE,
             **row,
         }
         self.client.insert(qualified, [list(values.values())], column_names=list(values))

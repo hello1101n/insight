@@ -44,7 +44,7 @@ def _commit_author(run_tag: str, *, account: str, email: str, tenant: str) -> di
     return {
         **records.framing(),
         "insight_tenant_id": tenant,
-        "source_id": source_id,
+        "insight_source_id": source_id,
         "unique_key": f"{tenant}:{source_id}:{REPO}:{email}",
         "data_source": "insight_bitbucket_cloud",
         "collected_at": records.OBSERVED_AT,
@@ -64,7 +64,7 @@ def _pull_request(run_tag: str, *, pr_id: int, account: str, tenant: str) -> dic
     return {
         **records.framing(),
         "insight_tenant_id": tenant,
-        "source_id": source_id,
+        "insight_source_id": source_id,
         "unique_key": f"{tenant}:{source_id}:{REPO}:{pr_id}",
         "data_source": "insight_bitbucket_cloud",
         "collected_at": records.OBSERVED_AT,

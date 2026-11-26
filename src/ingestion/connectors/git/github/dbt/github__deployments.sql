@@ -16,7 +16,7 @@
 -- within one sync can leave a pre-merge duplicate in bronze.
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     COALESCE(repo_full_name, '') AS repo_full_name,
     toString(COALESCE(id, 0)) AS deployment_id,

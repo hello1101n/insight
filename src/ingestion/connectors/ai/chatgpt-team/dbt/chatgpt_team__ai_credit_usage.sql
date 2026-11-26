@@ -36,10 +36,10 @@
 
 SELECT
     {{ bronze_tenant('bronze.insight_tenant_id') }}    AS insight_tenant_id,
-    bronze.source_id                                    AS source_id,
+    bronze.insight_source_id                                    AS insight_source_id,
     CAST(concat(
         insight_tenant_id, '-',
-        coalesce(bronze.source_id, ''), '-',
+        coalesce(bronze.insight_source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(date, '')
     ) AS String)                                        AS unique_key,
@@ -66,7 +66,7 @@ FROM (
     SELECT *
     FROM {{ source('bronze_chatgpt_team', 'chatgpt_team_codex_user_daily') }}
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY insight_tenant_id, source_id, lower(trim(email)), date
+    LIMIT 1 BY insight_tenant_id, insight_source_id, lower(trim(email)), date
 ) AS bronze
 WHERE email IS NOT NULL
   AND trim(email) != ''
@@ -94,7 +94,7 @@ WHERE email IS NOT NULL
   -- cannot wrap below 1970 into the far future and drop every row.
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243).
   AND (
-      toDate(bronze.date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'bronze.source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-      OR bronze._airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'bronze.source_id'], ['insight_tenant_id', 'source_id']) }}
+      toDate(bronze.date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'bronze.insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+      OR bronze._airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'bronze.insight_source_id'], ['insight_tenant_id', 'insight_source_id']) }}
   )
 {% endif %}

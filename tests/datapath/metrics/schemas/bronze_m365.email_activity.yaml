@@ -12,7 +12,7 @@ schemas:
       isDeleted: { type: [boolean, "null"] }
       readCount: { type: [number, "null"] }
       sendCount: { type: [number, "null"] }
-      source_id: { type: [string, "null"] }
+      insight_source_id: { type: [string, "null"] }
       insight_tenant_id: { type: [string, "null"] }
       unique_key: { type: [string, "null"] }
       displayName: { type: [string, "null"] }

@@ -34,7 +34,7 @@
 WITH collected_file_changes AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_hash,
@@ -77,7 +77,7 @@ earliest_carriers AS (
         -- then free to take each column from a different carrier and emit a
         -- row no commit reported.
         argMin(
-            (source_id, commit_hash, file_extension, change_type, lines_added, lines_removed),
+            (insight_source_id, commit_hash, file_extension, change_type, lines_added, lines_removed),
             (observed_at, committer_date, commit_hash)
         ) AS carrier
     FROM collected_file_changes
@@ -92,7 +92,7 @@ earliest_carriers AS (
 )
 SELECT
     insight_tenant_id,
-    tupleElement(carrier, 1) AS source_id,
+    tupleElement(carrier, 1) AS insight_source_id,
     project_key,
     repo_slug,
     tupleElement(carrier, 2) AS commit_hash,

@@ -169,7 +169,7 @@ streams:
               - "null"
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -186,7 +186,7 @@ streams:
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path:

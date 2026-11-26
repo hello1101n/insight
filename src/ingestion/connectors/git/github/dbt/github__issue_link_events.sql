@@ -27,7 +27,7 @@
 WITH linked AS (
     {% for relation in ['issue_timeline_events', 'pull_request_timeline_events'] %}
     SELECT
-        COALESCE(source_id, '')                                 AS insight_source_id,
+        COALESCE(insight_source_id, '')                                 AS insight_source_id,
         {{ bronze_tenant() }} AS insight_tenant_id,
         COALESCE(event_id, '')                                  AS event_id,
         COALESCE(event_type, '')                                AS event_type,

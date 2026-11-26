@@ -57,23 +57,23 @@ WITH long_text_fields AS (
 from_snapshot AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
-        CAST(i.source_id AS String)                       AS insight_source_id,
+        CAST(i.insight_source_id AS String)                       AS insight_source_id,
         kv.2                                              AS content,
         CAST('adf_json' AS String)                        AS content_form
     FROM {{ source('bronze_jira', 'jira_issue') }} AS i
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
         ON f.insight_tenant_id = {{ bronze_tenant('i.insight_tenant_id') }}
-       AND f.insight_source_id = CAST(i.source_id AS String)
+       AND f.insight_source_id = CAST(i.insight_source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
       -- Read-time dedup of the ReplacingMergeTree by the issue's stable key
-      -- within a tenant's source, (insight_tenant_id, source_id, jira_id): unmerged
+      -- within a tenant's source, (insight_tenant_id, insight_source_id, jira_id): unmerged
       -- parts hold several rows per issue, and `unique_key` exists for the merge alone.
       AND i._airbyte_raw_id IN (
           SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
           FROM {{ source('bronze_jira', 'jira_issue') }}
-          GROUP BY insight_tenant_id, source_id, jira_id
+          GROUP BY insight_tenant_id, insight_source_id, jira_id
       )
 ),
 

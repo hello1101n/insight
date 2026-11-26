@@ -9,7 +9,10 @@ name: claude-team-invoices
 #   invoice_metrics_json, and lines staged before that never return from the
 #   vendor once paid, so only a rebuild from Bronze gives them the key gold
 #   prices a seat's billed tier by.
-version: "1.1.0"
+# 1.2.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "1.2.0"
 type: cdk
 schedule: "0 4 * * *" # daily at 04:00 UTC — invoices are monthly; a daily pass keeps a new one within a day
 workflow: sync

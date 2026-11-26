@@ -99,7 +99,7 @@ class Warehouse:
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
             "insight_tenant_id": tenant,
-            "source_id": SOURCE,
+            "insight_source_id": SOURCE,
             "unique_key": f"{tenant or 'no-tenant'}-{SOURCE}-{key}",
             "data_source": "hubspot",
             **row,

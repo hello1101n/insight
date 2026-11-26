@@ -13,7 +13,7 @@
 SELECT
     insight_tenant_id,
     data_source,
-    source_id,
+    insight_source_id,
     recent_commits_requiring_file_changes,
     recent_collected_pct
 FROM {{ ref('git_file_change_coverage') }}

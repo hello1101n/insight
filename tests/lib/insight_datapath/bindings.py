@@ -36,7 +36,7 @@ class BindingError(RuntimeError):
 
 
 def hashed_source_id(cfg: InstanceConfig, raw: str) -> str:
-    """The connector instance id the warehouse mints from a bronze `source_id`."""
+    """The connector instance id the warehouse mints from a bronze `insight_source_id`."""
     rows = ch.query(
         cfg,
         f"SELECT toString(toUUID(UUIDNumToString(sipHash128({ch.literal(raw)})))) ",

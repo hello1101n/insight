@@ -19,7 +19,7 @@
 WITH issues AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}                    AS insight_tenant_id,
-        CAST(i.source_id AS String)                                   AS insight_source_id,
+        CAST(i.insight_source_id AS String)                                   AS insight_source_id,
         CAST(i.jira_id AS String)                                     AS issue_id,
         COALESCE(toString(i.id_readable), '')                         AS id_readable,
         toDateTime64(i._airbyte_extracted_at, 3)                      AS extracted_at,
@@ -29,7 +29,7 @@ WITH issues AS (
     WHERE i._airbyte_raw_id IN (
         SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
         FROM {{ source('bronze_jira', 'jira_issue') }}
-        GROUP BY insight_tenant_id, source_id, jira_id
+        GROUP BY insight_tenant_id, insight_source_id, jira_id
     )
 ),
 

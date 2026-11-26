@@ -40,7 +40,7 @@
 WITH issue_created AS (
     SELECT
         COALESCE(insight_tenant_id, '')                                       AS insight_tenant_id,
-        CAST(source_id AS String)                                     AS insight_source_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         CAST(jira_id AS String)                                       AS issue_id,
         argMax(parseDateTime64BestEffortOrNull(created, 3),
                _airbyte_extracted_at)                                 AS created_at

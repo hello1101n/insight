@@ -15,7 +15,7 @@
 WITH projects AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
         COALESCE(path, '') AS repo_slug
@@ -25,7 +25,7 @@ WITH projects AS (
 state_events AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         project_id,
         COALESCE(mr_iid, 0) AS item_number,
@@ -45,7 +45,7 @@ state_events AS (
 label_events AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         project_id,
         COALESCE(mr_iid, 0) AS item_number,
@@ -67,7 +67,7 @@ events AS (
 
 SELECT
     e.insight_tenant_id AS insight_tenant_id,
-    e.source_id AS source_id,
+    e.insight_source_id AS insight_source_id,
     e.unique_key AS unique_key,
     p.project_key AS project_key,
     p.repo_slug AS repo_slug,
@@ -88,8 +88,8 @@ SELECT
 FROM events AS e
 INNER JOIN projects AS p
     ON p.insight_tenant_id = e.insight_tenant_id
-    AND p.source_id = e.source_id
+    AND p.insight_source_id = e.insight_source_id
     AND p.project_id = e.project_id
 {% if is_incremental() %}
-WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.source_id']) }}
+WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.insight_source_id']) }}
 {% endif %}

@@ -34,7 +34,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -56,7 +56,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -96,7 +96,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -116,7 +116,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -136,7 +136,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -152,7 +152,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -174,7 +174,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -194,7 +194,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -210,7 +210,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -230,7 +230,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key
@@ -252,7 +252,7 @@ models:
         data_tests:
           - not_null
           - not_empty
-      - name: source_id
+      - name: insight_source_id
         data_tests:
           - not_null
       - name: unique_key

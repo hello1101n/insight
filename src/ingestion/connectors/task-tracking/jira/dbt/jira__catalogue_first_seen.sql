@@ -24,7 +24,7 @@
 WITH first_syncs AS (
     SELECT
         {{ bronze_tenant() }}                             AS insight_tenant_id,
-        CAST(source_id AS String)                         AS insight_source_id,
+        CAST(insight_source_id AS String)                         AS insight_source_id,
         min(_airbyte_extracted_at)                        AS catalogue_first_sync,
         now64(3)                                          AS recorded_at
     FROM {{ source('bronze_jira', 'jira_fields') }}

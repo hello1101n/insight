@@ -41,8 +41,8 @@
 
 SELECT
     {{ bronze_tenant() }}                                              AS insight_tenant_id,
-    source_id,
-    CAST(concat(insight_tenant_id, '-', coalesce(source_id, ''), '-', coalesce(user_id, ''), '-', coalesce(date, '')) AS String)
+    insight_source_id,
+    CAST(concat(insight_tenant_id, '-', coalesce(insight_source_id, ''), '-', coalesce(user_id, ''), '-', coalesce(date, '')) AS String)
                                                                        AS unique_key,
     lower(trim(user_email))                                            AS email,
     CAST(NULL AS Nullable(String))                                     AS api_key_id,
@@ -102,7 +102,7 @@ FROM (
     SELECT *
     FROM {{ source('bronze_claude_enterprise', 'claude_enterprise_users') }}
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY insight_tenant_id, source_id, user_id, date
+    LIMIT 1 BY insight_tenant_id, insight_source_id, user_id, date
 )
 WHERE user_email IS NOT NULL
   AND trim(user_email) != ''
@@ -116,7 +116,7 @@ WHERE user_email IS NOT NULL
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
   -- the day window keeps re-deriving recent days whose joined streams arrive late.
   AND (
-      toDate(parseDateTimeBestEffortOrNull(date)) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-      OR toUnixTimestamp64Milli(_airbyte_extracted_at) > {{ instance_incremental_watermark('_version', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+      toDate(parseDateTimeBestEffortOrNull(date)) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+      OR toUnixTimestamp64Milli(_airbyte_extracted_at) > {{ instance_incremental_watermark('_version', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id']) }}
   )
 {% endif %}

@@ -41,7 +41,7 @@ def _snapshot(tenant: str, read_at: str, used_credits: int) -> SeatSnapshot:
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
         "insight_tenant_id": tenant,
-        "source_id": SOURCE,
+        "insight_source_id": SOURCE,
         # No month in the key — the seat's identity is all the connector emits.
         "unique_key": f"{tenant}-{SOURCE}-{SEAT_UUID}",
         "collected_at": read_at,

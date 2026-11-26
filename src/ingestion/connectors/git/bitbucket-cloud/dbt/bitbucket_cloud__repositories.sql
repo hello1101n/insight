@@ -12,7 +12,7 @@
 -- and tie the class dedup, letting the stale one win.
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     splitByChar('/', COALESCE(full_name, ''))[1] AS project_key,
     COALESCE(slug, '') AS repo_slug,

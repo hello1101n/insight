@@ -60,9 +60,9 @@ WITH per_seat_day AS (
     ORDER BY _airbyte_extracted_at DESC
     -- Dedup on the FULL grain (tenant + source + seat + day), not just
     -- account_uuid: a multi-tenant / multi-instance bronze_claude_team can hold
-    -- the same account_uuid under different insight_tenant_id/source_id on one day, and
+    -- the same account_uuid under different insight_tenant_id/insight_source_id on one day, and
     -- keying on account_uuid alone would drop those as false duplicates.
-    LIMIT 1 BY insight_tenant_id, source_id, account_uuid, toDate(_airbyte_extracted_at)
+    LIMIT 1 BY insight_tenant_id, insight_source_id, account_uuid, toDate(_airbyte_extracted_at)
 ),
 -- INVARIANT: a reading on the month's last calendar day may raise the month,
 -- never lower it — this row IS the closing figure. Mirrors the hold in
@@ -78,7 +78,7 @@ per_seat_day_held AS (
             greatest(
                 toInt64(round(coalesce(used_credits, 0))),
                 lagInFrame(toInt64(round(coalesce(used_credits, 0))), 1, toInt64(0)) OVER (
-                    PARTITION BY insight_tenant_id, source_id, account_uuid,
+                    PARTITION BY insight_tenant_id, insight_source_id, account_uuid,
                                  toStartOfMonth(_airbyte_extracted_at)
                     ORDER BY _airbyte_extracted_at
                 )
@@ -92,12 +92,12 @@ latest_per_seat_month AS (
     SELECT *
     FROM per_seat_day_held
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY insight_tenant_id, source_id, account_uuid, toStartOfMonth(_airbyte_extracted_at)
+    LIMIT 1 BY insight_tenant_id, insight_source_id, account_uuid, toStartOfMonth(_airbyte_extracted_at)
 )
 
 SELECT
     {{ bronze_tenant() }}                               AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     -- Silver dedup key: tenant-source-seat-month, the same grain Bronze now
     -- keys on. Derived here from the extraction timestamp rather than copied,
     -- so rows written under the older key still land in the right month. The
@@ -105,7 +105,7 @@ SELECT
     -- snapshot wins via _version, same key).
     CAST(concat(
         insight_tenant_id, '-',
-        coalesce(source_id, ''), '-',
+        coalesce(insight_source_id, ''), '-',
         coalesce(account_uuid, ''), '-',
         formatDateTime(toStartOfMonth(_airbyte_extracted_at), '%Y-%m')
     ) AS String)                                        AS unique_key,
@@ -162,5 +162,5 @@ FROM latest_per_seat_month
 {% if is_incremental() %}
   -- Re-evaluate the current and previous month so an in-flight month's
   -- closing value keeps updating; older months are immutable.
-  WHERE toStartOfMonth(_airbyte_extracted_at) >= {{ instance_incremental_watermark('period_month', ['insight_tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '1 MONTH') }}
+  WHERE toStartOfMonth(_airbyte_extracted_at) >= {{ instance_incremental_watermark('period_month', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '1 MONTH') }}
 {% endif %}

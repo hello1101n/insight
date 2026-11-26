@@ -50,7 +50,7 @@ bronze:
       _airbyte_meta: "{}"
       _airbyte_generation_id: 0
       insight_tenant_id: "{{ tenant }}"
-      source_id: entra-test
+      insight_source_id: entra-test
       unique_key: entra-alice-zoom
       id: entra-alice-zoom
       mail: alice.zoom@example.org

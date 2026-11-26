@@ -30,7 +30,7 @@ WITH seat AS (
 
     SELECT
         {{ bronze_tenant() }}                   AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         unique_key,
         user_id,
         trim(coalesce(email, ''))               AS email,
@@ -44,7 +44,7 @@ WITH seat AS (
 
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     user_id,
     if(deactivated_time != '', '', email)       AS email,

@@ -82,7 +82,7 @@
         SELECT DISTINCT
             toString(insight_tenant_id)      AS insight_tenant_id,
             insight_source_type              AS source_type,
-            insight_source_id                AS source_id,
+            insight_source_id,
             source_account_id                AS account_id,
             lower(trimBoth(value))           AS email
         FROM identity.identity_inputs
@@ -95,7 +95,7 @@
         SELECT
             toString(insight_tenant_id)      AS insight_tenant_id,
             insight_source_type              AS source_type,
-            insight_source_id                AS source_id,
+            insight_source_id,
             trimBoth(value_effective)        AS account_id,
             person_id
         FROM identity.identity_persons
@@ -105,15 +105,15 @@
         ORDER BY
             insight_tenant_id,
             source_type,
-            source_id,
+            insight_source_id,
             account_id,
             created_at DESC,
             id DESC
-        LIMIT 1 BY insight_tenant_id, source_type, source_id, account_id
+        LIMIT 1 BY insight_tenant_id, source_type, insight_source_id, account_id
     ) AS cb
         ON cb.insight_tenant_id = ae.insight_tenant_id
        AND cb.source_type = ae.source_type
-       AND cb.source_id = ae.source_id
+       AND cb.insight_source_id = ae.insight_source_id
        AND cb.account_id = ae.account_id
     WHERE ae.email != ''
       AND cb.person_id != {{ excluded_person_id() }}
@@ -124,7 +124,7 @@
 
 {#-
   The account-first companion of resolve_person_id(): the CURRENT
-  `(source_type, source_id, account_id) -> person_id` map, straight from the
+  `(source_type, insight_source_id, account_id) -> person_id` map, straight from the
   bindings — no email hop. For facts that carry the author's source account id
   (git pull requests), the account is the source's own primary key for the
   person: it survives an empty or private profile email, a squash-merge that
@@ -155,7 +155,7 @@
     SELECT
         ''                                   AS insight_tenant_id,
         ''                                   AS source_type,
-        toUUID('00000000-0000-0000-0000-000000000000') AS source_id,
+        toUUID('00000000-0000-0000-0000-000000000000') AS insight_source_id,
         ''                                   AS account_id,
         toUUID('00000000-0000-0000-0000-000000000000') AS person_id
     WHERE 0
@@ -163,7 +163,7 @@
     SELECT
         toString(insight_tenant_id)      AS insight_tenant_id,
         insight_source_type              AS source_type,
-        insight_source_id                AS source_id,
+        insight_source_id,
         lower(trimBoth(value_effective)) AS account_id,
         person_id
     FROM identity.identity_persons
@@ -173,18 +173,18 @@
     ORDER BY
         insight_tenant_id,
         source_type,
-        source_id,
+        insight_source_id,
         account_id,
         created_at DESC,
         id DESC
-    LIMIT 1 BY insight_tenant_id, source_type, source_id, account_id
+    LIMIT 1 BY insight_tenant_id, source_type, insight_source_id, account_id
 {%- endif -%}
 {% endmacro %}
 
 {#-
   The join for models whose rows carry (account_source_type,
   account_source_id, account_id). INVARIANT: identity stores
-  insight_source_id as sipHash128 of the connector's raw source_id (see the
+  insight_source_id as sipHash128 of the connector's raw insight_source_id (see the
   connectors' identity_inputs models), while class relations carry the raw
   string — the hash below must stay in lockstep with that minting expression
   or the join silently matches nothing.
@@ -193,7 +193,7 @@
     LEFT JOIN ({{ resolve_person_id_by_account() }}) AS account_map
         ON account_map.insight_tenant_id = toString({{ rel }}.insight_tenant_id)
        AND account_map.source_type = {{ rel }}.account_source_type
-       AND account_map.source_id = toUUID(UUIDNumToString(sipHash128(coalesce({{ rel }}.account_source_id, ''))))
+       AND account_map.insight_source_id = toUUID(UUIDNumToString(sipHash128(coalesce({{ rel }}.account_source_id, ''))))
        AND account_map.account_id = lower(trimBoth({{ rel }}.account_id))
 {% endmacro %}
 
