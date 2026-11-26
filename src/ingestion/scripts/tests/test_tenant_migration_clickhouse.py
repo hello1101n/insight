@@ -41,6 +41,7 @@ TABLES = (
     "staging.slack__users_snapshot",
     "staging.youtrack__field_observations",
     "staging.github__commits",
+    "staging.github__identity_inputs",
     "silver.class_items",
     "insight.gold_items",
     "config.task_value_map",
@@ -91,6 +92,9 @@ INSERT INTO staging.youtrack__field_observations VALUES
 CREATE TABLE staging.github__commits (unique_key String, source_id Nullable(String), sha String, _version UInt64)
 ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key;
 INSERT INTO staging.github__commits VALUES ('{NEW}-gh-abc', 'gh', 'abc', 1);
+CREATE TABLE staging.github__identity_inputs (unique_key String, insight_tenant_id UUID, source_id String, _version UInt64)
+ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key;
+INSERT INTO staging.github__identity_inputs VALUES ('{NEW}-gh-1', '{NEW}', 'gh', 1);
 CREATE TABLE staging.lookup (code String, label String) ENGINE = MergeTree ORDER BY code;
 INSERT INTO staging.lookup VALUES ('a', 'A');
 CREATE TABLE silver.class_items (unique_key String, source_id Nullable(String), org_source_id Nullable(String),
@@ -215,6 +219,8 @@ def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> N
         ("config.task_value_map", "unique_key", [f"{NEW}:main:status:open"]),
         ("ingestion_history.sync_events", "tenant_id", [NEW, NEW]),
         ("staging.github__commits", "insight_source_id", ["gh"]),
+        ("staging.github__identity_inputs", "insight_tenant_id", [NEW]),
+        ("staging.github__identity_inputs", "insight_source_id", ["gh"]),
         ("silver.class_items", "insight_tenant_id", [NEW]),
         ("silver.class_items", "unique_key", [f"{OLD}-main-1"]),
         ("silver.class_items", "org_source_id", ["org-7"]),

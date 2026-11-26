@@ -57,6 +57,8 @@ LEDGER_DATABASE = "ingestion_history"
 SOURCE_COLUMNS = (OLD_SOURCE_COLUMN, SOURCE_COLUMN)
 KEY_COLUMN = "unique_key"
 STRING_TYPES = ("String", "Nullable(String)", "LowCardinality(String)", "LowCardinality(Nullable(String))")
+#: A tenant column dbt already types as a UUID; it is read and written as text like the rest.
+TENANT_TYPES = (*STRING_TYPES, "UUID", "Nullable(UUID)")
 #: Old YouTrack comment rows know their id only from the key; the copy writes it down.
 COMMENT_IDS = ("bronze_youtrack", "youtrack_comments", "id")
 
@@ -189,8 +191,8 @@ def classify(
     if len(tenants) == 2:
         raise InventoryError(f"{rel}: holds both {OLD_TENANT_COLUMN} and {TENANT_COLUMN}")
     tenant = tenants[0] if tenants else None
-    if tenant is not None and types[tenant] not in STRING_TYPES:
-        raise InventoryError(f"{rel}: {tenant} is {types[tenant]}, not a string")
+    if tenant is not None and types[tenant] not in TENANT_TYPES:
+        raise InventoryError(f"{rel}: {tenant} is {types[tenant]}, not a string or UUID")
     # The old name while it stands alone; a table holding both keeps both as they are.
     source = next((c for c in SOURCE_COLUMNS if c in types), None)
     if source == OLD_SOURCE_COLUMN and SOURCE_COLUMN in types:

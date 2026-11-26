@@ -89,12 +89,18 @@ def test_a_silver_table_or_history_relation_without_a_tenant_gains_one_and_no_ot
 
 @pytest.mark.parametrize(
     "columns",
-    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "UUID"}],
+    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "Int64"}],
     ids=["both tenant columns", "tenant not a string"],
 )
 def test_a_table_the_migration_cannot_read_stops_it(columns: dict[str, str]) -> None:
     with pytest.raises(InventoryError):
         _classify("bronze_example", columns)
+
+
+def test_a_tenant_dbt_already_types_as_a_uuid_is_read_as_text() -> None:
+    table = _classify("staging", {"insight_tenant_id": "UUID", "insight_source_id": STRING})
+
+    assert table is not None and not table.renames
 
 
 def test_only_the_youtrack_comments_fill_their_ids_from_the_key() -> None:
