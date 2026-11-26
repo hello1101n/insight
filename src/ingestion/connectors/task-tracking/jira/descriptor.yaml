@@ -44,7 +44,7 @@ name: jira
 # Rows written before this were rebuilt on the new key by the deploy hook of
 # every release the upgrade floor admits (docs/operations/
 # CLICKHOUSE-UPGRADE-FLOOR.md): `unique_key` is the sort key and cannot be
-# updated in place. Readers dedup by (source_id, jira_id) regardless — the
+# updated in place. Readers dedup by (insight_source_id, jira_id) regardless — the
 # issue's stable key within a source, which is what joins use; `unique_key`
 # exists for ReplacingMergeTree alone. `id_readable` keeps the mutable key as
 # an attribute — the rename is a fact about the issue.

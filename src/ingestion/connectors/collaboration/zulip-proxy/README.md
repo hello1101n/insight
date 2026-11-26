@@ -76,7 +76,7 @@ kubectl apply -f src/ingestion/secrets/connectors/zulip-proxy.yaml
 ## Operational notes
 
 - A 401 response from the proxy fails the run with an operator-actionable log line that names
-  `connector=zulip-proxy` and the offending `source_id`. Action: rotate the Bearer token in the
+  `connector=zulip-proxy` and the offending source (its `insight_source_id`). Action: rotate the Bearer token in the
   K8s Secret and re-run.
 - 429 and 503 responses are honored with `Retry-After`; 5xx are retried with exponential backoff
   up to 5 attempts.
