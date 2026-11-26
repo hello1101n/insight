@@ -12,7 +12,7 @@
 
 SELECT
     {{ bronze_tenant() }} AS insight_tenant_id,
-    source_id,
+    insight_source_id,
     unique_key,
     data_source,
     component_id,

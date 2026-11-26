@@ -22,7 +22,7 @@ manifest, and the test boundary is HTTP:
    incremental cursors (state emission + resume-request filtering, via exact
    query matchers), error-handler policy (429 retry / ignored codes),
    `AddFields`/`record_filter` transformations incl. the mandatory
-   `insight_tenant_id`/`source_id`/`unique_key` stamping, and record shape against the
+   `insight_tenant_id`/`insight_source_id`/`unique_key` stamping, and record shape against the
    stream schema.
 
 ## Layout

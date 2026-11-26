@@ -110,7 +110,7 @@ def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
     record = read_stream(CONNECTOR, _STREAM, config).records[0].record.data
 
     assert record["insight_tenant_id"] == "t-9"
-    assert record["source_id"] == "s-9"
+    assert record["insight_source_id"] == "s-9"
     assert record["data_source"] == "insight_github"
     assert record["collected_at"].endswith("Z")
     assert record["unique_key"] == f"t-9:s-9:{ORG}:7001"

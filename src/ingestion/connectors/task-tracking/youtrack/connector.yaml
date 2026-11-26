@@ -57,7 +57,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -86,7 +86,7 @@ streams:
           description: {type: [string, "null"]}
           archived: {type: [boolean, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           project_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -135,7 +135,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -165,7 +165,7 @@ streams:
           banned: {type: [boolean, "null"]}
           isAnonymized: {type: [boolean, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           user_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -214,7 +214,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [field_type_id]
@@ -243,7 +243,7 @@ streams:
           name: {type: [string, "null"]}
           field_type_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           metadata_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -340,7 +340,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [project_id]
@@ -375,7 +375,7 @@ streams:
           project_id: {type: [string, "null"]}
           field_type_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           metadata_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -644,7 +644,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [project_id]
@@ -704,7 +704,7 @@ streams:
           field_type_id: {type: [string, "null"]}
           bundle_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           bundle_json: {type: [string, "null"]}
           values_json: {type: [string, "null"]}
@@ -754,7 +754,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -791,7 +791,7 @@ streams:
           id: {type: [string, "null"]}
           name: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           agile_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -888,7 +888,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [agile_id]
@@ -919,7 +919,7 @@ streams:
           archived: {type: [boolean, "null"]}
           agile_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           sprint_json: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
@@ -987,7 +987,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -1002,7 +1002,7 @@ streams:
           idReadable: {type: [string, "null"]}
           updated: {type: [number, string]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
         required: [unique_key, updated]
         additionalProperties: true
@@ -1068,7 +1068,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [project_id]
@@ -1132,7 +1132,7 @@ streams:
           reporter_id: {type: [string, "null"]}
           updater_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           custom_fields_json: {type: [string, "null"]}
           issue_json: {type: [string, "null"]}
@@ -1302,7 +1302,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [project_id]
@@ -1366,7 +1366,7 @@ streams:
           reporter_id: {type: [string, "null"]}
           updater_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           custom_fields_json: {type: [string, "null"]}
           issue_json: {type: [string, "null"]}
@@ -1449,7 +1449,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [author_id]
@@ -1495,7 +1495,7 @@ streams:
           targetMember: {type: [string, "null"]}
           author_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           category_json: {type: [string, "null"]}
           field_json: {type: [string, "null"]}
@@ -1548,7 +1548,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [issue_id]
@@ -1583,7 +1583,7 @@ streams:
           issue_id: {type: [string, "null"]}
           author_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           work_item_json: {type: [string, "null"]}
         required: [unique_key]
@@ -1713,7 +1713,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [issue_id]
@@ -1756,7 +1756,7 @@ streams:
           issue_updated: {type: [number, string]}
           author_id: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           comment_json: {type: [string, "null"]}
         required: [unique_key, issue_updated]
@@ -1886,7 +1886,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [issue_id]
@@ -1923,7 +1923,7 @@ streams:
           issue_id_readable: {type: [string, "null"]}
           issue_updated: {type: [number, string]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           linked_issues_json: {type: [string, "null"]}
           link_json: {type: [string, "null"]}
@@ -2160,7 +2160,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [issue_id]
@@ -2203,7 +2203,7 @@ streams:
           issue_id_readable: {type: [string, "null"]}
           issue_updated: {type: [number, string]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
           sprint_json: {type: [string, "null"]}
         required: [unique_key]
@@ -2251,7 +2251,7 @@ streams:
             path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [project_id]
@@ -2279,7 +2279,7 @@ streams:
           project_id: {type: [string, "null"]}
           observed_at: {type: [string, "null"]}
           insight_tenant_id: {type: [string, "null"]}
-          source_id: {type: [string, "null"]}
+          insight_source_id: {type: [string, "null"]}
           unique_key: {type: string}
         required: [unique_key]
         additionalProperties: true

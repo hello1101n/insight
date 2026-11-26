@@ -61,7 +61,7 @@ Run the per-stream `read` loop from `create.md` §5.6 and verify, for every stre
 
 - [ ] First-read record count > 0 (unless the source truly has no data).
 - [ ] Error count = 0 in both first read and resume read (any `ERROR` / `FATAL` in the log is a blocker).
-- [ ] Every emitted record contains `tenant_id`, `source_id`, `unique_key`.
+- [ ] Every emitted record contains `tenant_id`, `insight_source_id`, `unique_key`.
 - [ ] `null_cursor=0` for every stream with a cursor: no record arrives with a null or missing `cursor_field` value (the destination stores the cursor NOT NULL). Applies to CDK connectors as much as nocode; check the mock-test fixtures cover a record without the field when the API can omit it.
 - [ ] For substreams, the parent_key/partition_field uses the parent's stable internal id (e.g. `youtrack_id` from `record['id']`), NOT a nullable human-readable field like `id_readable` from `record.get('idReadable')` — a `null` value silently routes to `.../None/<endpoint>` which 404s and drops the slice.
 - [ ] For incremental streams, a **resume read** (second run after capturing the emitted `STATE` message from stdout and writing it to `state.json`) returns a strict subset of the first-read records — usually zero. The skill's smoke-test script in `create.md` §5.6 does this capture + persist + resume automatically. A naive "second consecutive read" without persisting state cannot validate cursor advancement (`source.sh read` writes Airbyte Protocol JSON to stdout but does not update `state.json` itself).
@@ -86,18 +86,18 @@ Read connector package files and verify each item:
 - [ ] All config fields use prefixes (insight_*, azure_*, github_*, etc.)
 - [ ] No bare `tenant_id` or `client_id` in config fields
 - [ ] AddFields includes `tenant_id` from `config['insight_tenant_id']`
-- [ ] AddFields includes `source_id` from `config['insight_source_id']`
+- [ ] AddFields includes `insight_source_id` from `config['insight_source_id']`
 - [ ] AddFields includes `unique_key` with pattern: `{tenant_id}-{source_id}-{natural_key}`
 - [ ] InlineSchemaLoader has `additionalProperties: true`
 - [ ] Every `AddFields` target is declared `string` (+ `"null"`) in the inline schema — Jinja emits strings; a target declared `object` gets NULLED by the destination (`DESTINATION_SERIALIZATION_ERROR` in `_airbyte_meta`) on every sync.
 - [ ] No `AddFields` re-projects a field the payload already carries (snake_case aliases of `emailAddress`, `displayName`, ...). Injected fields are limited to extraction-time values: config, `unique_key`, `stream_partition.*`, cursor hoists. Renames live in dbt.
-- [ ] Schema includes `tenant_id`, `source_id`, `unique_key` as string fields
+- [ ] Schema includes `tenant_id`, `insight_source_id`, `unique_key` as string fields
 - [ ] Nullable types used only where API actually returns null (not all fields)
-- [ ] EVERY top-level stream — including lightweight substream parents added for cache hygiene — carries the full identity stamp (`tenant_id`, `source_id`, `unique_key`). Reconcile auto-selects every discovered stream, so "helper" top-level streams land as real bronze tables; the destination keys them on `unique_key` (append_dedup), so a stream without the stamp accumulates unbounded duplicates. Parent streams that must NOT become tables go inline inside `partition_router.parent_stream_configs[].stream` instead (invisible to discover).
+- [ ] EVERY top-level stream — including lightweight substream parents added for cache hygiene — carries the full identity stamp (`tenant_id`, `insight_source_id`, `unique_key`). Reconcile auto-selects every discovered stream, so "helper" top-level streams land as real bronze tables; the destination keys them on `unique_key` (append_dedup), so a stream without the stamp accumulates unbounded duplicates. Parent streams that must NOT become tables go inline inside `partition_router.parent_stream_configs[].stream` instead (invisible to discover).
 
 ### CDK (Python)
-- [ ] `parse_response()` injects `tenant_id`, `source_id`, `unique_key`
-- [ ] `unique_key` includes `tenant_id` and `source_id`
+- [ ] `parse_response()` injects `tenant_id`, `insight_source_id`, `unique_key`
+- [ ] `unique_key` includes `tenant_id` and `insight_source_id`
 - [ ] `spec.json` has `insight_tenant_id` and `insight_source_id` as required
 - [ ] All config fields in `spec.json` use source-specific prefixes (`insight_*`, `github_*`, `jira_*`, etc.)
 - [ ] No bare field names (`token`, `client_id`, `tenant_id`, `start_date`, etc.) in `connectionSpecification.properties`
@@ -190,7 +190,7 @@ python3 scripts/ci/connector_wiring.py
 - [ ] `schema='staging'`
 - [ ] First tag is the connector **slug = descriptor `name` verbatim (hyphenated)**, NOT the snake_case file prefix. The silver pipeline step (`transform-legacy` in `ingestion-pipeline`) hardcodes its selector as `tag:{{data_source}}+` (= `tag:<descriptor name>+`) and ignores `dbt_select`; a snake-cased tag (e.g. `zulip_proxy` instead of `zulip-proxy`) is never selected → dbt logs `Nothing to do` and silver silently never builds. Check: every model's first tag === `yq '.name' descriptor.yaml`. (Slug == snake for hyphen-free connectors, so this only bites `zulip-proxy`/`claude-team`/`ms-entra`-style names.)
 - [ ] Plus `silver:class_<domain>` on the silver metric model(s)
-- [ ] SELECT includes `tenant_id`, `source_id`, `unique_key`
+- [ ] SELECT includes `tenant_id`, `insight_source_id`, `unique_key`
 - [ ] Uses `{{ source('bronze_<name>', '<stream>') }}`
 - [ ] Has `{% if is_incremental() %}` block
 
@@ -216,7 +216,7 @@ python3 scripts/ci/connector_wiring.py
 ### dbt schema.yml
 - [ ] Source defined with `schema: bronze_<name>`
 - [ ] Model has `tenant_id` with not_null test
-- [ ] Model has `source_id` with not_null test
+- [ ] Model has `insight_source_id` with not_null test
 - [ ] Model has `unique_key` with not_null and unique tests
 
 ### Bronze Table Shape

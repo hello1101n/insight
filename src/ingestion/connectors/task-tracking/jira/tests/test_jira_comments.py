@@ -93,7 +93,7 @@ def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
 
     rec = output.records[0].record.data
     assert rec["insight_tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["unique_key"] == (f"{config['insight_tenant_id']}-{config['insight_source_id']}-701")
     assert rec["id_readable"] == "PROJ1-1"
     # The parent issue's immutable id, carried by the slice alongside the key;

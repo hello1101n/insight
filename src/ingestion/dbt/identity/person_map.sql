@@ -22,7 +22,7 @@ WITH account_emails AS (
     SELECT DISTINCT
         toString(insight_tenant_id)            AS insight_tenant_id,
         insight_source_type                    AS source_type,
-        insight_source_id                      AS source_id,
+        insight_source_id,
         lower(trimBoth(source_account_id))     AS account_id,
         {{ normalized_email('value') }}        AS email
     FROM {{ ref('identity_inputs') }}
@@ -40,7 +40,7 @@ FROM account_emails
 INNER JOIN {{ ref('account_assignment') }} AS assignment
     ON assignment.insight_tenant_id = account_emails.insight_tenant_id
    AND assignment.source_type = account_emails.source_type
-   AND assignment.source_id = account_emails.source_id
+   AND assignment.insight_source_id = account_emails.insight_source_id
    AND assignment.account_id = account_emails.account_id
 WHERE account_emails.email != ''
   AND assignment.person_id != {{ excluded_person_id() }}

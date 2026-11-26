@@ -20,7 +20,7 @@
 WITH projects AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
         COALESCE(path, '') AS repo_slug,
@@ -31,7 +31,7 @@ WITH projects AS (
 diff_stats AS (
     SELECT
         {{ bronze_tenant() }} AS insight_tenant_id,
-        source_id,
+        insight_source_id,
         project_id,
         mr_iid,
         additions,
@@ -49,16 +49,16 @@ diff_stats AS (
 account_email AS (
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         account_id,
         argMin(email, (email LIKE '%@users.noreply.%', observed_at, email)) AS email
     FROM {{ ref('gitlab__account_emails') }}
-    GROUP BY insight_tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, insight_source_id, account_id
 )
 
 SELECT
     {{ bronze_tenant('mr.insight_tenant_id') }} AS insight_tenant_id,
-    mr.source_id AS source_id,
+    mr.insight_source_id AS insight_source_id,
     mr.unique_key AS unique_key,
     p.project_key AS project_key,
     p.repo_slug AS repo_slug,
@@ -109,16 +109,16 @@ SELECT
 FROM {{ source('bronze_gitlab', 'pull_requests') }} AS mr FINAL
 INNER JOIN projects AS p
     ON p.insight_tenant_id = {{ bronze_tenant('mr.insight_tenant_id') }}
-    AND p.source_id = mr.source_id
+    AND p.insight_source_id = mr.insight_source_id
     AND p.project_id = mr.project_id
 LEFT JOIN diff_stats AS ds
     ON ds.insight_tenant_id = {{ bronze_tenant('mr.insight_tenant_id') }}
-    AND ds.source_id = mr.source_id
+    AND ds.insight_source_id = mr.insight_source_id
     AND ds.project_id = mr.project_id
     AND ds.mr_iid = mr.iid
 LEFT JOIN account_email AS ae
     ON ae.insight_tenant_id = {{ bronze_tenant('mr.insight_tenant_id') }}
-    AND ae.source_id = mr.source_id
+    AND ae.insight_source_id = mr.insight_source_id
     AND ae.account_id = toString(COALESCE(mr.author_id, 0))
 {% if is_incremental() %}
 -- INVARIANT: the roster row is part of the watermark, so a merge request read
@@ -127,5 +127,5 @@ WHERE greatest(
     mr._airbyte_extracted_at,
     COALESCE(ds._airbyte_extracted_at, mr._airbyte_extracted_at),
     p._airbyte_extracted_at
-) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['mr.insight_tenant_id', 'mr.source_id']) }}
+) > {{ instance_incremental_watermark('_airbyte_extracted_at', ['mr.insight_tenant_id', 'mr.insight_source_id']) }}
 {% endif %}

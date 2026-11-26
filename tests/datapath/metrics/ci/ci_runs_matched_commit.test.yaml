@@ -30,7 +30,7 @@ bronze:
     - $ref: ../templates/git_activity.yaml#/templates/commit
       unique_key: gh-commit-mc1
       insight_tenant_id: "{{ tenant }}"
-      source_id: github-test
+      insight_source_id: github-test
       sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
       author_email: dev1@example.com
       author_name: Dev One

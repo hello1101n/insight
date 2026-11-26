@@ -311,7 +311,7 @@ def test_issue_sprints_paginate_the_issue_membership_endpoint(http_mocker: HttpM
         "issue_id",
         "issue_id_readable",
         "issue_updated",
-        "source_id",
+        "insight_source_id",
         "sprint_id",
         "sprint_json",
         "insight_tenant_id",

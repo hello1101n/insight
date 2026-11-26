@@ -83,7 +83,7 @@ for line in sys.stdin:
             # an ever-duplicating table. Same contract as normalize_catalog.py.
             print(f'ERROR: stream {name} has no unique_key schema property — '
                   'every stream must carry the identity stamp '
-                  '(insight_tenant_id, source_id, unique_key)', file=sys.stderr)
+                  '(insight_tenant_id, insight_source_id, unique_key)', file=sys.stderr)
             sys.exit(1)
 
         stream_entry = {

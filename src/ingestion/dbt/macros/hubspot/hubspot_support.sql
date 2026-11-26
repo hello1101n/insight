@@ -4,7 +4,7 @@
 concat(insight_tenant_id, '-', insight_source_id{% for part in parts %}, '-', coalesce(toString({{ part }}), ''){% endfor %})
 {%- endmacro -%}
 
-{%- macro hubspot_support_scope(source_column='source_id') -%}
+{%- macro hubspot_support_scope(source_column='insight_source_id') -%}
 coalesce(insight_tenant_id, '')                            AS insight_tenant_id,
         coalesce({{ source_column }}, '')                   AS insight_source_id
 {%- endmacro -%}

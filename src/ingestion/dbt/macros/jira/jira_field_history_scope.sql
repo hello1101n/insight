@@ -39,7 +39,7 @@
         FROM (
             SELECT
                 {{ bronze_tenant() }}                     AS insight_tenant_id,
-                CAST(source_id AS String)                 AS insight_source_id,
+                CAST(insight_source_id AS String)                 AS insight_source_id,
                 CAST(jira_id AS String)                   AS issue_id,
                 toDateTime64(_airbyte_extracted_at, 3)    AS extracted_at
             FROM {{ source('bronze_jira', 'jira_issue') }}
@@ -93,7 +93,7 @@
 
 {#- Every issue bronze knows: the rebuild scope, counted for batching only. -#}
 {% macro jira_journal_all_issues() %}
-    SELECT {{ bronze_tenant() }} AS insight_tenant_id, CAST(source_id AS String) AS insight_source_id, CAST(jira_id AS String) AS issue_id
+    SELECT {{ bronze_tenant() }} AS insight_tenant_id, CAST(insight_source_id AS String) AS insight_source_id, CAST(jira_id AS String) AS issue_id
     FROM {{ source('bronze_jira', 'jira_issue') }}
     UNION ALL
     SELECT insight_tenant_id, insight_source_id, assumeNotNull(jira_id) AS issue_id

@@ -32,7 +32,7 @@ leaderboard AS (
 
     SELECT
         {{ bronze_tenant() }}                       AS insight_tenant_id,
-        coalesce(source_id, '')                     AS source_id,
+        coalesce(insight_source_id, '')                     AS insight_source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,
         toFloat64OrNull(toString(credits))          AS credits
@@ -44,7 +44,7 @@ leaderboard AS (
       -- "this side is absent".
       AND toDateOrNull(date) IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY insight_tenant_id, source_id, trim(user_id), toDateOrNull(date)
+    LIMIT 1 BY insight_tenant_id, insight_source_id, trim(user_id), toDateOrNull(date)
 
 ),
 
@@ -52,7 +52,7 @@ sessions AS (
 
     SELECT
         {{ bronze_tenant() }}                       AS insight_tenant_id,
-        coalesce(source_id, '')                     AS source_id,
+        coalesce(insight_source_id, '')                     AS insight_source_id,
         trim(user_id)                               AS user_id,
         toDateOrNull(date)                          AS day,
         toFloat64OrNull(toString(credit_total))     AS credit_total,
@@ -71,7 +71,7 @@ SELECT
     -- if(), not coalesce(): both sides are non-Nullable, so an unmatched side
     -- of the FULL JOIN reads '' and coalesce() would keep it.
     if(l.day IS NULL, s.insight_tenant_id, l.insight_tenant_id) AS insight_tenant_id,
-    if(l.day IS NULL, s.source_id, l.source_id)         AS source_id,
+    if(l.day IS NULL, s.insight_source_id, l.insight_source_id)         AS insight_source_id,
     coalesce(l.user_id, s.user_id)                      AS user_id,
     coalesce(l.day, s.day)                              AS day,
     multiIf(
@@ -95,6 +95,6 @@ SELECT
 FROM leaderboard AS l
 FULL OUTER JOIN sessions AS s
              ON l.insight_tenant_id = s.insight_tenant_id
-            AND l.source_id = s.source_id
+            AND l.insight_source_id = s.insight_source_id
             AND l.user_id = s.user_id
             AND l.day = s.day

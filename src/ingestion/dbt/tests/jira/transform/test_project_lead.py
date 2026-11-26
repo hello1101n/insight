@@ -42,7 +42,7 @@ def _project(project_id: int, lead_account_id: str | None) -> dict[str, Any]:
         "_airbyte_generation_id": 0,
         "id": str(project_id),
         "insight_tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-project-{project_id}",
         "project_id": project_id,
         "project_key": f"P{project_id}",

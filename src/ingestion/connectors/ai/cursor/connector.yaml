@@ -24,7 +24,7 @@ definitions:
     fields:
       - path: [insight_tenant_id]
         value: "{{ config['insight_tenant_id'] }}"
-      - path: [source_id]
+      - path: [insight_source_id]
         value: "{{ config['insight_source_id'] }}"
 
   post_paginator:
@@ -73,7 +73,7 @@ streams:
         properties:
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -127,7 +127,7 @@ streams:
         properties:
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -206,7 +206,7 @@ streams:
         properties:
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -302,7 +302,7 @@ streams:
         properties:
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -402,7 +402,7 @@ streams:
         properties:
           insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string

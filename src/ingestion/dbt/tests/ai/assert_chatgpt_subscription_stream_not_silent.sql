@@ -23,7 +23,7 @@ WITH reported_before AS (
 
     SELECT DISTINCT
         coalesce(insight_tenant_id, '') AS insight_tenant_id,
-        coalesce(source_id, '') AS source_id
+        coalesce(insight_source_id, '') AS insight_source_id
     FROM {{ source('bronze_chatgpt_team', 'chatgpt_team_subscription_usage') }}
     WHERE toDateOrNull(snapshot_date) < today() - 3
 
@@ -33,7 +33,7 @@ reporting_now AS (
 
     SELECT DISTINCT
         coalesce(insight_tenant_id, '') AS insight_tenant_id,
-        coalesce(source_id, '') AS source_id
+        coalesce(insight_source_id, '') AS insight_source_id
     FROM {{ source('bronze_chatgpt_team', 'chatgpt_team_subscription_usage') }}
     WHERE toDateOrNull(snapshot_date) >= today() - 3
 
@@ -41,8 +41,8 @@ reporting_now AS (
 
 SELECT
     p.insight_tenant_id AS insight_tenant_id,
-    p.source_id         AS source_id
+    p.insight_source_id         AS insight_source_id
 FROM reported_before AS p
 LEFT ANTI JOIN reporting_now AS c
     ON p.insight_tenant_id = c.insight_tenant_id
-   AND p.source_id = c.source_id
+   AND p.insight_source_id = c.insight_source_id

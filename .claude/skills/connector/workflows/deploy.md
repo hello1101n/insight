@@ -85,7 +85,7 @@ After sync completes:
 SELECT count(*) FROM bronze_<name>.<stream>;
 
 -- Check mandatory fields
-SELECT tenant_id, source_id, unique_key FROM bronze_<name>.<stream> LIMIT 3;
+SELECT tenant_id, insight_source_id, unique_key FROM bronze_<name>.<stream> LIMIT 3;
 
 -- Staging (after dbt)
 SELECT count(*) FROM staging.<name>__<domain>;

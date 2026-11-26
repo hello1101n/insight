@@ -37,7 +37,7 @@ def hashes_the_tenant(sql: str) -> bool:
         ("toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id", True),
         ("sipHash128(tenant_id)", True),
         ("{{ tenant_uuid('tenant_id') }} AS insight_tenant_id", False),
-        ("toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id", False),
+        ("toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id", False),
     ],
 )
 def test_the_detector_tells_a_hashed_tenant_from_a_hashed_source(sql: str, expected: bool) -> None:

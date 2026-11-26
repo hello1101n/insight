@@ -27,7 +27,7 @@ WITH long_text_fields AS (
 current_bodies AS (
     SELECT
         {{ bronze_tenant('i.insight_tenant_id') }}        AS insight_tenant_id,
-        CAST(i.source_id AS String)                       AS insight_source_id,
+        CAST(i.insight_source_id AS String)                       AS insight_source_id,
         CAST(i.jira_id AS String)                         AS issue_id,
         kv.1                                              AS field_id,
         kv.2                                              AS content
@@ -35,14 +35,14 @@ current_bodies AS (
     ARRAY JOIN JSONExtractKeysAndValuesRaw(COALESCE(i.custom_fields_json, '{}')) AS kv
     INNER JOIN long_text_fields AS f
         ON f.insight_tenant_id = {{ bronze_tenant('i.insight_tenant_id') }}
-       AND f.insight_source_id = CAST(i.source_id AS String)
+       AND f.insight_source_id = CAST(i.insight_source_id AS String)
        AND f.field_id = kv.1
     WHERE kv.2 NOT IN ('', 'null', '""', '{}')
       -- Read-time dedup by the issue's stable key within a tenant's source.
       AND i._airbyte_raw_id IN (
           SELECT argMax(_airbyte_raw_id, _airbyte_extracted_at)
           FROM {{ source('bronze_jira', 'jira_issue') }}
-          GROUP BY insight_tenant_id, source_id, jira_id
+          GROUP BY insight_tenant_id, insight_source_id, jira_id
       )
 )
 

@@ -91,7 +91,7 @@ resolution AS (
     LEFT JOIN {{ ref('account_assignment') }} AS account_map
         ON account_map.insight_tenant_id = source_identities.insight_tenant_id
        AND account_map.source_type = source_identities.account_source_type
-       AND account_map.source_id = toUUID(UUIDNumToString(sipHash128(coalesce(source_identities.account_source_id, ''))))
+       AND account_map.insight_source_id = toUUID(UUIDNumToString(sipHash128(coalesce(source_identities.account_source_id, ''))))
        AND account_map.account_id = lower(trimBoth(coalesce(source_identities.account_id, '')))
     LEFT JOIN {{ ref('person_map') }} AS person_map
         ON person_map.insight_tenant_id = source_identities.insight_tenant_id

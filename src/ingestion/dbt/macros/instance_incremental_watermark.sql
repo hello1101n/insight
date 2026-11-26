@@ -1,5 +1,5 @@
 {#-
-  instance_incremental_watermark(column, row_keys=none, this_keys=['insight_tenant_id', 'source_id'], lookback=none)
+  instance_incremental_watermark(column, row_keys=none, this_keys=['insight_tenant_id', 'insight_source_id'], lookback=none)
 
   The incremental boundary of a model for the source instance of the
   row being filtered: `max(column)` over that instance's rows in `this`, less
@@ -20,7 +20,7 @@
   filtered, qualified when the query joins. Keys compare NULL-safely, as in
   silver_incremental_watermark.
 -#}
-{% macro instance_incremental_watermark(column, row_keys=none, this_keys=['insight_tenant_id', 'source_id'], lookback=none) %}
+{% macro instance_incremental_watermark(column, row_keys=none, this_keys=['insight_tenant_id', 'insight_source_id'], lookback=none) %}
 (
     SELECT mapFromArrays(groupArray(instance), groupArray(watermark))
     FROM (

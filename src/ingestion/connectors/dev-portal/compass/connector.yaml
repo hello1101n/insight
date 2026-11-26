@@ -179,7 +179,7 @@ definitions:
       value: "{{ config['insight_tenant_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
-      path: [source_id]
+      path: [insight_source_id]
       value: "{{ config['insight_source_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
@@ -215,7 +215,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -378,7 +378,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -489,7 +489,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -662,7 +662,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -776,7 +776,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -957,7 +957,7 @@ streams:
         additionalProperties: true
         properties:
           insight_tenant_id: { type: string }
-          source_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }

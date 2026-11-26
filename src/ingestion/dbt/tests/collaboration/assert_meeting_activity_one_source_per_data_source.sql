@@ -20,7 +20,7 @@
 -- legitimate case for multiple sources per data_source is uncommon
 -- (e.g. multi-org Slack would use one source per workspace, but
 -- collab_meeting_activity is a single-org metric). If a real use case
--- emerges, narrow the test to known-bad source_id values rather than
+-- emerges, narrow the test to known-bad insight_source_id values rather than
 -- relaxing the rule globally.
 --
 -- Failure rows show which (tenant, data_source) combination has the

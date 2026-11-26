@@ -20,7 +20,7 @@ schemas:
       isPrivate: {type: [boolean, "null"]}
       properties: {type: [string, "null"]}
       insight_tenant_id: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       unique_key: {type: string}
       project_id: {type: [number, string, "null"]}
       project_key: {type: [string, "null"]}

@@ -13,7 +13,7 @@
    callers refuse to mark anything. #}
 {% macro git_merge_result_match(request, commit) -%}
 {{ commit }}.insight_tenant_id = {{ request }}.insight_tenant_id
-        AND {{ commit }}.source_id = {{ request }}.source_id
+        AND {{ commit }}.insight_source_id = {{ request }}.insight_source_id
         AND {{ commit }}.project_key = {{ request }}.project_key
         AND {{ commit }}.repo_slug = {{ request }}.repo_slug
         AND {{ commit }}.data_source = {{ request }}.data_source

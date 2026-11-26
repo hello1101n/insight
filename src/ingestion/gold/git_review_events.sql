@@ -23,7 +23,7 @@ WITH review_person_map AS (
 
 SELECT
     events.insight_tenant_id AS insight_tenant_id,
-    events.source_id AS source_id,
+    events.insight_source_id AS insight_source_id,
     events.event_kind AS event_kind,
     events.unique_key AS event_key,
     events.pr_id AS pr_id,
@@ -48,9 +48,9 @@ SELECT
         'others'
     ) AS comment_target_value,
     if(comment_target_value = 'own', 'Own PRs', 'Others'' PRs') AS comment_target_label,
-    if(coalesce(events.project_key, '') = '', '__unknown__', concat(coalesce(toString(events.source_id), ''), ':', events.project_key)) AS project_value,
+    if(coalesce(events.project_key, '') = '', '__unknown__', concat(coalesce(toString(events.insight_source_id), ''), ':', events.project_key)) AS project_value,
     if(coalesce(events.project_key, '') = '', 'Unknown', events.project_key) AS project_label,
-    concat(coalesce(toString(events.source_id), ''), ':', coalesce(events.project_key, ''), '/', coalesce(events.repo_slug, '')) AS repository_value,
+    concat(coalesce(toString(events.insight_source_id), ''), ':', coalesce(events.project_key, ''), '/', coalesce(events.repo_slug, '')) AS repository_value,
     if(coalesce(events.project_key, '') = '', coalesce(events.repo_slug, ''), concat(events.project_key, '/', events.repo_slug)) AS repository_label,
     if(coalesce(prs.destination_branch, '') = '', '__unknown__', assumeNotNull(prs.destination_branch)) AS destination_branch_value,
     if(coalesce(prs.destination_branch, '') = '', 'Unknown', assumeNotNull(prs.destination_branch)) AS destination_branch_label,
@@ -66,14 +66,14 @@ SELECT
             tuple('destination_branch', destination_branch_value, destination_branch_label),
             tuple('repository', repository_value, repository_label),
             tuple('project', project_value, project_label),
-            tuple('source_id', coalesce(toString(events.source_id), ''), coalesce(toString(events.source_id), '')),
+            tuple('source_id', coalesce(toString(events.insight_source_id), ''), coalesce(toString(events.insight_source_id), '')),
             tuple('source', source_value, source_label)
         ]
     ) AS Array(Tuple(key String, value String, label Nullable(String)))) AS source_dimensions
 FROM {{ ref('class_git_pr_review_events') }} AS events FINAL
 LEFT JOIN {{ ref('class_git_pull_requests') }} AS prs FINAL
     ON prs.insight_tenant_id = events.insight_tenant_id
-    AND prs.source_id = events.source_id
+    AND prs.insight_source_id = events.insight_source_id
     AND prs.project_key = events.project_key
     AND prs.repo_slug = events.repo_slug
     AND prs.pr_id = events.pr_id

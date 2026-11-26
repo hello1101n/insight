@@ -5,7 +5,7 @@ Substream of the inline `_meetings` parent (PR #1746 replaced the whole-object
 Dashboard meetings over the now-150d window, then one
 GET /v2/metrics/meetings/{uuid}/participants per partition, with the meeting
 uuid URL-escaped in the path (`/`→%2F, `+`→%2B, `=`→%3D). AddFields stamps
-insight_tenant_id / source_id / meeting_uuid (from the partition) / unique_key =
+insight_tenant_id / insight_source_id / meeting_uuid (from the partition) / unique_key =
 "{tenant}-{source}-{meeting_uuid}-{participant_uuid}-{join_time}".
 
 How the sync works, for readers new to Airbyte substreams: `participants` has
@@ -130,7 +130,7 @@ def test_transformations_stamping_and_schema(http_mocker: HttpMocker) -> None:
 
     rec = output.records[0].record.data
     assert rec["insight_tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["meeting_uuid"] == "mtg-uuid-1=="
     assert rec["unique_key"] == (
         f"{config['insight_tenant_id']}-{config['insight_source_id']}-mtg-uuid-1==-part-uuid-1-2026-06-15T10:00:05Z"
