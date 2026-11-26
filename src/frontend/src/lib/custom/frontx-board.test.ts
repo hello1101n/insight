@@ -1513,7 +1513,7 @@ describe("frontxBoard new types", () => {
     ).toEqual({ items: [{ label: "—", value: null, group: null }] });
   });
 
-  it("draws a scatter on value axes, with a named point for each row that has both coordinates", () => {
+  it("draws a scatter on value axes titled by their columns, with a named point for each row that has both coordinates", () => {
     const body: Widget = { ...SCATTER, size: "comments", label: "pr" };
     const answer = {
       columns: ["pr", "size", "hours", "comments"],
@@ -1527,8 +1527,8 @@ describe("frontxBoard new types", () => {
 
     expect(cellOf(body).widget.render).toEqual({
       series: [{ name: "hours", type: "scatter" }],
-      x_axis: { type: "value" },
-      y_axis: { type: "value" },
+      x_axis: { type: "value", label: "size" },
+      y_axis: { type: "value", label: "hours" },
       legend_position: "none",
       size_label: "comments",
     });
@@ -1574,8 +1574,8 @@ describe("frontxBoard new types", () => {
 
     expect(cellOf(body).widget.render).toEqual({
       unlisted_type: "scatter",
-      x_axis: { type: "value" },
-      y_axis: { type: "value" },
+      x_axis: { type: "value", label: "size" },
+      y_axis: { type: "value", label: "hours" },
       legend_position: "bottom",
     });
     expect(drawnData(body, [], answer).data).toEqual({

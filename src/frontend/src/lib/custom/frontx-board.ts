@@ -374,8 +374,9 @@ function scatter(
             legend_position: "none",
           }
         : { unlisted_type: "scatter", legend_position: "bottom" }),
-      x_axis: { type: "value" },
-      y_axis: { type: "value" },
+      // INVARIANT: the FrontX scatter tooltip names x by the x axis label, and "x" without one.
+      x_axis: { type: "value", label: widget.x },
+      y_axis: { type: "value", label: widget.y },
       ...(widget.size === undefined ? {} : { size_label: widget.size }),
     },
     transform,
