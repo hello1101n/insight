@@ -1479,15 +1479,15 @@ describe("frontxBoard new types", () => {
     ).toEqual({ items: [{ label: "—", value: null, group: null }] });
   });
 
-  it("draws a scatter on value axes, with a point for each row that has both coordinates", () => {
+  it("draws a scatter on value axes, with a named point for each row that has both coordinates", () => {
     const body: Widget = { ...SCATTER, size: "comments", label: "pr" };
     const answer = {
       columns: ["pr", "size", "hours", "comments"],
       rows: [
         ["pr-1", 120, 5.5, 3],
-        ["pr-2", "40", 2, -1],
+        [7, "40", 2, -1],
         ["pr-3", null, 1, 2],
-        ["pr-4", 10, 1, null],
+        [null, 10, 1, null],
       ],
     };
 
@@ -1503,24 +1503,55 @@ describe("frontxBoard new types", () => {
         {
           name: "hours",
           points: [
-            { x: 120, y: 5.5, size: 3 },
-            { x: 40, y: 2, size: 0 },
-            { x: 10, y: 1, size: null },
+            { x: 120, y: 5.5, size: 3, label: "pr-1" },
+            { x: 40, y: 2, size: 0, label: "7" },
+            { x: 10, y: 1, size: null, label: "—" },
           ],
         },
       ],
     });
   });
 
-  it("draws a scatter by series as a note to turn off planned sections", () => {
-    const cell = cellOf({ ...SCATTER, series: "team" });
+  it("draws a scatter on two percent columns as fractions", () => {
+    const answer = { columns: ["size", "hours"], rows: [[40, 12.5]] };
 
-    expect(cell.widget).toEqual({
-      id: expect.stringContaining(".widget.markdown_card.v1~"),
-      title: "w name",
-      render: {
-        body: String.raw`Turn off Show planned sections to see this chart\.`,
-      },
+    expect(drawnData(SCATTER, ["size", "hours"], answer)).toEqual({
+      format: { value_type: "percent" },
+      data: { series: [{ name: "hours", points: [{ x: 0.4, y: 0.125 }] }] },
+    });
+  });
+
+  it("draws a scatter by series as one scatter series per value that has a point, in the current chart's order", () => {
+    const body: Widget = { ...SCATTER, series: "team" };
+    const answer = {
+      columns: ["size", "hours", "team"],
+      rows: [
+        [120, 5.5, "web"],
+        [40, 2, "api"],
+        [10, 1, null],
+        [30, null, "docs"],
+        [20, 3, "api"],
+      ],
+    };
+
+    expect(cellOf(body).widget.render).toEqual({
+      unlisted_type: "scatter",
+      x_axis: { type: "value" },
+      y_axis: { type: "value" },
+      legend_position: "bottom",
+    });
+    expect(drawnData(body, [], answer).data).toEqual({
+      series: [
+        { name: "—", points: [{ x: 10, y: 1 }] },
+        {
+          name: "api",
+          points: [
+            { x: 40, y: 2 },
+            { x: 20, y: 3 },
+          ],
+        },
+        { name: "web", points: [{ x: 120, y: 5.5 }] },
+      ],
     });
   });
 });

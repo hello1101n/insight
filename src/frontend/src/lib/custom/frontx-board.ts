@@ -319,13 +319,11 @@ function treemap(
   };
 }
 
-// INVARIANT: no chart sets drill_down; a scatter names no point, since FrontX scatter data has no label.
+// INVARIANT: no chart sets drill_down.
 function scatter(
   widget: Widget & { type: "scatter" },
   format: ValueFormat | undefined
-): Drawn | Note {
-  if (widget.series !== undefined) return { note: NEEDS_PLANNED_OFF };
-
+): Drawn {
   const percent = isPercent(format);
   const coordinate = (name: string) =>
     `(r[${name}] == null ? dyn(null) : dyn(double(r[${name}])${percent ? " / 100.0" : ""}))`;
@@ -333,23 +331,45 @@ function scatter(
     widget.size === undefined
       ? ""
       : `, 'size': (r[s] == null ? dyn(null) : dyn(double(r[s]) < 0.0 ? 0.0 : double(r[s])))`;
-  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y")}${size}}`;
-  const bound = (body: string) =>
-    widget.size === undefined
-      ? body
-      : `cel.bind(s, ${column(widget.size)}, ${body})`;
+  const label =
+    widget.label === undefined
+      ? ""
+      : `, 'label': (r[l] == null ? ${cel(NO_NAME)} : string(r[l]))`;
+  const point = `{'x': ${coordinate("x")}, 'y': ${coordinate("y")}${size}${label}}`;
+  const drawnRows = "response.rows.filter(r, r[x] != null && r[y] != null)";
+
+  const series =
+    widget.series === undefined
+      ? `[{'name': ${cel(widget.y)}, 'points': ${drawnRows}.map(r, ${point})}]`
+      : `response.distinct[${cel(widget.series)}].map(v, {'name': ${seriesName}, 'points': ${drawnRows}.filter(r, r[g] == v).map(r, ${point})}).filter(t, size(t.points) > 0)`;
+  const bindings: [string, string | undefined][] = [
+    ["x", widget.x],
+    ["y", widget.y],
+    ["s", widget.size],
+    ["l", widget.label],
+    ["g", widget.series],
+  ];
+  const transform = bindings.reduceRight(
+    (body, [name, read]) =>
+      read === undefined ? body : `cel.bind(${name}, ${column(read)}, ${body})`,
+    `{'series': ${series}}`
+  );
 
   return {
     ...formatted(format),
     type: "cartesian_chart",
     render: {
-      series: [{ name: widget.y, type: "scatter" }],
+      ...(widget.series === undefined
+        ? {
+            series: [{ name: widget.y, type: "scatter" }],
+            legend_position: "none",
+          }
+        : { unlisted_type: "scatter", legend_position: "bottom" }),
       x_axis: { type: "value" },
       y_axis: { type: "value" },
-      legend_position: "none",
       ...(widget.size === undefined ? {} : { size_label: widget.size }),
     },
-    transform: `cel.bind(x, ${column(widget.x)}, cel.bind(y, ${column(widget.y)}, ${bound(`{'series': [{'name': ${cel(widget.y)}, 'points': response.rows.filter(r, r[x] != null && r[y] != null).map(r, ${point})}]}`)}))`,
+    transform,
   };
 }
 
@@ -496,10 +516,6 @@ const plain = (text: string) =>
 const GONE = plain("This widget is no longer on the dashboard.");
 
 const UNKNOWN = plain("Unknown widget type.");
-
-const NEEDS_PLANNED_OFF = plain(
-  "Turn off Show planned sections to see this chart."
-);
 
 function noteCell(
   dashboard: string,
