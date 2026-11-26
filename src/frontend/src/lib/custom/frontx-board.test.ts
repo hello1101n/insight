@@ -393,20 +393,38 @@ describe("frontxBoard", () => {
     expect(bar.widget.render).toMatchObject({
       value_labels: "always",
       legend_position: "none",
+      max_bar_width: 24,
     });
     expect(plain.widget.render).toMatchObject({
       value_labels: "never",
       legend_position: "none",
+      max_bar_width: 24,
     });
     expect(stacked.widget.render).toMatchObject({
       legend_position: "bottom",
       unlisted_stack_group: "outcome",
+      max_bar_width: 24,
     });
     expect(stacked.widget.render).not.toHaveProperty("series");
     expect(stacked.widget.render).not.toHaveProperty("value_labels");
     expect(stacked.widget.render).not.toHaveProperty("stack_labels");
     expect(bar.widget.render).not.toHaveProperty("unlisted_stack_group");
     expect(plain.widget.render).not.toHaveProperty("unlisted_stack_group");
+  });
+
+  it("keeps a labelled duration bar at its full width, so each two-part label stays on one line", () => {
+    const labelled = { ...WIDGETS.bar, units: { deploys: "h" as const } };
+    const plain = { ...WIDGETS.plainBar, units: { deploys: "h" as const } };
+    const board = frontxBoard(
+      "board",
+      read([{ widget: "bar" }, { widget: "plainBar" }]),
+      [labelled, plain]
+    );
+    const [withLabels, withoutLabels] = dashboardOf(board).layout.cells;
+
+    expect(withLabels.widget.render).toMatchObject({ value_labels: "always" });
+    expect(withLabels.widget.render).not.toHaveProperty("max_bar_width");
+    expect(withoutLabels.widget.render).toMatchObject({ max_bar_width: 24 });
   });
 
   it("writes one total over each stack of a labelled stacked bar, as the current chart does", () => {
@@ -1434,6 +1452,7 @@ describe("frontxBoard new types", () => {
     expect(cellOf(CALENDAR, "PQC").widget.render).toMatchObject({
       series: [{ name: "n", type: "bar" }],
       x_axis: { type: "category" },
+      max_bar_width: 24,
     });
     expect(drawnData(CALENDAR, [], answer, "PQC").data).toEqual({
       series: [{ name: "n", points: [{ x: "Nov 2", y: 9 }] }],

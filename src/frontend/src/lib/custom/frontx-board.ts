@@ -22,6 +22,7 @@ import {
   type Target,
   type Widget,
 } from "@/api/custom-client";
+import { BAR_MAX_PX } from "@/components/chart-series";
 import { dashboardItems } from "@/lib/custom/dashboard-items";
 import { drawsBucket } from "@/lib/custom/draws-bucket";
 import { dailyBuckets } from "@/lib/custom/time-range";
@@ -89,6 +90,8 @@ const isDuration = (format: ValueFormat | undefined) =>
 
 const formatted = (format: ValueFormat | undefined) =>
   format ? { value_format: format } : {};
+
+const BARS = { max_bar_width: BAR_MAX_PX };
 
 // INVARIANT: FrontX fixes a cell's format when it builds the board, so the format comes from the listed widget, not the run.
 function formatOf({ percents = [], units = {} }: DashboardWidget): FormatOf {
@@ -269,6 +272,7 @@ function heatmap(
   }
   if (!daily) {
     return oneSeries({ x: widget.x, y: widget.value }, "bar", format, {
+      ...BARS,
       value_labels: "never",
     });
   }
@@ -408,7 +412,10 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
     case "bar": {
       const shown = format(widget.y);
       const share = widget.series !== undefined && widget.stack === "percent";
+      // WORKAROUND: a FrontX value label wraps at a space to its bar's width, so a two-part duration over a capped bar takes two lines.
+      const width = widget.labels && isDuration(shown) ? {} : BARS;
       const render = {
+        ...width,
         ...(widget.horizontal ? { orientation: "horizontal" } : {}),
         ...(share ? { stack_mode: "percent" } : {}),
         ...targetLines(widget.target, isPercent(shown) || share),
