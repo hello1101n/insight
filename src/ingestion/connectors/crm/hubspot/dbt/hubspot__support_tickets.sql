@@ -83,7 +83,12 @@ SELECT
         'present'
     )                                                  AS availability,
     nullIf(m.merged_into_id, '')                       AS merged_into_id,
-    toJSONString(mapFilter((k, v) -> has(c.names, k), t.properties)) AS custom_attrs,
+    -- The custom keys first, then their values: mapFilter with has(c.names, k) copies the names
+    -- array for every map entry and ran past 14 GiB on dev. Keys come out sorted.
+    toJSONString(mapFromArrays(
+        arraySort(arrayIntersect(mapKeys(t.properties), c.names)) AS custom_keys,
+        arrayMap(k -> t.properties[k], custom_keys)
+    ))                                                 AS custom_attrs,
     CAST(t.collected_at AS DateTime64(3))              AS collected_at,
     {{ hubspot_support_version() }}                    AS _version
 FROM tickets AS t
