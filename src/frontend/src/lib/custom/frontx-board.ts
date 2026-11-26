@@ -201,13 +201,15 @@ function oneSeries(
   );
 }
 
+// INVARIANT: the transform binds `v` to one distinct value of the series column.
+const seriesName = `(v == null ? ${cel(NO_NAME)} : string(v))`;
+
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
   format: ValueFormat | undefined,
   render: Record<string, unknown> = {}
 ): Drawn {
   const values = `response.distinct[${cel(widget.series)}]`;
-  const name = `(v == null ? dyn(null) : dyn(string(v)))`;
 
   return chart(
     widget.x,
@@ -215,7 +217,7 @@ function seriesPerValue(
     format,
     { ...render, legend_position: "bottom" },
     (point) =>
-      `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${name}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
+      `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${seriesName}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
   );
 }
 

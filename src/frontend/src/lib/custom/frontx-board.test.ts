@@ -593,7 +593,7 @@ describe("frontxBoard data", () => {
     }
   );
 
-  it("draws a bar with a series column as one series per value, in the current chart's stack order", () => {
+  it("draws a bar with a series column as one series per value, in the current chart's stack order and names", () => {
     const stacked: Widget = {
       type: "bar",
       metric: "m",
@@ -615,7 +615,7 @@ describe("frontxBoard data", () => {
 
     expect(drawnData(stacked, [], answer).data).toEqual({
       series: [
-        { name: null, points: [{ x: "Delta", y: 5 }] },
+        { name: "—", points: [{ x: "Delta", y: 5 }] },
         { name: "7", points: [{ x: "Ember", y: 6 }] },
         {
           name: "failed",
