@@ -576,6 +576,9 @@ for relation in bronze_github.pull_requests bronze_jira.jira_fields; do
     exit 1
   fi
 done
+# Every layer the assertions below read (bronze, staging, silver) now carries the new names.
+WARM_TENANT_COLUMN=insight_tenant_id
+WARM_SOURCE_COLUMN=insight_source_id
 
 if ! PATH="$WORKDIR/branch-venv/bin:$PATH" \
     bash "$REPO_ROOT/src/ingestion/scripts/apply-ch-migrations.sh"; then
