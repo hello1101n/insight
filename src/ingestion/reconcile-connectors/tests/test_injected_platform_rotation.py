@@ -15,12 +15,14 @@ import subprocess
 from pathlib import Path
 
 import yaml
+from reconcile_inputs import sync_user
 
 ROOT = Path(__file__).resolve().parents[1]
 CONNECTOR_DIR = ROOT.parent / "connectors" / "git" / "bitbucket-cloud"
 TENANT = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
 SOURCE_NAME = f"bitbucket-cloud-main-{TENANT}"
 SECRET_HASH = "c" * 64
+DESTINATION = "dest-1"
 
 #: Airbyte answered from files the test writes; every write is recorded, and
 #: the tag write lands in the listing so the next tick reads it back.
@@ -67,6 +69,8 @@ def tick(tmp_path: Path, proxy_token: str) -> list[str]:
     export APPLIED_YAML="{tmp_path / "applied.yaml"}" ARGO_SERVICE_ACCOUNT=example-account
     source "{ROOT}/lib/reconcile.sh"
     {STUBS}
+    {sync_user(tmp_path / "sync-user", DESTINATION)}
+    ab_destination_credentials_init || exit 1
     _reconcile_one_connector bitbucket-cloud "{CONNECTOR_DIR}" 1.0.0 nocode "" "" \\
       bronze_bitbucket_cloud main insight-bitbucket-cloud-main {SECRET_HASH} 0 0 "" ""
     """
@@ -86,6 +90,7 @@ def seed(tmp_path: Path) -> None:
     connection = {
         "connectionId": "conn-1",
         "sourceId": "src-1",
+        "destinationId": DESTINATION,
         "name": f"{SOURCE_NAME}-conn",
         "tags": [{"name": "insight"}],
     }

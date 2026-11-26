@@ -36,7 +36,7 @@ export function CustomLineChart({
     series: lines,
     config,
     stacked,
-  } = drawnSeries(result, x, y, series, true);
+  } = drawnSeries(result, x, y, series, { gaps: true });
 
   return (
     <ChartFrame

@@ -70,6 +70,18 @@ reconcile__log() {
   log_line "${level}" "${connector}: ${message}"
 }
 
+reconcile_converge_destination_credentials() {
+  local connector="$1" destination_id="$2" refusal
+  refusal="$(ab_converge_destination_credentials "${destination_id}")" || {
+    if [[ "$?" -eq 3 ]]; then
+      reconcile__log ERROR "${connector}" "${refusal}"
+    else
+      reconcile__log ERROR "${connector}" "Airbyte destination credential update failed. destination=${destination_id}"
+    fi
+    return 1
+  }
+}
+
 # reconcile_compute_{connection_name,schedule,tenant} have moved to
 # lib/connector-naming.sh so adopt.sh can call them without depending on
 # the order in which reconcile.sh and adopt.sh source each other.
@@ -79,8 +91,7 @@ reconcile__log() {
 # Resolves (or creates) the Airbyte destination Bronze sink owned by
 # reconcile. Strategy:
 #   1. If RECONCILE_DESTINATION_ID env is set (legacy / explicit override),
-#      use it verbatim: that destination's configuration belongs to whoever
-#      set the id, not to reconcile.
+#      use that destination ID. An enabled sync user supplies its credentials.
 #   2. Otherwise, converge the destination named RECONCILE_DESTINATION_NAME
 #      (default `clickhouse-bronze`) on the configuration composed from
 #      RECONCILE_DEST_CLICKHOUSE_* env — created when absent, updated when
@@ -140,14 +151,16 @@ reconcile_resolve_destination_id() {
       return 1
     fi
 
-    if ! dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")"; then
+    dest_id="$(ab_ensure_destination "${dest_name}" "${def_id}" "${config_json}")" || {
       reconcile__log ERROR "${subject}" "ab_ensure_destination failed for ${dest_name}"
       return 1
-    fi
+    }
     if [[ -z "${dest_id}" ]]; then
       reconcile__log ERROR "${subject}" "ab_ensure_destination returned empty id for ${dest_name}"
       return 1
     fi
+  else
+    reconcile_converge_destination_credentials "${subject}" "${dest_id}" || return 1
   fi
   _RECONCILE_DESTINATION_ID="${dest_id}"
   printf '%s' "${dest_id}"
@@ -1092,6 +1105,15 @@ print("\n".join(sorted(i for i in ids if i)))')"
     local connection_id existing_tags_json desired_action
     connection_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["connectionId"])')"
     existing_tags_json="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.dumps(json.load(sys.stdin).get("tags",[])))')"
+    if [[ "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+      local destination_id
+      destination_id="$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["destinationId"] or "")')"
+      if [[ -z "${destination_id}" ]]; then
+        reconcile__log ERROR "${connector_name}" "Airbyte connection has no destination ID."
+        return 1
+      fi
+      reconcile_converge_destination_credentials "${connector_name}" "${destination_id}" || return 1
+    fi
     if [[ -n "${source_name}" ]]; then
       reconcile_converge_connection_name "${connector_name}" "${connection_id}" \
         "$(printf '%s' "${conn_line}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("name") or "")')" \
@@ -1263,6 +1285,11 @@ reconcile_recreate_with_state() {
   fi
   # @cpt-end:cpt-insightspec-algo-reconcile-export-import-state-on-recreate:p1:inst-eisor-try
 
+  local destination_id
+  if ! destination_id="$(reconcile_resolve_destination_id "${connector_name}")"; then
+    return 1
+  fi
+
   # @cpt-begin:cpt-insightspec-algo-reconcile-export-import-state-on-recreate:p1:inst-eisor-delete
   # RECONCILE_DRY_RUN guarded at top of reconcile_recreate_with_state.
   ab_delete_source "${source_id}" >/dev/null
@@ -1275,10 +1302,6 @@ reconcile_recreate_with_state() {
                       "${source_name}" "${target_cfg_json}")"
   new_source_id="$(printf '%s' "${new_source_json}" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("sourceId",""))')"
 
-  local destination_id
-  if ! destination_id="$(reconcile_resolve_destination_id "${source_name}")"; then
-    return 1
-  fi
   # Airbyte connection re-created with scheduleType=manual; Argo
   # CronWorkflow is the sole scheduler (see bootstrap branch of
   # reconcile_connections for rationale).
@@ -1626,7 +1649,7 @@ _reconcile_one_connector() {
       else
         local apply_rc=0 apply_error
         apply_error="$(argo_apply_cronworkflow "${name}" "${conn_name}" "${schedule}" "${tenant}" \
-                                "${source_id_label}" "${dbt_select}" "${schedule_origin}" "${deployment}" 2>&1 >/dev/null)" \
+                                "${source_id_label}" "${dbt_select}" "${schedule_origin}" "${deployment}" "${conn_id}" 2>&1 >/dev/null)" \
           || apply_rc=$?
         apply_error="$(argo_error_reason "${apply_error}")"
         argo_log_schedule_release_failure "${name}" "${apply_rc}" "${apply_error}"
@@ -1656,7 +1679,7 @@ _reconcile_one_connector() {
         log_line INFO "${name}: would trigger a one-shot sync (bump_kind=${def_bump_kind})"
       fi
     elif argo_submit_sync_trigger "${name}" "${conn_name}" "${tenant}" \
-                                   "${source_id_label}" "${dbt_select}" \
+                                  "${source_id_label}" "${dbt_select}" \
                                    "${def_bump_kind}" >/dev/null 2>&1; then
       if [[ "${def_bump_kind}" == "major" ]]; then
         log_line INFO "${name}: triggered a one-shot sync with dbt --full-refresh (bump_kind=major)"
@@ -1822,6 +1845,14 @@ reconcile_run() {
   _RECONCILE_SKIPPED=0
 
   log_init
+  if [[ "${RECONCILE_DRY_RUN:-0}" -eq 0 ]]; then
+    if ! ab_destination_credentials_init; then
+      log_line ERROR "The ClickHouse sync credentials or destination state read failed."
+      log_run_summary "${_RECONCILE_CHANGED}" 1
+      log_close
+      return 2
+    fi
+  fi
   connector_schedules_read
   connector_schedules_writable || _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1))
 
@@ -1835,6 +1866,7 @@ reconcile_run() {
     log_line ERROR "cannot read the connector Secrets; reconciling nothing this tick"
     log_run_summary "${_RECONCILE_CHANGED}" 1
     log_close
+    ab_destination_credentials_close
     return 2
   fi
 
@@ -1883,5 +1915,6 @@ reconcile_run() {
 
   log_run_summary "${_RECONCILE_CHANGED}" "${_RECONCILE_FAILED}"
   log_close
+  ab_destination_credentials_close
   return $(( _RECONCILE_FAILED > 0 ? 2 : 0 ))
 }

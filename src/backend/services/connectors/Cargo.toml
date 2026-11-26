@@ -12,6 +12,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+bigdecimal = "0.4"
 insight-clickhouse = { workspace = true }
 insight-http-client = { workspace = true }
 insight-http-metrics = { workspace = true }
@@ -21,6 +22,7 @@ insight-migration = { workspace = true }
 kube = { workspace = true, features = ["client", "rustls-tls", "aws-lc-rs"] }
 k8s-openapi = { workspace = true, features = ["latest"] }
 tokio-util = { workspace = true }
+futures-util = { workspace = true }
 clickhouse = { workspace = true }
 axum = { workspace = true }
 sea-orm = { workspace = true }

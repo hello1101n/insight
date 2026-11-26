@@ -25,13 +25,17 @@
 #   6. Delete the old orphan source_definition.
 #
 # Required env: KUBECONFIG, INSIGHT_NAMESPACE, AIRBYTE_URL,
-#               INSIGHT_TENANT_ID, CONNECTORS_DIR; GIT_PROXY_URL and
+#               INSIGHT_TENANT_ID, CONNECTORS_DIR,
+#               RECONCILE_DEST_CLICKHOUSE_USERNAME,
+#               RECONCILE_SYNC_PASSWORD_SECRET, RECONCILE_SYNC_PASSWORD_KEY,
+#               RECONCILE_DESTINATION_STATE; GIT_PROXY_URL and
 #               GIT_PROXY_TOKEN when the descriptor sets
 #               platform_config.git_proxy.
 # Workspace UUID is auto-discovered via ab_workspace_id (ADR-0009).
 # Destination is resolved via reconcile_resolve_destination_id (ADR-0012):
 # either RECONCILE_DESTINATION_ID is set (legacy override) or the
-# RECONCILE_DEST_CLICKHOUSE_* env triplet must be present.
+# RECONCILE_DEST_CLICKHOUSE_* env triplet must be present. Both paths write
+# the sync user's credentials, so both need the sync variables above.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -63,6 +67,11 @@ source "${LIB_DIR}/discover.sh"
 # shellcheck source=../lib/reconcile.sh
 source "${LIB_DIR}/reconcile.sh"
 
+if ! ab_destination_credentials_init; then
+  printf 'The ClickHouse sync credentials or destination state read failed.\n' >&2
+  exit 1
+fi
+trap ab_destination_credentials_close EXIT
 WORKSPACE_ID="$(ab_workspace_id)"
 RECONCILE_DESTINATION_ID="$(reconcile_resolve_destination_id "${CONNECTOR_NAME}")"
 
@@ -107,7 +116,7 @@ SOURCES_JSON="$(ab_list_sources "${WORKSPACE_ID}")"
 CONNS_JSON="$(ab_list_connections "${WORKSPACE_ID}")"
 
 WORKDIR="$(mktemp -d -t orphan-mig.XXXXXX)"
-trap 'rm -rf "${WORKDIR}"' EXIT
+trap 'rm -rf "${WORKDIR}"; ab_destination_credentials_close' EXIT
 
 printf '%s' "${SOURCES_JSON}" | python3 -c '
 import sys, json

@@ -1,7 +1,7 @@
 import { BarChart, LabelList } from "recharts";
 
 import { ChartBar } from "@/components/chart-series";
-import type { MetricResult, Target } from "@/api/custom-client";
+import type { MetricResult, SeriesTone, Target } from "@/api/custom-client";
 import { drawnSeries, pointClick } from "@/components/custom/chart-data";
 import { compactNumber, unitFor } from "@/components/custom/chart-format";
 import {
@@ -21,6 +21,7 @@ export interface CustomBarChartProps {
   horizontal?: boolean;
   stack?: "percent";
   target?: Target;
+  colors?: Record<string, SeriesTone>;
   fillHeight?: boolean;
   onPointClick?: () => void;
 }
@@ -34,6 +35,7 @@ export function CustomBarChart({
   horizontal = false,
   stack,
   target,
+  colors,
   fillHeight,
   onPointClick,
 }: CustomBarChartProps) {
@@ -43,7 +45,7 @@ export function CustomBarChart({
     series: segments,
     config,
     stacked,
-  } = drawnSeries(result, x, y, series);
+  } = drawnSeries(result, x, y, series, { colors });
   const share = stacked !== null && stack === "percent";
 
   return (

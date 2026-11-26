@@ -101,7 +101,7 @@ LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
 VALUES           ?= environments/$(ENV)/values.yaml
 # Covers rollout waits plus the post-upgrade clickhouse-migrate hook, whose
-# heals can mutate large relations — give it room before --atomic rolls back.
+# heals can mutate large relations — give it room before --rollback-on-failure rolls back.
 TIMEOUT          ?= 30m
 RENDER_DIR       := .deploy
 
@@ -109,6 +109,7 @@ RENDER_DIR       := .deploy
 # carry no fallback and read a missing key back as the literal "null".
 CREATE_NS        ?= $(shell yq -r '.bootstrap.namespaces' $(INVENTORY) 2>/dev/null)
 ATOMIC           ?= $(shell yq -r '.deploy.atomic'        $(INVENTORY) 2>/dev/null)
+DEPLOY_WAIT      ?= $(shell yq -r '.deploy.wait // ""'    $(INVENTORY) 2>/dev/null)
 
 KEYCLOAK_REALMS  := $(shell yq -r '.keycloak.realms'      $(INVENTORY) 2>/dev/null)
 SEALED_ENABLED   := $(shell yq -r '[.secrets.services[]? | select(.enabled == true)] | length' $(INVENTORY) 2>/dev/null)
@@ -119,9 +120,10 @@ OIDC_SECRET_KEY  := $(shell yq -r '.oidcClientSecret.key // "client-secret"' $(I
 CRED_MODE        := $(shell yq -r '.credentials.deploymentMode' $(VALUES) 2>/dev/null)
 
 HELM_NS_FLAG     := $(if $(filter false,$(CREATE_NS)),,--create-namespace)
-# `--atomic` rolls back to the PREVIOUS chart and deletes the pods holding the
+# `--rollback-on-failure` rolls back to the PREVIOUS chart and deletes the pods holding the
 # failure's evidence — a downgrade here. `deploy.atomic: false` turns it off.
-HELM_ATOMIC_FLAG := $(if $(filter false,$(ATOMIC)),,--atomic)
+HELM_ROLLBACK_FLAG := $(if $(filter false,$(ATOMIC)),,--rollback-on-failure)
+HELM_WAIT_FLAG     := $(if $(DEPLOY_WAIT),--wait=$(DEPLOY_WAIT),--wait)
 
 # Extra flags appended to helm invocations. Default empty.
 #
@@ -286,7 +288,7 @@ help:
 	@echo "  make system-alloy-metrics ENV=$(ENV)      }   (infra metrics → VictoriaMetrics)"
 	@echo "  make system-grafana ENV=$(ENV)            }"
 	@echo "  make system-status ENV=$(ENV)             Show what's installed in insight-infra"
-	@echo "  make provision-ci ENV=$(ENV)      Provision the namespace-scoped CI deploy credential"
+	@echo "  make provision-ci ENV=$(ENV)      Provision the CI deploy credential"
 	@echo "  make verify-ci-credential ENV=$(ENV)  Assert the CI credential's RBAC scope"
 	@echo "  make revoke-ci ENV=$(ENV)         Delete the CI deploy credential (SA + RBAC + token)"
 	@echo "  make rollback ENV=$(ENV)          Roll back the umbrella to previous revision"
@@ -682,9 +684,8 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 	    echo "         helm uninstall $(RELEASE) -n $(NS_APP)  # if the stand is disposable"; \
 	    exit 1 ;; \
 	esac
-	@# `--wait` is explicit, not inherited from `--atomic`: on helm 4 an omitted
-	@# `--wait` waits on hooks only. `--set-file`, not `--set-string`, which
-	@# splits on commas and backslashes and would truncate a generated secret.
+	@# WORKAROUND: If you omit `--wait` and disable rollback, Helm 4 waits on hooks only.
+	@# INVARIANT: Use `--set-file`. `--set-string` splits on commas and backslashes and would truncate a generated secret.
 	@set -o pipefail; \
 	SET_ARGS=(); \
 	if [ -n "$(OIDC_SECRET)" ]; then \
@@ -705,7 +706,7 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 		--namespace $(NS_APP) $(HELM_NS_FLAG) \
 		-f $(VALUES) \
 		$$(cat $(REALIP_ARGS)) \
-		--wait $(HELM_ATOMIC_FLAG) --timeout $(TIMEOUT) \
+		$(HELM_WAIT_FLAG) $(HELM_ROLLBACK_FLAG) --timeout $(TIMEOUT) \
 		--history-max 10 \
 		2>&1 | tee $$LOG || rc=$$?; \
 	if [ "$$(yq -r '.system.loki // false' $(INVENTORY) 2>/dev/null)" = "true" ]; then \
@@ -1109,17 +1110,25 @@ verify-ci-credential: vpn-up kube-ctx
 	check yes "get PVCs in $(NS_APP) (helm reads the git-cli-proxy cache claim every upgrade)" get persistentvolumeclaims -n $(NS_APP); \
 	check yes "update PVCs in $(NS_APP) (its chart/version labels change every bump)" update persistentvolumeclaims -n $(NS_APP); \
 	check no  "delete PVCs in $(NS_APP) (the clone cache outlives the release)" delete persistentvolumeclaims -n $(NS_APP); \
-	check yes "get Roles in $(AIRBYTE_NAMESPACE) (helm reads airbyte-auth-reader every upgrade)" get roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check yes "update Roles in $(AIRBYTE_NAMESPACE) (its chart/version labels change every bump)" update roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
+	check yes "get the Airbyte auth Role" get roles.rbac.authorization.k8s.io/$(RELEASE)-airbyte-auth-reader -n $(AIRBYTE_NAMESPACE); \
+	check yes "update the Airbyte auth Role" update roles.rbac.authorization.k8s.io/$(RELEASE)-airbyte-auth-reader -n $(AIRBYTE_NAMESPACE); \
 	check yes "create Roles in $(AIRBYTE_NAMESPACE)"                         create roles.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check yes "create RoleBindings in $(AIRBYTE_NAMESPACE) (the chart's airbyte-auth-reader)" create rolebindings.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
-	check no  "read pods in $(AIRBYTE_NAMESPACE) (the exception is RBAC-only)" get pods -n $(AIRBYTE_NAMESPACE); \
+	check yes "create RoleBindings in $(AIRBYTE_NAMESPACE)"                  create rolebindings.rbac.authorization.k8s.io -n $(AIRBYTE_NAMESPACE); \
+	check yes "list pods in $(AIRBYTE_NAMESPACE) (capacity and observation)" list pods -n $(AIRBYTE_NAMESPACE); \
+	check yes "read the Airbyte auth Secret" get secrets/airbyte-auth-secrets -n $(AIRBYTE_NAMESPACE); \
+	check yes "list nodes (capacity)"                                       list nodes; \
+	check yes "create ClusterRoles (node reads)"                             create clusterroles.rbac.authorization.k8s.io; \
+	check yes "create ClusterRoleBindings (node reads)"                      create clusterrolebindings.rbac.authorization.k8s.io; \
+	check yes "create the admission policy"                                  create validatingadmissionpolicies.admissionregistration.k8s.io; \
+	check yes "create the admission policy binding"                          create validatingadmissionpolicybindings.admissionregistration.k8s.io; \
+	check no  "get individual Airbyte pods"                                  get pods -n $(AIRBYTE_NAMESPACE); \
+	check no  "list pods across namespaces"                                  list pods --all-namespaces; \
 	check no  "anything, anywhere (the blanket check)"                       '*' '*' --all-namespaces; \
 	check no  "list namespaces at cluster scope"                            list namespaces --all-namespaces; \
 	check no  "create namespaces (hence the --create-namespace limitation)" create namespaces --all-namespaces; \
 	check no  "read Secrets across all namespaces"                          get secrets --all-namespaces; \
-	check no  "list nodes"                                                  list nodes --all-namespaces; \
-	check no  "create ClusterRoleBindings"                                  create clusterrolebindings.rbac.authorization.k8s.io --all-namespaces; \
+	check no  "escalate ClusterRoles"                                       escalate clusterroles.rbac.authorization.k8s.io; \
+	check no  "bind ClusterRoles without holding their permissions"        bind clusterroles.rbac.authorization.k8s.io; \
 	check no  "read pods in kube-system"                                    get pods -n kube-system; \
 	[ "$$FAILURES" -eq 0 ] || { echo "$(C_RED)ERROR$(C_RST): $$FAILURES scope assertion(s) failed — do not put this kubeconfig in a GitHub environment"; exit 1; }; \
 	echo "$(C_GRN)all scope assertions hold$(C_RST)"

@@ -28,6 +28,8 @@ export interface SeriesWidget extends WidgetBase {
   target?: Target;
 }
 
+export type SeriesTone = "success" | "danger" | "warning" | "info" | "neutral";
+
 export interface BarWidget extends WidgetBase {
   type: "bar";
   x: string;
@@ -37,6 +39,7 @@ export interface BarWidget extends WidgetBase {
   horizontal?: boolean;
   stack?: "percent";
   target?: Target;
+  colors?: Record<string, SeriesTone>;
 }
 
 export type Better = "higher" | "lower" | "neutral";

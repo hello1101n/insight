@@ -17,7 +17,7 @@ CI_DIR = ROOT / "scripts" / "ci"
 sys.path.insert(0, str(CI_DIR))
 
 import changed  # noqa: E402
-from components import COMPONENTS  # noqa: E402
+from components import COMPONENTS, RECONCILE_GUARD_PATHS  # noqa: E402
 
 
 def trigger_paths(workflow: str, trigger: str) -> list[str]:
@@ -144,14 +144,15 @@ class ChangedCliTests(unittest.TestCase):
         push = trigger_paths(workflow, "push")
         self.assertTrue(pull_request and push, "both trigger blocks must parse to a non-empty glob list")
 
+        paths = {owned for comp in COMPONENTS for owned in comp["paths"]}
+        paths.update(RECONCILE_GUARD_PATHS)
         for trigger, globs in (("pull_request", pull_request), ("push", push)):
-            for comp in COMPONENTS:
-                for owned in comp["paths"]:
-                    probe = owned if "." in owned.rsplit("/", 1)[-1] else owned + "/file"
-                    self.assertTrue(
-                        any(fnmatch.fnmatch(probe, g) for g in globs),
-                        f"ci.yml on.{trigger}.paths misses component path: {owned}",
-                    )
+            for owned in sorted(paths):
+                probe = owned if "." in owned.rsplit("/", 1)[-1] else owned + "/file"
+                self.assertTrue(
+                    any(fnmatch.fnmatch(probe, g) for g in globs),
+                    f"ci.yml on.{trigger}.paths misses component path: {owned}",
+                )
         self.assertEqual(
             set(pull_request), set(push), "ci.yml on.pull_request.paths and on.push.paths must list the same globs"
         )
@@ -180,6 +181,23 @@ class ChangedCliTests(unittest.TestCase):
         self.assertIs(job["cover"], False)
         self.assertIs(job["live_ch"], True)
         self.assertIs(job["include_ignored"], True)
+
+    def test_resource_fixture_change_runs_each_contract_suite(self) -> None:
+        fixture = "tests/fixtures/connector-resource-parameters.json"
+        completed = subprocess.CompletedProcess(args=["git", "diff"], returncode=0, stdout=f"{fixture}\n")
+
+        with patch.object(changed.subprocess, "run", return_value=completed):
+            matrix = changed.changed_components("origin/main", COMPONENTS)
+
+        self.assertIn("connectors", {job["name"] for job in matrix["rust"] if job["test"]})
+        self.assertIn(fixture, RECONCILE_GUARD_PATHS)
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        for event in ("pull_request", "push"):
+            self.assertIn(fixture, trigger_paths(ci, event), event)
+        self.assertIn("pytest src/ingestion/reconcile-connectors/tests", ci)
+
+        chart_ci = (ROOT / ".github" / "workflows" / "insight-helm.yml").read_text()
+        self.assertIn(fixture, trigger_paths(chart_ci, "pull_request"))
 
 
 if __name__ == "__main__":

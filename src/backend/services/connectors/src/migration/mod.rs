@@ -1,5 +1,8 @@
 pub(crate) mod m20261110_000001_connector_schedules;
 
+mod m20261124_000001_ingestion_history;
+mod m20261125_000001_history_retention;
+
 use sea_orm_migration::prelude::*;
 
 #[derive(Debug)]
@@ -8,7 +11,11 @@ pub(crate) struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(m20261110_000001_connector_schedules::Migration)]
+        vec![
+            Box::new(m20261110_000001_connector_schedules::Migration),
+            Box::new(m20261124_000001_ingestion_history::Migration),
+            Box::new(m20261125_000001_history_retention::Migration),
+        ]
     }
 }
 

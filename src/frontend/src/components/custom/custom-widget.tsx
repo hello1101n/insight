@@ -131,6 +131,7 @@ export function CustomWidget({
           horizontal={widget.horizontal}
           stack={widget.stack}
           target={widget.target}
+          colors={widget.colors}
           fillHeight={fillHeight}
           onPointClick={onPointClick}
         />

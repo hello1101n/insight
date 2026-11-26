@@ -128,7 +128,10 @@ it("bounds expanded schedules, the editor and all history rows without widening 
   const strip = screen.getByRole("list", {
     name: "Recorded sync statuses, newest on the right",
   });
-  expect(strip).toHaveClass("flex-wrap", "max-w-full", "min-w-0");
+  expect(strip).toHaveClass("grid", "w-full", "min-w-0");
+  expect(strip).toHaveStyle({
+    gridTemplateColumns: "repeat(50, minmax(0, 1fr))",
+  });
   expect(strip.parentElement).toHaveClass("flex-wrap", "max-w-full", "min-w-0");
   expect(history.querySelector("thead")).toHaveClass(
     "whitespace-normal",

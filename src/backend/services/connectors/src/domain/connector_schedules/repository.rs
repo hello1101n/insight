@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::{Error, Instance, Revision};
+use super::{Change, Error, Instance, Resources, Revision};
 use crate::infra::db::entities::connector_schedules::{ActiveModel, Column, Entity, Model};
 
 pub(super) async fn read(
@@ -27,17 +27,17 @@ pub(super) async fn write(
     db: &DatabaseConnection,
     instance: &Instance,
     expected: Revision,
-    crons: Vec<String>,
+    change: Change,
     caller: Uuid,
 ) -> Result<Option<Model>, Error> {
-    bounded(write_row(db, instance, expected, crons, caller)).await
+    bounded(write_row(db, instance, expected, change, caller)).await
 }
 
 async fn write_row(
     db: &DatabaseConnection,
     instance: &Instance,
     expected: Revision,
-    crons: Vec<String>,
+    change: Change,
     caller: Uuid,
 ) -> Result<Option<Model>, Error> {
     let current = read(db, instance).await?;
@@ -50,27 +50,46 @@ async fn write_row(
         .map(|row| serde_json::from_value(row.crons.clone()).map_err(Error::StoredCrons))
         .transpose()?
         .unwrap_or_default();
-    if stored.len() == crons.len()
-        && stored
-            .iter()
-            .zip(&crons)
-            .all(|(stored, requested)| super::validation::normalize(stored) == *requested)
+    let stored_resources =
+        Resources::stored(current.as_ref().and_then(|row| row.resources.as_ref()))?;
+    let schedule_change = !matches!(change, Change::Resources(_));
+    let (crons, resources) = match change {
+        Change::Put(crons) => (crons.into_vec(), stored_resources.clone()),
+        Change::Delete => (Vec::new(), stored_resources.clone()),
+        Change::Resources(patch) => (stored.clone(), patch.merge(&stored_resources)),
+    };
+    if resources == stored_resources
+        && (stored == crons
+            || (stored.len() == crons.len()
+                && stored
+                    .iter()
+                    .zip(&crons)
+                    .all(|(stored, requested)| super::validation::normalize(stored) == *requested)))
     {
         return Ok(current);
     }
     let revision = expected.0.checked_add(1).ok_or(Error::RevisionExhausted)?;
+    let previous_schedule = current.as_ref().filter(|_| !schedule_change);
     let row = Model {
         connector: instance.connector.as_str().to_owned(),
         source_id: instance.source_id.as_str().to_owned(),
         crons: serde_json::json!(crons),
+        resources: (!resources.is_empty()).then(|| serde_json::json!(resources)),
         revision,
-        updated_by: caller,
-        updated_at: Utc::now().trunc_subsecs(3),
+        has_schedule_revision: schedule_change
+            || current
+                .as_ref()
+                .is_some_and(|row| row.has_schedule_revision),
+        updated_by: previous_schedule.map_or(caller, |row| row.updated_by),
+        updated_at: previous_schedule
+            .map_or_else(|| Utc::now().trunc_subsecs(3), |row| row.updated_at),
     };
     let active = ActiveModel {
         connector: Set(row.connector.clone()),
         source_id: Set(row.source_id.clone()),
         crons: Set(row.crons.clone()),
+        resources: Set(row.resources.clone()),
+        has_schedule_revision: Set(row.has_schedule_revision),
         revision: Set(row.revision),
         updated_by: Set(row.updated_by),
         updated_at: Set(row.updated_at),

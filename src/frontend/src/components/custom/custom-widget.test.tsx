@@ -172,6 +172,7 @@ vi.mock("recharts", async (importOriginal) => {
 });
 
 import { CustomApiError, type Widget } from "@/api/custom-client";
+import { chartColor } from "@/lib/chart-palette";
 import { wrapper } from "@/test/alerts";
 
 import { CustomWidget } from "./custom-widget";
@@ -519,6 +520,34 @@ describe("<CustomWidget>", () => {
       expect(screen.getByTestId("legend").dataset.contentClass).toContain(
         "flex-wrap"
       );
+    });
+
+    it("colours a series value with the tone its widget names", () => {
+      const { container } = render(
+        <CustomWidget
+          widget={{
+            ...stacked,
+            colors: { failed: "danger", merged: "success" },
+          }}
+          result={runs}
+        />
+      );
+
+      const style = container.querySelector("style")?.textContent ?? "";
+      expect(style).toContain("--color-stack-0: var(--destructive);");
+      expect(style).toContain("--color-stack-1: var(--success);");
+    });
+
+    it("keeps the palette colour of a series value with no tone", () => {
+      const { container } = render(
+        <CustomWidget
+          widget={{ ...stacked, colors: { failed: "danger" } }}
+          result={runs}
+        />
+      );
+
+      const style = container.querySelector("style")?.textContent ?? "";
+      expect(style).toContain(`--color-stack-1: ${chartColor(1)};`);
     });
 
     it("draws no labels unless asked", () => {

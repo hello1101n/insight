@@ -9,7 +9,7 @@ async fn migration_preserves_the_frozen_view_and_enforces_requests() -> R {
         return Ok(());
     };
     let (connector, _) = identity();
-    Migration.up(&SchemaManager::new(&db)).await?;
+    crate::migration::Migrator::up(&db, None).await?;
     assert_view_contract(&db, &connector).await?;
     assert_invalid_requests(&db, &connector).await?;
     clear(&db, &connector).await
@@ -31,7 +31,7 @@ async fn assert_view_contract(db: &DatabaseConnection, connector: &str) -> R {
 
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::MySql,
-        "INSERT INTO connector_schedules VALUES (?, 'main', '[]', 1, ?, UTC_TIMESTAMP(3))",
+        "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES (?, 'main', '[]', 1, ?, UTC_TIMESTAMP(3))",
         [connector.to_owned().into(), CALLER.into()],
     ))
     .await?;
@@ -53,7 +53,7 @@ async fn assert_invalid_requests(db: &DatabaseConnection, connector: &str) -> R 
         let result = db
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::MySql,
-                "INSERT INTO connector_schedules VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3))",
+                "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3))",
                 [
                     connector.to_owned().into(),
                     source.into(),
@@ -66,7 +66,7 @@ async fn assert_invalid_requests(db: &DatabaseConnection, connector: &str) -> R 
         assert!(result.is_err(), "should reject: {source}");
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::MySql,
-            "INSERT INTO connector_schedules VALUES (?, ?, '[]', 1, ?, UTC_TIMESTAMP(3))",
+            "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES (?, ?, '[]', 1, ?, UTC_TIMESTAMP(3))",
             [connector.to_owned().into(), source.into(), CALLER.into()],
         ))
         .await?;

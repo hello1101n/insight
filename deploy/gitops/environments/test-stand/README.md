@@ -28,22 +28,28 @@ There is deliberately no `sealed-secrets/`, no `keycloak/realms/`, no
 
 ## The ownership boundary
 
-This tree owns the **stand's application config**, not the cluster.
+This tree owns the umbrella release and its application configuration.
 
 | Layer | What | Owned by | Changed how |
 |---|---|---|---|
 | L0 | cert-manager + ClusterIssuer, Envoy Gateway + the `Gateway`, the namespaces | the deployment repo | a human |
 | L2 | Datastores (ClickHouse, MariaDB, Redis, Redpanda) under their operators; Airbyte; Argo | the deployment repo | a human |
 | L2 | Generate-once Secrets (`insight-db-creds`, `insight-oidc`, `insight-keycloak-*`, `insight-authenticator-signing-keys`) and the realm ConfigMap | the deployment repo | a human |
-| **L3** | **The umbrella release `insight` — every value in `values.yaml`, plus the two `HTTPRoute`s it renders** | **this directory** | **CI, every merge to `main`** |
+| **L3** | **The umbrella release `insight`, including the edge routes, ingestion RBAC, and Workflow admission policy** | **this directory** | **CI, every merge to `main`** |
 | L3 | The `argo-workflow` SA + Role + RoleBinding the chart's WorkflowTemplates pin | the deployment repo | a human |
 
 - **Nothing here creates or rotates a credential** — every Secret already
   exists and is referenced by name (hence `inventory.yaml` lists them
   `enabled: false`). The one exception, the CI deploy credential, has its own
   [`credentials-runbook.md`](credentials-runbook.md).
+- `insight-db-creds` requires `clickhouse-sync-password` with this chart version.
+  Generate the password once as 32 hex characters (`openssl rand -hex 16`).
+  The upgrade stops at render if the key is missing.
 - **A change merged here reaches a published stand at merge speed.** No staging
   step. Review accordingly.
+
+Apply the CI deployer RBAC before CI deploys a chart with the ingestion grants and policy.
+Follow the [credentials runbook](credentials-runbook.md#22-apply) for the administrator step.
 
 ### What it depends on but does not own
 
@@ -87,7 +93,7 @@ written here: this repo is public):
 kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
 ```
 
-**2. See what would change** (read-only, renders offline, needs no context):
+**2. See what would change** (read-only, with a client-side Helm render):
 
 ```bash
 make diff ENV=test-stand INSIGHT_VERSION=<chart-version>
@@ -102,7 +108,7 @@ helm upgrade --install insight \
   --values deploy/gitops/environments/test-stand/values.yaml \
   --set-string authenticator.oidc.clientSecret="$(kubectl -n insight \
       get secret insight-oidc -o jsonpath='{.data.client-secret}' | base64 --decode)" \
-  --wait --timeout 10m --history-max 10
+  --wait=legacy --timeout 10m --history-max 10
 ```
 
 Three load-bearing details:
@@ -112,8 +118,7 @@ Three load-bearing details:
   authenticator config Secret, so omitting it produces a blank client secret —
   pods Ready, release `deployed`, every login broken. Read it from the cluster
   so there's one source of truth.
-- **`--wait` but deliberately no `--atomic`.** A failed upgrade is left in place;
-  rolling back destroys the evidence this stand exists to produce.
+- **`--wait=legacy`** uses the same readiness checks as CI. Keep a failed upgrade in place to preserve diagnostic evidence.
 - **`--timeout 10m`**, not the Makefile's 30m — a doomed deploy should fail
   inside the CI budget.
 
@@ -291,18 +296,18 @@ difference is now a **declaration this environment makes**:
 | `secrets.services … enabled: false` | `inventory.yaml` | the sealed-manifest apply + controller wait |
 | `credentials.deploymentMode: helm` | `values.yaml` | `compose-app-secrets.sh` |
 | `keycloak.realms: external` | `inventory.yaml` | packing a realm ConfigMap owned elsewhere |
-| `deploy.atomic: false` | `inventory.yaml` | `--atomic` (rollback-on-failure) |
-| `bootstrap.namespaces: false` | `inventory.yaml` | `--create-namespace` (a namespace-scoped credential can't use it) |
+| `deploy.atomic: false` | `inventory.yaml` | `--rollback-on-failure` |
+| `bootstrap.namespaces: false` | `inventory.yaml` | `--create-namespace` (the CI credential cannot create namespaces) |
 | `oidcClientSecret` | `inventory.yaml` | nothing — it says where to READ the client secret at deploy time |
 
-`local` and `functional-ci` declare none of these and render byte-identical helm
-invocations to before. One deploy procedure; step 3 above is the command CI runs.
+`deploy.wait: legacy` in `inventory.yaml` selects `--wait=legacy` for CI and operator deploys. Step 3 uses the same wait strategy.
 
 **What CI does:** the deploy is a reusable workflow called from the
 chart-publishing workflow after publish, on `main` only, with the chart version
 from the publish job's output. Credentials come from the `insight-test-stand`
-GitHub environment; the CI credential is a namespace-scoped SA, admin
-kubeconfigs stay human-only. Runs coalesce (never cancel a live upgrade). The
+GitHub environment. The [credentials runbook](credentials-runbook.md#3-verify-the-scope)
+lists the namespace grants and cluster grants of the CI credential.
+Admin kubeconfigs stay human-only. Runs coalesce (never cancel a live upgrade). The
 `stages` input is a four-name prefix chain (deploy, seed, smoke, suite), so the
 suite never runs after a failed smoke and smoke never after a failed seed; the
 workflow numbers five, because the edge probe between deploy and seed can fail

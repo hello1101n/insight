@@ -18,7 +18,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from reconcile_inputs import plan_row
+from reconcile_inputs import plan_row, sync_user
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,6 +54,7 @@ def run_tick(rows: list[str], tmp_path: Path) -> tuple[int, list[str], str]:
     export CALLS="{calls}"
     source "{ROOT}/lib/reconcile.sh"
     {STUBS}
+    {sync_user(tmp_path / "sync-user")}
     disc_load_instances() {{ printf '%b\\n' '{plan}'; }}
     reconcile_run 0 1 0 "" ""
     """

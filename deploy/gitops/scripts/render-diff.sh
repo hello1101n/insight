@@ -55,7 +55,8 @@ fi
 if [ -f "$prev" ]; then
   echo
   echo "=== diff vs last render ==="
-  if diff -u "$prev" "$new"; then
+  redact='with(select(.kind == "Secret" or .kind == "SealedSecret"); del(.data, .stringData, .spec.encryptedData))'
+  if diff -u -L "$prev" -L "$new" <(yq eval "$redact" "$prev") <(yq eval "$redact" "$new"); then
     echo "(no manifest changes since last render)"
   fi
 else

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -53,6 +55,16 @@ struct Target {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Tone {
+    Success,
+    Danger,
+    Warning,
+    Info,
+    Neutral,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Widget {
     Table {
@@ -97,6 +109,12 @@ enum Widget {
         #[serde(default)]
         #[expect(dead_code, reason = "parsed only to refuse a malformed target")]
         target: Option<Target>,
+        #[serde(default)]
+        #[expect(
+            dead_code,
+            reason = "parsed only to refuse a colour that is not a named tone"
+        )]
+        colors: BTreeMap<String, Tone>,
         #[serde(default)]
         detail: Option<String>,
     },
@@ -344,8 +362,9 @@ pub(crate) enum WidgetError {
          `series` and `label` columns; a bar may add a `series` column \
          to stack by and `labels: true` to print each bar's total; a line or an area may add a \
          `series` column to draw one line per value; a line, bar or area may add a `target` \
-         of {{\"value\": <number>, \"label\": <text>}}; a bar may add `horizontal: true` and \
-         `stack: \"percent\"`; a stat may add `compare` with `better` of `higher`, `lower` \
+         of {{\"value\": <number>, \"label\": <text>}}; a bar may add `horizontal: true`, \
+         `stack: \"percent\"`, and `colors` giving a series value one tone of `success`, \
+         `danger`, `warning`, `info` or `neutral`; a stat may add `compare` with `better` of `higher`, `lower` \
          or `neutral`"
     )]
     Shape(#[from] serde_json::Error),

@@ -12,16 +12,94 @@
       }
     },
 
+    "connectors": {
+      "type": "object",
+      "properties": {
+        "runHistory": {
+          "type": "object",
+          "properties": { "runsPerInstance": { "type": "integer", "minimum": 1, "maximum": 4294967295 } }
+        }
+      }
+    },
     "ingestion": {
       "type": "object",
       "properties": {
+        "managePlatformAccess": false,
         "templates": {
           "type": "object",
           "properties": {
             "enabled": { "type": "boolean" }
           }
         },
+        "syncResourceDefaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "airbyte_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "airbyte_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "dbt_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "dbt_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "identity_cpu_millis": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+            "identity_memory_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+            "dbt_query_memory_bytes": {"type": "integer", "minimum": 2, "maximum": 9007199254740991}
+          }
+        },
+        "airbyteSync": {
+          "type": "object",
+          "properties": {
+            "allowWorkflowPatchWithoutPolicy": false,
+            "launchConfirmationSeconds": {},
+            "launchUnreadableSeconds": {},
+            "pollIntervalSeconds": {},
+            "statusUnreadableThresholdSeconds": {},
+            "capacityCheck": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "podNamespaces": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": { "type": "string", "maxLength": 63, "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" }
+                },
+                "pendingMaxAgeSeconds": { "type": "integer", "minimum": 1 },
+                "waitLimitSeconds": { "type": "integer", "minimum": 1 },
+                "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+                "tolerations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "key": { "type": "string" },
+                      "effect": { "enum": ["", "NoSchedule", "PreferNoSchedule", "NoExecute"] },
+                      "operator": { "enum": ["", "Equal", "Exists"] },
+                      "value": { "type": "string" },
+                      "tolerationSeconds": { "type": "integer" }
+                    }
+                  }
+                },
+                "requests": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "patternProperties": {
+                    "^(orchestrator|source|destination|init)$": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "cpu": { "type": "string", "minLength": 1 },
+                        "memory": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "toolboxImage":    { "type": "string" },
+        "seedImage":       { "type": "string" },
+        "dataQuality":     { "type": "object" },
         "reconcile": {
           "type": "object",
           "properties": {
@@ -119,7 +197,22 @@
             "clusterMode": { "type": "boolean" },
             "clusterName": { "type": "string" },
             "createDatabases": { "type": "boolean" },
-            "provisionAccess": { "type": "boolean" }
+            "provisionAccess": { "type": "boolean" },
+            "syncUser": {
+              "type": "object",
+              "properties": {
+                "username": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+                "passwordSecret": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "key": { "type": "string", "minLength": 1 }
+                  }
+                },
+                "totalMemoryBytes": { "type": "integer", "minimum": 2 },
+                "queryMemoryBytes": { "type": "integer", "minimum": 2 }
+              }
+            }
           }
         }
       ]

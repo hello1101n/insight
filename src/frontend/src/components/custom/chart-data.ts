@@ -1,7 +1,7 @@
 import type { ChartConfig } from "@gears-frontx/ui-kit";
 import type { MouseHandlerDataParam } from "recharts";
 
-import type { MetricResult } from "@/api/custom-client";
+import type { MetricResult, SeriesTone } from "@/api/custom-client";
 import { chartColor } from "@/lib/chart-palette";
 
 export function points(
@@ -26,8 +26,16 @@ export interface Stacks {
 
 const STACK_TOTAL = "stack-total";
 const STACK_TOP = "stack-top";
-export function stackColor(index: number): string {
-  return chartColor(index);
+const TONE_COLORS: ReadonlyMap<string, string> = new Map<SeriesTone, string>([
+  ["success", "var(--success)"],
+  ["danger", "var(--destructive)"],
+  ["warning", "var(--warning)"],
+  ["info", "var(--info)"],
+  ["neutral", "var(--muted-foreground)"],
+]);
+
+export function stackColor(index: number, tone?: SeriesTone): string {
+  return TONE_COLORS.get(tone ?? "") ?? chartColor(index);
 }
 
 // WORKAROUND: Recharts reads a dotted `dataKey` as a path, so a series value is never a key.
@@ -96,7 +104,10 @@ export function drawnSeries(
   x: string,
   y: string,
   series: string | undefined,
-  gaps = false
+  {
+    gaps = false,
+    colors,
+  }: { gaps?: boolean; colors?: Record<string, SeriesTone> } = {}
 ): DrawnSeries {
   if (!series) {
     return {
@@ -114,7 +125,7 @@ export function drawnSeries(
     config: Object.fromEntries(
       stacked.series.map(({ key, label }, index) => [
         key,
-        { label, color: stackColor(index) },
+        { label, color: stackColor(index, colors?.[label]) },
       ])
     ),
     stacked,

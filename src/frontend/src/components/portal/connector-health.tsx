@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +10,8 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   Badge,
+  Button,
+  Card,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -20,7 +23,14 @@ import {
   TableRow,
 } from "@gears-frontx/ui-kit";
 import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pane";
+import {
+  describeRun,
+  isActiveRun,
+  projectRun,
+  runDuration,
+} from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
+import { ConnectorRunState } from "./connector-run-state";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
@@ -102,6 +112,11 @@ export function ConnectorHealthPane() {
           {data.schedule_read_error}
         </p>
       )}
+      {data.history_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.history_read_error}
+        </p>
+      )}
       {data.connectors.length === 0 ? (
         <div className="rounded-lg border p-6 text-sm text-muted-foreground">
           {recording.state === "never_read"
@@ -138,7 +153,17 @@ export function ConnectorHealthPane() {
             </TableHeader>
             <TableBody>
               {data.connectors.map((row) => {
-                const state = describeConnector(row);
+                const run = row.latest_run && projectRun(row.latest_run);
+                const showRun =
+                  run &&
+                  (row.configured ||
+                    isActiveRun(run) ||
+                    data.checked_at == null ||
+                    Date.parse(run.started_at) > Date.parse(data.checked_at));
+                const state = showRun
+                  ? describeRun(run.status)
+                  : describeConnector(row);
+                const latest = run ?? row.last_sync;
                 const key = instanceKey(row);
                 const open = expanded === key;
                 const panelId = panelIdFor(row);
@@ -162,21 +187,43 @@ export function ConnectorHealthPane() {
                     className="cursor-pointer select-text"
                   >
                     <TableCell>
-                      {row.connector}
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            open && "rotate-90"
+                          )}
+                        />
+                        {row.connector}
+                      </span>
                     </TableCell>
                     <InstanceCell instance={row} />
                     <ScheduleCell row={row} />
                     <TableCell>
-                      <Badge variant={TONE_BADGE[state.tone]}>
-                        {state.label}
-                      </Badge>
+                      {showRun ? (
+                        <ConnectorRunState run={run} asOf={data.as_of} />
+                      ) : (
+                        <Badge
+                          variant={TONE_BADGE[state.tone]}
+                          data-tone={state.tone}
+                        >
+                          {state.label}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {formatStarted(row.last_sync?.started_at ?? null)}
+                      {formatStarted(latest?.started_at ?? null)}
                     </TableCell>
-                    <DurationCell sync={row.last_sync} asOf={data.as_of} />
+                    {run ? (
+                      <TableCell className="text-right tabular-nums">
+                        {runDuration(run, data.as_of)}
+                      </TableCell>
+                    ) : (
+                      <DurationCell sync={row.last_sync} asOf={data.as_of} />
+                    )}
                     <TableCell className="text-right tabular-nums">
-                      {formatRecords(row.last_sync?.records_reported ?? null)}
+                      {formatRecords(latest?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
                   open ? (
@@ -189,7 +236,10 @@ export function ConnectorHealthPane() {
                         <div className="min-w-0 [contain:inline-size]">
                           <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
                             {row.configured && (
-                              <div className="@container min-w-0 rounded-md border bg-background p-4">
+                              <Card
+                                size="sm"
+                                className="@container min-w-0 p-4"
+                              >
                                 <ConnectorSchedulePane
                                   row={row}
                                   polling={polling}
@@ -199,14 +249,14 @@ export function ConnectorHealthPane() {
                                       : data.typical_read_interval_ms / 1000
                                   }
                                 />
-                              </div>
+                              </Card>
                             )}
-                            <div className="min-w-0 rounded-md border bg-background p-4">
+                            <Card size="sm" className="min-w-0 p-4">
                               <ConnectorSyncHistory
                                 instance={row}
                                 asOf={data.as_of}
                               />
-                            </div>
+                            </Card>
                           </div>
                         </div>
                       </TableCell>
@@ -271,7 +321,12 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
             <TooltipTrigger
               aria-describedby={tooltipId}
               render={
-                <button type="button" className="cursor-help text-left" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto cursor-help p-0 text-left font-normal"
+                />
               }
             >
               {nextRun?.text}
@@ -308,10 +363,6 @@ function DurationCell({
 }) {
   const duration = describeDuration(sync, asOf);
   return (
-    <TableCell
-      className="text-right tabular-nums"
-    >
-      {duration.text}
-    </TableCell>
+    <TableCell className="text-right tabular-nums">{duration.text}</TableCell>
   );
 }

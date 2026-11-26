@@ -202,6 +202,8 @@ pub struct ConnectorHealth {
     pub(crate) schedule_request: Option<HealthScheduleRequest>,
     /// Absent for a configured connector that has never synced.
     pub last_sync: Option<SyncFact>,
+    pub latest_run: Option<crate::domain::run_history::history::Run>,
+    pub last_successful_run: Option<crate::domain::run_history::history::Run>,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -219,6 +221,7 @@ pub struct ConnectorHealthResponse {
     /// instead of implying health.
     pub history_available: bool,
     pub schedule_read_error: Option<String>,
+    pub history_read_error: Option<String>,
     pub connectors: Vec<ConnectorHealth>,
 }
 impl toolkit::api::api_dto::ResponseApiDto for ConnectorHealthResponse {}
@@ -235,6 +238,8 @@ pub struct SyncHistoryResponse {
     pub source_id: Option<String>,
     /// A bounded window, newest first — not the full retained history.
     pub syncs: Vec<SyncFact>,
+    pub runs: Vec<crate::domain::run_history::history::Run>,
+    pub history_read_error: Option<String>,
     /// How many rows this window holds at most, so the page can say the list
     /// is a window rather than everything.
     pub window: u32,
@@ -246,6 +251,7 @@ impl ConnectorHealthResponse {
         Self {
             as_of: stamp(as_of),
             schedule_read_error: None,
+            history_read_error: None,
             checked_at: facts.sealed_at.map(stamp),
             typical_read_interval_ms: facts.typical_read_interval_ms,
             history_available: facts.has_history,
@@ -266,6 +272,8 @@ impl SyncHistoryResponse {
             connector,
             tenant_id,
             source_id,
+            runs: Vec::new(),
+            history_read_error: None,
             syncs: syncs.into_iter().map(Into::into).collect(),
             window,
         }
@@ -301,6 +309,8 @@ impl From<ConnectorSummary> for ConnectorHealth {
             configured: summary.configured,
             schedule: summary.schedule,
             schedule_request: None,
+            latest_run: None,
+            last_successful_run: None,
             last_sync: summary.last_sync.map(Into::into),
         }
     }

@@ -87,7 +87,7 @@ team; CEO sees the whole org tree. To use CEO more set email to `email_ceo@compa
 No Rust / Node / pnpm on the host — every build runs in a
 builder container.
 
-**K8s path** — also `kubectl`, `helm`, `kubeseal`, `yq`, `jq`, plus a
+**K8s path** — also `kubectl`, Helm 4, `kubeseal`, `yq`, `jq`, plus a
 local cluster (OrbStack with Kubernetes / k3d / kind / minikube). No
 frontend checkout needed — the umbrella chart pulls
 `ghcr.io/hello1101n/insight-frontend:<tag>` from GHCR.

@@ -5,9 +5,9 @@
     schema='staging',
     engine=insight_engine('ReplacingMergeTree'),
     order_by=['unique_key'],
-    query_settings={
+    query_settings=instance_query_settings({
         'max_bytes_before_external_group_by': 2000000000,
-    },
+    }),
     tags=['staging', 'jira']
 ) }}
 

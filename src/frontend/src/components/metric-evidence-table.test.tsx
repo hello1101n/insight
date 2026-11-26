@@ -235,7 +235,7 @@ describe("MetricEvidenceTable", () => {
       [
         "t.hours",
         [1.5, 0.2, 0, 130.5],
-        ["1 h 30 min", "12 min", "0 min", "131 h"],
+        ["1 h 30 min", "12 min", "0 min", "130 h 30 min"],
       ],
       ["t.minutes", [3.25, 12.3456, 75.5], ["3.3 min", "12.3 min", "75.5 min"]],
       ["t.span_days", [0.5, 2.25, 7.125], ["0.5 d", "2.3 d", "7.1 d"]],
