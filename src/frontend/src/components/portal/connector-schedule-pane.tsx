@@ -34,6 +34,7 @@ import {
   useWriteConnectorSchedule,
 } from "@/queries/connector-health";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
+import { useHeightTransition } from "@/hooks/use-height-transition";
 
 export function ConnectorSchedulePane({
   row,
@@ -51,6 +52,7 @@ export function ConnectorSchedulePane({
   const write = useWriteConnectorSchedule(row);
   const [failedRevision, setFailedRevision] = useState<number>();
   const [editing, setEditing] = useState(false);
+  const [scheduleBody, captureScheduleHeight] = useHeightTransition(editing);
   const [detailsOpen, setDetailsOpen] = useState(!collapseDetails);
   const [retryError, setRetryError] = useState<
     (ReturnType<typeof saveError> & { read: ScheduleRead }) | null
@@ -113,11 +115,12 @@ export function ConnectorSchedulePane({
   useEffect(() => {
     if (editing || write.isPending || focusRequest === focusedRequest.current)
       return;
-    editButton.current?.focus();
+    editButton.current?.focus({ preventScroll: true });
     focusedRequest.current = focusRequest;
   }, [editing, focusRequest, write.isPending]);
 
   function close() {
+    captureScheduleHeight();
     setFocusRequest((request) => request + 1);
     setEditing(false);
   }
@@ -188,7 +191,11 @@ export function ConnectorSchedulePane({
   const person = useConnectorScheduleAuthor(request?.updated_by);
 
   return (
-    <>
+    <div
+      ref={scheduleBody}
+      data-slot="connector-schedule-pane"
+      className="min-w-0"
+    >
       <div aria-live="polite" className="sr-only">
         <span key={`${seen.identity}/${seen.revision}/${seen.status}`}>
           {seen.message}
@@ -241,7 +248,10 @@ export function ConnectorSchedulePane({
                   size="sm"
                   variant="outline"
                   disabled={write.isPending}
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    captureScheduleHeight();
+                    setEditing(true);
+                  }}
                 >
                   {t("common.actions.edit")}
                 </Button>
@@ -307,7 +317,7 @@ export function ConnectorSchedulePane({
           )}
         </Collapsible>
       )}
-    </>
+    </div>
   );
 }
 

@@ -26,11 +26,11 @@ it.each([
   }
 );
 
-it("includes a date for other UTC days and omits seconds", () => {
+it("keeps today compact and uses the full timestamp on other UTC days", () => {
   expect(shortScheduleTime(now, now)).toBe("12:00");
   expect(scheduleTime(now, now)).toBe("12:00 UTC");
   expect(scheduleTime("2026-01-15T23:30:20-02:00", now)).toBe(
-    "16 Jan at 01:30 UTC"
+    "16 Jan 2026 · 01:30:20 UTC"
   );
   expect(scheduleTime("invalid")).toBe("—");
   expect(relativeScheduleTime("invalid", now)).toBe("—");
@@ -64,8 +64,8 @@ it.each([
 );
 
 it.each([
-  ["2026-09-12T16:48:00Z", "12 Sep at 16:48 UTC"],
-  ["2025-11-12T16:48:00Z", "12 Nov 2025 at 16:48 UTC"],
+  ["2026-09-12T16:48:00Z", "12 Sept 2026 · 16:48:00 UTC"],
+  ["2025-11-12T16:48:00Z", "12 Nov 2025 · 16:48:00 UTC"],
 ])("formats the UTC date for %s", (value, expected) => {
   expect(scheduleTime(value, now)).toBe(expected);
 });

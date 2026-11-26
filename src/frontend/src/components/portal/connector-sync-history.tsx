@@ -160,7 +160,7 @@ export function ConnectorSyncHistory({
             return {
               id: sync.job_id,
               status: state,
-              started: formatStarted(sync.started_at),
+              started: sync.started_at,
               duration: duration.text,
               inFlight: duration.inFlight,
               records: sync.records_reported,

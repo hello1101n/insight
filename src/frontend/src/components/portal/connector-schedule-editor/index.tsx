@@ -79,7 +79,11 @@ export function ConnectorScheduleEditor({
   const [busy, setBusy] = useState(false);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const form = useRef<HTMLFormElement>(null);
+  const runsControl = useRef<HTMLButtonElement>(null);
   const focusRefusal = useRef(false);
+  useEffect(() => {
+    runsControl.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     if (busy || !focusRefusal.current) return;
     focusRefusal.current = false;
@@ -264,7 +268,7 @@ export function ConnectorScheduleEditor({
               >
                 <SelectTrigger
                   id={`${id}-runs`}
-                  autoFocus
+                  ref={runsControl}
                   size="sm"
                   className="w-full min-w-0"
                 >

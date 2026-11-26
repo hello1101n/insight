@@ -176,7 +176,7 @@ it("shows UTC starts and preserves unfinished durations, missing counts and zero
 
   const rows = within(screen.getByRole("table")).getAllByRole("row").slice(1);
   expect(within(rows[0]).getAllByRole("cell")[1]).toHaveTextContent(
-    "2026-01-15 11:58:00Z"
+    "15 Jan 2026 · 11:58:00"
   );
   expect(within(rows[0]).getAllByRole("cell")[2]).toHaveTextContent(
     "2m 0s so far"
@@ -225,9 +225,9 @@ it("places the newest run on the right with status and UTC start in each label a
   history(syncs);
   const bars = within(screen.getByRole("list")).getAllByRole("listitem");
   const labels = [
-    "Run 3: Ready, started 2026-01-15 11:58:00Z",
-    "Run 2: Ready, started 2026-01-15 11:59:00Z",
-    "Run 1: sync failed, started 2026-01-15 12:00:00Z",
+    "Run 3: Ready, started 15 Jan 2026 · 11:58:00",
+    "Run 2: Ready, started 15 Jan 2026 · 11:59:00",
+    "Run 1: sync failed, started 15 Jan 2026 · 12:00:00",
   ];
   for (const [index, bar] of bars.entries()) {
     expect(bar).toHaveAccessibleName(labels[index]);
@@ -278,18 +278,26 @@ it("keeps UTC dates and clocks in the history cells and bar tooltips across midn
   const { container } = history(syncs);
   const cells = within(screen.getByRole("table")).getAllByRole("row").slice(1);
   expect(within(cells[0]).getAllByRole("cell")[1]).toHaveTextContent(
-    /^2026-01-15 23:30:00Z$/
+    /^15 Jan 2026 · 23:30:00$/
   );
   expect(within(cells[1]).getAllByRole("cell")[1]).toHaveTextContent(
-    /^2026-01-15 11:30:00Z$/
+    /^15 Jan 2026 · 11:30:00$/
+  );
+  expect(cells[1].querySelector("time")).toHaveAttribute(
+    "datetime",
+    "2026-01-15T11:30:00.000Z"
+  );
+  expect(cells[1].querySelector("time")).toHaveAttribute(
+    "title",
+    "2026-01-15T11:30:00.000Z"
   );
   const bars = within(screen.getByRole("list")).getAllByRole("listitem");
   expect(bars[0]).toHaveAttribute(
     "aria-label",
-    "Run 2: Ready, started 2026-01-15 11:30:00Z"
+    "Run 2: Ready, started 15 Jan 2026 · 11:30:00"
   );
   expect(bars[1]).toHaveAccessibleName(
-    "Run 1: Ready, started 2026-01-15 23:30:00Z"
+    "Run 1: Ready, started 15 Jan 2026 · 23:30:00"
   );
   expect(container.textContent).not.toMatch(/your time|01:30|13:30/);
   for (const bar of bars)

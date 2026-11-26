@@ -32,6 +32,7 @@ import {
   runDuration,
 } from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
+import { ConnectorTimestamp } from "./connector-timestamp";
 import { ConnectorRunState, RunningSyncIndicator } from "./connector-run-state";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
@@ -44,7 +45,6 @@ import {
   describeRecording,
   describeSchedule,
   formatRecords,
-  formatStarted,
   instanceKey,
   panelIdFor,
 } from "@/lib/portal/connector-health";
@@ -237,7 +237,7 @@ export function ConnectorHealthPane() {
                       )}
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {formatStarted(latest?.started_at ?? null)}
+                      <ConnectorTimestamp value={latest?.started_at} />
                     </TableCell>
                     {run ? (
                       <TableCell className="text-right tabular-nums">

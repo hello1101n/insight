@@ -99,7 +99,7 @@ it("dates a conflict reload in UTC", async () => {
   });
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "You changed this schedule in another tab on 14 Jan at 12:29 UTC."
+    "You changed this schedule in another tab on 14 Jan 2026 · 12:29:34 UTC."
   );
   expect(container.textContent).not.toMatch(/your time|14:29/);
 });
@@ -112,7 +112,7 @@ it("dates both the pane and badge attribution on another UTC day", async () => {
   schedule.live!.origin = "api";
   render(pane());
 
-  const message = "Saved by you on 12 Nov 2025 at 16:48 UTC.";
+  const message = "Saved by you on 12 Nov 2025 · 16:48:00 UTC.";
   expect(screen.getByText(message)).toBeInTheDocument();
   await userEvent.hover(
     screen.getByText("Set by admin").closest("[tabindex]")!
