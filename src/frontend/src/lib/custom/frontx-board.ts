@@ -201,7 +201,6 @@ function oneSeries(
   );
 }
 
-// WORKAROUND: a FrontX series that the render does not name draws as bars, and only the data names a series value.
 function seriesPerValue(
   widget: Widget & { x: string; y: string; series: string },
   format: ValueFormat | undefined,
@@ -214,11 +213,7 @@ function seriesPerValue(
     widget.x,
     widget.y,
     format,
-    {
-      ...render,
-      legend_position: "bottom",
-      unlisted_stack_group: widget.series,
-    },
+    { ...render, legend_position: "bottom" },
     (point) =>
       `cel.bind(s, ${column(widget.series)}, ${values}.map(v, {'name': ${name}, 'points': response.rows.filter(r, r[s] == v).map(r, ${point})}))`
   );
@@ -383,9 +378,13 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
       if (!widget.series) {
         return oneSeries(widget, widget.type, shown, lines);
       }
-      // INVARIANT: lines by series as bars side by side do not read as lines, and stacked bars keep an area's stack.
-      if (widget.type === "line") return { note: NEEDS_PLANNED_OFF };
-      return seriesPerValue({ ...widget, series: widget.series }, shown, lines);
+      return seriesPerValue({ ...widget, series: widget.series }, shown, {
+        ...lines,
+        unlisted_type: widget.type,
+        ...(widget.type === "area"
+          ? { unlisted_stack_group: widget.series }
+          : {}),
+      });
     }
     case "bar": {
       const shown = format(widget.y);
@@ -396,11 +395,10 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         ...targetLines(widget.target, isPercent(shown) || share),
       };
       if (widget.series) {
-        return seriesPerValue(
-          { ...widget, series: widget.series },
-          shown,
-          render
-        );
+        return seriesPerValue({ ...widget, series: widget.series }, shown, {
+          ...render,
+          unlisted_stack_group: widget.series,
+        });
       }
       return oneSeries(widget, "bar", shown, {
         ...render,

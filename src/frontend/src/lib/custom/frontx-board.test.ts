@@ -1193,7 +1193,7 @@ describe("frontxBoard options", () => {
     }
   });
 
-  it("draws an area by series as bars stacked by that column, one series per value", () => {
+  it("draws an area by series as areas stacked by that column, one series per value", () => {
     const body: Widget = {
       type: "area",
       metric: "m",
@@ -1211,6 +1211,7 @@ describe("frontxBoard options", () => {
 
     expect(renderOf(body)).toEqual({
       legend_position: "bottom",
+      unlisted_type: "area",
       unlisted_stack_group: "outcome",
       x_axis: { type: "category" },
       y_axis: { type: "value" },
@@ -1223,24 +1224,42 @@ describe("frontxBoard options", () => {
     });
   });
 
-  it("draws a line by series as a note to turn off planned sections", () => {
-    const board = frontxBoard("board", read([{ widget: "w" }]), [
-      widget("w", {
-        type: "line",
-        metric: "m",
-        x: "bucket",
-        y: "n",
-        series: "team",
-      }),
-    ]);
-    const [cell] = dashboardOf(board).layout.cells;
+  it("draws a line by series as one unstacked line per value, with its target", () => {
+    const body: Widget = {
+      type: "line",
+      metric: "m",
+      x: "team",
+      y: "n",
+      series: "outcome",
+      target: { value: 2 },
+    };
+    const answer = {
+      columns: ["team", "outcome", "n"],
+      rows: [
+        ["Atlas", "ok", 3],
+        ["Atlas", "failed", 1],
+        ["Borealis", "ok", null],
+      ],
+    };
 
-    expect(cell.widget).toEqual({
-      id: expect.stringContaining(".widget.markdown_card.v1~"),
-      title: "w name",
-      render: {
-        body: String.raw`Turn off Show planned sections to see this chart\.`,
-      },
+    expect(renderOf(body)).toEqual({
+      legend_position: "bottom",
+      unlisted_type: "line",
+      reference_lines: [{ value: 2 }],
+      x_axis: { type: "category" },
+      y_axis: { type: "value" },
+    });
+    expect(drawnData(body, [], answer).data).toEqual({
+      series: [
+        { name: "failed", points: [{ x: "Atlas", y: 1 }] },
+        {
+          name: "ok",
+          points: [
+            { x: "Atlas", y: 3 },
+            { x: "Borealis", y: null },
+          ],
+        },
+      ],
     });
   });
 });
