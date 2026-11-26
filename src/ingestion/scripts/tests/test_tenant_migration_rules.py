@@ -37,34 +37,70 @@ def _classify(database: str, columns: dict[str, str], *, history: bool = False) 
     [
         ("bronze_example", "tenant_id", True),
         ("staging", "tenant_id", True),
+        ("silver", "tenant_id", True),
+        ("insight", "tenant_id", True),
         ("config", "tenant_id", True),
         ("bronze_example", "insight_tenant_id", False),
         ("ingestion_history", "tenant_id", False),
     ],
 )
 def test_the_tenant_column_is_renamed_everywhere_but_the_sync_ledger(database: str, column: str, renames: bool) -> None:
-    table = _classify(database, {column: STRING, "source_id": STRING})
+    table = _classify(database, {column: STRING, "insight_source_id": STRING})
 
-    assert table is not None and table.renames is renames and not table.adds
+    assert table is not None and table.renames_tenant is renames and not table.adds
 
 
-def test_a_history_relation_without_a_tenant_gains_one_and_any_other_table_is_out_of_scope() -> None:
+@pytest.mark.parametrize(
+    ("database", "columns", "renamed"),
+    [
+        ("bronze_example", {"insight_tenant_id": STRING, "source_id": STRING}, True),
+        ("staging", {"source_id": STRING}, True),
+        ("insight", {"tenant_id": STRING, "source_id": STRING}, True),
+        ("bronze_example", {"insight_tenant_id": STRING, "insight_source_id": STRING}, False),
+        ("bronze_example", {"insight_tenant_id": STRING, "source_id": STRING, "insight_source_id": STRING}, False),
+        ("ingestion_history", {"tenant_id": STRING, "source_id": STRING}, False),
+    ],
+    ids=["bronze", "staging without a tenant", "gold", "converged", "both names", "the ledger"],
+)
+def test_the_stamped_source_column_is_renamed_everywhere_but_the_sync_ledger(
+    database: str, columns: dict[str, str], renamed: bool
+) -> None:
+    table = _classify(database, columns)
+
+    assert table is not None and table.renames_source is renamed
+    assert table.renamed(table.source or "") == ("insight_source_id" if renamed else table.source)
+
+
+def test_a_vendor_column_named_like_the_source_is_out_of_scope() -> None:
+    assert _classify("staging", {"org_source_id": STRING, "requester_source_id": STRING}) is None
+
+
+def test_a_silver_table_or_history_relation_without_a_tenant_gains_one_and_no_other_table_does() -> None:
     columns = {"unique_key": "String", "insight_source_id": "String"}
 
     history = _classify("staging", columns, history=True)
+    silver = _classify("silver", columns)
 
     assert history is not None and history.adds and history.target == "insight_tenant_id"
-    assert _classify("bronze_example", columns) is None
+    assert silver is not None and silver.adds
+    for database in ("bronze_example", "staging", "insight"):
+        assert _classify(database, columns) is None, database
 
 
 @pytest.mark.parametrize(
     "columns",
-    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "UUID"}],
+    [{"tenant_id": STRING, "insight_tenant_id": STRING}, {"tenant_id": "Int64"}],
     ids=["both tenant columns", "tenant not a string"],
 )
 def test_a_table_the_migration_cannot_read_stops_it(columns: dict[str, str]) -> None:
     with pytest.raises(InventoryError):
         _classify("bronze_example", columns)
+
+
+def test_a_tenant_dbt_already_types_as_a_uuid_is_read_as_text() -> None:
+    table = _classify("staging", {"insight_tenant_id": "UUID", "insight_source_id": STRING})
+
+    assert table is not None and not table.renames
 
 
 def test_only_the_youtrack_comments_fill_their_ids_from_the_key() -> None:
@@ -77,18 +113,29 @@ def test_only_the_youtrack_comments_fill_their_ids_from_the_key() -> None:
     assert other is not None and other.comment_id is None
 
 
-def test_the_renamed_ddl_names_the_new_column_in_its_definition_and_keys_only() -> None:
+def test_the_renamed_ddl_names_the_new_columns_in_their_definition_and_keys_only() -> None:
     create = (
-        "CREATE TABLE `bronze_example`.`items__tenant_backup`\n(\n    `unique_key` String,\n"
-        "    `tenant_id` Nullable(String),\n    `azure_tenant_id` Nullable(String)\n)\n"
-        "ENGINE = ReplacingMergeTree\nORDER BY (tenant_id, unique_key)"
+        "CREATE TABLE `bronze_example`.`items__tenant_copy`\n(\n    `unique_key` String,\n"
+        "    `tenant_id` Nullable(String),\n    `azure_tenant_id` Nullable(String),\n"
+        "    `source_id` Nullable(String),\n    `org_source_id` Nullable(String)\n)\n"
+        "ENGINE = ReplacingMergeTree\nORDER BY (tenant_id, source_id, unique_key)"
     )
+    table = _classify("bronze_example", {"tenant_id": STRING, "source_id": STRING, "org_source_id": STRING})
+    assert table is not None
 
-    renamed = ddl.tenant_renamed(create)
+    renamed = ddl.renamed(create, table)
 
     assert "`insight_tenant_id` Nullable(String)" in renamed
     assert "`azure_tenant_id` Nullable(String)" in renamed
-    assert "ORDER BY (insight_tenant_id, unique_key)" in renamed
+    assert "`insight_source_id` Nullable(String)" in renamed
+    assert "`org_source_id` Nullable(String)" in renamed
+    assert "ORDER BY (insight_tenant_id, insight_source_id, unique_key)" in renamed
+
+
+def test_the_copy_partitions_without_the_per_insert_limit() -> None:
+    sql = ddl.insert(Relation("bronze_example", "items"), "__tenant_copy", ["a"], ["src.`a`"])
+
+    assert "SETTINGS max_partitions_per_insert_block = 0 SELECT" in sql
 
 
 @pytest.mark.parametrize(
@@ -99,10 +146,10 @@ def test_the_renamed_ddl_names_the_new_column_in_its_definition_and_keys_only() 
     ],
     ids=["plain", "with its uuid"],
 )
-def test_the_copy_ddl_names_the_backup_and_no_uuid(saved: str) -> None:
-    retargeted = ddl.retarget(saved, Relation("bronze_example", "items"), "__tenant_backup")
+def test_the_copy_ddl_names_the_copy_and_no_uuid(saved: str) -> None:
+    retargeted = ddl.retarget(saved, Relation("bronze_example", "items"), "__tenant_copy")
 
-    assert retargeted.startswith("CREATE TABLE `bronze_example`.`items__tenant_backup`\n")
+    assert retargeted.startswith("CREATE TABLE `bronze_example`.`items__tenant_copy`\n")
     assert "UUID" not in retargeted
 
 

@@ -15,8 +15,9 @@ deploy; the previous release keeps running.
 post-install,post-upgrade, weight 400 — after clickhouse-migrate (200) and
 field-value-map (300). While the ConfigMap exists it submits one Workflow from
 the tenant-cutover-rebuild WorkflowTemplate and returns without waiting. That
-Workflow's last step resumes the writers and deletes the ConfigMap, so no sync
-runs before the rebuild ends.
+Workflow's exit handler resumes the writers and deletes the ConfigMap however
+the rebuild ends, so no sync runs before it ends and a failed rebuild is not
+submitted again.
 
 Deadlines fit a 3h helm --timeout: the pre hook is cut at 2h50m, which sends
 SIGTERM, and the migration puts the tables back before the pod goes.

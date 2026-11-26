@@ -26,16 +26,18 @@ _catalogue_source_count() {
 _catalogue_tenants_select() {
   local bronze
   local shared
-  local tenant=insight_tenant_id
+  local tenant=insight_tenant_id source=insight_source_id
   bronze="$(ch_scalar "SELECT count() FROM system.tables WHERE database = 'bronze_jira' AND name = 'jira_fields'")" || return 1
   if [[ "${bronze}" -eq 0 ]]; then
     echo "SELECT '' AS insight_source_id, '' AS insight_tenant_id WHERE 0"
     return 0
   fi
+  # tenant_migration renames bronze's source column before this runs; a bronze it did not touch keeps the old name.
+  [[ -n "$(ch_column_type bronze_jira jira_fields insight_source_id)" ]] || source=source_id
   shared="$(ch_scalar "SELECT count() FROM (
-      SELECT COALESCE(source_id, '') AS insight_source_id
+      SELECT COALESCE(${source}, '') AS insight_source_id
       FROM bronze_jira.jira_fields
-      WHERE COALESCE(source_id, '') IN (SELECT insight_source_id FROM staging.jira__catalogue_first_seen)
+      WHERE COALESCE(${source}, '') IN (SELECT insight_source_id FROM staging.jira__catalogue_first_seen)
       GROUP BY insight_source_id
       HAVING uniqExact(COALESCE(${tenant}, '')) > 1
     )")" || return 1
@@ -43,7 +45,7 @@ _catalogue_tenants_select() {
     echo "  staging.jira__catalogue_first_seen: ${shared} source(s) appear in bronze under several tenants — refusing to guess whose boundary each row is" >&2
     return 1
   fi
-  echo "SELECT DISTINCT COALESCE(source_id, '') AS insight_source_id, COALESCE(${tenant}, '') AS insight_tenant_id
+  echo "SELECT DISTINCT COALESCE(${source}, '') AS insight_source_id, COALESCE(${tenant}, '') AS insight_tenant_id
           FROM bronze_jira.jira_fields"
 }
 
