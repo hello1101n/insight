@@ -18,6 +18,18 @@ from tenant_migration.clickhouse import ClickHouse
 
 HISTORY_TABLES = "history-tables.txt"
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def quote(identifier: str) -> str:
+    """A backquoted ClickHouse identifier; every name the migration puts into SQL text goes through here."""
+    return "`" + identifier.replace("\\", "\\\\").replace("`", "\\`") + "`"
+
+
+def param_text(value: str) -> str:
+    """`value` as a quoted string inside a composite query parameter, e.g. `Array(Tuple(String, String))`."""
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
 WORK_MARKER = "__tenant_"
 BACKUP = "__tenant_backup"
 
@@ -48,7 +60,7 @@ class Relation:
             raise ValueError(f"not a plain identifier: {self.database}.{self.name}")
 
     def sql(self, suffix: str = "") -> str:
-        return f"`{self.database}`.`{self.name}{suffix}`"
+        return f"{quote(self.database)}.{quote(self.name + suffix)}"
 
     def __str__(self) -> str:
         return f"{self.database}.{self.name}"
@@ -130,13 +142,16 @@ def classify(database: str, name: str, engine: str, columns: list[tuple[str, str
     return Table(rel, engine, tuple(columns), tenant, source, key)
 
 
-def _scope_sql(history: list[tuple[str, str]]) -> str:
-    pairs = ", ".join(f"('{database}', '{name}')" for database, name in history)
-    return (
-        f"(t.database LIKE 'bronze\\\\_%' OR t.database IN ('config', '{LEDGER_DATABASE}') "
-        f"OR (t.database, t.name) IN ({pairs})) AND t.engine LIKE '%MergeTree' "
-        f"AND position(t.name, '{WORK_MARKER}') = 0"
-    )
+SCOPE_SQL = (
+    "(t.database LIKE 'bronze\\\\_%' OR t.database IN ('config', {ledger:String}) "
+    "OR has({history:Array(Tuple(String, String))}, (t.database, t.name))) AND t.engine LIKE '%MergeTree' "
+    "AND position(t.name, {marker:String}) = 0"
+)
+
+
+def _scope_params(history: list[tuple[str, str]]) -> dict[str, str]:
+    pairs = ", ".join(f"({param_text(database)}, {param_text(name)})" for database, name in history)
+    return {"ledger": LEDGER_DATABASE, "history": f"[{pairs}]", "marker": WORK_MARKER}
 
 
 def discover(ch: ClickHouse, history: list[tuple[str, str]]) -> list[Table]:
@@ -145,9 +160,10 @@ def discover(ch: ClickHouse, history: list[tuple[str, str]]) -> list[Table]:
         SELECT t.database, t.name, t.engine, c.name, c.type
         FROM system.tables AS t
         INNER JOIN system.columns AS c ON c.database = t.database AND c.table = t.name
-        WHERE {_scope_sql(history)}
+        WHERE {SCOPE_SQL}
         ORDER BY t.database, t.name, c.position
-        """
+        """,
+        params=_scope_params(history),
     )
     found: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
     for database, name, engine, column, column_type in rows:
