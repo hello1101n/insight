@@ -11,7 +11,8 @@ such as `presentation` or `backup_*`.
 
 A table changes when it names its tenant `tenant_id`, names its stamped source
 `source_id`, or holds a tenant other than the install's. A silver table or a
-history relation without any tenant column gains one.
+history relation without any tenant column gains one. A table holding both the
+old and the new name of a column loses the old one, if it is empty.
 """
 
 from __future__ import annotations
@@ -96,6 +97,9 @@ class Table:
     needs_tenant: bool = False
     #: Columns the table computes itself (MATERIALIZED, ALIAS): never inserted.
     computed: frozenset[str] = frozenset()
+    #: Old names of a table that holds the new ones too (a connector added them to an old table):
+    #: the copy drops them. Only an empty table may carry any; `plan` refuses one with rows.
+    drops: tuple[str, ...] = ()
 
     @property
     def relation(self) -> str:
@@ -184,19 +188,22 @@ def classify(
         )
     types = dict(columns)
     tenants = [c for c in (OLD_TENANT_COLUMN, TENANT_COLUMN) if c in types]
+    drops = []
     if len(tenants) == 2:
-        raise InventoryError(f"{rel}: holds both {OLD_TENANT_COLUMN} and {TENANT_COLUMN}")
+        drops.append(OLD_TENANT_COLUMN)
+        tenants = [TENANT_COLUMN]
     tenant = tenants[0] if tenants else None
     if tenant is not None and types[tenant] not in TENANT_TYPES:
         raise InventoryError(f"{rel}: {tenant} is {types[tenant]}, not a string or UUID")
     sources = [c for c in (OLD_SOURCE_COLUMN, SOURCE_COLUMN) if c in types]
     if len(sources) == 2:
-        raise InventoryError(f"{rel}: holds both {OLD_SOURCE_COLUMN} and {SOURCE_COLUMN}")
+        drops.append(OLD_SOURCE_COLUMN)
+        sources = [SOURCE_COLUMN]
     source = sources[0] if sources else None
     key = KEY_COLUMN if KEY_COLUMN in types else None
     needs_tenant = history or database == TENANT_EVERYWHERE
-    table = Table(rel, engine, tuple(columns), tenant, source, key, needs_tenant, computed)
-    if tenant is None and not table.adds and not table.renames_source:
+    table = Table(rel, engine, tuple(columns), tenant, source, key, needs_tenant, computed, tuple(drops))
+    if tenant is None and not table.adds and not table.renames_source and not table.drops:
         return None
     return table
 

@@ -89,18 +89,35 @@ def test_a_silver_table_or_history_relation_without_a_tenant_gains_one_and_no_ot
         assert _classify(database, columns) is None, database
 
 
-@pytest.mark.parametrize(
-    "columns",
-    [
-        {"tenant_id": STRING, "insight_tenant_id": STRING},
-        {"tenant_id": "Int64"},
-        {"insight_tenant_id": STRING, "source_id": STRING, "insight_source_id": STRING},
-    ],
-    ids=["both tenant columns", "tenant not a string", "both source columns"],
-)
-def test_a_table_the_migration_cannot_read_stops_it(columns: dict[str, str]) -> None:
+def test_a_table_the_migration_cannot_read_stops_it() -> None:
     with pytest.raises(InventoryError):
-        _classify("bronze_example", columns)
+        _classify("bronze_example", {"tenant_id": "Int64"})
+
+
+@pytest.mark.parametrize(
+    ("columns", "drops", "source"),
+    [
+        ({"tenant_id": STRING, "insight_tenant_id": STRING}, ("tenant_id",), None),
+        (
+            {"insight_tenant_id": STRING, "source_id": STRING, "insight_source_id": STRING},
+            ("source_id",),
+            "insight_source_id",
+        ),
+        (
+            {"tenant_id": STRING, "source_id": STRING, "insight_tenant_id": STRING, "insight_source_id": STRING},
+            ("tenant_id", "source_id"),
+            "insight_source_id",
+        ),
+    ],
+    ids=["both tenant columns", "both source columns", "both of each"],
+)
+def test_a_table_holding_both_names_keeps_the_new_one_and_drops_the_old(
+    columns: dict[str, str], drops: tuple[str, ...], source: str | None
+) -> None:
+    table = _classify("bronze_example", columns)
+
+    assert table is not None and table.drops == drops
+    assert table.tenant == "insight_tenant_id" and table.source == source and not table.renames
 
 
 def test_a_tenant_dbt_already_types_as_a_uuid_is_read_as_text() -> None:
