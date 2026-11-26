@@ -311,10 +311,10 @@ jobs:
       # After the repository scan, so the rendered output is not swept into it. Values are
       # throwaway and only satisfy the `required` guards.
       - name: Render Helm charts
-        continue-on-error: true
         run: |
           set -uo pipefail
           mkdir -p .helm-rendered
+          failed=()
           for chart in src/backend/services/*/helm src/frontend/helm; do
             [ -f "$chart/Chart.yaml" ] || continue
             name="${chart%/helm}"
@@ -338,14 +338,18 @@ jobs:
                 --set database.passwordSecret.key=password
               )
             fi
-            helm template scan "$chart" "${args[@]}" \
-              > ".helm-rendered/${name}.yaml" \
-              || { echo "render failed — skipped ${chart}"; rm -f ".helm-rendered/${name}.yaml"; }
+            if ! helm template scan "$chart" "${args[@]}" > ".helm-rendered/${name}.yaml"; then
+              echo "::error::${chart} did not render, so the scan below cannot cover it"
+              rm -f ".helm-rendered/${name}.yaml"
+              failed+=("$chart")
+            fi
           done
           echo "Rendered:"
           find .helm-rendered -name '*.yaml' -exec basename {} ';' | sed 's/^/  /'
+          [ "${#failed[@]}" -eq 0 ]
 
       - name: Trivy scan — rendered charts
+        if: ${{ !cancelled() }}
         continue-on-error: true
         run: |
           set -euo pipefail
