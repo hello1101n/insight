@@ -31,7 +31,9 @@ export type LegendPosition = 'top' | 'right' | 'bottom' | 'left' | 'none';
 
 export interface CartesianRender {
   series?: CartesianSeriesOption[];
-  /** The stack group of each data series without an entry in `series`: such a series draws as bars on the primary axis, stacked in this group. */
+  /** How each data series without an entry in `series` is drawn, on the primary axis; bars without it. */
+  unlisted_type?: CartesianSeriesOption['type'];
+  /** The stack group of each data series without an entry in `series`: such a series draws on the primary axis, stacked in this group. */
   unlisted_stack_group?: string;
   x_axis?: {
     type?: 'category' | 'value' | 'time';
@@ -64,6 +66,8 @@ export interface CartesianPoint {
   y: number | null;
   /** A scatter point only: its size; the point's area grows in proportion to it. */
   size?: number | null;
+  /** A scatter point only: what the point is, such as a repository name, shown in the tooltip, the data view and the text alternative. */
+  label?: string | null;
 }
 
 export interface CartesianData {

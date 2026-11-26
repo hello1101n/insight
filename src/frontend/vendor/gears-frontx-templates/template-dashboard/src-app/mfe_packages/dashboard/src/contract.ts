@@ -18,16 +18,21 @@ export interface DashboardRequest {
   variables?: Record<string, string>;
 }
 
+type DurationUnit = 'ms' | 's' | 'min' | 'h' | 'd';
+
 /**
  * How a widget formats the numbers it shows. percent 0.25 means 25%. `decimals` is the exact number of fraction
- * digits; `unit_label` is a unit word after a number; `currency` is an ISO 4217 code.
+ * digits; `unit_label` is a unit word after a number; `currency` is an ISO 4217 code. A `compound` duration shows its
+ * two largest whole parts (52 h is 2d 4h), so it takes no `decimals`.
  */
-export type ValueFormat = { decimals?: number } & (
-  | { value_type: 'number'; unit_label?: string }
-  | { value_type: 'percent' }
-  | { value_type: 'duration'; unit: 'ms' | 's' | 'min' | 'h' | 'd' }
-  | { value_type: 'currency'; currency: string }
-);
+export type ValueFormat =
+  | ({ decimals?: number } & (
+      | { value_type: 'number'; unit_label?: string }
+      | { value_type: 'percent' }
+      | { value_type: 'duration'; unit: DurationUnit; compound?: false }
+      | { value_type: 'currency'; currency: string }
+    ))
+  | { value_type: 'duration'; unit: DurationUnit; compound: true; decimals?: never };
 
 // @cpt-dod:cpt-frontx-dashboard-dod-widget-contract-base:p1
 /** A widget instance as embedded in a cell: the widget base fields. A concrete widget type closes `render`, through its own render type or inline. */

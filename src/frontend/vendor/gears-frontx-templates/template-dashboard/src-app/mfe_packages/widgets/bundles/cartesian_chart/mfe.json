@@ -84,6 +84,13 @@
                           ],
                           "minimum": 0,
                           "description": "A scatter series only (on another type, a cross-check the widget runs): the point's size; its area grows in proportion to it, within the radius range the widget sets. Null or absent draws the smallest point."
+                        },
+                        "label": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "A scatter series only (on another type, a cross-check the widget runs): what the point is, such as a repository name. On a chart of scatter series only, the tooltip shows it over the point's values. The text alternative and the data view list it in its own column. Null or absent shows none."
                         }
                       }
                     }
@@ -110,7 +117,7 @@
           "properties": {
             "series": {
               "type": "array",
-              "description": "How each data series is drawn. A data series without an entry here draws as bars on the primary y axis, in the stack group of unlisted_stack_group when it is set.",
+              "description": "How each data series is drawn. A data series without an entry here draws as unlisted_type (bars when it is not set) on the primary y axis, in the stack group of unlisted_stack_group when it is set.",
               "items": {
                 "type": "object",
                 "required": [
@@ -167,9 +174,19 @@
                 }
               }
             },
+            "unlisted_type": {
+              "enum": [
+                "bar",
+                "line",
+                "area",
+                "scatter"
+              ],
+              "default": "bar",
+              "description": "How each data series without an entry in series is drawn, such as a series whose name comes only with the data. Such a series draws as if it had an entry of this type on the primary y axis, so it follows the rules of that type. An entry in series keeps its own type. Without it, bar."
+            },
             "unlisted_stack_group": {
               "type": "string",
-              "description": "The stack group of each data series without an entry in series, such as a series whose name comes only with the data. Such a series draws as if it had an entry of type bar on the primary y axis with this stack_group, so it stacks by the same rules. An entry in series keeps its own stack_group or none. Without it, a series without an entry is in no stack group."
+              "description": "The stack group of each data series without an entry in series, such as a series whose name comes only with the data. Such a series draws as if it had an entry of type unlisted_type (bar without it) on the primary y axis with this stack_group, so it stacks by the same rules. An entry in series keeps its own stack_group or none. Without it, a series without an entry is in no stack group."
             },
             "x_axis": {
               "type": "object",

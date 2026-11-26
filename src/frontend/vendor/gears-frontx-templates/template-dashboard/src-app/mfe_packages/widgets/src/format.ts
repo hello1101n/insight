@@ -2,6 +2,50 @@ import { intlLocaleOf, type ValueFormat } from '@gears-frontx/frontx-dashboard-r
 
 const UNIT: Record<string, Intl.NumberFormatOptions['unit']> = { ms: 'millisecond', s: 'second', min: 'minute', h: 'hour', d: 'day' };
 
+const UNIT_MS = { ms: 1, s: 1_000, min: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
+type DurationUnit = keyof typeof UNIT_MS;
+
+type DurationPart = readonly [amount: number, unit: DurationUnit];
+
+// INVARIANT: a part shows at the precision of the part after it, so a compound duration has at most two parts.
+const PARTS: readonly (readonly [part: DurationUnit, next: DurationUnit | null])[] = [
+  ['d', 'h'],
+  ['h', 'min'],
+  ['min', 's'],
+  ['s', null],
+];
+
+/**
+ * A duration in `unit` as its two largest whole parts, the first one signed: 52 h is 2 d and 4 h, and 59.6 s carries
+ * to 1 min. Below one second it is whole milliseconds, and a value that rounds to no millisecond is 0 in its own unit.
+ * Null when the value in milliseconds is beyond the largest number.
+ */
+function durationPartsOf(value: number, unit: DurationUnit): DurationPart[] | null {
+  const ms = Math.abs(value) * UNIT_MS[unit];
+  if (!Number.isFinite(ms)) return null;
+  if (Math.round(ms) === 0) return [[0, unit]];
+
+  const sign = Math.sign(value);
+  for (const [part, next] of PARTS) {
+    const size = UNIT_MS[part];
+    const step = UNIT_MS[next ?? part];
+    const rounded = Math.round(ms / step) * step;
+    if (rounded < size) continue;
+
+    const whole = Math.floor(rounded / size);
+    const rest = Math.round((rounded - whole * size) / step);
+    return rest > 0 && next ? [[sign * whole, part], [rest, next]] : [[sign * whole, part]];
+  }
+  return [[sign * Math.round(ms), 'ms']];
+}
+
+/** Duration parts as the host language lists units in their narrow form, such as 2d 4h in English. */
+function formatDurationParts(parts: DurationPart[], locale: string): string {
+  const texts = parts.map(([amount, unit]) => new Intl.NumberFormat(locale, { style: 'unit', unit: UNIT[unit], unitDisplay: 'narrow' }).format(amount));
+  return new Intl.ListFormat(locale, { type: 'unit', style: 'narrow' }).format(texts);
+}
+
 /** The Intl options of a value format; `decimals` fixes the fraction digits of every value type. */
 function optionsOf(format: ValueFormat | undefined): Intl.NumberFormatOptions {
   const digits = format?.decimals === undefined ? {} : { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals };
@@ -78,10 +122,13 @@ export function formatShare(formatter: Intl.NumberFormat, share: number): string
  * the empty part out. A percent value is a share, written through the shared share-to-percent helper. A shown zero
  * never carries a sign: a value that only rounds to zero (-2.78e-17, -0.004 at 2 decimals) reads 0, not -0. Intl's
  * `signDisplay: 'negative'` does that, but the project's lib (ES2022) does not type it and an engine without it
- * throws, so a text equal to the formatter's own negative zero is replaced by its zero.
+ * throws, so a text equal to the formatter's own negative zero is replaced by its zero. A compound duration writes its
+ * two largest whole parts and ignores `notation`.
  */
 export function formatValue(value: number | null | undefined, format: ValueFormat | undefined, locale: string, notation?: 'standard' | 'compact'): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '';
+  const parts = format?.value_type === 'duration' && format.compound && Object.hasOwn(UNIT_MS, format.unit) ? durationPartsOf(value, format.unit) : null;
+  if (parts) return formatDurationParts(parts, intlLocaleOf(locale));
   const formatter = new Intl.NumberFormat(intlLocaleOf(locale), { ...optionsOf(format), notation });
   const shown = format?.value_type === 'percent' ? formatShare(formatter, value) : formatter.format(value);
   const text = shown === formatter.format(-0) ? formatter.format(0) : shown;
