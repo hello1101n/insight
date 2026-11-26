@@ -869,6 +869,40 @@ class TestSweptRowsLandAndResolve:
             "the identity must come from what the connector recorded, not from the shape of its name"
         )
 
+    def test_the_tenant_cutover_copies_are_never_the_relation_read(self) -> None:
+        """The cutover leaves `<t>__tenant_backup` / `__tenant_copy` beside a
+        table, under the old column names and possibly with the most rows."""
+        _query(f"CREATE DATABASE IF NOT EXISTS bronze_departed_tracker{ON_CLUSTER}")
+        _query(f"DROP TABLE IF EXISTS bronze_departed_tracker.rows{ON_CLUSTER}")
+        _query(
+            f"CREATE TABLE bronze_departed_tracker.rows{ON_CLUSTER} "
+            "(insight_tenant_id String, insight_source_id String, payload String) "
+            f"ENGINE = {REPLICATED_PREFIX}MergeTree ORDER BY tuple()"
+        )
+        _query(f"INSERT INTO bronze_departed_tracker.rows VALUES ('{TENANT}', 'departed-tracker-reports', 'x')")
+        for suffix in ("__tenant_backup", "__tenant_copy"):
+            _query(f"DROP TABLE IF EXISTS bronze_departed_tracker.rows{suffix}{ON_CLUSTER}")
+            _query(
+                f"CREATE TABLE bronze_departed_tracker.rows{suffix}{ON_CLUSTER} "
+                "(tenant_id String, source_id String, payload String) "
+                f"ENGINE = {REPLICATED_PREFIX}MergeTree ORDER BY tuple()"
+            )
+            _query(
+                f"INSERT INTO bronze_departed_tracker.rows{suffix} "
+                "SELECT 'default', 'departed-tracker-reports', toString(number) FROM numbers(10)"
+            )
+        self._legacy_sync_row("legacy-5", connector="departed-tracker")
+
+        with _StubMover():
+            code = self._tick(
+                "tick-u", descriptors=[{"name": "departed-tracker", "namespace": "bronze_departed_tracker"}]
+            )
+        assert code == 0
+
+        identity = self._identity("legacy-5")
+        assert identity["tenant_id"] == TENANT
+        assert identity["source_id"] == "departed-tracker-reports"
+
     def test_a_relation_holding_two_identities_recovers_nothing(self) -> None:
         """More than one is not a majority to take: it would mean the era this
         recovers from was not single-instance after all."""
