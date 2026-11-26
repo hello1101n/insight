@@ -189,6 +189,19 @@ describe("frontxBoard", () => {
     );
   });
 
+  it("draws a heading as a section heading and a text as plain prose", () => {
+    const [heading, text] = cells([
+      { heading: "Throughput" },
+      { text: "Some words" },
+    ]);
+
+    expect(heading.widget.render).toEqual({
+      body: "## Throughput",
+      heading_style: "section",
+    });
+    expect(text.widget.render).toEqual({ body: "Some words" });
+  });
+
   it("draws no cell for a blank heading or text, which a markdown card refuses", () => {
     const drawn = cells([
       { heading: " " },

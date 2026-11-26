@@ -542,7 +542,7 @@ function proseCells(
   dashboard: string,
   key: string,
   text: string,
-  body: string
+  render: { body: string; heading_style?: "section" }
 ): DashboardCell[] {
   if (!text.trim()) return [];
 
@@ -552,7 +552,7 @@ function proseCells(
       frame: false,
       widget: {
         id: markdownId(`${dashboard}/${key}`),
-        render: { body },
+        render,
       },
     },
   ];
@@ -614,9 +614,14 @@ export function frontxBoard(
   const cells = items.flatMap((item, index) => {
     const key = keys[index];
     if ("heading" in item) {
-      return proseCells(id, key, item.heading, `## ${plain(item.heading)}`);
+      return proseCells(id, key, item.heading, {
+        body: `## ${plain(item.heading)}`,
+        heading_style: "section",
+      });
     }
-    if ("text" in item) return proseCells(id, key, item.text, plain(item.text));
+    if ("text" in item) {
+      return proseCells(id, key, item.text, { body: plain(item.text) });
+    }
 
     const widget = byId.get(item.widget);
     if (!widget) return [noteCell(id, key, GONE)];
