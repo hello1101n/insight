@@ -10,14 +10,19 @@
 #                             (the tenant-cutover-rebuild WorkflowTemplate). Does
 #                             not wait for it.
 #   tenant-cutover.sh seed    rebuild step: run the identity seed once, from its CronJob.
-#   tenant-cutover.sh resume  last rebuild step: restore the recorded suspend
-#                             state and delete the ConfigMap.
+#   tenant-cutover.sh report  rebuild step, only when an earlier step failed:
+#                             say so and fail the Workflow.
+#   tenant-cutover.sh resume  the rebuild's exit handler, however it ended:
+#                             restore the recorded suspend state and delete
+#                             the ConfigMap.
 #
 # The ConfigMap is the one piece of state: while it exists, a rebuild is owed
-# and the writers stay suspended. Only the rebuild's last step deletes it, so a
-# sync can never run between the migration and the end of the rebuild. A
-# failed `pre` that suspended the writers itself puts them back: the tables
-# are back as they were and the previous release keeps running.
+# and the writers stay suspended. Only the rebuild's exit handler deletes it, so
+# a sync can never run between the migration and the end of the rebuild, and a
+# rebuild that failed is not submitted again by every later deploy: its failed
+# models rebuild on their connectors' next sync. A failed `pre` that suspended
+# the writers itself puts them back: the tables are back as they were and the
+# previous release keeps running.
 #
 # Env: INSIGHT_NAMESPACE, CUTOVER_CONFIGMAP, INSIGHT_TENANT_ID; for `pre` also
 # CLICKHOUSE_URL/USER/PASSWORD, AIRBYTE_URL and the AIRBYTE_AUTH_* of
@@ -234,7 +239,7 @@ cmd_post() {
     metadata: {generateName: "tenant-cutover-rebuild-",
       labels: ({($label): "rebuild"} + (if $instance == "" then {} else {"workflows.argoproj.io/controller-instanceid": $instance} end))},
     spec: {workflowTemplateRef: {name: $template}}}' | k create -o name -f -)"
-  log "submitted $name: a full dbt refresh, then the identity seed, then every writer resumed"
+  log "submitted $name: a full dbt refresh, then the identity seed; every writer is resumed when it ends, failed or not"
   log "follow it: kubectl -n $INSIGHT_NAMESPACE get $name -w   (analytics reads empty until it succeeds)"
 }
 
@@ -273,6 +278,14 @@ cmd_seed() {
   log "identity seed done"
 }
 
+cmd_report() {
+  err "THE REBUILD FAILED: at least one step (staging, identity-seed, everything-else) did not succeed."
+  err "the models dbt names under 'Completed with N errors' in that step's log are not rebuilt; everything else is."
+  err "the writers are resumed regardless; each failed model rebuilds on its connector's next sync, or by hand."
+  err "this rebuild is not submitted again by the next deploy."
+  return 1
+}
+
 cmd_resume() {
   if ! cm_exists; then
     log "no recorded state; nothing to resume"
@@ -287,6 +300,7 @@ case "${1:-}" in
   pre) cmd_pre ;;
   post) cmd_post ;;
   seed) cmd_seed ;;
+  report) cmd_report ;;
   resume) cmd_resume ;;
-  *) echo "usage: $0 pre|post|seed|resume" >&2; exit 2 ;;
+  *) echo "usage: $0 pre|post|seed|report|resume" >&2; exit 2 ;;
 esac

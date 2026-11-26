@@ -154,11 +154,14 @@ build_base_identity_maps "$BASE"
 TENANT_COLUMN="$(ch_tenant_column bronze_zoom users)"
 [[ "$TENANT_COLUMN" == tenant_id ]] \
   || echo "=== The base already names its tenant column $TENANT_COLUMN: the rename is a no-op here ==="
+# The stamped source column, `source_id` until tenant_migration renames it.
+SOURCE_COLUMN=source_id
+[[ -z "$(ch_column_type bronze_zoom users insight_source_id)" ]] || SOURCE_COLUMN=insight_source_id
 
 echo "=== Step 2: the warm state, under the legacy tenant '$OLD_TENANT' ==="
 # Rows of the zoom users stream in the Bronze its connector created, with the
 # columns the snapshot tracks; keys follow the connector's formula.
-USER_COLUMNS="unique_key, $TENANT_COLUMN, source_id, id, first_name, last_name, display_name, email, dept, status,
+USER_COLUMNS="unique_key, $TENANT_COLUMN, $SOURCE_COLUMN, id, first_name, last_name, display_name, email, dept, status,
     role_id, timezone, language, phone_number, employee_unique_id, type,
     _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id"
 run_ch <<SQL
@@ -230,12 +233,12 @@ import os
 class FailsAtTheThirdSwap(ClickHouse):
     swaps: list[str] = field(default_factory=list)
 
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
+    def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
         if sql.startswith("EXCHANGE TABLES"):
             self.swaps.append(sql)
             if len(self.swaps) == 3:
                 raise RuntimeError("injected failure at the third swap")
-        return super().execute(sql, fmt=fmt)
+        return super().execute(sql, fmt=fmt, params=params)
 
 
 env = ClickHouse.from_env()
@@ -276,6 +279,12 @@ assert_migrated() {
   [[ "$got" == "$expected" ]] || fail "after apply expected '$expected' — every row kept, each tenant column and key prefix on $NEW_TENANT, the row without a tenant moved too — but got '$got'"
 }
 assert_migrated
+got="$(query "SELECT concat(
+    toString((SELECT count() FROM system.columns WHERE database = 'bronze_zoom' AND table = 'users' AND name = 'insight_source_id')),
+    toString((SELECT count() FROM system.columns WHERE database = 'bronze_zoom' AND table = 'users' AND name = 'source_id')),
+    toString((SELECT count() FROM system.columns WHERE database = 'ingestion_history' AND table = 'sync_events' AND name = 'source_id')))")"
+[[ "$got" == "101" ]] \
+  || fail "after apply bronze must name its source insight_source_id (and no source_id) while the ledger keeps source_id — got '$got' (bronze new, bronze old, ledger old)"
 backups="$(query "SELECT count() FROM system.tables WHERE endsWith(name, '__tenant_backup')")"
 (( backups >= ${#FIXTURES[@]} )) || fail "expected a backup of every migrated table, found $backups"
 
