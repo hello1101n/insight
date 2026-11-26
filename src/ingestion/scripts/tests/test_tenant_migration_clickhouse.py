@@ -45,10 +45,12 @@ TABLES = (
     "silver.class_items",
     "insight.gold_items",
     "config.task_value_map",
-    "ingestion_history.sync_events",
 )
-#: Out of scope: they keep `tenant_id` and every row.
-UNTOUCHED = ("dbt_test__audit.not_null_items", "presentation.meeting_free_obs", "staging.lookup")
+#: Out of scope: they keep `tenant_id` and every row. The ledger holds a sweep seal with an empty tenant.
+UNTOUCHED = (
+    "dbt_test__audit.not_null_items", "presentation.meeting_free_obs", "staging.lookup",
+    "ingestion_history.sync_events",
+)  # fmt: skip
 
 SCHEMA = f"""
 CREATE TABLE bronze_example.items (unique_key String, tenant_id Nullable(String), source_id Nullable(String),
@@ -192,7 +194,6 @@ def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> N
     plans = {p.table.relation: p for p in _plan(warehouse)}
 
     assert plans["bronze_example.items"].moving == 5
-    assert plans["ingestion_history.sync_events"].moving == 2
     assert plans["silver.class_items"].moving == 1
     assert plans["staging.github__commits"].moving == 0
     assert all(plans[t].pending for t in TABLES)
@@ -216,13 +217,13 @@ def test_a_plan_counts_what_moves_and_writes_nothing(warehouse: ClickHouse) -> N
         ("staging.jira__catalogue_first_seen", "unique_key", [f"{NEW}-main"]),
         ("staging.slack__users_snapshot", "unique_key", sorted([f"{NEW}-slack-U1", f"{NEW}-slack-U1", "NULL"])),
         ("staging.youtrack__field_observations", "insight_tenant_id", [NEW]),
+        ("staging.youtrack__field_observations", "unique_key", [f"{NEW}-yt-field-1-2026-01-01 00:00:00"]),
         ("config.task_value_map", "unique_key", [f"{NEW}:main:status:open"]),
-        ("ingestion_history.sync_events", "tenant_id", [NEW, NEW]),
         ("staging.github__commits", "insight_source_id", ["gh"]),
         ("staging.github__identity_inputs", "insight_tenant_id", [NEW]),
         ("staging.github__identity_inputs", "insight_source_id", ["gh"]),
         ("silver.class_items", "insight_tenant_id", [NEW]),
-        ("silver.class_items", "unique_key", [f"{OLD}-main-1"]),
+        ("silver.class_items", "unique_key", [f"{NEW}-main-1"]),
         ("silver.class_items", "org_source_id", ["org-7"]),
         ("insight.gold_items", "count()", ["150"]),
         ("insight.gold_items", "sum(doubled)", [str(2 * sum(range(150)))]),
@@ -236,7 +237,7 @@ def test_apply_moves_every_key_form_to_the_tenant(
     assert _column(warehouse, table, column) == expected, f"{table}.{column}"
 
 
-def test_the_tenant_column_is_renamed_in_place_with_its_type_and_the_ledger_keeps_its_name(
+def test_the_tenant_column_is_renamed_in_place_with_its_type_and_the_ledger_keeps_its_names(
     warehouse: ClickHouse,
 ) -> None:
     _apply(warehouse)
@@ -255,6 +256,39 @@ def test_the_tenant_column_is_renamed_in_place_with_its_type_and_the_ledger_keep
         "unique_key", "insight_source_id", "sha", "_version",
     ]  # fmt: skip
     assert [c for c, _ in _columns(warehouse, "insight.gold_items")][:2] == ["insight_tenant_id", "insight_source_id"]
+
+
+def test_a_sweep_seal_written_after_the_cutover_leaves_nothing_pending(warehouse: ClickHouse) -> None:
+    """The sweep writes a seal with an empty tenant every tick; it must not make every deploy a cutover."""
+    assert main(["apply"]) == 0
+    warehouse.execute("INSERT INTO ingestion_history.sync_events VALUES (now64(3), '', '', 'sweep.completed')")
+
+    assert main(["plan", "--exit-code"]) == 0
+
+
+def test_a_replacing_table_with_unmerged_duplicates_is_copied(warehouse: ClickHouse) -> None:
+    """The copy may collapse rows of one sorting key on insert; the check counts sorting keys."""
+    warehouse.execute(
+        "CREATE TABLE staging.dup_commits (unique_key String, source_id Nullable(String), _version UInt64) "
+        "ENGINE = ReplacingMergeTree(_version) ORDER BY unique_key"
+    )
+    warehouse.execute(
+        "CREATE TABLE bronze_example.dup_events (insight_tenant_id Nullable(String), source_id Nullable(String), "
+        "kind String, at UInt32) ENGINE = ReplacingMergeTree ORDER BY (kind, at)"
+    )
+    warehouse.execute("SYSTEM STOP MERGES staging.dup_commits")
+    warehouse.execute("SYSTEM STOP MERGES bronze_example.dup_events")
+    for version in (1, 2):
+        warehouse.execute(f"INSERT INTO staging.dup_commits VALUES ('{NEW}-gh-abc', 'gh', {version})")
+        warehouse.execute(f"INSERT INTO bronze_example.dup_events VALUES ('{NEW}', 'main', 'push', 1)")
+    assert warehouse.scalar("SELECT count() FROM staging.dup_commits") == 2
+
+    _apply(warehouse)
+
+    assert _column(warehouse, "staging.dup_commits", "insight_source_id") == ["gh"]
+    assert _column(warehouse, "staging.dup_commits", "_version") == ["2"]
+    assert _column(warehouse, "bronze_example.dup_events", "insight_source_id") == ["main"]
+    assert not [t for t in _work_tables(warehouse) if t.endswith("__tenant_copy")]
 
 
 def test_tables_out_of_scope_keep_their_shape_and_rows(warehouse: ClickHouse) -> None:

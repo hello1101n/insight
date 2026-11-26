@@ -167,7 +167,7 @@ def test_a_failed_migration_puts_the_writers_back_and_forgets_the_state(tmp_path
     result, cluster = _run(tmp_path, "pre", before, apply=apply)
 
     assert result.returncode != 0
-    assert _suspended(cluster) == _suspended(before)
+    assert _suspended(cluster) == _suspended(before), "the previous release keeps running: its syncs too"
     assert cluster["configmaps"] == {}
 
 
@@ -191,7 +191,7 @@ def test_a_busy_cluster_fails_the_deploy_after_the_bounded_wait_and_puts_the_wri
     assert cluster["configmaps"] == {}
 
 
-def test_post_submits_one_rebuild_and_resume_restores_the_recorded_state(tmp_path: Path) -> None:
+def test_post_submits_one_rebuild_and_resume_restores_every_writer_but_the_syncs(tmp_path: Path) -> None:
     before = _cluster()
     _, migrated = _run(tmp_path, "pre", before)
 
@@ -207,9 +207,9 @@ def test_post_submits_one_rebuild_and_resume_restores_the_recorded_state(tmp_pat
         "insight-reconcile-loop": False,
         "insight-data-quality": True,
         "jira-main-examplel-sync": True,
-        "zoom-main-0f6b3c2e-sync": False,
+        "zoom-main-0f6b3c2e-sync": True,
         "insight-identity-resolution-seed": False,
-    }, "the schedule named for the former tenant is left to reconcile"
+    }, "every sync schedule is left to reconcile, which resumes it after refreshing its catalog"
     assert resumed["configmaps"] == {}
 
 
@@ -235,5 +235,6 @@ def test_a_failed_rebuild_reports_loudly_resumes_the_writers_and_is_not_submitte
     assert report.returncode != 0 and "THE REBUILD FAILED" in report.stderr
     assert not any(c.startswith(("patch", "create", "delete")) for c in reported["calls"][len(submitted["calls"]) :])
     assert _suspended(resumed)["insight-reconcile-loop"] is False
+    assert _suspended(resumed)["zoom-main-0f6b3c2e-sync"] is True
     assert post.returncode == 0 and "no rebuild" in post.stdout
     assert list(after["workflows"]) == ["tenant-cutover-rebuild-x"]

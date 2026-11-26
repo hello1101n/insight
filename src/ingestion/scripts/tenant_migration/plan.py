@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from tenant_migration import keys
 from tenant_migration.clickhouse import ClickHouse
 from tenant_migration.inventory import Table
+
+#: One install holds one tenant; a few more (empty, the UUID, a legacy name) are what a key can lead with.
+MAX_TENANTS = 16
 
 
 @dataclass(frozen=True)
@@ -14,6 +18,8 @@ class TablePlan:
     table: Table
     rows: int
     moving: int
+    #: The tenants the table's rows hold now ('' for none); a table without a tenant column holds none.
+    tenants: tuple[str, ...] = ()
 
     @property
     def pending(self) -> bool:
@@ -32,11 +38,12 @@ class TablePlan:
 
 
 def survey_table(ch: ClickHouse, table: Table, tenant: str) -> TablePlan:
-    ((rows, moving),) = ch.rows(
-        f"SELECT count(), countIf({keys.foreign(table)}) FROM {table.rel.sql()} AS src",
+    held = f"groupUniqArray({MAX_TENANTS})({keys.old_tenant(table)})" if table.tenant else "[]"
+    ((rows, moving, tenants),) = ch.rows(
+        f"SELECT count(), countIf({keys.foreign(table)}), toJSONString({held}) FROM {table.rel.sql()} AS src",
         params=keys.tenant_params(tenant),
     )
-    return TablePlan(table=table, rows=int(rows), moving=int(moving))
+    return TablePlan(table=table, rows=int(rows), moving=int(moving), tenants=tuple(sorted(json.loads(tenants))))
 
 
 def survey(ch: ClickHouse, tables: list[Table], tenant: str) -> list[TablePlan]:

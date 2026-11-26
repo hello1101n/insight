@@ -12,13 +12,14 @@
 #   3. The pre-upgrade hook's migration, failing part-way: every table is
 #      back exactly as it was and no work table is left.
 #   4. The pre-upgrade hook's migration, with no flag but INSIGHT_TENANT_ID:
-#      nothing lost, tenant and keys moved, the tenant column renamed outside
-#      the ledger, each original kept as its backup.
+#      nothing lost, tenant and keys moved, the tenant column renamed, the
+#      sync ledger untouched, each original kept as its backup.
 #   5. clickhouse-migrate (apply-ch-migrations.sh), which drops the identity
 #      map views without a tenant column, then the post-upgrade rebuild with
 #      `--full-refresh`: the identity inputs carry only the canonical tenant,
 #      the map views are back, the history relation keeps every row.
-#   6. A second deploy finds nothing to migrate; `finalize` drops the backups.
+#   6. A second deploy, after a sweep seal with an empty tenant, finds nothing
+#      to migrate; `finalize` drops the backups.
 #
 # Required env (same contract as apply-ch-migrations.sh):
 #   CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, CLICKHOUSE_DATABASE
@@ -41,7 +42,7 @@ trap 'rm -rf "$WORKDIR"' EXIT
 NEW_TENANT="0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
 OLD_TENANT="example-legacy"
 SOURCE="zoom-main"
-FIXTURES=(bronze_zoom.users staging.zoom__users_snapshot config.task_value_map ingestion_history.sync_events)
+FIXTURES=(bronze_zoom.users staging.zoom__users_snapshot config.task_value_map)
 
 # shellcheck source=src/ingestion/scripts/lib/ch-exec.sh
 source "$SCRIPTS/lib/ch-exec.sh"
@@ -274,9 +275,9 @@ assert_migrated() {
       toString((SELECT count() FROM config.task_value_map)), ':',
       toString((SELECT countIf(insight_tenant_id != '$NEW_TENANT' OR NOT startsWith(unique_key, '$NEW_TENANT')) FROM config.task_value_map)), '|',
       toString((SELECT count() FROM ingestion_history.sync_events)), ':',
-      toString((SELECT countIf(tenant_id != '$NEW_TENANT') FROM ingestion_history.sync_events)), '|',
+      toString((SELECT countIf(tenant_id != '$OLD_TENANT') FROM ingestion_history.sync_events)), '|',
       (SELECT min(unique_key) FROM bronze_zoom.users WHERE id = 'u1'))")"
-  [[ "$got" == "$expected" ]] || fail "after apply expected '$expected' — every row kept, each tenant column and key prefix on $NEW_TENANT, the row without a tenant moved too — but got '$got'"
+  [[ "$got" == "$expected" ]] || fail "after apply expected '$expected' — every row kept, each tenant column and key prefix on $NEW_TENANT, the row without a tenant moved too, the sync ledger untouched — but got '$got'"
 }
 assert_migrated
 got="$(query "SELECT concat(
@@ -311,6 +312,8 @@ got="$(query "SELECT concat(
   || fail "after the rebuild expected the email identity inputs all under $NEW_TENANT (the hashed-tenant row gone, every user present) and the history relation, which refuses a full refresh, still holding its 4 rows — got '$got' (inputs:foreign:ada:cy|history)"
 
 echo "=== Step 6: the next deploy finds nothing; finalize drops the backups ==="
+# Reconcile's sweep seals every tick with an empty tenant; that must not make the next deploy a cutover.
+run_ch <<<"INSERT INTO ingestion_history.sync_events (tick_id, event) VALUES ('tick-2', 'sweep.completed')"
 migration plan --exit-code >/dev/null || fail "a second plan still finds tables to migrate"
 migration apply
 migration finalize

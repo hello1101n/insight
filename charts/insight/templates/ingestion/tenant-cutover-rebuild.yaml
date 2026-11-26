@@ -4,7 +4,9 @@ hook (templates/tenant-cutover-hooks.yaml) only when tenant_migration moved
 something. A full dbt refresh of every buildable model, in the order a sync
 uses — staging, everything upstream of it and the identity inputs, the identity
 seed, then everything else, gold included — through the dbt-run template. The
-history relations refuse the full refresh and run incrementally. Which models
+history relations refuse the full refresh and run incrementally. The identity
+map views (`tag:identity:map`) are recreated in the first step: until then they
+read columns the migration renamed, and analytics person queries fail. Which models
 are buildable is dbt's own judgement (`list_unbuildable_models`, inside dbt-run):
 a model whose Bronze is absent or empty is skipped and rebuilds on its
 connector's next sync.
@@ -24,13 +26,19 @@ that need the cutover ServiceAccount (it patches CronWorkflows and creates
 Jobs) are fixed templates with hard-coded commands and carry that account
 themselves; every other pod runs as argo-workflow, as dbt-run does.
 */}}
-{{- if and .Values.ingestion.templates.enabled .Values.ingestion.tenantCutover.enabled }}
+{{- if .Values.ingestion.templates.enabled }}
 {{- $name := printf "%s-tenant-cutover" (include "insight.fullname" .) }}
-{{- $staging := "+tag:staging +identity_inputs" }}
+{{- $staging := "+tag:staging +identity_inputs tag:identity:map" }}
 {{- $stepDeadline := .Values.ingestion.tenantCutover.dbtStepDeadlineSeconds | toString }}
 {{- if not (regexMatch "^[1-9][0-9]*$" $stepDeadline) }}
 {{- fail (printf "ingestion.tenantCutover.dbtStepDeadlineSeconds must be a positive whole number of seconds, got %q" $stepDeadline) }}
 {{- end }}
+{{- /* The seed step's own bound; tenant-cutover.sh `seed` waits SEED_TIMEOUT_SECONDS (3600) for its Job. */}}
+{{- $seedDeadline := 3900 }}
+{{- /* Every step may run to its own deadline and still leave room for `report`, so the
+     Workflow's deadline never cuts a step short: a step that hits its deadline fails, the next
+     runs, and the exit handler resumes the writers. */}}
+{{- $workflowDeadline := add (mul 2 (atoi $stepDeadline)) $seedDeadline 1800 }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -99,7 +107,7 @@ spec:
   serviceAccountName: argo-workflow
   entrypoint: rebuild
   onExit: resume-writers
-  activeDeadlineSeconds: 43200
+  activeDeadlineSeconds: {{ $workflowDeadline }}
   ttlStrategy:
     secondsAfterSuccess: 604800
   {{- with .Values.global.imagePullSecrets }}
@@ -146,6 +154,9 @@ spec:
 {{- range $step := list (list "identity-seed" "seed") (list "resume-writers" "resume") }}
     - name: {{ index $step 0 }}
       serviceAccountName: {{ $name }}
+      {{- if eq (index $step 0) "identity-seed" }}
+      activeDeadlineSeconds: {{ $seedDeadline }}
+      {{- end }}
       container:
         image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" $.Values.ingestion.toolboxImage | quote }}
         imagePullPolicy: IfNotPresent
