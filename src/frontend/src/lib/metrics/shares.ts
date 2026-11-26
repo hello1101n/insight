@@ -34,7 +34,7 @@ export function displayedParts(
   const additive = Math.abs(partsSum - total) <= 1e-6 * Math.max(1, Math.abs(total));
   if (!additive || !(partsSum > 0)) return parts;
 
-  const scale = displayStepsPerUnit(total, fmt, unit);
+  const scale = displayStepsPerUnit(fmt, unit);
   const units = Math.round(total * scale);
   return largestRemainder(parts, partsSum, units).map((value) => value / scale);
 }
