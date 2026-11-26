@@ -5,7 +5,7 @@
 #
 # Versions are not pinned here — `make doctor` enforces minimums.
 
-brew "helm"           # Helm 3.14+ (OCI chart pulls)
+brew "helm"           # Helm 4.0+ (OCI chart pulls)
 brew "kubernetes-cli" # kubectl 1.27+
 brew "kubeseal"       # Bitnami sealed-secrets client
 brew "skopeo"         # OCI registry tag listing (optional, for chart-version automation)

@@ -98,9 +98,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          # Pinned to match publish-chart, and below the helm 4.2.1 `--wait`
-          # regression deploy/gitops/scripts/doctor.sh refuses.
-          version: '3.14.0'
+          version: '4.3.2'
 
       # `gh api`, not curl/urllib, for the fallback: a dynamic URL through a
       # URL opener trips a Semgrep finding no suppression can silence.
@@ -352,7 +350,7 @@ jobs:
           # Compares the CHART field ("<name>-<version>"), never app_version:
           # this chart's appVersion is a date+sha build stamp, not a semver.
           chart_name=insight
-          if ! listed="$(helm ls -n "$STAND_NAMESPACE" --filter "^${STAND_RELEASE}\$" -o json 2>&1)"; then
+          if ! listed="$(helm ls -n "$STAND_NAMESPACE" --deployed --failed --filter "^${STAND_RELEASE}\$" -o json 2>&1)"; then
             echo "::error::could not list helm releases in namespace $STAND_NAMESPACE: $listed"
             echo "This is a reachability problem, not a downgrade — 'make deploy' below would refuse it too,"
             echo "via its vpn-up/kube-ctx prerequisites (deploy/gitops/Makefile)."
