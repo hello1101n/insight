@@ -400,7 +400,9 @@ kubectl -n "$NS" scale deploy "$RELEASE-identity-resolution" "$RELEASE-v3-core" 
 ```
 
 Reconcile applies the CronWorkflows with `kubectl apply`, which leaves a
-`suspend` it did not set alone, so resuming it resumes no sync. The first sync
+`suspend` it did not set alone, so resuming it resumes no sync. The exception
+is a connection whose catalog it refreshes (a new connector version): it
+unsuspends that schedule once the refresh succeeds. The first sync
 of each connector widens nothing and rebuilds its models onto the converted
 tables.
 

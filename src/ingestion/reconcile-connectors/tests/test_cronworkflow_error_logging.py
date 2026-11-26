@@ -18,7 +18,8 @@ disc_instances_of() { printf 'main\texample-secret\thash\n'; }
 valsec_check_secret() { return 0; }
 reconcile_definitions() { printf 'noop\tnone\texample-definition\n'; }
 reconcile_sources() { printf 'noop\texample-source\n'; }
-reconcile_connections() { printf 'noop\texample-connection\n'; }
+reconcile_connections() { printf 'noop\texample-connection\tcatalog:example\n'; }
+reconcile_catalog_tag() { printf 'catalog:example'; }
 reconcile_rename_former_tenant() { return 0; }
 reconcile_compute_connection_name() { printf 'example-connection'; }
 reconcile_compute_tenant() { printf 'example-tenant'; }
