@@ -298,6 +298,22 @@ describe("frontxBoard", () => {
     expect(plain.widget).not.toHaveProperty("description");
   });
 
+  it("gives a widget with a clock on a board with time ranges the window's empty text, and every other widget No data", () => {
+    const board = frontxBoard(
+      "board",
+      read([{ widget: "line" }, { widget: "pie" }], ["P7D"]),
+      ALL
+    );
+    const [clocked, timeless] = dashboardOf(board).layout.cells;
+    const window = "Nothing in this window. Try a wider range.";
+
+    expect(clocked.widget.empty_text).toBe(window);
+    expect(clocked.larger_view?.empty_text).toBe(window);
+    expect(timeless.widget.empty_text).toBe("No data.");
+    expect(timeless.larger_view?.empty_text).toBe("No data.");
+    expect(cells([{ widget: "line" }])[0].widget.empty_text).toBe("No data.");
+  });
+
   it("asks for buckets only when the widget draws the bucket column", () => {
     const [bar] = cells([{ widget: "bar" }], ["P7D"]);
 
@@ -422,7 +438,7 @@ describe("frontxBoard", () => {
     });
   });
 
-  it("captions a stat with its label, or with its value column when it has none", () => {
+  it("captions a stat with its label, or with its value column when it has none, and keeps the caption under the dash of a null value", () => {
     const board = frontxBoard(
       "board",
       read([{ widget: "a" }, { widget: "b" }]),
@@ -433,8 +449,14 @@ describe("frontxBoard", () => {
     );
     const [labelled, bare] = dashboardOf(board).layout.cells;
 
-    expect(labelled.widget.render).toEqual({ value_label: "runs" });
-    expect(bare.widget.render).toEqual({ value_label: "v" });
+    expect(labelled.widget.render).toEqual({
+      value_label: "runs",
+      null_value: "dash",
+    });
+    expect(bare.widget.render).toEqual({
+      value_label: "v",
+      null_value: "dash",
+    });
   });
 
   it("titles the board and each widget, and falls back to their names", () => {
@@ -766,10 +788,10 @@ describe("frontxBoard percent columns", () => {
     }
   });
 
-  it("keeps an empty or null percent stat empty", () => {
+  it("draws a percent stat with no rows as empty, and a null value as no value", () => {
     expect(
       drawnData(STAT, ["rate"], { columns: ["rate"], rows: [] }).data
-    ).toEqual({ value: null });
+    ).toEqual({});
     expect(
       drawnData(STAT, ["rate"], { columns: ["rate"], rows: [[null]] }).data
     ).toEqual({ value: null });
@@ -1072,13 +1094,14 @@ describe("frontxBoard options", () => {
   ])("compares a stat with the previous period, %s", (_, body, render) => {
     expect(renderOf(body)).toEqual({
       value_label: "runs",
+      null_value: "dash",
       reference_label: "Previous period",
       ...render,
     });
   });
 
   it("leaves a stat that does not compare without a reference", () => {
-    expect(renderOf(STAT)).toEqual({ value_label: "runs" });
+    expect(renderOf(STAT)).toEqual({ value_label: "runs", null_value: "dash" });
     expect(
       compared(STAT, [], frontxAnswer({ columns: ["n"], rows: [[100]] }, STAT))
     ).toEqual({

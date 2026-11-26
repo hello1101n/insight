@@ -437,6 +437,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
         ...formatted(shown),
         render: {
           value_label: widget.label ?? widget.value,
+          null_value: "dash",
           ...(widget.compare
             ? {
                 better: widget.compare.better ?? "higher",
@@ -444,7 +445,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
               }
             : {}),
         },
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent, round)}${reference}}))`,
+        transform: `size(response.rows) == 0 ? dyn({}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent, round)}${reference}}))`,
       };
     }
     case "pie": {
@@ -472,6 +473,10 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
   }
 }
 
+const EMPTY_WINDOW = "Nothing in this window. Try a wider range.";
+
+const NO_DATA = "No data.";
+
 function widgetCell(
   dashboard: string,
   widget: DashboardWidget,
@@ -486,6 +491,7 @@ function widgetCell(
     ...(windowed && !widget.clock ? { description: "All time" } : {}),
     render: shape.render,
     ...(shape.value_format ? { value_format: shape.value_format } : {}),
+    empty_text: windowed && widget.clock ? EMPTY_WINDOW : NO_DATA,
     data: {
       request: runRequest(dashboard, widget, windowed),
       transform: shape.transform,
