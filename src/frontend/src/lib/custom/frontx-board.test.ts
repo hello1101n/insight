@@ -5,6 +5,7 @@ import type {
   DashboardItem,
   DashboardRead,
   DashboardWidget,
+  DurationUnit,
   MetricResult,
   Widget,
 } from "@/api/custom-client";
@@ -863,9 +864,13 @@ describe("frontxBoard percent columns", () => {
 
 describe("frontxBoard duration columns", () => {
   const LEAD: Widget = { type: "stat", metric: "m", value: "lead" };
-  const MINUTES = { value_type: "duration", unit: "min" } as const;
+  const MINUTES = {
+    value_type: "duration",
+    unit: "min",
+    compound: true,
+  } as const;
 
-  it("shows a duration stat in its unit, as the number it is", () => {
+  it("shows a duration stat in two parts of its unit, as the number it is", () => {
     const { format, data } = drawnData(
       LEAD,
       [],
@@ -875,10 +880,56 @@ describe("frontxBoard duration columns", () => {
     );
 
     expect({ format, data }).toEqual({
-      format: { value_type: "duration", unit: "h" },
+      format: { value_type: "duration", unit: "h", compound: true },
       data: { value: 52 },
     });
-    expect(formatValue(52, format, "en")).toBe("52 hr");
+    expect(formatValue(52, format, "en")).toBe("2d 4h");
+  });
+
+  it.each<[number, DurationUnit]>([
+    [52, "h"],
+    [0.0149, "h"],
+    [12.345, "h"],
+    [90, "s"],
+    [59.6, "s"],
+    [0.4, "ms"],
+    [0.0004, "s"],
+    [-2.5, "d"],
+    [-0.0001, "s"],
+    [0, "min"],
+    [125.5, "min"],
+    [999.9, "d"],
+  ])(
+    "writes the duration stat %d %s as the current stat does",
+    (value, unit) => {
+      const { format, data } = drawnData(
+        LEAD,
+        [],
+        { columns: ["lead"], rows: [[value]] },
+        undefined,
+        { lead: unit }
+      );
+
+      expect(formatValue((data as { value: number }).value, format, "en")).toBe(
+        groupedNumber(value, unit)
+      );
+    }
+  );
+
+  it("compares a duration stat with the exact previous value", () => {
+    const body: Widget = { ...LEAD, compare: {} };
+    const board = frontxBoard("board", read([{ widget: "w" }]), [
+      { ...widget("w", body), units: { lead: "h" } },
+    ]);
+    const [cell] = dashboardOf(board).layout.cells;
+    const answer = (value: number) =>
+      frontxAnswer({ columns: ["lead"], rows: [[value]] }, body);
+
+    expect(
+      compileTransform(bound(cell).data.transform).evaluate({
+        response: { ...answer(0.0149), previous: answer(12.345) },
+      })
+    ).toEqual({ value: 0.0149, reference_value: 12.345 });
   });
 
   it.each<[string, Widget, MetricResult, unknown]>([
@@ -940,7 +991,7 @@ describe("frontxBoard duration columns", () => {
           key: "c1",
           title: "wait",
           width: 76,
-          value_format: { value_type: "duration", unit: "s" },
+          value_format: { value_type: "duration", unit: "s", compound: true },
         },
         {
           key: "c2",

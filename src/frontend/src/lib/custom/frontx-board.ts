@@ -84,6 +84,9 @@ const PERCENT_COLUMN = { value_type: "percent", decimals: 1 } as const;
 const isPercent = (format: ValueFormat | undefined) =>
   format?.value_type === "percent";
 
+const isDuration = (format: ValueFormat | undefined) =>
+  format?.value_type === "duration";
+
 const formatted = (format: ValueFormat | undefined) =>
   format ? { value_format: format } : {};
 
@@ -94,7 +97,7 @@ function formatOf({ percents = [], units = {} }: DashboardWidget): FormatOf {
 
     const unit = units[columns[0]];
     if (!unit || columns.some((name) => units[name] !== unit)) return undefined;
-    return { value_type: "duration", unit };
+    return { value_type: "duration", unit, compound: true };
   };
 }
 
@@ -237,9 +240,13 @@ function targetLines(
 }
 
 // INVARIANT: the host adds `previous` only to the answer of a compared stat over a bounded range.
-function previousFigure(value: string, percent: boolean): string {
+function previousFigure(
+  value: string,
+  percent: boolean,
+  round: boolean
+): string {
   const previous = "response.previous";
-  const figure = number(`${previous}.rows[0]`, "p", percent, true);
+  const figure = number(`${previous}.rows[0]`, "p", percent, round);
 
   return `(!has(${previous}) || ${previous} == null || size(${previous}.rows) == 0 ? dyn(null) : cel.bind(p, int(${previous}.at[${cel(value)}]), ${figure}))`;
 }
@@ -403,8 +410,10 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
     case "stat": {
       const shown = format(widget.value);
       const percent = isPercent(shown);
+      // INVARIANT: the current stat writes a duration from the exact value, and a rounded value can lose a part.
+      const round = !isDuration(shown);
       const reference = widget.compare
-        ? `, 'reference_value': ${previousFigure(widget.value, percent)}`
+        ? `, 'reference_value': ${previousFigure(widget.value, percent, round)}`
         : "";
       return {
         type: "metric_card",
@@ -418,7 +427,7 @@ function drawn(widget: Widget, format: FormatOf, daily: boolean): Drawn | Note {
               }
             : {}),
         },
-        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent, true)}${reference}}))`,
+        transform: `size(response.rows) == 0 ? dyn({'value': null}) : dyn(cel.bind(v, ${column(widget.value)}, {'value': ${number("response.rows[0]", "v", percent, round)}${reference}}))`,
       };
     }
     case "pie": {
