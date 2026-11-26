@@ -1215,7 +1215,7 @@ describe("a row expands to its recent syncs", () => {
     expect(pane.parentElement).toHaveClass("min-w-0");
   });
 
-  it("places the full-width schedule strip before recent syncs in the disclosure", async () => {
+  it("places the schedule before recent syncs in the disclosure", async () => {
     mocks.summary.data = summary({
       connectors: [
         { connector: "example-tracker", source_id: "main", configured: true },
@@ -1537,6 +1537,58 @@ describe("connector workflow runs", () => {
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
     expect(within(steps()).getByText("11:59:00")).toBeVisible();
     expect(date).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("region", { name: "Selected run" })
+    ).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("opens narrow history details directly after the selected row", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private readonly onResize: (
+          entries: { contentRect: { width: number } }[]
+        ) => void;
+
+        constructor(
+          onResize: (entries: { contentRect: { width: number } }[]) => void
+        ) {
+          this.onResize = onResize;
+        }
+
+        observe() {
+          this.onResize([{ contentRect: { width: 390 } }]);
+        }
+
+        disconnect() {}
+      }
+    );
+    try {
+      const runs = Array.from({ length: 6 }, (_, index) => run(index + 1));
+      mocks.summary.data = summary({
+        connectors: [
+          { connector: "jira", configured: true, latest_run: runs[0] },
+        ],
+      });
+      mocks.syncs.data = { connector: "jira", syncs: [], window: 50, runs };
+      render(<ConnectorHealthPane />);
+      await userEvent.click(rowFor("jira"));
+      const table = screen.getByRole("table", { name: "Recent syncs" });
+      const selectedRun = () =>
+        screen.getByRole("region", { name: "Selected run" });
+      expect(table).not.toContainElement(selectedRun());
+      const date = within(table).getByRole("button", {
+        name: "15 Jan 2026 11:58:00",
+      });
+      await userEvent.click(date);
+      expect(date.closest("tr")?.nextElementSibling).toContainElement(
+        selectedRun()
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Older runs" }));
+      expect(table).not.toContainElement(selectedRun());
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("combines the working time of all six stages into four admin steps", async () => {
@@ -1962,7 +2014,9 @@ describe("connector workflow runs", () => {
     expect(within(rowFor("example")).getByText("Cancelled")).toBeVisible();
     expect(screen.getByText("No active run")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "15 Jan 2026 · 11:50:00 · Cancelled" })
+      screen.getByRole("listitem", {
+        name: "15 Jan 2026 · 11:50:00 · Cancelled",
+      })
     ).toBeVisible();
     const silver = runSteps().getByText("Silver").closest("li")!;
     expect(silver).not.toHaveAttribute("aria-current");
@@ -1996,7 +2050,7 @@ describe("connector workflow runs", () => {
     expect(row.getByText("Waited over 6 hours")).toBeVisible();
     expect(row.queryByText("Queued")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("listitem", {
         name: "15 Jan 2026 · 05:00:00 · Failed · Silver",
       })
     ).toBeVisible();
@@ -2124,8 +2178,8 @@ describe("connector workflow runs", () => {
         screen.queryByText("No successful sync yet")
       ).not.toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: "15 Jan 2026 · 11:59:00 · Ready" })
-      ).toHaveAttribute("aria-pressed", "true");
+        screen.getByRole("listitem", { name: "15 Jan 2026 · 11:59:00 · Ready" })
+      ).toHaveAttribute("aria-current", "true");
       const band = screen.getByRole("figure", {
         name: "Steps of the selected sync",
       });
@@ -2368,9 +2422,10 @@ describe("connector workflow runs", () => {
     expect(success.getByText("2m 0s")).toBeVisible();
     expect(success.getByText("20s")).toBeVisible();
     const history = screen.getByRole("list", { name: /status/i });
-    const marks = within(history).getAllByRole("button");
+    const marks = within(history).getAllByRole("listitem");
     expect(marks).toHaveLength(50);
-    expect(marks.at(-1)).toHaveAttribute("aria-pressed", "true");
+    expect(marks.at(-1)).toHaveAttribute("aria-current", "true");
+    expect(within(history).queryByRole("button")).not.toBeInTheDocument();
     const rows = () =>
       within(screen.getByRole("list", { name: "Run steps (UTC)" }));
     expect(rows().getByText("Bronze")).toBeVisible();
@@ -2382,9 +2437,12 @@ describe("connector workflow runs", () => {
       screen.getByRole("figure", { name: "Steps of the selected sync" })
     ).toContainElement(screen.getByLabelText(/Queued · 1m 0s/));
     await userEvent.click(
-      within(history).getByRole("button", {
-        name: "15 Jan 2026 · 11:58:00 · Failed · Gold",
-      })
+      within(screen.getByRole("table", { name: "Recent syncs" })).getByRole(
+        "button",
+        {
+          name: "15 Jan 2026 11:58:00",
+        }
+      )
     );
     expect(rows().getByText("Gold")).toBeVisible();
     expect(screen.getByText("ClickHouse memory limit exceeded")).toBeVisible();
@@ -2422,19 +2480,22 @@ describe("connector workflow runs", () => {
     await userEvent.click(rowFor("jira"));
     const marks = within(
       screen.getByRole("list", { name: /status/i })
-    ).getAllByRole("button");
+    ).getAllByRole("listitem");
     expect(marks).toHaveLength(50);
     expect(marks[0]).toHaveAccessibleName("15 Jan 2026 · 11:10:00 · Ready");
     expect(marks.at(-2)).toHaveAccessibleName(
       "15 Jan 2026 · 11:58:00 · Failed"
     );
     expect(marks.at(-1)).toHaveAccessibleName("15 Jan 2026 · 11:59:00 · Ready");
-    await userEvent.click(marks[0]!);
+    const older = screen.getByRole("button", { name: "Older runs" });
+    for (let page = 1; page < 10; page++) await userEvent.click(older);
     expect(screen.getByText("46–50 of 50")).toBeVisible();
     const historyTable = screen.getByRole("table", { name: "Recent syncs" });
-    expect(
-      within(historyTable).getByRole("button", { name: "15 Jan 2026 11:10:00" })
-    ).toHaveAttribute("aria-pressed", "true");
+    const oldest = within(historyTable).getByRole("button", {
+      name: "15 Jan 2026 11:10:00",
+    });
+    await userEvent.click(oldest);
+    expect(oldest).toHaveAttribute("aria-pressed", "true");
     const details = within(
       screen.getByRole("heading", { name: "Bronze (UTC)" }).closest("section")!
     );
@@ -2470,9 +2531,9 @@ describe("connector workflow runs", () => {
     render(<ConnectorHealthPane />);
     await userEvent.click(rowFor("jira"));
     const history = within(screen.getByRole("list", { name: /status/i }));
-    expect(history.getAllByRole("button")).toHaveLength(2);
-    expect(history.getByRole("button", { name: /Ready$/ })).toBeVisible();
-    expect(history.getByRole("button", { name: /Failed$/ })).toBeVisible();
+    expect(history.getAllByRole("listitem")).toHaveLength(2);
+    expect(history.getByRole("listitem", { name: /Ready$/ })).toBeVisible();
+    expect(history.getByRole("listitem", { name: /Failed$/ })).toBeVisible();
   });
 
   it("opens an empty run history before a new connector has synced", async () => {
@@ -2482,8 +2543,9 @@ describe("connector workflow runs", () => {
     mocks.syncs.data = { connector: "jira", syncs: [], window: 50, runs: [] };
     render(<ConnectorHealthPane />);
     await userEvent.click(rowFor("jira"));
-    expect(screen.getByText("No active run")).toBeVisible();
-    expect(screen.getByText("No successful sync yet")).toBeVisible();
+    expect(
+      screen.getByText("No sync has been recorded for this connector.")
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { pressed: true })
     ).not.toBeInTheDocument();

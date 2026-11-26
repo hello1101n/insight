@@ -11,12 +11,10 @@ import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author"
 export function ConnectorScheduleHeader({
   schedule,
   loading = false,
-  heading,
   children,
 }: {
   schedule: ConnectorSchedule | undefined;
   loading?: boolean;
-  heading?: ReactNode;
   children?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -26,9 +24,9 @@ export function ConnectorScheduleHeader({
     schedule?.pending_reason
   );
   return (
-    <header className="flex min-w-0 flex-wrap items-center gap-2">
+    <header className="flex min-h-8 min-w-0 flex-wrap items-center gap-2">
       <h3 className="shrink-0 text-sm font-medium">
-        {heading ?? t("connectors.schedule.heading")}
+        {t("connectors.schedule.heading")}
       </h3>
       <div
         data-slot="schedule-header-status"

@@ -38,7 +38,7 @@ it("keeps editor preview chips and their exact tooltip in UTC", async () => {
   const { container } = render(pane());
   await userEvent.click(screen.getByRole("button", { name: "Edit" }));
   const times = screen
-    .getByText("Next (UTC)")
+    .getByText("Proposed runs (UTC)")
     .parentElement!.querySelectorAll("time");
   expect(Array.from(times, (time) => time.textContent)).toEqual([
     "23:30",

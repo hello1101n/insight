@@ -1,4 +1,11 @@
-import { Fragment, useId, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
   Ban,
@@ -11,7 +18,6 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   Badge,
-  Button,
   Card,
   CardTitle,
   Collapsible,
@@ -93,14 +99,9 @@ function RunMetrics({
     });
 
   return (
-    <Card
-      size="sm"
-      render={<section />}
-      data-metrics-expanded={detailsOpen ? "" : undefined}
-      className="min-w-0 gap-1 px-2 py-1 sm:px-3 sm:py-1.5"
-    >
+    <section className="min-w-0 py-1">
       <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <div className="mb-0.5 flex flex-wrap items-center gap-x-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <CardTitle render={<h3 />} className="text-xs font-semibold">
             {metrics.length > 0 || run?.finished_at ? (
               <CollapsibleTrigger
@@ -128,57 +129,52 @@ function RunMetrics({
                 showRunning
               />
             )}
-        </div>
-        {run == null ? (
-          <p className="text-xs text-muted-foreground">{empty}</p>
-        ) : (
-          <>
-            <p className="text-xs text-muted-foreground tabular-nums">
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {run ? (
               <ConnectorRunPeriod
                 startedAt={run.started_at}
                 finishedAt={detailsOpen ? run.finished_at : null}
               />
-            </p>
-            <CollapsibleContent>
-              {metrics.length > 0 && (
-                <dl className="mt-1 grid w-full grid-cols-[repeat(auto-fit,minmax(min(5rem,100%),1fr))] gap-2 border-t pt-1">
-                  {metrics.map(({ label, details, duration, tone }) => (
-                    <div key={label}>
-                      <dt className="text-xs text-muted-foreground">
-                        {label === state?.label ? (
-                          <ConnectorRunState
-                            run={run}
-                            asOf={asOf}
-                            timing={timing ?? undefined}
-                            showRunning
-                          />
+            ) : (
+              empty
+            )}
+          </p>
+        </div>
+        {run && metrics.length > 0 && (
+          <CollapsibleContent>
+            <dl className="mt-1 grid w-full grid-cols-[repeat(auto-fit,minmax(min(6rem,100%),1fr))] gap-2 border-t pt-1">
+              {metrics.map(({ label, details, duration, tone }) => (
+                <div key={label}>
+                  <dt className="text-xs text-muted-foreground">
+                    {label === state?.label ? (
+                      <ConnectorRunState
+                        run={run}
+                        asOf={asOf}
+                        timing={timing ?? undefined}
+                        showRunning
+                      />
+                    ) : (
+                      <RunTooltip lines={details}>
+                        {tone ? (
+                          <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
+                            {label}
+                          </Badge>
                         ) : (
-                          <RunTooltip lines={details}>
-                            {tone ? (
-                              <Badge
-                                variant={TONE_BADGE[tone]}
-                                data-tone={tone}
-                              >
-                                {label}
-                              </Badge>
-                            ) : (
-                              label
-                            )}
-                          </RunTooltip>
+                          label
                         )}
-                      </dt>
-                      <dd className="text-sm font-medium tabular-nums">
-                        {formatDuration(duration)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </CollapsibleContent>
-          </>
+                      </RunTooltip>
+                    )}
+                  </dt>
+                  <dd className="text-sm font-medium tabular-nums">
+                    {formatDuration(duration)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </CollapsibleContent>
         )}
       </Collapsible>
-    </Card>
+    </section>
   );
 }
 
@@ -295,7 +291,7 @@ function Timeline({
   return (
     <section className="min-w-0 space-y-1.5">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs tabular-nums sm:text-sm">
-        <strong className="font-semibold">
+        <strong className="min-w-0 font-semibold whitespace-normal">
           <ConnectorRunPeriod
             startedAt={run.started_at}
             finishedAt={run.finished_at}
@@ -315,7 +311,7 @@ function Timeline({
       {timing.steps.length > 0 || timing.trailingQueue ? (
         <Card size="sm" className="min-w-0 px-2 py-1.5">
           <Collapsible open={stepsOpen} onOpenChange={onStepsOpenChange}>
-            <CardTitle render={<h4 />} className="text-sm">
+            <CardTitle render={<h5 />} className="text-sm">
               <CollapsibleTrigger
                 type="button"
                 className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-start focus-visible:outline-2"
@@ -411,9 +407,9 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   const status = describeSync(sync);
   return (
     <section className="space-y-2">
-      <h4 className="text-sm font-semibold">
+      <h5 className="text-sm font-semibold">
         {t("connectors.history.load_utc", { step: stepLabel("bronze") })}
-      </h4>
+      </h5>
       <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
         <ConnectorTimestamp value={sync.started_at} />
         <Badge variant={TONE_BADGE[status.tone]} data-tone={status.tone}>
@@ -447,20 +443,27 @@ export function ConnectorRunHistory({
   const { t } = useTranslation();
   const heading = useId();
   const detailsId = `${heading}-detail`;
+  const container = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<"narrow" | "stacked" | "wide">(
+    "stacked"
+  );
   const [selectedId, select] = useState<string | null>(null);
   const [stepsOpen, setStepsOpen] = useState(false);
 
-  function openRun(id: string, scrollToDetails = false) {
-    if (stepsOpen && id !== selected?.id) captureDetailsHeight();
-    select(id);
-    setStepsOpen(true);
-    if (scrollToDetails)
-      requestAnimationFrame(() => {
-        const details = detailsRef.current;
-        details?.focus({ preventScroll: true });
-        details?.scrollIntoView?.({ block: "nearest" });
-      });
-  }
+  useLayoutEffect(() => {
+    const element = container.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    function updateLayout(width: number) {
+      setLayout(width < 512 ? "narrow" : width >= 1040 ? "wide" : "stacked");
+    }
+    updateLayout(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) =>
+      updateLayout(entry.contentRect.width)
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const recent = latest ? projectRun(latest) : undefined;
   const managed = runs.map(projectRun);
   if (recent && !managed.some((run) => run.sync_id === recent.sync_id))
@@ -479,65 +482,106 @@ export function ConnectorRunHistory({
   const history = recentHistory(managed, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
 
-  const [detailsRef, captureDetailsHeight] = useHeightTransition(selected?.id);
+  const [detailsRef, captureDetailsHeight] = useHeightTransition<HTMLElement>(
+    selected?.id
+  );
+  const inlineDetails = layout === "narrow" && selectedId !== null;
+
+  function openRun(id: string) {
+    if (stepsOpen && id !== selected?.id) captureDetailsHeight();
+    select(id);
+    setStepsOpen(true);
+    requestAnimationFrame(() => {
+      const details = detailsRef.current;
+      details?.focus({ preventScroll: true });
+      details?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
+
+  const details = selected && (
+    <section
+      ref={detailsRef}
+      id={detailsId}
+      aria-labelledby={`${detailsId}-heading`}
+      tabIndex={-1}
+      className="min-w-0 scroll-mt-16 space-y-1.5 rounded-md border bg-muted/20 p-2 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 @min-[1040px]:col-start-2 @min-[1040px]:row-start-1 @min-[1040px]:p-3"
+    >
+      <h4 id={`${detailsId}-heading`} className="text-xs font-semibold">
+        {t("connectors.runs.selected")}
+      </h4>
+      {"sync_id" in selected.record ? (
+        <Timeline
+          run={selected.record}
+          asOf={asOf}
+          stepsOpen={stepsOpen}
+          onStepsOpenChange={setStepsOpen}
+        />
+      ) : (
+        <HistoricalLoad sync={selected.record} asOf={asOf} />
+      )}
+    </section>
+  );
 
   return (
-    <div className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2">
-      <div className="grid min-w-0 grid-cols-2 items-start gap-1.5 has-[>section[data-metrics-expanded]+section[data-metrics-expanded]]:items-stretch">
-        <RunMetrics
-          title={t("connectors.runs.latest_success")}
-          empty={t("connectors.runs.no_success")}
-          run={successful}
-          asOf={asOf}
-        />
-        <RunMetrics
-          title={t("connectors.runs.current")}
-          empty={t("connectors.runs.no_current")}
-          run={current && isActiveRun(current) ? current : null}
-          asOf={asOf}
-        />
-      </div>
+    <div
+      ref={container}
+      className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2"
+    >
+      {(current || successful) && (
+        <div className="divide-y border-b @min-[1040px]:grid @min-[1040px]:grid-cols-2 @min-[1040px]:divide-x @min-[1040px]:divide-y-0 @min-[1040px]:[&>section:first-child]:pr-4 @min-[1040px]:[&>section:last-child]:pl-4">
+          <RunMetrics
+            title={t("connectors.runs.current")}
+            empty={t("connectors.runs.no_current")}
+            run={current && isActiveRun(current) ? current : null}
+            asOf={asOf}
+          />
+          <RunMetrics
+            title={t("connectors.runs.latest_success")}
+            empty={t("connectors.runs.no_success")}
+            run={successful}
+            asOf={asOf}
+          />
+        </div>
+      )}
       <section aria-labelledby={heading} className="space-y-1.5 sm:space-y-2">
         <div className="flex items-center gap-3">
           <h3 id={heading} className="shrink-0 text-sm font-semibold">
             {t("connectors.history.heading")}
             {history.length > 0 && ` · ${history.length}`}
           </h3>
-          <ol
-            aria-label={t("connectors.history.statuses_label")}
-            className="grid max-w-xs min-w-0 flex-1"
-            style={{
-              gridTemplateColumns: `repeat(${Math.max(history.length, 1)}, minmax(0, 1fr))`,
-            }}
-          >
-            {history.toReversed().map(({ id, record }) => {
-              const state =
-                "sync_id" in record
-                  ? describeRunState(record, asOf)
-                  : describeSync(record);
-              const severity =
-                "kind" in state && state.kind === "queued"
-                  ? queueSeverity(state.tone)
-                  : null;
-              const label = [
-                formatStarted(record.started_at),
-                state.label,
-                severity,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <li key={id} className="group min-w-0">
-                  <Tooltip>
+          {history.length > 0 && (
+            <ol
+              aria-label={t("connectors.history.statuses_label")}
+              className="grid max-w-xs min-w-0 flex-1"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(history.length, 1)}, minmax(0, 1fr))`,
+              }}
+            >
+              {history.toReversed().map(({ id, record }) => {
+                const state =
+                  "sync_id" in record
+                    ? describeRunState(record, asOf)
+                    : describeSync(record);
+                const severity =
+                  "kind" in state && state.kind === "queued"
+                    ? queueSeverity(state.tone)
+                    : null;
+                const label = [
+                  formatStarted(record.started_at),
+                  state.label,
+                  severity,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <Tooltip key={id}>
                     <TooltipTrigger
-                      render={
-                        <Button type="button" size="sm" variant="ghost" />
-                      }
-                      className="relative block h-7 w-full min-w-0 rounded-none border-0 bg-transparent p-0 hover:bg-transparent focus-visible:z-10 aria-pressed:after:absolute aria-pressed:after:inset-x-0 aria-pressed:after:bottom-0.5 aria-pressed:after:mx-auto aria-pressed:after:h-0.5 aria-pressed:after:w-full aria-pressed:after:max-w-6 aria-pressed:after:rounded-full aria-pressed:after:bg-foreground"
+                      render={<li />}
+                      role="listitem"
+                      tabIndex={-1}
+                      className="group relative h-7 min-w-0"
                       aria-label={label}
-                      aria-controls={detailsId}
-                      aria-pressed={id === selected?.id}
-                      onClick={() => openRun(id)}
+                      aria-current={id === selected?.id || undefined}
                     >
                       <span
                         aria-hidden="true"
@@ -546,64 +590,62 @@ export function ConnectorRunHistory({
                           historySegmentStyle(record.status, state.tone)
                         )}
                       />
+                      {id === selected?.id && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-x-0 bottom-0.5 mx-auto h-0.5 max-w-6 rounded-full bg-foreground"
+                        />
+                      )}
                     </TooltipTrigger>
                     <TooltipContent role="tooltip">{label}</TooltipContent>
                   </Tooltip>
-                </li>
-              );
-            })}
-          </ol>
+                );
+              })}
+            </ol>
+          )}
         </div>
-        {selected && (
-          <div
-            ref={detailsRef}
-            id={detailsId}
-            tabIndex={-1}
-            className="scroll-mt-16 focus:outline-none"
-          >
-            {"sync_id" in selected.record ? (
-              <Timeline
-                run={selected.record}
-                asOf={asOf}
-                stepsOpen={stepsOpen}
-                onStepsOpenChange={setStepsOpen}
-              />
-            ) : (
-              <HistoricalLoad sync={selected.record} asOf={asOf} />
-            )}
-          </div>
-        )}
-        {selected && (
-          <ConnectorSyncTable
-            id={`${heading}-table`}
-            selection={{
-              selectedId: selected.id,
-              detailsId,
-              onSelect: (id) => openRun(id, true),
-            }}
-            rows={history.map(({ id, record }) => {
-              if ("sync_id" in record)
-                return {
-                  id,
-                  status: describeRunState(record, asOf),
-                  started: record.started_at,
-                  duration: runDuration(record, asOf),
-                  inFlight: isActiveRun(record),
-                  records: record.records_reported,
-                };
+        {selected ? (
+          <div className="grid min-w-0 gap-2 @min-[1040px]:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] @min-[1040px]:items-start @min-[1040px]:gap-4">
+            {layout === "stacked" && details}
+            <div className="min-w-0 @min-[1040px]:col-start-1 @min-[1040px]:row-start-1">
+              <ConnectorSyncTable
+                id={`${heading}-table`}
+                selection={{
+                  selectedId: selected.id,
+                  detailsId,
+                  inlineDetails: inlineDetails ? details : undefined,
+                  onSelect: openRun,
+                }}
+                rows={history.map(({ id, record }) => {
+                  if ("sync_id" in record)
+                    return {
+                      id,
+                      status: describeRunState(record, asOf),
+                      started: record.started_at,
+                      duration: runDuration(record, asOf),
+                      inFlight: isActiveRun(record),
+                      records: record.records_reported,
+                    };
 
-              const state = describeSync(record);
-              const duration = describeDuration(record, asOf);
-              return {
-                id,
-                status: state,
-                started: record.started_at,
-                duration: duration.text,
-                inFlight: duration.inFlight,
-                records: record.records_reported,
-              };
-            })}
-          />
+                  const state = describeSync(record);
+                  const duration = describeDuration(record, asOf);
+                  return {
+                    id,
+                    status: state,
+                    started: record.started_at,
+                    duration: duration.text,
+                    inFlight: duration.inFlight,
+                    records: record.records_reported,
+                  };
+                })}
+              />
+            </div>
+            {layout !== "stacked" && !inlineDetails && details}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("connectors.history.empty")}
+          </p>
         )}
       </section>
     </div>

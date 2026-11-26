@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
 
 import type {
   AppliedSchedule,
@@ -8,14 +7,7 @@ import type {
   ScheduleRead,
 } from "@/api/connector-health-client";
 import { ConnectorsApiError } from "@/api/connectors-client";
-import {
-  Alert,
-  Button,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-  toast,
-} from "@gears-frontx/ui-kit";
+import { Alert, Button, toast } from "@gears-frontx/ui-kit";
 import { ConnectorScheduleHeader } from "./connector-schedule-header";
 import { ConnectorScheduleStatus } from "./connector-schedule-status";
 import { ConnectorScheduleEditor } from "./connector-schedule-editor";
@@ -40,12 +32,10 @@ export function ConnectorSchedulePane({
   row,
   polling,
   reconcileIntervalSecs,
-  collapseDetails = false,
 }: {
   row: ConnectorHealth;
   polling: boolean;
   reconcileIntervalSecs?: number | null;
-  collapseDetails?: boolean;
 }) {
   const { t } = useTranslation();
   const query = useConnectorSchedule(row, polling);
@@ -53,7 +43,6 @@ export function ConnectorSchedulePane({
   const [failedRevision, setFailedRevision] = useState<number>();
   const [editing, setEditing] = useState(false);
   const [scheduleBody, captureScheduleHeight] = useHeightTransition(editing);
-  const [detailsOpen, setDetailsOpen] = useState(!collapseDetails);
   const [retryError, setRetryError] = useState<
     (ReturnType<typeof saveError> & { read: ScheduleRead }) | null
   >(null);
@@ -209,79 +198,56 @@ export function ConnectorSchedulePane({
           onClose={close}
         />
       ) : (
-        <Collapsible
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-          className="min-w-0 [overflow-wrap:anywhere] whitespace-normal"
-        >
+        <div className="min-w-0 space-y-2 [overflow-wrap:anywhere] whitespace-normal">
           <ConnectorScheduleHeader
             schedule={schedule}
             loading={query.isPending && !schedule && row.source_id != null}
-            heading={
-              collapseDetails ? (
-                <CollapsibleTrigger
-                  type="button"
-                  className="group inline-flex min-h-7 cursor-pointer items-center gap-1 rounded-sm focus-visible:outline-2"
-                >
-                  {t("connectors.schedule.heading")}
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="size-3.5 transition-transform group-aria-expanded:rotate-90 motion-reduce:transition-none"
-                  />
-                </CollapsibleTrigger>
-              ) : undefined
-            }
           >
-            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-3">
-              {override && (
-                <span className="text-xs text-muted-foreground">
-                  {t("connectors.schedule.request_author", {
-                    person,
-                    time: scheduleTimePhrase(request.updated_at),
-                  })}
-                </span>
-              )}
-              {schedule && (
-                <Button
-                  ref={editButton}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={write.isPending}
-                  onClick={() => {
-                    captureScheduleHeight();
-                    setEditing(true);
-                  }}
-                >
-                  {t("common.actions.edit")}
-                </Button>
-              )}
-            </div>
-          </ConnectorScheduleHeader>
-          <CollapsibleContent>
-            <div className="space-y-3 pt-2">
-              <div
-                className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
-                data-slot="schedule-value"
+            {schedule && (
+              <Button
+                ref={editButton}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                disabled={write.isPending}
+                onClick={() => {
+                  captureScheduleHeight();
+                  setEditing(true);
+                }}
               >
-                <ScheduleValue
-                  schedule={displayed}
-                  defaultUnknown={differs && !override}
-                />
-              </div>
-              {schedule?.status === "inherited" &&
-                schedule.inherited?.origin === "annotation" && (
-                  <ConnectorScheduleDetails text="insight.cyberfabric.com/schedule" />
-                )}
-              {!differs && live?.timezone && (
-                <ConnectorScheduleRuns
-                  crons={live.crons}
-                  timezone={live.timezone}
-                  suspended={live.suspended}
-                />
-              )}
-            </div>
-          </CollapsibleContent>
+                {t("common.actions.edit")}
+              </Button>
+            )}
+          </ConnectorScheduleHeader>
+          {override && (
+            <p className="text-xs text-muted-foreground">
+              {t("connectors.schedule.request_author", {
+                person,
+                time: scheduleTimePhrase(request.updated_at),
+              })}
+            </p>
+          )}
+          <div
+            className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
+            data-slot="schedule-value"
+          >
+            <ScheduleValue
+              schedule={displayed}
+              defaultUnknown={differs && !override}
+            />
+          </div>
+          {schedule?.status === "inherited" &&
+            schedule.inherited?.origin === "annotation" && (
+              <ConnectorScheduleDetails text="insight.cyberfabric.com/schedule" />
+            )}
+          {!differs && live?.timezone && (
+            <ConnectorScheduleRuns
+              crons={live.crons}
+              timezone={live.timezone}
+              suspended={live.suspended}
+            />
+          )}
           {schedule && (
             <ConnectorScheduleStatus
               schedule={schedule}
@@ -315,7 +281,7 @@ export function ConnectorSchedulePane({
               </Button>
             </div>
           )}
-        </Collapsible>
+        </div>
       )}
     </div>
   );

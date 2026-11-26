@@ -159,7 +159,6 @@ it.each([true, false])(
     await userEvent.unhover(scheduleButton);
     if (!expanded) await userEvent.click(row);
     await screen.findByText(/Saved by Example Admin/);
-    await userEvent.click(screen.getByRole("button", { name: "Schedule" }));
     expect(screen.getByText("0 9 * * 0")).toBeInTheDocument();
     expect(screen.queryByText(/overrides default/)).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain(OTHER);

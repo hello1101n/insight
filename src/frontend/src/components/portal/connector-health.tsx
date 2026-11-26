@@ -266,7 +266,13 @@ export function ConnectorHealthPane() {
                         inert={!open}
                         className="min-w-0 overflow-clip! [contain:inline-size] motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0"
                       >
-                        <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-2 py-1 [overflow-wrap:anywhere] whitespace-normal sm:py-2 @4xl:has-[[data-slot=connector-schedule-editor]]:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] @4xl:has-[[data-slot=connector-schedule-editor]]:items-start">
+                        <div
+                          className={cn(
+                            "sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 items-start gap-2 py-1 [overflow-wrap:anywhere] whitespace-normal sm:py-2",
+                            row.configured &&
+                              "@min-[58rem]:grid-cols-[clamp(20rem,32%,22rem)_minmax(0,1fr)] @min-[58rem]:gap-4 @min-[90rem]:grid-cols-[clamp(22rem,26%,27rem)_minmax(0,1fr)] @min-[114rem]:mx-auto @min-[114rem]:max-w-[112rem]"
+                          )}
+                        >
                           {row.configured && (
                             <Card
                               size="sm"
@@ -275,7 +281,6 @@ export function ConnectorHealthPane() {
                               <ConnectorSchedulePane
                                 row={row}
                                 polling={polling}
-                                collapseDetails
                                 reconcileIntervalSecs={
                                   data.typical_read_interval_ms == null
                                     ? null

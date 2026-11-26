@@ -145,7 +145,9 @@ export function ConnectorSyncHistory({
             )}
           </>
         )}
-        <p className="ml-auto text-xs text-muted-foreground">{count}</p>
+        {syncs.length > 0 && (
+          <p className="ml-auto text-xs text-muted-foreground">{count}</p>
+        )}
       </div>
       {syncs.length === 0 ? (
         <p className="text-sm text-muted-foreground">

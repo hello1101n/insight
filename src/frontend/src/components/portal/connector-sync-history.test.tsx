@@ -140,7 +140,7 @@ it("pages through history from the keyboard without expanding the table", async 
 });
 
 it.each([
-  [0, "Latest 0"],
+  [0, null],
   [7, "Latest 7"],
   [10, "Latest 10"],
   [50, "Latest 50"],
@@ -151,7 +151,8 @@ it.each([
     expect(
       screen.getByRole("heading", { name: "Recent syncs" })
     ).toBeInTheDocument();
-    expect(screen.getByText(heading)).toBeInTheDocument();
+    if (heading) expect(screen.getByText(heading)).toBeInTheDocument();
+    else expect(screen.queryByText("Latest 0")).not.toBeInTheDocument();
     if (count <= 5)
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
     if (count === 0) {

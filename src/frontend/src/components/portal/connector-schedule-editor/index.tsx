@@ -339,7 +339,7 @@ export function ConnectorScheduleEditor({
       </fieldset>
       {(choice.kind !== "custom" || canBuild) && (
         <div className="max-w-full min-w-0 space-y-1 justify-self-start rounded-lg bg-muted p-2.5 text-sm">
-          <ConnectorScheduleRuns crons={canBuild ? crons : []} />
+          <ConnectorScheduleRuns crons={canBuild ? crons : []} preview />
           {choice.kind !== "custom" && canBuild && (
             <p className="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs text-muted-foreground">
               <code className="min-w-0">{crons.join("; ")}</code>{" "}
