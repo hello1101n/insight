@@ -16,6 +16,7 @@ import {
   type CellActionTarget,
   type CellFailureReport,
   type DashboardHost,
+  type FrameTexts,
 } from "@gears-frontx/frontx-dashboard-root";
 
 import {
@@ -116,6 +117,17 @@ function reportFailure({
   });
 }
 
+const DRAW_FAILED = "Couldn't draw this widget.";
+
+function failureTexts(admin: boolean): FrameTexts["cannotBeShownFor"] {
+  return {
+    ...(admin ? { request: "The metric could not be run." } : {}),
+    transform: DRAW_FAILED,
+    data: DRAW_FAILED,
+    render_widget: DRAW_FAILED,
+  };
+}
+
 let root: DashboardRoot | undefined;
 
 const appRoot = () =>
@@ -212,6 +224,7 @@ export default function FrontxBoard({ id, read, range }: FrontxBoardProps) {
           frame: {
             loading: "Loading",
             cannotBeShown: "This widget couldn't be loaded.",
+            cannotBeShownFor: failureTexts(isAdmin),
             openLarger: (title) => `Expand ${title}`,
             close: t("common.actions.close"),
             retry: t("common.actions.retry"),

@@ -5,6 +5,7 @@ import type {
   CellActionTarget,
   CellFailureReport,
   DashboardHost,
+  FrameTexts,
 } from "@gears-frontx/frontx-dashboard-root";
 import type {
   Dashboard as FrontxDashboard,
@@ -26,6 +27,7 @@ const fx = vi.hoisted(() => ({
   onFailure: undefined as ((failure: CellFailureReport) => void) | undefined,
   cellActions: undefined as
     ((target: CellActionTarget) => readonly CellAction[]) | undefined,
+  texts: undefined as { frame?: Partial<FrameTexts> } | undefined,
   parts: [{ types: [{ $id: "part" }], instances: [] }],
 }));
 
@@ -65,8 +67,10 @@ vi.mock("@gears-frontx/frontx-dashboard-root", async (importOriginal) => ({
     variables: Record<string, string>;
     overlayContainer: HTMLElement;
     cellActions?: (target: CellActionTarget) => readonly CellAction[];
+    texts?: { frame?: Partial<FrameTexts> };
   }) => {
     fx.cellActions = props.cellActions;
+    fx.texts = props.texts;
     return (
       <div
         data-testid="frontx-dashboard"
@@ -387,6 +391,27 @@ describe("FrontxBoard", () => {
       actionsOf(dashboard, cell.widget.id).map((action) => action.label)
     ).toEqual(["Details"]);
   });
+
+  it.each([
+    [true, "The metric could not be run."],
+    [false, undefined],
+  ])(
+    "shows the current renderer's text for each failure kind, for an admin %s",
+    async (admin, request) => {
+      role.isAdmin = admin;
+      await hostOf(`board-texts-${admin}`);
+
+      expect(fx.texts?.frame?.cannotBeShown).toBe(
+        "This widget couldn't be loaded."
+      );
+      expect(fx.texts?.frame?.cannotBeShownFor).toEqual({
+        ...(request ? { request } : {}),
+        transform: "Couldn't draw this widget.",
+        data: "Couldn't draw this widget.",
+        render_widget: "Couldn't draw this widget.",
+      });
+    }
+  );
 
   it("gives no action on a heading or a text cell", async () => {
     const dashboard = await shownDashboard(await hostOf("board-t", WITH_PROSE));
