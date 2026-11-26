@@ -230,12 +230,12 @@ import os
 class FailsAtTheThirdSwap(ClickHouse):
     swaps: list[str] = field(default_factory=list)
 
-    def execute(self, sql: str, *, fmt: str | None = None) -> str:
+    def execute(self, sql: str, *, fmt: str | None = None, params: dict[str, str] | None = None) -> str:
         if sql.startswith("EXCHANGE TABLES"):
             self.swaps.append(sql)
             if len(self.swaps) == 3:
                 raise RuntimeError("injected failure at the third swap")
-        return super().execute(sql, fmt=fmt)
+        return super().execute(sql, fmt=fmt, params=params)
 
 
 env = ClickHouse.from_env()
