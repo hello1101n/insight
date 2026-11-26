@@ -58,18 +58,38 @@
       {{ log("union_by_tag: no source tables for tag '" ~ tag_name ~ "' — emitting empty select from the target to preserve schema", info=True) }}
       SELECT * FROM {{ this }} WHERE 1 = 0
     {%- else -%}
+      {%- set relations = [] -%}
+      {%- for m in models -%}{%- do relations.append(ref(m.name)) -%}{%- endfor -%}
+      {{ union_relations_latest(relations, dedup_version_col) }}
+    {%- endif -%}
+  {%- else -%}
+    SELECT 1 AS _placeholder WHERE FALSE
+  {%- endif -%}
+{% endmacro %}
+
+{#-
+  union_relations_latest(relations, dedup_version_col)
+
+  The UNION ALL of `relations` with one row per `unique_key`. With a version
+  column the newest version wins: it is found over `unique_key` and the
+  version alone, and only the winning rows are read whole, so memory follows
+  the number of keys, not the width of the rows.
+
+  INVARIANT: keys and versions compare as (isNull, assumeNotNull) pairs; a
+  plain IN never matches NULL and would drop a NULL key or version.
+  INVARIANT: the relations are read twice, so a view arm runs twice. A key
+  whose relation another run replaces between the reads matches no winning
+  version and leaves this batch; its newer version passes the next run's
+  watermark, so it is late, not lost.
+-#}
+{% macro union_relations_latest(relations, dedup_version_col) %}
       SELECT * FROM (
-      {%- for m in models %}
-        SELECT * FROM {{ ref(m.name) }}
+      {%- for relation in relations %}
+        SELECT * FROM {{ relation }}
         {%- if not loop.last %} UNION ALL {% endif %}
       {%- endfor %}
       ) AS _ubt
       {% if dedup_version_col %}
-      {#- One row per unique_key, latest version wins. The winning versions are
-          found over the two narrow columns first, so the wide columns are read
-          only for the rows that win.
-          INVARIANT: keys and versions compare as (isNull, assumeNotNull) pairs;
-          a plain IN never matches NULL and would drop a NULL key or version. -#}
       WHERE (isNull(unique_key), assumeNotNull(unique_key),
              isNull({{ dedup_version_col }}), assumeNotNull({{ dedup_version_col }})) IN (
           SELECT isNull(unique_key), assumeNotNull(unique_key),
@@ -77,8 +97,8 @@
           FROM (
               SELECT unique_key, max({{ dedup_version_col }}) AS winning_version
               FROM (
-              {%- for m in models %}
-                  SELECT unique_key, {{ dedup_version_col }} FROM {{ ref(m.name) }}
+              {%- for relation in relations %}
+                  SELECT unique_key, {{ dedup_version_col }} FROM {{ relation }}
                   {%- if not loop.last %} UNION ALL {% endif %}
               {%- endfor %}
               ) AS _ubt_versions
@@ -90,8 +110,4 @@
       {# Versionless RMT (no _version column): any row per unique_key. #}
       LIMIT 1 BY unique_key
       {% endif %}
-    {%- endif -%}
-  {%- else -%}
-    SELECT 1 AS _placeholder WHERE FALSE
-  {%- endif -%}
 {% endmacro %}
