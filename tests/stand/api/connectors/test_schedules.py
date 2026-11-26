@@ -12,6 +12,7 @@ from ..schemas.connectors import ScheduleResponse
 UNKNOWN = connectors_path(f"/v1/connectors/{SOME_CONNECTOR}/{SOME_SOURCE_ID}/schedule")
 DISABLED = "cluster connection is unavailable"
 BODIES = {"PUT": {"crons": ["0 6 * * *"]}, "PATCH": {"dbt_cpu_millis": 500}}
+UNCHANGED = {"PATCH": "resources were not changed"}
 
 
 @pytest.fixture(scope="module")
@@ -40,16 +41,16 @@ def test_unavailable_cluster_preserves_the_request_and_revision(
     client = admin_operator_session.client
     initial_response = client.get(schedule_path)
     initial = initial_response.parse(ScheduleResponse)
-    for method in ["PUT", "DELETE"]:
+    for method in ["PUT", "PATCH", "DELETE"]:
         refused = client.request(
             method,
             schedule_path,
             headers={"If-Match": initial_response.headers["etag"]},
-            json_body={"crons": ["0 6 * * *"]} if method == "PUT" else None,
+            json_body=BODIES.get(method),
         )
         assert refused.status_code == 503, refused.text
         detail = refused.parse(ProblemDocument).detail
-        assert "schedule was not changed" in detail
+        assert UNCHANGED.get(method, "schedule was not changed") in detail
         assert DISABLED in detail
         current = client.get(schedule_path)
         assert current.status_code == 200, current.text
@@ -61,7 +62,7 @@ def test_unavailable_cluster_preserves_the_request_and_revision(
             method,
             schedule_path,
             headers={"If-Match": f'"{initial.revision + 1}"'},
-            json_body={"crons": ["0 9 * * *"]} if method == "PUT" else None,
+            json_body={"crons": ["0 9 * * *"]} if method == "PUT" else BODIES.get(method),
         )
         assert stale.status_code == 412, stale.text
         assert stale.headers["etag"] == initial_response.headers["etag"]
@@ -71,12 +72,12 @@ def test_unavailable_cluster_preserves_the_request_and_revision(
 @pytest.mark.requires_seed("admin_operator")
 @pytest.mark.requires_connector_schedules
 @pytest.mark.reliability
-@pytest.mark.parametrize("method", ["PUT", "DELETE"])
+@pytest.mark.parametrize("method", ["PUT", "PATCH", "DELETE"])
 def test_writes_require_if_match(
     admin_operator_session: PersonaSession, schedule_path: str, method: str
 ) -> None:
     response = admin_operator_session.client.request(
-        method, schedule_path, json_body={"crons": ["0 6 * * *"]}
+        method, schedule_path, json_body=BODIES.get(method, BODIES["PUT"])
     )
     assert response.status_code == 428, response.text
     assert response.parse(ProblemDocument).status == 428
