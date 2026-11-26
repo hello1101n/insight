@@ -285,7 +285,9 @@ Then reconcile the gate, which is what "closing a coverage gap" means:
 ```bash
 python3 tests/lib/insight_stand/coverage.py \
   --observed .artifacts/stand_observed_endpoints.json \
-  --catalogue .artifacts/stand_operations.json
+  --catalogue .artifacts/stand_operations.json \
+  --spec /api/connectors=docs/components/backend/connectors/openapi.json \
+  --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ```
 
 8. Hand a claim marked `EXPECTED TO FAIL` to `file-bug-insight` rather than

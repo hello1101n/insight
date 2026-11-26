@@ -285,8 +285,7 @@ on the suite's result is backwards.
 The gate compares the two, and with `--spec` it also fails an operation the
 OpenAPI documents that no test calls. Release validation runs it with both
 specs. It is stdlib-only, so it runs on a machine with no stand, no uv and no
-browser. `./dev-compose.sh test-stand test` writes both files to
-`test-results/` instead of `.artifacts/`:
+browser:
 
 ```bash
 python3 tests/lib/insight_stand/coverage.py \

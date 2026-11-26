@@ -20,8 +20,8 @@ When a change touches what a deployed Insight serves — `src/backend/`, `src/fr
 ./dev-compose.sh test-stand up --instance=worktree
 ./dev-compose.sh test-stand test --instance=worktree --ignore=tests/stand/ui
 python3 tests/lib/insight_stand/coverage.py \
-  --observed test-results/stand_observed_endpoints.json \
-  --catalogue test-results/stand_operations.json \
+  --observed .artifacts/stand_observed_endpoints.json \
+  --catalogue .artifacts/stand_operations.json \
   --spec /api/connectors=docs/components/backend/connectors/openapi.json \
   --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ./dev-compose.sh test-stand down --instance=worktree
