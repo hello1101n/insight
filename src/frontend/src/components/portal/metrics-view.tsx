@@ -410,6 +410,8 @@ function MetricsBody({
             keys={shown}
             byKey={byKey}
             roles={roles}
+            personal={personal}
+            range={range}
           />
         </div>
       ) : (

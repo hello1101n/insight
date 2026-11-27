@@ -1,27 +1,40 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import type { DateRange } from "@/api/period-to-date-range";
 import { MetricValue, UnitNote } from "@/components/portal/metrics-table";
+import {
+  PersonalRecordsDialog,
+  type PersonalRecordsTarget,
+} from "@/components/portal/personal-records-dialog";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import type { PersonalMetricDefinition } from "@/lib/portal/personal-metrics";
 import { compareGaps, finiteValue, formatGap } from "@/lib/portal/metrics-view";
 import { cn } from "@/lib/utils";
 
 const STICKY_START = "sticky start-0 z-10 bg-card";
 const GAP_SLOT = "ms-2 inline-block w-14 text-start text-xs font-normal text-muted-foreground";
+const NO_PERSONAL: ReadonlyMap<string, PersonalMetricDefinition> = new Map();
 
 export function MetricsCompareTable({
   people,
   keys,
   byKey,
   roles,
+  personal = NO_PERSONAL,
+  range,
 }: {
   people: readonly MembersGridMember[];
   keys: readonly string[];
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   roles: ReadonlyMap<string, string>;
+  personal?: ReadonlyMap<string, PersonalMetricDefinition>;
+  range?: DateRange;
 }) {
   const { t } = useTranslation();
+  const [records, setRecords] = useState<PersonalRecordsTarget | null>(null);
   return (
     <div className="max-h-[75svh] overflow-auto">
       <table className="w-full border-separate border-spacing-0 text-sm">
@@ -90,6 +103,17 @@ export function MetricsCompareTable({
                         result={result}
                         entityId={person.entityId}
                         personName={person.displayName}
+                        onOpen={
+                          personal.get(key) && range
+                            ? (value) =>
+                                setRecords({
+                                  metric: personal.get(key)!,
+                                  personId: person.entityId,
+                                  personName: person.displayName,
+                                  value,
+                                })
+                            : undefined
+                        }
                       />
                       {cell.best ? <span className="sr-only"> (best)</span> : null}
                       <span className={GAP_SLOT}>{formatGap(cell.gap)}</span>
@@ -101,6 +125,13 @@ export function MetricsCompareTable({
           })}
         </tbody>
       </table>
+      {range ? (
+        <PersonalRecordsDialog
+          target={records}
+          range={range}
+          onClose={() => setRecords(null)}
+        />
+      ) : null}
     </div>
   );
 }

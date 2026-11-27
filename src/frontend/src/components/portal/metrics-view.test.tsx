@@ -1012,6 +1012,34 @@ describe("MetricsView personal metrics", () => {
     });
   });
 
+  it("a compared personal value opens its records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue({
+      columns: [
+        { key: "author", label: "Author", type: "string", sortable: false, percent: false, exact: false },
+      ],
+      rows: [{ values: { author: "Ethan Okafor" } }],
+      next_cursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetricsView />
+      </QueryClientProvider>,
+    );
+
+    await compare(user, ["a", "b"]);
+    await user.click(screen.getByRole("button", { name: /^b — Support load: 5/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Support load · b" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("Ethan Okafor")).toBeInTheDocument();
+    expect(mocks.fetchPersonalRecords).toHaveBeenCalledWith("load", {
+      person_id: pid("b"),
+      from: "2026-07-01",
+      to: "2026-08-01",
+    });
+  });
+
   it("leaves an empty personal cell and a failed personal column unclickable", () => {
     mocks.data.byKey.set(
       "personal.load",
