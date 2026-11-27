@@ -1621,7 +1621,7 @@ describe("connector workflow runs", () => {
     expect(summary).toHaveTextContent(/Bronze5sSilver25sIdentity3sGold27s/);
   });
 
-  it("merges overlapping waits and gaps into one Queued row per step", async () => {
+  it("shows completed waits on the timeline and lists each stage once", async () => {
     await openRun({
       ...run(1),
       status: "succeeded",
@@ -1636,24 +1636,30 @@ describe("connector workflow runs", () => {
           ],
         },
         step("transform-jira-staging", -20, -10),
-        step("transform-legacy", -10, -3),
+        step("identity-seed", -10, -7),
+        step("transform-legacy", -7, -3),
       ],
     });
     const rows = within(
       screen.getByRole("list", { name: "Run steps (UTC)" })
     ).getAllByRole("listitem");
     expect(rows).toHaveLength(4);
-    expect(rows[1]).toHaveTextContent(/Queued25s/);
-    expect(rows[2]).toHaveTextContent("Silver");
-    const queued = within(rows[1]).getByText("Queued");
+    for (const [index, label] of [
+      "Bronze",
+      "Silver",
+      "Identity",
+      "Gold",
+    ].entries()) {
+      expect(within(rows[index]).getByText(label)).toBeVisible();
+    }
+    const band = within(
+      screen.getByRole("figure", { name: "Steps of the selected sync" })
+    );
+    const queued = band.getByLabelText(/Queued · 20s/);
     await userEvent.hover(queued);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       /Waiting for a lock.*Waiting for cluster capacity/s
     );
-    const band = within(
-      screen.getByRole("figure", { name: "Steps of the selected sync" })
-    );
-    expect(band.getByLabelText(/Queued · 20s/)).toBeVisible();
     const gap = band.getByLabelText("15 Jan 2026 · 11:59:35 · Queued · 5s");
     expect(gap).toBeVisible();
     expect(band.queryByLabelText(/Queued · 3s/)).not.toBeInTheDocument();
@@ -2009,7 +2015,7 @@ describe("connector workflow runs", () => {
     expect(within(rowFor("example")).getByText("Cancelled")).toBeVisible();
     expect(screen.getByText("No active run")).toBeVisible();
     expect(
-      screen.getByRole("listitem", {
+      screen.getByRole("button", {
         name: "15 Jan 2026 · 11:50:00 · Cancelled",
       })
     ).toBeVisible();
@@ -2045,7 +2051,7 @@ describe("connector workflow runs", () => {
     expect(row.getByText("Waited over 6 hours")).toBeVisible();
     expect(row.queryByText("Queued")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("listitem", {
+      screen.getByRole("button", {
         name: "15 Jan 2026 · 05:00:00 · Failed · Silver",
       })
     ).toBeVisible();
@@ -2173,8 +2179,8 @@ describe("connector workflow runs", () => {
         screen.queryByText("No successful sync yet")
       ).not.toBeInTheDocument();
       expect(
-        screen.getByRole("listitem", { name: "15 Jan 2026 · 11:59:00 · Ready" })
-      ).toHaveAttribute("aria-current", "true");
+        screen.getByRole("button", { name: "15 Jan 2026 · 11:59:00 · Ready" })
+      ).toHaveAttribute("aria-pressed", "true");
       const band = screen.getByRole("figure", {
         name: "Steps of the selected sync",
       });
@@ -2420,10 +2426,9 @@ describe("connector workflow runs", () => {
       screen.getByRole("heading", { name: "Last successful sync" })
     );
     const history = screen.getByRole("list", { name: /status/i });
-    const marks = within(history).getAllByRole("listitem");
+    const marks = within(history).getAllByRole("button");
     expect(marks).toHaveLength(50);
-    expect(marks.at(-1)).toHaveAttribute("aria-current", "true");
-    expect(within(history).queryByRole("button")).not.toBeInTheDocument();
+    expect(marks.at(-1)).toHaveAttribute("aria-pressed", "true");
     const rows = () =>
       within(screen.getByRole("list", { name: "Run steps (UTC)" }));
     expect(rows().getByText("Bronze")).toBeVisible();
@@ -2452,7 +2457,7 @@ describe("connector workflow runs", () => {
     expect(strip.getByLabelText(/Gold · 1m 40s/)).toHaveStyle({
       width: "83.33333333333333%",
     });
-    expect(rows().getByText("Queued").closest("li")).toHaveTextContent("20s");
+    expect(rows().queryByText("Queued")).not.toBeInTheDocument();
     expect(rows().queryByText("Waiting")).not.toBeInTheDocument();
     expect(rows().getByText("Gold").closest("li")).toHaveTextContent("1m 40s");
   });
@@ -2478,7 +2483,7 @@ describe("connector workflow runs", () => {
     await userEvent.click(rowFor("jira"));
     const marks = within(
       screen.getByRole("list", { name: /status/i })
-    ).getAllByRole("listitem");
+    ).getAllByRole("button");
     expect(marks).toHaveLength(50);
     expect(marks[0]).toHaveAccessibleName("15 Jan 2026 · 11:10:00 · Ready");
     expect(marks.at(-2)).toHaveAccessibleName(
@@ -2530,8 +2535,8 @@ describe("connector workflow runs", () => {
     await userEvent.click(rowFor("jira"));
     const history = within(screen.getByRole("list", { name: /status/i }));
     expect(history.getAllByRole("listitem")).toHaveLength(2);
-    expect(history.getByRole("listitem", { name: /Ready$/ })).toBeVisible();
-    expect(history.getByRole("listitem", { name: /Failed$/ })).toBeVisible();
+    expect(history.getByRole("button", { name: /Ready$/ })).toBeVisible();
+    expect(history.getByRole("button", { name: /Failed$/ })).toBeVisible();
   });
 
   it("opens an empty run history before a new connector has synced", async () => {
