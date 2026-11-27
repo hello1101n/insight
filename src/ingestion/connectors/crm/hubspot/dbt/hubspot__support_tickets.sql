@@ -47,13 +47,12 @@ merge_targets AS (
     GROUP BY tenant_id, insight_source_id, merged_id
 ),
 
-custom_properties AS (
+custom_property_keys AS (
     SELECT
         {{ hubspot_support_scope() }},
-        groupArray(name)                               AS names
+        name
     FROM {{ ref('hubspot__crm_property_definitions') }} FINAL
     WHERE object_type = 'tickets' AND is_custom = 1 AND name IS NOT NULL
-    GROUP BY tenant_id, insight_source_id
 )
 
 SELECT
@@ -83,7 +82,11 @@ SELECT
         'present'
     )                                                  AS availability,
     nullIf(m.merged_into_id, '')                       AS merged_into_id,
-    toJSONString(mapFilter((k, v) -> has(c.names, k), t.properties)) AS custom_attrs,
+    -- INVARIANT: test each property key against one shared set. A join that puts the list of names on each ticket row exceeds the memory limit.
+    toJSONString(mapFilter(
+        (k, v) -> (t.tenant_id, t.insight_source_id, k) IN custom_property_keys,
+        t.properties
+    ))                                                 AS custom_attrs,
     CAST(t.collected_at AS DateTime64(3))              AS collected_at,
     {{ hubspot_support_version() }}                    AS _version
 FROM tickets AS t
@@ -91,5 +94,3 @@ LEFT JOIN stages AS s
     ON s.tenant_id = t.tenant_id AND s.insight_source_id = t.insight_source_id AND s.stage_id = t.stage_id
 LEFT JOIN merge_targets AS m
     ON m.tenant_id = t.tenant_id AND m.insight_source_id = t.insight_source_id AND m.merged_id = t.ticket_id
-LEFT JOIN custom_properties AS c
-    ON c.tenant_id = t.tenant_id AND c.insight_source_id = t.insight_source_id
