@@ -5,6 +5,10 @@ use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
 use thiserror::Error;
 
+use insight_external_sources::{
+    ExternalSourceConfig, ExternalSourceRegistry, ExternalSourceRegistryError,
+};
+
 const DEFAULT_CLICKHOUSE_DATABASE: &str = "insight";
 const DEFAULT_IDENTITY_DATABASE: &str = "identity";
 const DEFAULT_DATASETS_DATABASE: &str = "insight_datasets";
@@ -267,6 +271,7 @@ pub(crate) struct GearConfig {
     pub(crate) identity_url: String,
     pub(crate) mcp: McpConfig,
     pub(crate) alerts: AlertsConfig,
+    pub(crate) external_sources: Vec<ExternalSourceConfig>,
 }
 
 impl Default for GearConfig {
@@ -291,6 +296,7 @@ impl Default for GearConfig {
             identity_url: String::new(),
             mcp: McpConfig::default(),
             alerts: AlertsConfig::default(),
+            external_sources: Vec::new(),
         }
     }
 }
@@ -334,6 +340,7 @@ pub(crate) struct ValidatedConfig {
     identity_url: String,
     mcp: McpConfig,
     alerts: AlertsConfig,
+    external_sources: ExternalSourceRegistry,
 }
 
 impl fmt::Debug for GearConfig {
@@ -359,6 +366,7 @@ impl fmt::Debug for GearConfig {
             .field("identity_url", &self.identity_url)
             .field("mcp", &self.mcp)
             .field("alerts", &RedactedAlerts(&self.alerts))
+            .field("external_sources", &self.external_sources)
             .finish()
     }
 }
@@ -411,6 +419,7 @@ impl fmt::Debug for ValidatedConfig {
             .field("identity_url", &self.identity_url)
             .field("mcp", &self.mcp)
             .field("alerts", &RedactedAlerts(&self.alerts))
+            .field("external_sources", &self.external_sources)
             .finish()
     }
 }
@@ -483,6 +492,10 @@ impl ValidatedConfig {
 
     pub(crate) fn alerts(&self) -> &AlertsConfig {
         &self.alerts
+    }
+
+    pub(crate) fn external_sources(&self) -> &ExternalSourceRegistry {
+        &self.external_sources
     }
 
     pub(crate) fn identity_url(&self) -> &str {
@@ -599,6 +612,8 @@ impl GearConfig {
         }
         validate_mcp(&self.mcp)?;
         let alerts = validate_alerts(self.alerts)?;
+        let external_sources = ExternalSourceRegistry::new(&self.external_sources)
+            .map_err(ConfigError::ExternalSources)?;
 
         Ok(ValidatedConfig {
             clickhouse_url: self.clickhouse_url,
@@ -619,6 +634,7 @@ impl GearConfig {
             identity_url: self.identity_url,
             mcp: self.mcp,
             alerts,
+            external_sources,
         })
     }
 }
@@ -820,6 +836,8 @@ pub(crate) enum ConfigError {
         "gears.insight-v3-core.config.alerts.destinations.{name}.{field} is missing or not usable"
     )]
     AlertDestinationField { name: String, field: &'static str },
+    #[error("gears.insight-v3-core.config.external_sources is not usable: {0}")]
+    ExternalSources(#[source] ExternalSourceRegistryError),
 }
 
 #[derive(Debug, Error)]

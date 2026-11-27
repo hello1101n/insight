@@ -62,7 +62,8 @@ export function MetricSummaryCard({
       : displayedParts(
           rows.map((row) => row.value),
           value,
-          metric.format
+          metric.format,
+          metric.unit
         );
   const colorsBySeed = seriesColors(rows.map((row) => row.colorSeed));
   const rowsTotal = rows.reduce((sum, row) => sum + row.value, 0) || 1;

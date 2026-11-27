@@ -2,19 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- WORKAROUND: <base> applies only to URLs after it; this script is hashed in the nginx CSP. -->
-    <script>
-      (function () {
-        var m = location.pathname.match(
-          /^\/exp\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?=\/|$)/
-        );
-        var b = document.createElement("base");
-        b.href = m ? m[0] + "/" : "/";
-        document.head.appendChild(b);
-      })();
-    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Insight</title>
     <script defer src="/config.js"></script>
   </head>

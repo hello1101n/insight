@@ -7,6 +7,7 @@ type R = Result<(), Box<dyn std::error::Error>>;
 
 fn response(status: ScheduleStatus, reason: Option<PendingReason>) -> ScheduleResponse {
     ScheduleResponse {
+        resources: super::super::resources::ResourceState::default(),
         connector: "example-tracker".to_owned(),
         source_id: "main".to_owned(),
         revision: 1,

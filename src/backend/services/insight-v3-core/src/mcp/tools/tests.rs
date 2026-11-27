@@ -309,6 +309,68 @@ fn put_widget_tells_a_client_how_to_stack_a_bar_and_label_its_totals() {
 
     assert!(description.contains("\"series\""), "{description}");
     assert!(description.contains("\"labels\": true"), "{description}");
+    assert!(description.contains("\"colors\""), "{description}");
+}
+
+#[test]
+fn put_widget_tells_a_client_the_options_of_a_chart_and_a_stat() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_widget) = tools.iter().find(|tool| tool.name == "put_widget") else {
+        panic!("put_widget is a tool");
+    };
+    let description = put_widget.description.as_deref().unwrap_or_default();
+
+    for option in [
+        "`horizontal: true`",
+        "`stack: \"percent\"`",
+        "\"target\": {\"value\": 60",
+        "\"compare\": {\"better\": \"lower\"}",
+    ] {
+        assert!(description.contains(option), "{option}: {description}");
+    }
+}
+
+#[test]
+fn put_widget_tells_a_client_every_kind_of_widget() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_widget) = tools.iter().find(|tool| tool.name == "put_widget") else {
+        panic!("put_widget is a tool");
+    };
+    let description = put_widget.description.as_deref().unwrap_or_default();
+
+    for kind in ["heatmap", "funnel", "treemap", "scatter"] {
+        assert!(
+            description.contains(&format!("{{\"type\": \"{kind}\"")),
+            "{kind}: {description}"
+        );
+    }
+}
+
+#[test]
+fn put_metric_tells_a_client_how_to_read_a_duration() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_metric) = tools.iter().find(|tool| tool.name == "put_metric") else {
+        panic!("put_metric is a tool");
+    };
+    let description = put_metric.description.as_deref().unwrap_or_default();
+
+    assert!(description.contains("\"unit\": \"s\""), "{description}");
+    assert!(description.contains("ms, s, min, h or d"), "{description}");
+}
+
+#[test]
+fn put_metric_tells_a_client_how_to_combine_metrics() {
+    let tools = CustomSurfaces::tool_router().list_all();
+    let Some(put_metric) = tools.iter().find(|tool| tool.name == "put_metric") else {
+        panic!("put_metric is a tool");
+    };
+    let description = put_metric.description.as_deref().unwrap_or_default();
+
+    assert!(description.contains("\"combine\""), "{description}");
+    assert!(
+        description.contains("\"field\": \"incidents.count\""),
+        "{description}"
+    );
 }
 
 #[test]

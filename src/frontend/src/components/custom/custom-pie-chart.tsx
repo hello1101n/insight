@@ -35,7 +35,7 @@ export function CustomPieChart({
   onPointClick,
 }: CustomPieChartProps) {
   const data = points(result, [label, value]);
-  const unit = unitFor(result.percents, value);
+  const unit = unitFor(result, value);
   const config: ChartConfig = Object.fromEntries(
     data.map((slice, index) => [
       String(slice[label]),

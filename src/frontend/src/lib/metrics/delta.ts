@@ -56,6 +56,28 @@ export function deltaStatus(
   return favorable ? "good" : "bad";
 }
 
+export interface ShownDelta {
+  text: string;
+  status: Status;
+  down: boolean;
+}
+
+export function shownDelta(
+  delta: MetricDelta,
+  direction: MetricDirection,
+): ShownDelta {
+  const text = formatTileDelta(delta);
+  if (text == null) {
+    const unchanged = delta.kind === "pp_change" ? formatPp(0, 0) : "±0%";
+    return { text: unchanged, status: "neutral", down: false };
+  }
+  return {
+    text,
+    status: deltaStatus(delta, direction),
+    down: delta.value < 0,
+  };
+}
+
 export function formatTileDelta(delta: MetricDelta): string | null {
   if (delta.kind === "pp_change") {
     return Math.round(Math.abs(delta.value)) === 0

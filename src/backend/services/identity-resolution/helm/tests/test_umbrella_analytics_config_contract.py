@@ -18,6 +18,19 @@ def _analytics_config(manifests: str) -> dict:
     return host["gears"]["analytics"]["config"]
 
 
+def _v3_core_config(manifests: str) -> dict:
+    docs = [doc for doc in yaml.safe_load_all(manifests) if isinstance(doc, dict)]
+    configs = [
+        doc
+        for doc in docs
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"].endswith("-v3-core-gears-config")
+    ]
+    assert len(configs) == 1, f"expected one insight-v3-core gears ConfigMap, got {len(configs)}"
+
+    host = yaml.safe_load(configs[0]["data"]["insight.yaml"])
+    return host["gears"]["insight-v3-core"]["config"]
+
+
 def _analytics_secret(manifests: str) -> dict:
     docs = [doc for doc in yaml.safe_load_all(manifests) if isinstance(doc, dict)]
     secrets = [
@@ -37,6 +50,7 @@ def test_tenant_metrics_are_opt_in_per_installation(umbrella_deps, extra: tuple[
 
     assert _analytics_config(out)["metric_catalog"]["tenant_metrics_enabled"] is expected
     assert _analytics_config(out)["external_sources"] == []
+    assert _v3_core_config(out)["external_sources"] == []
 
 
 def test_analytics_visibility_policy_reuses_identity_resolution_setting(umbrella_deps) -> None:
@@ -54,25 +68,40 @@ def test_analytics_visibility_policy_reuses_identity_resolution_setting(umbrella
     assert _analytics_secret(out)[key] == "flat"
 
 
-def test_external_source_registry_reaches_analytics_config(umbrella_deps) -> None:
+EXPECTED_SOURCES = [
+    {
+        "id": "github-main",
+        "provider": "github",
+        "web_base_url": "https://github.example.com/",
+    }
+]
+
+
+def _sources(prefix: str) -> list[str]:
+    return [
+        "--set",
+        f"{prefix}.externalSources[0].id=github-main",
+        "--set",
+        f"{prefix}.externalSources[0].provider=github",
+        "--set",
+        f"{prefix}.externalSources[0].webBaseUrl=https://github.example.com/",
+    ]
+
+
+def test_one_external_source_list_reaches_analytics_and_insight_v3_core(umbrella_deps) -> None:
     code, out, err = render(
-        umbrella_deps,
-        *UMBRELLA_BASE,
-        "--set",
-        f"global.tenantDefaultId={TENANT}",
-        "--set",
-        "analytics.externalSources[0].id=github-main",
-        "--set",
-        "analytics.externalSources[0].provider=github",
-        "--set",
-        "analytics.externalSources[0].webBaseUrl=https://github.example.com/",
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"global.tenantDefaultId={TENANT}", *_sources("global")
     )
     assert code == 0, err
 
-    assert _analytics_config(out)["external_sources"] == [
-        {
-            "id": "github-main",
-            "provider": "github",
-            "web_base_url": "https://github.example.com/",
-        }
-    ]
+    assert _analytics_config(out)["external_sources"] == EXPECTED_SOURCES
+    assert _v3_core_config(out)["external_sources"] == EXPECTED_SOURCES
+
+
+def test_an_analytics_only_external_source_list_still_reaches_analytics(umbrella_deps) -> None:
+    code, out, err = render(
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"global.tenantDefaultId={TENANT}", *_sources("analytics")
+    )
+    assert code == 0, err
+
+    assert _analytics_config(out)["external_sources"] == EXPECTED_SOURCES

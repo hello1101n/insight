@@ -1,0 +1,20 @@
+{{- range .Values.ingestion.reconcile.connectorSettings }}
+{{- $connector := required "ingestion.reconcile.connectorSettings[].connector is required" .connector }}
+{{- $sourceId := required "ingestion.reconcile.connectorSettings[].sourceId is required" .sourceId }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-%s-%s-settings" (include "insight.fullname" $) $connector $sourceId | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: insight
+    app.kubernetes.io/component: connector-settings
+  annotations:
+    insight.cyberfabric.com/connector: {{ $connector | quote }}
+    insight.cyberfabric.com/source-id: {{ $sourceId | quote }}
+data:
+  {{- range $field, $value := (required "ingestion.reconcile.connectorSettings[].data is required" .data) }}
+  {{ $field }}: {{ $value | toString | quote }}
+  {{- end }}
+{{- end }}

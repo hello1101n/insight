@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from reconcile_inputs import Definition, Source, listing, plan_row
+from reconcile_inputs import Definition, Source, listing, plan_row, sync_user
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -179,6 +179,7 @@ class TestTheRestOfTheTick:
         ab_list_definitions() {{ return 1; }}
         ab_list_sources() {{ printf '%s' {json.dumps(listing([DOOMED]))}; }}
         disc_load_instances() {{ printf '%b\\n' '{plan}'; }}
+        {sync_user(tmp_path / "sync-user")}
         reconcile_run 0 1 0 "" ""
         """
         result = subprocess.run(

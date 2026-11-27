@@ -50,6 +50,9 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: [roles, rolebindings]
     verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
   # Diagnostics: pod logs on failure; events for scheduling errors.
   - apiGroups: [""]
     resources: [pods, pods/log, events]
@@ -71,6 +74,77 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: ci-deployer-core
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: insight
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ci-deployer-ingestion-admission.insight
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles, clusterrolebindings]
+    verbs: [create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles, clusterrolebindings]
+    resourceNames: [insight-airbyte-capacity.insight, insight-connectors.insight]
+    verbs: [get, update, patch, delete]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    verbs: [create]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [insight-airbyte-trigger.insight]
+    verbs: [get, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ci-deployer-ingestion-admission.insight
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ci-deployer-ingestion-admission.insight
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: insight
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-deployer-airbyte.insight
+  namespace: airbyte
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [airbyte-auth-secrets]
+    verbs: [get]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [create]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    resourceNames: [insight-airbyte-auth-reader, insight-airbyte-capacity.insight, insight-insight-connectors-observer]
+    verbs: [get, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ci-deployer-airbyte.insight
+  namespace: airbyte
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ci-deployer-airbyte.insight
 subjects:
   - kind: ServiceAccount
     name: ci-deployer
@@ -121,51 +195,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: ci-deployer-crd-supplement
-subjects:
-  - kind: ServiceAccount
-    name: ci-deployer
-    namespace: insight
----
-# The chart's experiments RBAC lands in `previews.experiments.namespace`, not in
-# `insight`. The namespace is L0: `provision-ci` fails if it does not exist yet.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: ci-deployer-previews-rbac
-  namespace: insight-previews
-  labels:
-    app.kubernetes.io/name: ci-deployer
-    app.kubernetes.io/component: ci-credential
-    app.kubernetes.io/managed-by: gitops
-rules:
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: [roles, rolebindings]
-    verbs: [get, list, watch, create, update, patch, delete]
-  # INVARIANT: a rule-for-rule mirror of the chart's `insight-previews-experiments`
-  # Role. Nothing here applies them; escalation prevention needs them to exist.
-  - apiGroups: ["apps"]
-    resources: [deployments]
-    verbs: [create, list, delete]
-  - apiGroups: [""]
-    resources: [services]
-    verbs: [create, list, delete]
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources: [httproutes]
-    verbs: [create, list, delete]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: ci-deployer-previews-rbac
-  namespace: insight-previews
-  labels:
-    app.kubernetes.io/name: ci-deployer
-    app.kubernetes.io/component: ci-credential
-    app.kubernetes.io/managed-by: gitops
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: ci-deployer-previews-rbac
 subjects:
   - kind: ServiceAccount
     name: ci-deployer

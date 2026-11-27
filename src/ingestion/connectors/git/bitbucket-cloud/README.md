@@ -102,8 +102,8 @@ kubectl apply -f src/ingestion/secrets/connectors/bitbucket-cloud.yaml
 | `pull_request_diffstat` | `/pullrequests/{id}/diffstat` | windowed PR parent, full refresh per PR | — |
 | `pull_request_activity` | `/pullrequests/{id}/activity` | windowed PR parent, full refresh per PR | — |
 | `workspace_members` | `/workspaces/{w}/members` | full refresh | — |
-| `pipelines` | `/repositories/{r}/pipelines` | newest-first data feed, per repository pushed to | `created_on` |
-| `deployments` | `/repositories/{r}/deployments` | newest-first data feed, per repository pushed to | `created_on` |
+| `pipelines` | `/repositories/{r}/pipelines` | newest-first data feed, per repository pushed to | `changed_on` |
+| `deployments` | `/repositories/{r}/deployments` | client-side bound on every listed deployment, per repository pushed to | `last_update_time` |
 | `commit_authors` | proxy `/v1/authors/changes`, then `/repositories/{r}/commit/{sha}` | incremental, one lookup per changed author | `changed_at` |
 
 ### How the streams fit together
@@ -255,8 +255,11 @@ One stream cannot comply. The deployments endpoint rejects `sort=created_on`
 (400) and **accepts a `q` on `created_on` while silently ignoring it** — a
 cutoff years in the future still returns every row. Its bound is therefore
 applied to the records after the fetch (`is_client_side_incremental`): the
-requests still walk a repository's whole deploy history, but nothing older than
-the bound reaches bronze.
+requests still walk a repository's whole deploy history, but only a deployment
+whose state changed since the last sync reaches bronze. The bound reads
+`last_update_time`, which moves with every state change, not `created_on`: a
+manual deploy runs after newer deployments exist, and a `created_on` bound
+would never pass its outcome.
 
 ## Partial clone support: settled
 
@@ -295,9 +298,17 @@ source that shares it.
 | `pull_requests` (participants) | `bitbucket_cloud__pull_requests_reviewers` | `class_git_pull_requests_reviewers` |
 | `pull_request_comments` | `bitbucket_cloud__pull_requests_comments` | `class_git_pull_requests_comments` |
 | `pull_request_commits` | `bitbucket_cloud__pull_requests_commits` | `class_git_pull_requests_commits` |
+| `pipelines` | `bitbucket_cloud__ci_runs` | `class_git_ci_runs` |
+| `deployments` | `bitbucket_cloud__deployments` | `class_git_deployments` |
+| `deployments` | `bitbucket_cloud__deployment_events` | `class_git_deployment_events` |
 
-`pipelines`, `deployments` and `workspace_members` land in bronze only; no class
-consumes them yet. `repository_visibility` is diagnostic and stays that way: one
+Bronze keeps only the latest state of a pipeline or a deployment. The CI models
+add the rerun counter (`run_number`) or the state version (`version`) to the row
+key, so silver keeps one row per run attempt and one event per deployment state
+that a sync observed.
+
+`workspace_members` lands in bronze only; no class consumes it yet.
+`repository_visibility` is diagnostic and stays that way: one
 row per workspace recording that the token reached something, fed to no class.
 
 ## Not in git

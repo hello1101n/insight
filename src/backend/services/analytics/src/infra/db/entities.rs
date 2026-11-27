@@ -62,28 +62,6 @@ pub mod ai_settings {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-pub mod saved_queries {
-    use sea_orm::entity::prelude::*;
-
-    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
-    #[sea_orm(table_name = "saved_queries")]
-    pub struct Model {
-        #[sea_orm(primary_key, auto_increment = false)]
-        pub id: Uuid,
-        pub insight_tenant_id: Uuid,
-        pub name: String,
-        pub description: Option<String>,
-        pub sql: String,
-        pub created_at: ChronoDateTimeUtc,
-        pub updated_at: ChronoDateTimeUtc,
-    }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
-    impl ActiveModelBehavior for ActiveModel {}
-}
-
 pub mod feedback {
     use sea_orm::entity::prelude::*;
 

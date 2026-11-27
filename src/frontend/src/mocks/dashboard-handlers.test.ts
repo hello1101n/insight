@@ -1,7 +1,11 @@
 import { setupServer } from "msw/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { DashboardWidget } from "@/api/custom-client";
+import { drawnColumns } from "@/lib/custom/draws-bucket";
+
 import { dashboardHandlers } from "./dashboard-handlers";
+import { EXAMPLE_DASHBOARDS } from "./example-dashboards";
 
 const server = setupServer(...dashboardHandlers);
 
@@ -85,4 +89,77 @@ describe("dashboard mocks", () => {
     );
     expect(stranger.status).toBe(404);
   });
+});
+
+const REFUSED: Record<string, number> = {
+  "edge-failed": 500,
+  "edge-busy": 429,
+};
+const MISNAMED = new Set(["edge-missing-column"]);
+
+describe("example dashboard mocks", () => {
+  it.each(Object.keys(EXAMPLE_DASHBOARDS))(
+    "%s runs every widget it draws with the columns, percents and units the widget names",
+    async (board) => {
+      const listed = (await (
+        await call(`/dashboards/${board}/widgets`)
+      ).json()) as { items: DashboardWidget[] };
+
+      for (const widget of listed.items) {
+        const ran = await call(
+          `/dashboards/${board}/widgets/${widget.id}/run`,
+          "POST"
+        );
+        if (REFUSED[widget.id]) {
+          expect(ran.status, widget.id).toBe(REFUSED[widget.id]);
+          continue;
+        }
+
+        const answer = (await ran.json()) as {
+          columns: string[];
+          percents?: string[];
+          units?: DashboardWidget["units"];
+        };
+        const missing = drawnColumns(widget.body).filter(
+          (name) => !answer.columns.includes(name)
+        );
+        expect(missing.length > 0, widget.id).toBe(MISNAMED.has(widget.id));
+        expect(answer.percents, widget.id).toEqual(widget.percents);
+        expect(answer.units, widget.id).toEqual(widget.units);
+      }
+    }
+  );
+});
+
+describe("example previous-period runs", () => {
+  const run = (body: object) =>
+    fetch(
+      new URL(
+        "/api/v3/v1/dashboards/comparisons-and-targets/widgets/ct-deploys/run",
+        window.location.href
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+
+  it("answers the previous period of a bounded range with other numbers", async () => {
+    const now = (await (await run({ range: "P30D" })).json()) as {
+      rows: unknown[][];
+    };
+    const before = (await (
+      await run({ range: "P30D", previous: true })
+    ).json()) as { rows: unknown[][] };
+
+    expect(before.rows).not.toEqual(now.rows);
+  });
+
+  it.each([{ previous: true }, { range: "inf", previous: true }])(
+    "refuses a previous period with no bounded range: %o",
+    async (body) => {
+      expect((await run(body)).status).toBe(400);
+    }
+  );
 });

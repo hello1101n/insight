@@ -499,6 +499,27 @@ describe("People pane on Metrics view", () => {
 
     expect(screen.getByText("Metrics view")).toBeInTheDocument();
   });
+
+  it("lists the views without the work chart, since the table is the tree", () => {
+    act(() => portalRouter.go("/people/boss@x/team/metrics"));
+    pane();
+
+    act(() => setMetricsViewPaneShown(true));
+
+    expect(screen.getByText("My team")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-tree")).toBeNull();
+    expect(screen.queryByLabelText("Find someone in the org")).toBeNull();
+  });
+
+  it.each([
+    ["My team", "/people/boss@x/team"],
+    ["Roster · by role", "/people/boss@x/team/roster"],
+  ])("keeps the work chart on %s", (_view, path) => {
+    act(() => portalRouter.go(path));
+    pane();
+
+    expect(screen.getByTestId("org-tree")).toBeInTheDocument();
+  });
 });
 
 describe("People pane on an organisation with no reporting lines", () => {

@@ -55,6 +55,17 @@ pub(super) async fn harness_for_cluster(
     scenario: crate::infra::cluster_stub::Scenario,
     connector: &str,
 ) -> Result<Harness, Box<dyn std::error::Error>> {
+    let workflow = crate::infra::cluster_stub::Stub::start(scenario, connector, "main").await?;
+    harness_with_cluster(db, ch_url, ctx, admin, workflow).await
+}
+
+pub(super) async fn harness_with_cluster(
+    db: DatabaseConnection,
+    ch_url: &str,
+    ctx: SecurityContext,
+    admin: bool,
+    workflow: crate::infra::cluster_stub::Stub,
+) -> Result<Harness, Box<dyn std::error::Error>> {
     let roles = if admin {
         json!([{"role_id": "a4d11000-0000-4000-8000-000000000001"}])
     } else {
@@ -69,7 +80,6 @@ pub(super) async fn harness_for_cluster(
     let identity_task = tokio::spawn(async move {
         let _ = axum::serve(listener, identity_app).await;
     });
-    let workflow = crate::infra::cluster_stub::Stub::start(scenario, connector, "main").await?;
     let mut state = state(db, ch_url, identity);
     Arc::get_mut(&mut state).ok_or("shared state")?.cluster = workflow.cluster.clone();
     let app = router(Arc::clone(&state), ctx);

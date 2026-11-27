@@ -25,6 +25,7 @@ fn rows(cells: &[[Value; 4]]) -> RunResult {
         columns: COLUMNS.iter().map(|&name| name.to_owned()).collect(),
         rows: cells.iter().map(|row| row.to_vec()).collect(),
         percents: Vec::new(),
+        units: std::collections::BTreeMap::new(),
         undated: None,
         clock: None,
     }
@@ -554,6 +555,7 @@ fn a_column_the_result_lacks_is_unknown_even_over_no_rows() {
         columns: vec!["team".to_owned()],
         rows: Vec::new(),
         percents: Vec::new(),
+        units: std::collections::BTreeMap::new(),
         undated: None,
         clock: None,
     };

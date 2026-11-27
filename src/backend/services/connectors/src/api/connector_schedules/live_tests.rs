@@ -3,20 +3,20 @@ use clickhouse::test::{Mock, handlers};
 use sea_orm::{
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::MigratorTrait;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use super::support::*;
 use crate::infra::db::entities::connector_schedules::{Column, Entity};
-use crate::migration::m20261110_000001_connector_schedules::Migration;
 
 mod budgets;
 mod cancellation;
 mod cluster;
 mod locks;
 mod removal;
+mod resources;
 mod revisions;
 mod storage;
 
@@ -28,7 +28,7 @@ async fn connect_or_skip() -> Result<Option<DatabaseConnection>, Box<dyn std::er
     let mut options = ConnectOptions::new(url);
     options.max_connections(10).sqlx_logging(false);
     let db = Database::connect(options).await?;
-    Migration.up(&SchemaManager::new(&db)).await?;
+    crate::migration::Migrator::up(&db, None).await?;
     Ok(Some(db))
 }
 

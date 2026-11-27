@@ -29,6 +29,9 @@ ROOT = Path(__file__).parent.parent.parent.absolute()
 # Base branch for the diff-cover patch gate and the changed-component matrix.
 COMPARE_BRANCH = "origin/main"
 
+CONNECTOR_RESOURCE_FIXTURE = "tests/fixtures/connector-resource-parameters.json"
+RECONCILE_GUARD_PATHS = ("src/ingestion/reconcile-connectors", CONNECTOR_RESOURCE_FIXTURE)
+
 COMPONENTS = [
     # Rust: `cargo llvm-cov --package <package>` run in <root>. Each --package
     # report includes cross-crate files and the gate merges all reports (max
@@ -55,6 +58,13 @@ COMPONENTS = [
         "package": "insight-migration",
         "cover": False,
         "paths": ["src/backend/libs/insight-migration"],
+    },
+    {
+        "name": "insight-external-sources",
+        "lang": "rust",
+        "root": "src/backend",
+        "package": "insight-external-sources",
+        "paths": ["src/backend/libs/insight-external-sources"],
     },
     {
         "name": "insight-openapi",
@@ -126,6 +136,7 @@ COMPONENTS = [
         # migrator to prove idempotency and skip cleanly when unset).
         "live_db": True,
         "live_db_name": "identity",
+        "live_ch": True,
         "cover_ignore_regex": "src/backend/libs/",
         "paths": [
             "src/backend/services/identity-resolution",
@@ -153,22 +164,9 @@ COMPONENTS = [
             "src/backend/services/connectors",
             "docs/components/backend/connectors/openapi.json",
             "src/ingestion/scripts/migrations/20260827000000_connector-sync-history.sql",
+            CONNECTOR_RESOURCE_FIXTURE,
         ],
         "triggered_by": ["insight-clickhouse", "insight-migration"],
-    },
-    # cover=False (mirrors identity-resolution): the crate is a thin HTTP
-    # shell over the Kubernetes API — the pure domain (object builders,
-    # slug/tag validation, TTL/status rules) is unit-tested, but the kube I/O
-    # and host wiring need a cluster, so coverage would gate far below the 80%
-    # line. fmt + clippy + tests still run and gate the pipeline.
-    {
-        "name": "previews",
-        "lang": "rust",
-        "root": "src/backend",
-        "package": "previews",
-        "cover": False,
-        "paths": ["src/backend/services/previews", "docs/components/backend/previews/openapi.json"],
-        "drift_test": True,
     },
     # git-cli-proxy shells out to the git CLI; its integration tests build
     # fixture repos with `git init` + file:// origins in tempdirs (hermetic —

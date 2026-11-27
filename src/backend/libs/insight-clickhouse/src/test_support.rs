@@ -45,10 +45,22 @@ impl Capture {
     ///
     /// Returns the error if no port could be bound.
     pub async fn start() -> io::Result<Self> {
+        Self::answering(&[]).await
+    }
+
+    /// Starts a capture that answers each request with `body`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error if no port could be bound.
+    pub async fn answering(body: &'static [u8]) -> io::Result<Self> {
         let seen = Seen::default();
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
         let port = listener.local_addr()?.port();
-        let app = Router::new().fallback(any(record)).with_state(seen.clone());
+        let app = Router::new().fallback(any(record)).with_state(Answer {
+            seen: seen.clone(),
+            body,
+        });
         let server = tokio::spawn(axum::serve(listener, app).into_future());
 
         Ok(Self {
@@ -79,13 +91,21 @@ impl Drop for Capture {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Answer {
+    seen: Seen,
+    body: &'static [u8],
+}
+
 async fn record(
-    State(seen): State<Seen>,
+    State(answer): State<Answer>,
     Query(pairs): Query<Vec<(String, String)>>,
-) -> StatusCode {
-    seen.0
+) -> (StatusCode, &'static [u8]) {
+    answer
+        .seen
+        .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .push(Received { pairs });
-    StatusCode::OK
+    (StatusCode::OK, answer.body)
 }

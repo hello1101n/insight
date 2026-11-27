@@ -234,10 +234,12 @@ def test_gears_host_verifies_gateway_identity(connectors_umbrella: Path) -> None
     assert jwt["trusted_issuers"][0]["issuer"] == "https://contract-test-authenticator.default.svc.cluster.local:8443"
 
 
-def test_role_only_patches_existing_connector_cronworkflows() -> None:
+def test_role_patches_schedules_and_stops_workflows_with_read_only_pod_access() -> None:
     documents = connectors_documents(CONNECTORS_CHART)
     assert workload(documents, "Role")["rules"] == [
-        {"apiGroups": ["argoproj.io"], "resources": ["cronworkflows"], "verbs": ["get", "list", "watch", "patch"]}
+        {"apiGroups": ["argoproj.io"], "resources": ["cronworkflows"], "verbs": ["get", "list", "watch", "patch"]},
+        {"apiGroups": ["argoproj.io"], "resources": ["workflows"], "verbs": ["list", "watch", "patch"]},
+        {"apiGroups": [""], "resources": ["pods"], "verbs": ["list"]},
     ]
     binding = workload(documents, "RoleBinding")
     assert binding["roleRef"] == {
@@ -280,15 +282,88 @@ def test_cluster_integration_requires_a_tenant_only_when_enabled(enabled: bool, 
         assert len(roles) == int(enabled)
 
 
+def has_sleep_loop(source: str) -> bool:
+    non_code = re.compile(
+        r"""//[^\n]*|/\*.*?\*/|r(?P<hashes>#*)".*?"(?P=hashes)|"(?:\\.|[^"\\])*"|'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\n])'""",
+        re.S,
+    )
+    code = non_code.sub(" ", source)
+    sleep_names = ["sleep", "sleep_until", *re.findall(r"\bsleep(?:_until)?\s+as\s+(\w+)", code)]
+    sleep_call = re.compile(rf"\b(?:{'|'.join(sleep_names)})\s*\(")
+    repetition = re.compile(
+        r"\b(?:loop\s*|while\b[^;{}]*|for\b[^;{}]*\bin\b[^;{}]*)\{"
+        r"|\.(?:try_)?for_each(?:_concurrent)?\s*\([^;{}]*\{"
+        r"|\bfn\s+(?P<function>\w+)\b[^;{}]*\{"
+    )
+    braces = re.compile(r"[{}]")
+    for block in re.finditer(rf"(?=({repetition.pattern}))", code):
+        depth = 1
+        for brace in braces.finditer(code, block.end(1)):
+            depth += 1 if brace[0] == "{" else -1
+            if depth == 0:
+                body = code[block.end(1) : brace.start()]
+                name = block["function"]
+                if sleep_call.search(body) and (name is None or re.search(rf"\b{name}\s*\(", body)):
+                    return True
+                break
+    return False
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("// Wait for the lock.\nsleep(delay).await;", False),
+        ('let label = "for a lock"; sleep(delay).await;', False),
+        ("for item in items { store(item); } sleep(delay).await;", False),
+        ('let quote = \'"\'; loop { sleep(delay).await; let message = "retry"; }', True),
+        ("stream.for_each(|_| async { sleep(delay).await; }).await;", True),
+        ("async fn tick() { sleep(delay).await; Box::pin(tick()).await; }", True),
+        ("async fn read() { sleep(delay).await; } async fn tick() { tick().await; }", False),
+        ("loop { tokio::time::sleep(delay).await; }", True),
+        ("while ready() { if retry { sleep_until(deadline).await; } }", True),
+        ("for item in items { /* pause */ sleep(delay).await; }", True),
+    ],
+)
+def test_schedule_contract_rejects_only_a_sleep_inside_a_loop(source: str, expected: bool) -> None:
+    assert has_sleep_loop(source) == expected
+
+
 def test_schedule_service_has_no_background_worker_or_retry_interval() -> None:
     service = Path(__file__).resolve().parents[2]
-    gear = (service / "src/gear.rs").read_text()
-    config = (service / "src/config.rs").read_text()
+    source = service / "src"
+    gear = (source / "gear.rs").read_text()
+    config = (source / "config.rs").read_text()
     assert "drift" not in gear
-    assert "stateful" not in gear
-    assert "RunnableCapability" not in gear
     assert "drift" not in config
-    assert not (service / "src/domain/connector_schedules/drift.rs").exists()
+    schedules = source / "domain/connector_schedules"
+    task = re.compile(r"\b(?:spawn(?:_blocking|_local|_on)?|spawn_bg)(?:\s*\(|\s+as\s+)")
+    for path in schedules.rglob("*.rs"):
+        relative = path.relative_to(schedules)
+        assert "drift" not in path.stem, relative
+        body = path.read_text()
+        if path == schedules / "mod.rs":
+            body = re.sub(
+                r"tokio::spawn\(\s*async move \{ save_locked\(&state, &instance, revision, change, caller\)"
+                r"\.await \}\s*\.in_current_span\(\),\s*\)\s*\.await\?",
+                "",
+                body,
+            )
+        if path == schedules / "timing.rs":
+            body = body.replace("tokio::task::spawn_blocking(move || reconcile_times(&object, Utc::now())).await", "")
+        assert not task.search(body), relative
+        assert not re.search(r"\binterval(?:_at)?(?:\s*\(|\s+as\s+)", body), relative
+        assert "retry_interval" not in body, relative
+        assert not has_sleep_loop(body), relative
+
+    for path in source.rglob("*.rs"):
+        relative = path.relative_to(source)
+        if path.is_relative_to(schedules) or any(part.endswith("tests") for part in relative.with_suffix("").parts):
+            continue
+        body = path.read_text()
+        if path == source / "gear.rs":
+            body = body.replace("tokio::spawn(crate::domain::run_history::observer::run(state, cancel));", "")
+        if re.search(r"\bconnector_schedules\b", body):
+            assert not task.search(body), relative
 
 
 def test_compose_mounts_the_authentication_ca_bundle_for_connectors() -> None:

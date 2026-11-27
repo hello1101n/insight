@@ -20,8 +20,8 @@
 | The persona password, and optionally an explicit seed dev-lead address | Same GitHub environment | Same |
 | Public stand URL | Same environment, as **variable** `TEST_STAND_BASE_URL` (not a secret) | Same, and it is public anyway |
 
-The split is the whole point of D5: **admin kubeconfigs stay human-only.** CI gets
-a credential that is namespace-scoped and destroyable, and nothing else.
+Keep administrator kubeconfigs out of CI.
+The CI credential has grants in the release and Airbyte namespaces and specific cluster grants.
 
 Provisioning is three `make` targets in
 [`deploy/gitops/Makefile`](../../Makefile) —
@@ -54,11 +54,7 @@ CA, which invalidates every other certificate on the cluster at once.
    kubectl config current-context
    yq -r '.kubeContext' deploy/gitops/environments/test-stand/inventory.yaml
    ```
-3. The application namespace already exists (`insight` by default), and so
-   does the experiments namespace (`insight-previews` — `namespaces.previews`
-   in `inventory.yaml`). The manifest grants over the second but never creates
-   it, so `provision-ci` fails on a cluster that lacks it. See §7 "First
-   install into an empty namespace".
+3. Create the release namespace and the Airbyte namespace before you apply the manifest.
 4. `gh` authenticated with admin rights on the repository, for §4.
 
 ---
@@ -77,30 +73,8 @@ kubectl --context "$(yq -r '.kubeContext' deploy/gitops/environments/test-stand/
   apply --dry-run=client -f deploy/gitops/environments/test-stand/ci-deployer-rbac.yaml
 ```
 
-Read the manifest. You are looking for six things:
-
-- the binding is a `RoleBinding`, not a `ClusterRoleBinding`;
-- its `roleRef` is `ClusterRole/admin` — a cluster role bound namespace-wide, which
-  is not the same as a cluster-wide grant;
-- the supplemental `Role` lists only `gateway.networking.k8s.io`, `argoproj.io`,
-  `onepassword.com` and `cert-manager.io`;
-- the manifest does **not** touch the `airbyte` namespace. The umbrella renders
-  its `insight-airbyte-auth-reader` Role and RoleBinding *there* rather than in
-  `insight` (that is what `airbyte.namespace` in the values file decides), so a
-  credential scoped only to `insight` fails every upgrade — but authorising a
-  deployment identity over a namespace this repository does not own is
-  infrastructure policy, owned by whoever installs Airbyte. `make
-  verify-ci-credential` (§3) asserts the grant exists there; it never creates it;
-- the manifest **does** carry `ci-deployer-previews-rbac` in `insight-previews`,
-  and that is not a contradiction of the line above: no third party installs
-  that namespace, it exists only because this release binds RBAC into it, so
-  leaving the grant out of band would leave it unreproducible. The *namespace*
-  is still L0 and stays out of the manifest — `revoke-ci` deletes everything the
-  manifest names, and a revoked credential must not take live experiments with
-  it. Its three workload rules (`deployments`, `services`, `httproutes`) are
-  never exercised: they exist so RBAC escalation prevention permits creating the
-  chart's own Role, and they must stay a rule-for-rule mirror of it;
-- the token `Secret` carries no `data:` block (the token controller fills it).
+Read the manifest to confirm that each binding names its dedicated role and the CI service account.
+The token controller fills the token Secret after you apply the manifest.
 
 If your kube-context does not resolve to the inventory's `kubeContext`, the
 Makefile's `kube-ctx` precondition refuses with a clear error and nothing is
@@ -108,6 +82,16 @@ touched. That is the expected outcome of a typo — do not "fix" it by overridin
 `KUBE_CTX` until you are certain which cluster you mean.
 
 ### 2.2 Apply
+
+An administrator must apply the updated deployer RBAC once before the next deploy.
+Use the administrator kubeconfig and the context from the inventory:
+
+```bash
+kubectl --context "$(yq -r '.kubeContext' deploy/gitops/environments/test-stand/inventory.yaml)" \
+  apply -f deploy/gitops/environments/test-stand/ci-deployer-rbac.yaml
+```
+
+For initial provisioning, use the following command to apply the same manifest and generate a kubeconfig:
 
 ```bash
 make -C deploy/gitops provision-ci ENV=test-stand
@@ -150,6 +134,28 @@ make -C deploy/gitops verify-ci-credential ENV=test-stand
 
 ### 3.1 What it asserts
 
+Helm creates the node-read grants, the admission policy and its `Deny` binding, and the namespaced grants on deploy.
+The CI credential can create these resource kinds.
+Kubernetes does not support name restrictions on create.
+The cluster and Airbyte RBAC grants restrict `get`, `update`, `patch`, and `delete` to the chart's resource names.
+
+| Additional deployer grant | Purpose |
+|---|---|
+| `get` and `list` nodes | The Airbyte trigger and connectors roles grant these reads for capacity checks. |
+| `list` pods in the release and Airbyte namespaces | The capacity roles grant this read in both namespaces. The observer role grants it in Airbyte. |
+| `get` the Airbyte auth Secret by name | The Airbyte auth and observer roles grant this read. |
+| Manage ClusterRoles and ClusterRoleBindings | Helm deploys the node-read grants for the trigger and connectors service. |
+| Manage admission policies and bindings | Helm deploys the policy that restricts Workflow updates by the trigger account. |
+| Manage Roles and RoleBindings in Airbyte | Helm deploys the capacity, observer, and auth grants in Airbyte. |
+| Manage Leases in the release namespace | Helm deploys the Lease that serializes Airbyte submissions. |
+
+If you change the capacity namespace list, update the CI deployer RBAC for those namespaces before you deploy.
+
+The CI deployer can create cluster-wide ClusterRoles and ClusterRoleBindings for permissions it already holds.
+It can also create cluster-wide admission policies and bindings.
+A leaked CI token could block writes across the test cluster through an admission policy.
+This risk is accepted for the test cluster.
+
 **Must be `yes`** — the deploy and seed stages genuinely need these:
 
 | Check | Why the deploy needs it |
@@ -163,25 +169,23 @@ make -C deploy/gitops verify-ci-credential ENV=test-stand
 | `update httproutes.gateway.networking.k8s.io -n insight` | the umbrella renders both edge routes from `gateway.route` / `keycloak.route`, so `helm upgrade` writes them on every run |
 | `get persistentvolumeclaims -n insight` | the git-cli-proxy renders a claim for its clone cache, and `helm upgrade` reads it before patching |
 | `update persistentvolumeclaims -n insight` | its chart and version labels change on every bump |
-| `create roles.rbac.authorization.k8s.io -n airbyte` | the chart renders `insight-airbyte-auth-reader` into the Airbyte namespace, not the release one |
-| `create rolebindings.rbac.authorization.k8s.io -n airbyte` | same object, the binding half |
-| `create roles.rbac.authorization.k8s.io -n insight-previews` | the previews subchart renders `insight-previews-experiments` into the experiments namespace |
-| `create rolebindings.rbac.authorization.k8s.io -n insight-previews` | same object, the binding half |
-| `create deployments.apps -n insight-previews` | escalation prevention: the chart's Role grants it, so the credential must hold it to create that Role |
-| `create httproutes.gateway.networking.k8s.io -n insight-previews` | same reason |
+| `create roles.rbac.authorization.k8s.io -n airbyte` and `create rolebindings.rbac.authorization.k8s.io -n airbyte` | Helm creates the Airbyte grants. |
+| `list pods -n airbyte` and `get secrets/airbyte-auth-secrets -n airbyte` | The Airbyte roles delegate these reads. |
+| `list nodes` | The trigger and connectors roles delegate this read. |
+| `create clusterroles` and `create clusterrolebindings` | Helm creates the node-read grants. |
+| `create validatingadmissionpolicies` and `create validatingadmissionpolicybindings` | Helm creates the Workflow policy and binding. |
 
 **Must be `no`** — this is the containment claim:
 
 | Check | |
 |---|---|
 | `'*' '*' --all-namespaces` | the blanket check |
-| `get pods -n airbyte` | the cross-namespace grant is RBAC-only; it reads one Secret by name and nothing else |
-| `get pods -n insight-previews` | the previews grant is RBAC-only; the experiments themselves are the previews service's business, not CI's |
+| `get pods -n airbyte` | The Airbyte pod grant permits `list`. |
+| `list pods --all-namespaces` | Pod lists are scoped to the release and Airbyte namespaces. |
 | `list namespaces --all-namespaces` | cannot enumerate the cluster |
 | `create namespaces --all-namespaces` | see §7 |
 | `get secrets --all-namespaces` | the datastore namespaces' credentials stay out of reach |
-| `list nodes --all-namespaces` | no cluster-scoped reads |
-| `create clusterrolebindings… --all-namespaces` | cannot widen its own grant |
+| `escalate clusterroles` and `bind clusterroles` | Kubernetes enforces the permission checks on role and binding writes. |
 | `get pods -n kube-system` | no unrelated namespace, control plane included |
 | `delete persistentvolumeclaims -n insight` | the clone cache is annotated `helm.sh/resource-policy: keep` and outlives the release; a credential that could delete it could discard every synced repository |
 
@@ -191,10 +195,7 @@ make -C deploy/gitops verify-ci-credential ENV=test-stand
 (the list) is forbidden, and both are correct. A request naming a single
 namespace is evaluated *as a request in that namespace*, so a RoleBinding there
 can satisfy it; a list is a cluster-scoped request that only a
-ClusterRoleBinding can satisfy. Every "must be `no`" assertion above passes
-`--all-namespaces`, which sends an empty namespace, so the assertions test what
-they claim to test. Do not "fix" a `yes` from `kubectl get ns insight` — it is
-not a scope leak.
+ClusterRoleBinding can satisfy. Use `--all-namespaces` to check permissions across all namespaces.
 
 ### 3.3 Manual spot check
 
@@ -275,11 +276,8 @@ is gone — not degraded, gone — which is why:
 
 #### This credential is a deliberate stopgap
 
-A GitHub environment secret is a static string with no refresh path, so this is
-a long-lived, non-expiring token by necessity rather than by preference. That is
-an accepted trade, not an oversight: the token is namespace-scoped, its blast
-radius is asserted on every provisioning run, and revoking it is one command
-with no cluster-wide consequence.
+A GitHub environment secret stores a long-lived token.
+The provisioning command checks the token's scope. The revoke command removes the token and its RBAC.
 
 The property it cannot have is expiry. Treat the 90-day cadence in §5 as a real
 obligation rather than a suggestion — nothing else ages this credential out.
@@ -289,7 +287,7 @@ token used on every merge never qualifies.
 The durable answer is a credential that is never stored: Kubernetes 1.30+
 structured authentication config can trust GitHub's OIDC issuer directly, so the
 workflow presents a short-lived token minted per run and the cluster maps its
-claims (`repository`, `ref`, `environment`) onto the same namespace-scoped RBAC
+claims (`repository`, `ref`, `environment`) onto the same RBAC
 this script already creates. Trust then reads "runs from this repository, on this
 ref, in this environment" instead of "whoever holds this string", and there is
 nothing in GitHub left to leak. It is a cluster-operator change rather than a
@@ -502,8 +500,8 @@ public log rather than making it private; the stand environment's README
 
 ## 6. Revoke
 
-`revoke-ci` deletes the ServiceAccount, both RoleBindings, the Role and the
-token Secret in one `kubectl delete -f` of the committed manifest — there is
+`revoke-ci` deletes the ServiceAccount, its RBAC, and the token Secret
+in one `kubectl delete -f` of the committed manifest. There is
 no partial "kill the token, keep the identity" mode. Immediate: the API
 server re-validates a ServiceAccount token against the Secret and against the
 ServiceAccount's UID on every request, so the credential stops working as
@@ -550,12 +548,15 @@ it, or accept a bound token from `kubectl create token` plus a refresh mechanism
 — and note that a static GitHub secret cannot hold an expiring token, so this
 becomes a workflow change, not a secret change.
 
+**Server-side apply conflict during `helm upgrade`**
+
+Helm 4 uses server-side apply for fresh installs. A manual change with `kubectl scale`
+or `kubectl edit` can cause a field ownership conflict on a later upgrade.
+Rerun the deploy with `HELM_UPGRADE_FLAGS=--force-conflicts` to give the chart ownership of the field.
+
 **`attempt to grant extra privileges` during `helm upgrade`**
-RBAC escalation prevention: a subject cannot create a Role granting permissions
-it does not itself hold, and `admin` does not carry `escalate`. The chart renders
-its own reconcile Role with `argoproj.io` and `onepassword.com` rules. Someone
-trimmed the supplemental `Role` in `ci-deployer-rbac.yaml` — diff it against
-git history and re-run `make provision-ci ENV=test-stand` to repair drift.
+Kubernetes checks that the CI credential holds every permission in the role it creates or binds.
+Compare the chart's role with `ci-deployer-rbac.yaml` and verify the credential's scope.
 
 **`could not get information about the resource <kind> … is forbidden`**
 The chart grew a kind the Role does not enumerate — the guard working, not a
@@ -587,10 +588,8 @@ edited or copied from a different environment; re-run `make provision-ci
 ENV=test-stand`.
 
 **A Gateway or an object in another namespace is unreadable**
-Expected, and it does not block the deploy. The gateway controller's own
-namespace is out of scope for this credential, and the only exception anywhere
-is the narrow RBAC-plus-one-Secret grant in `airbyte` described in §2.1. The
-release's two `HTTPRoute`s attach to a `Gateway` in that controller namespace by
+The CI deployer cannot read the Gateway in the controller namespace. The
+release's two `HTTPRoute`s attach to the `Gateway` in that namespace by
 reference, and the `Accepted` / `ResolvedRefs` conditions the deploy checks are
 written back onto the routes **in `insight`** — so the post-upgrade route check
 works without ever reading the `Gateway`. A preflight that wants to inspect the

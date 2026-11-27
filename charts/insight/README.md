@@ -28,7 +28,6 @@ local `file://` subchart:
 | Insight v3 Core      | `src/backend/services/insight-v3-core/helm`         | `global.insightV3Core.deploy` | off     |
 | Identity Resolution  | `src/backend/services/identity-resolution/helm`     | `identityResolution.deploy`  | on — the validator refuses `false` |
 | Keycloak (broker)    | `src/backend/services/keycloak/helm`                | `keycloak.deploy`            | off     |
-| Previews             | `src/backend/services/previews/helm`                | `global.previews.enabled`    | on      |
 | Git CLI proxy        | `src/backend/services/git-cli-proxy/helm`           | `gitCliProxy.deploy`         | on      |
 | Frontend (SPA)       | `src/frontend/helm`                                 | `frontend.deploy`            | on      |
 
@@ -67,6 +66,254 @@ When upgrading, replace `ingestion.airbyteSync.idleThresholdSeconds` overrides
 with `statusUnreadableThresholdSeconds` if an API outage timeout override is
 needed. The old idle setting is no longer used. Deploy the chart with its matching
 toolbox image because the poller's environment variable also changed.
+
+## Connector sync limits and history
+
+Argo uses one mutex for staging, one for Identity, and one for downstream transformations.
+The same mutex protects a writer group on both the Jira and non-Jira paths.
+
+| Setting | Default | Applies to |
+| --- | --- | --- |
+| `clickhouse.syncUser.username` | `insight_sync` | Dedicated account for Bronze, dbt, the identity seed, and connector checks |
+| `clickhouse.syncUser.passwordSecret.name` | `insight-db-creds` | Secret in the release namespace that holds the password |
+| `clickhouse.syncUser.passwordSecret.key` | `clickhouse-sync-password` | Password key in that Secret |
+| `clickhouse.syncUser.totalMemoryBytes` | 60% of the lowest server limit, when each answering server has a limit | `max_memory_usage_for_user` on each ClickHouse server |
+| `clickhouse.syncUser.queryMemoryBytes` | Unset | Optional `max_memory_usage` for each query |
+
+Connectors records Workflow stages and Airbyte job outcomes in MariaDB.
+It checks the ClickHouse query log for failure reasons during the first ten minutes after a dbt or identity stage ends.
+It records the largest query memory for the attempt after that window.
+The lookup allows 60 seconds of clock difference at each end of the stage.
+It distinguishes the sync user's total, the query limit, server memory pressure, and a pod killed for memory.
+For Bronze, the ClickHouse reason comes from destination failure details in Airbyte.
+Set `connectors.runHistory.runsPerInstance` to change the default of 100 runs per connector instance.
+The observer removes older completed runs with their stage attempts and waits in batches.
+The observer retains the latest successful run. It also retains older active runs until they finish.
+
+The Connectors page shows Bronze, Silver, Identity, and Gold.
+The queue distinguishes a writer lock and a wait for cluster capacity.
+The lock reason includes the holder when Argo reports it.
+A wait shows a warning after three hours.
+Connectors stops a Workflow after more than six hours of waiting for a writer lock.
+The stop applies before Gold succeeds. The page and elapsed wait time end at Gold.
+Connectors records check attempts separately.
+
+### Check Airbyte pod capacity
+
+Bronze checks available CPU and memory on schedulable nodes that match the Airbyte node selector.
+The replication pod must tolerate a node's blocking taints before Bronze counts its available capacity.
+The trigger checks the initial submission. The poll step checks a resubmission after an Argo retry.
+A Pending Airbyte job pod delays submission up to `ingestion.airbyteSync.capacityCheck.pendingMaxAgeSeconds`.
+The default is 1800 seconds.
+The capacity check logs the blocking pod's namespace, name, age, and `PodScheduled` reason.
+The size check includes matching cordoned and unready nodes and ignores `node.kubernetes.io/*` taints.
+It excludes nodes with other `NoSchedule` or `NoExecute` taints that the replication pod does not tolerate.
+It subtracts the requests of scheduled DaemonSet and mirror pods that are still active and have no deletion timestamp.
+If matching nodes exist and the estimated replication pod cannot fit on any of them, Bronze fails before submission.
+The Connectors page shows that the Airbyte pod is too large.
+Bronze checks again every 15 seconds when no node matches the selector or when capacity is temporarily unavailable.
+Set `ingestion.airbyteSync.capacityCheck.waitLimitSeconds` to limit the wait. The default is 21,600 seconds.
+The trigger or poll step stops the load at the limit. The Connectors page shows a capacity wait timeout.
+The step stops if `ingestion.airbyteSync.launchUnreadableSeconds` elapses without a sync submission or a no-fit check with a recorded wait.
+The exit log names the operation and the last error.
+The Connectors page shows `Waiting for cluster capacity` and includes this interval in queued time.
+
+The trigger and poll steps list nodes and pods directly through the Kubernetes API.
+The steps list pods only in `ingestion.airbyteSync.capacityCheck.podNamespaces`.
+The defaults are the release namespace and the Airbyte namespace.
+Include every namespace whose pods use the eligible nodes, such as the datastore namespace.
+The capacity check overestimates free capacity if a namespace is missing.
+The size check cannot see DaemonSet pods in namespaces outside `podNamespaces`.
+
+Both steps use the trigger service account to read capacity and write launch marks.
+The account has a cluster grant for `get` and `list` on nodes and a `list` grant for pods in each configured namespace.
+The steps hold the release's Lease through submission.
+Ingestion requires the `admissionregistration.k8s.io/v1` API for `ValidatingAdmissionPolicy` and its binding.
+The chart creates the policy and its `Deny` binding whenever ingestion templates are enabled.
+The policy permits a pod to change only the launch annotations on its own Workflow.
+Use Argo v2 pod names for these steps.
+Give the deploy account permission to manage the chart's cluster RBAC, admission objects, and Roles and RoleBindings in the configured namespaces.
+Give it the permissions in the roles that the chart creates so Kubernetes permits the deploy account to grant them.
+The step releases the Lease when it sees the replication pod or when Airbyte settles the launch without a job.
+The step holds the Lease for at most 120 seconds.
+Set `ingestion.airbyteSync.capacityCheck.enabled` to `false` to disable this check and its RBAC.
+
+Set `ingestion.airbyteSync.capacityCheck.nodeSelector` to match the Airbyte job pod node selector.
+The default selector is empty.
+Set `ingestion.airbyteSync.capacityCheck.tolerations` to match the Airbyte job pod tolerations. The default list is empty.
+If you set Airbyte's `global.jobs.resources`, set `ingestion.airbyteSync.capacityCheck.requests` to match those pod requests.
+Use Kubernetes quantities for each `cpu` and `memory` value.
+
+| Container | Default CPU | Default memory |
+| --- | --- | --- |
+| Orchestrator | 1 | 2 GiB |
+| Source | 1 | 2 GiB |
+| Destination | 500m | 1 GiB |
+| Init | 1 | 2 GiB |
+
+For the source and destination, the estimate uses each request field from the connection, actor, definition, or chart default, in that order.
+For an actor or definition, a sync-specific field takes precedence over its default.
+The source default is an estimate for sources with no allocation.
+The launch step records the actual replication pod request if it finds the pod within 120 seconds of submission.
+A measurement error leaves the request empty and the accepted job continues to polling.
+
+### Confirm an Airbyte launch
+
+The trigger records its launch claim on the Workflow before it calls Airbyte.
+A replacement trigger reads the claim and checks for the same launch.
+Set `ingestion.airbyteSync.launchConfirmationSeconds` to change the confirmation window.
+The default is 600 seconds.
+A definitive client error records a rejected launch.
+A readable list with no newer job at the end of the window records an unconfirmed launch.
+A manual retry can start a new launch as soon as a readable list confirms that the prior job is absent.
+Set `ingestion.airbyteSync.launchUnreadableSeconds` to bound confirmation when the job list is unreadable.
+The default is 1800 seconds. An unreadable list leaves the launch outcome unknown.
+Set `ingestion.airbyteSync.statusUnreadableThresholdSeconds` to limit how long the poll step tolerates an outage.
+The poll step applies this limit to its initial Workflow read and to Airbyte job status reads.
+The default is 1800 seconds. A permanent credential error stops the poll step immediately.
+
+### Configure connector instance resources
+
+Set install-wide defaults under `ingestion.syncResourceDefaults`. The default map is empty.
+Each default uses the same field name as the connector instance API.
+A resource save returns HTTP 422 if no matching node has sufficient allocatable CPU and memory.
+The size check includes cordoned and unready nodes.
+For the Airbyte source, the service also checks the estimated replication pod when the other requests are configured.
+If the node list is unreadable, the service logs the error and applies the standard field validation.
+
+HTTP 200 confirms the resource save only. At load time, Bronze checks whether the Airbyte pod can fit in the live cluster.
+If the check finds the pod is too large, the load fails immediately with a separate reason on the Connectors page.
+
+| Field | Unit | Applies to |
+| --- | --- | --- |
+| `airbyte_cpu_millis` | Millicores | Airbyte source container |
+| `airbyte_memory_bytes` | Bytes | Airbyte source container |
+| `dbt_cpu_millis` | Millicores | Main container of dbt transforms and connector checks |
+| `dbt_memory_bytes` | Bytes | Main container of dbt transforms and connector checks |
+| `identity_cpu_millis` | Millicores | Main container of the identity seed |
+| `identity_memory_bytes` | Bytes | Main container of the identity seed |
+| `dbt_query_memory_bytes` | Bytes | Each ClickHouse query from dbt transforms and connector checks |
+
+Reconcile applies the chart defaults to connector Workflows. Admin-saved overrides take precedence.
+Use a positive integer for each pod value and at least two bytes for the query limit.
+Each pod value sets both the request and the limit for that dimension.
+An unset dimension uses the standard resources of its step.
+The connectors service and reconcile build the pod patches from the effective settings.
+The WorkflowTemplates use `dbt_pod_patch` for transforms and connector checks, and `identity_pod_patch` for the identity seed.
+
+The Airbyte source must serve one connection. A connection-level resource override takes precedence in Airbyte.
+The trigger reports any connection overrides and changes the source sync allocation before launch when a size differs.
+After both effective sizes are cleared, the next reconcile pass removes the managed source sync allocation.
+A launch before that pass can still use the prior source allocation.
+
+The dbt query limit overrides the sync user's per-query default and dbt model limits.
+Each absolute spill threshold is half the limit, rounded down. Both spill ratio settings are zero.
+The sync user's total memory limit still applies. With no instance or chart query limit, the dbt model settings apply as written.
+
+### Configure the ClickHouse sync user
+
+When Helm generates a sync password, the pre-install or pre-upgrade database job reads a temporary Secret.
+Helm removes the temporary Secret after the pre-hook phase.
+The migration job and sync workflows read the configured password Secret.
+
+Every installation runs Bronze loads, dbt, the identity seed, and connector checks as the sync user.
+Use a distinct username for each stand that shares a ClickHouse server.
+With `credentials.autoGenerate: true`, Helm generates the password in the `clickhouse-sync-password` key of `insight-db-creds`.
+Helm also copies it into a pre-deploy hook Secret, so the database jobs can create the account before the pods roll.
+With `credentials.autoGenerate: false`, add that key to the pre-created `insight-db-creds` before the upgrade.
+If Helm finds the Secret and cannot generate the password, a missing or empty key stops the upgrade.
+With the default `clickhouse.provisionAccess: true`, the database job creates the account and applies its settings and grants.
+With `clickhouse.provisionAccess: false`, create the account and put its password in the key before the upgrade.
+Helm refuses to generate a password for an account it does not create.
+Analytics, application services, the reconcile sweep, and the independent scheduled data-quality catalog use their existing accounts.
+
+The next reconcile pass updates the sync credentials on the ClickHouse destinations of managed Airbyte connections.
+The update preserves the destination ID, connection state, and other destination settings.
+For a credential-only update, reconcile checks the host, port, and protocol against the configured warehouse.
+Reconcile refuses a credential-only update if the destination uses an SSH tunnel.
+Airbyte can share a destination across connections. All connections that use that destination receive the credential change.
+Reconcile reads the password and its Secret revision together.
+Reconcile records each successful credential write in the release's `reconcile-destinations` ConfigMap.
+The record contains only the username, Secret UID, key, and resource version.
+Reconcile sends the credentials once per destination when the current revision differs from this record or the record is absent.
+A new Secret revision can cause one write even if the password stays the same.
+
+Apply the new password in ClickHouse before the next reconcile pass.
+The chart provisioning job does this on upgrade.
+After `helm rollback`, run `helm upgrade` again to match the ClickHouse sync password to the Secret.
+Bronze loads can fail authentication for up to one reconcile interval, until the next successful pass updates Airbyte.
+
+Without `clickhouse.syncUser.totalMemoryBytes`, the database job reads `max_server_memory_usage` from ClickHouse.
+It sets the sync total to 60% of that value, rounded down to whole bytes.
+In cluster mode, it uses the smallest value across the replicas that answer, and it stops if none answers.
+The job stops if any answering server uses the host memory to set its limit.
+Set `clickhouse.syncUser.totalMemoryBytes` if ClickHouse runs without a memory limit.
+Give all replicas the same `max_server_memory_usage`, or set `clickhouse.syncUser.totalMemoryBytes`.
+
+Measure query peaks during a representative Jira sync while Analytics runs.
+Use the largest applicable dbt model cap for each writer group.
+Estimate the sync total with this formula.
+
+```text
+concurrent Bronze loads × Bronze query budget
++ staging transform cap + downstream transform cap
++ identity seed cap
++ concurrent check runs × check query budget
+```
+
+Keep the total below the server limit minus idle memory and a reserve for Analytics.
+The per-user limit applies to the sum of tracked query memory on each server.
+Set `clickhouse.syncUser.queryMemoryBytes` to cap ordinary queries at their measured budget.
+Model-level caps override that default.
+An explicit default sets both spill thresholds to half its value and both ratio settings to zero.
+Leave the default unset to retain the server's per-query and spill settings.
+
+### Provision the sync user on an operator-managed ClickHouse server
+
+Set `clickhouse.provisionAccess: false` when the operator manages ClickHouse users.
+Use the same username and password in the chart and in ClickHouse.
+Replace `insight_sync`, the example password, and `insight` with your account, password, and `clickhouse.database` value.
+Replace the example limits with your values.
+Remove the per-query limit and the four spill settings if `clickhouse.syncUser.queryMemoryBytes` is unset.
+Set each spill threshold to half the per-query limit in bytes, rounded down.
+
+```sql
+CREATE USER IF NOT EXISTS insight_sync IDENTIFIED WITH sha256_password BY 'example-password';
+ALTER USER insight_sync IDENTIFIED WITH sha256_password BY 'example-password'
+SETTINGS
+    max_memory_usage_for_user = 6000000000 CONST,
+    max_memory_usage = 1073741824,
+    max_bytes_before_external_group_by = 536870912,
+    max_bytes_before_external_sort = 536870912,
+    max_bytes_ratio_before_external_group_by = 0,
+    max_bytes_ratio_before_external_sort = 0,
+    memory_usage_overcommit_max_wait_microseconds = 0;
+
+GRANT CREATE DATABASE, SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, TRUNCATE ON bronze_*.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON staging.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON silver.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON identity.* TO insight_sync;
+GRANT SELECT, INSERT, CREATE TABLE, ALTER TABLE, DROP TABLE, CREATE VIEW, DROP VIEW, TRUNCATE ON insight.* TO insight_sync;
+GRANT CREATE DATABASE, SELECT, INSERT, CREATE TABLE, DROP TABLE ON dbt_test__audit.* TO insight_sync;
+GRANT SELECT ON config.* TO insight_sync;
+GRANT CREATE TABLE ON config.task_field_roles TO insight_sync;
+GRANT CREATE TABLE ON config.task_value_map TO insight_sync;
+GRANT CREATE TABLE ON config.field_value_map TO insight_sync;
+GRANT CREATE TABLE ON config.field_value_defaults TO insight_sync;
+GRANT CREATE TABLE ON config.ai_seat_tier_map TO insight_sync;
+GRANT CREATE TABLE ON config.ai_credit_pricing TO insight_sync;
+GRANT SELECT ON system.databases TO insight_sync;
+GRANT SELECT ON system.tables TO insight_sync;
+GRANT SELECT ON system.columns TO insight_sync;
+```
+
+On a cluster, apply the same account and grants on every replica.
+Use a replicated user directory to apply them once.
+Airbyte uses `ON CLUSTER` DDL. dbt reads table metadata through `clusterAllReplicas`.
+
+```sql
+GRANT CLUSTER, REMOTE ON *.* TO insight_sync;
+```
 
 ## Release name convention
 
@@ -107,9 +354,10 @@ Before going to prod:
 
 - [ ] Decide on credentials strategy:
   - **Auto-gen (default):** `credentials.autoGenerate: true` — the umbrella creates `insight-db-creds` with random 24-char passwords on first install and reuses them via `lookup` on every upgrade.
-  - **BYO / Constructor Platform:** pre-create `insight-db-creds` with all required keys (`clickhouse-password`, `mariadb-password`, `mariadb-root-password`, `redis-password`) before the first `helm install`. The umbrella picks them up. Missing/empty keys fail fast.
+  - **BYO / Constructor Platform:** Create `insight-db-creds` before the first `helm install`. Add `clickhouse-password`, `clickhouse-sync-password`, `mariadb-password`, `mariadb-root-password`, and `redis-password`. A missing or empty key stops the install.
     - Works regardless of `credentials.autoGenerate`: the chart auto-detects BYO via absence of the `app.kubernetes.io/managed-by=Helm` label on the existing Secret and skips its own Secret-template emission, so Helm never tries to take ownership of the customer-managed Secret. No manual labeling required.
-    - **Dry-run note**: `helm install --dry-run` (default, client-side) skips the `lookup` function, so the BYO preview will incorrectly show the chart emitting `insight-db-creds`. Use `helm install --dry-run=server` (Helm ≥3.13) for an accurate BYO sanity-check — it exercises `lookup` against the real cluster.
+    - **Dry run**. `helm install --dry-run=client` skips `lookup` and shows the chart creating `insight-db-creds`.
+      Use `helm install --dry-run=server` to check whether Helm finds your Secret.
   - Rendering under a GitOps controller (`helm template`): set `deploymentMode: gitops` and `autoGenerate: false`, and supply the config Secrets out-of-band — the validator refuses `gitops` + `autoGenerate: true`.
 - [ ] Configure OIDC under `authenticator.oidc.*`: `issuerUrl`, `clientId`, `redirectUri`, and the client secret via a Secret (never inline in a committed values file).
 - [ ] Provide `insight-authenticator-signing-keys` (ES256 `current.pem`) — not auto-generated.
@@ -318,8 +566,9 @@ Key groups:
 - `clickhouse.clusterMode` / `clickhouse.clusterName` — warehouse topology, see [ClickHouse topology](#clickhouse-topology)
 - `clickhouse.createDatabases` — whether the pre-install Hook creates the release's ClickHouse databases. `false` is for a warehouse provisioned out of band: the post-install Hook converges them only with `clickhouse.runMigrations: true` and `ingestion.toolboxImage` set, and on a fresh install with v3-core deployed its pre-install migrate Job (weight 10) asserts `insight_datasets` before that Hook runs, so the install fails unless the database already stands (see [ClickHouse topology](#clickhouse-topology))
 - `clickhouse.provisionAccess` — whether the release provisions the ClickHouse roles and grant-less users beside them; `false` leaves access to the operator (a cluster without a replicated user directory)
+- `clickhouse.syncUser.*` — [credentials and memory limits for connector syncs](#configure-the-clickhouse-sync-user)
 - `clickhouse.fieldValueMap.*` — insert-only seed of operator-authored `config.field_value_map` / `config.field_value_defaults` rows from a TSV ConfigMap (post-upgrade hook, weight 300)
-- `previews.*`, `gitCliProxy.*`, `frontend.*` — optional services, on by default
+- `gitCliProxy.*`, `frontend.*` — optional services, on by default
 - `ingestion.templates.enabled` — whether to ship Argo WorkflowTemplates; requires Argo CRDs to be present in the cluster
 
 ## Operations

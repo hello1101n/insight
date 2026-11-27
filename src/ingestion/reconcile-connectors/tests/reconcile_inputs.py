@@ -7,8 +7,10 @@ would still pass while proving nothing.
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Iterable
+from pathlib import Path
 from typing import NamedTuple
 
 
@@ -51,3 +53,42 @@ def plan_row(connector: str, source_id: str = "", secret: str = "") -> str:
     """
     namespace = "bronze_" + connector.replace("-", "_")
     return "\t".join([connector, "dir", "1", "nocode", "", "", namespace, source_id, secret, "hash"])
+
+
+def write_sync_secret(directory: Path, version: str, password: str) -> None:
+    directory.mkdir(exist_ok=True)
+    (directory / "secret.json").write_text(
+        json.dumps(
+            {
+                "metadata": {"uid": "example-secret-uid", "resourceVersion": version},
+                "data": {"password": base64.b64encode(password.encode()).decode()},
+            }
+        )
+    )
+
+
+def sync_user(directory: Path, *current: str, username: str = "etl") -> str:
+    write_sync_secret(directory, "10", "example-secret")
+    revision = json.dumps(["example-secret-uid", "10", "password", username], separators=(",", ":"))
+    state = directory / "state.json"
+    state.write_text(json.dumps({"data": dict.fromkeys(current, revision)}))
+    return f"""
+    export RECONCILE_SYNC_PASSWORD_SECRET=example-sync-password RECONCILE_SYNC_PASSWORD_KEY=password
+    export RECONCILE_DESTINATION_STATE=example-destination-state RECONCILE_DEST_CLICKHOUSE_USERNAME={username}
+    export TMPDIR='{directory}'
+    if declare -F kubectl >/dev/null; then
+      eval "$(declare -f kubectl | sed '1s/^kubectl /_sync_user_next_kubectl /')"
+    else
+      _sync_user_next_kubectl() {{ command kubectl "$@"; }}
+    fi
+    kubectl() {{
+      case "${{3:-}} ${{4:-}} ${{5:-}}" in
+        'get secret example-sync-password') cat '{directory / "secret.json"}' ;;
+        'get configmap example-destination-state') cat '{state}' ;;
+        'patch configmap example-destination-state')
+          jq --argjson patch "$8" '. * $patch' '{state}' > '{state}.next' || return 1
+          mv '{state}.next' '{state}' ;;
+        *) _sync_user_next_kubectl "$@" ;;
+      esac
+    }}
+    """

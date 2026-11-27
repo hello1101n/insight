@@ -1,0 +1,14 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.render.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Render",
+  "description": "Base of every render type, a grouping type on purpose: it declares only the optional id the root stamps and no render field, so every widget type's render type derives from it and the render_widget action can name one type for every render. By GTS polymorphism a render instance belongs by its id to its derived render type and is checked strictly against it; since the pinned gts-ts 0.11.2 checks an embedded object only against this base, the root stamps render.id with the derived render type and registers the render, and the stamp stays compatible once gts-ts selects the derived type by that id. A catalog widget type always names its own closed render type by $ref; a product's widget type may narrow render inline, but then only the widget's own registration checks it, so a derived render type of its own is recommended.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "x-gts-instance-ref": "gts.frontx.dashboard.widget.render.v1~",
+      "description": "Combined anonymous instance id the root stamps: the widget type's render type followed by UUIDv5(namespace, widget id | role | render). A dashboard never writes it."
+    }
+  }
+}

@@ -13,8 +13,11 @@ from source_hubspot.constants import (
     HISTORY_BATCH_READ_LIMIT,
     MISSING_CURSOR_TIMESTAMP,
     PROPERTY_DEFINITION_OBJECT_TYPES,
+    STREAM_REGISTRY,
 )
 from source_hubspot.models import HistoryObject, HistoryPage, PropertyChange, RecordPage
+from source_hubspot.money import MONEY_PROPERTY_NAMES
+from source_hubspot.selection import ObjectDecisions, PropertySelection
 from source_hubspot.streams import PipelinesStream, PropertyDefinitionsStream, PropertyHistoryStream
 from tests.conftest import SOURCE, TENANT, FakeResponse, assert_no_leak, make_stream, wire
 
@@ -109,6 +112,29 @@ class TestPropertyDefinitions:
         keys = {r["unique_key"] for r in stream.read_records(None)}
 
         assert len(keys) == len(PROPERTY_DEFINITION_OBJECT_TYPES), "keys must be unique per (object, name)"
+
+    def test_every_definition_carries_its_review_status(self):
+        stream = make_stream(PropertyDefinitionsStream, "property_definitions")
+        stream._hubspot.selection = PropertySelection(
+            objects={
+                PROPERTY_DEFINITION_OBJECT_TYPES[0]: ObjectDecisions(
+                    collect=frozenset({"picked"}), ignore=frozenset({"skipped"})
+                )
+            }
+        )
+        pages = [page([]) for _ in range(2 * len(PROPERTY_DEFINITION_OBJECT_TYPES))]
+        pages[0] = page(
+            [{"name": "picked"}, {"name": "skipped"}, {"name": "unseen"}, {"name": "x", "showCurrencySymbol": True}]
+        )
+        wire(stream, pages)
+
+        status = {r["name"]: r["selection"] for r in stream.read_records(None)}
+
+        assert status == {"picked": "collected", "skipped": "ignored", "unseen": "unreviewed", "x": "unreviewed"}
+
+    def test_schema_declares_the_review_status(self):
+        props = make_stream(PropertyDefinitionsStream, "property_definitions").get_json_schema()["properties"]
+        assert props["selection"]["type"] == ["string", "null"]
 
     def test_nameless_definition_is_skipped(self):
         stream = make_stream(PropertyDefinitionsStream, "property_definitions")
@@ -251,3 +277,18 @@ class TestPropertyHistory:
         error = exc_info.value
         assert error.failure_type == FailureType.system_error, f"should reject: {result!r}"
         assert_no_leak(error, PERSONAL)
+
+
+@pytest.mark.parametrize("stream_name", [n for n, e in STREAM_REGISTRY.items() if e.get("history_properties")])
+def test_no_history_stream_requests_a_money_property(stream_name):
+    requested = set(STREAM_REGISTRY[stream_name]["history_properties"])
+    assert not requested & MONEY_PROPERTY_NAMES, f"should not request: {sorted(requested & MONEY_PROPERTY_NAMES)}"
+
+
+def test_only_property_definitions_declare_a_review_status():
+    for stream_cls, name in ((PipelinesStream, "deal_pipelines"), (PropertyHistoryStream, "deals_property_history")):
+        assert "selection" not in make_stream(stream_cls, name).get_json_schema()["properties"], name
+
+
+def test_owners_declare_no_review_status(owners_stream):
+    assert "selection" not in owners_stream.get_json_schema()["properties"]

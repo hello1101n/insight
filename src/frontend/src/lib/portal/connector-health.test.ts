@@ -31,18 +31,34 @@ describe("the recorded schedule", () => {
       const schedule = { crons: ["0 22 * * *"], origin, suspended: false };
 
       expect(describeSchedule({ ...schedule, timezone: "UTC" })).toBe("UTC");
-      expect(describeSchedule({ ...schedule, timezone: null })).toBe("controller time");
-      expect(describeSchedule({ ...schedule, timezone: "UTC", suspended: true })).toBe("UTC · suspended");
-      expect(describeSchedule({ ...schedule, timezone: null, suspended: true })).toBe("controller time · suspended");
-    },
+      expect(describeSchedule({ ...schedule, timezone: null })).toBe(
+        "controller time"
+      );
+      expect(
+        describeSchedule({ ...schedule, timezone: "UTC", suspended: true })
+      ).toBe("UTC · suspended");
+      expect(
+        describeSchedule({ ...schedule, timezone: null, suspended: true })
+      ).toBe("controller time · suspended");
+    }
   );
 
   it.each([
     ["Europe/Sofia", "annotation", "Europe/Sofia · suspended"],
     [null, null, "controller time · suspended"],
-  ] as const)("shows suspension with timezone %s without origin %s", (timezone, origin, text) => {
-    expect(describeSchedule({ crons: ["0 22 * * *"], timezone, origin, suspended: true })).toBe(text);
-  });
+  ] as const)(
+    "shows suspension with timezone %s without origin %s",
+    (timezone, origin, text) => {
+      expect(
+        describeSchedule({
+          crons: ["0 22 * * *"],
+          timezone,
+          origin,
+          suspended: true,
+        })
+      ).toBe(text);
+    }
+  );
   it.each([
     ["Europe/Sofia", "annotation", "Europe/Sofia"],
     [null, "descriptor", "controller time"],
@@ -50,9 +66,19 @@ describe("the recorded schedule", () => {
     ["UTC", null, "UTC"],
     [null, null, "controller time"],
     [undefined, undefined, "controller time"],
-  ] as const)("describes timezone %s without origin %s", (timezone, origin, text) => {
-    expect(describeSchedule({ crons: ["0 22 * * *"], timezone, origin, suspended: false })).toBe(text);
-  });
+  ] as const)(
+    "describes timezone %s without origin %s",
+    (timezone, origin, text) => {
+      expect(
+        describeSchedule({
+          crons: ["0 22 * * *"],
+          timezone,
+          origin,
+          suspended: false,
+        })
+      ).toBe(text);
+    }
+  );
 });
 
 function sync(over: Partial<SyncFact> = {}): SyncFact {
@@ -78,17 +104,21 @@ function row(over: Partial<ConnectorHealth> = {}): ConnectorHealth {
 describe("which installation of a connector a row is", () => {
   it("names both halves, because a source id is unique only within a tenant", () => {
     expect(
-      describeInstance({ tenant_id: "acme", source_id: "claude-team-second" }),
+      describeInstance({ tenant_id: "acme", source_id: "claude-team-second" })
     ).toBe("acme / claude-team-second");
   });
 
   it("prints absence as absence rather than naming an instance nobody recorded", () => {
     expect(describeInstance({})).toBe(UNMEASURED);
-    expect(describeInstance({ tenant_id: null, source_id: null })).toBe(UNMEASURED);
+    expect(describeInstance({ tenant_id: null, source_id: null })).toBe(
+      UNMEASURED
+    );
   });
 
   it("does not hide the half it does have", () => {
-    expect(describeInstance({ tenant_id: "acme" })).toBe(`acme / ${UNMEASURED}`);
+    expect(describeInstance({ tenant_id: "acme" })).toBe(
+      `acme / ${UNMEASURED}`
+    );
   });
 
   it("keys two installations of one connector apart", () => {
@@ -108,67 +138,97 @@ describe("which installation of a connector a row is", () => {
 
   it("keys an unidentified row apart from an identified one", () => {
     expect(instanceKey({ connector: "alpha" })).not.toBe(
-      instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" }),
+      instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" })
     );
   });
 
   it("keys two identities apart when one carries the separator", () => {
     expect(
-      instanceKey({ connector: "alpha", tenant_id: "acme/main", source_id: "" }),
+      instanceKey({ connector: "alpha", tenant_id: "acme/main", source_id: "" })
     ).not.toBe(
-      instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" }),
+      instanceKey({ connector: "alpha", tenant_id: "acme", source_id: "main" })
     );
   });
 
   it.each([
-    [{ connector: "a_b", tenant_id: "c" }, { connector: "a", tenant_id: "b_c" }],
-    [{ connector: "a%5Fb", tenant_id: "c" }, { connector: "a_b", tenant_id: "c" }],
-  ])("panel ids stay distinct when keys differ only by separator or underscore: %o vs %o", (first, second) => {
-    expect(panelIdFor(first)).not.toBe(panelIdFor(second));
-  });
+    [
+      { connector: "a_b", tenant_id: "c" },
+      { connector: "a", tenant_id: "b_c" },
+    ],
+    [
+      { connector: "a%5Fb", tenant_id: "c" },
+      { connector: "a_b", tenant_id: "c" },
+    ],
+  ])(
+    "panel ids stay distinct when keys differ only by separator or underscore: %o vs %o",
+    (first, second) => {
+      expect(panelIdFor(first)).not.toBe(panelIdFor(second));
+    }
+  );
 });
 
 describe("what a row says", () => {
   it.each<SyncStatus | null>([
-    "pending", "running", "incomplete", "succeeded", "failed", "cancelled", "unknown", null,
-  ])("keeps the state word and tone independent of the schedule for %s", (status) => {
-    const facts = row({ last_sync: status == null ? null : sync({ status }) });
-    const verdict = describeConnector(facts);
-    for (const configured of [true, false]) {
-      const expected = configured ? verdict : describeConnector({ ...facts, configured });
-      for (const schedule of [
-        null,
-        { crons: ["0 10 * * *"], timezone: "UTC", suspended: false },
-        { crons: ["1 12 * * *"], timezone: "UTC", suspended: false },
-        { crons: ["0 0 1 1 *"], timezone: "UTC", suspended: false },
-        { crons: ["0 10 * * *"], timezone: "UTC", suspended: true },
-        { crons: ["unreadable"], timezone: null, suspended: false },
-      ]) {
-        expect(describeConnector({ ...facts, configured, schedule })).toEqual(expected);
+    "pending",
+    "running",
+    "incomplete",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "unknown",
+    null,
+  ])(
+    "keeps the state word and tone independent of the schedule for %s",
+    (status) => {
+      const facts = row({
+        last_sync: status == null ? null : sync({ status }),
+      });
+      const verdict = describeConnector(facts);
+      for (const configured of [true, false]) {
+        const expected = configured
+          ? verdict
+          : describeConnector({ ...facts, configured });
+        for (const schedule of [
+          null,
+          { crons: ["0 10 * * *"], timezone: "UTC", suspended: false },
+          { crons: ["1 12 * * *"], timezone: "UTC", suspended: false },
+          { crons: ["0 0 1 1 *"], timezone: "UTC", suspended: false },
+          { crons: ["0 10 * * *"], timezone: "UTC", suspended: true },
+          { crons: ["unreadable"], timezone: null, suspended: false },
+        ]) {
+          expect(describeConnector({ ...facts, configured, schedule })).toEqual(
+            expected
+          );
+        }
       }
     }
-  });
+  );
 
   it("gives every recorded status its own word", () => {
     const words: Record<SyncStatus, string> = {
       pending: "queued",
       running: "syncing",
       incomplete: "sync incomplete",
-      succeeded: "sync ok",
+      succeeded: "Ready",
       failed: "sync failed",
       cancelled: "sync cancelled",
       unknown: "state unknown",
     };
     for (const [status, label] of Object.entries(words)) {
-      expect(describeConnector(row({ last_sync: sync({ status: status as SyncStatus }) })).label).toBe(
-        label,
-      );
+      expect(
+        describeConnector(
+          row({ last_sync: sync({ status: status as SyncStatus }) })
+        ).label
+      ).toBe(label);
     }
   });
 
-  it.each(["renamed_word", "constructor"])("reads the unrecognised status %s as state unknown", (status) => {
-    expect(describeSync(sync({ status })).state).toBe("state_unknown");
-  });
+  it.each(["renamed_word", "constructor"])(
+    "reads the unrecognised status %s as state unknown",
+    (status) => {
+      expect(describeSync(sync({ status })).state).toBe("state_unknown");
+    }
+  );
 
   it("never says a connector is delivering", () => {
     const statuses: SyncStatus[] = [
@@ -181,7 +241,7 @@ describe("what a row says", () => {
       "unknown",
     ];
     const labels = statuses.map(
-      (status) => describeConnector(row({ last_sync: sync({ status }) })).label,
+      (status) => describeConnector(row({ last_sync: sync({ status }) })).label
     );
     for (const label of [...labels, "no longer configured", "never synced"]) {
       expect(label).not.toMatch(/deliver|healthy|fresh|up to date/i);
@@ -190,7 +250,7 @@ describe("what a row says", () => {
 
   it("reads configuration before the sync outcome", () => {
     const removed = describeConnector(
-      row({ configured: false, last_sync: sync({ status: "failed" }) }),
+      row({ configured: false, last_sync: sync({ status: "failed" }) })
     );
     expect(removed.state).toBe("no_longer_configured");
     expect(removed.tone).not.toBe("failing");
@@ -198,37 +258,48 @@ describe("what a row says", () => {
 
   it("separates never synced from no longer configured", () => {
     expect(describeConnector(row({ last_sync: null })).state).toBe(
-      "never_synced",
+      "never_synced"
     );
     expect(
-      describeConnector(row({ configured: false, last_sync: null })).state,
+      describeConnector(row({ configured: false, last_sync: null })).state
     ).toBe("no_longer_configured");
   });
 
   it("gives an unreadable state its own tone, not the quiet one", () => {
-    const murky = describeConnector(row({ last_sync: sync({ status: "unknown" }) }));
+    const murky = describeConnector(
+      row({ last_sync: sync({ status: "unknown" }) })
+    );
     expect(murky.tone).toBe("unknown");
     expect(murky.tone).not.toBe("ok");
     expect(murky.tone).not.toBe("idle");
   });
 
   it("keeps queued apart from syncing", () => {
-    const queued = describeConnector(row({ last_sync: sync({ status: "pending" }) }));
-    const running = describeConnector(row({ last_sync: sync({ status: "running" }) }));
+    const queued = describeConnector(
+      row({ last_sync: sync({ status: "pending" }) })
+    );
+    const running = describeConnector(
+      row({ last_sync: sync({ status: "running" }) })
+    );
     expect(queued.state).not.toBe(running.state);
     expect(queued.label).not.toBe(running.label);
   });
 
   it("reads a status this build has never heard of as unreadable", () => {
     const view = describeConnector(
-      row({ last_sync: sync({ status: "materialising" as never }) }),
+      row({ last_sync: sync({ status: "materialising" as never }) })
     );
     expect(view.state).toBe("state_unknown");
     expect(view.tone).toBe("unknown");
   });
 
   it("carries a word for every tone, so colour is never the only signal", () => {
-    const statuses: SyncStatus[] = ["succeeded", "failed", "running", "unknown"];
+    const statuses: SyncStatus[] = [
+      "succeeded",
+      "failed",
+      "running",
+      "unknown",
+    ];
     for (const status of statuses) {
       expect(describeSync(sync({ status })).label.length).toBeGreaterThan(0);
     }
@@ -246,7 +317,7 @@ describe("how long a sync has been going", () => {
   it("a running sync states how long it has been going, worded as unfinished", () => {
     const view = describeDuration(
       sync({ status: "running", started_at: "2026-01-15T09:00:00.000Z" }),
-      AS_OF,
+      AS_OF
     );
     expect(view).toEqual({ text: "22m 0s so far", inFlight: true });
   });
@@ -258,7 +329,7 @@ describe("how long a sync has been going", () => {
         started_at: "2026-01-15T09:00:00.000Z",
         duration_ms: 0,
       }),
-      AS_OF,
+      AS_OF
     );
     expect(view.text).toBe("22m 0s so far");
   });
@@ -266,32 +337,44 @@ describe("how long a sync has been going", () => {
   it("a queued sync has no start to measure from, so it prints absence", () => {
     const view = describeDuration(
       sync({ status: "pending", started_at: null, duration_ms: null }),
-      AS_OF,
+      AS_OF
     );
     expect(view).toEqual({ text: UNMEASURED, inFlight: false });
   });
 
   it("a start the page cannot date prints absence rather than an epoch span", () => {
-    const view = describeDuration(sync({ status: "running", started_at: "nonsense" }), AS_OF);
+    const view = describeDuration(
+      sync({ status: "running", started_at: "nonsense" }),
+      AS_OF
+    );
     expect(view.text).toBe(UNMEASURED);
   });
 
   it("a start ahead of the answer's own clock prints absence", () => {
     const view = describeDuration(
       sync({ status: "running", started_at: "2026-01-15T10:00:00.000Z" }),
-      AS_OF,
+      AS_OF
     );
     expect(view.text).toBe(UNMEASURED);
   });
 
   it("a status this build cannot read is not treated as running", () => {
-    const view = describeDuration(sync({ status: "borked", duration_ms: 142_000 }), AS_OF);
+    const view = describeDuration(
+      sync({ status: "borked", duration_ms: 142_000 }),
+      AS_OF
+    );
     expect(view).toEqual({ text: "2m 22s", inFlight: false });
   });
 
   it("a connector that has never synced prints absence", () => {
-    expect(describeDuration(null, AS_OF)).toEqual({ text: UNMEASURED, inFlight: false });
-    expect(describeDuration(undefined, AS_OF)).toEqual({ text: UNMEASURED, inFlight: false });
+    expect(describeDuration(null, AS_OF)).toEqual({
+      text: UNMEASURED,
+      inFlight: false,
+    });
+    expect(describeDuration(undefined, AS_OF)).toEqual({
+      text: UNMEASURED,
+      inFlight: false,
+    });
   });
 });
 
@@ -329,7 +412,7 @@ describe("an unmeasured value is not a zero", () => {
 
   it("prints a measured zero as zero", () => {
     expect(formatRecords(0)).toBe("0");
-    expect(formatDuration(0)).toBe("0 ms");
+    expect(formatDuration(0)).toBe("0s");
   });
 
   it("prints an unparseable stamp as absence rather than as an epoch", () => {
@@ -337,8 +420,9 @@ describe("an unmeasured value is not a zero", () => {
   });
 
   it("reads durations at the scale they arrive in", () => {
-    expect(formatDuration(900)).toBe("900 ms");
-    expect(formatDuration(1_500)).toBe("1.5 s");
+    expect(formatDuration(900)).toBe("<1s");
+    expect(formatDuration(1_500)).toBe("2s");
+    expect(formatDuration(22_049)).toBe("22s");
     expect(formatDuration(90_000)).toBe("1m 30s");
     expect(formatDuration(3_930_000)).toBe("1h 5m");
   });
@@ -359,12 +443,16 @@ describe("an unmeasured value is not a zero", () => {
     for (const junk of ["2026", "0", "yesterday", "2026-13-45T99:99:99Z"]) {
       expect(formatStarted(junk)).toBe(UNMEASURED);
     }
-    expect(formatStarted("2026-01-15T09:00:00.000Z")).toBe("2026-01-15 09:00:00Z");
+    expect(formatStarted("2026-01-15T09:00:00.000Z")).toBe(
+      "15 Jan 2026 · 09:00:00"
+    );
   });
 });
 
 describe("what the page says about its own freshness", () => {
-  const summary = (over: Partial<Parameters<typeof describeRecording>[0]> = {}) => ({
+  const summary = (
+    over: Partial<Parameters<typeof describeRecording>[0]> = {}
+  ) => ({
     as_of: "2026-01-15T12:00:00.000Z",
     checked_at: "2026-01-15T11:59:00.000Z",
     typical_read_interval_ms: 15 * MINUTE,
@@ -389,19 +477,24 @@ describe("what the page says about its own freshness", () => {
     const interval = 15 * MINUTE;
     expect(
       describeRecording(
-        summary({ checked_at: checkedAgo(interval * STALE_AFTER_INTERVALS) }),
-      ).state,
+        summary({ checked_at: checkedAgo(interval * STALE_AFTER_INTERVALS) })
+      ).state
     ).toBe("current");
     expect(
       describeRecording(
-        summary({ checked_at: checkedAgo(interval * STALE_AFTER_INTERVALS + 1) }),
-      ).state,
+        summary({
+          checked_at: checkedAgo(interval * STALE_AFTER_INTERVALS + 1),
+        })
+      ).state
     ).toBe("stopped");
   });
 
   it("states the age without claiming a stop it cannot support", () => {
     const view = describeRecording(
-      summary({ typical_read_interval_ms: null, checked_at: checkedAgo(6 * 60 * MINUTE) }),
+      summary({
+        typical_read_interval_ms: null,
+        checked_at: checkedAgo(6 * 60 * MINUTE),
+      })
     );
     expect(view.state).toBe("unmeasured");
     expect(view.label).toMatch(/last checked 6 h ago/i);
@@ -411,21 +504,30 @@ describe("what the page says about its own freshness", () => {
 
   it("treats a zero measured interval as no measurement at all", () => {
     const view = describeRecording(
-      summary({ typical_read_interval_ms: 0, checked_at: checkedAgo(6 * 60 * MINUTE) }),
+      summary({
+        typical_read_interval_ms: 0,
+        checked_at: checkedAgo(6 * 60 * MINUTE),
+      })
     );
     expect(view.state).toBe("unmeasured");
   });
 
   it("still says the age is long, so the fact is not hidden", () => {
     const view = describeRecording(
-      summary({ typical_read_interval_ms: null, checked_at: checkedAgo(200 * 24 * 60 * MINUTE) }),
+      summary({
+        typical_read_interval_ms: null,
+        checked_at: checkedAgo(200 * 24 * 60 * MINUTE),
+      })
     );
     expect(view.label).toMatch(/200 d ago/);
   });
 
   it("does not cry stopped because a burst shortened the interval", () => {
     const view = describeRecording(
-      summary({ typical_read_interval_ms: 1_000, checked_at: checkedAgo(5 * MINUTE) }),
+      summary({
+        typical_read_interval_ms: 1_000,
+        checked_at: checkedAgo(5 * MINUTE),
+      })
     );
     expect(view.state).toBe("current");
   });
@@ -435,14 +537,14 @@ describe("what the page says about its own freshness", () => {
       summary({
         typical_read_interval_ms: 30 * 24 * 60 * MINUTE,
         checked_at: checkedAgo(4 * 60 * MINUTE),
-      }),
+      })
     );
     expect(view.state).toBe("stopped");
   });
 
   it("dates nothing when the two clocks disagree", () => {
     const view = describeRecording(
-      summary({ checked_at: "2026-01-16T00:00:00.000Z" }),
+      summary({ checked_at: "2026-01-16T00:00:00.000Z" })
     );
     expect(view.state).toBe("unreadable");
     expect(view.label).not.toMatch(/just now/i);
@@ -450,7 +552,7 @@ describe("what the page says about its own freshness", () => {
 
   it("dates nothing when a stamp will not parse", () => {
     expect(describeRecording(summary({ checked_at: "nope" })).state).toBe(
-      "unreadable",
+      "unreadable"
     );
   });
 });

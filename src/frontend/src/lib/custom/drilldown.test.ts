@@ -70,6 +70,31 @@ describe("drawable", () => {
     }
   );
 
+  it.each<[string, DrilldownColumn, unknown, unknown]>([
+    ["hours", { ...column("lead", "number"), unit: "h" }, 52.4, "2d 4h"],
+    ["milliseconds", { ...column("wait", "number"), unit: "ms" }, 120, "120ms"],
+    [
+      "a missing duration",
+      { ...column("lead", "number"), unit: "h" },
+      null,
+      null,
+    ],
+    [
+      "a number with no unit",
+      { ...column("lead", "number"), unit: null },
+      52,
+      52,
+    ],
+  ])(
+    "writes a duration column in %s as at most two parts",
+    (_case, col, value, shown) => {
+      expect(
+        drawable({ values: { [col.key]: value } }, [col]).values[col.key],
+        _case
+      ).toEqual(shown);
+    }
+  );
+
   it("links a cell that is an absolute URL", () => {
     const url = "https://example.com/pull/1";
     expect(

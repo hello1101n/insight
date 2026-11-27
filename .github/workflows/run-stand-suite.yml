@@ -82,14 +82,13 @@ jobs:
 
       - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
 
-      # Only the re-seed path needs helm — seed-stand.sh reads the release's
-      # values to resolve the seeder image — but it is pinned here rather than
-      # taken from the runner image for the same reason the deploy pins it.
+      # INVARIANT: seed-stand.sh reads the release values to select the seeder image.
+      # Use the same Helm version as the deploy workflow.
       - name: Set up Helm
         if: ${{ inputs.reseed }}
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: '3.14.0'
+          version: '4.3.2'
 
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:

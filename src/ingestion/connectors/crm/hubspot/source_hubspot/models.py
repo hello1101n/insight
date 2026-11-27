@@ -54,6 +54,7 @@ class HubspotConfig(_HubspotModel):
     insight_source_id: str
     hubspot_access_token: str = Field(repr=False)
     hubspot_start_date: str | None = None
+    hubspot_property_selection: str | None = None
 
 
 class NextPage(_HubspotModel):
@@ -86,6 +87,8 @@ class RecordKeys(_HubspotModel):
 
 class PropertyDescriptor(_HubspotModel):
     name: str | None = None
+    showCurrencySymbol: bool | None = None
+    numberDisplayHint: str | None = None
 
 
 class PropertiesPage(_HubspotModel):

@@ -1,0 +1,20 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.tones.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tones",
+  "description": "The tone each status value is drawn in: a status value (1 to 64 characters, any text) to one of neutral, success, warning, danger or info. A status value with no tone here draws neutral. Closed: no other tone.",
+  "type": "object",
+  "propertyNames": {
+    "minLength": 1,
+    "maxLength": 64
+  },
+  "additionalProperties": {
+    "enum": [
+      "neutral",
+      "success",
+      "warning",
+      "danger",
+      "info"
+    ]
+  }
+}

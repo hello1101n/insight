@@ -4,8 +4,12 @@ import {
   ChartColumn,
   ChartLine,
   ChartPie,
+  ChartScatter,
+  Funnel,
+  Grid3x3,
   Hash,
   LayoutGrid,
+  LayoutPanelLeft,
   Table2,
 } from "lucide-react";
 
@@ -32,6 +36,10 @@ const KIND: Record<Widget["type"], Kind> = {
   area: { label: "Area chart", icon: ChartArea },
   stat: { label: "Figure", icon: Hash },
   pie: { label: "Pie chart", icon: ChartPie },
+  heatmap: { label: "Heatmap", icon: Grid3x3 },
+  funnel: { label: "Funnel", icon: Funnel },
+  treemap: { label: "Treemap", icon: LayoutPanelLeft },
+  scatter: { label: "Scatter chart", icon: ChartScatter },
 };
 
 function kindOf(type: string): Kind {

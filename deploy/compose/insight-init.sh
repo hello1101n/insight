@@ -242,24 +242,21 @@ preflight_k8s() {
   require uv       "brew install uv"             "curl -LsSf https://astral.sh/uv/install.sh | sh" "https://docs.astral.sh/uv/" || missing=$((missing+1))
   require openssl  "brew install openssl"        "sudo apt-get install openssl"        "https://www.openssl.org/"               || missing=$((missing+1))
 
-  # Block helm v4.2.1 — known --wait regression that hangs the full
-  # --timeout on every fast hook-resource deletion. Trips bootstrap-*
-  # and system-* steps that use `before-hook-creation` lifecycle hooks
-  # (envoy-gateway certgen, cert-manager startupapicheck, etc.).
-  # See helm/helm#32214; #32230 is the proposed revert. Pin to v4.2.0
-  # or v3.x until v4.2.2+ ships.
+  # Helm 4.2.1 waits for the full timeout after fast hook deletions (helm/helm#32214).
   if command -v helm >/dev/null 2>&1; then
     local helm_ver
-    helm_ver="$(helm version --short 2>/dev/null | sed 's/+.*//; s/^v//')"
-    if [[ "$helm_ver" == "4.2.1" ]]; then
-      echo "  BAD: helm $helm_ver has the --wait hook-deletion regression" >&2
-      echo "       https://github.com/helm/helm/issues/32214" >&2
-      echo "       Pin to v4.2.0 (https://get.helm.sh/) or v3.21.x until v4.2.2+ ships." >&2
+    helm_ver="$(helm version --short 2>/dev/null || true)"
+    helm_ver="${helm_ver%%+*}"
+    if ! [[ "$helm_ver" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+$ && ${BASH_REMATCH[1]} -ge 4 ]]; then
+      echo "  BAD: Helm ${helm_ver:-version unknown}. Install Helm 4.0 or later." >&2
+      missing=$((missing+1))
+    elif [[ "$helm_ver" == "v4.2.1" ]]; then
+      echo "  BAD: Helm $helm_ver has a hook deletion wait regression. Install Helm 4.2.2 or later." >&2
       missing=$((missing+1))
     fi
   fi
 
-  [[ $missing -gt 0 ]] && { echo "  Resolve the missing tools and re-run." >&2; exit 1; }
+  [[ $missing -gt 0 ]] && { echo "  Install the required tools and run this command again." >&2; exit 1; }
   echo "  OK." >&2
   echo "" >&2
 }
@@ -678,10 +675,11 @@ write_k8s_local() {
   # invalid manifests and break the seal step. Defaults (insight-local /
   # root-local) are safe but we don't want the path to diverge per input.
   yaml_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
-  local mdb_root_esc mdb_pass_esc ch_pass_esc
+  local mdb_root_esc mdb_pass_esc ch_pass_esc ch_sync_pass
   mdb_root_esc=$(yaml_escape "$MARIADB_ROOT_PASSWORD")
   mdb_pass_esc=$(yaml_escape "$MARIADB_PASSWORD")
   ch_pass_esc=$(yaml_escape  "$CLICKHOUSE_PASSWORD")
+  ch_sync_pass=$(openssl rand -hex 16)
   (umask 077; cat > "$secrets_store_out" <<EOF
 ##
 ## secrets-store.yaml — local cleartext store consumed by
@@ -735,6 +733,7 @@ insight-local-insight-db-creds: |
     mariadb-root-password: "$mdb_root_esc"
     mariadb-password:      "$mdb_pass_esc"
     clickhouse-password:   "$ch_pass_esc"
+    clickhouse-sync-password: "$ch_sync_pass"
     redis-password:        "redis-local"
 
 insight-local-insight-v3-core-token: |

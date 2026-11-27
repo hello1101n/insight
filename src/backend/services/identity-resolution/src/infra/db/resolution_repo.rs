@@ -10,6 +10,8 @@ use crate::domain::provenance::Provenance;
 use crate::domain::resolution::{BINDING_VALUE_TYPE, BindingRow};
 use crate::domain::seed::{KnownBinding, SourceAccountKey};
 
+use super::sql_named::bind_named;
+
 pub const MAX_TENANT_BINDINGS: u64 = 200_000;
 
 const MYSQL_ER_LOCK_WAIT_TIMEOUT: u16 = 1205;
@@ -262,15 +264,16 @@ pub async fn append_binding_if_unbound(
              value_id, value_full_text, value, person_id, author_person_id, reason,
              created_at)
         SELECT * FROM (
-            SELECT 'id' AS c1, ? AS c2, ? AS c3, ? AS c4, ? AS c5,
-                   NULL AS c6, NULL AS c7, ? AS c8, ? AS c9, ? AS c10, ? AS c11
+            SELECT 'id' AS c1, @source_type AS c2, @source_id AS c3, @tenant_id AS c4,
+                   @account_id AS c5, NULL AS c6, NULL AS c7, @person_id AS c8,
+                   @author_person_id AS c9, @reason AS c10, @created_at AS c11
         ) AS incoming
         WHERE NOT EXISTS (
             SELECT 1 FROM (
                 SELECT 1 FROM persons
                 WHERE value_type = 'id'
-                  AND insight_source_type = ?
-                  AND value_id = ?
+                  AND insight_source_type = @source_type
+                  AND value_id = @account_id
                 LIMIT 1
             ) AS decided
         )
@@ -286,22 +289,26 @@ pub async fn append_binding_if_unbound(
         )
         .await?;
 
-    let statement = Statement::from_sql_and_values(
-        DbBackend::MySql,
+    let (sql, values) = bind_named(
         SQL,
-        [
-            row.account.source_type.clone().into(),
-            row.account.source_id.as_bytes().to_vec().into(),
-            tenant_id.as_bytes().to_vec().into(),
-            row.account.account_id.clone().into(),
-            row.person_id.as_bytes().to_vec().into(),
-            row.author_person_id.as_bytes().to_vec().into(),
-            row.reason.clone().into(),
-            row.created_at.into(),
-            row.account.source_type.clone().into(),
-            row.account.account_id.clone().into(),
+        &[
+            ("source_type", row.account.source_type.as_str().into()),
+            (
+                "source_id",
+                row.account.source_id.as_bytes().to_vec().into(),
+            ),
+            ("tenant_id", tenant_id.as_bytes().to_vec().into()),
+            ("account_id", row.account.account_id.as_str().into()),
+            ("person_id", row.person_id.as_bytes().to_vec().into()),
+            (
+                "author_person_id",
+                row.author_person_id.as_bytes().to_vec().into(),
+            ),
+            ("reason", row.reason.as_str().into()),
+            ("created_at", row.created_at.into()),
         ],
-    );
+    )?;
+    let statement = Statement::from_sql_and_values(DbBackend::MySql, &sql, values);
 
     let result = match txn.execute_raw(statement).await {
         Ok(result) => result,

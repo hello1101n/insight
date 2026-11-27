@@ -14,9 +14,14 @@ use crate::missing_relation::reported_code;
 pub const DDL_TASK_TIMEOUT: Duration = Duration::from_secs(30);
 
 const TIMEOUT_EXCEEDED: u32 = 159;
+const UNFINISHED: u32 = 341;
 const OUTPUT_MODE: &str = "distributed_ddl_output_mode";
 const ACTIVE_REPLICAS_ONLY: &str = "throw_only_active";
 const TASK_TIMEOUT: &str = "distributed_ddl_task_timeout";
+const ALTER_SYNC: &str = "alter_sync";
+const EVERY_REPLICA: &str = "2";
+const INACTIVE_REPLICA_WAIT: &str = "replication_wait_for_inactive_replica_timeout";
+const NO_WAIT: &str = "0";
 
 /// A statement the warehouse stopped waiting on before the replicas finished
 /// it: reported as a timeout, but still queued, so whether it lands is
@@ -37,11 +42,30 @@ impl Unfinished {
     }
 }
 
+/// An `ALTER` that every active replica applied; inactive replicas apply it on return.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("the active replicas applied the statement; the inactive replicas apply it on return")]
+pub struct InactiveReplicasPending;
+
+impl InactiveReplicasPending {
+    #[must_use]
+    pub fn from_error(error: &clickhouse::error::Error) -> Option<Self> {
+        Self::from_message(&error.to_string())
+    }
+
+    #[must_use]
+    pub fn from_message(message: &str) -> Option<Self> {
+        (reported_code(message)? == UNFINISHED).then_some(Self)
+    }
+}
+
 pub(crate) fn settings(topology: Topology) -> Vec<(&'static str, String)> {
     if topology.is_replicated() {
         vec![
             (OUTPUT_MODE, ACTIVE_REPLICAS_ONLY.to_owned()),
             (TASK_TIMEOUT, DDL_TASK_TIMEOUT.as_secs().to_string()),
+            (ALTER_SYNC, EVERY_REPLICA.to_owned()),
+            (INACTIVE_REPLICA_WAIT, NO_WAIT.to_owned()),
         ]
     } else {
         Vec::new()
@@ -101,7 +125,32 @@ mod tests {
                     "distributed_ddl_task_timeout",
                     DDL_TASK_TIMEOUT.as_secs().to_string()
                 ),
+                ("alter_sync", "2".to_owned()),
+                (
+                    "replication_wait_for_inactive_replica_timeout",
+                    "0".to_owned()
+                ),
             ]
+        );
+    }
+
+    #[test]
+    fn an_alter_that_only_inactive_replicas_still_owe_is_in_effect() {
+        let message = "Code: 341. DB::Exception: Timeout exceeded while waiting for replicas \
+                       r2 to process entry log-0000000001. Probably some replicas are inactive. \
+                       (UNFINISHED)";
+
+        assert_eq!(
+            InactiveReplicasPending::from_message(message),
+            Some(InactiveReplicasPending)
+        );
+        assert_eq!(Unfinished::from_message(message), None);
+        assert_eq!(InactiveReplicasPending::from_message("Code: 159"), None);
+        assert_eq!(
+            InactiveReplicasPending::from_error(&clickhouse::error::Error::BadResponse(
+                message.to_owned()
+            )),
+            Some(InactiveReplicasPending)
         );
     }
 }

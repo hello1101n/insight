@@ -7,7 +7,12 @@ name: hubspot
 # 3.11.0: the support models move to the class_support_* contract. MINOR:
 #   new staging tables that each run rebuilds whole; the old support classes
 #   and their models are dropped by the deploy hook.
-version: "3.12.0"
+# Property selection: the connector requests only its curated properties and
+#   the `collect` list of hubspot_property_selection, and never a property that
+#   holds money (source_hubspot/selection.py). The money columns stay in the
+#   schema and are NULL. property_definitions gets a `selection` column; the
+#   destination adds it on the next sync, so no full refresh is needed.
+version: "3.14.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync
@@ -19,10 +24,15 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.24.13.03-17d28da"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.27.14.58-3d4c626"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"
 secret:
   required_fields:
     - hubspot_access_token
+# Non-secret source config fields that the reconciler reads from the settings
+# ConfigMap of the instance (same annotations as the Secret).
+settings:
+  fields:
+    - hubspot_property_selection

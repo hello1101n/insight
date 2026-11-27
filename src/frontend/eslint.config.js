@@ -13,6 +13,7 @@ export default defineConfig([
     ".v2-extras",
     "public",
     "src/routeTree.gen.ts",
+    "vendor",
   ]),
   {
     files: ["**/*.{ts,tsx}"],

@@ -60,7 +60,7 @@ The implemented architecture is a **journal model** with one source of truth and
 - Connectors emit identity observations into ClickHouse `identity_inputs` (evidence; unchanged from v2.0).
 - The **persons-seed** (a subcommand of the Rust `identity-resolution` service, run as a scheduled job) folds new observations into the append-only MariaDB **`persons`** observation log: reuse an account's existing binding; else link the group to the person its e-mail already maps to (`LinkedByEmail`); else mint a new person; accounts without e-mail are skipped. It never merges two existing persons. Known gap: when accounts of one e-mail group are bound to *different* persons, the current seed collapses the group onto the first binding and can thereby silently re-derive a binding — the hardening that makes it respect per-account (in particular operator-authored) bindings ships with the manual-resolution feature.
 - **Operator corrections** (merge, detach/split, bind, exclude — ADR-0003, reviewed design in constructorfabric/insight#2180) are appended to the same `persons` journal as binding observations authored by a real operator UUID — the same currency the seed reads, so durability requires no parallel store; the seed hardening above closes the one path that could overwrite them.
-- The service's **persons-sync** runner republishes the journal into ClickHouse (`identity.identity_persons`) via an atomic table swap. Nothing schedules it on its own: it runs as the final step of every persons-seed run and after every applied operator correction, and the `sync` subcommand remains as the manual repair tool for a snapshot that has fallen behind; the dbt `resolve_person_id` macro resolves `person_id` at build time from that mirror. The v1 macro resolves **by e-mail only** (latest `value_type='email'` observation per normalized e-mail); the manual-resolution feature upgrades it to **account-first with e-mail fallback** (§4.4) — required for corrections, which are `value_type='id'` bindings, to reach gold.
+- The service's **persons-sync** runner republishes the journal into ClickHouse (`identity.identity_persons`). The table has one partition for each tenant, and the sync replaces the partition of each tenant atomically. Nothing schedules it on its own: it runs as the final step of every persons-seed run and after every applied operator correction, and the `sync` subcommand remains as the manual repair tool for a snapshot that has fallen behind; the dbt `resolve_person_id` macro resolves `person_id` at build time from that mirror. The v1 macro resolves **by e-mail only** (latest `value_type='email'` observation per normalized e-mail); the manual-resolution feature upgrades it to **account-first with e-mail fallback** (§4.4) — required for corrections, which are `value_type='id'` bindings, to reach gold.
 
 The v2.0 ClickHouse-native plan — a resolution store in `aliases` plus `match_rules`/`unmapped`/`conflicts`/`merge_audits` tables operated by a BootstrapJob/MatchingEngine/ResolutionService pipeline — **was not built**. Its matching-engine material is retained as future direction (§4.1, §4.2, §3.7 future tables); its snapshot-based merge/split mechanism is superseded by the journal-based operator flow of ADR-0003 (§4.3).
 
@@ -288,7 +288,7 @@ All temporal ranges use `[effective_from, effective_to)` half-open intervals. `e
 
 **Relationships**:
 - `identity_inputs` → (folded by persons-seed, ADR-0002) → `persons`
-- `persons` → (persons-sync atomic swap) → `identity.identity_persons` → (dbt `resolve_person_id`) → gold `person_id` columns
+- `persons` → (persons-sync partition replace for each tenant) → `identity.identity_persons` → (dbt `resolve_person_id`) → gold `person_id` columns
 - Operator corrections (ADR-0003) → append to `persons`; payloads journaled in `operations`
 - `persons.person_id` is the stable cross-domain join key (random UUIDv7, never re-derived; ADR-0002)
 
@@ -366,7 +366,9 @@ The analytical pipeline (dbt) cannot read MariaDB directly at build time; it nee
 
 ##### Responsibility scope
 
-- Mirrors the full `persons` journal into ClickHouse as an atomic snapshot swap (`EXCHANGE TABLES`), so readers never observe a partial mirror.
+- Mirrors the `persons` journal into ClickHouse. `identity.identity_persons` is `PARTITION BY insight_tenant_id`. The sync replaces the partition of each tenant on its own (`REPLACE PARTITION` from a staging table), so readers never observe a partial mirror of a tenant.
+- Takes the tenants from the `persons` journal. A failure of one tenant does not stop the other tenants, and each tenant gets its own operation record. A tenant that is not in the journal keeps its partition.
+- Publishes one full snapshot by `EXCHANGE TABLES` when the live table is missing or has a different structure (columns, sort key or partition key). This upgrades the live schema; the partition replaces follow.
 - Runs inside the identity-resolution service as a background worker.
 
 ##### Responsibility boundaries
@@ -499,7 +501,7 @@ All write verbs append to the `persons` journal (never update/delete), record th
 |---|---|---|
 | dbt models (Bronze → Silver) | ClickHouse tables | Connectors populate `identity_inputs` via the `identity_inputs_from_history` macro applied to `fields_history` models |
 | persons-seed (`seed` subcommand) | ClickHouse read + MariaDB write | Folds `identity_inputs` into `persons` per ADR-0002; scheduled by the umbrella chart; journaled in `operations` |
-| persons-sync (service worker) | MariaDB read + ClickHouse write | Republishes `persons` into `identity.identity_persons` via atomic swap |
+| persons-sync (service worker) | MariaDB read + ClickHouse write | Republishes `persons` into `identity.identity_persons`, one partition replace for each tenant |
 | dbt `resolve_person_id` macro | ClickHouse mirror | The single place resolution semantics live for analytics; every gold model resolves `person_id` through it at build time |
 | Person domain | `persons` observations (read) | Person domain builds its golden record from this domain's journal |
 
@@ -517,7 +519,7 @@ All write verbs append to the `persons` journal (never update/delete), record th
 
 | Aspect | Value |
 |---|---|
-| Tables | `identity_inputs` (`ReplacingMergeTree(_version)` through the `insight_engine` macro, connector-written), `identity.identity_persons` (mirror, swapped atomically) |
+| Tables | `identity_inputs` (`ReplacingMergeTree(_version)` through the `insight_engine` macro, connector-written), `identity.identity_persons` (mirror, one partition for each tenant, replaced atomically) |
 | Version | 24.x+ (for `generateUUIDv7()` support) |
 | Access | Read by persons-seed; written by dbt (inputs) and persons-sync (mirror) |
 | Connection | HTTP interface / native protocol |
@@ -613,8 +615,8 @@ sequenceDiagram
     participant DBT as dbt build (resolve_person_id)
     participant G as gold tables
 
-    Sync ->> P: read full journal
-    Sync ->> MIR: EXCHANGE TABLES (atomic snapshot swap)
+    Sync ->> P: read the journal of one tenant
+    Sync ->> MIR: REPLACE PARTITION of the tenant (atomic)
     DBT ->> MIR: v1: latest e-mail observation per e-mail -> person_id
     Note over DBT: upgrade with manual resolution: account-first<br/>(latest value_type='id' binding per source account),<br/>e-mail fallback for facts without an account,<br/>contested e-mail -> NULL
     DBT ->> G: person_id column (honest NULL when unresolved;<br/>excluded sentinel maps to NULL)
@@ -986,7 +988,7 @@ Every correction is an **appended binding observation** in `persons`, authored b
 
 The implemented analytics integration has two moving parts:
 
-**Mirror**: persons-sync republishes the MariaDB `persons` journal into ClickHouse `identity.identity_persons` as an atomic snapshot swap (`EXCHANGE TABLES`) — readers never observe a partial mirror. The mirror is a plain copy; no resolution semantics are applied at sync time.
+**Mirror**: persons-sync republishes the MariaDB `persons` journal into ClickHouse `identity.identity_persons`, one atomic partition replace for each tenant. Readers never observe a partial mirror of a tenant. The mirror is a plain copy; no resolution semantics are applied at sync time.
 
 **Resolve macro**: the dbt macro `resolve_person_id` is **deliberately the only place resolution semantics live** for analytics. Every gold model that needs a `person_id` calls it against the mirror at build time.
 
@@ -1111,7 +1113,7 @@ This walkthrough demonstrates the min-propagation algorithm (§4.1) as a verific
 | `known_binding_conflicts` | Seed run summary in `operations` | Seed-authored binding divergence inside e-mail groups (operator-authored divergence excluded by classification) | > 0 new per run |
 | Pending-decision count + match rate | Review queue (planned, `/v1/resolution/attention`; derived from evidence + bindings) | Accounts pending a decision, contested-binding groups, no-evidence accounts; resolution-rate shares | Backlog growth week-over-week |
 | Seed run outcome | `operations` journal | Failed/refused runs (guard rejections) | Any failed run |
-| Mirror freshness | persons-sync | Time since last successful `identity.identity_persons` swap | > 1 sync interval |
+| Mirror freshness | persons-sync | Time since the last successful `identity.identity_persons` publish of a tenant | > 1 sync interval |
 | Person lookup latency | identity-resolution service | p99 of `/v1/profiles` | > 50 ms |
 
 **SLA targets**:

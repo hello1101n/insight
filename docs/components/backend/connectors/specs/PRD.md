@@ -7,16 +7,16 @@ date: 2026-11-10
 
 ## 1. Purpose
 
-An instance admin changes how often each connector instance syncs, from the Connectors page,
-and sees whether the change is in effect. Connector health, sync history and ingestion intensity are
-served by a new `connectors` service, owned by ingestion, instead of analytics.
+An instance admin changes how often each connector instance syncs and checks the live schedule on the Connectors page.
+The admin uses the API to change the resource settings of each instance.
+The `connectors` service provides connector health, sync history, and ingestion intensity.
 
 ## 2. Users
 
 | User | What they do here |
 |---|---|
-| Instance admin | Reads connector health; sets, changes and resets an instance's sync schedule |
-| Operator | Deploys the install; sets the default schedule of an instance in the deployment configuration |
+| Instance admin | Reads connector health and manages each instance’s sync schedule and resource settings |
+| Operator | Deploys the install and sets the deployment defaults |
 
 Only users with the admin role reach these pages and APIs. Everyone else gets 403; an unauthenticated
 request gets 401.
@@ -107,12 +107,56 @@ request gets 401.
 ### 4.6 Sync history in the expanded row
 
 1. The schedule is shown full width at the top of the expanded row.
-2. Below it:
+2. For instances with only legacy loads, the history below the schedule contains
    - a strip of up to the last 50 syncs, one small coloured bar each, with the share of finished syncs
      that succeeded, for example "94% succeeded";
    - a table of the latest 10 syncs with column headers (status, start in UTC, duration,
      records), which expands to show the rest.
-3. The heading states how many syncs it shows, for example "Latest 10 of 50 recorded".
+   The row shows **Ready** after a successful load when run history is absent.
+3. For workflows that connectors observes, the row shows the current run and the last successful run.
+   Each shows elapsed time waiting, loading and transforming. Select a bar to open its timeline.
+   Reports become available when the final transformation succeeds. The row shows **Ready**.
+4. The strip includes older loads and multiple runs on the same day, up to 50 in total.
+   A load associated with a managed run by Airbyte Job ID appears once. Selecting an older
+   load shows the measurements that Airbyte recorded.
+5. For instances with only legacy loads, the heading states how many loads the table shows,
+   for example "Latest 10 of 50 recorded".
+6. The timeline shows Bronze, Silver, Identity, and Gold. It distinguishes two wait reasons.
+   These are a writer lock and cluster capacity.
+   The timeline counts the wait for cluster capacity before Airbyte submission as queued time.
+   A wait shows a warning after three hours.
+7. Before Gold succeeds, the service stops a workflow after more than six hours of waiting for a writer lock.
+   Post-sync checks run without Argo synchronization.
+   A wait for cluster capacity stops the load at the configured limit. The default is six hours.
+   The page shows the capacity wait timeout as a separate failure reason.
+   The run's wait time ends when Gold succeeds.
+8. The service retains the 100 most recent recorded runs per connector instance by default.
+   It also keeps the latest successful run and older active runs until they finish.
+   It removes expired runs with their attempts and waits.
+   Run history persists after Argo deletes the workflow.
+9. The timeline distinguishes a pod killed for memory from ClickHouse error 241.
+   It names the shared sync memory limit when ClickHouse reports that limit.
+10. If matching nodes exist, Bronze fails before submission when the estimated Airbyte pod cannot fit on any eligible node.
+    The size check accounts for scheduled workloads that stay on each node and excludes pods marked for deletion.
+    The page shows this failure as a separate reason.
+    Bronze waits when no node matches the selector or when capacity is temporarily unavailable.
+
+### 4.7 Resource settings
+
+1. An admin can set the CPU and memory of the Airbyte source, dbt, and identity seed per connector instance.
+2. An admin can set a ClickHouse query memory limit for that instance's dbt runs.
+3. Each unset value inherits its chart default. An unset chart default keeps the step's standard behavior.
+4. The resource settings share the schedule's save, revision, reconciliation, and removal rules.
+   A successful response confirms the save only. Bronze checks the live cluster at load time.
+   If the pod is too large, Bronze fails the load immediately with a separate reason.
+5. Each run uses the settings effective at submission.
+   Run history records the settings for each stage attempt.
+   When the Bronze trigger observes the replication pod, run history records its actual CPU and memory requests.
+6. Run history records the largest logged ClickHouse query memory for completed dbt and identity seed attempts.
+7. Run history reports a pod killed for memory as a pod memory failure.
+8. A save returns HTTP 422 if no matching node can hold the requested CPU and memory.
+   The service includes the other Airbyte container requests when those sizes are known.
+   If the node list is unreadable, the service logs it and applies the standard field validation.
 
 ## 5. Constraints
 

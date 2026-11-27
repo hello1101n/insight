@@ -28,7 +28,14 @@ The stack must be up first (`./dev-compose.sh up`). Then:
 ./dev-compose.sh seed                       # everything
 ./dev-compose.sh seed identity              # just identity
 ./dev-compose.sh seed silver                # just silver
+./dev-compose.sh seed analytics             # just the catalogues, in seconds
 ```
+
+On compose the `analytics` step also writes the custom catalogue: metrics,
+widgets and dashboards that the portal draws at `/dashboards/<id>`. The
+`MARIADB_V3_DB` variable turns it on, and the compose stack sets it. Each board
+tests one thing a dashboard renderer must draw. Sign in as the admin operator to
+see every board; [PROFILE.md](PROFILE.md) lists them with their paths.
 
 A successful run writes `manifest.json` describing the stand it just produced
 (roster, fixtures, data window, capabilities). It lands in the working
@@ -168,6 +175,8 @@ Preflight runs before anything is written and reports every problem at once:
   invisible to every login while the run still reports success;
 - the named analytics database does not hold `metric_definitions` — the error
   names the database it looked in;
+- `MARIADB_V3_DB` names a database without the insight-v3-core tables that the
+  custom catalogue writes into;
 - MariaDB or ClickHouse unreachable, or the ingestion scripts missing;
 - the target tenant already holds `persons` rows this seeder did not write
   (every row it writes carries a `reason` starting `"seed.py "`, trailing space
@@ -336,6 +345,8 @@ src/ingestion/tools/seed/
 │   ├── identity.py          MariaDB: persons, org_chart, person_roles
 │   ├── silver.py            ClickHouse: bronze generators → migrations → dbt build
 │   ├── analytics.py         the catalogue rows no endpoint can create
+│   ├── custom_catalogue.py  the seeded custom metrics, widgets and dashboards
+│   ├── custom_catalogue_store.py  writes them into insight-v3-core's tables
 │   ├── profiles.py          demo roster + per-team activity weights
 │   ├── scale.py             grows the roster past it; opt-in, never imported
 │   │                        on the default path

@@ -17,6 +17,7 @@
   - [3.6 Database](#36-database)
   - [3.7 Deployment Topology](#37-deployment-topology)
   - [3.8 Interactions & Sequences](#38-interactions--sequences)
+  - [3.9 Instance resource settings](#39-instance-resource-settings)
 - [4. Compose Stand and CI](#4-compose-stand-and-ci)
 - [5. Testing Strategy](#5-testing-strategy)
 - [6. Rollout and Rollback](#6-rollout-and-rollback)
@@ -25,15 +26,12 @@
 
 <!-- /toc -->
 
-A new backend service, `connectors`, owned by ingestion. Version 1 does two things:
+The ingestion team owns the `connectors` backend service. The service has two responsibilities.
 
-1. It takes over the connector routes from analytics — Connector health, a connector's syncs and
-   ingestion intensity. Sync history and intensity read ClickHouse; schedule enrichment reads the
-   live CronWorkflows and saved requests.
-2. It lets an admin change a connector instance's sync schedule from the portal. The service stores
-   the request, applies it to the instance's CronWorkflow at once, reads the CronWorkflow back and
-   says whether it took. The bash reconcile loop keeps owning everything else and honours saved
-   schedules when it re-renders CronWorkflows.
+1. It provides connector health, sync history, and ingestion intensity.
+2. It stores the schedule and resource settings of each connector instance.
+   The service applies each edit to the instance's CronWorkflow and reads it back.
+   Reconcile uses the saved settings each time it renders the CronWorkflow.
 
 Moving reconcile itself into the service is **Phase 2**, a separate plan made after schedules ship
 (Section 7). Version 1 depends on none of it.
@@ -69,7 +67,7 @@ database. Version 1 keeps the parts of that work that were sound and changes whe
 | D4 the minimal service plus changing schedules | exactly that |
 | D5–D7 reconcile and history move into the service | re-scoped by the product owner to Phase 2 |
 | D8 everything connector-related that exists today moves | the health, syncs and intensity routes move first, unchanged |
-| D9 Rust on Gears; D10 the name `connectors` | a Gears host like analytics and previews |
+| D9 Rust on Gears; D10 the name `connectors` | a Gears host like analytics |
 | Save outcome | a save confirms the target, restores after a client refusal or a successfully fenced unchanged job, or keeps an unconfirmed request with an explicit status |
 
 ### 1.2 Goals, Non-Goals and Anti-Goals
@@ -380,8 +378,8 @@ acknowledgement write:
   is `insight_schedule_<connectors.databaseName>`; derived user and role names longer than 80 characters
   retain a readable prefix and a stable hash suffix. `global.connectorSchedules.database.username`
   overrides the default. Each installation sharing a MariaDB server uses a distinct connectors
-  database. The role holds `SELECT ON <connectors.databaseName>.connector_schedule_requests_v1`,
-  `DELETE ON <connectors.databaseName>.connector_schedules` and column-level `SELECT (connector, source_id)`
+  database. The role holds `SELECT` on both versions of the schedule request view.
+  It holds `DELETE ON <connectors.databaseName>.connector_schedules` and column-level `SELECT (connector, source_id)`
   on that table for the delete predicate. No other grants are accepted. The deploy hook adds missing
   grants to an existing compatible role.
   The hook refuses incompatible existing grants or credentials without changing them; it never
@@ -399,14 +397,15 @@ acknowledgement write:
 ### 3.6 Database
 
 Database `connectors` on the install's MariaDB, always created by `mariadb-init-svcdbs-job.yaml`.
-One migration, `m20261110_000001_connector_schedules`, arriving with the schedule API:
+The schedule and resource settings use these objects.
 
 | Object | Columns | Writer |
 |---|---|---|
-| table `connector_schedules` | `connector`, `source_id` (PK, ascii), `crons JSON` (CHECK array; empty = tombstone), `revision BIGINT UNSIGNED` (CHECK ≥ 1), `updated_by BINARY(16)`, `updated_at DATETIME(3)` | the API; legacy orphan sweep deletes removed instances |
-| view `connector_schedule_requests_v1` | `connector`, `source_id`, `revision`, `crons`; `SQL SECURITY DEFINER` | — (read by the legacy loop) |
+| table `connector_schedules` | `connector`, `source_id` (PK, ascii), `crons JSON` (CHECK array; empty = tombstone), `resources JSON` (nullable), `has_schedule_revision BOOLEAN`, `revision BIGINT UNSIGNED` (CHECK ≥ 1), `updated_by BINARY(16)`, `updated_at DATETIME(3)` | the API; legacy orphan sweep deletes removed instances |
+| view `connector_schedule_requests_v1` | `connector`, `source_id`, `revision`, `crons`; `SQL SECURITY DEFINER` | — (read for the pass schedule snapshot) |
+| view `connector_schedule_requests_v2` | Same columns and `resources`; `SQL SECURITY DEFINER` | — (read under the instance lock) |
 
-The view is a frozen contract: a change ships as `connector_schedule_requests_v2` beside it.
+Each view has a frozen contract. The migration creates each new version beside its predecessor.
 Requests and tombstones retain their revisions until an eligible live reconcile pass sweeps the removed
 instance's orphan row; a returning instance begins at revision zero. No background
 retention task runs.
@@ -453,6 +452,71 @@ sequenceDiagram
     L->>D: unlock
     Note over S,L: shared instance lock serializes save and reconcile apply
 ```
+
+### 3.9 Instance resource settings
+
+Use the admin schedule endpoint at `/v1/connectors/{connector}/{source_id}/schedule`.
+`PATCH` with `If-Match` merges resource overrides and returns the revision in `ETag`.
+Omit a field to retain its override. Send `null` for a field to inherit its chart default.
+The schedule `PUT` and `DELETE` act on the schedule.
+
+The `resources` response object has `requested`, `live`, `inherited`, `status`, and `read_error`.
+The service compares the effective settings and both pod patches with the CronWorkflow's parameters.
+It reads the chart defaults from the CronWorkflow's `insight.cyberfabric.com/deployment-resources` annotation.
+Before writing overrides, the service checks CPU and memory together against each matching node's allocatable resources.
+It includes the configured Airbyte replication containers and init request when calculating that pod's size.
+The size check includes cordoned and unready nodes. The service returns HTTP 422 if the request cannot fit.
+A node list error leaves the standard field validation in effect.
+A refused patch restores the previous database row. Uncertain writes use the schedule's readback and fence rules.
+
+HTTP 200 confirms the save only. At load time, the trigger or poll step checks whether the Airbyte pod fits the live cluster.
+If the pod is too large, the step fails the load immediately and records `airbyte_pod_too_large`.
+
+Reconcile reads the latest overrides under the instance lock and applies them to the CronWorkflow or one-shot Workflow.
+The connectors service and reconcile build `dbt_pod_patch` and `identity_pod_patch` from the effective settings.
+The pipeline passes each JSON patch to its WorkflowTemplate, which substitutes it as the `podSpecPatch`.
+Both parameters default to `{}` when the workflow omits them.
+Argo passes `sync_resources` to Bronze for Airbyte sizing.
+The trigger or poll step updates the dedicated source allocation before launch when a saved size differs.
+Reconcile removes the managed sync allocation on the next pass after both effective sizes are cleared.
+The [chart README](../../../../../charts/insight/README.md#configure-connector-instance-resources) lists the fields and their units.
+
+By default, the ClickHouse provisioning job sets the sync user's total memory budget to 60% of the lowest server limit among answering replicas.
+Provisioning stops if an answering server uses the host memory to set its limit.
+Set `clickhouse.syncUser.totalMemoryBytes` to supply the total directly.
+
+The history observer reads Airbyte settings from `sync_resources` on the submitted Workflow.
+For dbt and identity seed attempts, it records the CPU and memory requests from the corresponding pod patch.
+It reads the dbt query memory limit from `dbt_pod_patch`.
+Under the Lease, the trigger and poll steps list nodes and read pods from the configured namespaces.
+The steps use the trigger account for Kubernetes capacity reads and Workflow updates.
+The admission policy limits the trigger account to launch annotations on its own Workflow.
+The chart creates the policy and its `Deny` binding when it renders the ingestion templates.
+The cluster must serve `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` in `admissionregistration.k8s.io/v1`.
+The trigger or poll step records a capacity wait when no schedulable node can fit the estimated pod now.
+A young Pending Airbyte job can also hold the queue. The age limit defaults to 30 minutes.
+The size check includes matching cordoned and unready nodes and ignores `node.kubernetes.io/*` taints.
+The size check excludes nodes with other blocking taints unless the configured tolerations match those taints.
+The check subtracts requests from visible, scheduled DaemonSet and mirror pods that are active and have no deletion timestamp.
+If matching nodes exist and none can hold the estimate, the step records `airbyte_pod_too_large` and fails before submission.
+If no node matches the selector, the step waits for capacity.
+The trigger or poll step times the wait from the Workflow annotation. The default limit is six hours.
+At the limit, the step closes the wait and records `airbyte_capacity_wait_exceeded`.
+The step can stop the load when the observer is down.
+The launch claim closes the wait before job submission.
+The observer closes an open wait when the Workflow ends and keeps the stage outcome.
+The observer keeps each connector instance's latest successful run when it prunes older runs.
+The observer uses the Workflow start time to distinguish Bronze attempts across Argo retries.
+A retry adds a Bronze attempt only if it runs the trigger or poll step, or records a capacity wait.
+When the Workflow has a launch mark, a Bronze attempt takes its Airbyte job only from the launch mark of its own execution.
+When an attempt gets a job it did not have, the attempt takes the start time, records and reason of that job.
+A poll step that fails before it has a job fails with `stage_failed`.
+The observer uses the actual replication pod request from the launch receipt when available.
+The observer waits ten minutes after a dbt or identity seed attempt ends before it records peak query memory.
+It reads the query log by the stage's `log_comment`.
+The observer records the largest query memory and preserves the pod memory failure reason.
+The observer deletes old completed runs in batches. The foreign key removes their attempts and waits.
+History reads use the instance index to select the latest run and the latest successful run.
 
 ## 4. Compose Stand and CI
 
