@@ -6,23 +6,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  Activity,
-  Ban,
-  Check,
-  ChevronRight,
-  Circle,
-  Clock3,
-  X,
-} from "lucide-react";
+import { Activity, Ban, Check, Circle, Clock3, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
   Card,
   CardTitle,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -163,17 +152,7 @@ function QueuedEvent({
   );
 }
 
-function Timeline({
-  run,
-  asOf,
-  stepsOpen,
-  onStepsOpenChange,
-}: {
-  run: ConnectorRun;
-  asOf: string;
-  stepsOpen: boolean;
-  onStepsOpenChange: (open: boolean) => void;
-}) {
+function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
   const { t } = useTranslation();
   const timing = summarizeRun(run, asOf);
   const heading = t("connectors.runs.timeline");
@@ -199,59 +178,41 @@ function Timeline({
       <ConnectorRunBands timing={timing} />
       {timing.steps.length > 0 || timing.trailingQueue ? (
         <Card size="sm" className="min-w-0 px-2 py-1.5">
-          <Collapsible open={stepsOpen} onOpenChange={onStepsOpenChange}>
-            <CardTitle render={<h5 />} className="text-sm">
-              <CollapsibleTrigger
-                type="button"
-                className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-start focus-visible:outline-2"
-              >
-                {heading}
-                <ChevronRight
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-foreground transition-transform duration-350 group-aria-expanded:rotate-90 motion-reduce:transition-none"
-                />
-              </CollapsibleTrigger>
-            </CardTitle>
-            <CollapsibleContent className="motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0">
-              <ol
-                aria-label={heading}
-                className="flex flex-wrap gap-1.5 pt-1.5"
-              >
-                {timing.steps.map(({ step, queued, failure, ...event }) => {
-                  const state = describeRun(event.status);
-                  return (
-                    <Fragment key={step}>
-                      {queued && (
-                        <QueuedEvent
-                          queue={queued}
-                          timedOut={failure?.status === "wait_timeout"}
-                        />
-                      )}
-                      <StepEvent
-                        {...event}
-                        tone={state.tone}
-                        pending={state.kind === "queued"}
-                      >
-                        <RunTooltip
-                          lines={[
-                            stepDetail(step),
-                            ...(failure ? stageFailureDetails(failure) : []),
-                          ]}
-                        >
-                          <strong className="font-medium">
-                            {stepLabel(step)}
-                          </strong>
-                        </RunTooltip>
-                      </StepEvent>
-                    </Fragment>
-                  );
-                })}
-                {timing.trailingQueue && (
-                  <QueuedEvent queue={timing.trailingQueue} />
-                )}
-              </ol>
-            </CollapsibleContent>
-          </Collapsible>
+          <CardTitle render={<h5 />} className="text-sm">
+            {heading}
+          </CardTitle>
+          <ol aria-label={heading} className="flex flex-wrap gap-1.5 pt-1.5">
+            {timing.steps.map(({ step, queued, failure, ...event }) => {
+              const state = describeRun(event.status);
+              return (
+                <Fragment key={step}>
+                  {queued && (
+                    <QueuedEvent
+                      queue={queued}
+                      timedOut={failure?.status === "wait_timeout"}
+                    />
+                  )}
+                  <StepEvent
+                    {...event}
+                    tone={state.tone}
+                    pending={state.kind === "queued"}
+                  >
+                    <RunTooltip
+                      lines={[
+                        stepDetail(step),
+                        ...(failure ? stageFailureDetails(failure) : []),
+                      ]}
+                    >
+                      <strong className="font-medium">{stepLabel(step)}</strong>
+                    </RunTooltip>
+                  </StepEvent>
+                </Fragment>
+              );
+            })}
+            {timing.trailingQueue && (
+              <QueuedEvent queue={timing.trailingQueue} />
+            )}
+          </ol>
         </Card>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -328,7 +289,6 @@ export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
     "stacked"
   );
   const [selectedId, select] = useState<string | null>(null);
-  const [stepsOpen, setStepsOpen] = useState(false);
 
   useLayoutEffect(() => {
     const element = container.current;
@@ -353,9 +313,8 @@ export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
   const inlineDetails = layout === "narrow" && selectedId !== null;
 
   function openRun(id: string) {
-    if (stepsOpen && id !== selected?.id) captureDetailsHeight();
+    if (id !== selected?.id) captureDetailsHeight();
     select(id);
-    setStepsOpen(true);
     requestAnimationFrame(() => {
       const details = detailsRef.current;
       details?.focus({ preventScroll: true });
@@ -375,12 +334,7 @@ export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
         {t("connectors.runs.selected")}
       </h4>
       {"sync_id" in selected.record ? (
-        <Timeline
-          run={selected.record}
-          asOf={asOf}
-          stepsOpen={stepsOpen}
-          onStepsOpenChange={setStepsOpen}
-        />
+        <Timeline run={selected.record} asOf={asOf} />
       ) : (
         <HistoricalLoad sync={selected.record} asOf={asOf} />
       )}
