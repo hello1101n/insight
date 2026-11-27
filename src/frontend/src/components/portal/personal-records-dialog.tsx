@@ -7,7 +7,10 @@ import {
   type PersonalRecordsPage,
 } from "@/api/personal-metrics-client";
 import { refusal } from "@/components/custom/refusal";
-import { MetricEvidenceTable } from "@/components/metric-evidence-table";
+import {
+  MetricEvidenceTable,
+  type EvidenceMarker,
+} from "@/components/metric-evidence-table";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import {
   Button,
@@ -17,11 +20,14 @@ import {
   DialogTitle,
 } from "@gears-frontx/ui-kit";
 import { drawable } from "@/lib/custom/drilldown";
+import { formatRange } from "@/lib/date-range-label";
 import {
+  CALCULATION_LABEL,
   exclusiveEnd,
+  medianRow,
   type PersonalMetricDefinition,
 } from "@/lib/portal/personal-metrics";
-import { TEXT_BODY } from "@/lib/type-scale";
+import { TEXT_BODY, TEXT_FIGURE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
 const MAX_PAGES = 50;
@@ -31,6 +37,7 @@ export interface PersonalRecordsTarget {
   metric: PersonalMetricDefinition;
   personId: string;
   personName: string;
+  value: string;
 }
 
 export function PersonalRecordsDialog({
@@ -86,6 +93,7 @@ function Records({
   });
 
   const columns = query.data?.pages[0]?.columns ?? NO_COLUMNS;
+  const valueKey = query.data?.pages[0]?.value;
   const pages = query.data?.pages;
   const rows = useMemo(
     () =>
@@ -93,6 +101,13 @@ function Records({
       [],
     [pages, columns]
   );
+  const marker = useMemo((): EvidenceMarker | undefined => {
+    if (!pages || !valueKey) return undefined;
+    const row = medianRow(
+      pages.flatMap((page) => page.rows.map((record) => record.values[valueKey]))
+    );
+    return row == null ? undefined : { row, column: valueKey, label: "Median" };
+  }, [pages, valueKey]);
   const pageLimitReached =
     (pages?.length ?? 0) >= MAX_PAGES && query.hasNextPage;
 
@@ -109,27 +124,71 @@ function Records({
       </div>
     );
   }
+
+  const summary = (
+    <Summary
+      target={target}
+      range={range}
+      count={rows.length}
+      more={query.hasNextPage}
+    />
+  );
   if (rows.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        No records for this period
-      </div>
+      <>
+        {summary}
+        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          No records for this period
+        </div>
+      </>
     );
   }
 
   return (
-    <MetricEvidenceTable
-      numbered
-      metricKey={null}
-      rows={rows}
-      columns={columns.map((column) => ({ ...column, sortable: false }))}
-      sort={null}
-      onSortChange={() => undefined}
-      fetchNextPage={query.fetchNextPage}
-      hasNextPage={query.hasNextPage && !pageLimitReached}
-      isFetchingNextPage={query.isFetchingNextPage}
-      nextPageError={query.isFetchNextPageError}
-      pageLimitReached={pageLimitReached}
-    />
+    <>
+      {summary}
+      <MetricEvidenceTable
+        numbered
+        metricKey={null}
+        rows={rows}
+        columns={columns.map((column) => ({ ...column, sortable: false }))}
+        sort={null}
+        onSortChange={() => undefined}
+        fetchNextPage={query.fetchNextPage}
+        hasNextPage={query.hasNextPage && !pageLimitReached}
+        isFetchingNextPage={query.isFetchingNextPage}
+        nextPageError={query.isFetchNextPageError}
+        pageLimitReached={pageLimitReached}
+        marker={marker}
+      />
+    </>
+  );
+}
+
+function Summary({
+  target,
+  range,
+  count,
+  more,
+}: {
+  target: PersonalRecordsTarget;
+  range: DateRange;
+  count: number;
+  more: boolean;
+}) {
+  const calculation = CALCULATION_LABEL[target.metric.calculation].toLowerCase();
+  const noun = count === 1 && !more ? "record" : "records";
+  const counted = `${count.toLocaleString("en")}${more ? "+" : ""} ${noun}`;
+
+  return (
+    <div className="shrink-0 pt-2 pb-4">
+      <p className="flex flex-wrap items-baseline gap-x-2">
+        <span className={TEXT_FIGURE}>{target.value}</span>
+        <span className={TEXT_BODY}>{`${calculation} · ${counted}`}</span>
+      </p>
+      <p className={cn(TEXT_BODY, "text-muted-foreground")}>
+        {`${formatRange(range.from, range.to)} · UTC`}
+      </p>
+    </div>
   );
 }

@@ -5,7 +5,6 @@ import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight, Info } from "lucide-rea
 
 import type { DateRange } from "@/api/period-to-date-range";
 import { evidenceSelection } from "@/api/metric-drilldown-client";
-import type { PersonalCalculation } from "@/api/personal-metrics-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
 import {
   PersonalRecordsDialog,
@@ -28,7 +27,10 @@ import {
   type MetricsRow,
   type SortDirection,
 } from "@/lib/portal/metrics-view";
-import type { PersonalMetricDefinition } from "@/lib/portal/personal-metrics";
+import {
+  CALCULATION_LABEL,
+  type PersonalMetricDefinition,
+} from "@/lib/portal/personal-metrics";
 import { TEXT_BODY, TEXT_NAME } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
@@ -43,16 +45,6 @@ const HEADER_CELL = "sticky z-20 border-b bg-card px-2 text-start";
 const NAME_CELL = "sticky start-0 z-10 bg-card";
 const NO_PERSONAL: ReadonlyMap<string, PersonalMetricDefinition> = new Map();
 const NO_KEYS: ReadonlySet<string> = new Set();
-
-const CALCULATION_LABEL: Record<PersonalCalculation, string> = {
-  sum: "Total",
-  count: "Count",
-  avg: "Average",
-  min: "Minimum",
-  max: "Maximum",
-  ratio: "Ratio",
-  percent: "Percent",
-};
 
 export function MetricsTable({
   rows,
@@ -248,11 +240,12 @@ export function MetricsTable({
                       personName={row.displayName}
                       onOpen={
                         personal.get(key) && range
-                          ? () =>
+                          ? (value) =>
                               setRecords({
                                 metric: personal.get(key)!,
                                 personId: row.entityId,
                                 personName: row.displayName,
+                                value,
                               })
                           : undefined
                       }
@@ -284,7 +277,7 @@ export function MetricValue({
   result: NormalizedMetricResult | undefined;
   entityId: string;
   personName: string;
-  onOpen?: () => void;
+  onOpen?: (shown: string) => void;
 }) {
   const evidence = useMetricEvidenceOptional();
   const value = result ? finiteValue(result, entityId) : null;
@@ -299,7 +292,7 @@ export function MetricValue({
       <button
         type="button"
         aria-label={`${personName} — ${result.label}: ${fullText}`}
-        onClick={onOpen}
+        onClick={() => onOpen(text)}
         className="cursor-pointer hover:text-primary hover:underline"
       >
         {text}

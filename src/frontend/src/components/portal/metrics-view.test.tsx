@@ -1003,6 +1003,8 @@ describe("MetricsView personal metrics", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Support load · b" })).toBeInTheDocument();
     expect(await within(dialog).findByText("Ethan Okafor")).toBeInTheDocument();
+    expect(within(dialog).getByText("5")).toBeInTheDocument();
+    expect(within(dialog).getByText("average · 1 record")).toBeInTheDocument();
     expect(mocks.fetchPersonalRecords).toHaveBeenCalledWith("load", {
       person_id: pid("b"),
       from: "2026-07-01",

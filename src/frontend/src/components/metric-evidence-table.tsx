@@ -24,6 +24,7 @@ import type {
 import { CopyValueButton } from "@/components/copy-value-button";
 import { RecordLink } from "@/components/record-link";
 import {
+  Badge,
   Button,
   Tooltip,
   TooltipContent,
@@ -66,6 +67,7 @@ const CELL_PADDING_PX = 24;
 const ROUNDING_PX = 2;
 const SORT_ICON_PX = 18;
 const COPY_BUTTON_PX = 42;
+const MARKER_PX = 20;
 const CAP_CHARACTERS = 40;
 const MEASURED_ROWS = 100;
 
@@ -75,6 +77,12 @@ const LEADING_REM: readonly number[] = [EXPANDER_REM];
 const NUMBERED_LEADING_REM: readonly number[] = [NUMBER_REM, EXPANDER_REM];
 
 const SUMMARY_ONLY_LINKS: ReadonlySet<string> = new Set(["title"]);
+
+export interface EvidenceMarker {
+  row: number;
+  column: string;
+  label: string;
+}
 
 function valueText(
   row: MetricEvidenceRow,
@@ -126,14 +134,30 @@ function measureTexts(
   return widths;
 }
 
+function markedLine(
+  columns: readonly MetricEvidenceColumn[],
+  rows: readonly MetricEvidenceRow[],
+  marker: EvidenceMarker | undefined,
+  metricKey: string | null,
+  metric: MetricValueFormat | null
+): string | null {
+  const row = marker ? rows[marker.row] : undefined;
+  const column = columns.find((candidate) => candidate.key === marker?.column);
+  if (!row || !column) return null;
+
+  return cellLine(row, column, metricKey, metric).line;
+}
+
 function columnNeeds(
   element: HTMLElement,
   columns: readonly MetricEvidenceColumn[],
   rows: readonly MetricEvidenceRow[],
   metricKey: string | null,
-  metric: MetricValueFormat | null
+  metric: MetricValueFormat | null,
+  marker: EvidenceMarker | undefined
 ): ColumnNeed[] | null {
   const sample = rows.slice(0, MEASURED_ROWS);
+  const marked = markedLine(columns, rows, marker, metricKey, metric);
   const texts = [
     { text: "0".repeat(CAP_CHARACTERS), header: false },
     ...columns.flatMap((column) => [
@@ -143,11 +167,25 @@ function columnNeeds(
         header: false,
       })),
     ]),
+    ...(marked != null && marker
+      ? [
+          { text: marked, header: false },
+          { text: marker.label, header: true },
+        ]
+      : []),
   ];
   const widths = measureTexts(element, texts);
   if (widths.every((width) => width === 0)) return null;
   const cap = widths[0]!;
   const perColumn = sample.length + 1;
+  const markedNeed =
+    marked != null
+      ? Math.min(widths.at(-2)!, cap) +
+        widths.at(-1)! +
+        MARKER_PX +
+        CELL_PADDING_PX +
+        ROUNDING_PX
+      : 0;
 
   return columns.map((column, index) => {
     const start = 1 + index * perColumn;
@@ -162,8 +200,9 @@ function columnNeeds(
       CELL_PADDING_PX +
       ROUNDING_PX +
       (column.key === "ref" ? COPY_BUTTON_PX : 0);
+    const markedValue = column.key === marker?.column ? markedNeed : 0;
     return {
-      natural: Math.max(header, value),
+      natural: Math.max(header, value, markedValue),
       stretches: column.type === "string",
     };
   });
@@ -225,6 +264,7 @@ export function MetricEvidenceTable({
   nextPageError,
   pageLimitReached,
   numbered = false,
+  marker,
 }: {
   metricKey: string | null;
   rows: MetricEvidenceRow[];
@@ -238,6 +278,7 @@ export function MetricEvidenceTable({
   nextPageError: boolean;
   pageLimitReached: boolean;
   numbered?: boolean;
+  marker?: EvidenceMarker;
 }) {
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -271,7 +312,14 @@ export function MetricEvidenceTable({
 
   const measured = useMemo(() => {
     if (!viewport || viewportWidth === 0) return null;
-    const needs = columnNeeds(viewport, columns, rows, metricKey, metric);
+    const needs = columnNeeds(
+      viewport,
+      columns,
+      rows,
+      metricKey,
+      metric,
+      marker
+    );
     if (!needs) return null;
     const remPx =
       parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -283,6 +331,7 @@ export function MetricEvidenceTable({
     rows,
     metricKey,
     metric,
+    marker,
     leadingTotalRem,
   ]);
 
@@ -480,6 +529,9 @@ export function MetricEvidenceTable({
                     metricKey,
                     metric
                   );
+                  const marked =
+                    marker?.row === virtualRow.index &&
+                    marker.column === column.key;
                   return (
                     <TableCell
                       role="cell"
@@ -501,6 +553,24 @@ export function MetricEvidenceTable({
                             title="Copy ref"
                             errorMessage="Unable to copy ref"
                           />
+                        </div>
+                      ) : marked ? (
+                        <div
+                          className={cn(
+                            "flex min-w-0 items-center gap-1.5",
+                            column.type === "number" && "flex-row-reverse"
+                          )}
+                        >
+                          <CutText full={full}>
+                            <strong className="font-semibold">
+                              <RecordLink href={links[column.key]}>
+                                {line}
+                              </RecordLink>
+                            </strong>
+                          </CutText>
+                          <Badge variant="secondary" size="xs">
+                            {marker.label}
+                          </Badge>
                         </div>
                       ) : (
                         <CutText full={full}>

@@ -19,6 +19,16 @@ export function isPersonalKey(key: string): boolean {
   return key.startsWith(PERSONAL_PREFIX);
 }
 
+export const CALCULATION_LABEL: Record<PersonalCalculation, string> = {
+  sum: "Total",
+  count: "Count",
+  avg: "Average",
+  min: "Minimum",
+  max: "Maximum",
+  ratio: "Ratio",
+  percent: "Percent",
+};
+
 export type PersonalMetricDefinition = MetricDefinition & {
   calculation: PersonalCalculation;
   shared_by: PersonalSharedBy | null;
@@ -93,4 +103,17 @@ export function personalResults(
     });
   }
   return out;
+}
+
+export function medianRow(values: readonly unknown[]): number | null {
+  const numbered = values
+    .map((value, row) => ({ value, row }))
+    .filter(
+      (entry): entry is { value: number; row: number } =>
+        typeof entry.value === "number" && Number.isFinite(entry.value),
+    )
+    .sort((a, b) => a.value - b.value || a.row - b.row);
+  if (numbered.length < 2) return null;
+
+  return numbered[Math.floor((numbered.length - 1) / 2)]!.row;
 }

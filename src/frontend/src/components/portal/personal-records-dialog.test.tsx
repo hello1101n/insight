@@ -45,11 +45,17 @@ const COLUMNS: PersonalRecordsPage["columns"] = [
   { key: "share", label: "Share", type: "number", sortable: false, percent: true, exact: false },
 ];
 
+const LINES: PersonalRecordsPage["columns"] = [
+  { key: "author", label: "Author", type: "string", sortable: false, percent: false, exact: false },
+  { key: "lines", label: "Lines", type: "number", sortable: false, percent: false, exact: false },
+];
+
 function records(
   rows: Array<Record<string, unknown>>,
   next_cursor: string | null = null,
+  shape: Pick<PersonalRecordsPage, "columns" | "value"> = { columns: COLUMNS },
 ): PersonalRecordsPage {
-  return { columns: COLUMNS, rows: rows.map((values) => ({ values })), next_cursor };
+  return { ...shape, rows: rows.map((values) => ({ values })), next_cursor };
 }
 
 function Providers({ children }: { children: ReactNode }) {
@@ -57,15 +63,23 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function open() {
+function open(range = { from: "2026-07-01", to: "2026-07-31" }) {
   return render(
     <PersonalRecordsDialog
-      target={{ metric: METRIC, personId: "person-1", personName: "Ada Lovelace" }}
-      range={{ from: "2026-07-01", to: "2026-07-31" }}
+      target={{ metric: METRIC, personId: "person-1", personName: "Ada Lovelace", value: "12" }}
+      range={range}
       onClose={vi.fn()}
     />,
     { wrapper: Providers },
   );
+}
+
+function rowOf(dialog: HTMLElement, text: string): HTMLElement {
+  const row = within(dialog)
+    .getAllByRole("row")
+    .find((candidate) => within(candidate).queryByText(text));
+  if (!row) throw new Error(`no row shows ${text}`);
+  return row;
 }
 
 beforeEach(() => mocks.fetchPersonalRecords.mockReset());
@@ -125,5 +139,94 @@ describe("PersonalRecordsDialog", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("records are down");
     await userEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(within(dialog).getByText("Ada")).toBeInTheDocument());
+  });
+
+  it("sums up the person's value, its calculation and the count of records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(
+      records([{ author: "Ada", share: 1 }, { author: "Grace", share: 2 }]),
+    );
+
+    open();
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("table");
+    expect(within(dialog).getByText("12")).toBeInTheDocument();
+    expect(within(dialog).getByText("total · 2 records")).toBeInTheDocument();
+  });
+
+  it("counts a single record as one record", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(records([{ author: "Ada", share: 1 }]));
+
+    open();
+
+    expect(await screen.findByText("total · 1 record")).toBeInTheDocument();
+  });
+
+  it("counts the loaded records with a plus while another page exists", async () => {
+    mocks.fetchPersonalRecords
+      .mockResolvedValueOnce(records([{ author: "Ada", share: 1 }], "page-2"))
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    open();
+
+    expect(await screen.findByText("total · 1+ records")).toBeInTheDocument();
+  });
+
+  it("keeps the summary above the note that the period holds no records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(records([]));
+
+    open();
+
+    expect(await screen.findByText("No records for this period")).toBeInTheDocument();
+    expect(screen.getByText("total · 0 records")).toBeInTheDocument();
+  });
+
+  it("shows the period of the records and its time zone", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(records([{ author: "Ada", share: 1 }]));
+
+    open({ from: "2025-07-01", to: "2025-07-31" });
+
+    expect(await screen.findByText("1 Jul 2025 – 31 Jul 2025 · UTC")).toBeInTheDocument();
+  });
+
+  it("marks the row that holds the median value", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(
+      records(
+        [
+          { author: "Ada", lines: 5 },
+          { author: "Grace", lines: 1 },
+          { author: "Lin", lines: 3 },
+        ],
+        null,
+        { columns: LINES, value: "lines" },
+      ),
+    );
+
+    open();
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("table");
+    expect(within(dialog).getAllByText("Median")).toHaveLength(1);
+    expect(within(rowOf(dialog, "Lin")).getByText("Median")).toBeInTheDocument();
+  });
+
+  it("marks no row when the answer names no value column", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(
+      records(
+        [
+          { author: "Ada", lines: 5 },
+          { author: "Grace", lines: 1 },
+          { author: "Lin", lines: 3 },
+        ],
+        null,
+        { columns: LINES },
+      ),
+    );
+
+    open();
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("table");
+    expect(within(dialog).queryByText("Median")).toBeNull();
   });
 });

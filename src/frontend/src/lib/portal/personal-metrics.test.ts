@@ -4,6 +4,7 @@ import type { PersonalMetric } from "@/api/personal-metrics-client";
 import {
   exclusiveEnd,
   isPersonalKey,
+  medianRow,
   personalDefinition,
   failedPersonalKeys,
   personalKey,
@@ -141,5 +142,25 @@ describe("personalDefinition", () => {
     expect(def.calculation).toBe("sum");
     expect(def.shared_by?.name).toBe("Ada");
     expect(personalDefinition(metric({ shared_by: null })).shared_by).toBeNull();
+  });
+});
+
+describe("medianRow", () => {
+  it.each([
+    ["the middle row of an odd count", [5, 1, 3], 2],
+    ["the lower middle row of an even count", [4, 1, 3, 2], 3],
+    ["the first of equal middle values", [2, 7, 2, 1], 0],
+    ["a row among rows that carry no number", [9, null, "3", 4, 1], 3],
+    ["one of two numbers", [8, 6], 1],
+  ])("marks %s", (_case, values, expected) => {
+    expect(medianRow(values), `case: ${_case}`).toBe(expected);
+  });
+
+  it.each([
+    ["no rows", []],
+    ["one number", [5, null]],
+    ["no numbers", ["3", null, Number.NaN]],
+  ])("marks no row when there are %s", (_case, values) => {
+    expect(medianRow(values), `case: ${_case}`).toBeNull();
   });
 });

@@ -46,7 +46,9 @@ export interface PersonalRecordsRequest {
   cursor?: string;
 }
 
-export type PersonalRecordsPage = Omit<DrilldownPage, "selection">;
+export type PersonalRecordsPage = Omit<DrilldownPage, "selection"> & {
+  value?: string;
+};
 
 export async function fetchPersonalMetrics(): Promise<PersonalMetric[]> {
   const res = await fetchWithAuth(`${BASE}/personal-metrics`);
