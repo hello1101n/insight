@@ -198,6 +198,8 @@ async fn value_of(
     marked: &Marked,
     asked: &Asked,
 ) -> Read {
+    // INVARIANT: the permit lives until this metric's values answer; it is what
+    // caps concurrent metric runs at MAX_CONCURRENT_WIDGET_RUNS.
     let Some(_permit) = run_slot(state).await else {
         tracing::warn!(
             capacity = MAX_CONCURRENT_WIDGET_RUNS,

@@ -207,6 +207,8 @@ async fn read_records(
         .ok_or_else(missing)?;
     require_visible(&state, &headers, &[person], "person_id").await?;
 
+    // INVARIANT: the permit lives until the records answer; it is what caps
+    // concurrent metric runs at MAX_CONCURRENT_WIDGET_RUNS.
     let _permit = run_slot(&state).await.ok_or_else(runs_busy)?;
     let asked = Records {
         person,
