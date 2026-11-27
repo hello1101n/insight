@@ -93,4 +93,10 @@ data:
           priority: 20
 
       insight-v3-core:
-        config: {}
+        config:
+          external_sources: {{- if not ((.Values.global).externalSources) }} []{{- end }}
+            {{- range ((.Values.global).externalSources) }}
+            - id: {{ .id | quote }}
+              provider: {{ .provider | quote }}
+              web_base_url: {{ .webBaseUrl | quote }}
+            {{- end }}

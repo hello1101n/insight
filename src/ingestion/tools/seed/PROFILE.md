@@ -17,7 +17,7 @@ builder that writes `manifest.json`, so the two cannot disagree.
 | realm | `insight` |
 | anchor_date | `2026-06-30` |
 | data_window | `2026-05-02..2026-06-30` |
-| seed_revision | `3bb20dc50ae185f3` |
+| seed_revision | `f434be1e6a95c6b8` |
 | manifest_version | 2 |
 
 `anchor_date` is the last day carrying seeded activity. It is resolved
@@ -97,8 +97,13 @@ renaming one breaks every test that declares it.
 | capability | value |
 |---|---|
 | `connector_schedules` | no |
+| `custom_catalogue` | yes |
 | `idp` | keycloak |
 | `ingestion` | no |
+| `portal_dashboards` | yes |
+| `portal_datasets` | yes |
+| `portal_metrics` | yes |
+| `portal_widgets` | yes |
 | `service_principals` | yes |
 
 `ingestion: no` — compose seeds the silver and gold layers directly; no
@@ -119,3 +124,47 @@ a reason.
 rendered against a canonical environment, so it shows the default rather
 than your stand's value — read `manifest.json` for what is actually
 running.
+
+`custom_catalogue: yes` — the `analytics` step wrote the custom catalogue
+below into the insight-v3-core database that `MARIADB_V3_DB` names. The
+four `portal_*` capabilities follow it: each catalogue page has at least
+one seeded definition to open. A stand without that variable reports `no`
+for all five, and the tests that need them skip with a reason.
+
+## Custom catalogue
+
+Seeded dashboards, by the stable key a test declares. Each board tests one
+thing a dashboard renderer must get right. The admin operator owns every
+board, so sign in as `admin_operator` to see all of them. The CEO sees
+only the shared board. Open a board at its path on the stand.
+
+| key | name | path | widgets | covers |
+|---|---|---|---|---|
+| `every_widget_type` | Stand: every widget type | `/dashboards/stand-every-widget-type` | 24 | every widget type and option once: lines and areas by series and with a target, plain, labelled, stacked, horizontal, 100% and duration bars, a pie, plain and compared stats, tables, heatmaps, a funnel, a treemap and a scatter, with time ranges, and details that list pull requests and commits one row each, linked to their source |
+| `headings_and_texts` | Stand: headings and texts | `/dashboards/stand-headings-and-texts` | 2 | headings, texts, a long heading, and text with markdown-like characters |
+| `no_time_range` | Stand: no time range, widgets with and without a clock | `/dashboards/stand-no-time-range` | 4 | a board without time ranges; clocked and clockless widgets run over all rows |
+| `percents` | Stand: percent stat and percent column | `/dashboards/stand-percents` | 4 | a percent stat, a percent table column, a percent line and percent bars |
+| `large_table` | Stand: table over 500 rows | `/dashboards/stand-large-table` | 1 | a table widget whose metric answers 1000 rows |
+| `many_categories` | Stand: many categories and long labels | `/dashboards/stand-many-categories` | 3 | a bar over more than 50 categories, and bars and a table over long labels |
+| `dates_over_a_year` | Stand: dates over more than one year | `/dashboards/stand-dates-over-a-year` | 3 | monthly buckets over the whole data window, which spans more than one year |
+| `null_values` | Stand: null values | `/dashboards/stand-null-values` | 5 | null category labels, null ratios, a null stat and null table cells |
+| `empty_results` | Stand: empty results | `/dashboards/stand-empty-results` | 5 | a line, bars, a pie, a table and a stat over a metric with no rows |
+| `failing_widget` | Stand: a widget that fails | `/dashboards/stand-failing-widget` | 2 | a widget whose metric reads a column the table does not have, beside one that works |
+| `large_board` | Stand: large board with 18 widgets | `/dashboards/stand-large-board` | 18 | one board with 18 widgets of every type, under headings |
+| `in_folder` | Stand: board in a folder | `/dashboards/stand-in-folder` | 2 | a board filed in the folder `Stand folder` |
+| `shared` | Stand: board shared with the CEO | `/dashboards/stand-shared` | 2 | a board the admin operator owns and shares with the CEO as a viewer |
+| `starred` | Stand: starred board | `/dashboards/stand-starred` | 2 | a board the admin operator has starred |
+| `dataset_widgets` | Stand: widgets over a dataset | `/dashboards/stand-dataset-widgets` | 2 | bars and a table over a metric that reads the seeded dataset |
+| `stat_compare` | Stand: stats against the previous period | `/dashboards/stand-stat-compare` | 4 | stats compared with the previous period: higher, lower and neutral is better, a percent stat and a duration stat |
+| `bar_layouts` | Stand: horizontal and 100% stacked bars | `/dashboards/stand-bar-layouts` | 2 | horizontal bars, and bars stacked to 100% by a series |
+| `target_lines` | Stand: target lines | `/dashboards/stand-target-lines` | 3 | a target on a percent line and on percent bars, and a target without a label on an area |
+| `series_lines_and_areas` | Stand: lines and areas by series | `/dashboards/stand-series-lines-and-areas` | 2 | one line for each value of a series column, and areas stacked by it |
+| `heatmaps` | Stand: heatmaps by two columns and by day | `/dashboards/stand-heatmaps` | 2 | a heatmap with an x and a y column, and a calendar heatmap by the time bucket |
+| `funnel` | Stand: funnel from conditional counts | `/dashboards/stand-funnel` | 1 | a funnel whose stages are conditional counts in one row |
+| `treemap` | Stand: treemap with groups | `/dashboards/stand-treemap` | 1 | a treemap of pipelines grouped by repository |
+| `scatter` | Stand: scatter with labels and series | `/dashboards/stand-scatter` | 1 | a scatter of pipelines with a size, a series by repository and a label on each point |
+| `durations` | Stand: durations with a unit | `/dashboards/stand-durations` | 2 | a table column and bars whose metric reads durations in seconds |
+
+The folder is `Stand folder` and the dataset is `stand_sample_records`. A
+failing widget fails on purpose: its metric reads a column that the table
+does not have. No metric value in the catalogue is an expected value.

@@ -467,10 +467,64 @@ fn the_widget_schema_offers_exactly_the_kinds_the_renderer_draws() {
 
     assert_eq!(
         widget["type"]["enum"],
-        json!(["table", "line", "bar", "area", "stat", "pie"])
+        json!([
+            "table", "line", "bar", "area", "stat", "pie", "heatmap", "funnel", "treemap",
+            "scatter"
+        ])
     );
-    for field in ["metric", "columns", "x", "y", "value", "label"] {
+    assert_eq!(widget["stages"]["type"], json!("array"));
+    for field in [
+        "metric", "columns", "x", "y", "value", "label", "stages", "group", "size", "series",
+    ] {
         assert!(widget[field].is_object(), "{field} is offered");
+    }
+}
+
+#[test]
+fn the_widget_schema_offers_the_options_of_a_chart_and_a_stat() {
+    let created = tool(CREATE_TOOL);
+    let widget = &created["input_schema"]["properties"]["widgets"]["items"]["properties"]["body"]["properties"];
+
+    assert_eq!(widget["series"]["type"], json!("string"));
+    assert_eq!(widget["horizontal"]["type"], json!("boolean"));
+    assert_eq!(widget["stack"]["enum"], json!(["percent"]));
+    assert_eq!(widget["target"]["required"], json!(["value"]));
+    assert_eq!(widget["target"]["additionalProperties"], json!(false));
+    assert_eq!(
+        widget["target"]["properties"]["value"]["type"],
+        json!("number")
+    );
+    assert_eq!(widget["compare"]["additionalProperties"], json!(false));
+    assert_eq!(
+        widget["compare"]["properties"]["better"]["enum"],
+        json!(["higher", "lower", "neutral"])
+    );
+}
+
+#[test]
+fn the_prompt_names_every_kind_of_widget() {
+    let prompt = system_prompt("", &Catalogue::default());
+
+    for kind in ["heatmap", "funnel", "treemap", "scatter"] {
+        assert!(
+            prompt.contains(&format!("{{\"type\":\"{kind}\"")),
+            "{kind}: {prompt}"
+        );
+    }
+}
+
+#[test]
+fn the_prompt_says_how_a_widget_takes_its_options() {
+    let prompt = system_prompt("", &Catalogue::default());
+
+    for option in [
+        "\"series\"",
+        "\"target\"",
+        "\"horizontal\"",
+        "\"stack\":\"percent\"",
+        "\"compare\"",
+    ] {
+        assert!(prompt.contains(option), "{option}: {prompt}");
     }
 }
 
@@ -496,6 +550,7 @@ fn the_query_schema_names_a_dataset_and_its_fields() {
     );
     assert_eq!(field["percent"]["type"], json!("boolean"));
     assert_eq!(field["exact"]["type"], json!("boolean"));
+    assert_eq!(field["unit"]["enum"], json!(["ms", "s", "min", "h", "d"]));
     assert_eq!(
         query["fields"]["items"]["required"],
         json!(["type", "as_name"])

@@ -10,7 +10,9 @@ use thiserror::Error;
 
 use crate::domain::definition::DefinitionId;
 use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
-use crate::domain::query::metric_query::{MetricQueryError, OrderBy, imposed_limit, is_identifier};
+use crate::domain::query::metric_query::{
+    MetricQueryError, OrderBy, Unit, imposed_limit, is_identifier,
+};
 
 pub(crate) use admission::{Admitted, Candidate};
 pub(crate) use compiler::Stacked;
@@ -60,12 +62,14 @@ enum Field {
         as_name: String,
         alias: String,
         column: String,
+        unit: Option<Unit>,
     },
     Ratio {
         as_name: String,
         numerator: String,
         denominator: String,
         percent: bool,
+        unit: Option<Unit>,
     },
 }
 
@@ -73,6 +77,12 @@ impl Field {
     fn as_name(&self) -> &str {
         match self {
             Self::Pick { as_name, .. } | Self::Ratio { as_name, .. } => as_name,
+        }
+    }
+
+    fn unit(&self) -> Option<Unit> {
+        match self {
+            Self::Pick { unit, .. } | Self::Ratio { unit, .. } => *unit,
         }
     }
 }
@@ -100,6 +110,8 @@ struct RawField {
     divide: Option<[String; 2]>,
     #[serde(default)]
     percent: bool,
+    #[serde(default)]
+    unit: Option<Unit>,
 }
 
 impl TryFrom<RawField> for Field {
@@ -119,6 +131,7 @@ impl TryFrom<RawField> for Field {
                     as_name: raw.as_name,
                     alias: alias.to_owned(),
                     column: column.to_owned(),
+                    unit: raw.unit,
                 })
             }
             (None, Some([numerator, denominator])) => Ok(Self::Ratio {
@@ -126,6 +139,7 @@ impl TryFrom<RawField> for Field {
                 numerator,
                 denominator,
                 percent: raw.percent,
+                unit: raw.unit,
             }),
             (Some(_), None) => Err(CompositeError::Percent(raw.as_name)),
             (Some(_), Some(_)) | (None, None) => Err(CompositeError::FieldShape(raw.as_name)),
@@ -291,6 +305,8 @@ pub(crate) enum CompositeError {
     Percent(String),
     #[error("`{0}` must read a combined metric's column as `<alias>.<column>`")]
     Pick(String),
+    #[error("`{0}` is not a number, so it cannot be a duration with a `unit`")]
+    Unit(String),
     #[error(
         "`{0}` cannot name a field: it must be 1-128 letters, digits or underscores, not begin \
          with `__`, not be `bucket`, and not repeat a key or another field"

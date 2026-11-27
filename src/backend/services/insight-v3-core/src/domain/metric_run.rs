@@ -11,6 +11,7 @@ use super::query::metric_query::over::Over;
 use super::query::metric_query::{ColumnKind, CompiledQuery, MetricQuery, MetricRunner, RunResult};
 use super::query::time_window::{Window, WindowRequest};
 use super::query::undated::UndatedCount;
+use super::record_link::{RecordLinks, RecordRelation};
 use super::surfaces::CustomError;
 use crate::domain::query::metric_query::TableEngine;
 
@@ -21,6 +22,7 @@ pub(crate) struct Prepared {
     pub(crate) own_order: Option<(String, bool)>,
     pub(crate) source: Source,
     pub(crate) body: serde_json::Value,
+    pub(crate) relation: Option<RecordRelation>,
 }
 
 #[derive(Debug)]
@@ -203,6 +205,7 @@ impl<'a> MetricRuns<'a> {
         &self,
         name: &DefinitionId,
         window: &Window,
+        links: &RecordLinks,
     ) -> Result<Prepared, CustomError> {
         let body = self.body_of(name).await?;
         let metric = match Metric::parse(body.clone()).map_err(CustomError::Body)? {
@@ -220,8 +223,12 @@ impl<'a> MetricRuns<'a> {
                 .engine_of(metric.database(), metric.table_name())
                 .await
                 .map_err(CustomError::Run)?;
+            let relation = links
+                .relation_of(metric.database(), metric.table_name())
+                .filter(|_| !metric.groups_its_rows());
+            let carried = relation.map(RecordRelation::keys).unwrap_or_default();
             let compiled = metric
-                .compile_paged(self.metrics.people(), window, engine, None)
+                .compile_paged(self.metrics.people(), window, engine, None, &carried)
                 .map_err(CustomError::Compile)?;
             let bucketed = window.grain().is_some() && metric.has_clock().unwrap_or(false);
 
@@ -234,6 +241,7 @@ impl<'a> MetricRuns<'a> {
                     table: metric.table_name().to_owned(),
                 },
                 body,
+                relation,
             });
         };
 
@@ -245,6 +253,7 @@ impl<'a> MetricRuns<'a> {
                 window,
                 TableEngine::Other,
                 Some(over),
+                &[],
             )
             .map_err(CustomError::Compile)?;
         let bucketed = window.grain().is_some()
@@ -256,6 +265,7 @@ impl<'a> MetricRuns<'a> {
             own_order,
             source: Source::Dataset { table },
             body,
+            relation: None,
         })
     }
 

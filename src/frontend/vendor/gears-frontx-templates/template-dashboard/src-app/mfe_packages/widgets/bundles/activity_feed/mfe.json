@@ -1,0 +1,148 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.activity_feed.v1",
+    "remoteEntry": "/widgets/activity_feed/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.activity_feed.v1",
+      "exposedModule": "./activity_feed"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeedData",
+      "description": "Data of an activity_feed widget: the items of the feed, in the delivered order the list keeps.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "maxItems": 200,
+              "description": "0 to 200 items in the delivered order, which the feed keeps and shows, its Show more button revealing them by page. An empty list is the empty state. Each item needs a time and a title, and may carry a text, a tone of the shared tones, and a link target, which the shared link rule judges. A time no date reads as is legal here: the widget's own cross-check fails the cell naming the item by its position.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "time",
+                  "title"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "time": {
+                    "type": "string",
+                    "description": "When the item happened: an ISO 8601 date-time, its zone as Z or an offset written +hh:mm, +hhmm or +hh (each with its minus form), a date-time without a zone reading in the viewer's zone, or a bare YYYY-MM-DD date (its UTC midnight, the one date rule of the widgets). The widget cross-checks that a date reads as one, and a time that does not fails the cell naming the item's position."
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "description": "The one line of the item, beside its time: the link text when the item carries a target."
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 400,
+                    "description": "An optional line under the title, which wraps."
+                  },
+                  "tone": {
+                    "enum": [
+                      "neutral",
+                      "success",
+                      "warning",
+                      "danger",
+                      "info"
+                    ],
+                    "description": "The shared tone of the item's mark beside its title, written in text for assistive technology; a neutral item draws no mark. Without it, no mark."
+                  },
+                  "href": {
+                    "type": "string",
+                    "description": "The link target of the title, judged by the shared link rule: a refused one shows the title as text, and the cell does not fail."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeedRender",
+      "description": "Render of an activity_feed widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "time_style": {
+              "enum": [
+                "relative",
+                "absolute"
+              ],
+              "default": "relative",
+              "description": "How an item writes its time: relative from the host clock, in the host language's relative wording (such as \"3 days ago\"), or absolute as the host language writes the date and, for a date-time, its time of day. Without it, relative."
+            },
+            "page_size": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 50,
+              "default": 10,
+              "description": "How many items the feed shows before its Show more button, which reveals the next page_size items in the delivered order, and disappears when everything is shown. Without it, 10."
+            },
+            "show_tone": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether an item of a tone carries its mark beside the title, named in text for assistive technology. Without it, true."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.activity_feed.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "ActivityFeed",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.activity_feed.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.activity_feed.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.activity_feed_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

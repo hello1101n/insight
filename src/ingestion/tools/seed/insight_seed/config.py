@@ -46,6 +46,7 @@ STAND_SCRATCH_SOURCE_ID = "01900000-0000-7000-8000-00000000feed"
 TENANT_ENV = "TENANT_DEFAULT_ID"
 ANALYTICS_DB_ENV = "MARIADB_ANALYTICS_DB"
 IDENTITY_DB_ENV = "MARIADB_DB"
+CUSTOM_CATALOGUE_DB_ENV = "MARIADB_V3_DB"
 CROSS_TENANT_FIXTURE_ENV = "SEED_CROSS_TENANT_FIXTURE"
 SERVICE_PRINCIPALS_ENV = "SEED_SERVICE_PRINCIPALS"
 CONNECTOR_SCHEDULES_ENV = "SEED_CONNECTOR_SCHEDULES"
@@ -151,6 +152,16 @@ def parse_analytics_database(env: Mapping[str, str]) -> str:
             )
         )
     return raw
+
+
+def parse_custom_catalogue_database(env: Mapping[str, str]) -> str | None:
+    """The insight-v3-core database that receives the custom catalogue, or None.
+
+    The catalogue is opt-in. The compose stack names the database, and the
+    `analytics` step then writes the catalogue into it. A stand that does not
+    run insight-v3-core leaves the variable empty, and the step writes nothing.
+    """
+    return (env.get(CUSTOM_CATALOGUE_DB_ENV) or "").strip() or None
 
 
 def parse_identity_database(env: Mapping[str, str]) -> str:

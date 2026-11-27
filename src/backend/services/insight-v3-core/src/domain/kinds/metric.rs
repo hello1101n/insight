@@ -11,7 +11,7 @@ use crate::domain::query::composite::Composite;
 use crate::domain::query::metric::{COMBINE_KEY, Metric};
 use crate::domain::query::metric_query::TableEngine;
 use crate::domain::query::metric_query::over::Over;
-use crate::domain::query::metric_query::{MetricQuery, MetricQueryError, People};
+use crate::domain::query::metric_query::{CompiledQuery, MetricQuery, MetricQueryError, People};
 use crate::domain::query::time_window::{Bounds, Grain, Window};
 use crate::domain::violation::{Reason, Violation};
 
@@ -92,6 +92,43 @@ async fn check_composite(
     }
 
     Ok(())
+}
+
+pub(crate) async fn compiled(
+    body: &Value,
+    definitions: &dyn Lookup,
+    datasets: &dyn Datasets,
+    over: CompileAgainst<'_>,
+) -> Result<CompiledQuery, KindError> {
+    let query = match Metric::parse(body.clone()).map_err(KindError::Body)? {
+        Metric::Query(query) => query,
+        Metric::Composite(composite) => {
+            let children = composite::children(&composite, definitions, datasets).await?;
+            return children
+                .compile(&composite, over.people, &Window::legacy(), over.database)
+                .map_err(KindError::Composite);
+        }
+    };
+
+    let Some(named) = query.dataset() else {
+        query.check_table().map_err(KindError::Compile)?;
+        return query
+            .compile_window(over.people, &Window::legacy(), TableEngine::Other, None)
+            .map_err(KindError::Compile);
+    };
+    let ready = datasets::ready(datasets, named)
+        .await
+        .map_err(KindError::Datasets)?
+        .ok_or_else(|| KindError::DatasetNotReady(named.to_owned()))?;
+    let relation = Over {
+        declaration: &ready.declaration,
+        database: over.database,
+        table: &ready.table,
+    };
+
+    query
+        .compile_over(over.people, &Window::legacy(), relation)
+        .map_err(KindError::Compile)
 }
 
 #[derive(Debug, Clone, Copy)]

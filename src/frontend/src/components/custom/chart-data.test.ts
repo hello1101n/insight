@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MouseHandlerDataParam } from "recharts";
 
-import { pointClick, stackColor, stacks } from "./chart-data";
+import type { MetricResult } from "@/api/custom-client";
+
+import { funnelStages, pointClick, stackColor, stacks } from "./chart-data";
 
 const at = (activeTooltipIndex: unknown) =>
   ({ activeTooltipIndex }) as MouseHandlerDataParam;
@@ -120,5 +122,43 @@ describe("stackColor", () => {
 
     expect(new Set(colors.slice(0, 12)).size).toBe(12);
     expect(colors[12]).toBe(colors[0]);
+  });
+});
+
+describe("funnelStages", () => {
+  const STAGES = ["queued", "ran"];
+
+  it.each<[string, Partial<MetricResult>, Partial<MetricResult>]>([
+    [
+      "the unit every stage shares",
+      { units: { queued: "s", ran: "s" } },
+      { units: { value: "s" } },
+    ],
+    [
+      "no unit when the stages differ",
+      { units: { queued: "s", ran: "min" } },
+      {},
+    ],
+    ["no unit when only one stage has it", { units: { queued: "s" } }, {}],
+    [
+      "percents when every stage is one",
+      { percents: ["queued", "ran"] },
+      { percents: ["value"] },
+    ],
+    ["no percents when one stage is not", { percents: ["queued"] }, {}],
+  ])("keeps %s", (_, marks, expected) => {
+    const drawn = funnelStages(
+      { columns: STAGES, rows: [[90, 30]], ...marks },
+      STAGES
+    );
+
+    expect(drawn).toEqual({
+      columns: ["stage", "value"],
+      rows: [
+        ["queued", 90],
+        ["ran", 30],
+      ],
+      ...expected,
+    });
   });
 });

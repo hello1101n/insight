@@ -209,6 +209,36 @@ def _check_analytics(target: MariaDb) -> list[str]:
         conn.close()
 
 
+#: The insight-v3-core tables the custom catalogue writes into.
+CUSTOM_CATALOGUE_TABLES = (
+    "metrics",
+    "widgets",
+    "dashboards",
+    "folders",
+    "folder_entries",
+    "dashboard_grants",
+    "dashboard_pins",
+    "datasets",
+)
+
+
+def _check_custom_catalogue(target: MariaDb) -> list[str]:
+    try:
+        conn = _connect(target)
+    except pymysql.MySQLError as exc:
+        return [f"cannot reach MariaDB `{target.database}` at {target.host}:{target.port}: {exc}"]
+
+    try:
+        cur = conn.cursor()
+        return [
+            table_missing_problem(target.database, table, needed_for="the custom catalogue")
+            for table in CUSTOM_CATALOGUE_TABLES
+            if not _table_exists(cur, target.database, table)
+        ]
+    finally:
+        conn.close()
+
+
 #: Column names a reset target may carry its tenant in, most specific first.
 TENANT_COLUMNS = ("insight_tenant_id", "tenant_id")
 
@@ -490,6 +520,11 @@ def check(env: dict[str, str] | None = None, steps: Iterable[str] = STEPS) -> No
 
     if analytics_db is not None:
         problems += _check_analytics(config.parse_mariadb(environ, database=analytics_db))
+        catalogue_db = config.parse_custom_catalogue_database(environ)
+        if catalogue_db is not None:
+            problems += _check_custom_catalogue(
+                config.parse_mariadb(environ, database=catalogue_db)
+            )
 
     if "silver" in requested:
         # Imported inside the branch, not at the top: importing `silver` pulls the

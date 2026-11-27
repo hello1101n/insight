@@ -347,6 +347,7 @@ export function metricResultQuery(id: string, options?: RunOptions) {
       id,
       options?.range ?? null,
       options?.bucket ?? null,
+      options?.previous ?? null,
     ],
     queryFn: () => runMetric(id, options),
   });
@@ -364,6 +365,7 @@ export function dashboardWidgetResultQuery(
       widget,
       options?.range ?? null,
       options?.bucket ?? null,
+      options?.previous ?? null,
     ],
     queryFn: () => runDashboardWidget(dashboard, widget, options),
   });

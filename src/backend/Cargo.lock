@@ -99,6 +99,7 @@ dependencies = [
  "futures-util",
  "hex",
  "insight-clickhouse",
+ "insight-external-sources",
  "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",
@@ -3801,6 +3802,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "insight-external-sources"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "thiserror 2.0.21",
+ "url",
+]
+
+[[package]]
 name = "insight-http-client"
 version = "0.1.0"
 dependencies = [
@@ -3890,6 +3901,7 @@ dependencies = [
  "clickhouse",
  "futures",
  "insight-clickhouse",
+ "insight-external-sources",
  "insight-http-client",
  "insight-http-metrics",
  "insight-log-context",

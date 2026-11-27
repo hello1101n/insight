@@ -54,6 +54,22 @@ pub(crate) enum KindError {
     Unanswerable(Vec<Violation>),
 }
 
+impl KindError {
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Widget(_) => "widget",
+            Self::Body(_) => "body",
+            Self::Compile(_) => "compile",
+            Self::Composite(_) => "composite",
+            Self::Range(_) => "range",
+            Self::Store(_) => "store",
+            Self::DatasetNotReady(_) => "dataset_not_ready",
+            Self::Datasets(_) => "datasets",
+            Self::Unanswerable(_) => "unanswerable",
+        }
+    }
+}
+
 pub(crate) async fn check(
     kind: DefinitionKind,
     body: &Value,

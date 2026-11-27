@@ -4,6 +4,7 @@ import {
   type DrilldownRow,
 } from "@/api/custom-client";
 import type { MetricEvidenceRow } from "@/api/metric-drilldown-client";
+import { durationText } from "@/lib/custom/duration";
 
 const URL_CELL = /^https?:\/\/\S+$/;
 
@@ -28,10 +29,24 @@ export function drawable(
       links[column.key] = value;
     }
   }
+  const linked = recordColumn(columns);
+  if (row.link && linked && !links[linked.key]) {
+    links[linked.key] = row.link;
+  }
   return { values, links };
 }
 
+function recordColumn(
+  columns: readonly DrilldownColumn[]
+): DrilldownColumn | undefined {
+  return columns.find((column) => column.type === "string") ?? columns[0];
+}
+
 function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
+  if (column.unit && typeof value === "number") {
+    return durationText(value, column.unit);
+  }
+
   const fraction = typeof value === "number" && !Number.isInteger(value);
   const shown = fraction && !column.exact ? ROUNDED.format(value) : value;
 

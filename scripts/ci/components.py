@@ -60,6 +60,13 @@ COMPONENTS = [
         "paths": ["src/backend/libs/insight-migration"],
     },
     {
+        "name": "insight-external-sources",
+        "lang": "rust",
+        "root": "src/backend",
+        "package": "insight-external-sources",
+        "paths": ["src/backend/libs/insight-external-sources"],
+    },
+    {
         "name": "insight-openapi",
         "lang": "rust",
         "root": "src/backend",

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::domain::kinds::metric::answerable::EffectiveClock;
 use crate::domain::query::metric_query::{
-    CompiledQuery, FieldType, MetricQuery, People, TableEngine,
+    CompiledQuery, FieldType, MetricQuery, People, TableEngine, Unit,
 };
 use crate::domain::query::time_window::{RequestedRange, Window};
 
@@ -484,4 +484,86 @@ fn a_composite_body_that_does_not_hold_together_is_refused() {
             "should say {said:?} for {body}: {error}"
         );
     }
+}
+
+#[test]
+fn a_composite_field_reads_in_the_unit_it_declares_or_the_one_its_metric_gives() {
+    let incidents = per_team(
+        "incidents",
+        &[
+            counted(),
+            json!({ "column": "minutes", "type": "int", "agg": "sum", "as_name": "minutes", "unit": "min" }),
+        ],
+        &[],
+    );
+    let deploys = per_team("deploys", &[counted()], &[]);
+    let composite = composite(json!({
+        "combine": { "incidents": "incident-counts", "deploys": "deploy-counts" },
+        "group_by": ["team"],
+        "fields": [
+            { "as_name": "down", "field": "incidents.minutes" },
+            { "as_name": "down_hours", "field": "incidents.minutes", "unit": "h" },
+            { "as_name": "deploys", "field": "deploys.count" },
+            { "as_name": "down_per_deploy", "divide": ["down", "deploys"], "unit": "min" }
+        ]
+    }));
+
+    let compiled = compiled(
+        &composite,
+        &[("incidents", incidents), ("deploys", deploys)],
+        &Window::legacy(),
+    );
+
+    assert_eq!(compiled.unit_of("down"), Some(Unit::Minutes));
+    assert_eq!(compiled.unit_of("down_hours"), Some(Unit::Hours));
+    assert_eq!(compiled.unit_of("deploys"), None);
+    assert_eq!(compiled.unit_of("down_per_deploy"), Some(Unit::Minutes));
+}
+
+#[test]
+fn a_composite_field_that_is_not_a_number_cannot_carry_a_unit() {
+    let incidents = per_team(
+        "incidents",
+        &[
+            counted(),
+            json!({ "column": "opened", "type": "string", "agg": "max", "as_name": "latest" }),
+        ],
+        &[],
+    );
+    let deploys = per_team("deploys", &[counted()], &[]);
+    let composite = composite(json!({
+        "combine": { "incidents": "incident-counts", "deploys": "deploy-counts" },
+        "group_by": ["team"],
+        "fields": [
+            { "as_name": "latest", "field": "incidents.latest", "unit": "d" },
+            { "as_name": "deploys", "field": "deploys.count" }
+        ]
+    }));
+    let aliases: Vec<&Alias> = composite
+        .combine()
+        .iter()
+        .map(|combined| &combined.alias)
+        .collect();
+    let children = [&incidents, &deploys];
+    let candidates: Vec<Candidate<'_>> = aliases
+        .iter()
+        .map(|alias| {
+            let child = if alias.as_str() == "incidents" {
+                children[0]
+            } else {
+                children[1]
+            };
+            Candidate {
+                alias,
+                query: child,
+                kinds: child.column_kinds(None, false),
+                dated: true,
+            }
+        })
+        .collect();
+
+    assert!(matches!(
+        composite.admit(&candidates),
+        Err(CompositeError::Unit(ref name)) if name == "latest"
+    ));
 }
