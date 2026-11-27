@@ -1,0 +1,140 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.waterfall_chart.v1",
+    "remoteEntry": "/widgets/waterfall_chart/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.waterfall_chart.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.waterfall_chart.v1",
+      "exposedModule": "./waterfall_chart"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChartData",
+      "description": "Data of a waterfall_chart widget: the steps of a running sum, each a labelled change or a total.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "steps"
+          ],
+          "properties": {
+            "steps": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 24,
+              "description": "Two to 24 steps in the delivered order, of the running sum the chart starts at 0. A delta moves the running sum by its value (a negative one down); a null delta draws nothing and leaves the sum unchanged. A total draws the running sum from 0, and the first step may be a total: the start of the sum, its value the sum begins at. A total's own value stays null or the running sum itself, which the widget cross-checks; a step that moves the running sum out of the finite range fails the cell. All bars of no extent shows the empty state.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "description": "The name of the step, which its band writes on the axis."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The change of a delta step, or the running sum a total step draws: a total's value stays null or the running sum of the steps before it (the widget cross-checks the two, and a mismatch fails the cell naming the step's position). A null delta draws nothing and keeps the sum. A value out of the finite range fails the cell."
+                  },
+                  "kind": {
+                    "enum": [
+                      "delta",
+                      "total"
+                    ],
+                    "default": "delta",
+                    "description": "Whether the step moves the running sum by its value (delta), or draws the running sum from zero (total). Without it, delta."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.waterfall_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChartRender",
+      "description": "Render of a waterfall_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "connectors": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether a thin line joins one bar's end to the next bar's start, at the level both stand at. Without it, true."
+            },
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "auto",
+              "description": "Where a bar writes its change over its top edge, formatted by value_format: a delta's change with its sign (+4.1, -2), a total's running sum as the bare value, with no sign. auto writes it when the label fits the band the bar stands in, estimated from its length, and never in a low cell; the label stays in the tooltip, the text alternative and the data view below that. always writes it whatever the band fits, and never writes none. Without it, auto."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a bar. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.waterfall_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "WaterfallChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.waterfall_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.waterfall_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.waterfall_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

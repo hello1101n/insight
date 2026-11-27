@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { selectedRange } from "./board-range";
+import type { RunOptions, Widget } from "@/api/custom-client";
+
+import { previousOptions, selectedRange } from "./board-range";
 
 const OFFERED = ["PDC", "P30D", "P1Y"];
 
@@ -37,5 +39,37 @@ describe("selectedRange", () => {
     expect(selectedRange(OFFERED, "P30D", "2026-09-02/2026-09-01")).toBe(
       "P30D",
     );
+  });
+});
+
+describe("previousOptions", () => {
+  const COMPARED: Widget = {
+    type: "stat",
+    metric: "m",
+    value: "n",
+    compare: {},
+  };
+  const PLAIN: Widget = { type: "stat", metric: "m", value: "n" };
+  const LINE: Widget = { type: "line", metric: "m", x: "bucket", y: "n" };
+
+  it.each<[string, Widget, RunOptions | undefined, RunOptions | undefined]>([
+    [
+      "a compared stat over a preset",
+      COMPARED,
+      { range: "P30D", bucket: false },
+      { range: "P30D", bucket: false, previous: true },
+    ],
+    [
+      "a compared stat over an interval",
+      COMPARED,
+      { range: "2026-10-01/2026-10-15", bucket: false },
+      { range: "2026-10-01/2026-10-15", bucket: false, previous: true },
+    ],
+    ["a compared stat over all time", COMPARED, { range: "inf" }, undefined],
+    ["a compared stat with no window", COMPARED, undefined, undefined],
+    ["a stat that does not compare", PLAIN, { range: "P30D" }, undefined],
+    ["a widget that is not a stat", LINE, { range: "P30D" }, undefined],
+  ])("for %s", (_, widget, options, expected) => {
+    expect(previousOptions(widget, options)).toEqual(expected);
   });
 });

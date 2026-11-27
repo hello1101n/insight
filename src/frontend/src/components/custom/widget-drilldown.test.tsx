@@ -339,6 +339,31 @@ describe("<WidgetDrilldown>", () => {
     expect(link).toHaveAttribute("href", "https://example.com/repo/app");
   });
 
+  it("links a row to its record through its first text cell, and leaves a row without one plain", async () => {
+    vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
+    vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(
+      page([], {
+        rows: [
+          {
+            values: { service: "example-api", commits: 7 },
+            link: "https://git.example.com/group/app/pull/7",
+          },
+          { values: { service: "example-web", commits: 8 } },
+        ],
+      })
+    );
+
+    renderDrilldown();
+
+    const link = await screen.findByRole("link", { name: "example-api" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://git.example.com/group/app/pull/7"
+    );
+    expect(screen.getByText("example-web").closest("a")).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
   it("says there is no data rather than drawing an empty table", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
     vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(page([]));

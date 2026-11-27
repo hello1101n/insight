@@ -1,10 +1,6 @@
-import {
-  ChevronRight,
-  Sparkles,
-  TrendingDownIcon,
-  TrendingUpIcon,
-} from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 
+import { ChangeBadge } from "@/components/widgets/dashboard/change-badge";
 import { Sparkline } from "@/components/widgets/dashboard/sparkline";
 import {
   Card,
@@ -15,7 +11,6 @@ import {
 } from "@gears-frontx/ui-kit";
 import type { KpiTileData } from "@/lib/insight/kpi-row";
 import type { GroupId } from "@/lib/insight/groups";
-import { STATUS_TEXT_CLASS } from "@/lib/status";
 import { TEXT_FIGURE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
@@ -39,11 +34,7 @@ export function KpiTile({
 
   return (
     <Card
-      className={cn(
-        CARD_SURFACE,
-        "relative",
-        interactive && "text-left"
-      )}
+      className={cn(CARD_SURFACE, "relative", interactive && "text-left")}
       render={
         primaryGroup ? (
           <button
@@ -61,34 +52,17 @@ export function KpiTile({
         />
       ) : null}
       <CardHeader>
-        <CardDescription
-          className="min-w-0 truncate"
-          title={tile.label}
-        >
+        <CardDescription className="min-w-0 truncate" title={tile.label}>
           {tile.label}
         </CardDescription>
         <CardTitle className="col-span-full flex w-full flex-wrap items-baseline justify-between gap-x-2 gap-y-1 tabular-nums">
           <span className={TEXT_FIGURE}>{tile.value}</span>
-          {trend ? (
-            <Sparkline points={trend} className="self-center" />
-          ) : null}
+          {trend ? <Sparkline points={trend} className="self-center" /> : null}
         </CardTitle>
       </CardHeader>
       <CardFooter className="mt-auto min-h-[2lh] flex-col items-start">
         {tile.delta ? (
-          <span
-            className={cn(
-              "flex items-center gap-1",
-              STATUS_TEXT_CLASS[tile.delta.status]
-            )}
-          >
-            {tile.delta.status === "neutral" ? null : tile.delta.down ? (
-              <TrendingDownIcon className="size-3.5" />
-            ) : (
-              <TrendingUpIcon className="size-3.5" />
-            )}
-            {tile.delta.text} since last {periodNoun}
-          </span>
+          <ChangeBadge delta={tile.delta} since={`since last ${periodNoun}`} />
         ) : (
           <span>no earlier {periodNoun} to compare</span>
         )}

@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::{Admitted, Alias, Composite, Field, RESERVED_PREFIX};
 use crate::domain::kinds::dataset::declaration::BUCKET_COLUMN;
 use crate::domain::query::metric_query::{
-    Bound, CompiledQuery, FieldType, FilterBind, MetricQuery, OrderBy, bound_by, ratio_sql,
+    Bound, CompiledQuery, FieldType, FilterBind, MetricQuery, OrderBy, Unit, bound_by, ratio_sql,
 };
 
 #[derive(Debug)]
@@ -19,6 +19,7 @@ struct Folded {
     column_types: HashMap<String, FieldType>,
     percents: Vec<String>,
     exacts: Vec<String>,
+    units: BTreeMap<String, Unit>,
 }
 
 impl Folded {
@@ -31,6 +32,9 @@ impl Folded {
         }
         if child.compiled.exacts().iter().any(|name| name == column) {
             self.exacts.push(as_name.to_owned());
+        }
+        if let Some(unit) = child.compiled.unit_of(column) {
+            self.units.insert(as_name.to_owned(), unit);
         }
     }
 }
@@ -83,6 +87,7 @@ impl Composite {
             folded.column_types,
             folded.percents,
             folded.exacts,
+            folded.units,
         )
     }
 
@@ -137,6 +142,7 @@ impl Composite {
                     as_name,
                     alias,
                     column,
+                    ..
                 } => {
                     let read = children.iter().find(|child| child.alias.as_str() == alias);
                     if let Some(child) = read {
@@ -150,6 +156,7 @@ impl Composite {
                     numerator,
                     denominator,
                     percent,
+                    ..
                 } => {
                     folded
                         .column_types
@@ -161,6 +168,9 @@ impl Composite {
                     ratio_sql(numerator, denominator, *percent)
                 }
             };
+            if let Some(unit) = field.unit() {
+                folded.units.insert(field.as_name().to_owned(), unit);
+            }
             folded
                 .parts
                 .push(format!("{expression} AS `{}`", field.as_name()));

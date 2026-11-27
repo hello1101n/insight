@@ -349,7 +349,7 @@ export function MetricEvidenceTable({
       >
         <TableHeader
           role="rowgroup"
-          className="sticky top-0 z-20 grid bg-card shadow-[inset_0_-1px_0_0_var(--border)]"
+          className="sticky top-0 z-20 grid bg-card"
         >
           <TableRow
             role="row"

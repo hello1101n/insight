@@ -57,7 +57,7 @@ def _load_stand_reader() -> Any:
         shim.__path__ = [str(reader.parent)]
         sys.modules[package] = shim
         try:
-            for name in ("errors", "manifest"):
+            for name in ("errors", "custom_catalogue", "manifest"):
                 spec = importlib.util.spec_from_file_location(
                     f"{package}.{name}", reader.parent / f"{name}.py"
                 )
@@ -69,7 +69,12 @@ def _load_stand_reader() -> Any:
         except Exception:
             # SAFETY: leave nothing half-registered, or the next caller gets a
             # KeyError from this shim instead of the failure that caused it.
-            for key in (package, f"{package}.errors", f"{package}.manifest"):
+            for key in (
+                package,
+                f"{package}.errors",
+                f"{package}.custom_catalogue",
+                f"{package}.manifest",
+            ):
                 sys.modules.pop(key, None)
             raise
     return sys.modules[f"{package}.manifest"]
@@ -143,6 +148,63 @@ def test_the_suite_sees_connector_schedules_only_when_the_flag_declares_them(
     assert parsed.has_capability("connector_schedules") is expected, f"flag={flag!r}"
 
 
+_CATALOGUE_CAPABILITIES = (
+    "custom_catalogue",
+    "portal_dashboards",
+    "portal_metrics",
+    "portal_widgets",
+    "portal_datasets",
+)
+
+
+@pytest.mark.parametrize(
+    ("database", "expected"), [("insight_v3", True), ("", False), (None, False)]
+)
+def test_the_suite_sees_the_custom_catalogue_only_when_the_seed_writes_it(
+    database: str | None, expected: bool
+) -> None:
+    reader = _load_stand_reader()
+    env = _env()
+    if database is not None:
+        env[config.CUSTOM_CATALOGUE_DB_ENV] = database
+    doc = json.loads(json.dumps(manifest.build_manifest(env)))
+
+    parsed = reader.Manifest.parse(doc, source_path=pathlib.Path("contract-test"))
+
+    for capability in _CATALOGUE_CAPABILITIES:
+        assert doc["capabilities"][capability] is expected, f"{capability}, database={database!r}"
+        assert parsed.has_capability(capability) is expected, f"{capability}, database={database!r}"
+    assert (parsed.custom_catalogue is not None) is expected, f"database={database!r}"
+
+
+def test_the_suite_reads_every_seeded_board_and_its_failing_widgets() -> None:
+    reader = _load_stand_reader()
+    env = {**_env(), config.CUSTOM_CATALOGUE_DB_ENV: "insight_v3"}
+    doc = json.loads(json.dumps(manifest.build_manifest(env)))
+
+    parsed = reader.Manifest.parse(doc, source_path=pathlib.Path("contract-test"))
+
+    assert parsed.custom_catalogue is not None
+    assert parsed.custom_catalogue.dashboards.keys() == doc["custom_catalogue"]["dashboards"].keys()
+    failing = parsed.custom_board("failing_widget")
+    assert failing.failing_widgets, "the failing-widget board names no failing widget"
+    assert failing.working_widgets, "the failing-widget board has no working widget beside it"
+
+
+def test_the_suite_reads_the_percent_and_duration_columns_of_every_seeded_widget() -> None:
+    reader = _load_stand_reader()
+    env = {**_env(), config.CUSTOM_CATALOGUE_DB_ENV: "insight_v3"}
+    doc = json.loads(json.dumps(manifest.build_manifest(env)))
+
+    parsed = reader.Manifest.parse(doc, source_path=pathlib.Path("contract-test"))
+
+    for key, board in doc["custom_catalogue"]["dashboards"].items():
+        widgets = parsed.custom_board(key).widgets
+        for written, read in zip(board["widgets"], widgets, strict=True):
+            assert read.percents == frozenset(written["percents"]), written["id"]
+            assert read.units == written["units"], written["id"]
+
+
 def test_both_sides_agree_on_the_supported_version() -> None:
     reader = _load_stand_reader()
 
@@ -167,6 +229,7 @@ _PUBLISHED_FIELDS = (
     "data_window",
     "anchor_date",
     "golden_metrics",
+    "custom_catalogue",
     "seeded",
 )
 

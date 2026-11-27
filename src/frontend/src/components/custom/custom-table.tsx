@@ -2,7 +2,11 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
 import type { MetricResult } from "@/api/custom-client";
-import { groupedNumber, unitFor } from "@/components/custom/chart-format";
+import {
+  groupedNumber,
+  unitFor,
+  type ValueUnit,
+} from "@/components/custom/chart-format";
 import {
   nextOrder,
   orderedThenCapped,
@@ -25,7 +29,7 @@ export interface CustomTableProps {
 
 const SHOWN = 200;
 
-function Cell({ value, unit }: { value: unknown; unit: string }) {
+function Cell({ value, unit }: { value: unknown; unit: ValueUnit }) {
   if (value === null || value === undefined) return <>{"\u2014"}</>;
   if (unit || typeof value === "number") {
     return <>{groupedNumber(value, unit)}</>;
@@ -130,7 +134,7 @@ export function CustomTable({ result }: CustomTableProps) {
                   {columnIndex < row.length ? (
                     <Cell
                       value={row[columnIndex]}
-                      unit={unitFor(result.percents, column)}
+                      unit={unitFor(result, column)}
                     />
                   ) : (
                     ""

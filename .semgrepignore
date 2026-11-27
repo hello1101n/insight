@@ -27,6 +27,7 @@ storybook-static/
 coverage/
 .vite/
 .tanstack/
+src/frontend/vendor/
 
 # --- Generated vendor code (MSW writes this file, `msw.workerDirectory`) ---
 src/frontend/public/mockServiceWorker.js

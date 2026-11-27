@@ -28,13 +28,22 @@ vi.mock("recharts", async (importOriginal) => {
     ({
       data,
       onClick,
+      layout,
+      stackOffset,
       children,
     }: {
       data?: Record<string, unknown>[];
       onClick?: (state: { activeTooltipIndex: number | null }) => void;
+      layout?: string;
+      stackOffset?: string;
       children: React.ReactNode;
     }) => (
-      <div data-testid={testId} data-chart-data={JSON.stringify(data ?? null)}>
+      <div
+        data-testid={testId}
+        data-chart-data={JSON.stringify(data ?? null)}
+        data-layout={layout}
+        data-stack-offset={stackOffset}
+      >
         {(data ?? []).map((_, index) => (
           <button
             key={index}
@@ -83,6 +92,15 @@ vi.mock("recharts", async (importOriginal) => {
     BarChart: chart("bar-chart"),
     AreaChart: chart("area-chart"),
     PieChart: chart("pie-chart"),
+    ScatterChart: chart("scatter-chart"),
+    ZAxis: () => null,
+    Scatter: ({ name, data }: { name: string; data: unknown[] }) => (
+      <div
+        data-testid="scatter"
+        data-name={name}
+        data-points={JSON.stringify(data)}
+      />
+    ),
     CartesianGrid: () => null,
     Tooltip: () => null,
     Legend: ({
@@ -105,6 +123,22 @@ vi.mock("recharts", async (importOriginal) => {
       <div data-testid="x-axis" data-key={dataKey} />
     ),
     YAxis: () => null,
+    ReferenceLine: ({
+      x,
+      y,
+      label,
+    }: {
+      x?: number;
+      y?: number;
+      label?: { value: string };
+    }) => (
+      <div
+        data-testid="target"
+        data-x={x}
+        data-y={y}
+        data-label={label?.value}
+      />
+    ),
     Line: series("line"),
     Bar: series("bar"),
     Area: series("area"),
@@ -164,6 +198,17 @@ describe("<CustomWidget>", () => {
       screen.getByRole("columnheader", { name: "day" })
     ).toBeInTheDocument();
     expect(screen.getAllByRole("row")).toHaveLength(3);
+  });
+
+  it("says the widget type is unknown for a type it does not draw", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "sankey", metric: "m" } as unknown as Widget}
+        result={result}
+      />
+    );
+
+    expect(screen.getByText("Unknown widget type.")).toBeInTheDocument();
   });
 
   it("renders a line widget as a chart", () => {
@@ -555,7 +600,7 @@ describe("<CustomWidget>", () => {
     expect(screen.getByTestId("custom-stat")).toHaveTextContent("Lines");
   });
 
-  it("falls back to the column name when a stat carries no label", () => {
+  it("shows no caption when a stat carries no label", () => {
     render(
       <CustomWidget
         widget={{ type: "stat", metric: "m", value: "lines" }}
@@ -563,7 +608,8 @@ describe("<CustomWidget>", () => {
       />
     );
 
-    expect(screen.getByTestId("custom-stat")).toHaveTextContent("lines");
+    expect(screen.getByTestId("custom-stat")).toHaveTextContent("7");
+    expect(screen.getByTestId("custom-stat")).not.toHaveTextContent("lines");
   });
 
   it("renders a pie widget as slices of its value", () => {
@@ -713,5 +759,479 @@ describe("<CustomWidget> over a window that holds nothing", () => {
     );
 
     expect(screen.getByRole("status")).toHaveTextContent(/no data/i);
+  });
+});
+
+describe("<CustomWidget> options", () => {
+  const figure = (value: number | null, percents: string[] = []) => ({
+    columns: ["n"],
+    rows: [[value]],
+    percents,
+  });
+  const STAT: Widget = { type: "stat", metric: "m", value: "n" };
+
+  it.each<[string, Widget, number, number, string[], string, string]>([
+    [
+      "a rise where higher is better",
+      { ...STAT, compare: {} },
+      125,
+      100,
+      [],
+      "+25% since the previous period",
+      "text-success",
+    ],
+    [
+      "a rise where lower is better",
+      { ...STAT, compare: { better: "lower" } },
+      125,
+      100,
+      [],
+      "+25% since the previous period",
+      "text-destructive",
+    ],
+    [
+      "a rise where neither direction is better",
+      { ...STAT, compare: { better: "neutral" } },
+      125,
+      100,
+      [],
+      "+25% since the previous period",
+      "text-muted-foreground",
+    ],
+    [
+      "a fall on a percent column, in percentage points",
+      { ...STAT, compare: {} },
+      12,
+      15,
+      ["n"],
+      "-3 pp since the previous period",
+      "text-destructive",
+    ],
+  ])(
+    "shows the change of a compared stat for %s",
+    (_, widget, now, before, percents, text, tone) => {
+      render(
+        <CustomWidget
+          widget={widget}
+          result={figure(now, percents)}
+          previous={figure(before, percents)}
+        />
+      );
+
+      const change = screen.getByText(/since the previous period/);
+      expect(change).toHaveTextContent(text);
+      expect(change).toHaveClass(tone);
+    }
+  );
+
+  it.each<[string, Widget, ReturnType<typeof figure> | undefined]>([
+    ["a stat that does not compare", STAT, figure(100)],
+    [
+      "a compared stat with no previous run",
+      { ...STAT, compare: {} },
+      undefined,
+    ],
+    [
+      "a compared stat whose previous period has no value",
+      { ...STAT, compare: {} },
+      figure(null),
+    ],
+  ])("shows no change for %s", (_, widget, previous) => {
+    render(
+      <CustomWidget widget={widget} result={figure(125)} previous={previous} />
+    );
+
+    expect(screen.getByText("125")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/since the previous period/)
+    ).not.toBeInTheDocument();
+  });
+
+  const BY_TEAM = {
+    columns: ["team", "outcome", "n"],
+    rows: [
+      ["Atlas", "ok", 3],
+      ["Atlas", "failed", 1],
+      ["Borealis", "ok", 2],
+    ],
+  };
+  const chartOf = (testId: string) => screen.getByTestId(testId);
+
+  it("draws a horizontal bar with the categories on the side", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "bar",
+          metric: "m",
+          x: "team",
+          y: "n",
+          horizontal: true,
+        }}
+        result={BY_TEAM}
+      />
+    );
+
+    expect(chartOf("bar-chart")).toHaveAttribute("data-layout", "vertical");
+  });
+
+  it("draws a vertical bar unless asked otherwise", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "bar", metric: "m", x: "team", y: "n" }}
+        result={BY_TEAM}
+      />
+    );
+
+    expect(chartOf("bar-chart")).toHaveAttribute("data-layout", "horizontal");
+  });
+
+  it.each<[string, Widget, string | null]>([
+    [
+      "stacks a bar with a series to 100%",
+      {
+        type: "bar",
+        metric: "m",
+        x: "team",
+        y: "n",
+        series: "outcome",
+        stack: "percent",
+      },
+      "expand",
+    ],
+    [
+      "stacks a bar with a series by its values when not asked for percent",
+      { type: "bar", metric: "m", x: "team", y: "n", series: "outcome" },
+      null,
+    ],
+  ])("%s", (_, widget, offset) => {
+    render(<CustomWidget widget={widget} result={BY_TEAM} />);
+
+    if (offset) {
+      expect(chartOf("bar-chart")).toHaveAttribute("data-stack-offset", offset);
+    } else {
+      expect(chartOf("bar-chart")).not.toHaveAttribute("data-stack-offset");
+    }
+    expect(screen.getAllByTestId("bar").map((bar) => bar.dataset.name)).toEqual(
+      ["failed", "ok"]
+    );
+  });
+
+  it.each<[string, Widget, Record<string, string>]>([
+    [
+      "a line",
+      {
+        type: "line",
+        metric: "m",
+        x: "team",
+        y: "n",
+        target: { value: 2, label: "Goal" },
+      },
+      { y: "2", label: "Goal" },
+    ],
+    [
+      "an area",
+      { type: "area", metric: "m", x: "team", y: "n", target: { value: 2 } },
+      { y: "2" },
+    ],
+    [
+      "a bar",
+      { type: "bar", metric: "m", x: "team", y: "n", target: { value: 2 } },
+      { y: "2" },
+    ],
+    [
+      "a horizontal bar, across its value axis",
+      {
+        type: "bar",
+        metric: "m",
+        x: "team",
+        y: "n",
+        horizontal: true,
+        target: { value: 2 },
+      },
+      { x: "2" },
+    ],
+    [
+      "a bar stacked to 100%, as a share",
+      {
+        type: "bar",
+        metric: "m",
+        x: "team",
+        y: "n",
+        series: "outcome",
+        stack: "percent",
+        target: { value: 15 },
+      },
+      { y: "0.15" },
+    ],
+  ])("draws the target line of %s", (_, widget, expected) => {
+    render(<CustomWidget widget={widget} result={BY_TEAM} />);
+
+    const target = screen.getByTestId("target");
+    expect({ ...target.dataset, testid: undefined }).toEqual({
+      testid: undefined,
+      ...expected,
+    });
+  });
+
+  it("draws no target line on a chart without one", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "line", metric: "m", x: "team", y: "n" }}
+        result={BY_TEAM}
+      />
+    );
+
+    expect(screen.queryByTestId("target")).not.toBeInTheDocument();
+  });
+
+  it("draws a line by series as one line per value, with a gap where a series has no value", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "line",
+          metric: "m",
+          x: "team",
+          y: "n",
+          series: "outcome",
+        }}
+        result={BY_TEAM}
+      />
+    );
+
+    const lines = screen.getAllByTestId("line");
+    expect(lines.map((line) => line.dataset.name)).toEqual(["failed", "ok"]);
+    expect(lines.every((line) => line.dataset.stackId === undefined)).toBe(
+      true
+    );
+    const data = JSON.parse(chartOf("line-chart").dataset.chartData!) as Record<
+      string,
+      unknown
+    >[];
+    expect(
+      data.map((point) => [point.team, point["stack-0"], point["stack-1"]])
+    ).toEqual([
+      ["Atlas", 1, 3],
+      ["Borealis", null, 2],
+    ]);
+    expect(screen.getByTestId("legend")).toBeInTheDocument();
+  });
+
+  it("stacks an area by series, with 0 where a series has no value", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "area",
+          metric: "m",
+          x: "team",
+          y: "n",
+          series: "outcome",
+        }}
+        result={BY_TEAM}
+      />
+    );
+
+    const areas = screen.getAllByTestId("area");
+    expect(areas.map((area) => area.dataset.name)).toEqual(["failed", "ok"]);
+    expect(areas.every((area) => area.dataset.stackId === "stack")).toBe(true);
+    const data = JSON.parse(chartOf("area-chart").dataset.chartData!) as Record<
+      string,
+      unknown
+    >[];
+    expect(data.map((point) => point["stack-0"])).toEqual([1, 0]);
+  });
+
+  it.each<Widget>([
+    { type: "line", metric: "m", x: "team", y: "n", series: "region" },
+    { type: "area", metric: "m", x: "team", y: "n", series: "region" },
+  ])("names a missing series column of a $type", (widget) => {
+    render(<CustomWidget widget={widget} result={BY_TEAM} />, { wrapper });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("draws region");
+  });
+});
+
+describe("<CustomWidget> new types", () => {
+  const chartData = (testId: string) =>
+    JSON.parse(screen.getByTestId(testId).dataset.chartData!) as Record<
+      string,
+      unknown
+    >[];
+
+  it("draws a heatmap as a table of its own columns", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "heatmap",
+          metric: "m",
+          x: "day",
+          y: "team",
+          value: "n",
+        }}
+        result={{
+          columns: ["n", "extra", "team", "day"],
+          rows: [[4, "x", "Atlas", "2026-11-03"]],
+        }}
+      />
+    );
+
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent)
+    ).toEqual(["#", "day", "team", "n"]);
+    expect(screen.getByRole("cell", { name: "Atlas" })).toBeInTheDocument();
+    expect(screen.queryByText("extra")).not.toBeInTheDocument();
+  });
+
+  it("draws a funnel as horizontal bars of its stages in the listed order, with their values", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "funnel",
+          metric: "m",
+          stages: ["opened", "reviewed", "merged"],
+        }}
+        result={{
+          columns: ["merged", "opened", "reviewed"],
+          rows: [[30, 100, 60]],
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("bar-chart")).toHaveAttribute(
+      "data-layout",
+      "vertical"
+    );
+    expect(chartData("bar-chart")).toEqual([
+      { stage: "opened", value: 100 },
+      { stage: "reviewed", value: 60 },
+      { stage: "merged", value: 30 },
+    ]);
+    expect(screen.getByTestId("label-list")).toBeInTheDocument();
+  });
+
+  it("draws a treemap as horizontal bars, largest first", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "treemap", metric: "m", label: "repo", value: "n" }}
+        result={{
+          columns: ["repo", "n"],
+          rows: [
+            ["web", 3],
+            ["api", null],
+            ["docs", 9],
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByTestId("bar-chart")).toHaveAttribute(
+      "data-layout",
+      "vertical"
+    );
+    expect(chartData("bar-chart").map((bar) => bar.repo)).toEqual([
+      "docs",
+      "web",
+      "api",
+    ]);
+  });
+
+  const SCATTER: Widget = {
+    type: "scatter",
+    metric: "m",
+    x: "size",
+    y: "hours",
+    series: "team",
+    label: "pr",
+  };
+
+  it("draws a small scatter as one group of named points per series value", () => {
+    render(
+      <CustomWidget
+        widget={SCATTER}
+        result={{
+          columns: ["pr", "team", "size", "hours"],
+          rows: [
+            ["pr-1", "Cobalt", 120, 5],
+            ["pr-2", "Atlas", 40, 2],
+            ["pr-3", "Atlas", null, 1],
+          ],
+        }}
+      />
+    );
+
+    const groups = screen.getAllByTestId("scatter");
+    expect(groups.map((group) => group.dataset.name)).toEqual([
+      "Atlas",
+      "Cobalt",
+    ]);
+    expect(JSON.parse(groups[0]!.dataset.points!)).toEqual([
+      { x: 40, y: 2, size: null, label: "pr-2" },
+    ]);
+  });
+
+  it("draws a scatter of more than 500 points as a table", () => {
+    render(
+      <CustomWidget
+        widget={SCATTER}
+        result={{
+          columns: ["pr", "team", "size", "hours"],
+          rows: Array.from({ length: 501 }, (_, index) => [
+            `pr-${index}`,
+            "Atlas",
+            index,
+            1,
+          ]),
+        }}
+      />
+    );
+
+    expect(screen.queryByTestId("scatter-chart")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent)
+    ).toEqual(["#", "size", "hours", "team", "pr"]);
+  });
+
+  it("names a missing column of a new type", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "funnel", metric: "m", stages: ["opened", "merged"] }}
+        result={{ columns: ["opened"], rows: [[3]] }}
+      />,
+      { wrapper }
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("draws merged");
+  });
+});
+
+describe("<CustomWidget> durations", () => {
+  it("writes a duration stat as at most two parts", () => {
+    render(
+      <CustomWidget
+        widget={{ type: "stat", metric: "m", value: "lead" }}
+        result={{ columns: ["lead"], rows: [[52]], units: { lead: "h" } }}
+      />
+    );
+
+    expect(screen.getByText("2d 4h")).toBeInTheDocument();
+  });
+
+  it("writes each duration cell of a table, and leaves the other numbers", () => {
+    render(
+      <CustomWidget
+        widget={{
+          type: "table",
+          metric: "m",
+          columns: ["stage", "p50", "runs"],
+        }}
+        result={{
+          columns: ["stage", "p50", "runs"],
+          rows: [["build", 200, 1200]],
+          units: { p50: "min" },
+        }}
+      />
+    );
+
+    expect(screen.getByRole("cell", { name: "3h 20m" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "1,200" })).toBeInTheDocument();
   });
 });

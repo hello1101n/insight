@@ -22,6 +22,7 @@ pub(crate) trait ApiErrors {
     fn window_error(error: &WindowError) -> CanonicalError {
         let field = match error {
             WindowError::Range(_) | WindowError::Maximum(_) | WindowError::Overflow => "range",
+            WindowError::NoPreviousPeriod => "previous",
         };
 
         Self::invalid_field(field, error.to_string())

@@ -1,0 +1,22 @@
+{
+  "name": "@gears-frontx/frontx-dashboard-root",
+  "private": true,
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "description": "The dashboard package of template-dashboard: the contract types and bundle schemas, the layout model on the ui-kit Grid with its checks, and the cell frame of the dashboard root.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./mock": "./src/mock/mockHost.ts",
+    "./served/catalog.gts.json": "./served/catalog.gts.json"
+  },
+  "dependencies": {
+    "@gears-frontx/gts-plugin": "0.6.1",
+    "@gears-frontx/mfes": "0.6.0",
+    "@gears-frontx/ui-kit": "0.5.0",
+    "@marcbachmann/cel-js": "8.0.0",
+    "lucide-react": "1.33.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}

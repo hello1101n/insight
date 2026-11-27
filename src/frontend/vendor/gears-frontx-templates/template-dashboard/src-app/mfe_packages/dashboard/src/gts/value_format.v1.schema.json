@@ -1,0 +1,159 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ValueFormat",
+  "description": "How a data widget formats the numbers it shows: the value type, for a duration its unit, for a currency its code, and optionally a fixed number of fraction digits, for a duration its two largest parts and, for a number, a unit word. percent 0.25 means 25%. Closed: no other field.",
+  "type": "object",
+  "required": [
+    "value_type"
+  ],
+  "properties": {
+    "value_type": {
+      "enum": [
+        "number",
+        "percent",
+        "duration",
+        "currency"
+      ]
+    },
+    "unit": {
+      "enum": [
+        "ms",
+        "s",
+        "min",
+        "h",
+        "d"
+      ],
+      "description": "The unit of a duration value: milliseconds, seconds, minutes, hours or days. Required when value_type is duration; not allowed otherwise."
+    },
+    "compound": {
+      "type": "boolean",
+      "description": "Optional, for a duration only. When true, the value shows as its two largest whole parts with narrow unit labels: 52 h shows as 2d 4h and 90 s as 1m 30s. Each part rounds to the precision of the part after it and carries, so 59.6 s shows as 1m. A part has no group separator: 1234.5 d shows as 1234d 12h. A value below one second shows in whole milliseconds. Not allowed with decimals when true. Without it, or when false, the value shows in its unit."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "The ISO 4217 code of a currency value, such as EUR; the value is an amount in that currency. Required when value_type is currency; not allowed otherwise."
+    },
+    "decimals": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6,
+      "description": "Optional exact number of fraction digits shown, for every value type. Not allowed with compound true. Without it, a number shows up to three fraction digits, a percent up to two, and a currency the digits of its code."
+    },
+    "unit_label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 24,
+      "description": "Optional unit word shown after a number, such as lines. Allowed with value_type number only. Without it, the number shows alone."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "value_type"
+        ],
+        "properties": {
+          "value_type": {
+            "const": "duration"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "unit"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "unit"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "value_type"
+        ],
+        "properties": {
+          "value_type": {
+            "const": "currency"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "currency"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "currency"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "value_type"
+        ],
+        "properties": {
+          "value_type": {
+            "const": "number"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "unit_label"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "value_type"
+        ],
+        "properties": {
+          "value_type": {
+            "const": "duration"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "compound"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "compound"
+        ],
+        "properties": {
+          "compound": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "decimals"
+          ]
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

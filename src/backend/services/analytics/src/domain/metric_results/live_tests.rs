@@ -2,6 +2,8 @@ use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
+use insight_external_sources::ExternalSourceRegistry;
+
 use super::batch::{
     BatchItem, PeriodWideRow, RankedDimension, RankedGroup, ResolvedGroupLimit, demux_period_rows,
 };
@@ -14,7 +16,6 @@ use super::dto::MetricResultViewDto;
 use super::failure::ViewAbsence;
 use super::validation::{DateWindow, ValidatedEntitySelection, ValidatedMetricResultsRequest};
 use super::view::Bucket;
-use crate::domain::external_links::ExternalSourceRegistry;
 use crate::domain::metric_definitions::definition::ValueTransform;
 use crate::domain::metric_definitions::definition::{
     AliasCollapse, ComputationSpec, CustomObservationSql, MetricBase, MetricDefinition,

@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use toolkit::api::OpenApiRegistry;
 use toolkit::{Gear, GearCtx, RestApiCapability};
 
+use insight_external_sources::ExternalSourceRegistry;
+
 use crate::config::GearConfig;
-use crate::domain::external_links::ExternalSourceRegistry;
 use crate::{api, infra};
 
 const CH_QUERY_MAX_THREADS: u32 = 4;
