@@ -82,10 +82,25 @@ function drawnLabel(widget: Widget): string {
       return "Value";
     case "pie":
       return "Slices";
-    default:
+    case "heatmap":
+      return "Cells";
+    case "funnel":
+      return "Stages";
+    case "treemap":
+      return "Tiles";
+    case "scatter":
+      return "Points";
+    case "line":
+    case "area":
+    case "bar":
       return "Axes";
   }
 }
+
+const parts = (named: [string, string | undefined][]) =>
+  named
+    .flatMap(([name, value]) => (value ? [`${name} ${value}`] : []))
+    .join(" · ");
 
 function drawn(widget: Widget): string {
   switch (widget.type) {
@@ -95,8 +110,36 @@ function drawn(widget: Widget): string {
       return widget.label ? `${widget.value} as ${widget.label}` : widget.value;
     case "pie":
       return `${widget.label} by ${widget.value}`;
-    default:
-      return `x ${widget.x} · y ${widget.y}`;
+    case "heatmap":
+      return parts([
+        ["x", widget.x],
+        ["y", widget.y],
+        ["value", widget.value],
+      ]);
+    case "funnel":
+      return widget.stages.join(", ");
+    case "treemap":
+      return parts([
+        ["label", widget.label],
+        ["value", widget.value],
+        ["group", widget.group],
+      ]);
+    case "scatter":
+      return parts([
+        ["x", widget.x],
+        ["y", widget.y],
+        ["size", widget.size],
+        ["series", widget.series],
+        ["label", widget.label],
+      ]);
+    case "line":
+    case "area":
+    case "bar":
+      return parts([
+        ["x", widget.x],
+        ["y", widget.y],
+        ["series", widget.series],
+      ]);
   }
 }
 

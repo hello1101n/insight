@@ -34,9 +34,10 @@ use utoipa::openapi::schema::{
 
 use tokio::sync::Semaphore;
 
+use insight_external_sources::ExternalSourceRegistry;
+
 use crate::config::GearConfig;
 use crate::domain::ai::dto as ai_dto;
-use crate::domain::external_links::ExternalSourceRegistry;
 use crate::domain::metric_crud;
 use crate::domain::metric_definitions::listing as metric_definitions_listing;
 use crate::infra::anthropic::AnthropicClient;

@@ -431,7 +431,11 @@ async fn drilling_into_a_composite_is_refused() -> R {
 
     let refusal = fixture
         .metric_runs()
-        .prepare(&name(COMPOSITE), &Window::legacy())
+        .prepare(
+            &name(COMPOSITE),
+            &Window::legacy(),
+            &crate::domain::record_link::RecordLinks::default(),
+        )
         .await;
 
     assert!(

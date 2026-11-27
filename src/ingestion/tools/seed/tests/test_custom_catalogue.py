@@ -1,0 +1,321 @@
+"""The seeded custom catalogue holds together and covers what the renderers need.
+
+The seed writes these definitions as rows, so the service does not check them
+on the way in. These tests check what can be checked without a stand: every
+reference resolves, every widget column is a column its metric answers, and the
+boards together cover each case the dashboard renderers must draw. The stand
+suite then runs every widget through the deployed service.
+"""
+
+from __future__ import annotations
+
+import datetime as _dt
+from collections import Counter
+from collections.abc import Callable
+
+import pytest
+
+from insight_seed import custom_catalogue as cc
+from insight_seed import custom_catalogue_store as store
+
+_ANCHOR = _dt.date(2026, 6, 30)
+_METRICS = {metric.id: metric for metric in cc.METRICS}
+_WIDGETS = {widget.id: widget for widget in cc.WIDGETS}
+_RANGE_TOKENS = {"PDC", "P7D", "P30D", "PMC", "PQC", "P1Y", "inf"}
+_BOUNDED_TOKENS = _RANGE_TOKENS - {"inf"}
+_NUMBER_AGGREGATES = {"count", "sum", "avg"}
+_UNITS = {"ms", "s", "min", "h", "d"}
+
+
+#: The keys that name a metric column, per widget type, as the service reads them.
+_COLUMN_KEYS = {
+    "line": ("x", "y"),
+    "area": ("x", "y"),
+    "bar": ("x", "y", "series"),
+    "pie": ("label", "value"),
+    "stat": ("value",),
+    "table": (),
+    "heatmap": ("x", "y", "value"),
+    "funnel": (),
+    "treemap": ("label", "value", "group"),
+    "scatter": ("x", "y", "size", "series", "label"),
+}
+
+
+def _columns(widget: cc.Definition) -> list[str]:
+    body = widget.body
+    named = [body[key] for key in _COLUMN_KEYS[body["type"]] if key in body]
+    return named + list(body.get("columns", [])) + list(body.get("stages", []))
+
+
+def _is_number(field: cc.Body) -> bool:
+    return field["type"] in {"int", "float"} or field.get("agg") in _NUMBER_AGGREGATES
+
+
+def _clocked(metric: cc.Definition) -> bool:
+    return "time" in metric.body or "dataset" in metric.body
+
+
+def _answers(metric: cc.Definition) -> set[str]:
+    names = {field["as_name"] for field in metric.body["fields"]}
+    return names | ({"bucket"} if _clocked(metric) else set())
+
+
+def _boards_where(predicate: Callable[[cc.Board], bool]) -> list[str]:
+    return [board.key for board in cc.BOARDS if predicate(board)]
+
+
+def _board(key: str) -> cc.Board:
+    return next(board for board in cc.BOARDS if board.key == key)
+
+
+def test_every_id_is_unique_and_carries_the_prefix_the_store_clears() -> None:
+    ids = [d.id for d in (*cc.METRICS, *cc.WIDGETS)] + [board.id for board in cc.BOARDS]
+
+    assert [i for i, n in Counter(ids).items() if n > 1] == []
+    assert [i for i in ids if not i.startswith(cc.ID_PREFIX)] == []
+
+
+def test_every_reference_resolves_and_every_widget_column_is_answered() -> None:
+    problems = []
+    for widget in cc.WIDGETS:
+        detail = widget.body.get("detail")
+        if detail is not None and detail not in _METRICS:
+            problems.append(f"{widget.id}: no detail metric {detail}")
+        metric = _METRICS.get(widget.body["metric"])
+        if metric is None:
+            problems.append(f"{widget.id}: no metric {widget.body['metric']}")
+            continue
+        missing = set(_columns(widget)) - _answers(metric)
+        if missing:
+            problems.append(f"{widget.id}: {metric.id} does not answer {sorted(missing)}")
+    for board in cc.BOARDS:
+        problems += [f"{board.key}: no widget {w}" for w in board.widgets if w not in _WIDGETS]
+
+    assert problems == []
+
+
+def test_every_board_offers_only_range_tokens_the_service_parses() -> None:
+    for board in cc.BOARDS:
+        offered = board.body.get("time_ranges", [])
+        assert set(offered) <= _RANGE_TOKENS, board.key
+        if offered:
+            assert board.body["default_range"] in offered, board.key
+
+
+def test_a_board_without_time_ranges_draws_no_time_bucket() -> None:
+    """Without a range the portal runs a widget over all rows, with no bucket column."""
+    for board in cc.BOARDS:
+        if "time_ranges" in board.body:
+            continue
+        bucketed = [w for w in board.widgets if "bucket" in _columns(_WIDGETS[w])]
+        assert bucketed == [], f"{board.key} draws a bucket it never asks for"
+
+
+def _shape_problems(widget: cc.Definition) -> list[str]:
+    """The refusals that insight-v3-core makes on write, which a seeded row skips."""
+    body = widget.body
+    problems = []
+    if body.get("stack") is not None and (body["type"] != "bar" or "series" not in body):
+        problems.append("a 100% stack without a series")
+    if body["type"] == "heatmap" and "y" not in body and body["x"] != "bucket":
+        problems.append("a calendar heatmap not by bucket")
+    if body["type"] == "funnel":
+        stages = body["stages"]
+        if not 2 <= len(stages) <= 12 or len(set(stages)) != len(stages):
+            problems.append("a funnel without 2 to 12 distinct stages")
+    if body["type"] == "stat" and set(body.get("compare", {})) - {"better"}:
+        problems.append("a comparison with a key other than better")
+    if body.get("compare", {}).get("better", "higher") not in {"higher", "lower", "neutral"}:
+        problems.append("a comparison with no known better")
+    return problems
+
+
+def test_every_seeded_widget_has_the_shape_the_service_accepts_on_write() -> None:
+    problems = {w.id: _shape_problems(w) for w in cc.WIDGETS}
+
+    assert {w: p for w, p in problems.items() if p} == {}
+
+
+def test_every_field_read_as_a_duration_is_a_number_in_a_known_unit() -> None:
+    timed: list[tuple[str, cc.Body]] = []
+    for metric in cc.METRICS:
+        timed += [(metric.id, field) for field in metric.body["fields"] if "unit" in field]
+
+    assert timed, "no seeded field is read as a duration"
+    assert [m for m, field in timed if field["unit"] not in _UNITS or not _is_number(field)] == []
+
+
+def test_a_compared_stat_sits_on_a_bounded_board_and_reads_a_clocked_metric() -> None:
+    """The portal asks for the previous period only over a bounded range and a clock."""
+    compared = {w.id for w in cc.WIDGETS if "compare" in w.body}
+    homes = [board for board in cc.BOARDS if compared & set(board.widgets)]
+
+    assert compared
+    for widget in compared:
+        assert _clocked(_METRICS[_WIDGETS[widget].body["metric"]]), widget
+    for board in homes:
+        offered = set(board.body.get("time_ranges", []))
+        assert offered and offered <= _BOUNDED_TOKENS, board.key
+
+
+def test_the_failing_widgets_are_drawn_and_the_failing_board_has_a_working_neighbour() -> None:
+    failing = _board("failing_widget")
+
+    assert set(_WIDGETS) >= cc.FAILING_WIDGETS
+    assert set(failing.widgets) & cc.FAILING_WIDGETS
+    assert set(failing.widgets) - cc.FAILING_WIDGETS
+
+
+def test_the_failing_definitions_do_not_sort_first_in_their_lists() -> None:
+    """The portal smoke tests open the first item of each list and fail on a server error."""
+    failing_metrics = {_WIDGETS[w].body["metric"] for w in cc.FAILING_WIDGETS}
+    for rows, failing in ((cc.METRICS, failing_metrics), (cc.WIDGETS, cc.FAILING_WIDGETS)):
+        first = min(rows, key=lambda d: (d.name.casefold(), d.id))
+        assert first.id not in failing, f"{first.id} sorts first"
+
+
+@pytest.mark.parametrize(
+    ("case", "predicate"),
+    [
+        ("a line", lambda w: w.body["type"] == "line"),
+        ("an area", lambda w: w.body["type"] == "area"),
+        (
+            "a plain bar",
+            lambda w: w.body["type"] == "bar" and not {"labels", "series"} & set(w.body),
+        ),
+        ("a bar with labels", lambda w: w.body.get("labels") is True),
+        ("a stacked bar", lambda w: "series" in w.body),
+        ("a pie", lambda w: w.body["type"] == "pie"),
+        ("a stat", lambda w: w.body["type"] == "stat"),
+        ("a table", lambda w: w.body["type"] == "table"),
+    ],
+)
+def test_the_board_of_every_widget_type_draws(
+    case: str, predicate: Callable[[cc.Definition], bool]
+) -> None:
+    every = _board("every_widget_type")
+    assert any(predicate(_WIDGETS[w]) for w in every.widgets), f"no {case}"
+
+
+@pytest.mark.parametrize("table", ["class_git_pull_requests", "class_git_commits"])
+def test_the_board_of_every_widget_type_drills_into_records_one_row_each(table: str) -> None:
+    """The drilldown links a row to its record only when the detail reads one row per record."""
+    details = [
+        _METRICS[_WIDGETS[w].body["detail"]]
+        for w in _board("every_widget_type").widgets
+        if "detail" in _WIDGETS[w].body
+    ]
+
+    per_record = [
+        metric
+        for metric in details
+        if metric.body.get("database") == "silver"
+        and metric.body.get("table") == table
+        and not metric.body.get("group_by")
+        and not any("agg" in field for field in metric.body["fields"])
+        and _clocked(metric)
+    ]
+    assert per_record, f"no detail on the board lists {table} one row each"
+
+
+def test_the_boards_cover_every_case_the_renderers_must_draw() -> None:
+    def percent_columns(widget: cc.Definition) -> set[str]:
+        metric = _METRICS[widget.body["metric"]]
+        return {f["as_name"] for f in metric.body["fields"] if f.get("percent")} & set(
+            _columns(widget)
+        )
+
+    def duration_columns(widget: cc.Definition) -> set[str]:
+        metric = _METRICS[widget.body["metric"]]
+        return {f["as_name"] for f in metric.body["fields"] if "unit" in f} & set(_columns(widget))
+
+    def drawn(board: cc.Board) -> list[cc.Definition]:
+        return [_WIDGETS[w] for w in board.widgets]
+
+    cases = {
+        "headings": lambda b: any("heading" in i for i in b.body["items"]),
+        "texts with markdown characters": lambda b: any(
+            "**" in i.get("text", "") for i in b.body["items"]
+        ),
+        "time ranges": lambda b: bool(b.body.get("time_ranges")),
+        "no time ranges": lambda b: "time_ranges" not in b.body,
+        "a clocked widget": lambda b: any(_clocked(_METRICS[w.body["metric"]]) for w in drawn(b)),
+        "a clockless widget": lambda b: any(
+            not _clocked(_METRICS[w.body["metric"]]) for w in drawn(b)
+        ),
+        "a percent stat": lambda b: any(
+            w.body["type"] == "stat" and percent_columns(w) for w in drawn(b)
+        ),
+        "a percent column": lambda b: any(
+            w.body["type"] == "table" and percent_columns(w) for w in drawn(b)
+        ),
+        "a stat compared, higher is better": lambda b: any(
+            w.body.get("compare", {}).get("better", "higher") == "higher" and "compare" in w.body
+            for w in drawn(b)
+        ),
+        "a stat compared, lower is better": lambda b: any(
+            w.body.get("compare", {}).get("better") == "lower" for w in drawn(b)
+        ),
+        "a percent stat compared": lambda b: any(
+            "compare" in w.body and percent_columns(w) for w in drawn(b)
+        ),
+        "horizontal bars": lambda b: any(w.body.get("horizontal") is True for w in drawn(b)),
+        "a target line on a percent column": lambda b: any(
+            "target" in w.body and w.body["y"] in percent_columns(w) for w in drawn(b)
+        ),
+        "bars stacked to 100%": lambda b: any(w.body.get("stack") == "percent" for w in drawn(b)),
+        "a line by series": lambda b: any(
+            w.body["type"] == "line" and "series" in w.body for w in drawn(b)
+        ),
+        "an area by series": lambda b: any(
+            w.body["type"] == "area" and "series" in w.body for w in drawn(b)
+        ),
+        "a heatmap with x and y": lambda b: any(
+            w.body["type"] == "heatmap" and "y" in w.body for w in drawn(b)
+        ),
+        "a calendar heatmap": lambda b: any(
+            w.body["type"] == "heatmap" and "y" not in w.body for w in drawn(b)
+        ),
+        "a funnel of conditional counts": lambda b: any(
+            w.body["type"] == "funnel"
+            and any("when" in f for f in _METRICS[w.body["metric"]].body["fields"])
+            for w in drawn(b)
+        ),
+        "a treemap with groups": lambda b: any(
+            w.body["type"] == "treemap" and "group" in w.body for w in drawn(b)
+        ),
+        "a scatter with labels and series": lambda b: any(
+            w.body["type"] == "scatter" and {"label", "series"} <= set(w.body) for w in drawn(b)
+        ),
+        "a duration column with a unit": lambda b: any(
+            duration_columns(w) for w in drawn(b) if w.body["type"] == "table"
+        ),
+        "over 500 rows": lambda b: any(
+            _METRICS[w.body["metric"]].body.get("limit", 0) > 500 for w in drawn(b)
+        ),
+        "every range": lambda b: "inf" in b.body.get("time_ranges", []),
+        "15 or more widgets": lambda b: len(b.widgets) >= 15,
+        "a folder": lambda b: b.in_folder,
+        "sharing": lambda b: b.shared_with_ceo,
+        "a star": lambda b: b.starred,
+    }
+
+    uncovered = [case for case, predicate in cases.items() if not _boards_where(predicate)]
+    assert uncovered == []
+
+
+def test_a_reseed_at_one_anchor_writes_the_same_rows_after_clearing_its_own() -> None:
+    first = store.mariadb_rows(_ANCHOR)
+
+    assert first == store.mariadb_rows(_ANCHOR)
+    assert all(statement.startswith("DELETE") for statement, _ in first[: len(store._CLEAR)])
+    assert not any(s.startswith("DELETE") for s, _ in first[len(store._CLEAR) :])
+
+
+def test_the_dataset_records_end_at_the_anchor_and_repeat_exactly() -> None:
+    records = cc.dataset_records(_ANCHOR)
+
+    assert records == cc.dataset_records(_ANCHOR)
+    assert max(r.at for r in records).startswith(_ANCHOR.isoformat())
+    assert {r.team for r in records} == {"Atlas", "Borealis", "Cobalt", "Delta"}

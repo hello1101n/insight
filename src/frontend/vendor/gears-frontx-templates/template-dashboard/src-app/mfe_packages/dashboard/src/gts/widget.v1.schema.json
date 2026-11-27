@@ -1,0 +1,41 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.widget.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Widget",
+  "description": "Abstract base of the 15 template widget types.",
+  "x-gts-abstract": true,
+  "type": "object",
+  "required": ["id", "render"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "x-gts-instance-ref": "gts.frontx.dashboard.widget.widget.v1~",
+      "description": "Combined anonymous instance identifier: the widget's type chain followed by a UUID. The rightmost type of the chain is the widget type. The widget has no other identifier and no name of its own."
+    },
+    "title": {
+      "type": "string",
+      "description": "Display title shown in the widget chrome, as delivered."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "description": "A short text the cell frame shows in a badge beside its actions. Without it the header shows the title alone."
+    },
+    "render": {
+      "$ref": "gts://gts.frontx.dashboard.widget.render.v1~",
+      "description": "Presentation fields, closed by each concrete widget type through its own render type or inline."
+    }
+  },
+  "x-gts-traits-schema": {
+    "type": "object",
+    "required": ["entry"],
+    "properties": {
+      "entry": {
+        "type": "string",
+        "x-gts-instance-ref": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~",
+        "description": "The MFE entry the widget type renders through."
+      }
+    }
+  }
+}

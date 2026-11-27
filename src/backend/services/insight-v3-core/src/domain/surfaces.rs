@@ -29,7 +29,7 @@ mod proposal;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use drawn::{DrawnWidget, Reading};
+pub(crate) use drawn::Reading;
 pub(crate) use proposal::{Arrival, ProposalError, StoredItem};
 
 #[derive(Debug, Error)]

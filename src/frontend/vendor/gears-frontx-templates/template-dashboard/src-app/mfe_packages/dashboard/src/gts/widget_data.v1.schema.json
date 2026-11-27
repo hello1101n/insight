@@ -1,0 +1,18 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WidgetData",
+  "description": "Abstract base of every data type. Carries the combined instance id.",
+  "type": "object",
+  "x-gts-abstract": true,
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "x-gts-instance-ref": "gts.frontx.dashboard.widget_data.widget_data.v1~",
+      "description": "Combined anonymous instance id: the data type chain followed by the root's UUIDv5 stamp, of the form <data type>~UUIDv5(namespace, widget id | role)."
+    }
+  }
+}

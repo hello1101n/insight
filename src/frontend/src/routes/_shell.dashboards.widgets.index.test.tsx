@@ -67,6 +67,22 @@ describe("/dashboards/widgets", () => {
       { type: "pie" as const, metric: "m-1", label: "repo", value: "lines" },
       "Pie chart",
     ],
+    [
+      { type: "heatmap" as const, metric: "m-1", x: "bucket", value: "n" },
+      "Heatmap",
+    ],
+    [
+      { type: "funnel" as const, metric: "m-1", stages: ["opened", "merged"] },
+      "Funnel",
+    ],
+    [
+      { type: "treemap" as const, metric: "m-1", label: "repo", value: "n" },
+      "Treemap",
+    ],
+    [
+      { type: "scatter" as const, metric: "m-1", x: "size", y: "hours" },
+      "Scatter chart",
+    ],
   ])(
     "says what a %o widget draws and over which metric",
     async (body, label) => {
@@ -86,7 +102,7 @@ describe("/dashboards/widgets", () => {
   );
 
   it("draws a widget of a kind this build does not know under its stored kind", async () => {
-    const future = { type: "heatmap", metric: "m-1" } as unknown as Widget;
+    const future = { type: "sankey", metric: "m-1" } as unknown as Widget;
     vi.mocked(customClient.fetchWidgets).mockResolvedValue({
       items: [widgetListed("w-1", "heat", future, "Commits per day")],
       total: 1,
@@ -94,7 +110,7 @@ describe("/dashboards/widgets", () => {
 
     render(<Component />, { wrapper });
 
-    expect(await screen.findByText("heatmap")).toBeInTheDocument();
+    expect(await screen.findByText("sankey")).toBeInTheDocument();
     expect(screen.getByText("Commits per day")).toBeInTheDocument();
   });
 

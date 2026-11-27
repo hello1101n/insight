@@ -49,3 +49,19 @@ export function rangeLabel(token: string): string {
 export function toRangeToken({ from, to }: DateInterval): string {
   return `${from}/${to}`;
 }
+
+const DAILY_PRESETS = new Set(["P7D", "P30D", "PMC"]);
+
+const DAY_MS = 86_400_000;
+
+// INVARIANT: this mirrors the bucket grain that insight-v3-core picks for a range, in domain/query/time_window.rs.
+export function dailyBuckets(range: string | undefined): boolean {
+  if (range === undefined) return false;
+  if (DAILY_PRESETS.has(range)) return true;
+
+  const interval = toInterval(range);
+  if (!interval) return false;
+
+  const days = (Date.parse(interval.to) - Date.parse(interval.from)) / DAY_MS;
+  return days >= 2 && days <= 31;
+}

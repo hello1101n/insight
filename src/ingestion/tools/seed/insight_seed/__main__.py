@@ -6,7 +6,9 @@ Subcommands:
     silver     CREATE silver tables + apply the migrations + INSERT sample
                rows + build gold (ClickHouse).
     analytics  The catalogue rows no endpoint can create — a
-               tenant metric-definition override (MariaDB, analytics database).
+               tenant metric-definition override (MariaDB, analytics database)
+               — and, when MARIADB_V3_DB names a database, the custom
+               catalogue of metrics, widgets and dashboards.
     gold       Rebuild the dbt gold models only (after a persons-seed run).
     all        Run every step (gold is part of silver's build, not repeated).
 
@@ -29,6 +31,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+
+from . import config
 
 LOG = logging.getLogger("seed")
 
@@ -106,9 +110,16 @@ def main(argv: list[str] | None = None) -> int:
     # its startup, so the service has to have booted. On `all` that is already
     # true — the stand starts every service before seeding.
     if args.cmd in ("analytics", "all"):
+        import os
+
         from .analytics import run as run_analytics
 
         run_analytics()
+        catalogue_database = config.parse_custom_catalogue_database(os.environ)
+        if catalogue_database is not None:
+            from .custom_catalogue_store import run as run_custom_catalogue
+
+            run_custom_catalogue(catalogue_database)
         seeded.append("analytics")
 
     # Emit the manifest only after every requested step returned without

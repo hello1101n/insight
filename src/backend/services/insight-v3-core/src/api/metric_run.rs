@@ -75,6 +75,8 @@ struct RunBody {
     range: Option<String>,
     #[serde(default)]
     bucket: Option<bool>,
+    #[serde(default)]
+    previous: bool,
 }
 
 async fn run_metric(
@@ -113,7 +115,14 @@ pub(super) fn window(
         None => RunBody::default(),
     };
 
-    WindowRequest::parse(asked.range.as_deref(), asked.bucket)
+    let requested = WindowRequest::parse(asked.range.as_deref(), asked.bucket)
+        .map_err(|error| MetricRunApiError::window_error(&error))?;
+    if !asked.previous {
+        return Ok(requested);
+    }
+
+    requested
+        .previous()
         .map_err(|error| MetricRunApiError::window_error(&error))
 }
 

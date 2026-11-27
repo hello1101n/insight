@@ -120,6 +120,15 @@ global:
     allowInsecurePrivateNetwork: false
   insightV3Core:
     deploy: false
+  # The source systems that drilldown rows link to. analytics and
+  # insight-v3-core both read this list. Each entry has an `id` (the
+  # `source_id` that the connector writes), a `provider` (github, gitlab,
+  # bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
+  #   - id: <source id>
+  #     provider: github
+  #     webBaseUrl: https://github.example.com
+  # An entry that is not valid stops both services at startup.
+  externalSources: []
   security:
     # bitnami charts check that the image belongs to their "secure images"
     # list. We use bitnamilegacy (see mariadb.image / redis.image) so we
@@ -647,7 +656,6 @@ analytics:
   sqlApi:
     tokenSecret: insight-sql-api-creds
     tokenKey: token
-  externalSources: []
   # Explaining a metric with an LLM. Off everywhere until an operator turns it
   # on, and turning it on without `tokenEncryptionKey` stops the service at
   # boot rather than accepting keys it cannot seal.

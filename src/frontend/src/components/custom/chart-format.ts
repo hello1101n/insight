@@ -1,3 +1,8 @@
+import type { DurationUnit, MetricResult } from "@/api/custom-client";
+import { durationText } from "@/lib/custom/duration";
+
+export type ValueUnit = "" | "%" | DurationUnit;
+
 const COMPACT = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -19,24 +24,30 @@ const DAY_IN_YEAR = new Intl.DateTimeFormat("en", {
 
 const TICK_CHARS = 14;
 
-export function compactNumber(value: unknown, unit = ""): string {
-  const number = toNumber(value);
-  return number === null ? blank(value) : `${COMPACT.format(number)}${unit}`;
-}
-
-export function groupedNumber(value: unknown, unit = ""): string {
+export function compactNumber(value: unknown, unit: ValueUnit = ""): string {
   const number = toNumber(value);
   if (number === null) return blank(value);
+  if (unit !== "" && unit !== "%") return durationText(number, unit);
+
+  return `${COMPACT.format(number)}${unit}`;
+}
+
+export function groupedNumber(value: unknown, unit: ValueUnit = ""): string {
+  const number = toNumber(value);
+  if (number === null) return blank(value);
+  if (unit !== "" && unit !== "%") return durationText(number, unit);
 
   const format = Math.abs(number) < 10 ? GROUPED_SMALL : GROUPED;
   return `${format.format(number)}${unit}`;
 }
 
 export function unitFor(
-  percents: string[] | undefined,
+  result: Pick<MetricResult, "percents" | "units">,
   column: string
-): string {
-  return percents?.includes(column) ? "%" : "";
+): ValueUnit {
+  if (result.percents?.includes(column)) return "%";
+
+  return result.units?.[column] ?? "";
 }
 
 export function shortDate(value: unknown, withYear = false): string {
@@ -68,7 +79,7 @@ export function spansYears(values: unknown[]): boolean {
   return years.size > 1;
 }
 
-function toNumber(value: unknown): number | null {
+export function toNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value);

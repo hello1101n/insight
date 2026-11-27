@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
+import { previousOptions } from "@/lib/custom/board-range";
 import { drawsBucket } from "@/lib/custom/draws-bucket";
 import { metricQuery, metricResultQuery, widgetQuery } from "@/queries/custom";
 import { RANGE_PRESETS } from "@/lib/custom/time-range";
@@ -110,6 +111,11 @@ function Drawn({ name, widget }: { name: string; widget: Widget }) {
     ...metricResultQuery(widget.metric, options),
     enabled: metric.isSuccess,
   });
+  const previous = previousOptions(widget, options);
+  const previousResult = useQuery({
+    ...metricResultQuery(widget.metric, previous),
+    enabled: previous !== undefined,
+  });
 
   return (
     <Card>
@@ -140,6 +146,7 @@ function Drawn({ name, widget }: { name: string; widget: Widget }) {
         <CustomWidget
           widget={widget}
           result={result.data}
+          previous={previousResult.data}
           error={result.error ?? metric.error}
           windowed={Boolean(options)}
           pending={metric.isPending || result.isPending || result.isFetching}

@@ -1,0 +1,56 @@
+{
+  "$id": "gts://gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "render_widget",
+  "description": "Gives a mounted widget extension its render settings, and for a data widget its data.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.mfes.comm.action.v1~"
+    },
+    {
+      "type": "object",
+      "required": [
+        "payload"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "x-gts-instance-ref": "gts.frontx.mfes.ext.extension.v1~frontx.dashboard.mfe.widget_ext.v1~",
+          "description": "A generated extension in the widgets domain."
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "render"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~",
+              "description": "The stamped render instance: the widget instance's render object with the id the root stamps, <render type>~UUIDv5(namespace, widget id | role | render), validated with the widget instance against its own type and registered against its render type."
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The widget instance's title, when it has one: the widget names itself by it for assistive technology. The root still draws it in the cell frame."
+            },
+            "value_format": {
+              "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+              "description": "Data widget only: the widget instance's value_format."
+            },
+            "empty_text": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Data widget only: the widget instance's empty_text, which the widget shows in its empty state."
+            },
+            "data": {
+              "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~",
+              "description": "Data widget only: the stamped and validated data instance."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

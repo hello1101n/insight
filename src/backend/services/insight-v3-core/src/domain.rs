@@ -13,6 +13,7 @@ pub(crate) mod kinds;
 pub(crate) mod metric_run;
 pub(crate) mod pins;
 pub(crate) mod query;
+pub(crate) mod record_link;
 pub(crate) mod sharing;
 pub(crate) mod surfaces;
 pub(crate) mod tags;

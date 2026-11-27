@@ -46,7 +46,10 @@ fn source(inner: &CompiledQuery, columns: &[Column]) -> String {
 
     let partition: Vec<String> = columns
         .iter()
-        .map(|column| format!("{INNERMOST}.`{}`", column.key))
+        .map(|column| column.key.as_str())
+        .chain(inner.hidden().iter().map(String::as_str))
+        .filter(|name| *name != TWIN_COLUMN)
+        .map(|name| format!("{INNERMOST}.`{name}`"))
         .collect();
 
     format!(

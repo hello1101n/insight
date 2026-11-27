@@ -128,8 +128,9 @@ data:
             tenant_metrics_enabled: {{ .Values.metricCatalog.tenantMetricsEnabled }}
           reports:
             temp_dir: {{ .Values.reports.tempDir | quote }}
-          external_sources: {{- if not .Values.externalSources }} []{{- end }}
-            {{- range .Values.externalSources }}
+          {{- $externalSources := ((.Values.global).externalSources) | default .Values.externalSources }}
+          external_sources: {{- if not $externalSources }} []{{- end }}
+            {{- range $externalSources }}
             - id: {{ .id | quote }}
               provider: {{ .provider | quote }}
               web_base_url: {{ .webBaseUrl | quote }}

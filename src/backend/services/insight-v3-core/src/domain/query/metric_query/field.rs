@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::Write as _;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::MetricQueryError;
 use super::filter::{Filter, FilterBind};
@@ -41,6 +41,32 @@ impl Direction {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum Unit {
+    #[serde(rename = "ms")]
+    Milliseconds,
+    #[serde(rename = "s")]
+    Seconds,
+    #[serde(rename = "min")]
+    Minutes,
+    #[serde(rename = "h")]
+    Hours,
+    #[serde(rename = "d")]
+    Days,
+}
+
+impl Unit {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Milliseconds => "ms",
+            Self::Seconds => "s",
+            Self::Minutes => "min",
+            Self::Hours => "h",
+            Self::Days => "d",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub(super) struct Field {
     #[serde(default, rename = "field")]
@@ -65,6 +91,8 @@ pub(super) struct Field {
     pub(super) percent: bool,
     #[serde(default)]
     pub(super) exact: bool,
+    #[serde(default)]
+    pub(super) unit: Option<Unit>,
 }
 
 impl Field {

@@ -5,6 +5,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use secrecy::SecretString;
 use serde::Deserialize;
 
+use insight_external_sources::ExternalSourceConfig;
+
 const REDACTED_SECRET: &str = "<redacted>";
 
 pub(crate) fn redacted_yaml(config: &toolkit::bootstrap::AppConfig) -> anyhow::Result<String> {
@@ -21,23 +23,6 @@ pub(crate) fn redacted_yaml(config: &toolkit::bootstrap::AppConfig) -> anyhow::R
         }
     }
     redacted.to_yaml()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExternalSourceProvider {
-    Github,
-    Gitlab,
-    BitbucketCloud,
-    Jira,
-    Youtrack,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ExternalSourceConfig {
-    pub id: String,
-    pub provider: ExternalSourceProvider,
-    pub web_base_url: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
@@ -278,6 +263,8 @@ fn default_clickhouse_database() -> String {
 
 #[cfg(test)]
 mod tests {
+    use insight_external_sources::ExternalSourceProvider;
+
     use super::*;
 
     #[test]

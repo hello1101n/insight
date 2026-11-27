@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+from .custom_catalogue import CustomBoard, CustomCatalogue
 from .errors import ManifestError
 
 # The location the seed writes to, resolved from this file:
@@ -345,6 +346,7 @@ class Manifest:
     data_window: str
     anchor_date: str
     golden_metrics: GoldenMetrics | None
+    custom_catalogue: CustomCatalogue | None
     seeded: tuple[str, ...]
     source_path: Path
 
@@ -444,6 +446,15 @@ class Manifest:
                     f"{where}.golden_metrics",
                 )
             ),
+            # Optional: a stand without the custom catalogue reports it as None.
+            custom_catalogue=(
+                None
+                if doc.get("custom_catalogue") is None
+                else CustomCatalogue.parse(
+                    _as_mapping(doc["custom_catalogue"], f"{where}.custom_catalogue"),
+                    f"{where}.custom_catalogue",
+                )
+            ),
             seeded=tuple(seeded_raw),
             source_path=source_path,
         )
@@ -469,6 +480,12 @@ class Manifest:
             raise ManifestError(
                 f"no fixture {name!r} in {self.source_path}; available: {available}"
             ) from None
+
+    def custom_board(self, key: str) -> CustomBoard:
+        """One seeded dashboard by its key, or fail naming why there is none."""
+        if self.custom_catalogue is None:
+            raise ManifestError(f"{self.source_path} declares no custom catalogue")
+        return self.custom_catalogue.board(key)
 
     def has_capability(self, name: str) -> bool:
         """Capability lookup for the `requires_*` capability markers."""
