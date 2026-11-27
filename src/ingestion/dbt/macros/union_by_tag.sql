@@ -14,6 +14,12 @@
     duplicates straight into silver and inflates metrics. Deduping here makes
     silver duplicate-free regardless of merge timing. See ADR-0001.
 
+  How: `union_relations_latest` below finds the latest `dedup_version_col` per
+  `unique_key` over those two columns alone and keeps the rows holding it
+  (`LIMIT 1 BY` breaks a tie, as ROW_NUMBER did). A window over `SELECT *`
+  sorted every whole row in memory instead: on dev, 5.7 GiB for the 1.07M rows
+  of class_crm_activities.
+
   Args:
     dedup_version_col: version column for "latest wins" dedup (default
       `_version`). Pass `none` for versionless RMT sources (full-refresh

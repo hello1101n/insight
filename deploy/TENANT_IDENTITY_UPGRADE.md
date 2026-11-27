@@ -24,6 +24,13 @@ this does not arise.
   chart being deployed, `scripts/ci/connector_images_current.sh` must print
   nothing and exit 0; any connector it names has an image built before its
   sources last changed.
+- [ ] Check ClickHouse has free disk of at least **twice** what the tables to
+  migrate take ([query](#once-the-stand-is-proven-drop-the-backups)). The
+  migration copies every table it changes, and the originals stay beside the
+  copies as backups until `finalize`; merging the copies
+  takes up to about a quarter more while it runs. `tenant_migration plan` and
+  `apply` check this before changing anything and print each disk's numbers;
+  with less, the pre-upgrade hook fails before it suspends any writer.
 
 ## Deploy as usual
 
@@ -143,6 +150,9 @@ kubectl -n <NS> get configmap <release>-tenant-cutover      # present = rebuild 
 - **The deploy fails with `still busy after …`**: a sync or an Airbyte job did
   not finish within the wait. Nothing was migrated and every writer was
   resumed. Deploy again later.
+- **The deploy fails with `disk … has … free, but the tables to migrate take
+  …`**: nothing was changed and no writer was suspended. Free disk space or
+  grow the volume until it holds twice what those tables take, and deploy again.
 - **The deploy fails during `tenant_migration apply`**: every table is back as
   it was and every writer was resumed. The log names the failing table.
 - **`some table could not be put back`**: the writers stay suspended, and each
@@ -166,12 +176,16 @@ takes hours; each dbt step's deadline is
 
 ## Once the stand is proven, drop the backups
 
-The backups use as much ClickHouse disk again as the migrated tables: 5–9 GiB
-on vz and dev, under 1 GiB on cfabric. Check there is room before the deploy:
+Until `finalize`, the backups take as much ClickHouse disk again as the
+migrated tables (about 1x the data: 31 GiB on dev, under 1 GiB on cfabric).
+The run itself needs twice that free (see [Before the deploy](#before-the-deploy)).
+What the tables take, at most (`plan` prints the exact figure for the tables it
+would change), and what is free:
 
 ```sql
 SELECT formatReadableSize(sum(total_bytes)) FROM system.tables
 WHERE database LIKE 'bronze\_%' OR database IN ('config', 'staging', 'silver', 'insight');
+SELECT name, formatReadableSize(free_space) FROM system.disks;
 ```
 
 Once the stand has run normally for a while, drop them by hand. No hook ever

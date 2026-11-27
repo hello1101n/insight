@@ -64,8 +64,18 @@ def insert(rel: Relation, suffix: str, columns: list[str], expressions: list[str
     )
 
 
+def old_parts_lifetime(rel: Relation, suffix: str, seconds: str | None) -> str:
+    """Set the table's `old_parts_lifetime`, or with None put back the server's default."""
+    if seconds is None:
+        return f"ALTER TABLE {rel.sql(suffix)} RESET SETTING old_parts_lifetime"
+    if not seconds.isdigit():
+        raise DdlError(f"{rel}: old_parts_lifetime {seconds!r} is not a number of seconds")
+    return f"ALTER TABLE {rel.sql(suffix)} MODIFY SETTING old_parts_lifetime = {seconds}"
+
+
 def drop(rel: Relation, suffix: str) -> str:
-    return f"DROP TABLE IF EXISTS {rel.sql(suffix)}"
+    # SYNC: an Atomic database frees a dropped table's disk only 8 minutes later otherwise.
+    return f"DROP TABLE IF EXISTS {rel.sql(suffix)} SYNC"
 
 
 def rename(rel: Relation, suffix: str, to_suffix: str) -> str:
