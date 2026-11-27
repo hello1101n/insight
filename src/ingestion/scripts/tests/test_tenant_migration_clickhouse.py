@@ -20,9 +20,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tenant_migration import apply as migration
+from tenant_migration import plan as planning
 from tenant_migration.__main__ import main
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
-from tenant_migration.inventory import InventoryError, discover, history_relations
+from tenant_migration.inventory import InventoryError, Relation, Table, discover, history_relations
 from tenant_migration.plan import TablePlan, survey
 
 NEW = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
@@ -602,6 +603,50 @@ def test_the_command_line_refuses_a_missing_or_malformed_tenant(
 def test_the_command_line_takes_no_tenant_flag(warehouse: ClickHouse) -> None:
     with pytest.raises(SystemExit):
         main(["apply", "--tenant", NEW])
+
+
+def test_too_little_free_disk_fails_plan_and_apply_before_anything_changes(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The fixture's tables take a few KiB: a headroom no disk can meet stands in for a full disk."""
+    before = _fingerprint(warehouse)
+    found = planning.disks(warehouse, _plan(warehouse))
+    assert found and all(d.in_scope > 0 and d.free > 0 for d in found)
+    assert main(["plan"]) == 0
+    capsys.readouterr()
+    monkeypatch.setattr(planning, "DISK_HEADROOM", 10**12)
+
+    assert main(["plan", "--exit-code"]) == 2
+    assert main(["apply"]) == 2
+    err = capsys.readouterr().err
+    assert f"disk {found[0].name} has" in err
+    assert "Nothing was changed" in err
+    assert _fingerprint(warehouse) == before
+    assert _work_tables(warehouse) == []
+
+
+def test_the_copies_shed_merged_parts_fast_and_the_live_tables_get_the_originals_setting_back(
+    warehouse: ClickHouse, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    warehouse.execute("ALTER TABLE bronze_example.colon_items MODIFY SETTING old_parts_lifetime = 60")
+    seen: list[str] = []
+    real_insert = migration._insert
+
+    def spy(table: Table) -> str:
+        seen.append(str(migration.own_lifetime(warehouse, table.rel, "__tenant_copy")))
+        return real_insert(table)
+
+    monkeypatch.setattr(migration, "_insert", spy)
+    _apply(warehouse)
+
+    assert set(seen) == {migration.COPY_OLD_PARTS_LIFETIME}
+    lifetimes = {
+        name: migration.own_lifetime(warehouse, Relation(*name.split(".")))
+        for name in (*TABLES, "bronze_example.colon_items__tenant_backup")
+    }
+    assert lifetimes.pop("bronze_example.colon_items") == "60"
+    assert lifetimes.pop("bronze_example.colon_items__tenant_backup") == "60"
+    assert set(lifetimes.values()) == {None}
 
 
 def test_a_replicated_table_in_scope_fails_plan_and_apply_before_anything_changes(

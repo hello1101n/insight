@@ -21,6 +21,7 @@ reconcile stopped by the pre-upgrade hook).
 from __future__ import annotations
 
 import contextlib
+import re
 from dataclasses import dataclass
 
 from tenant_migration import ddl, keys
@@ -30,6 +31,14 @@ from tenant_migration.plan import TablePlan
 
 NIL_UUID = "00000000-0000-0000-0000-000000000000"
 MAX_BACKUPS = 100
+#: A copy's `old_parts_lifetime` while the run lasts. A copy merges as it fills, and the parts a merge
+#: replaces stay on disk for `old_parts_lifetime` (480 s by default), about as long as a whole run, so
+#: they pile up: on dev (31 GiB to copy) a run had taken 65 GB when the disk ran out, 300 of 403 tables
+#: in. At 10 s they go as the run goes (measured: peak 1.23x the copied bytes, against 1.66x at 480 s).
+#: The setting guards merged parts against a power loss; writers are stopped and the backup holds the
+#: original meanwhile, and the run puts the original's own setting back once every table is swapped.
+COPY_OLD_PARTS_LIFETIME = "10"
+LIFETIME = re.compile(r"\bold_parts_lifetime = (\d+)\b")
 
 
 class MigrationError(RuntimeError):
@@ -86,6 +95,17 @@ def _create_copy(ch: ClickHouse, table: Table) -> None:
         ch.execute(ddl.add_tenant(rel, COPY, KEY_COLUMN if table.key else None))
     for column in table.drops:
         ch.execute(ddl.drop_column(rel, COPY, column))
+    ch.execute(ddl.old_parts_lifetime(rel, COPY, COPY_OLD_PARTS_LIFETIME))
+
+
+def own_lifetime(ch: ClickHouse, rel: Relation, suffix: str = "") -> str | None:
+    """The `old_parts_lifetime` the table sets itself, or None when it takes the server's."""
+    rows = ch.rows(
+        "SELECT engine_full FROM system.tables WHERE database = {database:String} AND name = {name:String}",
+        params={"database": rel.database, "name": rel.name + suffix},
+    )
+    found = LIFETIME.search(rows[0][0]) if rows else None
+    return found.group(1) if found else None
 
 
 def _rows(table: Table) -> tuple[list[str], list[str]]:
@@ -231,6 +251,8 @@ def apply(ch: ClickHouse, plans: list[TablePlan], tenant: str) -> list[str]:
             print(f"migrating {plan.table.relation} ({plan.change}, {plan.rows} rows)", flush=True)
             migrate_table(ch, plan.table, params, copies)
             migrated.append(plan.table.relation)
+        for copy in copies:
+            ch.execute(ddl.old_parts_lifetime(copy.rel, "", own_lifetime(ch, copy.rel, copy.backup)))
     except BaseException as error:
         with contextlib.suppress(Exception):
             ch.cancel_running()
