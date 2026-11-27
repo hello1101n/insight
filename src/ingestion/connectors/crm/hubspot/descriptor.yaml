@@ -7,6 +7,11 @@ name: hubspot
 # 3.11.0: the support models move to the class_support_* contract. MINOR:
 #   new staging tables that each run rebuilds whole; the old support classes
 #   and their models are dropped by the deploy hook.
+# Property selection: the connector requests only its curated properties and
+#   the `collect` list of hubspot_property_selection, and never a property that
+#   holds money (source_hubspot/selection.py). The money columns stay in the
+#   schema and are NULL. property_definitions gets a `selection` column; the
+#   destination adds it on the next sync, so no full refresh is needed.
 version: "3.13.0"
 type: cdk
 schedule: "0 6 * * *"
@@ -26,3 +31,8 @@ connection:
 secret:
   required_fields:
     - hubspot_access_token
+# Non-secret source config fields that the reconciler reads from the settings
+# ConfigMap of the instance (same annotations as the Secret).
+settings:
+  fields:
+    - hubspot_property_selection

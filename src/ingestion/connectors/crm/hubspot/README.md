@@ -44,6 +44,7 @@ stringData:
 |-------|--------|
 | `insight_tenant_id` | `tenant_id` from tenant YAML |
 | `insight_source_id` | `insight.cyberfabric.com/source-id` annotation |
+| `hubspot_property_selection` | settings ConfigMap of the instance (see "Property selection") |
 
 ### Multi-instance
 
@@ -120,7 +121,7 @@ The history streams search for objects modified since the cursor, requesting onl
 
 | History stream | Properties |
 |---|---|
-| `deals_property_history` | `dealstage`, `pipeline`, `amount`, `amount_in_home_currency`, `deal_currency_code`, `closedate`, `hubspot_owner_id`, `hs_manual_forecast_category` |
+| `deals_property_history` | `dealstage`, `pipeline`, `closedate`, `hubspot_owner_id`, `hs_manual_forecast_category` |
 | `tickets_property_history` | `hs_pipeline_stage`, `hs_pipeline`, `hubspot_owner_id`, `hs_ticket_priority` |
 
 Teams come from the `teams` array on `owners` (`id`, `name`, `primary`): `/settings/v3/users/teams` needs a settings scope a CRM-only Private App does not carry.
@@ -146,7 +147,46 @@ Bronze advertises **exactly the `ALLOWED_PROPERTIES_BY_OBJECT` allowlist** as `p
 
 Free-text bodies (`hs_call_body`, `hs_email_text`, `hs_meeting_body`, `hs_internal_meeting_notes`, `hs_task_body`, `hs_note_body`, `hs_communication_body`, ticket `content`, deal `description`) keep up to 64 KiB in their `properties_*` column; every other value is capped at 2 KiB.
 
-Syncs still request **every** property the portal defines. Nothing is discarded: the full record — nested `properties` object plus association ids — is serialized into the `raw_data` JSON column, so a property with no dedicated column stays recoverable downstream. The per-value byte cap (see envelope) applies before serializing, so the blob itself stays parseable. This keeps the typed width bounded regardless of portal customization depth.
+Syncs request the allowlist and the `collect` list of the instance (see "Property selection" below), and never a property that holds money. The full record — nested `properties` object plus association ids — is serialized into the `raw_data` JSON column, so a requested property with no dedicated column stays recoverable downstream. The per-value byte cap (see envelope) applies before serializing, so the blob itself stays parseable.
+
+### Property selection
+The optional config field `hubspot_property_selection` holds the decisions for one instance. It is a JSON object keyed by CRM object type, with a `collect` list and an `ignore` list of property names:
+
+```json
+{"deals": {"collect": ["deal_type"], "ignore": ["internal_notes"]}}
+```
+
+An instance without the field has no decisions yet: the connector requests every property that is not money, and every status is `collected` or `forbidden`. Write the first values file with `tools/selection_baseline.py` to start the review.
+
+The curated set is the bronze column allowlist plus `MODEL_PROPERTIES_BY_OBJECT`: the properties the dbt models read from `raw_data` (for example `hs_merged_object_ids` of tickets). A test fails when a model reads a property outside the curated set.
+
+Put it in a settings ConfigMap, not in the Secret. Set `ingestion.reconcile.connectorSettings` in the chart values, and the chart renders the ConfigMap. The gitops flow passes `environments/<env>/connector-settings.yaml` to Helm as a second values file (see `deploy/gitops/environments/local/connector-settings.yaml.example`). The reconciler finds the ConfigMap by the same two annotations as the Secret and adds the field to the source config. A changed ConfigMap updates the source on the next reconcile tick.
+
+`property_definitions` writes a `selection` status for each property (`source_hubspot/selection.py`):
+
+| `selection` | Meaning | Requested |
+|---|---|---|
+| `collected` | curated, in `collect`, or the instance has no decisions | yes |
+| `ignored` | in `ignore` | no |
+| `forbidden` | holds money, and has a decision, is curated, or the instance has no decisions | no |
+| `unreviewed` | in no list, and the instance has decisions | no |
+| `conflict` | holds money and is in `collect` | no |
+
+The check `assert_hubspot_properties_have_a_decision` (`connector_quality`, tier `error`) reports each live property with the status `unreviewed` or `conflict`. Add the property to `collect` or `ignore` to clear it.
+
+A property moved to `collect` arrives only with records that change after the move. To fill older records, refresh the stream in Airbyte. A property moved to `ignore` keeps its old values in bronze until its record changes.
+
+`tools/selection_baseline.py` writes a first ConfigMap for a portal: it puts every unreviewed property in `ignore` and keeps the decisions of `--existing`. It reads property definitions only.
+
+### Money is not collected
+The connector does not request a property that holds money, also when the property is in `collect`, and does not store one that HubSpot sends without a request. `source_hubspot/money.py` decides:
+
+- a property that the portal displays as currency (`showCurrencySymbol`, or `numberDisplayHint = currency`) is money;
+- a standard property that holds an amount, a currency or an exchange rate (`amount`, `deal_currency_code`, `hs_exchange_rate`, `annualrevenue`, …) is money.
+
+The money columns (`properties_amount`, `properties_annualrevenue`, …) stay in the advertised schema, so the bronze tables keep their shape. Records written by this version have NULL in them, and so do `amount`, `amount_home`, `acv`, `tcv`, `arr`, `currency` and `exchange_rate` in `class_crm_deals`.
+
+The connector does not change stored rows. Money values written by an earlier version stay in bronze (columns, `raw_data`, `deals_property_history`) and in staging and silver until a record changes. Remove them with a separate purge if the installation must not hold them. The purge must cover the same set as the connector: every property in `MONEY_PROPERTY_NAMES` and every property with a currency flag, for each object type. Run the purge after the new version is deployed. A sync on an earlier version writes the money again. Free text (deal names, descriptions, notes, email bodies) can still contain an amount: this filter reads property types, not text.
 
 ### Deleted / archived records
 Each archived stream runs as **client-side incremental on `archivedAt`** — page the full archived set, drop records at-or-below the prior cursor state, batch_read full properties for the survivors. After the first sync, only newly-archived rows write to Bronze. Silver UNIONs the live and archived sources and ranks rows by `greatest(updatedAt, archivedAt)` so an archive event outranks the prior live update. Silver rows carry it as `is_deleted` / `deleted_at`.
@@ -162,7 +202,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 
 - `unique_key` is `{tenant}-{source}-{natural key}`; the natural key includes the object type wherever HubSpot ids are unique only per type (associations, pipelines, stages, history, property definitions).
 - **Deletion is a row state, not a missing row.** Archived records stay with `is_deleted = 1` and `deleted_at`; filter `is_deleted = 0` for the live picture.
-- **`properties`** (`Map(String, String)`) on accounts, contacts, deals, activities, leads and tickets holds every non-empty property of the record — standard and custom — as HubSpot returns it (`properties['my_custom_field']`). Labels, types and option labels are in `class_crm_property_definitions`. It is read from `raw_data`, so each value is capped at 2 KiB; dedicated columns carry the untruncated bodies.
+- **`properties`** (`Map(String, String)`) on accounts, contacts, deals, activities, leads and tickets holds every non-empty requested property of the record — standard and custom — as HubSpot returns it (`properties['my_custom_field']`). Labels, types and option labels are in `class_crm_property_definitions`. It is read from `raw_data`, so each value is capped at 2 KiB; dedicated columns carry the untruncated bodies.
 - Staging keeps the latest version of each `unique_key` per batch, and silver is delete+insert on `unique_key`; `FINAL` still guards against parts that have not merged yet.
 - Staging and silver pass a record when its `_version` is newer than the one they already hold for that `unique_key`, so a stream added later or a backfill of old records lands with its original versions. A record re-read at an unchanged version is skipped: a newly extracted column reaches existing rows only through a `--full-refresh` of the HubSpot models.
 - Owner columns (`owner_id`) join `class_crm_users.user_id` (owners.id); creator columns (`created_by_user_id`, `changed_by_user_id`) join `class_crm_users.hs_user_id` (owners.userId).
@@ -173,7 +213,7 @@ The connector's staging models (`dbt/hubspot__crm_*.sql`, tag `hubspot`) feed th
 |---|---|---|---|
 | `class_crm_accounts` | company | `companies` (+archived) | `account_id`, `name`, `domain`, `owner_id` |
 | `class_crm_contacts` | contact | `contacts` (+archived) | `contact_id`, `email`, `owner_id`, `lifecycle_stage`, `account_id` (primary company) |
-| `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `amount`, `amount_home`, `currency`, `close_date`, `is_closed`, `is_won`, `owner_id` |
+| `class_crm_deals` | deal | `deals` (+archived) | `deal_id`, `pipeline_id`, `stage`, `close_date`, `is_closed`, `is_won`, `owner_id`; the money columns are NULL |
 | `class_crm_activities` | engagement | `engagements_{calls,emails,meetings,tasks,notes,communications}` (+archived) | `activity_type`, `timestamp`, `owner_id`, `created_by_user_id`, `subject`, `body`, `direction`, `status`, `channel`, `duration_seconds`, `ended_at` |
 | `class_crm_leads` | lead | `leads` (+archived) | `lead_id`, `pipeline_id`, `stage_id`, `owner_id`, `contact_id`, `account_id` |
 | `class_crm_tickets` | ticket | `tickets` (+archived) | ticket attributes, then `pipeline_id`, `stage_id`, `content`, `deal_id` |

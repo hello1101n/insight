@@ -27,6 +27,7 @@ from pydantic import ValidationError
 from source_hubspot.api import Hubspot
 from source_hubspot.constants import ARCHIVED_STREAM_SUFFIX, CURATED_STREAMS, STREAM_REGISTRY
 from source_hubspot.models import HubspotConfig, validation_summary
+from source_hubspot.selection import parse_property_selection
 from source_hubspot.streams import (
     CrmArchivedListStream,
     CrmSearchStream,
@@ -55,9 +56,10 @@ class SourceHubspot(AbstractSource):
     def check_connection(self, logger: logging.Logger, config: Mapping[str, Any]) -> tuple[bool, str | None]:
         try:
             parsed = _parse_config(config)
+            selection = parse_property_selection(parsed.hubspot_property_selection)
         except AirbyteTracedException as exc:
             return False, exc.message
-        hubspot = Hubspot(access_token=parsed.hubspot_access_token)
+        hubspot = Hubspot(access_token=parsed.hubspot_access_token, selection=selection)
         reason = hubspot.check_connection()
         if reason is not None:
             return False, reason
@@ -103,7 +105,10 @@ class SourceHubspot(AbstractSource):
     def streams(self, config: Mapping[str, Any]) -> list[Stream]:
         parsed = _parse_config(config)
         start_date = self._resolve_start_date(parsed.hubspot_start_date)
-        hubspot = Hubspot(access_token=parsed.hubspot_access_token)
+        hubspot = Hubspot(
+            access_token=parsed.hubspot_access_token,
+            selection=parse_property_selection(parsed.hubspot_property_selection),
+        )
         return [self._build_stream(name, parsed, hubspot, start_date) for name in self._resolve_stream_list(config)]
 
     def _build_stream(

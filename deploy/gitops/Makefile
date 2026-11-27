@@ -100,6 +100,9 @@ CHART            ?= oci://ghcr.io/hello1101n/charts/insight
 LOCAL_CHART      ?= ../../charts/insight
 INSIGHT_VERSION  ?= $(shell cat .insight-version 2>/dev/null)
 VALUES           ?= environments/$(ENV)/values.yaml
+# Optional second values file with ingestion.reconcile.connectorSettings.
+CONNECTOR_SETTINGS ?= environments/$(ENV)/connector-settings.yaml
+UMBRELLA_VALUES  = -f $(VALUES) $(if $(wildcard $(CONNECTOR_SETTINGS)),-f $(CONNECTOR_SETTINGS))
 # Covers rollout waits plus the post-upgrade clickhouse-migrate hook, whose
 # heals can mutate large relations — give it room before --rollback-on-failure rolls back.
 TIMEOUT          ?= 30m
@@ -650,7 +653,7 @@ validate-insight: values-present local-chart-present
 	@mkdir -p $(RENDER_DIR)
 	@helm dependency build $(LOCAL_CHART) $(HELM_EXTRA_FLAGS)
 	@helm template $(RELEASE) $(LOCAL_CHART) $(HELM_EXTRA_FLAGS) \
-		-n $(NS_APP) -f $(VALUES) \
+		-n $(NS_APP) $(UMBRELLA_VALUES) \
 		> $(RENDER_DIR)/validate-render-$(ENV).yaml
 	@echo "$(C_GRN)rendered$(C_RST) $(LOCAL_CHART) (local source) → $(RENDER_DIR)/validate-render-$(ENV).yaml"
 	@kubeconform -strict -summary < $(RENDER_DIR)/validate-render-$(ENV).yaml
@@ -659,7 +662,7 @@ validate-insight: values-present local-chart-present
 deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present gateway-realip-args apply-app-secrets keycloak-broker-realms field-value-map
 	@mkdir -p $(RENDER_DIR)
 	@helm template $(RELEASE) $(CHART) --version $(INSIGHT_VERSION) $(HELM_EXTRA_FLAGS) \
-		-n $(NS_APP) -f $(VALUES) \
+		-n $(NS_APP) $(UMBRELLA_VALUES) \
 		$$(cat $(REALIP_ARGS)) \
 		> $(RENDER_DIR)/last-render-$(ENV).yaml
 	@echo "$(C_GRN)rendered$(C_RST) $(CHART):$(INSIGHT_VERSION) → $(RENDER_DIR)/last-render-$(ENV).yaml"
@@ -704,7 +707,7 @@ deploy-insight: sync-clean vpn-up kube-ctx confirm values-present chart-present 
 	helm upgrade --install $(RELEASE) $(CHART) \
 		--version $(INSIGHT_VERSION) $(HELM_EXTRA_FLAGS) $(HELM_UPGRADE_FLAGS) "$${SET_ARGS[@]}" \
 		--namespace $(NS_APP) $(HELM_NS_FLAG) \
-		-f $(VALUES) \
+		$(UMBRELLA_VALUES) \
 		$$(cat $(REALIP_ARGS)) \
 		$(HELM_WAIT_FLAG) $(HELM_ROLLBACK_FLAG) --timeout $(TIMEOUT) \
 		--history-max 10 \

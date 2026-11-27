@@ -290,6 +290,15 @@ ingestion:
     # Airbyte's JOB_KUBE_CONNECTOR_IMAGE_REGISTRY does not cover these: it only
     # prefixes references that name no registry.
     imageMirrors: {}
+    # Connector settings: one ConfigMap per instance with non-secret source
+    # config fields that the descriptor lists under `settings.fields`. Reconcile
+    # finds it by the connector and source-id annotations, as it finds the Secret.
+    #   connectorSettings:
+    #     - connector: hubspot
+    #       sourceId: main
+    #       data:
+    #         hubspot_property_selection: '{"deals": {"collect": [], "ignore": []}}'
+    connectorSettings: []
     # NB: the old `logs:` block (PVC/emptyDir file logger at
     # /var/log/insight) is gone — reconcile emits structured JSON to
     # stdout and the cluster's log collector is the durable destination.

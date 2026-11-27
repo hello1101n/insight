@@ -38,6 +38,13 @@
         "format": "date",
         "examples": ["2024-01-01"],
         "order": 3
+      },
+      "hubspot_property_selection": {
+        "type": "string",
+        "title": "Property Selection",
+        "description": "JSON object keyed by CRM object type. Each value has 'collect' and 'ignore' lists of property names. The connector requests its curated properties plus 'collect', and never a money property. A property in neither list is reported as unreviewed. The reconciler injects this value from the connector settings ConfigMap.",
+        "examples": ["{\"deals\": {\"collect\": [\"deal_type\"], \"ignore\": [\"internal_notes\"]}}"],
+        "order": 4
       }
     }
   }

@@ -1,0 +1,17 @@
+ingestion:
+  reconcile:
+    connectorSettings:
+      - connector: hubspot
+        sourceId: main
+        data:
+          hubspot_property_selection: |
+            {
+              "deals": {
+                "collect": ["deal_type"],
+                "ignore": ["internal_notes"]
+              },
+              "tickets": {
+                "collect": [],
+                "ignore": ["example_custom_field"]
+              }
+            }

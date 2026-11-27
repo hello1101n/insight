@@ -76,6 +76,7 @@ def envelope(
     tenant_id: str,
     source_id: str,
     allowed_property_names: frozenset,
+    excluded_property_names: frozenset = frozenset(),
     collision_seen: MutableSet[str] | None = None,
 ) -> MutableMapping[str, Any]:
     """Return a copy of ``record`` with Insight metadata injected.
@@ -93,6 +94,8 @@ def envelope(
       association helper before this call).
     - Serializes the whole incoming record into ``raw_data`` so properties
       outside the advertised schema are still recoverable downstream.
+    - Drops the properties named in ``excluded_property_names`` from both,
+      so a value HubSpot sends unrequested is not stored.
     - Adds ``tenant_id`` / ``source_id`` / ``unique_key`` / ``data_source`` /
       ``collected_at``.
 
@@ -104,6 +107,10 @@ def envelope(
     except ValidationError as exc:
         raise unexpected_payload("record shape", exc) from None
 
+    kept_properties = {name: value for name, value in keys.properties.items() if name not in excluded_property_names}
+    if "properties" in record:
+        record = {**record, "properties": kept_properties}
+
     out: MutableMapping[str, Any] = {}
 
     for key, value in record.items():
@@ -114,7 +121,7 @@ def envelope(
             continue
         out[key] = value
 
-    for prop_name, prop_value in keys.properties.items():
+    for prop_name, prop_value in kept_properties.items():
         # A column the advertised schema never declared would be drift;
         # ``raw_data`` carries what the allowlist leaves out.
         if prop_name not in allowed_property_names:

@@ -1407,6 +1407,37 @@ reconcile_gc_orphans() {
 }
 
 # ---------------------------------------------------------------------------
+# reconcile_instance_settings <name> <connector_dir> <source_id> <secret_data_json>
+# Prints the fields of the instance's settings ConfigMap as a JSON object, or
+# `{}` when the descriptor declares no settings.fields or no ConfigMap names
+# the instance. Returns 1 when the ConfigMap is unreadable or unusable.
+# ---------------------------------------------------------------------------
+reconcile_instance_settings() {
+  local name="$1" connector_dir="$2" source_id="$3" secret_data_json="$4"
+  local fields listing secret_keys
+  fields="$(python3 "${_RECONCILE_PY_DIR}/parse_descriptor.py" \
+    --descriptor "${connector_dir}/descriptor.yaml" --field settings.fields 2>/dev/null)"
+  if [[ -z "${fields}" ]]; then
+    printf '{}'
+    return 0
+  fi
+
+  if ! listing="$(kubectl -n "${INSIGHT_NAMESPACE}" get configmap \
+      -l "${SECRET_LABEL_SELECTOR:-app.kubernetes.io/part-of=insight}" -o json)"; then
+    reconcile__log ERROR "${name}" "settings ConfigMap read failed — the source stays as it is"
+    return 1
+  fi
+  fields="$(printf '%s\n' "${fields}" | python3 -c 'import json, re, sys; print(json.dumps([f for f in sys.stdin.read().split() if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", f)]))')"
+  secret_keys="$(printf '%s' "${secret_data_json}" | python3 -c 'import json, sys; print(json.dumps(sorted(json.load(sys.stdin))))')"
+
+  if ! printf '%s' "${listing}" | python3 "${_RECONCILE_PY_DIR}/connector_settings.py" \
+      --connector "${name}" --source-id "${source_id}" --fields "${fields}" --secret-keys "${secret_keys}"; then
+    reconcile__log ERROR "${name}" "settings ConfigMap of source ${source_id} is unusable — the source stays as it is"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # reconcile_dry_run [args...]
 # Read-only diff: sets RECONCILE_DRY_RUN=1 and delegates to reconcile_run.
 # ---------------------------------------------------------------------------
@@ -1530,6 +1561,17 @@ _reconcile_one_connector() {
     fi
     injected_json="$(GIT_PROXY_URL_VAL="${GIT_PROXY_URL}" GIT_PROXY_TOKEN_VAL="${GIT_PROXY_TOKEN}" \
       python3 -c 'import os, json; print(json.dumps({"git_proxy_url": os.environ["GIT_PROXY_URL_VAL"], "git_proxy_token": os.environ["GIT_PROXY_TOKEN_VAL"]}))')"
+  fi
+
+  local settings_json
+  if ! settings_json="$(reconcile_instance_settings "${name}" "${connector_dir}" "${source_id_label}" "${secret_data_json}")"; then
+    _RECONCILE_FAILED=$((_RECONCILE_FAILED + 1))
+    return 1
+  fi
+  injected_json="$(python3 -c 'import json, sys; print(json.dumps({**json.loads(sys.argv[1]), **json.loads(sys.argv[2])}, sort_keys=True))' \
+    "${injected_json}" "${settings_json}")"
+
+  if [[ "${injected_json}" != "{}" ]]; then
     if ! cfg_hash="$(python3 "${_RECONCILE_PY_DIR}/platform_cfg_hash.py" "${cfg_hash}" "${injected_json}")" \
         || [[ -z "${cfg_hash}" ]]; then
       reconcile__log ERROR "${name}" "cannot fold the injected platform fields into the cfg-hash"
