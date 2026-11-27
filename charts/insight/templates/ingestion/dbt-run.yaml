@@ -170,8 +170,20 @@ spec:
           # decided here, not in the model. A graph walk (`tag:X+`) reaches gold
           # models reading classes no connector on this install feeds; without
           # this the whole run dies on them.
+          # The check also needs the models THIS run builds: a contributor that
+          # another connector's pipeline builds is absent here until it is in
+          # the warehouse, so its class must wait (#127).
+          OPERATION_ARGS=()
+          if [[ "$RC" -eq 0 && -n "${DBT_SELECT:-}" ]]; then
+            read -r -a SELECT_TERMS <<< "$DBT_SELECT"
+            read -r -a EXCLUDE_TERMS <<< "${DBT_EXCLUDE:-}"
+            RUN_MODELS="$(dbt --quiet ls --profiles-dir . --resource-type model --output name \
+              --select "${SELECT_TERMS[@]}" ${EXCLUDE_TERMS[@]+--exclude "${EXCLUDE_TERMS[@]}"})" || RC=$?
+            OPERATION_ARGS=(--args "$(printf '%s\n' "${RUN_MODELS:-}" \
+              | python3 -c 'import json, sys; print(json.dumps({"selected": sys.stdin.read().split()}))')")
+          fi
           if [[ "$RC" -eq 0 ]]; then
-            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir .)" || RC=$?
+            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir . ${OPERATION_ARGS[@]+"${OPERATION_ARGS[@]}"})" || RC=$?
           fi
           read -r -a EXCLUDED <<< "${DBT_EXCLUDE:-} ${UNBUILDABLE:-}"
           EXCLUDE_ARGS=()

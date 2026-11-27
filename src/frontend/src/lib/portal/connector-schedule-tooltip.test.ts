@@ -48,7 +48,7 @@ function tooltipText(
 
 const running = "Running · as of 11:00 0 3 * * *; 0 15 * * * UTC";
 const pending =
-  "The sync job runs a different schedule. Starts by 16 Jan at 00:15 UTC.";
+  "The sync job runs a different schedule. Starts by 16 Jan 2026 · 00:15:00 UTC.";
 
 it.each([
   ["annotation", "Runs the schedule set at deployment in instance settings."],
@@ -81,7 +81,7 @@ it("dates an applied schedule and lists the overridden deployment schedule", () 
       requested: { ...schedule.requested!, crons: schedule.live!.crons },
     })
   ).toEqual([
-    "Saved by another admin on 14 Jan at 12:00 UTC.",
+    "Saved by another admin on 14 Jan 2026 · 12:00:30 UTC.",
     running,
     "Deployment · connector default 0 2 * * *; 0 14 * * * UTC",
   ]);
@@ -97,13 +97,13 @@ it("omits a next-check hint when the schedule is applied and the deployment sche
       requested: { ...schedule.requested!, crons: schedule.live!.crons },
       inherited: null,
     })
-  ).toEqual(["Saved by another admin on 14 Jan at 12:00 UTC.", running]);
+  ).toEqual(["Saved by another admin on 14 Jan 2026 · 12:00:30 UTC.", running]);
 });
 
 it("gives the pending start estimate and lists each running cron once", () => {
   expect(tooltipText(schedule)).toEqual([
     pending,
-    "Target · saved by another admin on 14 Jan at 12:00 0 6 * * * UTC",
+    "Target · saved by another admin on 14 Jan 2026 · 12:00:30 0 6 * * * UTC",
     running,
   ]);
 });
@@ -156,7 +156,7 @@ it("gives one availability sentence for a pending reset with a known next check"
       pending_reason: "awaiting_reconcile",
     })
   ).toEqual([
-    "The deployment schedule is shown after 16 Jan at 00:15 UTC.",
+    "The deployment schedule is shown after 16 Jan 2026 · 00:15:00 UTC.",
     running,
   ]);
 });
@@ -242,7 +242,7 @@ it("dates an applied request when the live schedule has not been recorded", () =
       inherited: null,
     })
   ).toEqual([
-    "Saved by another admin on 14 Jan at 12:00 UTC. The live schedule has not been recorded yet.",
+    "Saved by another admin on 14 Jan 2026 · 12:00:30 UTC. The live schedule has not been recorded yet.",
   ]);
 });
 
@@ -255,7 +255,7 @@ it("explains when the default schedule is shown if the deployment target is unkn
       inherited: null,
     })
   ).toEqual([
-    "The deployment schedule is shown after 16 Jan at 00:15 UTC.",
+    "The deployment schedule is shown after 16 Jan 2026 · 00:15:00 UTC.",
     running,
   ]);
 });
