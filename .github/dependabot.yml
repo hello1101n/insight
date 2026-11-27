@@ -154,6 +154,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # INVARIANT: scripts/vendor-frontx.sh writes the vendored FrontX copy. Dependabot alerts still cover it.
+    exclude-paths:
+      - "vendor/**"
     cooldown:
       default-days: 7
     groups:

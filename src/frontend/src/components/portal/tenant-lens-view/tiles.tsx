@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 import { tenantData } from "./data";
 
-/** Headline and stat tiles: one org-wide value with its previous-period delta. */
 export function TileRow({
   metrics,
   data,
@@ -42,7 +41,7 @@ export function TileRow({
     >
       {tiles.map((tile) => (
         <Card key={tile.key}>
-          <CardContent className="p-4">
+          <CardContent>
             <div className="flex items-center justify-between gap-2">
               <MetricName
                 metric={tile.r}

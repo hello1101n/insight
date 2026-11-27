@@ -29,17 +29,6 @@ export interface MetricSummaryCardProps {
   entityId: string;
 }
 
-/**
- * Modality headline card: period total, plus a collapsible
- * proportional breakdown over the metric's dimension groups (ribbon +
- * legend). The breakdown section renders only when at least two groups have
- * data — a single-source metric reads as a plain summary card.
- *
- * No standing and no colour. The card says how much of a modality there was
- * and what it was made of; whether that is good is a judgment the section
- * around it deliberately does not make, and a coloured card makes it anyway
- * — louder than any sentence next to it.
- */
 export function MetricSummaryCard({
   metric,
   entityId,
@@ -57,10 +46,6 @@ export function MetricSummaryCard({
 
   const data = forEntity(metric, entityId);
   const value = data.value;
-  // Eligibility (observed / suppressed / flat pool / neutral direction) and
-  // the quartile rank come from the shared standing derivation — same
-  // verdict as the KPI tiles and the peer story by construction: red means
-  // bottom quartile, in-pack is normal and stays uncolored.
 
   const rows = data.breakdown
     .filter((row) => (row.value ?? 0) > 0)
@@ -77,7 +62,8 @@ export function MetricSummaryCard({
       : displayedParts(
           rows.map((row) => row.value),
           value,
-          metric.format
+          metric.format,
+          metric.unit
         );
   const colorsBySeed = seriesColors(rows.map((row) => row.colorSeed));
   const rowsTotal = rows.reduce((sum, row) => sum + row.value, 0) || 1;

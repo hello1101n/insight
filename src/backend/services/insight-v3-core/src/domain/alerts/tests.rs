@@ -15,6 +15,7 @@ fn result(columns: &[&str], rows: &[&[serde_json::Value]]) -> RunResult {
         columns: columns.iter().map(|&name| name.to_owned()).collect(),
         rows: rows.iter().map(|row| row.to_vec()).collect(),
         percents: Vec::new(),
+        units: std::collections::BTreeMap::new(),
         undated: None,
         clock: None,
     }

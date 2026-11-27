@@ -31,6 +31,7 @@ use crate::domain::alerts::{Destinations, Limits};
 use crate::domain::folders::{DefinitionStore, Folders};
 use crate::domain::pins::Pins;
 use crate::domain::query::metric_query::MetricRunner;
+use crate::domain::record_link::RecordLinks;
 use crate::domain::tags::Tags;
 use crate::store::catalog::Catalog;
 use crate::store::dataset_tables::DatasetTables;
@@ -103,6 +104,7 @@ pub(crate) struct AppState {
     preview_slots: Arc<tokio::sync::Semaphore>,
     widget_run_slots: Arc<tokio::sync::Semaphore>,
     alerts: Option<Alerts>,
+    record_links: RecordLinks,
 }
 
 #[derive(Debug)]
@@ -212,11 +214,17 @@ impl AppState {
                 dashboard_widgets::MAX_CONCURRENT_WIDGET_RUNS,
             )),
             alerts: None,
+            record_links: RecordLinks::default(),
         }
     }
 
     pub(crate) fn with_alerts(mut self, alerts: Alerts) -> Self {
         self.alerts = Some(alerts);
+        self
+    }
+
+    pub(crate) fn with_record_links(mut self, links: RecordLinks) -> Self {
+        self.record_links = links;
         self
     }
 
@@ -368,7 +376,11 @@ impl AppState {
     }
 
     pub(crate) fn drilldowns(&self) -> crate::domain::drilldown::Drilldowns<'_> {
-        crate::domain::drilldown::Drilldowns::new(self.metric_runs(), &self.metrics)
+        crate::domain::drilldown::Drilldowns::new(
+            self.metric_runs(),
+            &self.metrics,
+            &self.record_links,
+        )
     }
 }
 

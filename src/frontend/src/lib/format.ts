@@ -12,28 +12,14 @@ const METRIC_CURRENCY_FORMAT = new Intl.NumberFormat(LOCALE, {
   maximumFractionDigits: 0,
 });
 
-/**
- * The em-dash stands in for a metric that has no honest value — a null,
- * undefined, or non-finite result. It reads as "no data", never as a real
- * zero (insight#1977).
- */
 export const NO_METRIC_VALUE = "—";
 
 export function roundMetricValue(v: number, fmt: MetricFormat): number {
   return fmt === "decimal" ? Math.round(v * 10) / 10 : Math.round(v);
 }
 
-/** The registry unit of a metric measured in hours (`unit: h`). */
 export const HOURS_UNIT = "h";
 
-/** Past this many hours the minutes fall below the precision a decimal showed. */
-const WHOLE_HOURS_FROM = 100;
-
-/**
- * A metric in hours is a duration, and "1.25 h" makes the reader convert
- * it into clock time; "1 h 15 min" is that time. The whole value carries the
- * unit, so a surface that shows number and unit apart gets no side unit.
- */
 export function isDurationUnit(unit?: string | null): boolean {
   return unit === HOURS_UNIT;
 }
@@ -56,30 +42,26 @@ export function formatTimeMetricValue(
     : null;
 }
 
-/** "45 min", "1 h 15 min", "3 h", "1,234 h". */
+export function displayStepsPerUnit(
+  fmt: MetricFormat,
+  unit?: string | null,
+): number {
+  if (isDurationUnit(unit)) return 60;
+  return fmt === "decimal" ? 10 : 1;
+}
+
 export function formatHoursDuration(hours: number): string {
   const sign = hours < 0 ? "-" : "";
   const abs = Math.abs(hours);
-  if (abs >= WHOLE_HOURS_FROM) {
-    return `${sign}${NF_THOUSANDS.format(Math.round(abs))} ${HOURS_UNIT}`;
-  }
   const totalMinutes = Math.round(abs * 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
+  const wholeHours = NF_THOUSANDS.format(h);
   if (h === 0) return `${sign}${m} min`;
-  if (m === 0) return `${sign}${h} ${HOURS_UNIT}`;
-  return `${sign}${h} ${HOURS_UNIT} ${m} min`;
+  if (m === 0) return `${sign}${wholeHours} ${HOURS_UNIT}`;
+  return `${sign}${wholeHours} ${HOURS_UNIT} ${m} min`;
 }
 
-/**
- * Formatting for `/v1/metric-results` values: the wire `format` decides
- * rounding and presentation; `unit` is a display suffix only. Bare number —
- * no unit/percent suffix (use `formatMetricValue` for the suffixed form,
- * `metricDisplayUnit` when the unit renders as a separate element).
- *
- * A null/undefined/non-finite value renders as `NO_METRIC_VALUE`, never a
- * fabricated `0`: honesty is guaranteed here rather than left to each caller.
- */
 export function formatMetricNumber(
   v: number | null | undefined,
   fmt: MetricFormat,
@@ -103,11 +85,6 @@ export function formatMetricValue(
   return unit ? `${s} ${unit}` : s;
 }
 
-/**
- * The figure a tile shows large, for a surface that sets the unit beside it
- * in smaller type: the number alone when `metricDisplayUnit` has something to
- * place there, the suffixed value when the number carries its own unit.
- */
 export function formatMetricFigure(
   v: number | null | undefined,
   fmt: MetricFormat,
@@ -118,14 +95,6 @@ export function formatMetricFigure(
     : formatMetricValue(v, fmt, unit);
 }
 
-/**
- * The value split into what a column of digits shows and what sits beside it.
- *
- * `formatMetricNumber` + `metricDisplayUnit` do NOT compose back into
- * `formatMetricValue`: a percent loses its sign, because the suffix lives in
- * the value formatter and the unit helper reports none. A split that drops a
- * "%" turns 50% into 50 — a different number, not a shorter one.
- */
 export function splitMetricValue(
   v: number,
   fmt: MetricFormat,
@@ -133,13 +102,11 @@ export function splitMetricValue(
 ): { number: string; unit: string } {
   const number = formatMetricNumber(v, fmt);
   if (fmt === "percent") return { number, unit: "%" };
-  // Currency carries its symbol inside the number.
   if (fmt === "currency") return { number, unit: "" };
   if (isDurationUnit(unit)) return { number: formatHoursDuration(v), unit: "" };
   return { number, unit: unit ?? "" };
 }
 
-/** Unit rendered beside the number; none when the number carries it. */
 export function metricDisplayUnit(
   fmt: MetricFormat,
   unit?: string | null,
@@ -149,14 +116,8 @@ export function metricDisplayUnit(
   return unit ?? undefined;
 }
 
-/**
- * Ratio at/above which a runaway signed percent ("+300%", "+5460%") renders
- * as a multiple instead — shared by the vs-median gap and the
- * period-over-period delta so both surfaces switch at the same point.
- */
 export const MULTIPLE_THRESHOLD = 2;
 
-/** "5.6×" under 10, "56×" above — a multiple needs no decimal at that size. */
 export function formatMultiple(ratio: number): string {
   const rounded = ratio >= 10 ? Math.round(ratio) : Math.round(ratio * 10) / 10;
   return `${rounded}×`;
@@ -171,25 +132,10 @@ export function formatDate(iso: string, pattern = "d MMM"): string {
   return format(parseISO(iso), pattern, { locale: enUS });
 }
 
-/**
- * Format an instant the identity service journals. Its timestamps are UTC
- * clock readings serialized WITHOUT a zone designator
- * (`2026-08-01T10:15:00.000000`); `parseISO` would read that as local time
- * and shift every audit entry by the viewer's UTC offset. Zone-suffixed
- * input is passed through untouched, so the helper is safe for either shape.
- */
 export function formatUtcInstant(iso: string, pattern = "d MMM"): string {
   return formatDate(withZone(iso), pattern);
 }
 
-/**
- * The same instant as an age ("3 days ago").
- *
- * How long a binding has stood is the question an audit trail is read for —
- * "still the automatic one from months back" versus "someone decided this
- * yesterday" — and a date makes the reader do that subtraction. The exact
- * instant stays beside it; this replaces nothing.
- */
 export function formatUtcAge(iso: string, now = new Date()): string {
   return formatDistance(parseISO(withZone(iso)), now, {
     addSuffix: true,
@@ -197,42 +143,25 @@ export function formatUtcAge(iso: string, now = new Date()): string {
   });
 }
 
-/** The identity journal serializes UTC without a zone designator. */
+// WORKAROUND: parseISO reads a zone-less date-time as local time; the identity journal serializes UTC without a zone.
 function withZone(iso: string): string {
   return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`;
 }
 
-/**
- * The instant's own UTC clock, for a surface whose other dates are UTC buckets.
- * Dropping the zone is what does it: a date-time with no offset is local time
- * per spec, so the UTC digits render unshifted.
- */
+// WORKAROUND: parseISO reads a zone-less date-time as local time, so dropping the zone renders the UTC digits unshifted.
 export function formatUtcClock(iso: string, pattern = "d MMM"): string {
   return formatDate(iso.replace(" ", "T").replace(/Z$/i, ""), pattern);
 }
 
-/** "1.0k" reads worse than "1k" on an axis. */
 function trimTrailingZero(s: string): string {
   return s.endsWith(".0") ? s.slice(0, -2) : s;
 }
 
-/**
- * Axis tick labels. Kept short on purpose: an axis gutter is ~28px, while
- * "36000" at the 10px tick font needs 31px and gets clipped by the chart's own
- * edge. Abbreviating makes the width independent of the magnitude, so a series
- * that grows an order of magnitude does not silently start truncating.
- *
- * The 10k threshold is where abbreviation stops costing accuracy: a tick sits on
- * a gridline, so "2.3k" for a line drawn at 2250 is a label that lies. Four
- * digits still fit; five do not.
- */
 export function formatAxisTick(v: number): string {
   const abs = Math.abs(v);
   if (abs >= 1_000_000) return `${trimTrailingZero((v / 1_000_000).toFixed(1))}M`;
   if (abs >= 10_000) {
     const k = Math.round(v / 1000);
-    // 999_600 rounds to 1000k — a tick that names a magnitude the scale below
-    // it already covers. Roll it over rather than print a fourth digit.
     if (Math.abs(k) >= 1000) return `${trimTrailingZero((k / 1000).toFixed(1))}M`;
     return `${k}k`;
   }

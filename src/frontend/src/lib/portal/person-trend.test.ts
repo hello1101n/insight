@@ -1,12 +1,3 @@
-/**
- * The readings a tile's line is drawn from.
- *
- * Three of the rules here exist to refuse to draw something, and each refusal
- * looks like a missing feature from the outside — which is exactly why they
- * need tests. Left untested, "why is there no line here" gets fixed by
- * deleting the rule, and the screen goes back to inventing a collapse out of
- * the calendar.
- */
 import { describe, expect, it } from "vitest";
 
 import type { MetricResult } from "@/api/metric-results-client";
@@ -21,7 +12,6 @@ import {
 
 const ME = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 
-/** One metric carrying a timeseries of `[bucket_start, value]` readings. */
 function withSeries(points: [string, number | null][]) {
   const result = {
     metric_key: "git.commits",
@@ -52,7 +42,6 @@ function withSeries(points: [string, number | null][]) {
 
 describe("trendBucket", () => {
   it("draws the line in the unit the reader picked", () => {
-    // Anything else asks them to convert in their head on every glance.
     expect(trendBucket("week")).toBe("week");
     expect(trendBucket("month")).toBe("month");
     expect(trendBucket("quarter")).toBe("month");
@@ -66,8 +55,6 @@ describe("runningBucketStart", () => {
   });
 
   it("finds the Monday of the week, including from a Sunday", () => {
-    // A Sunday is the case a naive "subtract getUTCDay()" gets wrong: it
-    // would jump forward a week and drop six finished days.
     expect(runningBucketStart("2026-03-18", "week")).toBe("2026-03-16");
     expect(runningBucketStart("2026-03-22", "week")).toBe("2026-03-16");
     expect(runningBucketStart("2026-03-16", "week")).toBe("2026-03-16");
@@ -87,8 +74,6 @@ describe("personTrendPoints", () => {
   const running = "2026-03-01";
 
   it("drops the running bucket", () => {
-    // A month four days old holds four days of work; drawn beside finished
-    // months it reads as a collapse the calendar invented.
     const points = personTrendPoints(
       withSeries([
         ["2025-12-01", 10],
@@ -103,9 +88,6 @@ describe("personTrendPoints", () => {
   });
 
   it("draws nothing below three readings", () => {
-    // Two points always draw a straight line, and a straight line reads as a
-    // steady trend — but two is also what a metric has when it has only just
-    // started being measured.
     expect(
       personTrendPoints(
         withSeries([
@@ -119,7 +101,6 @@ describe("personTrendPoints", () => {
   });
 
   it("keeps a gap as a gap rather than a zero", () => {
-    // A month with no data must not become a month with none of the thing.
     expect(
       personTrendPoints(
         withSeries([
@@ -135,8 +116,6 @@ describe("personTrendPoints", () => {
   });
 
   it("counts only real readings towards the minimum", () => {
-    // Four buckets, three of them empty: a gap must not buy its way past the
-    // threshold that exists to stop two points being drawn as a trend.
     expect(
       personTrendPoints(
         withSeries([
@@ -152,8 +131,6 @@ describe("personTrendPoints", () => {
   });
 
   it("keeps the most recent window, oldest first", () => {
-    // More finished buckets than the line holds: the oldest fall off the
-    // left, not the newest off the right.
     const extra = 4;
     const many = Array.from(
       { length: TREND_BUCKETS + extra },

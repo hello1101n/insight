@@ -37,7 +37,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
-/** A metric a window can select by, and the date it would use. */
 const CLOCKED = {
   name: "Merged pull requests",
   definition: {
@@ -48,7 +47,6 @@ const CLOCKED = {
   clock: { field: "merged_at", from: "metric" as const },
 };
 
-/** The same metric over a dataset that marks no date: nothing windows it. */
 const CLOCKLESS = {
   name: "Pull requests",
   definition: {
@@ -96,7 +94,6 @@ function renderDrilldown(
   );
 }
 
-/** A page whose answer the test releases when it is ready. */
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
   const promise = new Promise<T>((settle) => {
@@ -188,9 +185,6 @@ describe("<WidgetDrilldown>", () => {
     expect(screen.getByText("83.91%")).toBeInTheDocument();
   });
 
-  // A header click is a question to the service; the answer is the next
-  // page it sends. The window travels with it, or the rows would be the
-  // right order of the wrong period.
   it("asks the service for the order a header click chooses, over the same window", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKED);
@@ -222,8 +216,6 @@ describe("<WidgetDrilldown>", () => {
     }, { timeout: 5000 });
   });
 
-  // The service picked `service ↑` itself. The first click on that header
-  // has to flip it, not ask for what is already on screen.
   it("flips the column the service chose on the first click", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
@@ -347,6 +339,31 @@ describe("<WidgetDrilldown>", () => {
     expect(link).toHaveAttribute("href", "https://example.com/repo/app");
   });
 
+  it("links a row to its record through its first text cell, and leaves a row without one plain", async () => {
+    vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
+    vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(
+      page([], {
+        rows: [
+          {
+            values: { service: "example-api", commits: 7 },
+            link: "https://git.example.com/group/app/pull/7",
+          },
+          { values: { service: "example-web", commits: 8 } },
+        ],
+      })
+    );
+
+    renderDrilldown();
+
+    const link = await screen.findByRole("link", { name: "example-api" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://git.example.com/group/app/pull/7"
+    );
+    expect(screen.getByText("example-web").closest("a")).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
   it("says there is no data rather than drawing an empty table", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);
     vi.mocked(customClient.fetchDashboardDrilldownPage).mockResolvedValue(page([]));
@@ -376,8 +393,6 @@ describe("<WidgetDrilldown>", () => {
     );
   });
 
-  // The dialog is sized for a result of a few columns. A wider one is read by
-  // filling the window rather than by scrolling a small frame.
   it("fills the window when asked, and gives the room back", async () => {
     const user = userEvent.setup();
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKLESS);

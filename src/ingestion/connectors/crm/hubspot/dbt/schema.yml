@@ -163,7 +163,7 @@ models:
           - accepted_values: { values: ['hubspot'] }
 
   - name: hubspot__crm_tickets
-    description: "HubSpot tickets → staging, feeds class_crm_tickets (dim_support_ticket column layout)"
+    description: "HubSpot tickets → staging, feeds class_crm_tickets"
     columns:
       - name: tenant_id
         tests: [not_null]
@@ -311,3 +311,17 @@ models:
         tests:
           - accepted_values: { values: ['hubspot'] }
 
+  - name: hubspot__support_tickets
+    description: "HubSpot tickets for class_support_tickets: status open or closed from the ticket state of the stage, merges from hs_merged_object_ids."
+  - name: hubspot__support_ticket_field_history
+    description: "Changes of the tracked ticket properties for class_support_ticket_field_history, with a status row when a stage change opens or closes the ticket."
+  - name: hubspot__support_field_definitions
+    description: "Ticket property definitions for class_support_field_definitions."
+  - name: hubspot__support_agents
+    description: "HubSpot owners as support agents for class_support_agents."
+  - name: hubspot__support_customers
+    description: "The contacts and companies that tickets name, for class_support_customers."
+  - name: hubspot__support_groups
+    description: "HubSpot teams as support groups for class_support_groups."
+  - name: hubspot__support_group_memberships
+    description: "Current team memberships of the owners for class_support_group_memberships."

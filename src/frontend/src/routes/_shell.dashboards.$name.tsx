@@ -1,6 +1,6 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ellipsis, Maximize2, Table2 } from "lucide-react";
 
 import {
@@ -21,14 +21,16 @@ import {
   isBusy,
   type DashboardRead,
   type DashboardWidget,
-  type RunOptions,
 } from "@/api/custom-client";
 import { DashboardByline } from "@/components/custom/dashboard-byline";
 import { DashboardPageActions } from "@/components/custom/dashboard-page-actions";
 import { RangePicker } from "@/components/custom/range-picker";
-import { selectedRange } from "@/lib/custom/board-range";
+import {
+  previousOptions,
+  runOptions,
+  selectedRange,
+} from "@/lib/custom/board-range";
 import { dashboardIdFromPath } from "@/lib/custom/dashboard-path";
-import { drawsBucket } from "@/lib/custom/draws-bucket";
 import {
   useSetPortalSearch,
   usePortalSearch,
@@ -49,8 +51,13 @@ import {
 import { useIsAdmin } from "@/queries/identity-me";
 import { dashboardSubject } from "@/lib/portal/document-title";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
-import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
+import { usePortalShowPlanned } from "@/lib/portal/portal-store";
+import { TEXT_BODY, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
+
+const loadFrontxBoard = () => import("@/components/custom/frontx-board");
+
+const FrontxBoard = lazy(loadFrontxBoard);
 
 export const Route = createFileRoute("/_shell/dashboards/$name")({
   validateSearch: validateDashboardSearch,
@@ -77,6 +84,8 @@ function CustomDashboardPage() {
 
   const offered = read?.body.time_ranges;
   const range = selectedRange(offered, read?.body.default_range, search.range);
+  useFrontxPrefetch(id, read, range);
+
   return (
     <CustomDashboardBody
       read={read}
@@ -90,6 +99,34 @@ function CustomDashboardPage() {
       onSelectRange={(token) => setSearch({ range: token })}
     />
   );
+}
+
+// INVARIANT: each run takes the cache key that the FrontX host asks for, so the host answers it from the cache.
+function useFrontxPrefetch(
+  id: string,
+  read: DashboardRead | undefined,
+  range: string | undefined
+) {
+  const showPlanned = usePortalShowPlanned();
+  const queryClient = useQueryClient();
+  const widgets = useQuery({
+    ...dashboardWidgetsQuery(id),
+    enabled: showPlanned,
+  });
+
+  useEffect(() => {
+    if (showPlanned) void loadFrontxBoard();
+  }, [showPlanned]);
+
+  useEffect(() => {
+    if (!showPlanned || !read || !widgets.data) return;
+
+    for (const widget of widgets.data) {
+      void queryClient.prefetchQuery(
+        dashboardWidgetResultQuery(id, widget.id, runOptions(widget, range))
+      );
+    }
+  }, [showPlanned, read, widgets.data, queryClient, id, range]);
 }
 
 function CustomDashboardBody({
@@ -113,6 +150,7 @@ function CustomDashboardBody({
   offered: string[] | undefined;
   onSelectRange: (token: string) => void;
 }) {
+  const showPlanned = usePortalShowPlanned();
   if (isLoading)
     return (
       <CenteredSpinner
@@ -192,6 +230,10 @@ function CustomDashboardBody({
           state="empty"
           label="This dashboard holds no widgets yet."
         />
+      ) : showPlanned ? (
+        <Suspense fallback={<CenteredSpinner className="min-h-40" />}>
+          <FrontxBoard id={id} read={read} range={range} />
+        </Suspense>
       ) : (
         <DashboardItems dashboard={id} items={items} range={range} />
       )}
@@ -241,9 +283,6 @@ function DashboardItems({
               onExpand={() => setSearch({ widget: item.widget })}
             />
           ) : "heading" in item ? (
-            // The eyebrow label the portal's own sections use, and the whole
-            // row: it introduces the widgets under it rather than sitting
-            // beside one.
             <h2
               key={`${index}-heading`}
               className="col-span-full mt-2 text-xs font-medium tracking-wider text-muted-foreground uppercase first:mt-0"
@@ -277,18 +316,6 @@ function DashboardItems({
   );
 }
 
-// Whether a window has a date to select by decides the request. The metric's
-// body cannot answer it - the date may be the dataset's - so the service
-// reports the one in force with the widget.
-function runOptions(
-  widget: DashboardWidget,
-  range: string | undefined
-): RunOptions | undefined {
-  return range && widget.clock
-    ? { range, bucket: drawsBucket(widget.body) }
-    : undefined;
-}
-
 function drawnOverAllTime(
   widget: DashboardWidget,
   range: string | undefined
@@ -296,7 +323,6 @@ function drawnOverAllTime(
   return Boolean(range) && !widget.clock;
 }
 
-// A stat is one number: drawn bigger, it says nothing more.
 function expands(widget: DashboardWidget): boolean {
   return widget.body.type !== "stat";
 }
@@ -315,7 +341,6 @@ function DashboardWidgetSlot({
 }: {
   dashboard: string;
   id: string;
-  /** Absent once the widgets are read means the dashboard no longer draws it. */
   widget: DashboardWidget | undefined;
   pending: boolean;
   range: string | undefined;
@@ -326,10 +351,15 @@ function DashboardWidgetSlot({
   const name = widget?.name ?? id;
 
   const options = widget ? runOptions(widget, range) : undefined;
+  const previous = widget ? previousOptions(widget.body, options) : undefined;
 
   const resultState = useQuery({
     ...dashboardWidgetResultQuery(dashboard, id, options),
     enabled: widget !== undefined,
+  });
+  const previousState = useQuery({
+    ...dashboardWidgetResultQuery(dashboard, id, previous),
+    enabled: previous !== undefined,
   });
 
   if (pending) {
@@ -358,6 +388,7 @@ function DashboardWidgetSlot({
     <CustomWidget
       widget={widget.body}
       result={resultState.data}
+      previous={previousState.data}
       error={resultState.error}
       windowed={Boolean(options)}
       pending={resultState.isPending || resultState.isFetching}
@@ -369,9 +400,7 @@ function DashboardWidgetSlot({
   return (
     <Card>
       <CardHeader className="flex flex-row items-start gap-2">
-        <CardTitle className={cn(TEXT_HEADING, "min-w-0 flex-1")}>
-          {heading}
-        </CardTitle>
+        <CardTitle className="min-w-0 flex-1">{heading}</CardTitle>
         {drawnOverAllTime(widget, range) ? (
           <Badge variant="secondary" className="shrink-0">
             All time
@@ -382,7 +411,7 @@ function DashboardWidgetSlot({
             variant="ghost"
             size="sm"
             aria-label={`Expand ${heading}`}
-            className="-my-1 text-muted-foreground"
+            className="-my-1"
             icon={<Maximize2 />}
             onClick={onExpand}
           />
@@ -395,7 +424,7 @@ function DashboardWidgetSlot({
                   variant="ghost"
                   size="sm"
                   aria-label={`More for ${heading}`}
-                  className="-my-1 text-muted-foreground"
+                  className="-my-1"
                   icon={<Ellipsis />}
                 />
               }

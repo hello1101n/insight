@@ -1,6 +1,15 @@
+import type { BadgeProps } from "@gears-frontx/ui-kit";
+
 import type { ConnectorTone } from "@/lib/portal/connector-health";
 
-/** Tone carries emphasis; the word beside it carries the meaning. */
+export const TONE_BADGE: Record<ConnectorTone, BadgeProps["variant"]> = {
+  failing: "danger",
+  unknown: "warning",
+  active: "info",
+  ok: "success",
+  idle: "secondary",
+};
+
 export const TONE_STYLE: Record<ConnectorTone, string> = {
   failing: "bg-destructive/15 text-destructive",
   unknown: "bg-warning/15 text-warning",
@@ -16,3 +25,9 @@ export const TONE_BAR_STYLE: Record<ConnectorTone, string> = {
   ok: "bg-success",
   idle: "bg-muted-foreground",
 };
+
+export function historySegmentStyle(status: string, tone: ConnectorTone) {
+  return status === "cancelled"
+    ? "bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--muted-foreground)_3px_5px)]"
+    : TONE_BAR_STYLE[tone];
+}

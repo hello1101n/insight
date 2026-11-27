@@ -11,18 +11,16 @@ protected: false
 namespaces:
   services: insight
   infra: insight-infra
-  # Preview experiments (#1981): substituted into gateway.yaml's
-  # allowedRoutes and set as previews.experiments.namespace on deploy.
-  previews: insight-previews
 
 release: insight
 
 deploy:
-  # NO `--atomic`. The cluster is created and destroyed by the same job, so
+  # NO `--rollback-on-failure`. The cluster is created and destroyed by the same job, so
   # there is no previous revision worth rolling back to — the rollback only
   # uninstalls the release, taking the pods and hook Jobs that hold the reason
   # it failed with it, minutes before the diagnostics step runs.
   atomic: false
+  wait: legacy
 
 bootstrap:
   namespaces: true

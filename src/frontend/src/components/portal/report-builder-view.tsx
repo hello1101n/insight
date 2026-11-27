@@ -15,7 +15,6 @@ import {
   ToggleGroup,
   ToggleGroupItem,
   Card,
-  CardContent,
 } from "@gears-frontx/ui-kit";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { ReportBuilderActions } from "@/components/portal/report-builder-actions";
@@ -201,8 +200,8 @@ export function ReportBuilderView() {
 
   return (
     <div data-testid="page-reports-report-builder" className="flex flex-col gap-4 p-4 pb-24 md:p-6 md:pb-24">
-      <Card className="gap-0 py-0">
-        <CardContent className="flex flex-col p-0">
+      <Card variant="panel">
+        <div className="flex flex-col">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b p-4">
             <div className="flex flex-wrap items-center gap-3">
               <span className={TEXT_LABEL}>{t("reports.scope")}</span>
@@ -253,7 +252,7 @@ export function ReportBuilderView() {
                       {reason ? (
                         <TooltipContent
                           side="top"
-                          className="max-w-xs text-xs leading-relaxed"
+                          className="max-w-xs"
                         >
                           {reason}
                         </TooltipContent>
@@ -267,7 +266,7 @@ export function ReportBuilderView() {
 
           {definitions.isPending ? (
             <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-              <Spinner className="size-4" /> {t("reports.reading_catalogue")}
+              <Spinner /> {t("reports.reading_catalogue")}
             </div>
           ) : (
             <ReportMetricPicker
@@ -276,7 +275,7 @@ export function ReportBuilderView() {
               setSelected={setSelected}
             />
           )}
-        </CardContent>
+        </div>
       </Card>
 
       <ReportPreviewDialog
@@ -309,7 +308,6 @@ function reportPersonIds(
 ): string[] {
   if (roster == null) return [];
   if (roster.length > 0) return roster.map((person) => person.person_id);
-  // INVARIANT: a roster lists the people below the pivot, never the pivot.
   return pivotPersonId ? [pivotPersonId] : [];
 }
 

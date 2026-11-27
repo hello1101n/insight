@@ -5,7 +5,7 @@ import shlex
 from pathlib import Path
 
 import pytest
-from reconcile_inputs import Definition, Source, listing
+from reconcile_inputs import Definition, Source, listing, sync_user
 from test_connector_schedule_runs import ROOT, bash
 from test_cronworkflow_error_logging import STUBS
 
@@ -135,6 +135,7 @@ def test_each_pass_uses_its_read_and_cleanup_survives_schedule_changes(tmp_path:
             printf '0 1 * * *'
           fi
         }}
+        {sync_user(tmp_path / "sync-user")}
         reconcile_run 0 1
         first_rc=$?
         cp '{state}' '{tmp_path / "first"}'

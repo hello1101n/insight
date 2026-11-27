@@ -4,8 +4,12 @@ import {
   ChartColumn,
   ChartLine,
   ChartPie,
+  ChartScatter,
+  Funnel,
+  Grid3x3,
   Hash,
   LayoutGrid,
+  LayoutPanelLeft,
   Table2,
 } from "lucide-react";
 
@@ -20,14 +24,29 @@ export const Route = createFileRoute("/_shell/dashboards/widgets/")({
   component: WidgetsCatalogue,
 });
 
-const KIND: Record<Widget["type"], { label: string; icon: typeof Hash }> = {
+interface Kind {
+  label: string;
+  icon: typeof Hash;
+}
+
+const KIND: Record<Widget["type"], Kind> = {
   table: { label: "Table", icon: Table2 },
   line: { label: "Line chart", icon: ChartLine },
   bar: { label: "Bar chart", icon: ChartColumn },
   area: { label: "Area chart", icon: ChartArea },
   stat: { label: "Figure", icon: Hash },
   pie: { label: "Pie chart", icon: ChartPie },
+  heatmap: { label: "Heatmap", icon: Grid3x3 },
+  funnel: { label: "Funnel", icon: Funnel },
+  treemap: { label: "Treemap", icon: LayoutPanelLeft },
+  scatter: { label: "Scatter chart", icon: ChartScatter },
 };
+
+function kindOf(type: string): Kind {
+  const known: Partial<Record<string, Kind>> = KIND;
+
+  return known[type] ?? { label: type, icon: LayoutGrid };
+}
 
 function WidgetsCatalogue() {
   const catalogue = useDefinitionCatalogue("widgets");
@@ -55,11 +74,7 @@ function WidgetsCatalogue() {
 }
 
 function WidgetCard({ item }: { item: WidgetListed }) {
-  // INVARIANT: a stored body may name a kind this build does not know; one such widget must not blank the page.
-  const kind = KIND[item.body.type] ?? {
-    label: String(item.body.type),
-    icon: LayoutGrid,
-  };
+  const kind = kindOf(item.body.type);
 
   return (
     <CatalogueCard
@@ -69,7 +84,7 @@ function WidgetCard({ item }: { item: WidgetListed }) {
       title={item.body.title || item.name}
       icon={kind.icon}
       facts={[kind.label, item.metric_name ?? "Missing metric"]}
-      squeezed={1}
+      truncatedFactIndex={1}
       updatedAt={item.updated_at}
     />
   );

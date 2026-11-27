@@ -1,43 +1,22 @@
 import type { PeopleListItem } from "@/api/identity-client";
 import type { IdentityPerson } from "@/types/insight";
 
-/**
- * Slices — grouping a roster and defining peer cohorts by a person attribute.
- * The machinery is **attribute-agnostic**: it works over a generic
- * `{ key → {label, value} }` map, so canonical people attributes become
- * sliceable with no change here or downstream. `ATTR_FIELDS` adapts legacy
- * profile responses still consumed by person-detail surfaces.
- *
- * There is no slice catalog in the analytics API yet, so `availableSlices()`
- * discovers dimensions from the data itself and gates them by presence and
- * cardinality — junk attributes (unique-per-person like email/employee_id, or
- * single-valued) never show; good ones (division, seniority, location, …) show
- * automatically. `PLANNED_SLICES` are declared-but-unfed dims (functional team).
- */
-
 export interface SliceAttr {
   key: string;
   label: string;
   value: string;
 }
 
-/** A sliceable dimension the roster actually supports (see `availableSlices`). */
 export interface SliceDim {
   key: string;
   label: string;
-  /** No data path yet — render an honest ComingSoon. */
   planned?: boolean;
 }
 
-/** A slice is usable only if it splits people without being near-unique. */
 const MIN_DISTINCT = 2;
 const MAX_DISTINCT = 60;
-/** Above this distinct/people ratio the attribute is effectively an id, not a slice. */
 const MAX_UNIQUE_RATIO = 0.9;
 
-/**
- * Legacy profile-to-attributes adapter.
- */
 const ATTR_FIELDS: readonly {
   key: string;
   label: string;
@@ -46,13 +25,9 @@ const ATTR_FIELDS: readonly {
   { key: "division", label: "Division", get: (p) => p.division },
   { key: "department", label: "Department", get: (p) => p.department },
   { key: "title", label: "Title", get: (p) => p.job_title },
-  // Keyed by EMAIL, not display name: two managers sharing a name must not
-  // merge into one cohort. The email doubles as the visible unit label — less
-  // pretty, but unambiguous; a display-label lookup is a follow-up.
   { key: "manager", label: "Manager", get: (p) => p.supervisor_email },
 ];
 
-/** A person's sliceable attributes as a generic key→attr map (empty values dropped). */
 export function personAttributes(p: IdentityPerson): Record<string, SliceAttr> {
   const out: Record<string, SliceAttr> = {};
   for (const f of ATTR_FIELDS) {
@@ -62,20 +37,8 @@ export function personAttributes(p: IdentityPerson): Record<string, SliceAttr> {
   return out;
 }
 
-/**
- * Dimensions declared in the product but not backed by ingested data yet.
- * Empty today — "Functional team" was removed as speculative (no source is
- * even planned near-term); add entries here only when a real dimension has a
- * committed data path, and the by-unit section will render an honest
- * ComingSoon note for it until the data lands.
- */
 export const PLANNED_SLICES: readonly SliceDim[] = [];
 
-/**
- * Discover usable slice dimensions from a roster of attribute maps: present,
- * multi-valued, not near-unique, not absurdly high-cardinality. Order follows
- * first appearance so the adapter's order is preserved.
- */
 export function availableSlices(
   rosters: Iterable<Record<string, SliceAttr>>,
 ): SliceDim[] {
@@ -106,15 +69,12 @@ export function availableSlices(
     .map((key) => ({ key, label: label.get(key)! }));
 }
 
-/** Walk an org tree into `entityId → attribute map` (entity id via `keyOf`). */
 export function collectRosterAttrs(
   root: IdentityPerson | null,
   keyOf: (personId: string) => string,
 ): Map<string, Record<string, SliceAttr>> {
   const m = new Map<string, Record<string, SliceAttr>>();
   const walk = (n: IdentityPerson) => {
-    // Keyed by person id (the metric entity id), not email: a person with no
-    // email still belongs to a cohort.
     if (n.person_id) m.set(keyOf(n.person_id), personAttributes(n));
     n.subordinates.forEach(walk);
   };
@@ -165,11 +125,6 @@ export function collectPeopleAttrs(
   return byPerson;
 }
 
-/**
- * Cohort key for a member under the active slice: the attribute's value, or
- * "all" when no slice is active (whole roster = one cohort), or null when the
- * member has no value for that attribute (excluded from cohort stats).
- */
 export function cohortKey(
   attrs: Record<string, SliceAttr> | undefined,
   slice: string,

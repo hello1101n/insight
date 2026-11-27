@@ -32,6 +32,7 @@ def allowed_grants(user: str, role: str, database: str, *, for_role: bool) -> se
     if for_role:
         return {
             f"GRANT SELECT ON `{database}`.`connector_schedule_requests_v1` TO {principal}",
+            f"GRANT SELECT ON `{database}`.`connector_schedule_requests_v2` TO {principal}",
             f"GRANT SELECT (`connector`, `source_id`), DELETE ON `{database}`.`connector_schedules` TO {principal}",
             f"GRANT SELECT (`source_id`, `connector`), DELETE ON `{database}`.`connector_schedules` TO {principal}",
         }
@@ -114,6 +115,9 @@ def provision(env: Mapping[str, str]) -> None:
             )
         cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
             f"GRANT SELECT ON `{database}`.connector_schedule_requests_v1 TO `{role}`", None
+        )
+        cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
+            f"GRANT SELECT ON `{database}`.connector_schedule_requests_v2 TO `{role}`", None
         )
         cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- identifiers derive from validated names
             f"GRANT SELECT (connector, source_id), DELETE ON `{database}`.connector_schedules TO `{role}`", None

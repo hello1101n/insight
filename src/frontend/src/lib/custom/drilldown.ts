@@ -4,6 +4,7 @@ import {
   type DrilldownRow,
 } from "@/api/custom-client";
 import type { MetricEvidenceRow } from "@/api/metric-drilldown-client";
+import { durationText } from "@/lib/custom/duration";
 
 const URL_CELL = /^https?:\/\/\S+$/;
 
@@ -13,12 +14,6 @@ const ROUNDED = new Intl.NumberFormat("en", {
   signDisplay: "negative",
 });
 
-/**
- * A row as the table draws it: a whole number as the record holds it, a
- * fraction to two decimals unless the metric marks its column exact, a percent
- * marked as one, and a cell that is an absolute URL linked, so a row can be
- * followed to the pull request, the issue or the page it counted.
- */
 export function drawable(
   row: DrilldownRow,
   columns: readonly DrilldownColumn[]
@@ -34,22 +29,31 @@ export function drawable(
       links[column.key] = value;
     }
   }
+  const linked = recordColumn(columns);
+  if (row.link && linked && !links[linked.key]) {
+    links[linked.key] = row.link;
+  }
   return { values, links };
 }
 
+function recordColumn(
+  columns: readonly DrilldownColumn[]
+): DrilldownColumn | undefined {
+  return columns.find((column) => column.type === "string") ?? columns[0];
+}
+
 function drawnNumber(value: unknown, column: DrilldownColumn): unknown {
+  if (column.unit && typeof value === "number") {
+    return durationText(value, column.unit);
+  }
+
   const fraction = typeof value === "number" && !Number.isInteger(value);
   const shown = fraction && !column.exact ? ROUNDED.format(value) : value;
 
   return column.percent ? `${String(shown)}%` : shown;
 }
 
-/**
- * Whether a page was refused because the table behind the metric was made
- * again while it was being read. Every cursor issued over the old table is
- * void, so the walk starts from its first page rather than retrying one.
- */
-export function startsOver(error: unknown): boolean {
+export function refusedForRebuiltSource(error: unknown): boolean {
   return (
     error instanceof CustomApiError &&
     JSON.stringify(error.body ?? null).includes("SOURCE_REBUILT")

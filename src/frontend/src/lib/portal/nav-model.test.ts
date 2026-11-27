@@ -7,6 +7,7 @@ import {
   defaultZoneItem,
   MANAGE_ITEMS,
   manageGroupsFor,
+  manageLandingItem,
   orderByReadiness,
   partitionByReadiness,
   peopleItemsFor,
@@ -14,6 +15,7 @@ import {
   ZONES,
   zoneItems,
 } from "./nav-model";
+import { EMPTY_NAV_PATHS, EMPTY_NAV_POLICY, parseNavPaths } from "./nav-policy";
 
 const defaults = ZONES.map((z) => [z.id, defaultZoneItem(z.id)] as const);
 
@@ -132,7 +134,7 @@ describe("the ingestion lens", () => {
     const item = MANAGE_ITEMS.find((i) => i.id === "ingestion");
     expect(item?.adminOnly).toBe(true);
     const shows = (isAdmin: boolean) =>
-      manageGroupsFor({ isAdmin, canManagePreviews: false })
+      manageGroupsFor({ isAdmin })
         .flatMap((g) => g.items)
         .some((i) => i.id === "ingestion");
     expect(shows(false)).toBe(false);
@@ -148,16 +150,16 @@ describe("the ingestion lens", () => {
 });
 
 describe("manageGroupsFor", () => {
-  const labelsOf = (isAdmin: boolean, canManagePreviews = false) =>
+  const labelsOf = (isAdmin: boolean) =>
     Object.fromEntries(
-      manageGroupsFor({ isAdmin, canManagePreviews }).map((g) => [
+      manageGroupsFor({ isAdmin }).map((g) => [
         resolveText(i18n.t, g.label!),
         g.items.map((i) => resolveText(i18n.t, i.label)),
       ]),
     );
 
   it("groups an admin's pane into Data, People & access and Platform", () => {
-    expect(labelsOf(true, true)).toEqual({
+    expect(labelsOf(true)).toEqual({
       Data: ["Connectors", "Data exclusions", "Org snapshots"],
       "People & access": [
         "Identities · roles & taxonomy",
@@ -166,7 +168,6 @@ describe("manageGroupsFor", () => {
       ],
       Platform: [
         "Ingestion",
-        "Previews",
         "AI assistant config",
         "What's new",
         "Platform usage",
@@ -191,18 +192,46 @@ describe("manageGroupsFor", () => {
     });
   });
 
-  it("gates previews independently of admin-ness", () => {
-    const ids = manageGroupsFor({ isAdmin: false, canManagePreviews: true })
-      .flatMap((g) => g.items)
-      .map((i) => i.id);
-
-    expect(ids).toContain("previews");
-    expect(ids).not.toContain("identities");
-  });
-
   it("marks Access as a row with nothing behind it yet", () => {
     const access = MANAGE_ITEMS.find((i) => i.id === "access");
     expect(access?.unbuilt).toBe(true);
+  });
+});
+
+describe("manageLandingItem", () => {
+  const plannedOnly = (...paths: string[]) => ({
+    hide: EMPTY_NAV_PATHS,
+    planned: parseNavPaths(paths, "planned"),
+  });
+
+  it("opens Connectors for an admin", () => {
+    expect(
+      manageLandingItem({ isAdmin: true }, EMPTY_NAV_POLICY),
+    ).toBe("connector-health");
+  });
+
+  it("opens the first surface a non-admin can see", () => {
+    expect(
+      manageLandingItem({ isAdmin: false }, EMPTY_NAV_POLICY),
+    ).toBe("ai-assistant");
+  });
+
+  it("skips a surface the instance marks planned, as the pane does", () => {
+    expect(
+      manageLandingItem(
+        { isAdmin: false },
+        plannedOnly("zone:manage/item:ai-assistant"),
+      ),
+    ).toBe("whats-new");
+  });
+
+  it("is null when the viewer's pane lists nothing to open", () => {
+    expect(
+      manageLandingItem(
+        { isAdmin: false },
+        plannedOnly("zone:manage/item:ai-assistant", "zone:manage/item:whats-new"),
+      ),
+    ).toBeNull();
   });
 });
 

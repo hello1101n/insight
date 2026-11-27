@@ -5,32 +5,41 @@ import { refusal } from "@/components/custom/refusal";
 import { CustomAreaChart } from "@/components/custom/custom-area-chart";
 import { CustomBarChart } from "@/components/custom/custom-bar-chart";
 import { CustomLineChart } from "@/components/custom/custom-line-chart";
+import {
+  FUNNEL_STAGE,
+  FUNNEL_VALUE,
+  funnelStages,
+  largestFirst,
+  projected,
+} from "@/components/custom/chart-data";
 import { CustomPieChart } from "@/components/custom/custom-pie-chart";
+import { CustomScatterChart } from "@/components/custom/custom-scatter-chart";
 import { CustomStat } from "@/components/custom/custom-stat";
 import { CustomTable } from "@/components/custom/custom-table";
+import { drawnColumns } from "@/lib/custom/draws-bucket";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import { useIsAdmin } from "@/queries/identity-me";
 
+// INVARIANT: a scatter of more points than this draws as a table, which caps the rows it shows.
+const SCATTER_POINTS = 500;
+
 export interface CustomWidgetProps {
   widget: Widget;
   result?: MetricResult;
-  /** Whatever failed the run, shown as the service worded it. */
+  previous?: MetricResult;
   error?: unknown;
-  /** Whether a time range was asked for, which changes what empty means. */
   windowed?: boolean;
-  /** Whether the run is still in flight, which is not the same as empty. */
   pending?: boolean;
   onRetry?: () => void;
-  /** Whether a chart takes its container's height instead of the card's. */
   fillHeight?: boolean;
-  /** A click on a chart's point or slice. Absent, charts ignore clicks. */
   onPointClick?: () => void;
 }
 
 export function CustomWidget({
   widget,
   result,
+  previous,
   error,
   windowed,
   pending,
@@ -73,8 +82,6 @@ export function CustomWidget({
     );
   }
 
-  // A run in flight has no result yet, which is not the same as a result with
-  // nothing in it: saying "No data" while waiting reads as an answer.
   if (pending || !result) {
     return <CenteredSpinner className="min-h-40" />;
   }
@@ -91,92 +98,122 @@ export function CustomWidget({
     );
   }
 
+  const missing = missingColumnsNotice(
+    widget.metric,
+    drawnColumns(widget),
+    result
+  );
+  if (missing) return missing;
+
   switch (widget.type) {
     case "table":
-      return (
-        drawable(widget.metric, widget.columns, result) ?? (
-          <CustomTable result={result} />
-        )
-      );
+      return <CustomTable result={result} />;
     case "line":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
-          <CustomLineChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomLineChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          target={widget.target}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "bar":
       return (
-        drawable(
-          widget.metric,
-          [widget.x, widget.y, ...(widget.series ? [widget.series] : [])],
-          result
-        ) ?? (
-          <CustomBarChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            series={widget.series}
-            labels={widget.labels}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomBarChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          labels={widget.labels}
+          horizontal={widget.horizontal}
+          stack={widget.stack}
+          target={widget.target}
+          colors={widget.colors}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "area":
       return (
-        drawable(widget.metric, [widget.x, widget.y], result) ?? (
-          <CustomAreaChart
-            result={result}
-            x={widget.x}
-            y={widget.y}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomAreaChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          series={widget.series}
+          target={widget.target}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     case "stat":
       return (
-        drawable(widget.metric, [widget.value], result) ?? (
-          <CustomStat
-            result={result}
-            value={widget.value}
-            label={widget.label}
-          />
-        )
+        <CustomStat
+          result={result}
+          value={widget.value}
+          label={widget.label}
+          compare={widget.compare}
+          previous={previous}
+        />
       );
     case "pie":
       return (
-        drawable(widget.metric, [widget.label, widget.value], result) ?? (
-          <CustomPieChart
-            result={result}
-            label={widget.label}
-            value={widget.value}
-            fillHeight={fillHeight}
-            onPointClick={onPointClick}
-          />
-        )
+        <CustomPieChart
+          result={result}
+          label={widget.label}
+          value={widget.value}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "heatmap":
+      return <CustomTable result={projected(result, drawnColumns(widget))} />;
+    case "funnel":
+      return (
+        <CustomBarChart
+          result={funnelStages(result, widget.stages)}
+          x={FUNNEL_STAGE}
+          y={FUNNEL_VALUE}
+          horizontal
+          labels
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "treemap":
+      return (
+        <CustomBarChart
+          result={largestFirst(result, widget.label, widget.value)}
+          x={widget.label}
+          y={widget.value}
+          horizontal
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
+      );
+    case "scatter":
+      return result.rows.length > SCATTER_POINTS ? (
+        <CustomTable result={projected(result, drawnColumns(widget))} />
+      ) : (
+        <CustomScatterChart
+          result={result}
+          x={widget.x}
+          y={widget.y}
+          size={widget.size}
+          series={widget.series}
+          label={widget.label}
+          fillHeight={fillHeight}
+          onPointClick={onPointClick}
+        />
       );
     default:
       return <p>Unknown widget type.</p>;
   }
 }
 
-/**
- * What to render instead of the widget when its metric does not return a
- * column it draws, and nothing when it does.
- *
- * The service refuses such a widget now, but one stored before it did — or a
- * metric edited to drop a column — still reaches here, and a chart missing
- * its y column drew its axes and no line. That read as missing data rather
- * than as a definition naming a column that is not there.
- */
-function drawable(
+function missingColumnsNotice(
   metric: string,
   drawn: string[],
   result: MetricResult
@@ -193,7 +230,6 @@ function drawable(
   );
 }
 
-/** Only an administrator, who can fix the definition, is told what is missing. */
 function MissingColumns({
   metric,
   missing,

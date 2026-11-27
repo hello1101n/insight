@@ -20,8 +20,6 @@ import {
 import { dashboardWidgetResultQuery } from "@/queries/custom";
 import { useIsAdmin } from "@/queries/identity-me";
 
-// INVARIANT: runs with the card's options, so it reads the card's cached
-// result instead of running the metric again.
 export function ExpandedWidget({
   dashboard,
   widget,
@@ -34,7 +32,6 @@ export function ExpandedWidget({
   widget: DashboardWidget;
   heading: string;
   options: RunOptions | undefined;
-  /** Whether the board picks a window this widget has no date to honour. */
   allTime: boolean;
   onClose: () => void;
 }) {
@@ -52,7 +49,7 @@ export function ExpandedWidget({
       }}
     >
       <DialogContent className="flex h-[96dvh] w-[98vw] max-w-[98vw] flex-col">
-        <DialogHeader className="flex-row items-center gap-2 pr-14">
+        <DialogHeader className="flex-row items-center pr-14">
           <DialogTitle className="min-w-0 truncate">{heading}</DialogTitle>
           {allTime ? (
             <Badge variant="secondary" className="shrink-0">

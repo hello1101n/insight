@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Confirming a whole queue group. What matters: which groups it is offered for
- * at all, that it sends one binding per row aimed at the person that row already
- * has, that a comment is required before it can be pressed, that a group larger
- * than the endpoint's cap is split into several calls and folded into one answer,
- * and that a failure is reported by toast as well as in the dialog.
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,7 +65,6 @@ describe("groupIsConfirmable", () => {
   const cases: [string, string, boolean][] = [
     ["a login mint", "provisioned_at_login", true],
     ["a roster mint", "minted_from_roster", true],
-    // No single answer to apply, nothing to ratify, nothing bound.
     ["a contested account", "contested", false],
     ["a binding conflict", "binding_conflict", false],
     ["an account with no evidence", "no_evidence", false],
@@ -111,8 +103,6 @@ describe("ConfirmGroupButton", () => {
     ).toBeInTheDocument();
   });
 
-  // One press stands in for a hundred decisions; the trail has to say on what
-  // grounds, so the comment is required rather than optional.
   it("will not fire without a comment", async () => {
     render(<ConfirmGroupButton items={[item()]} />);
 
@@ -156,8 +146,6 @@ describe("ConfirmGroupButton", () => {
     expect(toastsOf(hooks.toast.add, "success")).toHaveLength(1);
   });
 
-  // The endpoint caps a call at 1000 bindings. A bigger group is several calls
-  // and ONE answer — an operator took one decision.
   it("splits a group past the endpoint's cap into several calls", async () => {
     const items = Array.from({ length: 1001 }, (_, i) =>
       item({ account_id: `a${i}` }),
@@ -178,8 +166,6 @@ describe("ConfirmGroupButton", () => {
     expect(toastsOf(hooks.toast.add, "success")).toContainEqual(expect.objectContaining({ title: "Done — 1001 accounts updated." }));
   });
 
-  // Rows are pruned as each call lands, so this dialog can be unmounted before a
-  // later failure could be read in it.
   it("reports a failure by toast as well as in the dialog", async () => {
     const { IdentityApiError } = await import("@/api/identity-client");
     hooks.bind.mutateAsync.mockRejectedValueOnce(

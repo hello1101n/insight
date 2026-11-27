@@ -43,7 +43,7 @@ vi.mock("@/queries/connector-schedule-author", () => ({
 
 import { ConnectorHealthPane } from "./connector-health";
 
-it("bounds expanded schedules, the editor and all history rows without widening the main table", async () => {
+it("bounds expanded schedules, the editor and older history pages without widening the main table", async () => {
   const live = {
     crons: ["0 3 * * *"],
     timezone: "UTC",
@@ -81,16 +81,15 @@ it("bounds expanded schedules, the editor and all history rows without widening 
   );
   expect(
     within(table).getByRole("columnheader", { name: "Next sync" })
-  ).toHaveClass("px-3", "sm:px-4", "whitespace-normal");
+  ).toHaveClass("whitespace-normal");
   const row = screen.getByRole("row", { expanded: false });
-  expect(within(row).getAllByRole("cell")[2]).toHaveClass("px-3", "sm:px-4");
   await userEvent.click(row);
 
   const cell = document.getElementById(row.getAttribute("aria-controls")!)!;
   const boundary = cell.firstElementChild!;
   const panel = boundary.firstElementChild!;
   function expectBounds() {
-    expect(cell).toHaveClass("px-4", "whitespace-normal");
+    expect(cell).toHaveClass("whitespace-normal");
     expect(boundary).toHaveClass("min-w-0", "[contain:inline-size]");
     expect(panel).toHaveClass(
       "sticky",
@@ -99,6 +98,7 @@ it("bounds expanded schedules, the editor and all history rows without widening 
       "max-w-full",
       "min-w-0",
       "grid-cols-1",
+      "@min-[58rem]:grid-cols-[clamp(19rem,24%,26rem)_minmax(0,1fr)]",
       "[overflow-wrap:anywhere]",
       "whitespace-normal"
     );
@@ -116,9 +116,9 @@ it("bounds expanded schedules, the editor and all history rows without widening 
     "[overflow-wrap:anywhere]"
   );
   expectBounds();
-  await userEvent.click(screen.getByRole("button", { name: "Show all 50" }));
+  await userEvent.click(screen.getByRole("button", { name: "Older runs" }));
   const history = screen.getByRole("table", { name: "Recent syncs" });
-  expect(within(history).getAllByRole("row")).toHaveLength(51);
+  expect(within(history).getAllByRole("row")).toHaveLength(6);
   expect(history).toHaveClass("w-full", "max-w-full", "table-fixed");
   expect(history.parentElement).toHaveClass(
     "min-w-0",
@@ -129,7 +129,10 @@ it("bounds expanded schedules, the editor and all history rows without widening 
   const strip = screen.getByRole("list", {
     name: "Recorded sync statuses, newest on the right",
   });
-  expect(strip).toHaveClass("flex-wrap", "max-w-full", "min-w-0");
+  expect(strip).toHaveClass("grid", "w-full", "min-w-0");
+  expect(strip).toHaveStyle({
+    gridTemplateColumns: "repeat(50, minmax(0, 1fr))",
+  });
   expect(strip.parentElement).toHaveClass("flex-wrap", "max-w-full", "min-w-0");
   expect(history.querySelector("thead")).toHaveClass(
     "whitespace-normal",

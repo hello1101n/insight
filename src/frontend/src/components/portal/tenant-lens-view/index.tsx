@@ -38,24 +38,10 @@ import {
   sectionNeeds,
   type ResolveView,
 } from "./plan";
-import { tenantData } from "./data";
+import { hasRealReading, tenantData } from "./data";
 
-/**
- * One renderer for every tenant-grain lens (issue #2803): the entity is the
- * ORGANIZATION, so there is no roster, no peer view and no per-person split —
- * each value is one number. Sections come from the lens config; each
- * self-suppresses on degenerate data, and the whole tab collapses to an honest
- * "not ingested" state when no metric of the family is observed (rule 6).
- *
- * The backend takes one view of each kind per metric per request, so the
- * section needs are packed into several concurrent requests by `plan.ts`:
- * collection 0 (with the previous-period twin the tiles need), the overflow
- * collections, and a first-/second-half pair for the slope/momentum sections.
- */
 export function TenantLensView({ config, "data-testid": testId }: { config: TenantLensConfig; "data-testid"?: string }) {
   const { dateRange, compareTo } = usePortalPeriod();
-  // One entity → the projected-row budget is all headroom; the picker still
-  // guards a pathological custom range, and month always fits.
   const bucket = pickTrendBucket(1, dateRange) ?? "month";
   const plan = useMemo(
     () => planTenantRequests(config, bucket),
@@ -81,15 +67,7 @@ export function TenantLensView({ config, "data-testid": testId }: { config: Tena
     { type: "tenant" },
     dateRange
   );
-  // Halves stay disabled (empty collection) when the window is too short to
-  // split — the slope/momentum sections then suppress themselves. Both halves
-  // are windows on ONE request: their breakdowns read the same rows, so the
-  // slope sections no longer cost a request each (#2651).
   const halvesCollection = halfRanges ? plan.halves : EMPTY_COLLECTION;
-  // The SECOND half is the request's own period and the first its comparison
-  // window: asking over the whole range instead would compute a third aggregate
-  // per metric that no section reads, and this way round the comparison window
-  // really is the earlier one.
   const halves = useMetricCollection(
     halvesCollection,
     { type: "tenant" },
@@ -139,27 +117,11 @@ export function TenantLensView({ config, "data-testid": testId }: { config: Tena
       </div>
     );
   }
-  // Observed = any lens view returned an actual reading; "no data yet" and
-  // "not collected" must not both render as zeros — or, worse, as a bare
-  // title over a page of self-suppressed sections.
-  //
-  // A view's PRESENCE proves nothing: the period view zero-fills the
-  // requested entity with a null value, and a non-dimensioned timeseries is
-  // seeded with one all-null series per entity, so a tenant with no rows at
-  // all still gets both back (`metric_results/builder.rs`). Only a non-null
-  // value inside them is evidence.
   const observed = config.sections
     .flatMap((section) => sectionNeeds(section, bucket))
     .some((need) => {
       const r = resolve(need);
-      if (!r) return false;
-      const e = tenantData(r);
-      return (
-        e.value != null ||
-        e.series.some((s) => s.points.some((p) => p.value != null)) ||
-        e.breakdown.some((v) => v.value != null) ||
-        e.histogram.some((h) => h.bins.length > 0)
-      );
+      return r != null && hasRealReading(tenantData(r));
     });
   if (!observed) return <Pending label={config.notIngested} />;
 
@@ -203,8 +165,6 @@ function TenantSection({
 }) {
   switch (section.kind) {
     case "headline":
-      // Period views live in collection 0 by construction (`plan.ts`), the
-      // only request with the previous-period twin the deltas need.
       return (
         <TileRow
           metrics={section.metrics}

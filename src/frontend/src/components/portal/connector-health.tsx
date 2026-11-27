@@ -1,4 +1,5 @@
-import { useId, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import { useId, useState, type MouseEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -9,6 +10,9 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -20,8 +24,16 @@ import {
   TableRow,
 } from "@gears-frontx/ui-kit";
 import { ConnectorSchedulePane } from "@/components/portal/connector-schedule-pane";
+import {
+  describeRun,
+  isActiveRun,
+  projectRun,
+  runDuration,
+} from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
-import { TONE_STYLE } from "./connector-health-tone";
+import { ConnectorTimestamp } from "./connector-timestamp";
+import { ConnectorRunState, RunningSyncIndicator } from "./connector-run-state";
+import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
   UNMEASURED,
@@ -32,8 +44,8 @@ import {
   describeRecording,
   describeSchedule,
   formatRecords,
-  formatStarted,
   instanceKey,
+  panelIdFor,
 } from "@/lib/portal/connector-health";
 import { useConnectorHealth } from "@/queries/connector-health";
 import {
@@ -43,19 +55,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const COLUMNS = 7;
-
-/**
- * A DOM id for one row's disclosure panel.
- *
- * The identity's own separator is not one an id may carry through a CSS
- * selector, so it is swapped for an underscore — and any underscore already in
- * the key is escaped first, or `a_b/c` and `a/b_c` would name one panel and
- * `aria-controls` would point two rows at the same disclosure.
- */
-function panelIdFor(row: ConnectorHealth): string {
-  const id = instanceKey(row).replaceAll("_", "%5F").replaceAll("/", "_");
-  return `connector-syncs-${id}`;
-}
 
 export function ConnectorHealthPane() {
   const { t } = useTranslation();
@@ -88,7 +87,7 @@ export function ConnectorHealthPane() {
   return (
     <div
       data-testid="page-manage-connector-health"
-      className="flex min-w-0 flex-col gap-3 p-4 md:p-6"
+      className="mx-auto flex w-full max-w-[121rem] min-w-0 flex-col gap-3 p-4 md:p-6"
     >
       <div>
         <h1 className="text-lg font-semibold tracking-tight">
@@ -105,8 +104,6 @@ export function ConnectorHealthPane() {
           )}
         >
           <p>{recording.label}</p>
-          {/* Inside the region, not beside it: the warning's consequence is the
-              half a reader most needs announced. */}
           {recording.detail !== "" && <p>{recording.detail}</p>}
         </div>
       </div>
@@ -114,6 +111,11 @@ export function ConnectorHealthPane() {
       {data.schedule_read_error && (
         <p role="alert" className="text-sm text-warning">
           {data.schedule_read_error}
+        </p>
+      )}
+      {data.history_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.history_read_error}
         </p>
       )}
       {data.connectors.length === 0 ? (
@@ -130,12 +132,10 @@ export function ConnectorHealthPane() {
                 <TableHead className="whitespace-normal">
                   {t("connectors.connector")}
                 </TableHead>
-                {/* One connector can be configured more than once; this is the
-                    only cell that tells those rows apart. */}
                 <TableHead className="whitespace-normal">
                   {t("connectors.instance")}
                 </TableHead>
-                <TableHead className="px-3 whitespace-normal sm:px-4">
+                <TableHead className="whitespace-normal">
                   {t("connectors.next_sync")}
                 </TableHead>
                 <TableHead className="whitespace-normal">
@@ -154,27 +154,41 @@ export function ConnectorHealthPane() {
             </TableHeader>
             <TableBody>
               {data.connectors.map((row) => {
-                const state = describeConnector(row);
-                // Keyed on the whole identity, not on the row's position and
-                // not on the name. The page polls, so a position can come to
-                // mean a different row between renders; and two installations
-                // of one connector share the name, so keying on it would open
-                // the wrong one's history.
+                const run = row.latest_run && projectRun(row.latest_run);
+                const showRun =
+                  run &&
+                  (row.configured ||
+                    isActiveRun(run) ||
+                    data.checked_at == null ||
+                    Date.parse(run.started_at) > Date.parse(data.checked_at));
+                const state = showRun
+                  ? describeRun(run.status)
+                  : describeConnector(row);
+                const latest = run ?? row.last_sync;
                 const key = instanceKey(row);
                 const open = expanded === key;
                 const panelId = panelIdFor(row);
-                const toggle = () => setExpanded(open ? null : key);
+                const toggle = (
+                  event:
+                    | MouseEvent<HTMLTableRowElement>
+                    | KeyboardEvent<HTMLTableRowElement>
+                ) => {
+                  setExpanded(open ? null : key);
+                  const trigger = event.currentTarget.cells[0];
+                  if (
+                    !open &&
+                    window.matchMedia?.(
+                      "(max-width: 639px), (max-height: 839px)"
+                    ).matches
+                  )
+                    requestAnimationFrame(() =>
+                      trigger?.scrollIntoView?.({
+                        block: "start",
+                        inline: "nearest",
+                      })
+                    );
+                };
                 return [
-                  // The whole row opens the connector, by the same rule every
-                  // console listing follows — `activatesRow` is shared with
-                  // them, so a press on a control and the end of a text
-                  // selection are told apart here exactly as they are there.
-                  //
-                  // The gesture goes on the row and the role does not: a `<tr>`
-                  // keeps `role="row"`, which supports `aria-expanded`, so the
-                  // disclosure is announced without taking the row out of its
-                  // table. An inner button would be a second focus stop for the
-                  // one thing the row already does.
                   <TableRow
                     key={key}
                     data-state-name={state.state}
@@ -183,69 +197,94 @@ export function ConnectorHealthPane() {
                     aria-expanded={open}
                     aria-controls={panelId}
                     onClick={(event) => {
-                      if (activatesRow(event)) toggle();
+                      if (activatesRow(event)) toggle(event);
                     }}
                     onKeyDown={(event) => {
                       if (!activatesRowByKey(event)) return;
                       event.preventDefault();
-                      toggle();
+                      toggle(event);
                     }}
                     className="cursor-pointer select-text"
                   >
-                    <TableCell className="font-medium">
-                      {row.connector}
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight
+                          aria-hidden="true"
+                          className={cn(
+                            "size-3.5 shrink-0 transition-transform duration-350 motion-reduce:transition-none",
+                            open && "rotate-90"
+                          )}
+                        />
+                        {row.connector}
+                      </span>
                     </TableCell>
                     <InstanceCell instance={row} />
                     <ScheduleCell row={row} />
                     <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn("font-medium", TONE_STYLE[state.tone])}
-                      >
-                        {state.label}
-                      </Badge>
+                      {showRun ? (
+                        <ConnectorRunState run={run} asOf={data.as_of} />
+                      ) : (
+                        <Badge
+                          variant={TONE_BADGE[state.tone]}
+                          data-tone={state.tone}
+                        >
+                          {state.state === "syncing" && (
+                            <RunningSyncIndicator />
+                          )}
+                          {state.label}
+                        </Badge>
+                      )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {formatStarted(row.last_sync?.started_at ?? null)}
+                    <TableCell className="tabular-nums">
+                      <ConnectorTimestamp value={latest?.started_at} />
                     </TableCell>
-                    <DurationCell sync={row.last_sync} asOf={data.as_of} />
-                    <TableCell className="text-right text-muted-foreground tabular-nums">
-                      {formatRecords(row.last_sync?.records_reported ?? null)}
+                    {run ? (
+                      <TableCell className="text-right tabular-nums">
+                        {runDuration(run, data.as_of)}
+                      </TableCell>
+                    ) : (
+                      <DurationCell sync={row.last_sync} asOf={data.as_of} />
+                    )}
+                    <TableCell className="text-right tabular-nums">
+                      {formatRecords(latest?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
-                  open ? (
-                    <TableRow key={`syncs-${key}`}>
-                      <TableCell
-                        colSpan={COLUMNS}
-                        id={panelId}
-                        className="bg-muted/40 px-4 whitespace-normal"
+                  <Collapsible
+                    key={`syncs-${key}`}
+                    open={open}
+                    render={<TableRow aria-hidden={!open} />}
+                    className="hidden has-[[data-slot=connector-details]:not([hidden])]:table-row"
+                  >
+                    <TableCell
+                      colSpan={COLUMNS}
+                      id={panelId}
+                      className="h-auto! border-b-0! py-0! whitespace-normal"
+                    >
+                      <CollapsibleContent
+                        data-slot="connector-details"
+                        inert={!open}
+                        className="min-w-0 overflow-clip! [contain:inline-size] motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0"
                       >
-                        <div className="min-w-0 [contain:inline-size]">
-                          <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
-                            {row.configured && (
-                              <div className="@container min-w-0 rounded-md border bg-background p-4">
-                                <ConnectorSchedulePane
-                                  row={row}
-                                  polling={polling}
-                                  reconcileIntervalSecs={
-                                    data.typical_read_interval_ms == null
-                                      ? null
-                                      : data.typical_read_interval_ms / 1000
-                                  }
-                                />
-                              </div>
-                            )}
-                            <div className="min-w-0 rounded-md border bg-background p-4">
-                              <ConnectorSyncHistory
-                                instance={row}
-                                asOf={data.as_of}
+                        <ConnectorSyncHistory
+                          instance={row}
+                          asOf={data.as_of}
+                          schedule={
+                            row.configured ? (
+                              <ConnectorSchedulePane
+                                row={row}
+                                polling={polling}
+                                reconcileIntervalSecs={
+                                  data.typical_read_interval_ms == null
+                                    ? null
+                                    : data.typical_read_interval_ms / 1000
+                                }
                               />
-                            </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : null,
+                            ) : undefined
+                          }
+                        />
+                      </CollapsibleContent>
+                    </TableCell>
+                  </Collapsible>,
                 ];
               })}
             </TableBody>
@@ -293,7 +332,7 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
     schedule == null ? null : describeNextRun(schedule, new Date());
 
   return (
-    <TableCell className="px-3 align-middle sm:px-4">
+    <TableCell className="align-middle">
       <div
         data-slot="schedule-next"
         className="flex items-center gap-1.5 leading-5 whitespace-nowrap"
@@ -305,7 +344,12 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
             <TooltipTrigger
               aria-describedby={tooltipId}
               render={
-                <button type="button" className="cursor-help text-left" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto cursor-help p-0 text-left font-normal"
+                />
               }
             >
               {nextRun?.text}
@@ -333,11 +377,6 @@ function ScheduleCell({ row }: { row: ConnectorHealth }) {
   );
 }
 
-/**
- * A sync still in flight is not dimmed like a settled one: its number is the
- * only thing on the row that keeps moving, and it is what an operator opened
- * the page to see.
- */
 function DurationCell({
   sync,
   asOf,
@@ -347,13 +386,6 @@ function DurationCell({
 }) {
   const duration = describeDuration(sync, asOf);
   return (
-    <TableCell
-      className={cn(
-        "text-right tabular-nums",
-        duration.inFlight ? "text-foreground" : "text-muted-foreground"
-      )}
-    >
-      {duration.text}
-    </TableCell>
+    <TableCell className="text-right tabular-nums">{duration.text}</TableCell>
   );
 }

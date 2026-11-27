@@ -13,13 +13,8 @@ import { cn } from "@/lib/utils";
 
 import { described } from "./condition-aria";
 
-/** Keys that end an entry and add it as a value. */
 const ADDING_KEYS = new Set(["Enter", ","]);
 
-/**
- * Values typed one at a time and held as chips. There is nothing to suggest
- * from, so the list never opens.
- */
 export function ValueListInput({
   id,
   value,

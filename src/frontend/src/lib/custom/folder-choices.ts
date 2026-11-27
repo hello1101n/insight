@@ -8,16 +8,10 @@ import { fileableFolders, folderAllows } from "@/lib/custom/dashboard-access";
 export interface FolderChoice {
   folder: Folder;
   holds: boolean;
-  /** Whether the caller may put it in, or take it out. */
   movable: boolean;
-  /** Null for a folder the caller cannot list, which they cannot change. */
   summary: FolderSummary | null;
 }
 
-/**
- * Every folder a dashboard sits in or may go in, each ticked when it holds the
- * dashboard: one click files it there or takes it out.
- */
 export function folderChoices(
   access: DashboardAccess,
   listed: readonly FolderSummary[],

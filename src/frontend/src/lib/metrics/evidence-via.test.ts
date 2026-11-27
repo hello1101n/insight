@@ -17,9 +17,6 @@ describe("evidenceMetricFor", () => {
   });
 
   it("carries every branch reading into its OWN scope's commits", () => {
-    // A crossed pair here would answer a default-branch tile with the commits
-    // that never reached the trunk, which reads as data loss rather than a
-    // wiring mistake — so the pairs are stated, not derived.
     const pairs = [
       ["git.default_branch_code_lines", "git.default_branch_commits"],
       ["git.default_branch_lines_added", "git.default_branch_commits"],

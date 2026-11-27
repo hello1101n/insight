@@ -14,14 +14,6 @@ import { metricResultFixtureByKey } from "./metric-results-fixtures";
 
 const CATALOG = new Map(catalog.map((entry) => [entry.metric_key, entry]));
 
-/**
- * Builds a `/v1/metric-results` response from the request body: every
- * requested metric and view is echoed back (the backend never returns
- * partial views), with deterministic per-(entity, metric, period) values so the UI
- * is stable across reloads. Metric metadata comes from the wire fixtures
- * when the key is known, synthesized otherwise.
- */
-
 function hash(input: string): number {
   let h = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -91,12 +83,6 @@ const MOCK_TOOLS = [
   { key: "tool", value: "cursor", label: "Cursor" },
 ];
 
-/**
- * Values a dimension breaks down into, so a mock answers the dimension it was
- * ASKED for. Returning one fixed set meant a section reading any other
- * dimension found nothing in its rows and rendered as absent — which reads as
- * a broken screen rather than as a mock with no fixture.
- */
 const MOCK_DIMENSION_VALUES: Record<
   string,
   { value: string; label: string }[]
@@ -125,11 +111,6 @@ function mockDimensionValues(key: string): { value: string; label: string }[] {
   );
 }
 
-/**
- * A failed-computation view, delivered in a requested view's slot the way the
- * backend does since ClickHouse error isolation: the request still answers
- * 200 and the other views/metrics are unaffected.
- */
 export function buildMetricErrorView(
   overrides: Partial<Omit<MetricErrorView, "view">> = {},
 ): MetricErrorView {
@@ -142,10 +123,6 @@ export function buildMetricErrorView(
   };
 }
 
-/**
- * A view whose data has not been built yet — what a fresh install answers
- * before the first connector sync, in a requested view's slot.
- */
 export function buildMetricNotReadyView(
   overrides: Partial<Omit<MetricNotReadyView, "view">> = {},
 ): MetricNotReadyView {
@@ -228,11 +205,6 @@ export function buildMetricResultsResponse(
           };
         }
         case "breakdown": {
-          // One row per combination the caller asked for, keyed by the
-          // requested dimension rather than by a fixed one. Every key draws
-          // from its OWN vocabulary: a composition splitting repositories by
-          // branch scope would otherwise label its segments with repository
-          // names, which reads as a broken screen rather than as a mock.
           const axis = view.dimensions[0] ?? "tool";
           return {
             view: "breakdown",
@@ -292,9 +264,6 @@ export function buildMetricResultsResponse(
           return view satisfies never;
       }
     });
-    // Every mock metric carries evidence and its canonical selection: without
-    // both, no surface offers the drilldown at all and mock mode cannot reach
-    // the records dialog.
     return {
       ...meta,
       views,

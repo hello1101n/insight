@@ -20,11 +20,6 @@ export interface PeerComparisonProps {
   unit: string | null;
 }
 
-/**
- * Quartile strip: cohort zones (bottom / interquartile pack / top, colored by
- * direction), median tick, and the person's value marker. Binless — cohort
- * percentiles come from the peer view.
- */
 export function PeerComparison({
   value,
   stats,
@@ -86,8 +81,6 @@ export function PeerComparison({
           style={{ left: `${valueLeft}%` }}
         />
       </div>
-      {/* Min/max hug the bar (mt-1); the value pointer sits above the bar
-          (ArrowDown), clear of these labels. */}
       <div className="mt-1 grid grid-cols-2 gap-3 text-xs tabular-nums">
         <span className="text-left text-muted-foreground">
           {formatMetricValue(stats.min, format, unit)}

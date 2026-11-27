@@ -5,7 +5,9 @@ import {
   buildActiveContributorData,
   buildMedianTrendData,
   buildTrendData,
+  firstUnfinishedBucket,
   pickTrendBucket,
+  wholeBuckets,
 } from "./trend-data";
 
 const RANGE_30D = { from: "2026-06-24", to: "2026-07-23" };
@@ -20,13 +22,10 @@ describe("pickTrendBucket", () => {
     expect(pickTrendBucket(200, RANGE_30D)).toBe("week"));
 
   it("charts a year monthly for a roster the backend can still answer", () => {
-    // The budget is per metric, so a three-series trend does not divide it.
-    // This roster used to be refused outright at a year.
     expect(pickTrendBucket(300, YEAR)).toBe("month");
   });
 
   it("gives up when the roster alone exceeds one bucket", () => {
-    // 4000 rows per bucket against a 4500 limit: nothing to answer with.
     expect(pickTrendBucket(4000, { from: "2026-01-01", to: "2026-01-07" })).toBeNull();
   });
 
@@ -34,17 +33,12 @@ describe("pickTrendBucket", () => {
     expect(pickTrendBucket(4000, YEAR)).toBeNull());
 
   it("counts the months a window touches, not the months it is long", () => {
-    // 365 days spanning 13 calendar months; days / 30.44 says 12. A roster
-    // that fits 12 buckets but not 13 must be refused, not charted against a
-    // projection one bucket short of what the response carries.
     const tooWideForThirteen = Math.floor(4500 / 13) - 1;
 
     expect(pickTrendBucket(tooWideForThirteen, YEAR)).toBeNull();
   });
 
   it("never claims a bucket whose projection exceeds the limit", () => {
-    // The property behind all four outcomes, checked against the backend's own
-    // row count — one row per (member, bucket) plus a total row per member.
     const bucketDays = { day: 1, week: 7, month: 28 };
     for (const members of [1, 10, 152, 900, 4000]) {
       for (const days of [7, 30, 180, 365, 1000]) {
@@ -61,6 +55,32 @@ describe("pickTrendBucket", () => {
         ).toBeLessThanOrEqual(4500);
       }
     }
+  });
+});
+
+describe("wholeBuckets", () => {
+  it("a bucket running past the last day is unfinished", () => {
+    expect(firstUnfinishedBucket("2026-07-23", "week")).toBe("2026-07-20");
+    expect(firstUnfinishedBucket("2026-07-26", "week")).toBe("2026-07-27");
+    expect(firstUnfinishedBucket("2026-07-30", "month")).toBe("2026-07-01");
+    expect(firstUnfinishedBucket("2026-07-31", "month")).toBe("2026-08-01");
+  });
+
+  it("a week starting before the range is dropped as partial", () => {
+    const weeks = ["2026-06-22", "2026-06-29", "2026-07-06", "2026-07-13", "2026-07-20"];
+    const rows = weeks.map((date) => ({ date }));
+
+    const whole = wholeBuckets(rows, {
+      bucket: "week",
+      startsFrom: RANGE_30D.from,
+      finishedBefore: firstUnfinishedBucket(RANGE_30D.to, "week"),
+    });
+
+    expect(whole.map((row) => row.date)).toEqual([
+      "2026-06-29",
+      "2026-07-06",
+      "2026-07-13",
+    ]);
   });
 });
 
@@ -102,7 +122,6 @@ describe("buildMedianTrendData", () => {
       },
     } as unknown as NormalizedMetricResult;
     const data = buildMedianTrendData("m", new Map([["m", r]]), ["a", "b", "c"]);
-    // 2026-06-29 held only a null — dropped, not drawn as zero.
     expect(data).toEqual([{ date: "2026-07-06", m: 70 }]);
   });
 

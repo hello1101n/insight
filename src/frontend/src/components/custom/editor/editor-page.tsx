@@ -10,6 +10,7 @@ import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { dashboardAllows } from "@/lib/custom/dashboard-access";
 import { NOUNS } from "@/lib/custom/editor/kinds";
 import { definitionBodyQuery } from "@/queries/custom";
+import { readAfterMount } from "@/queries/read-after-mount";
 import { TEXT_BODY, TEXT_HEADING, TEXT_TITLE } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
 
@@ -32,26 +33,14 @@ const PAGE: Record<EditableKind, string> = {
   dashboards: "/dashboards/$name",
 };
 
-export function EditorPage({
-  kind,
-  id,
-}: {
-  kind: EditableKind;
-  /** Absent for a definition that is being created. */
-  id?: string;
-}) {
+export function EditorPage({ kind, id }: { kind: EditableKind; id?: string }) {
   const navigate = useNavigate();
   const noun = NOUNS[kind];
   const stored = useQuery({
     ...definitionBodyQuery(kind, id ?? ""),
     enabled: id !== undefined,
   });
-  // INVARIANT: the editor seeds its state once, from the document it is
-  // handed. It is handed what this page fetched now, never what the cache
-  // held from the last time this definition was opened, or a save would
-  // overwrite whatever changed it since.
-  const fresh =
-    stored.isFetchedAfterMount && stored.isSuccess ? stored.data : undefined;
+  const fresh = readAfterMount(stored);
 
   const done = () => void navigate({ to: CATALOGUE[kind] });
   const created = (made: string) =>

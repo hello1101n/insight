@@ -57,7 +57,6 @@ from .generators import (
     git_history,
     git_repos,
     people,
-    support,
     task,
     wiki,
 )
@@ -174,16 +173,6 @@ IDENTITY_INPUTS_SELECT = "+identity_inputs"
 # staging model, including ones this seed feeds no bronze for.
 AI_INVOICE_SELECT = "claude_team__ai_invoice+"
 
-# The bronze-derived support chain. The generators write Zendesk audits and
-# ratings; every support measure is a count dbt derives from them, so the whole
-# chain has to build. Named per model rather than `zendesk__support_agent+`
-# alone, so the selector guard below judges each one.
-SUPPORT_CHAIN_SELECT = (
-    "zendesk__support_agent+",
-    "zendesk__support_event+",
-    "zendesk__support_activity+",
-)
-
 # The bronze-derived wiki chain. Outline's three staging models are views over
 # bronze, so each is named rather than relying on one to pull the others.
 WIKI_CHAIN_SELECT = (
@@ -250,6 +239,9 @@ CRM_CHAIN_SELECT = (
     "hubspot__crm_users+",
     "hubspot__crm_deals+",
     "hubspot__crm_activities+",
+    "hubspot__crm_field_history",
+    "hubspot__crm_pipeline_stages",
+    "hubspot__crm_tickets",
 )
 
 # The bronze-derived git chain.
@@ -387,7 +379,6 @@ def generate_rows(
     totals.update(ai.generate(client, roster, tenant_uuid, days))
     totals.update(ai_cost.generate(client, roster, tenant_uuid, days))
     totals.update(task.generate(client, roster, tenant_uuid, days))
-    totals.update(support.generate(client, roster, tenant_uuid, days))
     totals.update(wiki.generate(client, roster, tenant_uuid, days))
 
     for table, n in sorted(totals.items()):
@@ -422,7 +413,6 @@ def run() -> None:
                     IDENTITY_INPUTS_SELECT,
                     AI_INVOICE_SELECT,
                     *CI_CHAIN_SELECT,
-                    *SUPPORT_CHAIN_SELECT,
                     *WIKI_CHAIN_SELECT,
                     *CRM_CHAIN_SELECT,
                     *COLLAB_CHAIN_SELECT,

@@ -1,16 +1,9 @@
 import type { ChartConfig } from "@gears-frontx/ui-kit";
 import type { MouseHandlerDataParam } from "recharts";
 
-import type { MetricResult } from "@/api/custom-client";
+import type { MetricResult, SeriesTone } from "@/api/custom-client";
 import { chartColor } from "@/lib/chart-palette";
 
-/**
- * A metric result as a chart reads it: one object per row, keyed by column.
- *
- * A result is columns and positional rows, which no chart library takes. Only
- * the columns a widget draws are carried over, so a wide result does not turn
- * into wide objects.
- */
 export function points(
   result: MetricResult,
   keys: string[]
@@ -33,20 +26,26 @@ export interface Stacks {
 
 const STACK_TOTAL = "stack-total";
 const STACK_TOP = "stack-top";
-export function stackColor(index: number): string {
-  return chartColor(index);
+const TONE_COLORS: ReadonlyMap<string, string> = new Map<SeriesTone, string>([
+  ["success", "var(--success)"],
+  ["danger", "var(--destructive)"],
+  ["warning", "var(--warning)"],
+  ["info", "var(--info)"],
+  ["neutral", "var(--muted-foreground)"],
+]);
+
+export function stackColor(index: number, tone?: SeriesTone): string {
+  return TONE_COLORS.get(tone ?? "") ?? chartColor(index);
 }
 
-/**
- * Recharts reads a dotted `dataKey` as a path and a chart colour is a CSS
- * custom property, so a series value is never used as a key itself. The keys
- * added here hold a `-`, which no `as_name` can, so none overwrites a column.
- */
+// WORKAROUND: Recharts reads a dotted `dataKey` as a path, so a series value is never a key.
+// INVARIANT: with gaps, a series with no value at an x holds null there, so a line breaks instead of dropping to 0.
 export function stacks(
   result: MetricResult,
   x: string,
   y: string,
-  series: string
+  series: string,
+  gaps = false
 ): Stacks {
   const xAt = result.columns.indexOf(x);
   const yAt = result.columns.indexOf(y);
@@ -64,6 +63,7 @@ export function stacks(
 
     const bar = bars.get(row[xAt]) ?? { [x]: row[xAt], [STACK_TOTAL]: 0 };
     bars.set(row[xAt], bar);
+    if (gaps && row[yAt] == null) continue;
 
     const amount = Number(row[yAt]);
     const value = Number.isFinite(amount) ? amount : 0;
@@ -73,7 +73,7 @@ export function stacks(
 
   const ordered = [...keys.values()];
   const rows = [...bars.values()].map((bar) => ({
-    ...Object.fromEntries(ordered.map((key) => [key, 0])),
+    ...Object.fromEntries(ordered.map((key) => [key, gaps ? null : 0])),
     ...bar,
     [STACK_TOP]: ordered.findLast((key) => Number(bar[key] ?? 0) > 0),
   }));
@@ -86,14 +86,101 @@ export function stacks(
   };
 }
 
-/** One series, painted from the kit's chart palette. */
 export function seriesConfig(key: string, index = 0): ChartConfig {
   return {
     [key]: { label: key, color: chartColor(index) },
   };
 }
 
-/** A series chart's click, when it lands on a point rather than between them. */
+export interface DrawnSeries {
+  rows: Record<string, unknown>[];
+  series: { key: string; label: string }[];
+  config: ChartConfig;
+  stacked: Stacks | null;
+}
+
+export function drawnSeries(
+  result: MetricResult,
+  x: string,
+  y: string,
+  series: string | undefined,
+  {
+    gaps = false,
+    colors,
+  }: { gaps?: boolean; colors?: Record<string, SeriesTone> } = {}
+): DrawnSeries {
+  if (!series) {
+    return {
+      rows: points(result, [x, y]),
+      series: [{ key: y, label: y }],
+      config: seriesConfig(y),
+      stacked: null,
+    };
+  }
+
+  const stacked = stacks(result, x, y, series, gaps);
+  return {
+    rows: stacked.rows,
+    series: stacked.series,
+    config: Object.fromEntries(
+      stacked.series.map(({ key, label }, index) => [
+        key,
+        { label, color: stackColor(index, colors?.[label]) },
+      ])
+    ),
+    stacked,
+  };
+}
+
+export function projected(
+  result: MetricResult,
+  columns: readonly string[]
+): MetricResult {
+  const indexes = columns.map((column) => result.columns.indexOf(column));
+
+  return {
+    ...result,
+    columns: [...columns],
+    rows: result.rows.map((row) => indexes.map((at) => row[at])),
+  };
+}
+
+export const FUNNEL_STAGE = "stage";
+export const FUNNEL_VALUE = "value";
+
+// INVARIANT: each stage is a column of the one result row, in the listed order.
+export function funnelStages(
+  result: MetricResult,
+  stages: readonly string[]
+): MetricResult {
+  const [first] = projected(result, stages).rows;
+  const all = (marked: string[] | undefined) =>
+    stages.every((stage) => marked?.includes(stage));
+  const unit = result.units?.[stages[0] ?? ""];
+  const shared = stages.every((stage) => result.units?.[stage] === unit);
+
+  return {
+    columns: [FUNNEL_STAGE, FUNNEL_VALUE],
+    rows: stages.map((stage, index) => [stage, first?.[index] ?? null]),
+    ...(all(result.percents) ? { percents: [FUNNEL_VALUE] } : {}),
+    ...(unit && shared ? { units: { [FUNNEL_VALUE]: unit } } : {}),
+  };
+}
+
+export function largestFirst(
+  result: MetricResult,
+  label: string,
+  value: string
+): MetricResult {
+  const drawn = projected(result, [label, value]);
+  const size = (row: unknown[]) => {
+    const amount = Number(row[1]);
+    return row[1] == null || !Number.isFinite(amount) ? -Infinity : amount;
+  };
+
+  return { ...drawn, rows: drawn.rows.toSorted((a, b) => size(b) - size(a)) };
+}
+
 export function pointClick(
   onPointClick: (() => void) | undefined
 ): ((state: MouseHandlerDataParam) => void) | undefined {
@@ -106,3 +193,69 @@ export function pointClick(
 }
 
 export type { ChartConfig };
+
+export interface ScatterPoint {
+  x: number;
+  y: number;
+  size: number | null;
+  label: unknown;
+}
+
+export interface ScatterGroup {
+  key: string;
+  label: string;
+  points: ScatterPoint[];
+}
+
+export function scatterGroups(
+  result: MetricResult,
+  columns: {
+    x: string;
+    y: string;
+    size?: string;
+    series?: string;
+    label?: string;
+  }
+): ScatterGroup[] {
+  const at = (column: string | undefined) =>
+    column === undefined ? -1 : result.columns.indexOf(column);
+  const [xAt, yAt, sizeAt, seriesAt, labelAt] = [
+    at(columns.x),
+    at(columns.y),
+    at(columns.size),
+    at(columns.series),
+    at(columns.label),
+  ];
+  const groups = new Map<string, ScatterPoint[]>();
+
+  for (const row of result.rows) {
+    const x = finite(row[xAt]);
+    const y = finite(row[yAt]);
+    if (x === null || y === null) continue;
+
+    const name = seriesAt < 0 ? columns.y : String(row[seriesAt] ?? "—");
+    const points = groups.get(name) ?? [];
+    groups.set(name, points);
+    points.push({
+      x,
+      y,
+      size: sizeAt < 0 ? null : finite(row[sizeAt]),
+      label: labelAt < 0 ? undefined : row[labelAt],
+    });
+  }
+
+  return [...groups]
+    .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))
+    .map(([label, points], index) => ({
+      key: `scatter-${index}`,
+      label,
+      points,
+    }));
+}
+
+function finite(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}

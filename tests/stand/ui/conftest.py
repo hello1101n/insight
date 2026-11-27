@@ -27,6 +27,7 @@ https origin. Every one of them matches the stand's registered
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import time
@@ -78,12 +79,28 @@ def navigation_extras(pytestconfig: pytest.Config) -> list[str]:
     return extras
 
 
+SHOW_PLANNED_KEY = "insight.portal.showPlanned"
+
+
 def _show_planned_sections(context: BrowserContext, base_url: str) -> None:
     context.add_init_script(
         f"""if (window.location.origin === new URL({json.dumps(base_url)}).origin) {{
-            window.localStorage.setItem("insight.portal.showPlanned", "true");
+            window.localStorage.setItem({json.dumps(SHOW_PLANNED_KEY)}, "true");
         }}"""
     )
+
+
+def _without_planned_sections(state: StorageState) -> StorageState:
+    """The signed-in state, with "Show planned sections" back at its default, off.
+
+    The sign-in context turns the setting on, so its saved local storage holds it.
+    """
+    kept = copy.deepcopy(state)
+    for origin in kept.get("origins", []):
+        origin["localStorage"] = [
+            item for item in origin["localStorage"] if item["name"] != SHOW_PLANNED_KEY
+        ]
+    return kept
 
 
 @pytest.fixture(scope="session")
@@ -138,6 +155,22 @@ def browser_page_for(
         state = browser_state_for(name)
         context = new_context(storage_state=state, service_workers="block")
         _show_planned_sections(context, base_url)
+        context.route(f"**{USAGE_PATH}", lambda route: route.fulfill(status=204))
+        return context.new_page()
+
+    return page_for
+
+
+@pytest.fixture
+def browser_page_with_planned_off_for(
+    browser_state_for: Callable[[str], StorageState],
+    new_context: CreateContextCallback,
+) -> Callable[[str], Page]:
+    """A signed-in page where a person must turn "Show planned sections" on."""
+
+    def page_for(name: str) -> Page:
+        state = _without_planned_sections(browser_state_for(name))
+        context = new_context(storage_state=state, service_workers="block")
         context.route(f"**{USAGE_PATH}", lambda route: route.fulfill(status=204))
         return context.new_page()
 

@@ -110,3 +110,123 @@ models:
 
   - name: bitbucket_cloud__pr_review_events
     description: "Bitbucket Cloud review verdicts (from activity) and PR comments as one event stream -> staging, feeds class_git_pr_review_events"
+
+  - name: bitbucket_cloud__ci_runs
+    description: "Bitbucket pipelines -> staging, feeds class_git_ci_runs. One row per run attempt a sync observed: bronze keeps a pipeline's latest attempt only"
+    columns:
+      - name: unique_key
+        description: "The pipeline's bronze key and the attempt, so a rerun adds a row rather than replacing the earlier attempt"
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: "Tenant isolation field"
+      - name: source_id
+        description: "Connector source instance id"
+      - name: repo_full_name
+        description: "Repository the pipeline ran in, workspace/slug"
+      - name: pipeline_key
+        description: "The selector that chose the pipeline definition, `type:pattern` (`branches:main`, `pull-requests:**`, `custom:deploy`), or the type alone when it has no pattern (`default`)"
+      - name: pipeline_name
+        description: "Same as pipeline_key: Bitbucket gives a pipeline definition no name of its own"
+      - name: run_id
+        description: "Bitbucket's build_number, unique within the repository. The pipeline uuid is a string and the class column a number"
+      - name: run_number
+        description: "Bitbucket's build_number"
+      - name: attempt
+        description: "Bitbucket's run_number: 1 on the first run, raised by each rerun of the same pipeline. 1 on rows synced before the connector kept it"
+      - name: is_retry
+        description: "1 when attempt > 1"
+      - name: trigger_category
+        description: "PUSH on a pull-request target is pull_request, any other PUSH is push, MANUAL and ON_DEMAND are manual, SCHEDULE is schedule, anything else other"
+      - name: trigger_raw
+        description: "Bitbucket's trigger name: PUSH, MANUAL, SCHEDULE or ON_DEMAND"
+      - name: outcome
+        description: >
+          SUCCESSFUL is success, FAILED and ERROR are failure, STOPPED is
+          cancelled, EXPIRED is timed_out. A run paused on a manual step is
+          success: Bitbucket pauses only after every automatic step passed,
+          shows it Successful, and can keep it paused indefinitely. '' while
+          undecided, which includes a HALTED run.
+      - name: is_gate
+        description: "1 when the trigger is push or pull_request and the outcome is success, failure or timed_out"
+      - name: branch
+        description: "The target ref, or the source branch for a pull-request target, which names no ref"
+      - name: commit_sha
+        description: "The target commit the run built"
+      - name: actor_login
+        description: "Account id of the run's creator — provenance only"
+      - name: created_at
+        description: "When the pipeline was first created; a rerun keeps it"
+      - name: started_at
+        description: "Start of the latest run (run_creation_date), or created_at on rows synced before the connector kept it"
+      - name: finished_at
+        description: "When the latest run completed"
+      - name: duration_s
+        description: "Bitbucket's own run time, which leaves out time paused on a manual step. NULL while the outcome is undecided"
+      - name: data_source
+        description: "insight_bitbucket_cloud"
+
+  - name: bitbucket_cloud__deployments
+    description: "Bitbucket deployments -> staging, feeds class_git_deployments. A deployment still UNDEPLOYED is a placeholder for a manual step that has not run and is left out until it runs"
+    columns:
+      - name: unique_key
+        description: "The deployment's bronze key"
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: "Tenant isolation field"
+      - name: source_id
+        description: "Connector source instance id"
+      - name: repo_full_name
+        description: "Repository the deployment belongs to"
+      - name: deployment_id
+        description: "Bitbucket's deployment uuid; the events model joins on it"
+      - name: environment
+        description: "Name of the deployment's environment"
+      - name: is_production
+        description: "1 when Bitbucket types the environment Production; Test and Staging are 0"
+      - name: is_transient
+        description: "Always 0: Bitbucket has no throwaway preview environments"
+      - name: ref
+        description: "Always '': a Bitbucket deployment names no ref"
+      - name: commit_sha
+        description: "Commit the deployment shipped"
+      - name: task
+        description: "Always '': Bitbucket has no deployment task"
+      - name: creator_login
+        description: "Always '': the deployment listing names no creator"
+      - name: created_at
+        description: "Deployment creation time; the metric date"
+      - name: data_source
+        description: "insight_bitbucket_cloud"
+
+  - name: bitbucket_cloud__deployment_events
+    description: "Bitbucket deployment states -> staging, feeds class_git_deployment_events. Bronze keeps a deployment's latest state only; each state version a sync observed becomes one event"
+    columns:
+      - name: unique_key
+        description: "The deployment's bronze key and the state version"
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: "Tenant isolation field"
+      - name: source_id
+        description: "Connector source instance id"
+      - name: repo_full_name
+        description: "Repository the deployment belongs to"
+      - name: deployment_id
+        description: "Bitbucket's deployment uuid"
+      - name: event_id
+        description: "Bitbucket's state version, which rises with each state change; the fold's tiebreaker"
+      - name: state
+        description: "COMPLETED with SUCCESSFUL, FAILED or STOPPED is success, failure or cancelled; IN_PROGRESS is in_progress. UNDEPLOYED rows are left out"
+      - name: environment
+        description: "Name of the deployment's environment"
+      - name: creator_login
+        description: "Always '': the deployment listing names no creator"
+      - name: created_at
+        description: "When the deployment reached this state (last_update_time), or its creation time when Bitbucket sent none"
+      - name: data_source
+        description: "insight_bitbucket_cloud"

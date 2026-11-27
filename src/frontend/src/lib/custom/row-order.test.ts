@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextOrder, ordered, type RowOrder } from "./row-order";
+import { nextOrder, orderedThenCapped, type RowOrder } from "./row-order";
 
 describe("nextOrder", () => {
   it("cycles one column through up, down and back as it came", () => {
@@ -20,11 +20,13 @@ describe("nextOrder", () => {
   });
 });
 
-describe("ordered", () => {
+describe("orderedThenCapped", () => {
   const rows = [["b", 2], ["a", 10], ["c", 9]];
+  const ordered = (given: unknown[][], order: RowOrder | undefined) =>
+    orderedThenCapped(given, order, Infinity);
 
   it("returns the rows as they came when nothing is ordered by", () => {
-    expect(ordered(rows, undefined)).toBe(rows);
+    expect(ordered(rows, undefined)).toEqual(rows);
   });
 
   it("compares numbers as numbers, not as text", () => {
@@ -43,7 +45,6 @@ describe("ordered", () => {
     expect(rows.map((row) => row[0])).toEqual(["b", "a", "c"]);
   });
 
-  // A row with nothing in the column answers no question, either way round.
   it("keeps rows with no value in that column last, whichever way it points", () => {
     const sparse = [[1], [null], [3]];
 
@@ -55,5 +56,18 @@ describe("ordered", () => {
         (row) => row[0]
       )
     ).toEqual([3, 1, null]);
+  });
+
+  it("orders every row before it keeps the first ones", () => {
+    const down: RowOrder = { column: 1, direction: "descending" };
+    const kept = orderedThenCapped(rows, down, 2);
+
+    expect(kept.map((row) => row[1])).toEqual([10, 9]);
+  });
+
+  it("keeps the first rows as they came when nothing is ordered by", () => {
+    const kept = orderedThenCapped(rows, undefined, 2);
+
+    expect(kept.map((row) => row[1])).toEqual([2, 10]);
   });
 });

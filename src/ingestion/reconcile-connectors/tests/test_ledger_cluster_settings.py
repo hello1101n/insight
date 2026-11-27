@@ -31,8 +31,8 @@ CLUSTER = "insight_cluster"
 ENV = {
     "RECONCILE_DEST_CLICKHOUSE_HOST": "ledger.invalid",
     "RECONCILE_DEST_CLICKHOUSE_PORT": "8123",
-    "RECONCILE_DEST_CLICKHOUSE_USERNAME": "user",
-    "RECONCILE_DEST_CLICKHOUSE_PASSWORD": "password",
+    "RECONCILE_SWEEP_CLICKHOUSE_USERNAME": "user",
+    "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD": "password",
 }
 
 
@@ -55,6 +55,7 @@ class _Request:
             name: values[0] for name, values in urllib.parse.parse_qs(urllib.parse.urlparse(url).query).items()
         }
         self.sql = body.decode()
+        self.user = ""
 
     @property
     def settings(self) -> dict[str, str]:
@@ -67,6 +68,7 @@ def requests(monkeypatch: pytest.MonkeyPatch) -> list[_Request]:
 
     def fake_urlopen(request: urllib.request.Request, timeout: int) -> _Response:
         seen.append(_Request(request.full_url, request.data))
+        seen[-1].user = request.get_header("X-clickhouse-user")
         return _Response()
 
     monkeypatch.setattr(ledger_module.urllib.request, "urlopen", fake_urlopen)
@@ -176,6 +178,15 @@ class TestASingleNodeSendsTheRequestItAlwaysHas:
         (request,) = requests
         assert "FROM system.tables" in request.sql
         assert "clusterAllReplicas" not in request.sql
+
+
+def test_the_sweep_signs_in_as_its_own_account_not_the_sync_user(requests: list[_Request]) -> None:
+    Ledger.from_env(
+        {**ENV, "RECONCILE_DEST_CLICKHOUSE_USERNAME": "sync", "RECONCILE_DEST_CLICKHOUSE_PASSWORD": "sync"}
+    ).watermark()
+    assert requests[0].user == "user"
+    with pytest.raises(LedgerError, match="RECONCILE_SWEEP_CLICKHOUSE_PASSWORD"):
+        Ledger.from_env({key: value for key, value in ENV.items() if key != "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD"})
 
 
 class TestTheTopologyComesFromTheReconcileEnv:

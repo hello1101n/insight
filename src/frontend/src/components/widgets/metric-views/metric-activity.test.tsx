@@ -1,16 +1,8 @@
 // @vitest-environment jsdom
-/**
- * What a person actually did, at the closest grain the metric offers.
- *
- * Three grains render three different things from the same component, so what
- * these tests pin is that each one is drawn as itself: a counter is never
- * dressed up as a list of things, a ratio shows the denominator it was taken
- * out of, and a metric with no detail says so rather than leaving a hole that
- * reads as a failed load.
- */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
 import type { MetricResult } from "@/api/metric-results-client";
 import { normalizeMetricResults } from "@/lib/metrics/collection";
 
@@ -34,8 +26,6 @@ vi.mock("@/queries/metric-detail", () => ({
   },
 }));
 
-// The strip reads the metric's own daily series, not evidence rows: evidence is
-// paged, and a page covers the days it reaches rather than the period.
 const series = vi.hoisted(() => ({
   state: {
     isPending: false,
@@ -43,8 +33,6 @@ const series = vi.hoisted(() => ({
     data: undefined as unknown,
     refetch: () => {},
   },
-  // Whether the warehouse could answer at all. The cases below set readings
-  // and leave this alone; the not-ready case is the one that flips it.
   notReady: false,
   calls: [] as unknown[],
 }));
@@ -60,26 +48,24 @@ vi.mock("@/queries/metric-day-series", () => ({
   },
 }));
 
-// The catalogue decides whether `source` may be asked for alongside a git
-// metric's evidence; these tests are about what the grains RENDER, so it
-// answers with a declaration and no request of its own.
 const declared = vi.hoisted(() => ({
   byMetricKey: new Map<string, ReadonlySet<string>>(),
 }));
-// One mock for the whole catalogue module: a second `vi.mock` of the same
-// specifier replaces the first, so both hooks are served from here. The
-// collection boundary is set per test through `detail.collected*`.
-vi.mock("@/queries/metric-definitions", () => ({
-  useCollectionBoundary: () => ({
-    collectedFrom: detail.collectedFrom,
-    collectedThrough: detail.collectedThrough,
-    settledThrough: detail.settledThrough,
-  }),
-  useDeclaredMetricDimensions: () => ({
-    byMetricKey: declared.byMetricKey,
-    isPending: false,
-  }),
-}));
+// WORKAROUND: a second `vi.mock` of the same specifier replaces the first,
+// so this one mock serves both hooks.
+vi.mock("@/queries/metric-definitions", async () => {
+  const { withTypeDimension } = await import("@/lib/metrics/provider-links");
+  return {
+    useCollectionBoundary: () => ({
+      collectedFrom: detail.collectedFrom,
+      collectedThrough: detail.collectedThrough,
+      settledThrough: detail.settledThrough,
+    }),
+    useTypedEvidenceSelection: (base: MetricEvidenceSelection | null) =>
+      base &&
+      withTypeDimension(base, declared.byMetricKey.get(base.metric_key)),
+  };
+});
 
 import { MetricActivity } from "./metric-activity";
 
@@ -151,8 +137,6 @@ beforeEach(() => {
 
 describe("MetricActivity", () => {
   it("says a metric offers no detail rather than leaving a hole", () => {
-    // A reader who can open the day of every other metric on the page reads
-    // silence here as a screen that failed to load.
     draw(metric("git.commits", null, 14));
     expect(screen.getByText(/reports a period total only/)).toBeInTheDocument();
   });
@@ -190,7 +174,6 @@ describe("MetricActivity", () => {
       ],
     };
     draw(metric("git.commits", ["event"], 14));
-    // Newest first, and only the subject of the message.
     const rows = screen.getAllByRole("listitem").map((li) => li.textContent);
     expect(rows[0]).toContain("Fix the thing");
     expect(rows[0]).not.toContain("body");
@@ -202,9 +185,6 @@ describe("MetricActivity", () => {
   });
 
   it("names the kind of issue beside each one", () => {
-    // A count of closed issues reads differently once the bugs in it are
-    // visible, and the tracker's own type is the only thing on a row that says
-    // which is which.
     declared.byMetricKey.set("tasks.closed", new Set(["source", "type"]));
     detail.state.data = {
       columns: [],
@@ -223,7 +203,6 @@ describe("MetricActivity", () => {
     const row = screen.getAllByRole("listitem")[0]?.textContent ?? "";
     expect(row).toContain("Bug");
     expect(row).toContain("Login fails on retry");
-    // Asked for on the read itself, or the rows would never carry it.
     const asked = detail.calls.at(-1) as {
       selection: { display_dimensions: string[] };
     };
@@ -249,7 +228,6 @@ describe("MetricActivity", () => {
   });
 
   it("draws days at counter grain, and names the days with no reading", () => {
-    // Two of the five days in the period are missing entirely.
     series.state.data = [
       reading("2026-03-01", 4),
       reading("2026-03-03", 2),
@@ -259,18 +237,13 @@ describe("MetricActivity", () => {
       metric("collab.messages_sent", ["source_summary"], 6)
     );
     expect(screen.getByText(/2 days with no reading/)).toBeInTheDocument();
-    // Nothing is listed — a counter is not a list of things.
     expect(container.querySelector("li")).toBeNull();
   });
 
   it("separates the days nobody collected from the days that were quiet", () => {
-    // The source stops on the 3rd; the 4th and 5th were never delivered. Read
-    // as silence they would say this person did none of it, which is the one
-    // thing the data cannot support.
     detail.collectedThrough = "2026-03-03";
     series.state.data = [reading("2026-03-01", 4), reading("2026-03-03", 2)];
     draw(metric("collab.messages_sent", ["source_summary"], 6));
-    // The 2nd is the only quiet day; the tail is uncollected, not quiet.
     expect(screen.getByText(/2 days not collected yet/)).toBeInTheDocument();
     expect(screen.getByText(/1 day with no reading/)).toBeInTheDocument();
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
@@ -279,9 +252,6 @@ describe("MetricActivity", () => {
   });
 
   it("says a day is older than the data rather than calling it empty", () => {
-    // The metric holds nothing before the 3rd. Drawn as silence, the two days
-    // before it would report that this person did none of it — a claim about
-    // them made out of a fact about what we can read.
     detail.collectedFrom = "2026-03-03";
     detail.collectedThrough = "2026-03-05";
     series.state.data = [reading("2026-03-03", 4)];
@@ -291,14 +261,10 @@ describe("MetricActivity", () => {
     ).toBeInTheDocument();
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
     expect(label).toMatch(/2 days are before available data/);
-    // Only the 4th and 5th are days the metric covers and found empty.
     expect(label).toMatch(/2 days have no reading/);
   });
 
   it("marks the days the supplier may still revise without hiding their figures", () => {
-    // Delivered through the 3rd, settled through the 1st: the 2nd and 3rd carry
-    // real readings that are not final. Drawing them as absent would throw away
-    // a measurement; drawing them as settled would overstate it.
     detail.collectedThrough = "2026-03-03";
     detail.settledThrough = "2026-03-01";
     series.state.data = [
@@ -309,20 +275,14 @@ describe("MetricActivity", () => {
     draw(metric("collab.messages_sent", ["source_summary"], 6));
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
     expect(label).toMatch(/2 days may still change/);
-    // Both reach the caption: the tail nobody delivered, and the days that are
-    // not final. One slot let the first hide the second.
     expect(screen.getByText(/2 days not collected yet/)).toBeInTheDocument();
     expect(screen.getByText(/2 days may still change/)).toBeInTheDocument();
   });
 
   it("states coverage and settlement together rather than choosing between them", () => {
-    // before + silent + open at once. Picking two facts off a priority list
-    // dropped whichever came last, and which one that was depended on the
-    // order of the list rather than on what the reader needed.
     detail.collectedFrom = "2026-03-02";
     detail.collectedThrough = "2026-03-05";
     detail.settledThrough = "2026-03-03";
-    // The 3rd is quiet; the 4th and 5th carry readings that are not final.
     series.state.data = [
       reading("2026-03-02", 4),
       reading("2026-03-04", 3),
@@ -346,8 +306,6 @@ describe("MetricActivity", () => {
   });
 
   it("does not let the denominator displace a coverage or settlement fact", () => {
-    // The denominator is context for a share. It earns a slot only where one
-    // of the two facts above had nothing to say.
     detail.collectedThrough = "2026-03-04";
     detail.settledThrough = "2026-03-02";
     series.state.data = [
@@ -369,14 +327,10 @@ describe("MetricActivity", () => {
   });
 
   it("names a constant denominator, because that is what a share is argued with", () => {
-    // Percentages as the metric computes them — scale already applied.
     series.state.data = [
       { date: "2026-03-01", value: 75, numerator: 6, denominator: 8 },
       { date: "2026-03-02", value: 87.5, numerator: 7, denominator: 8 },
     ];
-    // A real ratio, because the readout is scaled on the way out: a metric
-    // left as a sum would render the same string whether the day value was a
-    // share or a percentage already multiplied by 100.
     draw(
       metric("collab.focus_time_pct", ["derived_population"], 81, {
         computation: "ratio",
@@ -387,13 +341,10 @@ describe("MetricActivity", () => {
     );
     expect(screen.getByText(/measured against 8 per day/)).toBeInTheDocument();
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
-    // Formatted once, from the metric's own figure: 88%, not 8,750%.
     expect(label).toMatch(/busiest 2 Mar — 88% of 8/);
   });
 
   it("offers a retry when the list of things could not be loaded", () => {
-    // The other error case covers the day strip; an event-grain section reads
-    // a different query, and its failure has its own path to the same button.
     detail.state.isError = true;
     draw(metric("git.commits", ["event"], 3));
     expect(
@@ -402,8 +353,6 @@ describe("MetricActivity", () => {
   });
 
   it("reads one source per grain and never both", () => {
-    // Two queries hang off this component and only the one the grain renders
-    // may fire; the other would be a round trip for rows nothing draws.
     draw(metric("collab.messages_sent", ["source_summary"], 6));
     expect((detail.calls.at(-1) as { enabled: boolean }).enabled).toBe(false);
     expect((series.calls.at(-1) as { enabled: boolean }).enabled).toBe(true);
@@ -424,8 +373,6 @@ describe("MetricActivity", () => {
   });
 
   it("describes the strip for anyone not reading it with their eyes", () => {
-    // Thirty-one focusable days per strip is a worse answer for a keyboard
-    // reader than one sentence saying what the shape is.
     series.state.data = [reading("2026-03-01", 4), reading("2026-03-03", 9)];
     draw(metric("collab.messages_sent", ["source_summary"], 13));
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
@@ -435,11 +382,6 @@ describe("MetricActivity", () => {
   });
 
   it("anchors the day readout to the edge of the day it describes", () => {
-    // The readout grows away from the nearer end so it cannot run off the
-    // strip, and which edge it hangs from has to follow: one growing leftwards
-    // ENDS at its day's right boundary. Anchoring both directions to the left
-    // boundary put every readout in the second half a full day to the left of
-    // the day under the pointer.
     series.state.data = [reading("2026-03-01", 4), reading("2026-03-05", 9)];
     const { container } = draw(
       metric("collab.messages_sent", ["source_summary"], 13)
@@ -453,7 +395,6 @@ describe("MetricActivity", () => {
     expect(readout().style.left).toBe("0%");
     expect(readout().style.transform).toBe("");
 
-    // The last of five days: its right boundary is the strip's own end.
     fireEvent.pointerEnter(bars[4]!);
     expect(readout().style.left).toBe("100%");
     expect(readout().style.transform).toBe("translateX(-100%)");
@@ -468,8 +409,6 @@ describe("MetricActivity", () => {
   });
 
   it("says no data yet rather than claiming the period was quiet", () => {
-    // Both render an empty strip; only one of them is a statement about the
-    // period, and a read that never reached the data cannot make it.
     series.state.data = [];
     series.notReady = true;
     draw(metric("collab.messages_sent", ["source_summary"], 0));

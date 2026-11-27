@@ -3,7 +3,6 @@ import type { ComponentProps } from "react";
 import { SidebarGroupLabel } from "@gears-frontx/ui-kit";
 import { cn } from "@/lib/utils";
 
-/** A pane group's heading, set as the design's uppercase eyebrow. */
 export function PaneGroupLabel({
   className,
   ...props
@@ -11,7 +10,7 @@ export function PaneGroupLabel({
   return (
     <SidebarGroupLabel
       className={cn(
-        "items-end pb-1 font-semibold tracking-[0.05em] text-muted-foreground uppercase",
+        "items-end",
         className
       )}
       {...props}

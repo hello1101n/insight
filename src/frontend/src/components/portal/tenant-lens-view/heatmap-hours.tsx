@@ -7,7 +7,6 @@ import { sectionNeeds, type ResolveView } from "./plan";
 import { tenantData } from "./data";
 import { chartColor } from "@/lib/chart-palette";
 
-/** Day-of-week × two-hour block magnitude ramp — when CI actually runs. */
 export function HeatmapHoursSection({
   section,
   resolve,
@@ -15,8 +14,6 @@ export function HeatmapHoursSection({
   section: Extract<TenantSectionSpec, { kind: "heatmap-hours" }>;
   resolve: ResolveView;
 }) {
-  // The need is day-bucketed by construction (`sectionNeeds`), so the lens
-  // bucket is irrelevant here.
   const r = resolve(sectionNeeds(section, "day")[0]);
   if (!r) return null;
   const { cells, max, total } = dayHourMatrix(tenantData(r).series);
@@ -28,7 +25,7 @@ export function HeatmapHoursSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           <div
             className="grid gap-px text-xs"
             style={{ gridTemplateColumns: `3rem repeat(${HOUR_BLOCKS.length}, 1fr)` }}
@@ -81,7 +78,6 @@ function HeatmapRow({
           className="h-5 rounded-[2px]"
           title={`${day} ${HOUR_BLOCKS[index]}:00 — ${fmtCompact(value)}`}
           style={{
-            // A nonzero cell never fades to invisible: 12% floor, then ramp.
             background:
               value <= 0
                 ? "var(--muted)"

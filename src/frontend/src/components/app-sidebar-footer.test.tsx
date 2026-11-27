@@ -79,7 +79,7 @@ vi.mock("@gears-frontx/ui-kit", async (importOriginal) => {
     ...(await importOriginal<typeof import("@gears-frontx/ui-kit")>()),
     SidebarMenu: passthrough,
     SidebarMenuItem: passthrough,
-    // The real button MERGES into `render`: the label lands inside the anchor.
+    // INVARIANT: the kit's button merges into `render`; the label lands inside the anchor.
     SidebarMenuButton: ({
       children,
       isActive,

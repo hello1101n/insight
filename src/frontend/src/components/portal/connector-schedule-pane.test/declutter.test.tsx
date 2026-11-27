@@ -1,5 +1,6 @@
 import { pickPreset } from "./preset";
 import { mocks, pane, read } from "./fixtures";
+import { badgeVariants } from "@gears-frontx/ui-kit";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
@@ -9,7 +10,7 @@ it.each([
     "applied",
     null,
     "Set by admin",
-    "text-success",
+    "success",
     "lucide-check",
     "Running · as of",
   ],
@@ -17,7 +18,7 @@ it.each([
     "pending",
     "different_schedule",
     "Pending",
-    "text-warning",
+    "warning",
     "lucide-clock",
     "The sync job runs a different schedule",
   ],
@@ -25,7 +26,7 @@ it.each([
     "pending",
     "awaiting_reconcile",
     "Pending",
-    "text-warning",
+    "warning",
     "lucide-clock",
     "The deployment schedule is shown after the next check",
   ],
@@ -33,7 +34,7 @@ it.each([
     "pending",
     "no_cronworkflow",
     "Not scheduled yet",
-    "text-warning",
+    "warning",
     "lucide-clock",
     "This instance has no sync schedule yet",
   ],
@@ -41,7 +42,7 @@ it.each([
     "pending",
     null,
     "Pending",
-    "text-warning",
+    "warning",
     "lucide-clock",
     "Running · as of",
   ],
@@ -49,13 +50,13 @@ it.each([
     "inherited",
     null,
     "Default",
-    "text-muted-foreground",
+    "secondary",
     "lucide-minus",
     "Runs the connector's default schedule.",
   ],
 ] as const)(
   "uses one %s %s badge with an icon and details only in its tooltip",
-  async (status, reason, label, tone, icon, detail) => {
+  async (status, reason, label, variant, icon, detail) => {
     const schedule = mocks.query.data!.schedule;
     schedule.status = status;
     schedule.pending_reason = reason;
@@ -67,7 +68,7 @@ it.each([
     expect(
       container.querySelectorAll('[data-slot="schedule-header-status"]')
     ).toHaveLength(1);
-    expect(badge).toHaveClass(tone);
+    expect(badge).toHaveClass(...badgeVariants({ variant }).split(" "));
     expect(badge.querySelector(`.${icon}`)).toHaveAttribute(
       "aria-hidden",
       "true"
@@ -113,7 +114,9 @@ it.each([
   expect(
     container.querySelectorAll('[data-slot="schedule-hint"]')
   ).toHaveLength(1);
-  expect(screen.getByText(new RegExp(hint))).toBeInTheDocument();
+  expect(
+    screen.getByText((content) => content.includes(hint))
+  ).toBeInTheDocument();
   expect(screen.getByText(/Until then:/)).toHaveTextContent(
     "every day at 03:00"
   );

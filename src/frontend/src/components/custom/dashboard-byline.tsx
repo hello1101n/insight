@@ -20,7 +20,6 @@ const VISIBILITY: Record<
   everyone: { label: "Shared with org", variant: "info" },
 };
 
-/** Owner · last change · where it is filed · who else sees it, as a card and the open dashboard show them. */
 export function DashboardByline({
   owner,
   updatedAt,
@@ -33,7 +32,6 @@ export function DashboardByline({
   updatedAt: string | undefined;
   visibility: DashboardVisibility | null | undefined;
   access: DashboardAccess;
-  /** The folders holding it that the viewer sees. */
   folders?: readonly Folder[];
   className?: string;
 }) {

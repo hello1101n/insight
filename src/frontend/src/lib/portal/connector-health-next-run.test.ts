@@ -161,8 +161,7 @@ describe("the next scheduled start", () => {
       describeNextRun(schedule({ timezone: null, crons: ["unreadable"] }), NOW)
     ).toEqual({
       text: "Unknown",
-      detail:
-        "Next run unknown: this schedule runs in the Argo controller's timezone, which is not recorded.",
+      detail: "The schedule has no recorded time zone.",
     });
   });
 

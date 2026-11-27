@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
+import { badgeVariants } from "@gears-frontx/ui-kit";
 import { ConnectorsApiError } from "@/api/connectors-client";
 import { scheduleClock } from "@/lib/portal/connector-schedule-time";
 import { ConnectorSchedulePane } from "../connector-schedule-pane";
@@ -38,10 +39,8 @@ it("wraps schedule values, attribution and status inside a nowrap table cell", (
     "min-w-0",
     "flex-wrap"
   );
-  expect(screen.getByText(/Saved by you/).closest("header")).toHaveClass(
-    "min-w-0",
-    "flex-wrap"
-  );
+  expect(content).toContainElement(screen.getByText(/Saved by you/));
+  expect(content.querySelector("header")).toHaveClass("min-w-0", "flex-wrap");
   expect(container.querySelector("[aria-live]")).not.toHaveClass(
     "whitespace-nowrap"
   );
@@ -111,7 +110,7 @@ it.each([
       expect(input.querySelector('input[type="time"]')).toBeNull();
     }
     for (const control of controls)
-      expect(control).toHaveClass("w-[64px]", "h-8", "max-w-full", "min-w-0");
+      expect(control).toHaveClass("w-[64px]", "max-w-full", "min-w-0");
     expect(
       within(input.parentElement!.closest(".flex")!).getByText(connector)
     ).toBeInTheDocument();
@@ -148,7 +147,7 @@ it.each([false, true])(
       !cleared
     );
     expect(screen.getByText("Pending").closest("[title]")).toHaveClass(
-      "text-warning"
+      ...badgeVariants({ variant: "warning" }).split(" ")
     );
     expect(
       screen.getByText("Takes effect after the next check.")

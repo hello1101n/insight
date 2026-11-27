@@ -1,11 +1,3 @@
-/**
- * The shell's viewer-identity prefetch.
- *
- * It has to agree with `useIcPerson` on BOTH the key form and the request key:
- * a mismatch is silent — `prefetchQuery` swallows its own errors — leaving the
- * shell to fetch again on mount and identity to answer 400 on every load.
- */
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPerson } from "@/api/identity-client";
@@ -56,8 +48,6 @@ describe("prefetchViewerIdentity", () => {
     await prefetchViewerIdentity();
 
     expect(resolve).toHaveBeenCalledWith(PERSON_ID, expect.any(AbortSignal));
-    // Lowercased: this is the key `useIcPerson` computes, so the shell mounts
-    // with the tree already cached instead of re-fetching it.
     expect(
       queryClient.getQueryData([
         "identity",

@@ -49,6 +49,16 @@
           "connector": {
             "type": "string"
           },
+          "last_successful_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Run"
+              }
+            ]
+          },
           "last_sync": {
             "oneOf": [
               {
@@ -57,6 +67,16 @@
               {
                 "$ref": "#/components/schemas/SyncFact",
                 "description": "Absent for a configured connector that has never synced."
+              }
+            ]
+          },
+          "latest_run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Run"
               }
             ]
           },
@@ -124,6 +144,12 @@
           "history_available": {
             "description": "False when nothing has been recorded at all, so the page can say so\ninstead of implying health.",
             "type": "boolean"
+          },
+          "history_read_error": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "schedule_read_error": {
             "type": [
@@ -383,6 +409,286 @@
         ],
         "type": "object"
       },
+      "ResourceState": {
+        "properties": {
+          "inherited": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Resources"
+              }
+            ]
+          },
+          "live": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Resources"
+              }
+            ]
+          },
+          "read_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requested": {
+            "$ref": "#/components/schemas/Resources"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScheduleStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ],
+        "type": "object"
+      },
+      "Resources": {
+        "additionalProperties": false,
+        "properties": {
+          "airbyte_cpu_millis": {
+            "default": null,
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "airbyte_memory_bytes": {
+            "default": null,
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dbt_cpu_millis": {
+            "default": null,
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dbt_memory_bytes": {
+            "default": null,
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dbt_query_memory_bytes": {
+            "default": null,
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "identity_cpu_millis": {
+            "default": null,
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "identity_memory_bytes": {
+            "default": null,
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "Run": {
+        "properties": {
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "execution_started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "load_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "records_reported": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RunStage"
+            },
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "transform_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "wait_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sync_id",
+          "execution_started_at",
+          "status",
+          "started_at",
+          "stages"
+        ],
+        "type": "object"
+      },
+      "RunStage": {
+        "properties": {
+          "airbyte_job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempt": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "peak_query_memory_bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "queued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resources": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Resources"
+              }
+            ]
+          },
+          "stage": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "waits": {
+            "items": {
+              "$ref": "#/components/schemas/StageWait"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "waits",
+          "stage",
+          "attempt",
+          "status",
+          "queued_at"
+        ],
+        "type": "object"
+      },
       "ScheduleObservation": {
         "properties": {
           "observed_at": {
@@ -490,6 +796,9 @@
               }
             ]
           },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceState"
+          },
           "revision": {
             "format": "int64",
             "minimum": 0,
@@ -512,7 +821,8 @@
         "required": [
           "connector",
           "source_id",
-          "revision"
+          "revision",
+          "resources"
         ],
         "type": "object"
       },
@@ -533,6 +843,35 @@
           "total"
         ],
         "type": "string"
+      },
+      "StageWait": {
+        "properties": {
+          "ended_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WaitKind"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "started_at"
+        ],
+        "type": "object"
       },
       "SyncFact": {
         "properties": {
@@ -581,6 +920,18 @@
           "connector": {
             "type": "string"
           },
+          "history_read_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array"
+          },
           "source_id": {
             "description": "The installation's own id within that tenant. Absent with `tenant_id`.",
             "type": [
@@ -612,9 +963,17 @@
         "required": [
           "connector",
           "syncs",
+          "runs",
           "window"
         ],
         "type": "object"
+      },
+      "WaitKind": {
+        "enum": [
+          "lock",
+          "placement"
+        ],
+        "type": "string"
       }
     },
     "securitySchemes": {
@@ -1148,6 +1507,203 @@
           }
         ],
         "summary": "Requested and live schedules of a connector instance (admin)"
+      },
+      "patch": {
+        "operationId": "connectors_api.schedules.patch_resources",
+        "parameters": [
+          {
+            "description": "Connector name",
+            "in": "path",
+            "name": "connector",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Connector instance source id",
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Single quoted decimal revision",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resources"
+              }
+            }
+          },
+          "description": "Merge patch of resource overrides in millicores and bytes. Omit a field to retain its value. Send null to inherit its default.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleResponse"
+                }
+              }
+            },
+            "description": "Saved settings and live CronWorkflow state",
+            "headers": {
+              "ETag": {
+                "description": "Single quoted decimal schedule revision",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Stale revision",
+            "headers": {
+              "ETag": {
+                "description": "Single quoted decimal schedule revision",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Content-Type application/json required"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Resource requests exceed node capacity"
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "If-Match required"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update the resource overrides of a connector instance (admin)"
       },
       "put": {
         "operationId": "connectors_api.schedules.put",

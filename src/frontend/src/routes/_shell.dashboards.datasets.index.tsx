@@ -7,8 +7,6 @@ import { DefinitionList } from "@/components/custom/definition-list";
 import { NewLink } from "@/components/custom/editor/edit-link";
 import { useDefinitionCatalogue } from "@/hooks/use-definition-catalogue";
 
-// An index route beside `$name`, not its parent: a parent would have to draw
-// the page through an Outlet, and the catalogue is a page of its own.
 export const Route = createFileRoute("/_shell/dashboards/datasets/")({
   component: DatasetsCatalogue,
 });

@@ -2882,7 +2882,7 @@
                 }
               }
             },
-            "description": "Each widget's id, name, body and the clock of the metric it draws"
+            "description": "Each widget's id, name and body, and the clock, percent columns and duration units of the metric it draws"
           },
           "403": {
             "content": {

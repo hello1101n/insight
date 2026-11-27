@@ -26,12 +26,7 @@ import {
 } from "@/lib/portal/home-subject";
 import { resolveText } from "@/i18n/localized-text";
 import { useIsAdmin } from "@/queries/identity-me";
-import { usePreviewsGate } from "@/queries/previews";
 
-/**
- * Secondary navigation for the rail item that owns the active zone: the second
- * column of the shell sidebar, beside the rail.
- */
 export function ContextPane() {
   const nav = useZoneNav();
   const rail = railItemFor(nav.activeZone);
@@ -63,7 +58,6 @@ export function ContextPane() {
   );
 }
 
-/** The active rail item's pages, for the pane and the phone drawer alike. */
 export function ZonePages({ nav }: { nav: ZoneNav }) {
   const rail = railItemFor(nav.activeZone);
   return rail ? <RailPane rail={rail.id} nav={nav} /> : null;
@@ -105,11 +99,6 @@ function homeGroupsFor(subject: HomeSubject) {
 }
 
 function ManageNav({ active }: { active: string | null }) {
-  // Gated surfaces (Identities, Previews) drop from the pane for everyone
-  // else; the view behind each refuses direct URLs on its own.
   const { isAdmin } = useIsAdmin();
-  const canManagePreviews = usePreviewsGate();
-  return (
-    <GroupsNav groups={manageGroupsFor({ isAdmin, canManagePreviews })} active={active} />
-  );
+  return <GroupsNav groups={manageGroupsFor({ isAdmin })} active={active} />;
 }

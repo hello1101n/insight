@@ -26,7 +26,7 @@ export const authStore = {
   },
 
   setUnauthenticated(): void {
-    if (snapshot.status === "unauthenticated" && snapshot.session === null) return;
+    if (snapshot.status === "unauthenticated") return;
     snapshot = { status: "unauthenticated", session: null };
     emit();
   },

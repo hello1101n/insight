@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
+import { previousOptions } from "@/lib/custom/board-range";
 import { drawsBucket } from "@/lib/custom/draws-bucket";
 import { metricQuery, metricResultQuery, widgetQuery } from "@/queries/custom";
 import { RANGE_PRESETS } from "@/lib/custom/time-range";
@@ -26,7 +27,6 @@ export const Route = createFileRoute("/_shell/dashboards/widgets/$name")({
   component: WidgetPage,
 });
 
-/** The windows a card may be drawn over: the board's presets, without all time, which is the run with no window. */
 const WINDOWS = RANGE_PRESETS.filter(({ token }) => token !== "inf");
 
 function widgetIdFromPath(pathname: string): string {
@@ -87,7 +87,7 @@ function WidgetPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className={TEXT_HEADING}>Definition</CardTitle>
+          <CardTitle>Definition</CardTitle>
         </CardHeader>
         <CardContent>
           <WidgetSummary widget={widget.data.widget} />
@@ -101,24 +101,26 @@ function WidgetPage() {
   );
 }
 
-/** The card as a board would draw it, over a window the reader picks. */
 function Drawn({ name, widget }: { name: string; widget: Widget }) {
   const [range, setRange] = useState<string | undefined>(undefined);
   const metric = useQuery(metricQuery(widget.metric));
   const clocked = metric.data?.clock !== undefined;
-  // As on a board: a window only when the metric has a date to select by,
-  // sliced into buckets when the chart draws them.
   const options: RunOptions | undefined =
     range && clocked ? { range, bucket: drawsBucket(widget) } : undefined;
   const result = useQuery({
     ...metricResultQuery(widget.metric, options),
     enabled: metric.isSuccess,
   });
+  const previous = previousOptions(widget, options);
+  const previousResult = useQuery({
+    ...metricResultQuery(widget.metric, previous),
+    enabled: previous !== undefined,
+  });
 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center gap-2">
-        <CardTitle className={TEXT_HEADING}>{widget.title ?? name}</CardTitle>
+        <CardTitle>{widget.title ?? name}</CardTitle>
         <span className="ms-auto flex flex-wrap items-center gap-1">
           <Window
             label="All time"
@@ -144,6 +146,7 @@ function Drawn({ name, widget }: { name: string; widget: Widget }) {
         <CustomWidget
           widget={widget}
           result={result.data}
+          previous={previousResult.data}
           error={result.error ?? metric.error}
           windowed={Boolean(options)}
           pending={metric.isPending || result.isPending || result.isFetching}

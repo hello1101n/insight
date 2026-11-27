@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Team-state dashboard semantics: honest KPI roll-ups (totals for counters,
- * medians for ratios), all-empty columns dropped instead of zero-painted,
- * attention wired to the roster, and the org-scope gate in front of it all.
- * Data arrives via the same stubbed query boundary as the real view.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -19,7 +13,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@/i18n";
 
 import { headlineMetricKeys } from "@/lib/insight/groups";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import type {
+  MetricCollectionConfig,
+  NormalizedMetricResult,
+} from "@/lib/metrics/collection";
+import { MAX_METRICS_PER_REQUEST } from "@/queries/metrics-view";
 import type { PeopleListItem } from "@/api/identity-client";
 import { identityPerson, peopleFromIdentityTree, pid } from "@/test/identity";
 import type { IdentityPerson } from "@/types/insight";
@@ -28,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   personId: null as string | null,
   tree: undefined as IdentityPerson | undefined,
   roster: [] as PeopleListItem[],
+  gridCollections: [] as MetricCollectionConfig[],
   grid: {
     byKey: new Map<string, NormalizedMetricResult>(),
     previousByKey: new Map<string, NormalizedMetricResult>(),
@@ -47,8 +46,6 @@ vi.mock("@/lib/portal/use-cohort-label", () => ({
 vi.mock("@/queries/ic-dashboard", () => ({
   useIcPerson: () => ({ data: mocks.tree, isPending: false, isLoading: false, isError: false, refetch: vi.fn() }),
 }));
-// `useOrgScope` reads the deployment's visibility policy, and its flat branch
-// reads the roster. This suite is about the view, so both answer statically.
 vi.mock("@/queries/identity-me", () => ({
   useVisibilityPolicy: () => ({
     policy: "org_chart",
@@ -64,7 +61,12 @@ vi.mock("@/queries/visible-roster", () => ({
     retry: () => {},
   }),
 }));
-vi.mock("@/queries/member-grid", () => ({ useMemberGridData: () => mocks.grid }));
+vi.mock("@/queries/member-grid", () => ({
+  useMemberGridData: (collection: MetricCollectionConfig) => {
+    mocks.gridCollections.push(collection);
+    return mocks.grid;
+  },
+}));
 vi.mock("@/hooks/use-portal-period", () => ({
   usePortalPeriod: () => ({ period: "week", dateRange: { from: "2026-07-20", to: "2026-07-26" } }),
 }));
@@ -94,7 +96,6 @@ function metric(
   } as unknown as NormalizedMetricResult;
 }
 
-// Roster entity ids: person UUIDs, the same key the metric grid returns.
 const LABELS = ["d", "a", "c", "b"];
 const MEMBER_LABELS = ["boss", ...LABELS];
 const MEMBER_IDS = MEMBER_LABELS.map(pid);
@@ -103,17 +104,16 @@ beforeEach(() => {
   mocks.personId = pid("boss");
   mocks.tree = person("boss", LABELS.map((l) => person(l)));
   mocks.roster = peopleFromIdentityTree(mocks.tree);
+  mocks.gridCollections = [];
   mocks.grid.isPending = false;
   mocks.grid.isError = false;
   mocks.grid.byKey = new Map([
     ["git.default_branch_prs_merged", metric("git.default_branch_prs_merged", [[pid("boss"), 50], [pid("a"), 10], [pid("b"), 20], [pid("c"), 30], [pid("d"), 40]], { label: "PRs merged" })],
-    // a ratio metric: must roll up as MEDIAN, not a summed percentage
     ["collab.focus_time_pct", metric("collab.focus_time_pct", [[pid("boss"), 80], [pid("a"), 40], [pid("b"), 50], [pid("c"), 60], [pid("d"), 70]], {
       computation: "avg",
       label: "Time Outside Meetings",
       format: "percent",
     } as never)],
-    // ingested nowhere → its column must disappear, not paint zeros
     ["tasks.closed", metric("tasks.closed", MEMBER_IDS.map((id) => [id, null]), { label: "Tasks closed" })],
   ]);
   mocks.grid.previousByKey = new Map();
@@ -126,6 +126,14 @@ beforeEach(() => {
 describe("TeamStateView", () => {
   it("seeds its counter with a metric the view draws a column for", () => {
     expect(headlineMetricKeys()).toContain("git.default_branch_prs_merged");
+  });
+
+  it("keeps the headline grid within one request's metric cap", () => {
+    render(<TeamStateView />);
+
+    const requested = mocks.gridCollections.map((c) => c.metrics.length);
+    expect(Math.min(...requested)).toBeGreaterThan(0);
+    expect(Math.max(...requested)).toBeLessThanOrEqual(MAX_METRICS_PER_REQUEST);
   });
 
   it("renders the scope header and every member row", () => {
@@ -238,7 +246,6 @@ describe("TeamStateView", () => {
     render(<TeamStateView />);
     expect(screen.getByText("150")).toBeInTheDocument();
     expect(screen.getAllByText("team total").length).toBeGreaterThan(0);
-    // median of 40,50,60,70,80 = 60%, NOT the 300% a sum would fabricate
     expect(screen.getAllByText("60%").length).toBeGreaterThan(0);
     expect(screen.getAllByText("team median").length).toBeGreaterThan(0);
   });

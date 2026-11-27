@@ -12,8 +12,8 @@ the roster the caller authenticates as. Which relations those are is named below
 whether any of them hold the stand's rows is a fact the instance reports: a run is
 refused at the door unless the instance seeded identity alone.
 
-Identity is never truncated whatever the instance: persons-sync swaps
-`identity_persons` wholesale, and `identity_inputs` is rebuilt from scratch by each
+Identity is never truncated whatever the instance: persons-sync replaces the
+partitions of `identity_persons`, and `identity_inputs` is rebuilt from scratch by each
 spec's own full refresh. Truncating either would unresolve the persona the suite
 authenticates as before the pipeline could put it back.
 """
@@ -80,9 +80,6 @@ SEED_OWNED: frozenset[Relation] = frozenset(
         ("bronze_outline", "wiki_spaces"),
         ("bronze_outline", "wiki_users"),
         ("bronze_slack", "users_details"),
-        ("bronze_zendesk", "support_agents"),
-        ("bronze_zendesk", "support_ticket_events"),
-        ("bronze_zendesk", "zendesk_satisfaction_ratings"),
         ("bronze_zoom", "meetings"),
         ("bronze_zoom", "participants"),
         ("config", "field_value_defaults"),
@@ -110,7 +107,6 @@ SEED_OWNED: frozenset[Relation] = frozenset(
         ("silver", "class_git_repository_branches"),
         ("silver", "class_hr_working_hours"),
         ("silver", "class_people"),
-        ("silver", "class_support_activity"),
         ("silver", "class_task_field_history"),
         ("silver", "class_task_issuetypes"),
         ("silver", "class_task_statuses"),
@@ -146,9 +142,6 @@ SEED_OWNED: frozenset[Relation] = frozenset(
         ("staging", "m365__collab_email_activity"),
         ("staging", "m365__collab_meeting_activity"),
         ("staging", "slack__collab_chat_activity"),
-        ("staging", "zendesk__support_activity"),
-        ("staging", "zendesk__support_agent"),
-        ("staging", "zendesk__support_event"),
         ("staging", "zoom__collab_meeting_activity"),
         ("staging", "zoom__meeting_sessions"),
     }

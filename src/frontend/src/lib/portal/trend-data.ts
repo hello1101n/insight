@@ -2,51 +2,32 @@ import type { MetricBucket } from "@/api/metric-results-client";
 import type { SectionTrendPoint } from "@/components/portal/section-trend";
 import {
   forEntity,
-  MAX_PROJECTED_ROWS,
+  PROJECTED_ROWS_BUDGET,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
+import { mondayFirstWeekday } from "@/lib/portal/day-hour-matrix";
+import { runningBucketStart } from "@/lib/portal/person-trend";
 
 const DAY_MS = 86_400_000;
 
 const BUCKETS: readonly MetricBucket[] = ["day", "week", "month"];
 
-/**
- * Finest bucket (day → week → month) whose projected rows fit the backend's
- * all-or-nothing row limit — so a large org still gets a coarser trend rather
- * than a failed request.
- *
- * The budget is PER METRIC, not shared across them: the backend checks each
- * view of each metric on its own (`validate_projected_view_limits`) and
- * compiles one query per metric, each carrying its own LIMIT. Dividing the
- * limit by the number of plotted metrics refused windows the backend would
- * have answered — a three-series trend gave up at a third of the roster it
- * could actually chart.
- *
- * `null` is the fourth outcome and the important one: past a certain
- * members × buckets, even monthly does not fit, and returning "month" anyway
- * just sends a request the backend is guaranteed to reject. A suppressed trend
- * with a stated reason beats a 400 the reader has to interpret.
- */
 export function pickTrendBucket(
   members: number,
   range: { from: string; to: string },
 ): MetricBucket | null {
-  // A timeseries view answers one row per (member, bucket) plus a total row
-  // per member — the backend's own projection, mirrored here.
-  const rowsPerBucket = Math.max(1, members);
-  const maxBuckets = Math.floor(MAX_PROJECTED_ROWS / rowsPerBucket) - 1;
-  if (maxBuckets < 1) return null;
+  const rows = (bucket: MetricBucket) =>
+    projectedTimeseriesRows(Math.max(1, members), bucketCount(range, bucket));
 
-  return BUCKETS.find((bucket) => bucketCount(range, bucket) <= maxBuckets) ?? null;
+  return BUCKETS.find((bucket) => rows(bucket) <= PROJECTED_ROWS_BUDGET) ?? null;
 }
 
-/**
- * Buckets the backend will enumerate for this range, by its rule (weeks start
- * Monday, months on the 1st) rather than by dividing the span: a 365-day
- * window touches 13 months, and days/30.44 says 12. Undercounting means
- * checking a smaller projection than the response actually carries, which
- * spends the headroom this budget keeps below the hard limit.
- */
+function projectedTimeseriesRows(members: number, buckets: number): number {
+  const bucketRows = members * buckets;
+  const totalRows = members;
+  return bucketRows + totalRows;
+}
+
 function bucketCount(range: { from: string; to: string }, bucket: MetricBucket): number {
   const from = Date.parse(`${range.from}T00:00:00Z`);
   const to = Date.parse(`${range.to}T00:00:00Z`);
@@ -63,8 +44,7 @@ function bucketCount(range: { from: string; to: string }, bucket: MetricBucket):
 }
 
 function mondayOf(timestamp: number): number {
-  const weekday = new Date(timestamp).getUTCDay();
-  return timestamp - ((weekday + 6) % 7) * DAY_MS;
+  return timestamp - mondayFirstWeekday(new Date(timestamp)) * DAY_MS;
 }
 
 function monthIndex(timestamp: number): number {
@@ -72,17 +52,33 @@ function monthIndex(timestamp: number): number {
   return date.getUTCFullYear() * 12 + date.getUTCMonth();
 }
 
-/**
- * How many of the roster actually contributed to a metric in each bucket.
- *
- * Derived from the same per-entity rows the totals are summed from, so it
- * needs no catalog metric of its own: forty merged pull requests read very
- * differently at four contributors than at twenty, and that second number is
- * already in the response.
- *
- * A bucket a person has a reading in but no value counts as inactive — a
- * measured zero is not a contribution.
- */
+export interface TrendWindow {
+  bucket: MetricBucket;
+  startsFrom: string;
+  finishedBefore: string;
+}
+
+export function firstUnfinishedBucket(lastDay: string, bucket: MetricBucket): string {
+  return runningBucketStart(dayAfter(lastDay), bucket);
+}
+
+function dayAfter(isoDate: string): string {
+  return new Date(Date.parse(`${isoDate}T00:00:00Z`) + DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function wholeBuckets<T extends { date: string }>(
+  rows: readonly T[],
+  trendWindow: TrendWindow
+): T[] {
+  return rows.filter(
+    (row) =>
+      row.date >= trendWindow.startsFrom &&
+      row.date < trendWindow.finishedBefore
+  );
+}
+
 export function buildActiveContributorData(
   key: string,
   byKey: Map<string, NormalizedMetricResult>,
@@ -108,12 +104,6 @@ export function buildActiveContributorData(
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/**
- * Sum each metric's per-bucket timeseries points across a roster into a single
- * org/team series per bucket, sorted by date. Shared by every portal view that
- * draws a "team totals over time" chart (Overview, Directions, Collaboration)
- * so the aggregation stays in one place.
- */
 export function buildTrendData(
   keys: readonly string[],
   byKey: Map<string, NormalizedMetricResult>,
@@ -138,14 +128,6 @@ export function buildTrendData(
   );
 }
 
-/**
- * Median across the roster of one metric's per-bucket values, sorted by date.
- * For non-additive metrics (ratios, medians): summing per-person ratios is
- * meaningless, and the true org ratio needs numerator and denominator the
- * response does not carry — the roster median matches how every stat tile
- * already reads ("median / person"). Buckets where nobody has a value are
- * dropped rather than drawn as zero.
- */
 export function buildMedianTrendData(
   key: string,
   byKey: Map<string, NormalizedMetricResult>,

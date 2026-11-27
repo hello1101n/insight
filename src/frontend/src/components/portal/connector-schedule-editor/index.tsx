@@ -19,6 +19,7 @@ import { scheduleTimePhrase } from "@/lib/portal/connector-schedule-time";
 import { validateScheduleCrons } from "@/lib/portal/connector-schedule-validation";
 import { isScheduleOverride } from "@/lib/portal/connector-schedule";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
+import { useHeightTransition } from "@/hooks/use-height-transition";
 import {
   Alert,
   Button,
@@ -78,8 +79,14 @@ export function ConnectorScheduleEditor({
   const [errorDetails, setErrorDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [validationAttempt, setValidationAttempt] = useState(0);
-  const form = useRef<HTMLFormElement>(null);
+  const value = choice.kind === "hours" ? `hours-${choice.hours}` : choice.kind;
+  const [form, capturePresetHeight] =
+    useHeightTransition<HTMLFormElement>(value);
+  const runsControl = useRef<HTMLButtonElement>(null);
   const focusRefusal = useRef(false);
+  useEffect(() => {
+    runsControl.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     if (busy || !focusRefusal.current) return;
     focusRefusal.current = false;
@@ -87,7 +94,7 @@ export function ConnectorScheduleEditor({
       'input[aria-invalid="true"], [data-refusal]'
     );
     target?.focus();
-  }, [busy, error, fieldErrors]);
+  }, [busy, error, fieldErrors, form]);
   const crons = choiceCrons(choice);
   const clientErrors =
     choice.kind === "custom" ? validateScheduleCrons(crons) : [];
@@ -98,7 +105,6 @@ export function ConnectorScheduleEditor({
     const index = rowIndex(violation);
     return choice.kind !== "custom" || index === null || index >= crons.length;
   });
-  const value = choice.kind === "hours" ? `hours-${choice.hours}` : choice.kind;
   const preset = options.find((option) => option.value === value);
   const person = useConnectorScheduleAuthor(
     current.schedule.requested?.updated_by
@@ -127,18 +133,19 @@ export function ConnectorScheduleEditor({
     setFieldErrors([]);
   }
 
-  function select(value: string) {
-    if (value === "custom") {
+  function select(nextValue: string) {
+    if (nextValue !== value) capturePresetHeight();
+    if (nextValue === "custom") {
       change({ kind: "custom", crons: crons.length ? crons : [""] });
-    } else if (value === "daily" || value === "weekdays") {
+    } else if (nextValue === "daily" || nextValue === "weekdays") {
       change({
-        kind: value,
+        kind: nextValue,
         time: choice.kind === "custom" ? "09:00" : choice.time,
       });
     } else {
       change({
         kind: "hours",
-        hours: Number(value.slice(6)),
+        hours: Number(nextValue.slice(6)),
         time: choice.kind === "custom" ? "00:00" : choice.time,
       });
     }
@@ -217,7 +224,8 @@ export function ConnectorScheduleEditor({
   return (
     <form
       ref={form}
-      className="grid min-w-0 grid-cols-1 gap-3 [overflow-wrap:anywhere] whitespace-normal @4xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+      data-slot="connector-schedule-editor"
+      className="grid max-w-lg min-w-0 grid-cols-1 gap-3 [overflow-wrap:anywhere] whitespace-normal"
       onSubmit={(event) => {
         event.preventDefault();
         void submit(false);
@@ -229,17 +237,9 @@ export function ConnectorScheduleEditor({
         }
       }}
     >
-      <div className="@4xl:col-span-2">
-        <ConnectorScheduleHeader schedule={current.schedule} />
-      </div>
+      <ConnectorScheduleHeader schedule={current.schedule} />
       {message && (
-        <Alert
-          role="alert"
-          data-refusal
-          tabIndex={-1}
-          variant="destructive"
-          className="@4xl:col-span-2"
-        >
+        <Alert role="alert" data-refusal tabIndex={-1} variant="destructive">
           {message}
           {errorDetails && <ConnectorScheduleDetails text={errorDetails} />}
         </Alert>
@@ -264,9 +264,9 @@ export function ConnectorScheduleEditor({
               >
                 <SelectTrigger
                   id={`${id}-runs`}
-                  autoFocus
+                  ref={runsControl}
                   size="sm"
-                  className="h-8 w-full min-w-0"
+                  className="w-full min-w-0"
                 >
                   <SelectValue>{preset?.label}</SelectValue>
                 </SelectTrigger>
@@ -317,7 +317,7 @@ export function ConnectorScheduleEditor({
               </div>
             )}
           </div>
-          {opened.length > 1 && (
+          {opened.length > 1 && choice.kind !== "custom" && (
             <p className="text-xs text-warning">
               {t("connectors.editor.replaces_expressions", {
                 count: opened.length,
@@ -337,55 +337,49 @@ export function ConnectorScheduleEditor({
           />
         )}
       </fieldset>
-      <div className="min-w-0 space-y-1 rounded-lg bg-muted p-3 text-sm">
-        {choice.kind !== "custom" && canBuild && (
-          <p className="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs text-muted-foreground">
-            <code className="min-w-0">{crons.join("; ")}</code>{" "}
-            <span className="shrink-0">{t("common.period.utc")}</span>
-          </p>
-        )}
-        {!canBuild && choice.kind !== "custom" && (
-          <p className="text-destructive">
-            {t("connectors.editor.invalid_schedule")}
-          </p>
-        )}
-        <ConnectorScheduleRuns crons={canBuild ? crons : []} />
-      </div>
+      {(choice.kind !== "custom" || canBuild) && (
+        <div className="max-w-full min-w-0 space-y-1 justify-self-start rounded-lg bg-muted p-2.5 text-sm">
+          <ConnectorScheduleRuns crons={canBuild ? crons : []} preview />
+          {choice.kind !== "custom" && canBuild && (
+            <p className="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs text-muted-foreground">
+              <code className="min-w-0">{crons.join("; ")}</code>{" "}
+              <span className="shrink-0">{t("common.period.utc")}</span>
+            </p>
+          )}
+          {!canBuild && choice.kind !== "custom" && (
+            <p className="text-destructive">
+              {t("connectors.editor.invalid_schedule")}
+            </p>
+          )}
+        </div>
+      )}
       {alerts.length > 0 && (
-        <Alert
-          role="alert"
-          data-refusal
-          tabIndex={-1}
-          variant="destructive"
-          className="@4xl:col-span-2"
-        >
+        <Alert role="alert" data-refusal tabIndex={-1} variant="destructive">
           {alerts.map((violation, index) => (
             <p key={index}>{violation.description}</p>
           ))}
         </Alert>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3 @4xl:col-span-2">
-        <div>
-          {isScheduleOverride(current.schedule.requested) && (
-            <ConnectorScheduleTooltip
-              content={resetScheduleTooltip(
-                current.schedule.inherited,
-                current.schedule.next_reconcile_at
-              )}
+      <div className="flex flex-wrap items-center gap-3">
+        {isScheduleOverride(current.schedule.requested) && (
+          <ConnectorScheduleTooltip
+            content={resetScheduleTooltip(
+              current.schedule.inherited,
+              current.schedule.next_reconcile_at
+            )}
+          >
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="max-w-full whitespace-normal"
+              disabled={busy}
+              onClick={() => void submit(true)}
             >
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto max-w-full px-0 whitespace-normal"
-                disabled={busy}
-                onClick={() => void submit(true)}
-              >
-                {t("connectors.editor.reset_default")}
-              </Button>
-            </ConnectorScheduleTooltip>
-          )}
-        </div>
+              {t("connectors.editor.reset_default")}
+            </Button>
+          </ConnectorScheduleTooltip>
+        )}
         <div className="ml-auto flex gap-2">
           <Button
             type="button"

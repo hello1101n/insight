@@ -67,8 +67,6 @@ beforeEach(() => {
 });
 
 describe("/dashboards/metrics/$name", () => {
-  // A reader who opened this from the catalogue needs the way back, whether
-  // or not the page found what it was looking for.
   it("offers the way back to the catalogue", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKED);
 
@@ -111,7 +109,6 @@ describe("/dashboards/metrics/$name", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
-  // A window needs a date to select by; a metric with none has nothing to offer.
   it("offers no windows for a metric nothing dates", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue({
       name: CLOCKED.name,
@@ -129,7 +126,6 @@ describe("/dashboards/metrics/$name", () => {
     ).toBeInTheDocument();
   });
 
-  // What a removal would break, before a reader asks for one.
   it("names what draws it, and links each by its id", async () => {
     vi.mocked(customClient.fetchMetric).mockResolvedValue(CLOCKED);
     vi.mocked(customClient.fetchDependents).mockResolvedValue({

@@ -1,16 +1,3 @@
-/**
- * The account picker: find an observed account by any value a source reports
- * and hand the choice back to the caller.
- *
- * The mirror of {@link PersonPicker}, and a finding tool for the same reason:
- * it never fires a verb itself. Inside the person window a click on a row
- * means "bind this one to the person I have open" — the same gesture the person
- * picker carries inside the account window, pointing the other way.
- *
- * A blank field lists nothing on purpose. The tenant's whole fold would bury
- * the handful of accounts the person actually holds, which is what the reader
- * is looking at right above this.
- */
 import { Search } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,7 +19,6 @@ import { cn } from "@/lib/utils";
 
 export function AccountPicker({
   onPick,
-  /** Accounts already listed by the caller — filtered out, not repeated. */
   excludeKeys = [],
   placeholder,
 }: {
@@ -46,8 +32,6 @@ export function AccountPicker({
   const search = useAccountList(debounced, "match");
 
   const excluded = new Set(excludeKeys);
-  // The shared rule, never a second spelling of it: a list rendered for terms
-  // the query never asked for is another caller's cache.
   const asked = listsAnyAccount(debounced, "match");
   const items = asked
     ? (search.data?.pages ?? [])
@@ -55,16 +39,12 @@ export function AccountPicker({
         .filter((item) => !excluded.has(accountKey(item)))
     : [];
   const loading = search.isFetching && !search.isFetchingNextPage;
-  // These rows answer the term the query key carries, not the one in the field,
-  // until the debounce fires AND the fetch lands. Marked rather than hidden, so
-  // the list does not blank between keystrokes — and never read as the answer.
-  const behind = query !== debounced || search.isPlaceholderData;
-  // A page whose every row was filtered out is not "nothing matches" while more
-  // pages are unread — the next page is the answer, not the message.
+  const answersPreviousTerm = query !== debounced || search.isPlaceholderData;
   const exhausted = !search.hasNextPage;
+  const unreadPage = asked && search.hasNextPage;
   const scroller = useRef<HTMLDivElement>(null);
   const loadMore = useAutoLoadOnScroll({
-    hasNextPage: Boolean(asked && search.hasNextPage),
+    hasNextPage: unreadPage,
     isFetchingNextPage: search.isFetchingNextPage,
     fetchNextPage: () => void search.fetchNextPage(),
     root: scroller,
@@ -72,22 +52,17 @@ export function AccountPicker({
 
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="relative w-full shrink-0">
-        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="w-full shrink-0">
         <Input
           type="search"
-          className={cn(
-            "ps-8",
-            loading && "pe-8 [&::-webkit-search-cancel-button]:hidden"
-          )}
+          icon={<Search />}
+          end={loading ? <Spinner /> : undefined}
+          className={cn(loading && "[&::-webkit-search-cancel-button]:hidden")}
           placeholder={placeholder}
           aria-label={placeholder}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        {loading ? (
-          <Spinner className="absolute end-2.5 top-1/2 size-4 -translate-y-1/2" />
-        ) : null}
       </div>
       {asked && search.isError ? (
         <p className="text-sm text-destructive">
@@ -98,22 +73,21 @@ export function AccountPicker({
       search.data &&
       items.length === 0 &&
       !loading &&
-      !behind &&
+      !answersPreviousTerm &&
       exhausted ? (
         <p className="text-sm text-muted-foreground">
           {t("identities.accounts.no_matches")}
         </p>
       ) : null}
-      {/* Rendered for an unread next page even with nothing visible: a page
-          whose every row was filtered out has no rows to scroll, and the marker
-          is the only thing that can ask for the page that does. It has to live
-          INSIDE the scroller — an observer never reports a target that is not a
-          descendant of its root. */}
-      {items.length > 0 || (asked && search.hasNextPage) ? (
+      {/* WORKAROUND: an IntersectionObserver only reports targets inside its root, so the marker stays inside the scroller. */}
+      {items.length > 0 || unreadPage ? (
         <div ref={scroller} className="min-h-0 max-h-64 overflow-y-auto">
           <ul
-            aria-busy={behind}
-            className={cn("flex flex-col gap-1", behind && "opacity-60")}
+            aria-busy={answersPreviousTerm}
+            className={cn(
+              "flex flex-col gap-1",
+              answersPreviousTerm && "opacity-60"
+            )}
           >
             {items.map((item) => (
               <li key={accountKey(item)}>
@@ -121,7 +95,7 @@ export function AccountPicker({
               </li>
             ))}
           </ul>
-          {asked && search.hasNextPage ? (
+          {unreadPage ? (
             <p
               ref={loadMore}
               aria-live="polite"
@@ -138,13 +112,6 @@ export function AccountPicker({
   );
 }
 
-/**
- * One account offered for binding — with whoever holds it now.
- *
- * The holder is the whole reason this row is not a plain label: binding an
- * account somebody else holds takes it off them, and that has to be visible
- * before the click, not in the confirmation after it.
- */
 function AccountOption({
   item,
   onPick,
@@ -159,9 +126,7 @@ function AccountOption({
     item.display_name?.trim() ||
     item.account_id;
   return (
-    // Not a <button>: the holder's card carries its own copy control, and a
-    // button may neither nest one nor let its text be selected — the same rule
-    // the queue rows and the person picker follow.
+    // WORKAROUND: a <button> may not nest the copy control and blocks text selection.
     <div
       role="button"
       tabIndex={0}
@@ -173,9 +138,6 @@ function AccountOption({
         event.preventDefault();
         onPick();
       }}
-      // The holder is the whole reason this row is not a plain label, so the
-      // name has to carry them: without it a reader hears the address, presses
-      // Enter, and only learns in the confirmation that it is somebody else's.
       aria-label={[
         label,
         item.source,
@@ -198,7 +160,7 @@ function AccountOption({
       {item.person ? (
         <PersonCell person={item.person} />
       ) : item.excluded ? (
-        <Badge variant="outline" className="justify-self-start font-normal">
+        <Badge variant="outline" className="justify-self-start">
           {t("identities.accounts.excluded")}
         </Badge>
       ) : (

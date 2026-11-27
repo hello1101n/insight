@@ -77,8 +77,10 @@ class PortalShell:
             failed: list[str] = []
 
             def record(request: Request) -> None:
-                if request.resource_type in ("script", "stylesheet") and (
-                    request.failure != "net::ERR_ABORTED"
+                if (
+                    request.resource_type in ("script", "stylesheet")
+                    and request.failure != "net::ERR_ABORTED"
+                    and urlsplit(request.url).netloc == urlsplit(self.page.url).netloc
                 ):
                     failed.append(f"{urlsplit(request.url).path} {request.failure}")
 
@@ -130,6 +132,16 @@ class PortalShell:
     def open_zone(self, zone: str) -> None:
         with step(f"Open the {zone} zone"):
             entry = self.entry(self.safe_navigation(self.rail.zones()), zone)
+            entry.click()
+
+    def reopen_zone(self, zone: str) -> None:
+        with step(f"Open the {zone} zone afresh"):
+            zones = self.safe_navigation(self.rail.zones())
+            entry = self.entry(zones, zone)
+            # Picking the open zone's own rail item keeps the page that is open.
+            if entry.get_attribute("data-active") is not None:
+                zones.and_(self.page.locator(":not([data-active])")).first.click()
+                expect(entry).not_to_have_attribute("data-active", re.compile(".*"))
             entry.click()
 
     def open_pane_entry(self, label: str) -> None:

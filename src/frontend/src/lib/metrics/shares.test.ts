@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMetricNumber } from "@/lib/format";
+import { formatHoursDuration, formatMetricNumber } from "@/lib/format";
 import { displayedParts, percentShareLabels } from "@/lib/metrics/shares";
 
 const sum = (labels: string[]) =>
@@ -72,5 +72,16 @@ describe("displayedParts", () => {
 
   it("leaves integer parts that sum to the total as they are", () => {
     expect(displayedParts([3, 4], 7, "integer")).toEqual([3, 4]);
+  });
+
+  it.each([
+    { parts: [58.06, 6.89], total: 64.95, shown: "64 h 57 min" },
+    { parts: [0.51, 0.51, 0.51], total: 1.53, shown: "1 h 32 min" },
+    { parts: [90.4, 30.4], total: 120.8, shown: "120 h 48 min" },
+  ])("hour parts add up to the shown clock time $shown", ({ parts, total, shown }) => {
+    const shownParts = displayedParts(parts, total, "decimal", "h");
+    const minutes = shownParts.reduce((sum, part) => sum + Math.round(part * 60), 0);
+    expect(formatHoursDuration(minutes / 60)).toBe(shown);
+    expect(formatHoursDuration(total)).toBe(shown);
   });
 });

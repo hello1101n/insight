@@ -8,7 +8,6 @@ import { tenantData } from "./data";
 
 const DUMBBELL_LIMIT = 12;
 
-/** One metric split two ways per dimension value — e.g. fail vs pass medians. */
 export function DumbbellSection({
   section,
   resolve,
@@ -35,7 +34,7 @@ export function DumbbellSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="flex flex-col gap-2 p-4">
+        <CardContent className="flex flex-col gap-2">
           {section.description ? (
             <p className="text-xs text-muted-foreground">{section.description}</p>
           ) : null}

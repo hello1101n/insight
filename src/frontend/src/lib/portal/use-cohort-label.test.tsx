@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The noun a peer comparison uses. Three surfaces hardcoded it while injecting
- * stats from the slice cohort, so "vs department median" could sit over
- * manager-cohort numbers — a comparison naming the wrong pool of people, which
- * is worse than one naming none.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -60,7 +54,6 @@ beforeEach(() => {
   portalRouter.reset();
   act(() => setPortalShowPlanned(true));
   mocks.isFlat = false;
-  // A roster that offers two real dimensions, so a slice has something to name.
   mocks.tree = person("boss", {}, [
     person("a", { division: "R&D", job_title: "Engineer" }),
     person("b", { division: "Sales", job_title: "Rep" }),
@@ -115,8 +108,6 @@ describe("useCohortLabel", () => {
   });
 
   it("falls back to 'cohort' for a slice the roster cannot offer", () => {
-    // A shared link may name a dimension this org does not have. Saying
-    // "cohort" is honest; echoing the unknown key would invent a group.
     act(() => portalRouter.set({ slice: "office" }));
     expect(renderHook(() => useCohortLabel()).result.current).toBe("cohort");
   });

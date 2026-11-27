@@ -1,0 +1,37 @@
+schemas:
+  bronze_bitbucket_cloud.pipelines:
+    $schema: http://json-schema.org/draft-07/schema#
+    type: object
+    additionalProperties: false
+    properties:
+      _airbyte_raw_id: { type: string }
+      _airbyte_extracted_at: { type: string, format: date-time }
+      _airbyte_meta: { type: string }
+      _airbyte_generation_id: { type: integer }
+      unique_key: { type: [string, "null"] }
+      tenant_id: { type: [string, "null"] }
+      source_id: { type: [string, "null"] }
+      data_source: { type: [string, "null"] }
+      collected_at: { type: [string, "null"] }
+      uuid: { type: [string, "null"] }
+      build_number: { type: [integer, "null"] }
+      run_number: { type: [integer, "null"] }
+      repo_full_name: { type: [string, "null"] }
+      state_name: { type: [string, "null"] }
+      result_name: { type: [string, "null"] }
+      state_stage: { type: [string, "null"] }
+      target_ref: { type: [string, "null"] }
+      target_commit_sha: { type: [string, "null"] }
+      target_type: { type: [string, "null"] }
+      selector_type: { type: [string, "null"] }
+      selector_pattern: { type: [string, "null"] }
+      source_branch: { type: [string, "null"] }
+      trigger_name: { type: [string, "null"] }
+      creator_uuid: { type: [string, "null"] }
+      creator_account_id: { type: [string, "null"] }
+      creator_display_name: { type: [string, "null"] }
+      duration_in_seconds: { type: [integer, "null"] }
+      created_on: { type: [string, "null"] }
+      run_creation_date: { type: [string, "null"] }
+      completed_on: { type: [string, "null"] }
+      changed_on: { type: [string, "null"] }

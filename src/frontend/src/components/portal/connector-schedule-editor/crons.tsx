@@ -1,7 +1,15 @@
+import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { Button, Input } from "@gears-frontx/ui-kit";
+import {
+  Button,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@gears-frontx/ui-kit";
 
 import { rowIndex, type Violation } from "./refusals";
 
@@ -40,8 +48,13 @@ function CronRow({
   }, [cron, edited, showClientErrors, hasClientErrors]);
 
   const rowErrors = [...(showClientErrors ? clientErrors : []), ...errors];
+  const hint = rowErrors.length
+    ? rowErrors.map((error) => error.description).join(" ")
+    : !cron.trim()
+      ? t("connectors.editor.empty_expression")
+      : null;
   return (
-    <div className="flex min-w-0 flex-wrap items-start gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
       <Input
         ref={inputRef}
         aria-label={t("connectors.editor.expression_label", {
@@ -49,7 +62,7 @@ function CronRow({
         })}
         aria-invalid={rowErrors.length > 0}
         aria-describedby={id}
-        className="w-[24ch] max-w-full min-w-0 font-mono text-sm"
+        className="w-[24ch] max-w-full min-w-0 font-mono"
         value={cron}
         placeholder="0 */6 * * *"
         onChange={(event) => {
@@ -60,22 +73,12 @@ function CronRow({
           if (cron.trim()) setRevealed(true);
         }}
       />
-      <p
-        id={id}
-        role={rowErrors.length ? "alert" : undefined}
-        className={`min-w-0 flex-1 basis-32 pt-2 text-xs ${rowErrors.length ? "text-destructive" : "text-muted-foreground"}`}
-      >
-        {rowErrors.length
-          ? rowErrors.map((error) => error.description).join(" ")
-          : !cron.trim()
-            ? t("connectors.editor.empty_expression")
-            : null}
-      </p>
       {onRemove && (
         <Button
           type="button"
           size="sm"
           variant="ghost"
+          className="shrink-0"
           icon="×"
           aria-label={t("connectors.editor.remove_expression", {
             index: index + 1,
@@ -83,6 +86,14 @@ function CronRow({
           onClick={onRemove}
         />
       )}
+      <p
+        id={id}
+        hidden={!hint}
+        role={rowErrors.length ? "alert" : undefined}
+        className={`min-w-0 basis-full text-xs ${rowErrors.length ? "text-destructive" : "text-muted-foreground"}`}
+      >
+        {hint}
+      </p>
     </div>
   );
 }
@@ -115,16 +126,34 @@ export function CronRows({
 
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>{t("connectors.editor.fields")}</span>
-        <a
-          href="https://crontab.guru"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline"
-        >
-          {t("connectors.editor.syntax_help")}
-        </a>
+        <Popover>
+          <PopoverTrigger
+            openOnHover
+            render={<button type="button" />}
+            className="inline-flex min-h-6 cursor-help items-center gap-1 rounded-sm text-primary focus-visible:outline-2"
+          >
+            <CircleHelp className="size-3.5 shrink-0" aria-hidden="true" />
+            {t("connectors.editor.syntax_help")}
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            initialFocus={false}
+            className="w-72 max-w-[calc(100vw-1.5rem)] space-y-2 text-xs"
+          >
+            <PopoverTitle className="text-sm font-semibold">
+              {t("connectors.editor.syntax_help")}
+            </PopoverTitle>
+            <p>{t("connectors.editor.syntax_help_fields")}</p>
+            <p>{t("connectors.editor.syntax_help_symbols")}</p>
+            <p>
+              <code className="font-mono">0 10 * * 1-5</code>
+              {" · "}
+              {t("connectors.editor.syntax_help_example")}
+            </p>
+          </PopoverContent>
+        </Popover>
       </div>
       {crons.map((cron, index) => (
         <CronRow
@@ -159,7 +188,6 @@ export function CronRows({
           type="button"
           size="sm"
           variant="link"
-          className="h-auto px-0"
           disabled={crons.length >= 10}
           onClick={() => {
             focusAfterChange.current = crons.length;

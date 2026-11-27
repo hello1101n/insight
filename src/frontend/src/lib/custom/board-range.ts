@@ -1,12 +1,8 @@
+import type { DashboardWidget, RunOptions, Widget } from "@/api/custom-client";
+
+import { drawsBucket } from "./draws-bucket";
 import { isRangeToken, toInterval } from "./time-range";
 
-/**
- * Which window a board opens on: what the URL asked for, else the board's own
- * default, else the first window it offers.
- *
- * A board offering none has no picker and no window — it reads every row, as
- * every board did before ranges existed.
- */
 export function selectedRange(
   offered: string[] | undefined,
   fallback: string | undefined,
@@ -23,4 +19,25 @@ export function selectedRange(
   if (usable(fallback)) return fallback;
 
   return offered[0];
+}
+
+export function runOptions(
+  widget: DashboardWidget,
+  range: string | undefined,
+): RunOptions | undefined {
+  return range && widget.clock
+    ? { range, bucket: drawsBucket(widget.body) }
+    : undefined;
+}
+
+const ALL_TIME = "inf";
+
+export function previousOptions(
+  widget: Widget,
+  options: RunOptions | undefined,
+): RunOptions | undefined {
+  const bounded = options?.range !== undefined && options.range !== ALL_TIME;
+  const compares = widget.type === "stat" && widget.compare !== undefined;
+
+  return bounded && compares ? { ...options, previous: true } : undefined;
 }

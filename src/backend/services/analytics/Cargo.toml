@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 insight-clickhouse = { workspace = true }
+insight-external-sources = { workspace = true }
 insight-http-metrics = { workspace = true }
 insight-log-context = { workspace = true }
 insight-openapi = { workspace = true }

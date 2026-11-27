@@ -137,3 +137,55 @@ def test_successful_apply_logs_a_release_failure_without_failing(caller: str, tm
     assert warnings == ["example-connector: schedule lock release failed: ScheduleReadError"]
     assert not any(entry["level"] == "error" for entry in logs)
     assert result.stderr == ""
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_options", "manifest"),
+    [
+        (
+            "argo_submit_sync_trigger example-connector example-connection example-tenant main example-model",
+            ["--create", "--connector", "example-connector", "--source-id", "main"],
+            "kind: Workflow",
+        ),
+        (
+            "argo_apply_cronworkflow example-connector example-connection '0 0 * * *' example-tenant "
+            "main example-model default $'default\\n0 0 * * *' 11111111-1111-1111-1111-111111111111",
+            [
+                "--connector",
+                "example-connector",
+                "--source-id",
+                "main",
+                "--connection-id",
+                "11111111-1111-1111-1111-111111111111",
+            ],
+            "kind: CronWorkflow",
+        ),
+    ],
+    ids=["one-shot-create", "managed-connection"],
+)
+def test_argo_passes_the_manifest_and_options_to_the_schedule_helper(
+    action: str, expected_options: list[str], manifest: str
+) -> None:
+    script = f"""
+    set -euo pipefail
+    export INSIGHT_NAMESPACE=example-namespace CONNECTOR_SCHEDULES_DB_NAME=example ARGO_SERVICE_ACCOUNT=example-account
+    source "{ROOT}/lib/argo.sh"
+    python3() {{
+      if [[ "$1" == "${{ARGO_PY_DIR}}/apply_connector_schedule.py" ]]; then
+        shift
+        printf '%s\\n' "$@"
+        printf '\\n'
+        cat
+      else
+        command python3 "$@"
+      fi
+    }}
+    _argo_delete_cronworkflow_named() {{ return 0; }}
+    {action}
+    """
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    options, _, rendered = result.stdout.partition("\n\n")
+    assert options.splitlines() == expected_options
+    assert manifest in rendered.splitlines()

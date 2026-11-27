@@ -57,6 +57,10 @@ spec:
             - "-c"
             - "bash /ingestion/reconcile-connectors/main.sh"
           env:
+            {{- with .Values.ingestion.syncResourceDefaults }}
+            - name: CONNECTOR_RESOURCE_DEFAULTS
+              value: {{ . | toJson | quote }}
+            {{- end }}
             {{- include "insight.connectorSchedulesEnv" . | nindent 12 }}
             # Correlation id stamped on every JSON log line (lib/log.sh):
             # one tick's lines group in Loki via `| json | run_id="..."`.
@@ -122,14 +126,23 @@ spec:
             - name: RECONCILE_DEST_CLICKHOUSE_PROTOCOL
               value: {{ include "insight.clickhouse.protocol" . | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_DATABASE
-              value: {{ include "insight.clickhouse.database" . | quote }}
+              value: {{ include "insight.clickhouse.destinationDatabase" . | quote }}
             - name: RECONCILE_DEST_CLICKHOUSE_USERNAME
+              value: {{ include "insight.clickhouse.syncUser" . | quote }}
+            {{- $passwordRef := (include "insight.clickhouse.syncPasswordRef" . | fromYaml).valueFrom.secretKeyRef }}
+            - name: RECONCILE_SYNC_PASSWORD_SECRET
+              value: {{ $passwordRef.name | quote }}
+            - name: RECONCILE_SYNC_PASSWORD_KEY
+              value: {{ $passwordRef.key | quote }}
+            - name: RECONCILE_DESTINATION_STATE
+              value: {{ include "insight.fullname" . }}-reconcile-destinations
+            - name: RECONCILE_SWEEP_CLICKHOUSE_USERNAME
               value: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
-            - name: RECONCILE_DEST_CLICKHOUSE_PASSWORD
+            - name: RECONCILE_SWEEP_CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
-                  key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+                  key: {{ required "clickhouse.passwordSecret.key is required" .Values.clickhouse.passwordSecret.key | quote }}
             # Topology of the target ClickHouse (epic #2010). The Bronze
             # destination is the only creator of bronze tables, so it has to
             # know whether to emit `Replicated*` engines and `ON CLUSTER`.

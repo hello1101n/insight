@@ -25,7 +25,7 @@ import {
   datasetQuery,
   datasetRecordsQuery,
   metricQuery,
-  PREVIEW_ROWS,
+  ASSUMED_FIRST_PAGE_ROWS,
 } from "@/queries/custom";
 import { TEXT_BODY, TEXT_HEADING, TEXT_LABEL } from "@/lib/type-scale";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,6 @@ export const Route = createFileRoute("/_shell/dashboards/datasets/$name")({
   component: DatasetPage,
 });
 
-/** The dataset a path names, read from the path the rail navigated to. */
 function datasetNameFromPath(pathname: string): string {
   const match = pathname.match(/^\/dashboards\/datasets\/([^/]+)/);
 
@@ -51,8 +50,6 @@ function DatasetPage() {
       <CenteredSpinner data-testid="page-custom-dataset" className="min-h-40" />
     );
 
-  // A dataset mid-create or mid-removal is not found, so the page says which
-  // one rather than asking for its records or what reads it.
   if (dataset.isError) {
     return (
       <div data-testid="page-custom-dataset" className="flex flex-col gap-2">
@@ -108,7 +105,6 @@ function DatasetPage() {
   );
 }
 
-/** What the records hold, field by field, as the declaration says it. */
 function Declaration({
   fields,
   identity,
@@ -119,7 +115,7 @@ function Declaration({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Declaration</CardTitle>
+        <CardTitle>Declaration</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <ul className="flex flex-col gap-2">
@@ -159,7 +155,6 @@ function Declaration({
   );
 }
 
-/** How many declared fields a table shows before the reader picks. */
 const COLUMNS_AT_FIRST = 10;
 
 function Records({
@@ -181,15 +176,11 @@ function Records({
     serialize: (value) => JSON.stringify(value),
   });
 
-  // How wide a page is belongs to the service: its cap is an installation's
-  // setting. Stepping by a number of our own would walk past whatever a
-  // narrower page left behind. Only the first read, before any page has come
-  // back, goes by the assumption.
-  const [stride, setStride] = useState(PREVIEW_ROWS);
+  const [servedPageSize, setServedPageSize] = useState(ASSUMED_FIRST_PAGE_ROWS);
 
   const records = useQuery(
     datasetRecordsQuery(name, {
-      offset: page * stride,
+      offset: page * servedPageSize,
       orderBy: ordering.by,
       descending: ordering.descending,
     })
@@ -197,7 +188,7 @@ function Records({
 
   const waiting = records.isPlaceholderData;
   const held = records.data?.limit;
-  if (held !== undefined && held !== stride) setStride(held);
+  if (held !== undefined && held !== servedPageSize) setServedPageSize(held);
 
   const order = (next: Ordering) => {
     setOrdering(next);
@@ -207,7 +198,7 @@ function Records({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className={TEXT_HEADING}>Records</CardTitle>
+        <CardTitle>Records</CardTitle>
       </CardHeader>
       <CardContent>
         {records.isPending ? (
@@ -242,7 +233,7 @@ function Records({
             />
             <Paging
               page={page}
-              stride={stride}
+              servedPageSize={servedPageSize}
               held={records.data.records.length}
               total={records.data.total}
               waiting={waiting}
@@ -255,26 +246,23 @@ function Records({
   );
 }
 
-/** Which records of the whole this page is, and the way to the others. */
 function Paging({
   page,
-  stride,
+  servedPageSize,
   held,
   total,
   waiting,
   onPage,
 }: {
   page: number;
-  /** The page size the service applied, which it reports with the page. */
-  stride: number;
+  servedPageSize: number;
   held: number;
   total: number;
-  /** The rows on screen are the page before this one, still.  */
   waiting: boolean;
   onPage: (page: number) => void;
 }) {
-  const first = page * stride + 1;
-  const last = page * stride + held;
+  const first = page * servedPageSize + 1;
+  const last = page * servedPageSize + held;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -310,13 +298,6 @@ function Paging({
   );
 }
 
-/**
- * The columns a reader last picked, as they were stored.
- *
- * SAFETY: a stored value is whatever is in the browser, and asserting a shape
- * it never checked took the page down with a TypeError nothing in the UI
- * could clear. Anything unrecognised falls back to the default.
- */
 function storedColumns(raw: string): string[] | undefined {
   const held: unknown = JSON.parse(raw);
   if (!Array.isArray(held)) return undefined;
@@ -325,7 +306,6 @@ function storedColumns(raw: string): string[] | undefined {
   return held;
 }
 
-/** Every metric that reads this dataset, which a removal would break. */
 function Dependents({ name }: { name: string }) {
   const dependents = useQuery(datasetDependentsQuery(name));
   const metrics = useQueries({

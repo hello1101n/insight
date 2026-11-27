@@ -1,6 +1,7 @@
+import { ADMIN_ROLE_ID } from "@/queries/identity-me";
+
 import { PEOPLE } from "./registry";
 
-const ADMIN_ROLE_ID = "a4d11000-0000-4000-8000-000000000001";
 const TENANT_ID = "00000000-0000-4000-8000-00000000c0de";
 const SEEDED_AT = "2026-09-01T09:00:00Z";
 
@@ -33,10 +34,6 @@ function seeded(personId: string, index: number): [string, MockPersonRole] {
   ];
 }
 
-/**
- * Two administrators, so the tenant is never admin-less and a dashboard has
- * someone to be shared with; everyone else holds no assignment.
- */
 export const ADMIN_ASSIGNMENTS = new Map<string, MockPersonRole>(
   PEOPLE.slice(0, 2).map((person, index) => seeded(person.person_id, index))
 );

@@ -1,11 +1,3 @@
-/**
- * The server's answer to a correction, verbatim — three counters, never a bare
- * "done".
- *
- * Shown where a verb did NOT settle everything it named: those accounts kept
- * their bindings, so the operator still has a decision to take and needs the
- * counters to see it. The toast beside it comes from `useCorrectionReport`.
- */
 import { useTranslation } from "react-i18next";
 
 import type { CorrectionResponse } from "@/api/identity-client";
@@ -34,13 +26,13 @@ export function OutcomeAlert({ outcome }: { outcome: CorrectionResponse }) {
           </Badge>
         ) : null}
         {refused > 0 ? (
-          <Badge variant="secondary" className="bg-destructive/15 text-destructive">
+          <Badge variant="destructive">
             {t("identities.outcomes.refused", { count: refused })}
           </Badge>
         ) : null}
       </AlertTitle>
       {outcome.new_person_id ? (
-        <AlertDescription className="font-mono text-xs">
+        <AlertDescription className="font-mono">
           {t("identities.outcomes.new_person")} {outcome.new_person_id}
         </AlertDescription>
       ) : null}

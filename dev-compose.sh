@@ -872,6 +872,11 @@ YML
     if ! contains "$ghcr_list" connectors; then
       "${compose_cmd[@]}" build connectors
     fi
+    # WORKAROUND: `compose up` builds an image only when its tag is missing,
+    # and every checkout on this machine shares the :dev tags.
+    if [[ -z "${INSIGHT_V3_CORE_IMAGE:-}" ]]; then
+      "${compose_cmd[@]}" build insight-v3-core
+    fi
     if [[ "$no_frontend" != "true" && "$FRONTEND_MODE" == "built" ]]; then
       echo "--- Frontend: pnpm build"
       "${compose_cmd[@]}" --profile build run --rm build-frontend

@@ -12,6 +12,9 @@ global:
     enabled: false
     publicUrl: ""
     jwksUrl: ""
+  # The source systems that drilldown rows link to: `id`, `provider` and
+  # `webBaseUrl` for each. The umbrella sets the same list for analytics.
+  externalSources: []
 
 # The custom-surface MCP server's own listener. Enabled by global.mcp.
 mcp:

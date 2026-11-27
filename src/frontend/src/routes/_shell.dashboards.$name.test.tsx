@@ -57,6 +57,11 @@ vi.mock("recharts", async (importOriginal) => ({
     </div>
   ),
 }));
+vi.mock("@/components/custom/frontx-board", () => ({
+  default: ({ id, range }: { id: string; range?: string }) => (
+    <div data-testid="frontx-board" data-id={id} data-range={range ?? ""} />
+  ),
+}));
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
     getVirtualItems: () =>
@@ -70,18 +75,18 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as customClient from "@/api/custom-client";
 import type { DashboardWidget, Widget } from "@/api/custom-client";
+import { setPortalShowPlanned } from "@/lib/portal/portal-store";
 import { portalRouter } from "@/test/portal-router";
 
 import { Route } from "./_shell.dashboards.$name";
 
-/** What every read here carries besides its body. */
 const READ = {
   name: "engineering",
   tags: [],
@@ -166,6 +171,48 @@ describe("/dashboards/$name", () => {
     );
     expect(customClient.runMetric).not.toHaveBeenCalled();
     expect(customClient.fetchMetric).not.toHaveBeenCalled();
+  });
+
+  it("runs a compared stat once more over the previous period and shows the change", async () => {
+    vi.mocked(customClient.fetchDashboardRead).mockResolvedValue({
+      ...READ,
+      body: {
+        title: "Engineering",
+        widgets: ["deploys"],
+        time_ranges: ["P30D"],
+        default_range: "P30D",
+      },
+    });
+    vi.mocked(customClient.fetchDashboardWidgets).mockResolvedValue([
+      drawn(
+        "deploys",
+        { type: "stat", metric: "m", value: "n", compare: {} },
+        CLOCK
+      ),
+    ]);
+    vi.mocked(customClient.runDashboardWidget).mockImplementation(
+      async (_board, _widget, options) => ({
+        columns: ["n"],
+        rows: [[options?.previous ? 100 : 125]],
+      })
+    );
+    portalRouter.go("/dashboards/engineering");
+
+    render(<Component />, { wrapper });
+
+    expect(
+      await screen.findByText("+25% since the previous period")
+    ).toBeInTheDocument();
+    expect(customClient.runDashboardWidget).toHaveBeenCalledWith(
+      "engineering",
+      "deploys",
+      { range: "P30D", bucket: false }
+    );
+    expect(customClient.runDashboardWidget).toHaveBeenCalledWith(
+      "engineering",
+      "deploys",
+      { range: "P30D", bucket: false, previous: true }
+    );
   });
 
   it("opens the rows behind a widget for an administrator, through the dashboard", async () => {
@@ -428,6 +475,79 @@ describe("/dashboards/$name", () => {
     expect(
       await screen.findByRole("button", { name: /retry/i })
     ).toBeInTheDocument();
+  });
+});
+
+describe("/dashboards/$name — with planned sections on", () => {
+  afterEach(() => setPortalShowPlanned(false));
+
+  it("draws the board through FrontX on the selected window and keeps the page around it", async () => {
+    setPortalShowPlanned(true);
+    boardOfCommits({
+      body: {
+        title: "Engineering",
+        widgets: ["commits_table"],
+        time_ranges: ["P7D", "P30D"],
+        default_range: "P30D",
+      },
+    });
+
+    render(<Component />, { wrapper });
+
+    const board = await screen.findByTestId("frontx-board");
+    expect(board).toHaveAttribute("data-id", "engineering");
+    expect(board).toHaveAttribute("data-range", "P30D");
+    expect(
+      screen.getByRole("heading", { name: "Engineering" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Period" })).toBeInTheDocument();
+  });
+
+  it("starts each widget's run on the selected window while the FrontX board loads", async () => {
+    setPortalShowPlanned(true);
+    vi.mocked(customClient.fetchDashboardRead).mockResolvedValue({
+      ...READ,
+      body: {
+        title: "Engineering",
+        widgets: ["opened_line", "commits_table"],
+        time_ranges: ["P7D", "P30D"],
+        default_range: "P30D",
+      },
+    });
+    vi.mocked(customClient.fetchDashboardWidgets).mockResolvedValue([
+      drawn(
+        "opened_line",
+        { type: "line", metric: "opened", x: "bucket", y: "total" },
+        CLOCK
+      ),
+      COMMITS_TABLE,
+    ]);
+    vi.mocked(customClient.runDashboardWidget).mockResolvedValue({
+      columns: ["day", "lines"],
+      rows: [],
+    });
+    portalRouter.go("/dashboards/engineering");
+
+    render(<Component />, { wrapper });
+
+    await vi.waitFor(() =>
+      expect(vi.mocked(customClient.runDashboardWidget).mock.calls).toEqual([
+        ["engineering", "opened_line", { range: "P30D", bucket: true }],
+        ["engineering", "commits_table", undefined],
+      ])
+    );
+  });
+
+  it("goes back to the current board when planned sections turn off", async () => {
+    setPortalShowPlanned(true);
+    boardOfCommits();
+    render(<Component />, { wrapper });
+    await screen.findByTestId("frontx-board");
+
+    act(() => setPortalShowPlanned(false));
+
+    expect(await screen.findByRole("cell", { name: "59" })).toBeInTheDocument();
+    expect(screen.queryByTestId("frontx-board")).not.toBeInTheDocument();
   });
 });
 

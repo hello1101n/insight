@@ -18,17 +18,6 @@ import {
   validateMetricsViewSearch,
 } from "./portal-search";
 
-/**
- * Search params are user-editable text and arrive from links other people
- * wrote. The contract is to DEGRADE — drop what makes no sense and fall back to
- * a computed default — never to error, because the alternative is an error
- * boundary in place of a dashboard over one mistyped character.
- */
-/**
- * What a route reads: the router spreads the validated search over the parent
- * match's, and the root route's is the raw query string. A key the validator
- * drops therefore has to come back as `undefined`, not be omitted.
- */
 function asMatched(raw: Record<string, unknown>): Record<string, unknown> {
   return { ...raw, ...validateGlobalSearch(raw) };
 }
@@ -69,8 +58,6 @@ describe("the identities console keys", () => {
 
 describe("the repository under inspection", () => {
   it("keeps a repository by its dimension value and drops an empty one", () => {
-    // By VALUE, so a shared link reproduces the one that was opened even when
-    // two share a display name.
     expect(validateExploreSearch({ repo: "src-a:acme/api" }).repo).toBe("src-a:acme/api");
     expect(validateExploreSearch({ repo: "" }).repo).toBeUndefined();
   });
@@ -143,7 +130,6 @@ describe("Metrics view links", () => {
 });
 
 describe("applySearchPatch", () => {
-  /** The real middleware the portal routes install, over the patched result. */
   function afterRetain(
     prev: Record<string, unknown>,
     patched: Record<string, unknown>
@@ -156,9 +142,6 @@ describe("applySearchPatch", () => {
   }
 
   it("survives retention when a key is cleared", () => {
-    // Choosing a preset clears the custom range. Deleting the keys handed them
-    // back: the middleware restores whatever is absent, so the range stayed in
-    // force and the preset did nothing.
     const prev = { period: "month", from: "2026-05-01", to: "2026-05-08" };
     const patched = applySearchPatch(prev, {
       period: "quarter",

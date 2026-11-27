@@ -1,16 +1,9 @@
 // @vitest-environment jsdom
-/**
- * The Ingestion lens. Two things are load-bearing beyond "it renders": the
- * drill-down is a URL write (so a reload and a shared link reproduce it), and
- * the trend axis is configured so a one-row bucket is still a visible bar.
- */
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IngestionIntensity } from "@/api/ingestion-client";
 
-// Recharts needs a real layout; every assertion here is about what the view
-// HANDS the chart, so the primitives report their props as data attributes.
 vi.mock("recharts", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   BarChart: ({ data, children }: { data: unknown[]; children: React.ReactNode }) => (
@@ -91,7 +84,6 @@ function reply(req: Record<string, unknown>): IngestionIntensity {
     return {
       ...base,
       points: [
-        // A one-row bucket: the case a zero-baselined log axis erases.
         { bucket: "2026-08-26 00:00:00", key: "all", rows: 1 },
         { bucket: "2026-08-26 00:45:00", key: "all", rows: 48_000 },
       ],
@@ -145,19 +137,14 @@ describe("the overview", () => {
     render(<IngestionView connector={mocks.conn} />);
     expect(mocks.asked).toHaveLength(3);
     expect(mocks.asked.every((req) => req.scope === null)).toBe(true);
-    // The trend asks for a lookback, not a resolved instant: resolving one
-    // here would mean reading the clock during a render.
     expect(mocks.asked[0]).toMatchObject({ grain: "15m", series: "total" });
     expect(mocks.asked[0].lookbackDays).toBeGreaterThan(0);
     expect(mocks.asked[0].from).toBeUndefined();
-    // The other two omit the window so the server's per-grain default applies
-    // and the query key stays stable while they refetch.
     expect(mocks.asked[1]).toMatchObject({ grain: "15m" });
     expect(mocks.asked[2]).toMatchObject({ grain: "1s" });
   });
 
   it("states that the timestamps are extraction time, not insert time", () => {
-    // The number is honest only if the page says what it counts.
     render(<IngestionView connector={mocks.conn} />);
     expect(screen.getByText(/extraction intensity, not insert time/)).toBeTruthy();
     expect(screen.getByText(/not deduplicated/)).toBeTruthy();
@@ -205,7 +192,6 @@ describe("the axes", () => {
     const domain = JSON.parse(trend.getAttribute("data-domain") ?? "null") as number[];
     expect(domain[0]).toBeLessThan(1);
     expect(domain[1]).toBe(48_000);
-    // Whole powers of ten: Recharts' own log ticks would print the floor.
     expect(JSON.parse(trend.getAttribute("data-ticks") ?? "null")).toEqual([
       1, 10, 100, 1000, 10_000, 100_000,
     ]);
@@ -223,9 +209,6 @@ describe("the axes", () => {
     const axis = screen.getAllByTestId("x-axis")[0];
     expect(axis.getAttribute("data-key")).toBe("epoch");
     expect(axis.getAttribute("data-type")).toBe("number");
-    // Bounded by the window the SERVER reported, not by the plotted extremes:
-    // a quiet tail must stay visible as empty space. Widened by half a bucket
-    // at each end so the edge bars are not clipped.
     const half = 15 * 60 * 1_000 / 2;
     expect(JSON.parse(axis.getAttribute("data-domain") ?? "null")).toEqual([
       Date.parse("2026-08-26T00:00:00.000Z") - half,

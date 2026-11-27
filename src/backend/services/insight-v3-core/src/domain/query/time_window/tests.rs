@@ -206,3 +206,53 @@ fn a_request_refuses_a_range_nobody_offers() {
         Err(WindowError::Range("P14D".to_owned()))
     );
 }
+
+fn previous(token: Option<&str>, bucketed: Option<bool>) -> Result<WindowRequest, WindowError> {
+    WindowRequest::parse(token, bucketed)
+        .unwrap_or_else(|error| panic!("`{token:?}` parses: {error}"))
+        .previous()
+}
+
+#[test]
+fn a_previous_period_is_as_long_as_the_window_and_ends_where_it_begins() {
+    let now = utc(2026, 9, 10, 15);
+    let cases = [
+        ("PDC", utc(2026, 9, 8, 0), utc(2026, 9, 9, 0)),
+        ("P7D", utc(2026, 8, 27, 15), utc(2026, 9, 3, 15)),
+        ("PMC", utc(2026, 7, 1, 0), utc(2026, 8, 1, 0)),
+        (
+            "2026-09-01/2026-09-04",
+            utc(2026, 8, 29, 0),
+            utc(2026, 9, 1, 0),
+        ),
+    ];
+
+    for (token, from, to) in cases {
+        let window = previous(Some(token), None)
+            .and_then(|requested| requested.resolve(now))
+            .unwrap_or_else(|error| panic!("`{token}` has a previous period: {error}"));
+
+        assert_eq!(bounds(&window), Bounds::Finite { from, to }, "{token}");
+        assert_eq!(window.grain(), resolve(token, now).grain(), "{token}");
+    }
+}
+
+#[test]
+fn a_previous_period_keeps_the_choice_to_answer_one_total() {
+    let window = previous(Some("P7D"), Some(false))
+        .and_then(|requested| requested.resolve(utc(2026, 9, 10, 15)))
+        .unwrap_or_else(|error| panic!("the request resolves: {error}"));
+
+    assert_eq!(window.grain(), None);
+}
+
+#[test]
+fn a_previous_period_needs_a_bounded_range_to_move_back() {
+    for token in [None, Some("inf")] {
+        assert_eq!(
+            previous(token, None),
+            Err(WindowError::NoPreviousPeriod),
+            "should refuse: {token:?}"
+        );
+    }
+}

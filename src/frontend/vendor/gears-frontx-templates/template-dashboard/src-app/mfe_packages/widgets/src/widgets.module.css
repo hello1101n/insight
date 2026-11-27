@@ -1,0 +1,1050 @@
+/* A widget fills the body of its cell; content taller than the cell scrolls inside the Grid item. */
+.fill {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.cannot {
+  margin: auto;
+  text-align: center;
+}
+
+.chart {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.chartShell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+}
+
+.chartActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clickable :global(.recharts-surface) {
+  cursor: pointer;
+}
+
+.legend {
+  flex-wrap: wrap;
+}
+
+/* A legend beside the plot lists its entries in one column, so the plot keeps the width the legend does not take. */
+.legendSide {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.valueLabel {
+  fill: var(--muted-foreground);
+  font-size: var(--text-micro-size);
+}
+
+/* The value of a series' lowest or highest point beside its mark: body text contrast, with a card halo over lines and areas. */
+.extremeLabel {
+  fill: var(--foreground);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+  font-size: var(--text-micro-size);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A reference line and its label, in the muted tone of the axes; the label keeps a card halo where it crosses a series. */
+.referenceLine {
+  pointer-events: none;
+}
+
+.referenceLabel {
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+  font-size: var(--text-micro-size);
+}
+
+/* An axis title from x_axis.label, y_axis.label or y_axis_secondary.label, in the tick colour. */
+.axisTitle {
+  fill: var(--muted-foreground);
+  font-size: var(--text-micro-size);
+}
+
+.lineLabel {
+  /* The series is named by its position at the end of the line; the text keeps the contrast of body text,
+     and a halo in the card colour keeps it readable where the line crosses a bar. */
+  fill: var(--foreground);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+  font-size: var(--text-micro-size);
+  font-weight: var(--text-label-weight);
+}
+
+.grid {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  /* A grid never gets shorter than its header, a few rows and its pager: in a low cell the cell body scrolls instead. */
+  min-block-size: 16rem;
+}
+
+.gridLink {
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  white-space: nowrap;
+}
+
+.gridLink .truncate {
+  min-inline-size: 0;
+}
+
+/* The grid search box: as wide as the toolbar allows, up to a comfortable width. */
+.gridSearch {
+  inline-size: min(100%, 18rem);
+}
+
+/* A badge cell: a long status wraps inside its column rather than passing it. */
+.gridBadge {
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* A progress cell: the bar takes the room its percent leaves, and the percent never wraps. */
+.gridProgress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.gridProgressBar {
+  flex: 1;
+  min-inline-size: 2rem;
+}
+
+.gridProgressText {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A sparkline cell: a line across the cell in the theme's chart colour, its stroke as thick at any cell width. */
+.gridSpark {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 3rem;
+  block-size: 1.5rem;
+  overflow: visible;
+}
+
+.gridSpark path {
+  fill: none;
+  stroke: var(--chart-1);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.truncate {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alignEnd {
+  text-align: end;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+.rowIcon {
+  block-size: var(--space-4);
+  inline-size: var(--space-4);
+  margin-inline-end: var(--space-1);
+  vertical-align: text-bottom;
+}
+
+.row-success {
+  background: var(--success-soft);
+}
+
+.row-warning {
+  background: var(--warning-soft);
+}
+
+.row-info {
+  background: var(--info-soft);
+}
+
+.row-error {
+  background: var(--danger-soft);
+}
+
+.picked {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.tooltipRow {
+  display: flex;
+  flex: 1;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.tooltipValue {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The root of a widget inside its shadow root: it fills the cell's container. It carries the kit theme scope,
+   whose [data-theme] rule paints the page background; the doubled class keeps the cell's own surface instead. */
+.widgetRoot.widgetRoot {
+  background-color: transparent;
+}
+
+.widgetRoot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+/* A metric card: the headline value with its trend and caption on top, the sparkline taking the room left. */
+.metric {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  flex: 1;
+  min-block-size: 0;
+  /* The sparkline takes only the room the number leaves; nothing draws past the card, and a head and foot taller than a low card scroll. */
+  overflow: hidden auto;
+}
+
+.metricHead {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* The headline's unit word wraps under the number when the card is too narrow for both; a unit wider than the card breaks inside it rather than being clipped. */
+.metricUnit {
+  overflow-wrap: anywhere;
+}
+
+.metricMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.spark {
+  min-block-size: 0;
+}
+
+/* A card's foot link: the last row of the card, under the sparkline or the room it leaves; a long text wraps. */
+.cardFoot {
+  grid-row: 3;
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A summary card: one label/value line per row, in delivered order; it scrolls when the rows outgrow the cell. */
+.summary {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  flex: 1;
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.summaryRow dt,
+.summaryRow dd {
+  margin: 0;
+}
+
+/* A ranked list card: a heading row over the value columns, then one ranked row per data row, in delivered
+   order. The heading, the list and every row share the rank, label, value and secondary tracks by subgrid,
+   so the value columns line up through the card. */
+.ranked {
+  --ranked-columns: var(--space-6) minmax(0, 1fr) auto auto;
+  --ranked-gap: var(--space-3);
+  display: grid;
+  grid-template-columns: var(--ranked-columns);
+  column-gap: var(--ranked-gap);
+  row-gap: var(--space-1);
+  flex: 1;
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.rankedHead,
+.rankedRows,
+.rankedRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  column-gap: var(--ranked-gap);
+}
+
+.rankedHead,
+.rankedRow {
+  align-items: baseline;
+}
+
+.rankedRows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  row-gap: var(--space-2);
+}
+
+/* A row label with its status badge after it: the label wraps, and the badge wraps under it and never passes the label column. */
+.rankedLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+}
+
+.rankedName {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.rankedLabel .rankedStatus {
+  max-inline-size: 100%;
+  /* In a narrow card the label column can be narrower than a status: the badge text wraps rather than being cut. */
+  flex-shrink: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.rankedValue,
+.rankedSecondary {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A progress list card: one label and value line above one bar per row, in delivered order; it scrolls when the rows outgrow the cell. */
+.progressList {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.progressRow {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.progressHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* A bar with an optional goal mark over it: a short upright line in the text colour, its tooltip naming the goal. */
+.progressBar {
+  position: relative;
+}
+
+.progressGoal {
+  position: absolute;
+  inset-block: calc(var(--space-1) * -1);
+  inset-inline-start: clamp(0px, calc(var(--goal-at) - 1px), calc(100% - 2px));
+  inline-size: 2px;
+  border-radius: var(--radius-full);
+  background-color: var(--foreground);
+}
+
+/* An activity feed: one row per item, the title with the time after it, the text under them, in delivered order;
+   it scrolls when the items outgrow the cell. Kit tokens only: the tone marks paint by the shared tone colours. */
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.feedList {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  align-content: start;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.feedRow {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.feedTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-inline-size: 0;
+}
+
+.feedMark-success,
+.feedMark-info,
+.feedMark-warning,
+.feedMark-danger {
+  flex-shrink: 0;
+  align-self: center;
+  block-size: var(--space-4);
+  inline-size: var(--space-4);
+}
+
+.feedMark-success {
+  color: var(--success);
+}
+
+.feedMark-warning {
+  color: var(--warning);
+}
+
+.feedMark-danger {
+  color: var(--danger);
+}
+
+.feedMark-info {
+  color: var(--info);
+}
+
+/* The title takes the room left over and wraps; the time keeps its width and never wraps inside itself. In a narrow
+   cell, where the title would get less than its basis beside the time, the time moves to a line of its own under it. */
+.feedTitle {
+  min-inline-size: 0;
+  flex: 1 1 10rem;
+}
+
+.feedName {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.feedTime {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.feedText {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The Show more row stays at the end of the cell, under the scrolling list. */
+.feedMore {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* A heatmap: the tile grid with its categories and axis titles, the colour scale under it, and the
+   values table for assistive technology. No chart library: a tile mixes the kit chart colour over
+   the card surface by its value's place on the scale, which reaches the tile as --heat-mix. */
+.heat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.heatGrid {
+  --heat-row-min: 1rem;
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  align-items: stretch;
+}
+
+.heatRowAxis,
+.heatColumnAxis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The y categories sit at the start of their row, ending where their tiles begin. */
+.heatRowAxis {
+  align-self: center;
+  justify-self: end;
+  padding-inline-end: var(--space-2);
+}
+
+/* The x categories stand under their columns, each centred and as wide as its text, at most its column, so its width
+   is its text's width while it fits. */
+.heatColumnAxis {
+  inline-size: max-content;
+  max-inline-size: 100%;
+  align-self: start;
+  justify-self: center;
+  text-align: center;
+}
+
+/* Labels wider than their columns: every step-th stands whole under its own column, centred over the unnamed columns
+   beside it, at most as wide as the room the component sets. The labels between are kept in the layout, unseen, so
+   every label is measured again when the cell changes its width. */
+.heatColumnAxisThin {
+  max-inline-size: none;
+}
+
+.heatColumnAxisSkipped {
+  visibility: hidden;
+}
+
+.heatTitle {
+  color: var(--muted-foreground);
+  font-size: var(--text-meta-size);
+  line-height: var(--text-meta-line-height);
+}
+
+.heatTitleX {
+  justify-self: stretch;
+  text-align: center;
+}
+
+.heatCell {
+  display: grid;
+  min-inline-size: var(--space-3);
+  overflow: hidden;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--chart-5) var(--heat-mix, 0%), var(--card));
+  /* A hairline of the same colour keeps even a 0% tile a tile, so an empty gap never reads as a low value. */
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--chart-5) 16%, transparent);
+  color: var(--foreground);
+  font-size: var(--text-micro-size);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* A strong fill takes the value out of the foreground: it reads in the fill's own foreground. */
+.heatCell[data-strong] {
+  color: var(--primary-foreground);
+}
+
+/* A cell the rows left empty, or delivered as null: a gap, not a low value. */
+.heatEmpty {
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* With the values in the cells, a row is at least as tall as its number needs. */
+.heatValues {
+  --heat-row-min: 1.5rem;
+}
+
+/* The heatmap with drill-down: the tiles and the scale, in the chart place of the chart shell. */
+.heatBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+/* A tile that opens the data view: the tile itself, as a button. Only the button's own face is reset: the
+   tile's size, line height and tabular figures stay. */
+.heatButton {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.heatButton:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Calendar mode. The box takes the room the cell leaves and measures it: a tile is as tall as the room each weekday row
+   has in the box's height, after the month row and the colour scale, and as wide as the room each week has in its
+   width; never taller than wide, at most twice as wide as tall, and at least 4px each way. The weekday labels take a
+   fixed column so the arithmetic holds. The calendar and its scale stand centred in the box, the scale under the
+   calendar's end. When even 4px tiles are too wide, the box scrolls sideways inside the cell from the calendar's
+   start; it never scrolls up and down, so a wheel over it still scrolls the page. It is never lower than the month
+   row, seven 4px tiles with their gaps and the scale, so a low cell keeps the whole calendar in view and scrolls the
+   cell instead of cutting it. */
+.heatCalendarBox {
+  --heat-legend-room: calc(var(--text-micro-line-height) + var(--space-2));
+  display: grid;
+  flex: 1;
+  grid-template-columns: max-content;
+  place-content: safe center;
+  gap: var(--space-2);
+  min-block-size: calc(1rem + 7 * (4px + 2px) + var(--heat-legend-room));
+  min-inline-size: 0;
+  container-type: size;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.heatCalendarBox:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.heatCalendar {
+  --heat-day-label: 2rem;
+  --heat-week-room: calc((100cqi - var(--heat-day-label)) / var(--heat-weeks) - 2px);
+  --heat-day-room: calc((100cqb - 1rem - var(--heat-legend-room)) / 7 - 2px);
+  --heat-tile-block: max(4px, min(var(--heat-day-room), var(--heat-week-room)));
+  --heat-tile-inline: max(4px, min(var(--heat-week-room), 2 * var(--heat-tile-block)));
+  grid-template-rows: 1rem repeat(7, var(--heat-tile-block));
+}
+
+.heatCalendar .heatCell {
+  min-inline-size: 0;
+  border-radius: 2px;
+}
+
+.heatCalendar .heatRowAxis {
+  justify-self: stretch;
+  padding-inline-end: var(--space-1);
+  text-align: end;
+}
+
+/* A month label starts over its first week and ends where the next month begins, so no two overlap. */
+.heatMonth {
+  overflow: hidden;
+  align-self: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heatLegend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.heatScale {
+  inline-size: 6rem;
+  block-size: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--chart-5) var(--heat-floor), var(--card)),
+    color-mix(in oklab, var(--chart-5) calc((var(--heat-floor) + 100%) / 2), var(--card)),
+    color-mix(in oklab, var(--chart-5) 100%, var(--card))
+  );
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* A markdown card: the body's CommonMark, styled with the kit's text tokens. Each block other than a heading runs in
+   lines of at most 65 characters, a reading width, however wide its cell. A heading runs the full width. The markup
+   comes from markdown-it, so these selectors carry it. */
+.markdown {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  color: var(--foreground);
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-line-height);
+}
+
+.markdown > :not(h1, h2, h3, h4, h5, h6) {
+  max-inline-size: 65ch;
+}
+
+.markdown > :first-child {
+  margin-block-start: 0;
+}
+
+.markdown > :last-child {
+  margin-block-end: 0;
+}
+
+/* A note that something is wrong: the body and its headings in the kit's destructive colour. */
+.markdown.markdownDestructive,
+.markdown.markdownDestructive :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--destructive);
+}
+
+.markdown p {
+  margin: var(--space-2) 0;
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--space-3) 0 var(--space-2);
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-weight: var(--text-heading-2-weight);
+  line-height: var(--text-heading-2-line-height);
+}
+
+.markdown h1 {
+  font-size: var(--text-heading-1-size);
+}
+
+.markdown h2 {
+  font-size: var(--text-heading-2-size);
+}
+
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: var(--text-body-size);
+  font-weight: var(--text-label-weight);
+}
+
+/* A section heading over a group of cells: the kit's label role in the muted colour, in capitals. */
+.markdown.markdownSection :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-line-height);
+  letter-spacing: var(--text-label-tracking);
+  text-transform: uppercase;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: var(--space-2) 0;
+  padding-inline-start: var(--space-4);
+}
+
+.markdown li {
+  margin: var(--space-1) 0;
+}
+
+.markdown code {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--code-background);
+  color: var(--code-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-size);
+  line-height: var(--text-mono-line-height);
+}
+
+.markdown pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--code-background);
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown a {
+  color: var(--link-foreground);
+  text-decoration: underline;
+}
+
+.markdown blockquote {
+  margin: var(--space-2) 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-strong);
+  color: var(--muted-foreground);
+}
+
+.markdown img {
+  max-inline-size: 100%;
+  border-radius: var(--radius-sm);
+}
+
+/* The total in a donut's hole: the headline weight in the text colour, its caption muted. */
+.pieTotal {
+  fill: var(--foreground);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pieCaption {
+  fill: var(--muted-foreground);
+}
+
+.pieCenter {
+  pointer-events: none;
+}
+
+/* A radial progress ring: drawn in the square of the cell's shorter side, centred, so it never draws past the cell.
+   The track, the fill and the goal tick take theme colours; the centre text is the card's text. */
+.radial {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.radialRing {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.radialTrack {
+  fill: none;
+  stroke: var(--border-strong);
+}
+
+.radialFill {
+  fill: none;
+  stroke: var(--chart-5);
+}
+
+.radialGoal {
+  stroke: var(--foreground);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.radialMain,
+.radialSecond {
+  fill: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.radialMain {
+  font-weight: 600;
+}
+
+.radialCaption {
+  fill: var(--muted-foreground);
+}
+
+/* A funnel: one stage per row, stacked from the top of the list at their own height (the rest of the cell stays
+   empty); each row a text line over a bar centred in its track, the track as high as the component sets it (between
+   its BAR_FLOOR and BAR_CEILING). Stages whose floor-high bars do not fit the list scroll inside it. Layout only: the
+   bar's fill and the text colours come from theme tokens in the component and the kit's text. */
+.funnel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  /* The component's STAGE_GAP. */
+  gap: 4px;
+  min-block-size: 0;
+  /* A long label never widens the list past its cell: it ends with an ellipsis instead. */
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.funnelStage {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  /* The component's LINE_GAP. */
+  gap: 2px;
+}
+
+.funnelPick {
+  cursor: pointer;
+}
+
+/* A stage too low for its text line over its bar: the line takes the first 40% of the width (the component's
+   BESIDE_SHARE), the bar's track the rest. */
+.funnelBeside {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.funnelBeside > .funnelLine {
+  flex: 0 0 40%;
+}
+
+.funnelBeside > .funnelTrack {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.funnelLine {
+  display: flex;
+  align-items: baseline;
+  /* The component's PART_GAP (8 px). */
+  gap: var(--space-2);
+  min-inline-size: 0;
+  /* The component fits the parts by estimated widths and an 'always' value skips that fit: what turns out wider is
+     clipped here instead of painting over the track or scrolling the list sideways. */
+  overflow: hidden;
+}
+
+.funnelLabel {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funnelValue {
+  flex: none;
+  white-space: nowrap;
+}
+
+.funnelTrack {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.funnelBar {
+  block-size: 100%;
+  border-radius: var(--radius-sm);
+}
+
+/* The treemap: squarified tiles over the measured box, no chart library, like the funnel and the heatmap. A tile
+   mixes its palette colour over the card surface as the heatmap's tile does, and the hairline of the same colour
+   keeps two tiles of one group apart. The component fits the text by estimated widths (its PAD, LINE) and sets the
+   room around the text on the box (--treemap-pad, --treemap-gap); what turns out wider than its tile anyway is
+   clipped here instead of painting over the neighbour. */
+.treemapBox {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.treemapTile,
+.treemapGroupFace,
+.treemapGroupHead {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.treemapGroupFace {
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile) 45%, transparent);
+}
+
+.treemapGroupHead {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--treemap-pad);
+  overflow: hidden;
+  white-space: nowrap;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: color-mix(in oklab, var(--tile) 45%, var(--card));
+}
+
+/* A tile keeps exactly its slot: no padding of its own, so a tile under 16 px draws at its slot's size and nothing
+   overlaps its neighbour; the room around its text is the text's own (`.treemapText`). */
+.treemapTile {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--tile) 30%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--tile) 48%, transparent);
+  color: var(--foreground);
+}
+
+/* A tile that opens the data view: the tile itself, as a button. Only the button's own face is reset: the
+   tile's size, colour and clipping stay. */
+.treemapButton {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: start;
+}
+
+.treemapButton:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* The text a tile writes, with the component's PAD around it and its LINE_GAP between label and value, as the box
+   sets them; the tile clips what does not fit (value_labels always). */
+.treemapText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--treemap-gap);
+  box-sizing: border-box;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  padding: var(--treemap-pad);
+}
+
+.treemapLabel {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.treemapValue {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The share of the total beside its value: the tile's own text colour, as the muted tone over a tile's colour mix
+   falls below 4.5:1 in the dark theme. */
+.treemapShare {
+  color: var(--foreground);
+}
+
+/* A waterfall: the bars the chart library draws, one per step of the running sum, and the thin lines the
+   component lays between one bar's end and the next bar's start over the plot area its scales give it.
+   Layout only: the bar fills and the text colours come from theme tokens in the component and the kit. */
+/* The kit's muted text tone mixed into the card: quiet beside the bars, and at 3:1 or more against the card in both
+   themes, where the border tones measure under 2:1. */
+.waterfallConnector {
+  stroke: color-mix(in oklab, var(--muted-foreground) 60%, var(--card));
+  stroke-width: 1px;
+}

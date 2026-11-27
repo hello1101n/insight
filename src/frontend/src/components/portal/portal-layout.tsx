@@ -38,13 +38,6 @@ import { useZoneNav } from "@/lib/portal/use-zone-nav";
 import { TOOLTIP_DELAY_MS } from "@/lib/tooltip-delay";
 import { useIsAdmin } from "@/queries/identity-me";
 
-/**
- * Portal shell (Phase 1 buildout), rendered unless the reader opts out via
- * `insight.portal`. Composition: one SidebarProvider, one collapsible shell
- * sidebar holding two columns, then the content:
- *   [ lens rail | zone-contextual pane ] [ content ]
- * Mounted once by the `_shell` route: the outlet swaps the page, never the shell.
- */
 export function PortalLayout() {
   const paneHidden = useMetricsViewHidesPane();
   const railWidth = usePortalRailLabels() ? RAIL_WIDTH_LABELS : RAIL_WIDTH_ICONS;
@@ -53,7 +46,6 @@ export function PortalLayout() {
     <PortalDocumentTitle>
       <SidebarProvider
         className="h-svh overflow-hidden"
-        // Rail plus pane: the provider's width is the whole open sidebar.
         style={
           {
             "--rail-width": railWidth,
@@ -65,8 +57,6 @@ export function PortalLayout() {
       >
         <PaneStateForLayout />
         <ShellSidebar />
-        {/* INVARIANT: `isolate` keeps the inset's own stacking — the sticky
-            topbar included — under the fixed shell sidebar. */}
         <SidebarInset
           id={CONTENT_ID}
           data-scroll-restoration-id={CONTENT_ID}
@@ -76,9 +66,6 @@ export function PortalLayout() {
               for everything inside it, sidebar or not. */}
           <TooltipProvider delay={TOOLTIP_DELAY_MS}>
             <MockBanner />
-            {/* The impersonation indicator: it names whose data is on screen and
-                carries the way out. Missing it left a view-as operator with no sign
-                they were not looking at their own org, and no exit. */}
             <ViewAsBanner />
             <PortalTopBar />
             <ZoneGuard>
@@ -95,10 +82,6 @@ const RAIL_WIDTH_ICONS = "calc(var(--sidebar-width-icon) + 1px)";
 const RAIL_WIDTH_LABELS = "12rem";
 const PANE_WIDTH = "16rem";
 
-/**
- * Collapsible to the icon rail: the rail column stays, the pane beside it goes.
- * On a phone the kit renders it as a drawer holding one labelled column.
- */
 export function ShellSidebar() {
   const { isMobile } = useSidebar();
 
@@ -123,7 +106,6 @@ export function ShellSidebar() {
   );
 }
 
-/** The rail items as labelled rows, the active item's pages under them. */
 function PhoneDrawer() {
   const { t } = useTranslation();
   const nav = useZoneNav();
@@ -147,16 +129,8 @@ function PhoneDrawer() {
   );
 }
 
-/**
- * The pane is open by default only on a wide screen; narrower, the shell
- * sidebar must START collapsed to its rail, or a tablet is back to 305px of
- * chrome. The provider's `open` defaults to true and survives a resize, so a
- * layout change has to reset it.
- *
- * Guarded on the layout actually CHANGING: `setOpen` from the provider is a new
- * function on every open-state change, so an unguarded effect would re-fire and
- * slam the pane shut the instant the reader opened it.
- */
+// WORKAROUND: the kit's `open` defaults to true and survives a resize, and its `setOpen`
+// changes on every toggle, so the pane state resets only when the layout changes.
 function PaneStateForLayout() {
   const layout = useShellLayout();
   const { setOpen } = useSidebar();
@@ -169,23 +143,17 @@ function PaneStateForLayout() {
   return null;
 }
 
-/**
- * Send the reader home from a zone that is not theirs to see. The rules live
- * in `landingDecision` (pure, table-tested); the zone renders while the
- * viewer's reach is still resolving.
- */
 function ZoneGuard({ children }: { children: ReactNode }) {
   const { zone } = useNavLocation();
   const { canSeeOthers, isPending } = useViewerReach();
   const { isAdmin, isPending: adminPending, isError: adminError } = useIsAdmin();
+  const adminUnknown = adminPending || adminError;
   const homeShown = bareLandingZone(usePortalShowPlanned()) === "overview";
   const decision = landingDecision({
     zone,
     mgrPending: isPending,
     canSeeOthers,
-    // An errored check is "unknown", not "no": refusing on it would bounce an
-    // admin off a page they opened. The me query retries until an answer lands.
-    adminPending: adminPending || adminError,
+    adminPending: adminUnknown,
     isAdmin,
     homeShown,
   });

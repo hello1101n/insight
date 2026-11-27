@@ -1,11 +1,5 @@
 import { cn } from "@/lib/utils";
 
-/**
- * Placeholder for a chart with no data — centers the message in the plot area
- * so an empty chart keeps its neighbours' footprint instead of collapsing to
- * a line of text. No frame of its own: the enclosing card is the border.
- * `className` carries the plot height so it matches the chart it stands in for.
- */
 export function ChartEmpty({
   message,
   className,

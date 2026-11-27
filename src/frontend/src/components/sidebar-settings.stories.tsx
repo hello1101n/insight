@@ -3,17 +3,16 @@ import { expect } from "storybook/test";
 
 import { SidebarProvider } from "@gears-frontx/ui-kit";
 
+import { SETTINGS_POPOVER_CLASS } from "./portal/lens-rail";
 import { SidebarSettings } from "./sidebar-settings";
 
-// INVARIANT: `w-64 p-1` mirrors the rail's settings popover (lens-rail.tsx),
-// the narrowest surface these controls render in.
 const meta: Meta<typeof SidebarSettings> = {
   title: "Components/SidebarSettings",
   component: SidebarSettings,
   decorators: [
     (Story) => (
       <SidebarProvider>
-        <div className="w-64 p-1">
+        <div className={`${SETTINGS_POPOVER_CLASS} p-1`}>
           <Story />
         </div>
       </SidebarProvider>

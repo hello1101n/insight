@@ -5,13 +5,13 @@
     schema=var('gold_database'),
     alias='task_issue_state',
     tags=['gold'],
-    query_settings={
+    query_settings=instance_query_settings({
         'max_memory_usage': 3221225472,
         'max_threads': 4,
         'max_bytes_before_external_group_by': 805306368,
         'max_bytes_before_external_sort': 805306368,
         'join_algorithm': 'grace_hash,hash'
-    }
+    })
 ) }}
 
 -- One row per assignee-resolved issue: attribution, current status category,

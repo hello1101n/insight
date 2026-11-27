@@ -4,10 +4,15 @@ import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as client from "@/api/metric-definitions-client";
-import type { MetricDefinition } from "@/api/metric-definitions-client";
+import type {
+  MetricDefinition,
+  MetricDefinitionListResponse,
+} from "@/api/metric-definitions-client";
+import type { MetricEvidenceSelection } from "@/api/metric-drilldown-client";
 import {
   groupByKeyPrefix,
   useMetricDefinitions,
+  useTypedEvidenceSelection,
 } from "@/queries/metric-definitions";
 
 vi.mock("@/api/metric-definitions-client", async (orig) => ({
@@ -87,5 +92,37 @@ describe("useMetricDefinitions", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockList).toHaveBeenCalledTimes(1);
     expect(result.current.data?.map((g) => g.prefix)).toEqual(["git", "ai"]);
+  });
+});
+
+describe("useTypedEvidenceSelection", () => {
+  const TASKS: MetricEvidenceSelection = {
+    metric_key: "tasks.closed",
+    entity: { type: "person", id: "person-1" },
+    period: { from: "2026-03-01", to: "2026-03-31" },
+    filters: [],
+    display_dimensions: [],
+  };
+
+  beforeEach(() => {
+    mockList.mockReset();
+  });
+
+  it("asks for no evidence until the catalogue says which dimensions exist", async () => {
+    let answer: (response: MetricDefinitionListResponse) => void = () => {};
+    mockList.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      })
+    );
+    const { result } = renderHook(() => useTypedEvidenceSelection(TASKS), {
+      wrapper: wrapper(),
+    });
+
+    expect(result.current).toBeNull();
+
+    answer({ metrics: [{ ...metric("tasks.closed"), dimensions: ["type"] }] });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    expect(result.current?.display_dimensions).toEqual(["type"]);
   });
 });

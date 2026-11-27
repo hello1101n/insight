@@ -36,7 +36,6 @@ function isLevel(value: string): value is GrantLevel {
   return LEVELS.some((level) => level.value === value);
 }
 
-/** Everyone first, then people in the order they were granted. */
 function shownOrder(grants: readonly Grant[]): Grant[] {
   return [...grants].sort(
     (a, b) => Number(b.grantee === EVERYONE) - Number(a.grantee === EVERYONE)
@@ -98,8 +97,6 @@ export function ShareDialog({
     setError(refusal(failure, fallback));
   }
 
-  // INVARIANT: runs after the grants re-read, because the grant hooks return
-  // that invalidation from onSettled and the mutation awaits it.
   function closeIfLockedOut() {
     const reread = queryClient.getQueryState(grantsQuery(target).queryKey);
     if (isDenied(reread?.error)) dismiss(null);
@@ -182,7 +179,7 @@ export function ShareDialog({
             Shared with
           </h3>
           {grants.isPending || put.isPending ? (
-            <Spinner className="size-4" />
+            <Spinner />
           ) : null}
           {grants.isError ? (
             <p role="alert" className={cn(TEXT_BODY, "text-destructive")}>

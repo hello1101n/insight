@@ -1,8 +1,3 @@
-/**
- * The two hooks' contracts: the per-connector window waits for a connector
- * rather than firing with a placeholder, and neither hands back a cached answer
- * across sessions.
- */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -76,14 +71,6 @@ describe("useConnectorHealth", () => {
 
 describe("one session's answer is never served to another", () => {
   it("caches under a key that carries the authorization scope", async () => {
-    // The surface is instance-wide and operator-gated, so a cached answer
-    // crossing a session boundary would show one caller what another was
-    // allowed to see.
-    //
-    // Asserted on the KEY, not on a refetch count: both hooks set
-    // `staleTime: 0`, so a second observer refetches whatever the key is — a
-    // fetch-count test passes with the scope removed from the key entirely,
-    // which is exactly the regression it would exist to catch.
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity } },
     });
@@ -154,8 +141,6 @@ describe("useConnectorSyncs", () => {
   });
 
   it("keys two installations of one connector apart", async () => {
-    // They share a name. Keyed on it, the second would be served the first
-    // one's window out of the cache and the page would show the wrong history.
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity } },
     });

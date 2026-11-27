@@ -82,10 +82,8 @@ const FOLDERS_PREFIX = ["custom", "folders"] as const;
 const TAGS_PREFIX = ["custom", "tags"] as const;
 const PINS_PREFIX = ["custom", "pins"] as const;
 
-/** How many names a catalogue asks for at a time. */
 const PAGE_SIZE = 50;
 
-/** The most the service will answer with, for the lists that want everything. */
 const MAX_PAGE = 200;
 
 const DATASET_PREFIX = ["custom", "dataset"] as const;
@@ -122,27 +120,18 @@ const FETCH_PAGE: {
   datasets: fetchDatasetPage,
 };
 
-/** What narrows a catalogue besides a search. Only dashboards are narrowed. */
 export interface Narrowing {
   folder?: FolderFilter;
   tags?: string[];
   owned?: OwnedFilter;
 }
 
-/**
- * A catalogue, a page at a time.
- *
- * `total` counts the matches rather than the page, so the list can say what
- * is behind it and stop asking once it has them all.
- */
 export function definitionPagesQuery<K extends EditableKind>(
   kind: K,
   search = "",
   { folder, tags = [], owned }: Narrowing = {}
 ) {
   return infiniteQueryOptions({
-    // The needle is part of the key, so a search is its own cached answer
-    // rather than overwriting the list everyone else is reading.
     queryKey: [
       ...NAME_PAGES_PREFIX,
       kind,
@@ -171,7 +160,6 @@ export function definitionPagesQuery<K extends EditableKind>(
   });
 }
 
-/** The caller's own dashboards, most recently changed first. */
 export function recentDashboardsQuery(count: number) {
   return queryOptions({
     queryKey: [...NAME_PAGES_PREFIX, "dashboards", "recent", count],
@@ -182,20 +170,13 @@ export function recentDashboardsQuery(count: number) {
 export interface EditedDefinition {
   name: string;
   document: Record<string, unknown>;
-  /** Only a dashboard has one. */
   access?: DashboardAccess;
 }
 
-// Each kind hands its body back in its own envelope; the editor writes the body,
-// so what it opens must be what a save would send.
 export function definitionBodyQuery(kind: EditableKind, id: string) {
   return queryOptions({
     queryKey: ["custom", "body", kind, id],
-    // INVARIANT: the editor waits for an answer fetched after it mounted and
-    // seeds itself from that one. The client keeps answers fresh for an hour,
-    // so without this a reopened editor would wait for a fetch that never comes.
     refetchOnMount: "always",
-    // Once seeded, a refetch underneath it would be neither shown nor wanted.
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     queryFn: async (): Promise<EditedDefinition> => {
@@ -319,14 +300,7 @@ export function datasetQuery(name: string) {
   });
 }
 
-/** The latest records a dataset holds, as a reader sees them on its page. */
-/**
- * What a page of records is assumed to hold before one has come back.
- *
- * INVARIANT: only the first read uses it. Every page after steps by the size
- * the service reports, because the cap is an installation's setting.
- */
-export const PREVIEW_ROWS = 20;
+export const ASSUMED_FIRST_PAGE_ROWS = 20;
 
 export function datasetRecordsQuery(name: string, page: RecordPage) {
   return queryOptions({
@@ -340,13 +314,10 @@ export function datasetRecordsQuery(name: string, page: RecordPage) {
       page.descending ?? false,
     ],
     queryFn: () => fetchDatasetRecords(name, page),
-    // A page read while the reader is on the one before it should not blank
-    // the table: the old page stays until the new one is in.
     placeholderData: (previous) => previous,
   });
 }
 
-/** Every definition that names this one, which a removal would break. */
 export function dependentsQuery(kind: DefinitionKind, id: string) {
   return queryOptions({
     queryKey: ["custom", "dependents", kind, id],
@@ -368,13 +339,6 @@ export function widgetQuery(id: string) {
   });
 }
 
-/**
- * One metric read over one window.
- *
- * The window, the zone and the bucket mode are all in the key: without them
- * switching from a year to yesterday serves the year's rows out of cache,
- * which is a wrong number rather than an error.
- */
 export function metricResultQuery(id: string, options?: RunOptions) {
   return queryOptions({
     queryKey: [
@@ -383,6 +347,7 @@ export function metricResultQuery(id: string, options?: RunOptions) {
       id,
       options?.range ?? null,
       options?.bucket ?? null,
+      options?.previous ?? null,
     ],
     queryFn: () => runMetric(id, options),
   });
@@ -400,21 +365,14 @@ export function dashboardWidgetResultQuery(
       widget,
       options?.range ?? null,
       options?.bucket ?? null,
+      options?.previous ?? null,
     ],
     queryFn: () => runDashboardWidget(dashboard, widget, options),
   });
 }
 
-/** How many rows one page of a drilldown asks for. */
 const DRILLDOWN_PAGE_ROWS = 100;
 
-/**
- * The rows behind a dashboard's widget, one ordered page at a time.
- *
- * The window and the order are in the key: a re-order is its own answer,
- * and the previous one is kept on screen until it arrives rather than
- * replaced by a spinner under the header the reader just clicked.
- */
 export function drilldownPagesQuery(
   dashboard: string,
   widget: string,
@@ -449,17 +407,10 @@ export function useRemoveDefinition() {
   return useMutation({
     mutationFn: ({ kind, id }: { kind: DefinitionKind; id: string }) =>
       deleteDefinition(kind, id),
-    // Every catalogue and the pane read these lists.
     onSuccess: () => invalidateDashboardList(queryClient),
   });
 }
 
-/**
- * Takes a dataset away, with the records it holds.
- *
- * Every catalogue is invalidated, not only the datasets one: a metric that
- * read it is now unreadable, whatever the list still says.
- */
 export function useRemoveDataset() {
   const queryClient = useQueryClient();
 
@@ -492,19 +443,11 @@ async function storeDefinition({
   return id;
 }
 
-/**
- * Stores a definition of any kind, as the document the editor holds says it.
- *
- * A dataset is written through its own path because it answers with what was
- * stored and has a lifecycle behind it; the rest share one.
- */
 export function useStoreDefinition() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: storeDefinition,
-    // A stored definition changes what every other one may read, and the rail
-    // lists what is there.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["custom"] }),
   });
 }
@@ -627,7 +570,6 @@ export function useSetPinned() {
   });
 }
 
-/** A grant can change the caller's own access too, so their lists and reads are refreshed. */
 function invalidateGrants(queryClient: QueryClient, target: GrantTarget) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: grantsQuery(target).queryKey }),
@@ -690,8 +632,6 @@ export function useSendChat() {
 }
 
 export function invalidateDashboardList(queryClient: QueryClient) {
-  // Every catalogue page reads these, and a chat that built a dashboard
-  // built its metric and widgets too.
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: NAME_PAGES_PREFIX }),
     queryClient.invalidateQueries({ queryKey: FOLDERS_PREFIX }),

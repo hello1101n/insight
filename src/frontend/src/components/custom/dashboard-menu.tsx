@@ -39,6 +39,10 @@ import { useAddToFolder } from "@/queries/custom";
 
 type Asked = "rename" | "duplicate" | "delete" | "folder" | "tags" | "share";
 
+function canCreateFolderIn(access: DashboardAccess): boolean {
+  return access !== "ownerless";
+}
+
 export function DashboardMenu({
   id,
   name,
@@ -54,7 +58,6 @@ export function DashboardMenu({
   title?: string;
   access: DashboardAccess;
   share?: { ownerPersonId: string | null };
-  /** Whether to list the actions not built yet, as an open dashboard does. */
   planned?: boolean;
   onDuplicated?: (id: string) => void;
   onDeleted?: () => void;
@@ -105,7 +108,6 @@ export function DashboardMenu({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
               aria-label={`More for ${name}`}
               icon={<Ellipsis />}
             />
@@ -143,9 +145,8 @@ export function DashboardMenu({
           <FolderSubmenu
             id={id}
             access={access}
-            // INVARIANT: a new folder has an owner, and an ownerless dashboard is filed only in ownerless folders.
             onNewFolder={
-              access === "ownerless" ? undefined : () => setAsked("folder")
+              canCreateFolderIn(access) ? () => setAsked("folder") : undefined
             }
             onShareInto={(folder) => {
               setOpen(false);

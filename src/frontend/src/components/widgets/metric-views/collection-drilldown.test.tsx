@@ -66,15 +66,11 @@ describe("CollectionDrilldown", () => {
         entityId="alice@example.com"
       />
     );
-    // Breakdown block: composition by tool with response-provided labels.
     expect(screen.getByText("Period total by tool")).toBeInTheDocument();
     expect(screen.getAllByText("Claude Code").length).toBeGreaterThan(0);
   });
 
   it("says nothing about the numbers on its own", () => {
-    // Composition only. What is said ABOUT a metric — where it stands, what
-    // the person actually did — differs by surface, so it arrives from the
-    // caller and this renders it after the blocks.
     render(
       <CollectionDrilldown
         def={DEF}
@@ -122,9 +118,6 @@ describe("CollectionDrilldown", () => {
         entityId="alice@example.com"
       />
     );
-    // Each histogram is its own card in the grid (no wrapping "Distributions"
-    // card), shaded vs the peer median (the subtitle proves the diverging
-    // render, not a bare chart).
     expect(screen.getByText(/vs peer median/)).toBeInTheDocument();
   });
 

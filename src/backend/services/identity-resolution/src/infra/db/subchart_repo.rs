@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::VisibilityPolicy;
 
-use super::sql_named::bind_named;
+use super::sql_named::{bind_named, named_list};
 
 #[derive(Debug, Clone)]
 pub struct SubchartFlatNode {
@@ -173,27 +173,13 @@ pub async fn visible_targets(
         return Ok(Vec::new());
     }
 
-    let names = (0..candidates.len())
-        .map(|i| format!("cand_{i}"))
-        .collect::<Vec<_>>();
-    let list = names
-        .iter()
-        .map(|name| format!("@{name}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let mut params: Vec<(&str, Value)> = vec![
-        ("viewer_person_id", bytes(viewer_person_id)),
-        ("tenant_id", bytes(tenant_id)),
-        ("org_source_type", org_source_type.into()),
-        ("flat_tenant", policy.is_flat().into()),
-    ];
-    params.extend(
-        names
-            .iter()
-            .zip(candidates)
-            .map(|(name, id)| (name.as_str(), bytes(*id))),
-    );
+    let (list, mut params) = named_list("candidate", candidates.iter().copied().map(bytes));
+    params.extend([
+        ("viewer_person_id".to_owned(), bytes(viewer_person_id)),
+        ("tenant_id".to_owned(), bytes(tenant_id)),
+        ("org_source_type".to_owned(), org_source_type.into()),
+        ("flat_tenant".to_owned(), policy.is_flat().into()),
+    ]);
 
     let (sql, values) = bind_named(&SQL.replace("@candidates", &list), &params)?;
 

@@ -33,7 +33,7 @@ function planned(paths: string[]) {
 }
 
 function adminManageItems(policy: ReturnType<typeof parseNavPolicy>) {
-  return manageGroupsFor({ isAdmin: true, canManagePreviews: true }, policy).flatMap(
+  return manageGroupsFor({ isAdmin: true }, policy).flatMap(
     (group) => group.items,
   );
 }
@@ -264,8 +264,6 @@ describe("landing under nav.hide", () => {
 });
 
 describe("metric gating across the surfaces a metric reaches", () => {
-  // The shape an install takes when a metric family is declared but not yet
-  // trusted: the family and three individual keys under the reader's toggle.
   const policy = planned([
     "metric:ai.*",
     "metric:tasks.resolution_time",

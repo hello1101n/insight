@@ -4,8 +4,8 @@
 # what every node must hold afterwards.
 #
 # identity-resolution's persons sync stages a snapshot of its MariaDB persons
-# log, counts it back, guards the published watermark and swaps it live — the
-# one caller of insight-clickhouse's quorum pair. insight-v3-core declares a
+# log, counts it back, guards the published watermark and replaces the
+# partition of each tenant. insight-v3-core declares a
 # dataset into a table of its own, takes records into it from several callers
 # at once, pages them back and drops the table with the dataset.
 #
@@ -84,10 +84,7 @@ seed_persons_log() {
     "INSERT INTO persons (value_type, insight_source_type, insight_source_id, insight_tenant_id, value_id, person_id, author_person_id, reason) VALUES ${joined%,}"
 }
 
-# Round 1 publishes onto an install without the live table (the sync renames
-# its staging into place); round 2 finds the table dbt's hook created and
-# swaps behind the watermark guard. Both stage, count back and swap through
-# the proxy.
+# Round 1 creates the live table; round 2 replaces the partition of the tenant.
 persons_sync() {
   local round="$1" force=()
   local log="${WORKDIR}/persons-sync-${round}.log" boundary="${WORKDIR}/persons-sync-${round}.boundary.json"
@@ -107,6 +104,10 @@ persons_sync() {
   echo "  $(tail -n 1 "${log}" | cut -c 1-200)"
   check relation --name identity.identity_persons --rows "${PERSONS}"
   check quorum --after "${boundary}"
+  # INVARIANT: dbt reads with select_sequential_consistency=1 on a cluster.
+  ch_on_node "${RIG_PROXY}" \
+    "SELECT count() FROM identity.identity_persons SETTINGS select_sequential_consistency = 1" > /dev/null
+  echo "ok  identity.identity_persons answers a sequentially consistent read"
 }
 
 stop_v3_core() {

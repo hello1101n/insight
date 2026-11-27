@@ -1,7 +1,20 @@
+use std::num::NonZeroU32;
+
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use toolkit::bootstrap::AppConfig;
 use url::Url;
+
+use crate::infra::cluster::capacity::AirbytePlacement;
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct AirbyteReader {
+    pub url: String,
+    pub secret: String,
+    pub client_id_key: String,
+    pub client_secret_key: String,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -14,6 +27,7 @@ pub(crate) struct GearConfig {
     pub(crate) database_password: SecretString,
     pub(crate) clickhouse_url: String,
     pub(crate) clickhouse_database: String,
+    pub(crate) query_log_cluster: String,
     pub(crate) clickhouse_user: String,
     pub(crate) clickhouse_password: SecretString,
     pub(crate) identity_url: String,
@@ -21,6 +35,10 @@ pub(crate) struct GearConfig {
     pub(crate) namespace: String,
     pub(crate) tenant_id: String,
     pub(crate) reconcile_workflow_name: String,
+    pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_placement: AirbytePlacement,
+    pub(crate) airbyte_reader: AirbyteReader,
+    pub(crate) history_runs_per_instance: NonZeroU32,
 }
 
 impl Default for GearConfig {
@@ -34,6 +52,7 @@ impl Default for GearConfig {
             database_password: SecretString::default(),
             clickhouse_url: String::new(),
             clickhouse_database: "insight".to_owned(),
+            query_log_cluster: String::new(),
             clickhouse_user: String::new(),
             clickhouse_password: SecretString::default(),
             identity_url: String::new(),
@@ -41,6 +60,10 @@ impl Default for GearConfig {
             namespace: String::new(),
             tenant_id: String::new(),
             reconcile_workflow_name: String::new(),
+            airbyte_namespace: String::new(),
+            airbyte_placement: AirbytePlacement::default(),
+            airbyte_reader: AirbyteReader::default(),
+            history_runs_per_instance: history_runs_default(),
         }
     }
 }
@@ -170,4 +193,8 @@ mod tests;
 #[serde(default)]
 pub(crate) struct ClusterConfig {
     pub(crate) enabled: bool,
+}
+
+pub(crate) fn history_runs_default() -> NonZeroU32 {
+    NonZeroU32::new(100).unwrap_or(NonZeroU32::MIN)
 }

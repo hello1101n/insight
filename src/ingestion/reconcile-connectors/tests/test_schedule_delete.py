@@ -224,7 +224,7 @@ def live_schedules() -> Iterator[dict[str, str]]:
             create_schedule_schema(cursor)
             for connector, source in [("example", "gone"), ("example", "main"), ("other", "gone")]:
                 cursor.execute(
-                    "INSERT INTO connector_schedules VALUES (%s, %s, '[\"0 3 * * *\"]', 8, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))",
+                    "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES (%s, %s, '[\"0 3 * * *\"]', 8, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))",
                     (connector, source),
                 )
             yield env
@@ -300,7 +300,7 @@ def test_live_sweep_retries_rows_recreated_after_resource_deletion(live_schedule
             cursor.execute("SELECT connector, source_id FROM connector_schedules")
             assert cursor.fetchall() == [("example", "main")]
             cursor.execute(
-                "INSERT INTO connector_schedules VALUES ('example', 'gone', '[\"0 3 * * *\"]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
+                "INSERT INTO connector_schedules (connector, source_id, crons, revision, updated_by, updated_at) VALUES ('example', 'gone', '[\"0 3 * * *\"]', 1, UNHEX(REPEAT('00',16)), UTC_TIMESTAMP(3))"
             )
 
 

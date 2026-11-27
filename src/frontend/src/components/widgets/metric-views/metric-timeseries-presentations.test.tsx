@@ -33,16 +33,8 @@ const COMPOSED_TABLE = {
   ],
 } satisfies MetricTimeseriesTableConfig;
 
-/**
- * jsdom has no layout engine and no ResizeObserver, so every dimension reads
- * zero and the table concludes that nothing overflows. Supplying the geometry
- * is what lets the real decisions run — which side holds more, how far a page
- * moves — rather than a stand-in for them.
- */
 afterEach(() => vi.unstubAllGlobals());
 
-/** Scoped to the tests that need it: charts here measure themselves and a
- *  no-op observer leaves them with nothing to draw. */
 function stubResizeObserver(): void {
   vi.stubGlobal(
     "ResizeObserver",
@@ -97,7 +89,6 @@ describe("metric timeseries presentations", () => {
       grandTotals: [grouped.grandTotals[0]],
     };
     render(<MetricTimeseriesTable model={model} />);
-    // One header cell per dimension column, no per-metric subheader row.
     expect(screen.getByText("org/repo-a")).toBeInTheDocument();
     expect(screen.getByText("org/repo-b")).toBeInTheDocument();
     expect(screen.queryByText("Commits")).not.toBeInTheDocument();
@@ -105,7 +96,6 @@ describe("metric timeseries presentations", () => {
   });
 
   it("offers no paging control towards a side with nothing on it", () => {
-    // Nothing overflows here: jsdom reports every dimension as zero.
     render(<MetricTimeseriesTable model={groupedTimeseriesModel()} />);
     expect(
       screen.queryByRole("button", { name: /Show (earlier|later)/ })
@@ -125,7 +115,6 @@ describe("metric timeseries presentations", () => {
       scrollLeft: 0,
       scrollTop: 0,
     });
-    // Sitting at both starts: only the two forward controls have anywhere to go.
     expect(screen.getByRole("button", { name: "Show later columns" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show later rows" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show earlier columns" })).toBeNull();
@@ -177,18 +166,17 @@ describe("metric timeseries presentations", () => {
     expect(foot.className).toContain("sticky");
     expect(foot.className).toContain("bottom-0");
     expect(foot.className).toContain("inset_0_1px_0_0");
-    // Opaque, not tinted: the row the footer covers showed through sliced
-    // along its middle, and the totals read as riding on it.
     expect(foot.className).toMatch(/(^|\s)bg-muted(\s|$)/);
   });
 
   it("keeps the grand total beside its label when the table is scrolled", () => {
-    // The cell spans every group, so its own start edge scrolls away.
     render(<MetricTimeseriesTable model={groupedTimeseriesModel()} />);
     const row = screen.getByText("Grand total").closest("tr")!;
+    const label = row.querySelectorAll("td")[0]!;
     const totals = row.querySelectorAll("td")[1]!.querySelector("span")!;
     expect(totals.className).toContain("sticky");
-    expect(totals.className).toContain("start-24");
+    expect(totals.className).toContain("start-(--bucket-col)");
+    expect(label.className).toContain("w-(--bucket-col)");
   });
 
   it("hides the grand-total row when every total is missing", () => {

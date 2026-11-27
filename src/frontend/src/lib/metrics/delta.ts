@@ -10,11 +10,6 @@ export type MetricDelta =
   | { kind: "percent_change"; value: number }
   | { kind: "pp_change"; value: number };
 
-/**
- * Period-over-period delta semantics derive from the computation tag, not
- * per-metric code: a percent-formatted ratio compares in percentage points
- * (77% vs 72% is "+5 pp", not "+6.9%"); everything else compares relatively.
- */
 export function computeDelta(
   current: number | null | undefined,
   previous: number | null | undefined,
@@ -41,18 +36,6 @@ export function computeDelta(
   };
 }
 
-/**
- * Whether a period-over-period move is favorable, given the metric's
- * direction. Neutral (no better/worse direction) and a zero move both read
- * as `neutral` — a change with no judgment attached.
- */
-/**
- * Moves too small to be worth a colour.
- *
- * A period boundary nudges most counters a little, and a badge that paints
- * −1% in the same red as −70% teaches the reader that red means nothing. The
- * number is still shown — only the alarm is withheld.
- */
 const TRIVIAL_PERCENT_CHANGE = 2;
 const TRIVIAL_PP_CHANGE = 1;
 
@@ -73,13 +56,28 @@ export function deltaStatus(
   return favorable ? "good" : "bad";
 }
 
-/**
- * Display-rounded delta; null when it rounds to zero (no "+0%" badges).
- * A runaway relative change (a small previous period exploding) reads as a
- * multiple past the shared threshold — "+5460%" becomes "56×" — mirroring
- * the vs-median gap. The downside is bounded at −100% and stays a percent;
- * pp changes are already bounded and never switch.
- */
+export interface ShownDelta {
+  text: string;
+  status: Status;
+  down: boolean;
+}
+
+export function shownDelta(
+  delta: MetricDelta,
+  direction: MetricDirection,
+): ShownDelta {
+  const text = formatTileDelta(delta);
+  if (text == null) {
+    const unchanged = delta.kind === "pp_change" ? formatPp(0, 0) : "±0%";
+    return { text: unchanged, status: "neutral", down: false };
+  }
+  return {
+    text,
+    status: deltaStatus(delta, direction),
+    down: delta.value < 0,
+  };
+}
+
 export function formatTileDelta(delta: MetricDelta): string | null {
   if (delta.kind === "pp_change") {
     return Math.round(Math.abs(delta.value)) === 0

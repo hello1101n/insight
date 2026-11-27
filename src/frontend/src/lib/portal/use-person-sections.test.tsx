@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The standing each section carries in the nav. It is the only thing on the
- * person page that answers "which section is worth opening", so its three
- * outcomes have to be distinguishable: a section behind its cohort, a section
- * with nothing this period, and a section still loading — the last two look
- * identical if the hook reports them the same way.
- */
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,10 +12,7 @@ const mocks = vi.hoisted(() => ({
   byKey: new Map<string, unknown>(),
   isPending: false,
   cohort: [] as string[],
-  /** The open section, or null on "At a glance". */
   item: null as string | null,
-  // Every `useMetricCollectionSet` call, so a test can assert WHICH windows
-  // were asked for — the mock answers the same set whatever the arguments.
   setCalls: [] as Array<{
     entity: { type: string; ids?: string[] };
     range: { from: string; to: string };
@@ -86,7 +76,6 @@ import {
 
 const ME = "019e27bc-dec0-7626-81a9-c5524662a6a9";
 
-/** One metric with a peer row, so it has a standing to aggregate. */
 function metric(
   key: string,
   value: number | null,
@@ -134,14 +123,11 @@ beforeEach(() => {
 });
 
 describe("usePersonSectionCollection", () => {
-  /** The person's own set; the cohort's rides the same hook with other ids. */
   const personCalls = () =>
     mocks.setCalls.filter((c) => c.entity.ids?.[0] === ME);
 
   it("asks for the comparison window on the overview", () => {
     renderHook(() => usePersonSectionCollection(ME));
-    // "At a glance" is the only surface reading `previousByKey` — the
-    // attention block needs a standing that is also a change.
     expect(personCalls()[0]!.compareTo).toEqual({
       from: "2026-06-01",
       to: "2026-06-30",
@@ -151,9 +137,6 @@ describe("usePersonSectionCollection", () => {
   it("drops it once a section is open", () => {
     mocks.item = "git_output";
     renderHook(() => usePersonSectionCollection(ME));
-    // Only the nav mark is left reading this set, and it ranks the current
-    // window alone. Asking for a second window would buy backend work for a
-    // number nothing on screen reads.
     expect(personCalls()[0]!.compareTo).toBeUndefined();
     expect(personCalls()[0]!.range).toEqual({
       from: "2026-07-01",
@@ -162,9 +145,6 @@ describe("usePersonSectionCollection", () => {
   });
 
   it("keeps one signature per window scope across its consumers", () => {
-    // The overview and the nav mark both call it. Identical arguments are what
-    // make that one query key and one round trip (#2651), so the signature —
-    // not the call count — is the thing under test.
     renderHook(() => {
       usePersonSectionCollection(ME);
       usePersonSectionStandings(ME);
@@ -197,11 +177,6 @@ describe("usePersonSectionStandings", () => {
   });
 
   it("separates a section this person is absent from one nobody is measured in", () => {
-    // Both arrive as a null own value, and the page says different things
-    // about them. Which one is true is read from the tenant's definition
-    // listing, never from whether this viewer's comparison pool happens to
-    // hold readings: a viewer who can see few people would otherwise report a
-    // live connector as missing, and the smaller their reach the more often.
     mocks.byKey = normalizeMetricResults([metric("git.default_branch_commits", null, 20)]);
 
     mocks.definitions = [
@@ -217,7 +192,6 @@ describe("usePersonSectionStandings", () => {
       true
     );
 
-    // Same person, same empty own value — only the listing changed.
     mocks.definitions = [
       {
         metric_key: "git.default_branch_commits",
@@ -233,8 +207,6 @@ describe("usePersonSectionStandings", () => {
   });
 
   it("does not call a section unmeasured because this viewer's pool is empty", () => {
-    // The regression this replaced: an empty pool used to mean "no data
-    // reaches us". It now means nothing at all — the listing decides.
     mocks.byKey = normalizeMetricResults([metric("git.default_branch_commits", null, 20, 0)]);
     mocks.definitions = [
       {
@@ -251,26 +223,17 @@ describe("usePersonSectionStandings", () => {
   });
 
   it("stays pending while the queries are, so the nav shows no mark yet", () => {
-    // A section still loading must not be drawn as one with nothing: the
-    // reader would take the grey mark for an answer.
     mocks.isPending = true;
     expect(standings().every((s) => s.isPending)).toBe(true);
   });
 
   it("covers every section, including ones the response never mentions", () => {
-    // The nav draws one mark per section, so a section missing from this list
-    // would silently lose its mark — asserting the whole set, in order, is
-    // what catches that.
     expect(standings().map((s) => s.id)).toEqual(GROUPS.map((g) => g.id));
   });
 });
 
 describe("while the definition listing is still loading", () => {
   it("claims nothing about any section", () => {
-    // Without the listing the reachable set is empty, so every section would
-    // read as one nothing reaches — the page would tell a reader we see
-    // nothing about this person, then flip a moment later. Pending has to
-    // cover the listing too, not just the metric collection.
     mocks.definitionsPending = true;
     mocks.byKey = normalizeMetricResults([metric("git.default_branch_commits", null, 20)]);
     expect(standings().every((s) => s.isPending)).toBe(true);

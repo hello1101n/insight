@@ -25,7 +25,7 @@ describe("periodToDateRange", () => {
   });
 
   it("ends yesterday and spans 7 local days for a week", () => {
-    vi.setSystemTime(new Date(2026, 5, 15, 10, 30)); // local 2026-06-15
+    vi.setSystemTime(new Date(2026, 5, 15, 10, 30));
     expect(periodToDateRange("week")).toEqual({
       from: "2026-06-08",
       to: "2026-06-14",
@@ -57,8 +57,7 @@ describe("periodToDateRange", () => {
   });
 
   it("clamps month arithmetic at short-month boundaries", () => {
-    vi.setSystemTime(new Date(2026, 2, 31, 8, 0)); // local 2026-03-31
-    // to = 2026-03-30; one month back clamps 30 → Feb 28, +1 day → Mar 1.
+    vi.setSystemTime(new Date(2026, 2, 31, 8, 0));
     expect(periodToDateRange("month")).toEqual({
       from: "2026-03-01",
       to: "2026-03-30",
@@ -69,7 +68,7 @@ describe("periodToDateRange", () => {
 describe("validateDateRange refuses days that have not happened yet", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 15, 23, 30)); // local 2026-06-15
+    vi.setSystemTime(new Date(2026, 5, 15, 23, 30));
   });
 
   afterEach(() => {

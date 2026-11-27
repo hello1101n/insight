@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Shell semantics per width tier. The rail and the pane are two columns of one
- * collapsible sidebar: on a phone both live in the drawer, on a tablet the
- * sidebar collapses to the rail. A zone pick keeps the pane in view while a
- * section pick gets it out of the way.
- */
 vi.mock("@tanstack/react-router", async () => {
   const { portalRouterMock } = await import("@/test/portal-router");
   return portalRouterMock();
@@ -42,6 +36,10 @@ vi.mock("@/lib/portal/use-viewer-is-manager", () => ({
 }));
 
 vi.mock("@/components/org-tree", () => ({ OrgTree: () => <div /> }));
+vi.mock("@/lib/portal/use-person-sections", () => ({
+  usePersonSectionStandings: () => [],
+  useSelectedPersonSection: () => null,
+}));
 vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
@@ -65,8 +63,6 @@ vi.mock("@/queries/visible-roster", () => ({
     retry: () => {},
   }),
 }));
-// The topbar asks the catalog which attributes a comparison may use; this
-// test is about the shell's layout, not about that answer.
 vi.mock("@/queries/metric-definitions", () => ({
   useMetricDefinitionsResponse: () => ({ data: undefined }),
 }));
@@ -79,8 +75,6 @@ vi.mock("@/hooks/use-portal-period", () => ({
   }),
 }));
 vi.mock("@/auth", () => ({ useViewer: () => ({ email: "boss@x" }) }));
-// The settings menu pulls in viewer/theme/i18n plumbing; its presence is what
-// matters here — on a phone it is only reachable through this drawer.
 vi.mock("@/components/app-sidebar-footer", () => ({
   AppSidebarFooter: ({
     onNavigate,
@@ -98,12 +92,12 @@ vi.mock("@/components/app-sidebar-footer", () => ({
 }));
 
 import { SidebarProvider, SidebarTrigger } from "@gears-frontx/ui-kit";
+import { setMetricsViewPaneShown } from "@/lib/portal/metrics-view-pane";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { act, renderHook } from "@testing-library/react";
 
 import { ShellSidebar } from "./portal-layout";
 
-/** The real shell wiring: trigger in the topbar, rail and pane in one sidebar. */
 function Shell() {
   return (
     <SidebarProvider>
@@ -122,7 +116,7 @@ beforeEach(() => {
   act(() => {
     portalRouter.reset("/home");
   });
-  // The kit's sidebar decides phone vs desktop from the viewport width.
+  // WORKAROUND: the kit's sidebar decides phone vs desktop from the viewport width.
   Object.defineProperty(window, "innerWidth", {
     configurable: true,
     get: () => VIEWPORT_WIDTH_PX[mocks.layout],
@@ -139,7 +133,6 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
 });
 
-/** The context pane's own column, around its header and sections. */
 const sectionsPane = () =>
   screen.getByRole("navigation", { name: "Section navigation", hidden: true })
     .parentElement as HTMLElement;
@@ -278,7 +271,6 @@ describe("shell layout: narrow (tablet)", () => {
     render(<Shell />);
     const itemState = renderHook(() => useNavLocation().item);
 
-    // The pane starts expanded in this bare harness (no PaneStateForLayout).
     await user.click(screen.getByText("By direction"));
 
     expect(itemState.result.current).toBe("by-direction");
@@ -294,6 +286,54 @@ describe("shell layout: narrow (tablet)", () => {
     await user.click(screen.getByRole("button", { name: "People" }));
 
     expect(document.querySelector('[data-state="expanded"]')).not.toBeNull();
+  });
+
+  it("keeps the open page when the rail item it sits under reopens the pane", async () => {
+    const user = userEvent.setup();
+    act(() => portalRouter.reset("/people/p1/team"));
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+    await user.click(screen.getByText("Roster · by role"));
+    expect(document.querySelector('[data-state="collapsed"]')).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "People" }));
+
+    expect(location.result.current).toMatchObject({ zone: "people", item: "employees" });
+    expect(document.querySelector('[data-state="expanded"]')).not.toBeNull();
+  });
+});
+
+describe("shell layout: wide, Metrics view", () => {
+  beforeEach(() => {
+    mocks.layout = "wide";
+    act(() => {
+      setMetricsViewPaneShown(false);
+      portalRouter.reset("/people/p1/team/metrics");
+    });
+  });
+
+  const pane = () => screen.queryByRole("navigation", { name: "Section navigation" });
+
+  it("brings back the pane the view hid, without leaving the view", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+    expect(pane()).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "People" }));
+
+    expect(location.result.current).toMatchObject({ zone: "people", item: "metrics" });
+    expect(pane()).toBeInTheDocument();
+  });
+
+  it("leaves the view by another rail item", async () => {
+    const user = userEvent.setup();
+    render(<Shell />);
+    const location = renderHook(() => useNavLocation());
+
+    await user.click(screen.getByRole("button", { name: "Explore" }));
+
+    expect(location.result.current.zone).toBe("directions");
   });
 });
 
@@ -328,9 +368,6 @@ describe("the global controls stay reachable while reading", () => {
       </SidebarProvider>,
     );
     const bar = container.querySelector("div.sticky");
-    // Sticky alone is not enough: content scrolling under a transparent bar
-    // makes both unreadable, and a bar below the cards' stacking order is
-    // covered by them.
     expect(bar?.className).toContain("top-0");
     expect(bar?.className).toContain("bg-background");
     expect(bar?.className).toMatch(/z-\d+/);
@@ -339,10 +376,6 @@ describe("the global controls stay reachable while reading", () => {
 
 describe("what the shell must never drop", () => {
   it("renders the impersonation banner — a view-as session needs its exit", async () => {
-    // It went missing when the portal became the shell: an operator viewing as
-    // someone else saw no indication whose data was on screen, and no way back.
-    // The banner's own behaviour is covered by its tests; this pins that the
-    // shell still composes it in.
     const { PortalLayout } = await import("./portal-layout");
     render(<PortalLayout />);
     expect(screen.getByTestId("view-as-banner")).toBeInTheDocument();

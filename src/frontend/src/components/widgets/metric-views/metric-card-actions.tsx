@@ -22,7 +22,6 @@ export function MetricCardActions({
 }: {
   evidence: MetricEvidenceSelection | null | undefined;
   label: string;
-  // `overlay` takes the button out of flow, so the call site owes it clear space.
   placement?: "overlay" | "inline";
 }) {
   const evidenceContext = useMetricEvidenceOptional();
@@ -38,7 +37,6 @@ export function MetricCardActions({
             variant="ghost"
             size="sm"
             className={cn(
-              "text-muted-foreground",
               placement === "overlay" && "absolute top-4 right-4 z-10"
             )}
             aria-label={`More actions for ${label}`}

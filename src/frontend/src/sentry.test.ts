@@ -65,8 +65,23 @@ describe("initSentry", () => {
     expect(() => initWith()).not.toThrow();
   });
 
-  // What the chart renders when the operator leaves `sentry.dsn` unset. The
-  // env var is set here so the case fails if the read ever falls through it.
+  it("keeps the console lines of FrontX out of the breadcrumbs, and every other breadcrumb in", () => {
+    const keep = initWith().beforeBreadcrumb!;
+    const line = (message: string) => ({ category: "console", message });
+
+    expect(
+      keep(line("[dashboard] dashboard d, widget w (t), cell: answer 42"))
+    ).toBeNull();
+    expect(keep(line("[widget] the data fails its type: 42"))).toBeNull();
+    expect(keep(line("Sentry init failed"))).toEqual(
+      line("Sentry init failed")
+    );
+    expect(keep({ category: "fetch", message: "[dashboard] x" })).toEqual({
+      category: "fetch",
+      message: "[dashboard] x",
+    });
+  });
+
   it("does nothing when the runtime config carries an empty DSN", () => {
     vi.stubEnv("VITE_SENTRY_DSN", DSN);
     vi.stubGlobal("__INSIGHT_CONFIG__", { sentryDsn: "" });

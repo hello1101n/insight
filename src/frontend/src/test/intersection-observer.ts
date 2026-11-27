@@ -1,17 +1,8 @@
-/**
- * jsdom implements no `IntersectionObserver` at all, so anything that loads on
- * scroll would silently never fire under test. This is the smallest stand-in
- * that behaves like the real thing in the one way the loading code depends on:
- * **`observe()` reports the CURRENT state**, it does not wait for a crossing.
- * That is what lets a list keep loading while its end stays in view, and a stub
- * that only fired on demand would let that regress unnoticed.
- */
 type Callback = (entries: Array<{ isIntersecting: boolean }>) => void;
 
 const watching = new Set<Callback>();
 let endInView = false;
 
-/** The end of the list is on screen — and stays there until told otherwise. */
 export function scrollEndIntoView(): void {
   endInView = true;
   for (const callback of [...watching]) {
@@ -19,7 +10,6 @@ export function scrollEndIntoView(): void {
   }
 }
 
-/** The reader scrolled away, or rows pushed the end past the edge. */
 export function scrollEndOutOfView(): void {
   endInView = false;
   for (const callback of [...watching]) {
@@ -40,9 +30,7 @@ export function installIntersectionObserver(): void {
     }
     observe(): void {
       watching.add(this.#callback);
-      // The platform delivers an initial record for whatever the target's
-      // state already is. Re-observing is therefore how the loading code
-      // re-checks a marker that never moved.
+      // INVARIANT: like the platform, observe() reports the target's current state.
       if (endInView) this.#callback([{ isIntersecting: true }]);
     }
     unobserve(): void {

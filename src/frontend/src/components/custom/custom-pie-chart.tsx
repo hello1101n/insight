@@ -27,7 +27,6 @@ export interface CustomPieChartProps {
   onPointClick?: () => void;
 }
 
-/** A share of a total: one slice per row, painted round the kit's palette. */
 export function CustomPieChart({
   result,
   label,
@@ -36,7 +35,7 @@ export function CustomPieChart({
   onPointClick,
 }: CustomPieChartProps) {
   const data = points(result, [label, value]);
-  const unit = unitFor(result.percents, value);
+  const unit = unitFor(result, value);
   const config: ChartConfig = Object.fromEntries(
     data.map((slice, index) => [
       String(slice[label]),

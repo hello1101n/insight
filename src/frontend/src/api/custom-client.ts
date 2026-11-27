@@ -62,7 +62,6 @@ export function isDenied(error: unknown): boolean {
   return error instanceof CustomApiError && error.status === 403;
 }
 
-/** Refuses with what the service said, or with nothing when it said nothing. */
 export async function ensureOk(res: Response): Promise<void> {
   if (!res.ok) {
     throw new CustomApiError(res.status, await res.json().catch(() => null));
@@ -74,14 +73,6 @@ export async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-/**
- * One path segment: a definition's id, a dataset's, database's or table's name.
- *
- * INVARIANT: an empty name is never a request. It would address the
- * collection above it with a trailing slash, which no service routes — and an
- * unrouted path answers 401, which reads at the caller as a session that
- * ended rather than as the bug it is.
- */
 function named(name: string): string {
   if (name === "") {
     throw new CustomApiError(400, { detail: "A name is required." });
@@ -89,18 +80,10 @@ function named(name: string): string {
   return encodeURIComponent(name);
 }
 
-/** What a definition is, in the API's path segments. */
 export type DefinitionKind = "metrics" | "widgets" | "dashboards";
 
-/** Every kind the Custom zone holds, including the one with a lifecycle. */
 export type EditableKind = DefinitionKind | "datasets";
 
-/**
- * Removes a definition.
- *
- * Refused while something still draws it — a widget's metric, a dashboard's
- * widget — and the reply names what does, which is what the caller is shown.
- */
 export async function deleteDefinition(
   kind: DefinitionKind,
   id: string
@@ -158,13 +141,10 @@ export async function renameDashboard(id: string, to: string): Promise<void> {
 
 export const DEFINITION_NAME_MAX = 128;
 
-/** Which dashboards a list narrows to by who owns them. */
 export type OwnedFilter = "me" | "shared";
 
-/** The order a dashboard list answers in; by name unless asked. */
 export type DashboardOrder = "name" | "recent";
 
-/** Which slice of a catalogue to ask for. The service caps limit at 200. */
 export interface PageRequest {
   search?: string;
   limit?: number;
@@ -288,7 +268,6 @@ function grantsPath({ kind, id }: GrantTarget): string {
   return `${BASE}/${kind}/${named(id)}/grants`;
 }
 
-/** Who a dashboard or folder is shared with. Only its owner or an editor may ask. */
 export async function fetchGrants(target: GrantTarget): Promise<Grant[]> {
   const res = await fetchWithAuth(grantsPath(target));
   const read = await readJson<{ items: Grant[] }>(res);
@@ -319,7 +298,6 @@ export async function deleteGrant(
   await ensureOk(res);
 }
 
-/** One page of the dashboards whose owner is no longer an administrator. */
 export async function fetchOrphanedDashboards(
   page: Pick<PageRequest, "limit" | "offset"> = {}
 ): Promise<ListedPage<OrphanedDashboard>> {
@@ -387,10 +365,6 @@ function entryPath(folder: string, dashboard: string): string {
   return `${BASE}/folders/${named(folder)}/dashboards/${named(dashboard)}`;
 }
 
-/**
- * Puts a dashboard in a folder; it stays in every other folder holding it.
- * Answers whether the entry carries the folder's people to the dashboard.
- */
 export async function addToFolder(
   folder: string,
   dashboard: string
@@ -439,7 +413,6 @@ export async function fetchWidget(id: string): Promise<StoredWidget> {
 
 export interface NamePage {
   names: string[];
-  /** The same datasets as `names`, in order, with what a card shows. */
   items: Omit<DatasetListed, "id">[];
   total: number;
 }
@@ -456,7 +429,6 @@ export async function fetchDataset(name: string): Promise<Dataset> {
   return readJson<Dataset>(res);
 }
 
-/** One page of the records a dataset holds, sized by the service. */
 export async function fetchDatasetRecords(
   name: string,
   page: RecordPage
@@ -464,8 +436,6 @@ export async function fetchDatasetRecords(
   const query = new URLSearchParams();
   if (page.limit !== undefined) query.set("limit", String(page.limit));
   if (page.offset) query.set("offset", String(page.offset));
-  // The direction stands on its own: with no field named the service orders
-  // by the instant a record arrived, and honours the direction there too.
   if (page.orderBy) query.set("order_by", page.orderBy);
   if (page.descending !== undefined) {
     query.set("direction", page.descending ? "desc" : "asc");
@@ -477,7 +447,6 @@ export async function fetchDatasetRecords(
   return readJson<DatasetRecords>(res);
 }
 
-/** Every definition that names this one: what a removal would break. */
 export async function fetchDependents(
   kind: DefinitionKind,
   id: string
@@ -486,12 +455,6 @@ export async function fetchDependents(
   return readJson<Dependents>(res);
 }
 
-/**
- * Every metric that reads this dataset.
- *
- * An exact lookup over what each body names, so a metric merely mentioning
- * the name in a label is not one of them.
- */
 export async function fetchDatasetDependents(name: string): Promise<string[]> {
   const res = await fetchWithAuth(`${BASE}/datasets/${named(name)}/dependents`);
   const read = await readJson<{ metrics: string[] }>(res);
@@ -499,12 +462,6 @@ export async function fetchDatasetDependents(name: string): Promise<string[]> {
   return read.metrics;
 }
 
-/**
- * Declares a dataset, or replaces the declaration of one that stands.
- *
- * A replacement touches no record: it is refused where a metric reading the
- * dataset would break or quietly start answering something else.
- */
 export async function putDataset(
   name: string,
   declaration: unknown
@@ -517,11 +474,6 @@ export async function putDataset(
   return readJson<Dataset>(res);
 }
 
-/**
- * Takes a dataset away, with the records it holds.
- *
- * Refused while a metric reads it, and the reply names every one.
- */
 export async function deleteDataset(name: string): Promise<void> {
   const res = await fetchWithAuth(`${BASE}/datasets/${named(name)}`, {
     method: "DELETE",
@@ -529,13 +481,10 @@ export async function deleteDataset(name: string): Promise<void> {
   await ensureOk(res);
 }
 
-/**
- * What a reader asked one run for. Every field is optional and an absent one
- * means the server's own default: no window, UTC, bucketed.
- */
 export interface RunOptions {
   range?: string;
   bucket?: boolean;
+  previous?: boolean;
 }
 
 export async function runMetric(
@@ -560,7 +509,7 @@ export async function fetchDashboardWidgets(
   return read.items;
 }
 
-function dashboardWidgetPath(dashboard: string, widget: string): string {
+export function dashboardWidgetPath(dashboard: string, widget: string): string {
   return `${BASE}/dashboards/${named(dashboard)}/widgets/${named(widget)}`;
 }
 
@@ -606,7 +555,6 @@ export async function sendChat(
   const res = await fetchWithAuth(`${BASE}/chat`, {
     method: "POST",
     headers: JSON_HEADERS,
-    // The service keeps no session, so the thread travels with every turn.
     body: JSON.stringify({ message, history }),
   });
   return readJson<ChatReply>(res);

@@ -26,10 +26,9 @@ kubectl -n insight get sa argo-workflow
 kubectl -n airbyte get role insight-airbyte-auth-reader
 ```
 
-The CI deploy credential (namespace-scoped SA in `insight`) can run none of
-those — it cannot `helm list -A`, read `mariadb/`, or see the Gateway. That is
-the right shape for a deploy credential, and the reason this file is maintained
-by hand rather than generated.
+Use an administrator credential for the infrastructure checks.
+The CI deploy credential manages the umbrella release and its explicitly named cluster resources.
+See the [permissions in the credentials runbook](credentials-runbook.md#3-verify-the-scope).
 
 ## The layer model
 
@@ -37,7 +36,6 @@ by hand rather than generated.
 |---|---|---|---|
 | **L-1** | Cluster: nodes, CNI, OpenStack Cinder CSI driver, public DNS record | the cloud platform | assumed; deploy scripts hard-fail without the CSI driver, Insight is gated on DNS |
 | **L0** | Edge + PKI: Envoy Gateway (`GatewayClass`/`Gateway`/`EnvoyProxy`), cert-manager + the two-step `ClusterIssuer` chain, the `cinder` StorageClass | the deployment repository | named in `values.yaml`; never created here |
-| **L0** | The `insight-previews` namespace — where the release binds its experiments RBAC | the deployment repository | named in `inventory.yaml` (`namespaces.previews`); granted over by `ci-deployer-rbac.yaml`, never created here |
 | **L2** | Datastores under their operators (ClickHouse, MariaDB, Redis, Redpanda), plus Airbyte and Argo — each in its own namespace | the deployment repository | addressed by in-cluster Service DNS; never created here |
 | **L2** | Generate-once Secrets + the realm ConfigMap the release consumes by name | the deployment repository | referenced by name; `enabled: false` in `inventory.yaml` |
 | **L3** | **The umbrella release `insight` — every value in `values.yaml`** | **this directory** | **owned; changed by CI on every merge to `main`** |
@@ -50,6 +48,10 @@ carries native Gateway API templates, so `HTTPRoute/insight-gateway` and
 that does not exist is created successfully and serves nothing.
 
 ## The deploy order
+
+The cluster must serve `ValidatingAdmissionPolicy` and `ValidatingAdmissionPolicyBinding` in `admissionregistration.k8s.io/v1`.
+The release creates both resources and binds the Workflow policy with the `Deny` action.
+Create the release and Airbyte namespaces before you apply the CI deployer RBAC.
 
 `deploy-all.sh` runs each `deploy-<svc>.sh` then its `validate-<svc>.sh`,
 stopping at the first failure. The order is not interchangeable:
@@ -164,7 +166,9 @@ rebuilding from the rendered release alone will miss all of it.
   `insight-clickhouse-migrate`. Every hook has `ttlSecondsAfterFinished: 600` —
   **capture hook logs immediately on a failure.**
 - **Secrets created outside the release** (in `insight`): `insight-db-creds`
-  (recomposed each run, no Helm label — §18), `insight-authenticator-signing-keys`
+  (recomposed each run, no Helm label — §18). Keep the generate-once
+  `clickhouse-sync-password` key. The upgrade stops at render if the key is missing.
+  Other Secrets include `insight-authenticator-signing-keys`
   (ES256, generate-once — a new key logs everyone out), `insight-keycloak-admin`,
   `insight-oidc` (the config Job re-pushes the same client secret each deploy so
   it can't drift), `insight-keycloak-config` (recomposed). Plus the operator
@@ -264,6 +268,8 @@ takes over.
     (no Helm label), the ES256 key, keycloak-admin + OIDC secrets,
     `insight-keycloak-config`, generate+pack the realm, apply the
     `argo-workflow` SA. Remove any maintenance route (§16).
+    Generate `clickhouse-sync-password` once with `openssl rand -hex 16` (32 hex characters).
+    Add the key to `insight-db-creds`. The upgrade stops at render if the key is missing.
 12. **Hand over to this repository** — the `helm upgrade` in
     [`README.md` step 3](README.md#deploying-by-hand) (the command CI runs),
     then the restart (§25) and route check (§26). Rehearse read-only with

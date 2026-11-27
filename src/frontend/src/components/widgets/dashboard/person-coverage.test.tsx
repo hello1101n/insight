@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The one line on a person's page that says what the page cannot see.
- *
- * Its whole job is to keep two claims apart, so the tests are about which
- * sentence each blank section gets — not about layout.
- */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -26,8 +20,6 @@ describe("PersonCoverage", () => {
   });
 
   it("blames nobody where the measurement works and the person is absent", () => {
-    // The failure this guards: telling a reader their tracker is broken while
-    // their colleagues' numbers for that same section sit on the next screen.
     render(
       <PersonCoverage unmeasured={[]} inactive={["Git output", "Wiki"]} />
     );

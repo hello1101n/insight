@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from reconcile_inputs import sync_user
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,7 @@ FORMER = "example-legacy"
 SOURCE_NAME = f"jira-main-{TENANT}"
 CFG_HASH = "abcdefabcdef0123"
 TAGS = [{"name": "insight"}, {"name": f"cfg-hash:{CFG_HASH[:12]}"}]
+DESTINATION = "dest-1"
 
 CURRENT_SCHEDULE = "jira-main-0f6b3c2e-sync"
 FORMER_SCHEDULE = "jira-main-example-sync"
@@ -103,7 +105,7 @@ def run(tmp_path: Path, command: str, **env: str) -> Pass:
 
 
 def connections(tmp_path: Path, name: str) -> None:
-    rows = [{"connectionId": "conn-1", "sourceId": "src-1", "name": name, "tags": TAGS}]
+    rows = [{"connectionId": "conn-1", "sourceId": "src-1", "destinationId": DESTINATION, "name": name, "tags": TAGS}]
     (tmp_path / "connections.json").write_text(json.dumps(rows), encoding="utf-8")
 
 
@@ -112,7 +114,12 @@ def connection_name(tmp_path: Path) -> str:
 
 
 def reconcile_connection(tmp_path: Path, **env: str) -> Pass:
-    return run(tmp_path, f"reconcile_connections jira src-1 {CFG_HASH} bronze_jira {SOURCE_NAME}", **env)
+    command = f"""
+    {sync_user(tmp_path / "sync-user", DESTINATION)}
+    ab_destination_credentials_init || exit 1
+    reconcile_connections jira src-1 {CFG_HASH} bronze_jira {SOURCE_NAME}
+    """
+    return run(tmp_path, command, **env)
 
 
 def test_a_connection_still_named_for_the_former_tenant_is_renamed_in_place(tmp_path: Path) -> None:

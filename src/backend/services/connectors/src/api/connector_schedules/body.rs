@@ -71,6 +71,11 @@ pub(super) fn validated(
         .map_err(|problem| {
             super::domain_error(crate::domain::connector_schedules::Error::Invalid(problem))
         })?;
+    require_json(headers)?;
+    Ok(crons)
+}
+
+pub(super) fn require_json(headers: &axum::http::HeaderMap) -> Result<(), ScheduleError> {
     let content_type = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|h| h.to_str().ok())
@@ -81,5 +86,5 @@ pub(super) fn validated(
     {
         return Err(unsupported_media_type());
     }
-    Ok(crons)
+    Ok(())
 }

@@ -109,8 +109,6 @@ describe("buildMetricCollectionRequest", () => {
   });
 
   it("omits the comparison window entirely when none was asked for", () => {
-    // The field is absent, not null: an uncompared request keeps the exact
-    // wire form it had before comparison windows existed.
     const request = buildMetricCollectionRequest(
       COLLECTION,
       { type: "person", ids: ["alice@example.com"] },
@@ -130,14 +128,7 @@ describe("buildMetricCollectionRequest", () => {
   });
 });
 
-/**
- * A windowed breakdown groups over every window at once, so its row set is the
- * union of them. These cases pin the rule that makes a projected window equal
- * to the standalone request it replaced: rows are chosen by `present`, never by
- * whether the value happens to be null.
- */
 describe("a compared breakdown's row set", () => {
-  /** `org/a` only in the primary period (ratio null there), `org/b` only in the window. */
   const disjoint = (): Map<string, NormalizedMetricResult> =>
     new Map([
       [
@@ -177,16 +168,12 @@ describe("a compared breakdown's row set", () => {
     result?.breakdown?.values.map((row) => row.dimensions[0]?.value);
 
   it("gives the comparison window only the groups it had", () => {
-    // A standalone request over the window would have returned org/b alone.
     const projected = projectComparison(disjoint()).get("ci.gate_pass_rate");
     expect(repositories(projected)).toEqual(["org/b"]);
     expect(projected?.breakdown?.values[0]?.value).toBe(20);
   });
 
   it("keeps a present group whose value is genuinely null", () => {
-    // org/a IS in the primary period; its ratio is null because the
-    // denominator is zero. Dropping it would lose a row the standalone
-    // request returns — which is why presence cannot be read off the value.
     const primary = projectPrimary(disjoint()).get("ci.gate_pass_rate");
     expect(repositories(primary)).toEqual(["org/a"]);
     expect(primary?.breakdown?.values[0]?.value).toBeNull();
@@ -263,8 +250,6 @@ describe("projectComparison", () => {
   });
 
   it("drops the views the comparison window does not carry", () => {
-    // Keeping `peer` would answer the primary period's standing under a
-    // previous-period label — a mispairing no consumer could detect.
     expect(projectComparison(windowed()).get("git.commits")?.peer).toBeUndefined();
   });
 
@@ -332,7 +317,6 @@ describe("normalizeMetricResult error views", () => {
         code: "QUERY_TIMEOUT",
         message: "took too long",
       });
-      // The failed view's slot stays unset; sibling views are unaffected.
       expect(normalized.period).toBeDefined();
       expect(normalized.peer).toBeDefined();
       expect(warn).not.toHaveBeenCalled();
@@ -375,7 +359,6 @@ describe("row-limit chunking", () => {
   };
 
   it("computes the per-request entity capacity from the view count", () => {
-    // 10 metrics × 2 views = 20 rows/entity; 4500 / 20 = 225.
     expect(entityChunkSize(PERIOD_PEER)).toBe(225);
   });
 
@@ -418,13 +401,10 @@ describe("row-limit chunking", () => {
       "bob@example.com",
       "carol@example.com",
     ]);
-    // Source maps untouched.
     expect(a.get("ai.accepted_lines")?.period?.values).toHaveLength(2);
   });
 
   it("adopts a view from a later chunk when the accumulator lacks it", () => {
-    // First chunk: period only. Second chunk: peer only. The merged result
-    // must carry both (one-sided branches, not just both-present).
     const periodOnly = structuredClone(SUM_METRIC_FIXTURE);
     periodOnly.views = periodOnly.views.filter((v) => v.view === "period");
     const peerOnly = structuredClone(SUM_METRIC_FIXTURE);
@@ -449,7 +429,6 @@ describe("row-limit chunking", () => {
       normalizeMetricResults([peerOnly]),
     ]);
     const metric = merged.get("ai.accepted_lines")!;
-    // period survives (second chunk had none); peer values append.
     expect(metric.period?.values.length).toBeGreaterThan(0);
     expect(metric.peer?.values.length ?? 0).toBeGreaterThan(1);
   });
@@ -470,7 +449,6 @@ describe("row-limit chunking", () => {
       code: "QUERY_FAILED",
       message: "chunk two failed",
     });
-    // The healthy chunk's data still merges alongside the error.
     expect(metric.period?.values.length).toBeGreaterThan(0);
   });
 });
@@ -692,18 +670,6 @@ describe("forEntity", () => {
   });
 });
 
-/**
- * Every "source isn't ingested" gate in the portal rides on this predicate, and
- * it rests on a backend guarantee: the peer view's `target_value` is NULL
- * exactly when the entity was not observed. That holds because the peer query
- * ends with `SETTINGS join_use_nulls = 1` — without it ClickHouse would fill
- * unmatched rows with 0 and an un-ingested domain would render an all-zero
- * dashboard instead of the honest empty state.
- *
- * These cases pin BOTH sides of that contract, so a regression in the backend
- * setting shows up as a failing expectation here rather than as fabricated
- * zeros in front of a customer.
- */
 describe("entityObserved", () => {
   const withPeer = (target: number | null, value: number | null) =>
     ({
@@ -721,15 +687,10 @@ describe("entityObserved", () => {
     }) as unknown as NormalizedMetricResult;
 
   it("treats a null peer target as unobserved, whatever the period value says", () => {
-    // The period view zero-fills every requested entity, so a 0 there proves
-    // nothing on its own.
     expect(entityObserved(withPeer(null, 0), "a@x")).toBe(false);
   });
 
   it("treats a ZERO peer target as observed — a measured zero is data", () => {
-    // The case the null-only fixtures never covered: if the backend ever
-    // zero-filled instead of nulling, this is what would silently flip every
-    // gate from "not ingested" to "all zeros".
     expect(entityObserved(withPeer(0, 0), "a@x")).toBe(true);
   });
 
@@ -775,9 +736,6 @@ describe("filterCollectionToDeclaredDimensions", () => {
   };
 
   it("drops a metric narrowed by a dimension it does not declare", () => {
-    // The backend answers the whole request with 400 "metric tasks.closed does
-    // not support dimension repository", so this is the difference between a
-    // scoped screen and a blank one.
     const out = filterCollectionToDeclaredDimensions(scoped, declared);
     expect(out.metrics.map((m) => m.key)).toEqual(["git.commits"]);
   });
@@ -802,7 +760,6 @@ describe("filterCollectionToDeclaredDimensions", () => {
         },
       ],
     };
-    // git.prs_merged declares `repository` and not `hour_block`.
     expect(filterCollectionToDeclaredDimensions(both, declared).metrics).toEqual(
       [],
     );
@@ -820,9 +777,6 @@ describe("filterCollectionToDeclaredDimensions", () => {
   });
 
   it("judges each entry by its OWN filters, not by the first with that key", () => {
-    // Two entries can name one metric under different filters. Deciding the
-    // second by the first's filters would leave an unsupported filter in the
-    // request, which is the 400 this gate exists to prevent.
     const twice: MetricCollectionConfig = {
       metrics: [
         { key: "git.commits", filters: REPO, views: [{ view: "period" }] },
@@ -834,12 +788,10 @@ describe("filterCollectionToDeclaredDimensions", () => {
       ],
     };
     const out = filterCollectionToDeclaredDimensions(twice, declared);
-    // git.commits declares `repository` and not `team`.
     expect(out.metrics).toEqual([twice.metrics[0]]);
   });
 
   it("drops nothing while the catalog is unknown", () => {
-    // Null is "not answered yet" — the caller holds the request instead.
     expect(filterCollectionToDeclaredDimensions(scoped, null)).toBe(scoped);
   });
 
@@ -863,8 +815,6 @@ describe("filterCollectionToAvailable", () => {
   };
 
   it("drops a key the catalog does not offer, keeping the rest", () => {
-    // The backend rejects the WHOLE request over one unknown key, so this is
-    // the difference between a blank screen and one metric with no data.
     const out = filterCollectionToAvailable(
       collection,
       new Set(["git.commits", "ai.cost"]),
@@ -873,21 +823,15 @@ describe("filterCollectionToAvailable", () => {
   });
 
   it("returns the SAME object when every key is available", () => {
-    // Identity matters: the config rides in the react-query key, and a fresh
-    // object per render would re-key every metric query.
     const all = new Set(["git.commits", "tasks.closed_task", "ai.cost"]);
     expect(filterCollectionToAvailable(collection, all)).toBe(collection);
   });
 
   it("drops nothing while the catalog is unknown", () => {
-    // Null is "not answered yet", not "offers nothing" — shrinking the request
-    // on a pending catalog would hide metrics that do exist.
     expect(filterCollectionToAvailable(collection, null)).toBe(collection);
   });
 
   it("can empty the collection when the catalog offers none of it", () => {
-    // The caller disables the query on an empty metric list; an empty
-    // `metrics: []` is itself a 400.
     expect(filterCollectionToAvailable(collection, new Set()).metrics).toEqual([]);
   });
 });

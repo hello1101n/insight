@@ -1,27 +1,35 @@
 import i18n from "@/i18n";
 import { useTranslation } from "react-i18next";
-import { useId, useState } from "react";
+import { useId, type ReactNode } from "react";
 
 import type {
+  ConnectorHealth,
   ConnectorInstanceRef,
+  ConnectorSyncHistory as SyncHistoryData,
   SyncFact,
 } from "@/api/connector-health-client";
-import { Badge, Button } from "@gears-frontx/ui-kit";
+import {
+  Card,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@gears-frontx/ui-kit";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import { ComingSoon } from "@/components/widgets/coming-soon";
-import { TONE_BAR_STYLE, TONE_STYLE } from "./connector-health-tone";
+import { ConnectorRunHistory } from "./connector-run-history";
+import { ConnectorRunSummary } from "./connector-run-summary";
+import { ConnectorSyncTable } from "./connector-sync-table";
+import { historySegmentStyle } from "./connector-health-tone";
 import { ConnectorScheduleTooltip } from "./connector-schedule-tooltip";
 import {
-  UNMEASURED,
   describeDuration,
   describeSync,
-  formatRecords,
   formatStarted,
 } from "@/lib/portal/connector-health";
+import { projectRun } from "@/lib/portal/connector-runs";
 import { cn } from "@/lib/utils";
 import { useConnectorSyncs } from "@/queries/connector-health";
 
-const INITIAL_ROWS = 10;
 const MAX_RUNS = 50;
 
 function statusTotals(syncs: readonly SyncFact[]) {
@@ -47,40 +55,122 @@ function statusTotals(syncs: readonly SyncFact[]) {
 export function ConnectorSyncHistory({
   instance,
   asOf,
+  schedule,
 }: {
-  instance: ConnectorInstanceRef;
+  instance: ConnectorInstanceRef &
+    Pick<ConnectorHealth, "latest_run" | "last_successful_run">;
   asOf: string;
+  schedule?: ReactNode;
 }) {
-  const { t } = useTranslation();
   const { data, isPending, isError, refetch } = useConnectorSyncs(instance);
-  const [showAll, setShowAll] = useState(false);
-  const id = useId();
+  let history: ReactNode;
+  let summary: ReactNode;
 
-  if (isPending) return <CenteredSpinner className="min-h-24" />;
-  if (isError || data === undefined) {
-    return (
+  if (isPending) {
+    history = <CenteredSpinner className="min-h-24" />;
+  } else if (isError || data === undefined) {
+    history = (
       <div className="max-w-md">
         <ComingSoon variant="card" state="error" onRetry={() => refetch()} />
       </div>
     );
+  } else if (
+    !data.history_read_error &&
+    (instance.latest_run ||
+      (data.runs && (data.runs.length > 0 || data.syncs.length === 0)))
+  ) {
+    const recent = instance.latest_run && projectRun(instance.latest_run);
+    const recordedSuccess =
+      instance.last_successful_run && projectRun(instance.last_successful_run);
+    const runs = (data.runs ?? []).map(projectRun);
+    if (recent && !runs.some((run) => run.sync_id === recent.sync_id))
+      runs.unshift(recent);
+    const newestSuccess = runs.find((run) => run.status === "succeeded");
+    const successful =
+      newestSuccess &&
+      (!recordedSuccess ||
+        Date.parse(newestSuccess.started_at) >
+          Date.parse(recordedSuccess.started_at))
+        ? newestSuccess
+        : recordedSuccess;
+
+    summary = (
+      <ConnectorRunSummary
+        current={recent ?? runs[0]}
+        successful={successful}
+        asOf={asOf}
+        className={
+          schedule ? "divide-y border-t pt-1" : "mb-2 divide-y border-b"
+        }
+      />
+    );
+    history = (
+      <ConnectorRunHistory
+        runs={runs}
+        syncs={data.syncs}
+        limit={MAX_RUNS}
+        asOf={asOf}
+      />
+    );
+  } else {
+    history = <SyncFactsHistory data={data} asOf={asOf} />;
   }
 
+  return (
+    <div
+      className={cn(
+        "sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 items-start gap-2 py-1 [overflow-wrap:anywhere] whitespace-normal sm:py-2",
+        schedule &&
+          "@min-[58rem]:my-2 @min-[58rem]:grid-cols-[clamp(19rem,24%,26rem)_minmax(0,1fr)] @min-[58rem]:items-stretch @min-[58rem]:gap-0 @min-[58rem]:rounded-lg @min-[58rem]:border @min-[58rem]:bg-card @min-[58rem]:py-0"
+      )}
+    >
+      {schedule && (
+        <Card
+          size="sm"
+          className="@container min-w-0 gap-3 px-3 py-2 @min-[58rem]:rounded-none @min-[58rem]:border-0 @min-[58rem]:border-r @min-[58rem]:bg-muted/40 @min-[58rem]:p-4 @min-[58rem]:shadow-none"
+        >
+          {schedule}
+          {summary}
+        </Card>
+      )}
+      <Card
+        size="sm"
+        className={cn(
+          "min-w-0 p-2 sm:p-3",
+          schedule &&
+            "@min-[58rem]:rounded-none @min-[58rem]:border-0 @min-[58rem]:bg-transparent @min-[58rem]:p-4 @min-[58rem]:shadow-none"
+        )}
+      >
+        {!schedule && summary}
+        {history}
+      </Card>
+    </div>
+  );
+}
+
+function SyncFactsHistory({
+  data,
+  asOf,
+}: {
+  data: SyncHistoryData;
+  asOf: string;
+}) {
+  const { t } = useTranslation();
+  const id = useId();
   const syncs = data.syncs.slice(0, MAX_RUNS);
   const totals = statusTotals(syncs);
-  const visible = showAll ? syncs : syncs.slice(0, INITIAL_ROWS);
-  const count =
-    syncs.length > visible.length
-      ? t("connectors.history.latest_recorded", {
-          shown: visible.length,
-          total: syncs.length,
-        })
-      : t("connectors.history.latest", { count: syncs.length });
+  const count = t("connectors.history.latest", { count: syncs.length });
 
   return (
     <section
-      aria-labelledby={`${id}-heading`}
+      aria-labelledby={syncs.length ? undefined : `${id}-heading`}
       className="max-w-full min-w-0 space-y-3 [overflow-wrap:anywhere] whitespace-normal"
     >
+      {data.history_read_error && (
+        <p role="alert" className="text-sm text-warning">
+          {data.history_read_error}
+        </p>
+      )}
       <div className="flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <h3 id={`${id}-heading`} className="shrink-0 text-sm font-semibold">
           {t("connectors.history.heading")}
@@ -89,7 +179,10 @@ export function ConnectorSyncHistory({
           <>
             <ol
               aria-label={t("connectors.history.statuses_label")}
-              className="flex max-w-full min-w-0 flex-wrap gap-[2px]"
+              className="grid w-full min-w-0"
+              style={{
+                gridTemplateColumns: `repeat(${MAX_RUNS}, minmax(0, 1fr))`,
+              }}
             >
               {syncs
                 .slice()
@@ -102,15 +195,19 @@ export function ConnectorSyncHistory({
                     started: formatStarted(sync.started_at),
                   });
                   return (
-                    <li
-                      key={sync.job_id}
-                      aria-label={label}
-                      title={label}
-                      className={cn(
-                        "h-[18px] w-[9px] shrink-0 rounded-[2px]",
-                        TONE_BAR_STYLE[state.tone]
-                      )}
-                    />
+                    <Tooltip key={sync.job_id}>
+                      <TooltipTrigger
+                        render={<li />}
+                        role="listitem"
+                        tabIndex={-1}
+                        aria-label={label}
+                        className={cn(
+                          "h-3 min-w-0 border-background/50 not-last:border-r first:rounded-l-full last:rounded-r-full",
+                          historySegmentStyle(sync.status, state.tone)
+                        )}
+                      />
+                      <TooltipContent role="tooltip">{label}</TooltipContent>
+                    </Tooltip>
                   );
                 })}
             </ol>
@@ -123,105 +220,31 @@ export function ConnectorSyncHistory({
             )}
           </>
         )}
-        <p className="ml-auto text-xs text-muted-foreground">{count}</p>
+        {syncs.length > 0 && (
+          <p className="ml-auto text-xs text-muted-foreground">{count}</p>
+        )}
       </div>
       {syncs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t("connectors.history.empty")}
         </p>
       ) : (
-        <>
-          <table
-            id={`${id}-table`}
-            aria-label={t("connectors.history.heading")}
-            className="w-full max-w-full table-fixed text-xs sm:text-sm"
-          >
-            <colgroup>
-              <col className="w-1/4" />
-              <col className="w-[35%] sm:w-2/5" />
-              <col className="w-1/5" />
-              <col className="w-1/5 sm:w-[15%]" />
-            </colgroup>
-            <thead className="[overflow-wrap:anywhere] [word-break:normal] whitespace-normal">
-              <tr className="border-b text-left text-muted-foreground">
-                <th scope="col" className="px-1 py-2 font-medium">
-                  {t("common.table.status")}
-                </th>
-                <th
-                  scope="col"
-                  className="px-1 py-2 font-medium whitespace-normal"
-                >
-                  {t("connectors.history.started_utc")}
-                </th>
-                <th scope="col" className="px-1 py-2 text-right font-medium">
-                  {t("connectors.duration")}
-                </th>
-                <th scope="col" className="px-1 py-2 text-right font-medium">
-                  {t("connectors.history.records")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((sync) => (
-                <SyncRow key={sync.job_id} sync={sync} asOf={asOf} />
-              ))}
-            </tbody>
-          </table>
-          {syncs.length > INITIAL_ROWS && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              aria-expanded={showAll}
-              aria-controls={`${id}-table`}
-              onClick={() => setShowAll(!showAll)}
-            >
-              {showAll
-                ? t("connectors.history.show_latest", { count: INITIAL_ROWS })
-                : t("connectors.history.show_all", { count: syncs.length })}
-            </Button>
-          )}
-        </>
+        <ConnectorSyncTable
+          id={`${id}-table`}
+          rows={syncs.map((sync) => {
+            const state = describeSync(sync);
+            const duration = describeDuration(sync, asOf);
+            return {
+              id: sync.job_id,
+              status: state,
+              started: sync.started_at,
+              duration: duration.text,
+              inFlight: duration.inFlight,
+              records: sync.records_reported,
+            };
+          })}
+        />
       )}
     </section>
-  );
-}
-
-function SyncRow({ sync, asOf }: { sync: SyncFact; asOf: string }) {
-  const { t } = useTranslation();
-  const state = describeSync(sync);
-  const duration = describeDuration(sync, asOf);
-  return (
-    <tr className="border-b last:border-0">
-      <td className="px-1 py-2 align-top">
-        <Badge
-          className={cn(
-            "max-w-full font-medium whitespace-normal",
-            TONE_STYLE[state.tone]
-          )}
-        >
-          {state.label}
-        </Badge>
-      </td>
-      <td className="px-1 py-2 align-top text-muted-foreground tabular-nums">
-        {formatStarted(sync.started_at)}
-      </td>
-      <td
-        className={cn(
-          "px-1 py-2 text-right align-top tabular-nums",
-          duration.inFlight ? "text-foreground" : "text-muted-foreground"
-        )}
-      >
-        {duration.text}
-      </td>
-      <td className="px-1 py-2 text-right align-top text-muted-foreground tabular-nums">
-        {formatRecords(sync.records_reported)}
-        {sync.records_reported == null && (
-          <span className="sr-only">
-            {t("connectors.history.unmeasured", { value: UNMEASURED })}
-          </span>
-        )}
-      </td>
-    </tr>
   );
 }

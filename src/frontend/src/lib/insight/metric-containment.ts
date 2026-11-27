@@ -1,51 +1,19 @@
 import { isRankable } from "@/lib/scoring";
 import type { PeerStatusWithNeutral } from "@/lib/peers";
 
-/**
- * Metrics that count a superset of what another metric counts.
- *
- * Two metrics where one contains the other move together almost perfectly, so
- * a rule that picks out unusual values picks out both — and the reader meets
- * what looks like two findings ("Lines added 229" above "Code lines added 73")
- * and is left to work out that the second is part of the first.
- *
- * Keys are the BROADER metric; the values are what it already includes.
- * Relationships are taken from the catalog's own definitions, not inferred
- * from correlation — a pair that merely moves together is not a pair where one
- * contains the other.
- */
 export const METRIC_CONTAINS: Readonly<Record<string, readonly string[]>> = {
-  // "All lines added, by file category" ⊃ "lines added to code files".
   "git.lines_added": ["git.code_lines"],
   "git.default_branch_lines_added": ["git.default_branch_code_lines"],
-  // Branch scope partitions each total, so the default-branch reading is a
-  // part of it by construction — not a correlated second measurement.
   "git.commits": ["git.default_branch_commits"],
   "git.prs_merged": ["git.default_branch_prs_merged"],
-  // "Files shared with any recipient" ⊃ inside / outside the organization.
   "collab.files_shared": [
     "collab.files_shared_internal",
     "collab.files_shared_external",
   ],
-  // "Chat messages sent" ⊃ the ones posted to shared channels.
   "collab.messages_sent": ["collab.channel_posts"],
 };
 
-/**
- * Metrics that restate one another — the same fact written in different units.
- *
- * Not a containment: neither is part of the other, they are two ways of saying
- * one thing, and either alone says all of it. Reporting both puts two marks on
- * one fact, and a reader counts marks.
- *
- * Membership is arithmetic, taken from the catalog's definitions. A pair that
- * merely correlates does not belong here — correlation is a finding, identity
- * is a duplicate.
- */
 export const METRIC_RESTATES: readonly (readonly string[])[] = [
-  // "Share of the workday NOT spent in meetings" is one minus meeting hours
-  // over the working day; meeting-free days counts the days where that share
-  // is whole. Three readings of the same measurement.
   ["collab.focus_time_pct", "collab.meeting_hours", "collab.meeting_free_days"],
 ];
 
@@ -55,38 +23,6 @@ const RESTATEMENT_GROUP = new Map<string, number>(
   )
 );
 
-/**
- * One fact, one row.
- *
- * Of a wider metric and a narrower one, the NARROWER survives: it is the more
- * specific claim — "lines added to code files" excludes documentation, tests
- * and configuration, so it says something the wider metric cannot. Dropping
- * the narrower instead would trade a precise finding for a vague one.
- *
- * `alreadyShown` is what a more prominent surface has already said — the
- * headline row above this block. A metric that restates one of those is not a
- * second finding, it is the same finding further down the page, and the two
- * are not even recognisable as the same measurement from their names.
- *
- * Order matters: of several restatements, the FIRST survives, so callers pass
- * items in the order the reader will meet them — most severe first, or in
- * candidate order for a row that is chosen rather than ranked.
- */
-/**
- * The entries a standing may count as independent signals.
- *
- * A section's status and a person's problem count grade a PATTERN — how many
- * separate things went wrong — so a metric another one already contains must
- * not vote twice. Every surface that grades or tallies goes through here.
- * Displayed rows do not: "what did we measure" and "how many independent
- * things went wrong" are different questions.
- *
- * INVARIANT: thinning is over what actually READ for this entity — never over
- * the collection, and never over a part that is present but unranked. A total
- * whose narrower part says nothing is the only reading there is and keeps its
- * vote, which is why the rank is required rather than optional: an entry with
- * no comparison must not be able to displace one that has it.
- */
 export function countableSignals<T>(
   entries: readonly T[],
   keyOf: (entry: T) => string,

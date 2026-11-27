@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The pane's job is to print what it was served, and to be honest about what
- * it was not served. So the tests here check that it does not re-order the
- * rows (the service ordered them by what needs acting on), that an unmeasured
- * number renders as absence rather than a zero, and that a stopped recorder
- * reaches a screen reader as an alert rather than as ordinary prose.
- */
 import {
   act,
   fireEvent,
@@ -21,13 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ConnectorHealthSummary,
+  ConnectorRun,
   ConnectorSyncHistory,
 } from "@/api/connector-health-client";
 
-/**
- * A connector's row. The whole row is the disclosure control — the same rule
- * every console listing follows — so there is no button inside it to aim at.
- */
 function rowFor(connector: string): HTMLElement {
   const row = screen.getByRole("cell", { name: connector }).closest("tr");
   if (row === null) throw new Error(`no row for ${connector}`);
@@ -81,6 +71,19 @@ vi.mock("@/queries/identity-me", () => ({
 }));
 
 import { ConnectorHealthPane } from "./connector-health";
+
+const TONE_VARIANT = {
+  idle: "variantSecondary",
+  unknown: "variantWarning",
+  failing: "variantDanger",
+  ok: "variantSuccess",
+  active: "variantInfo",
+} as const;
+
+function expectTone(element: HTMLElement, tone: keyof typeof TONE_VARIANT) {
+  expect(element).toHaveAttribute("data-tone", tone);
+  expect(element.className).toContain(TONE_VARIANT[tone]);
+}
 
 const NOW = "2026-01-15T12:00:00.000Z";
 
@@ -626,7 +629,7 @@ describe("the pane prints what it was served", () => {
       "Instance",
       "Next sync",
       "State",
-      "Last sync started",
+      "Last sync started (UTC)",
       "Duration",
       "Records reported",
     ]);
@@ -686,7 +689,7 @@ describe("the pane prints what it was served", () => {
       expect(tooltip).not.toHaveTextContent(/descriptor|default/);
       if (timezone == null) {
         expect(tooltip).toHaveTextContent(
-          "Next run unknown: this schedule runs in the Argo controller's timezone, which is not recorded."
+          "The schedule has no recorded time zone."
         );
       }
     }
@@ -753,9 +756,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("keeps the served order rather than sorting again", () => {
-    // Deliberately an order no local rule reproduces: not alphabetical, not
-    // severity-first, not by job id. A two-row fixture whose served order also
-    // happens to be the severity order proves nothing.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -784,8 +784,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("keeps the same row expanded when the served order changes", async () => {
-    // The page polls, so a row's position is not its identity. Keying expansion
-    // on the position opens a different connector the moment the order moves.
     const alpha = {
       connector: "alpha",
       configured: true,
@@ -874,9 +872,6 @@ describe("the pane prints what it was served", () => {
   );
 
   it("gives two installations of one connector a row each", () => {
-    // They share a name, so the identity cell is the only thing that tells the
-    // rows apart — and a page that collapsed them would report one
-    // installation's failure as the other's health.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -946,10 +941,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("points two rows at two disclosures when an identity carries a separator", () => {
-    // The panel id is the row's identity with the separator swapped for one an
-    // id may carry. Values the ledger recorded are not parsed on the way in, so
-    // two identities can differ only in where that separator falls — and both
-    // rows would then name one panel through `aria-controls`.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -978,8 +969,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("prints an unmeasured number as absence, not as a zero", () => {
-    // Named and scheduled, so the three absences below are the three numbers this
-    // test is about rather than the identity or schedule cell joining them.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1011,10 +1000,6 @@ describe("the pane prints what it was served", () => {
   });
 
   it("says how long a sync in flight has been going, not that it took no time", () => {
-    // The mover reports an unfinished job's duration as a running total, and
-    // ledger rows recorded before that stopped being stored still carry its
-    // zero. A row printing that zero hides the one state this page exists to
-    // surface: a sync that started and never came back.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1034,7 +1019,7 @@ describe("the pane prints what it was served", () => {
 
     const row = rowFor("alpha");
     expect(within(row).getByText("1h 14m so far")).toBeInTheDocument();
-    expect(within(row).queryByText("0 ms")).not.toBeInTheDocument();
+    expect(within(row).queryByText("0s")).not.toBeInTheDocument();
   });
 
   it("says a reported zero is a zero", () => {
@@ -1058,6 +1043,17 @@ describe("the pane prints what it was served", () => {
     expect(within(rowFor("alpha")).getByText("0")).toBeInTheDocument();
   });
 
+  it("keeps the connector list visible when managed history is unavailable", () => {
+    const note = "Sync run history is unavailable.";
+    mocks.summary.data = summary({
+      history_read_error: note,
+      connectors: [{ connector: "alpha", configured: true }],
+    });
+    render(<ConnectorHealthPane />);
+    expect(screen.getByText(note)).toHaveAttribute("role", "alert");
+    expect(rowFor("alpha")).toBeVisible();
+  });
+
   it("says nothing has been recorded instead of implying health", () => {
     mocks.summary.data = summary({
       connectors: [],
@@ -1066,20 +1062,16 @@ describe("the pane prints what it was served", () => {
     });
     render(<ConnectorHealthPane />);
 
+    expect(screen.getByText(/nothing has been read yet/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/nothing has been read from the connectors yet/i)
-    ).toBeInTheDocument();
-    // Deliberately blunt: the word must not appear at all, not even negated.
-    // "Nothing here says the connectors are healthy" reads, at a glance, as
-    // exactly the claim it was written to disclaim.
+      screen.getByText("Sync records appear here after the first update.")
+    ).toBeVisible();
     expect(
       screen.queryByText(/healthy|up to date|fine/i)
     ).not.toBeInTheDocument();
   });
 
   it("does not say nothing has been read when something has", () => {
-    // An empty table and a never-read ledger are different states. Keying the
-    // copy on the row count makes the body contradict the header one line up.
     mocks.summary.data = summary({ connectors: [], history_available: true });
     render(<ConnectorHealthPane />);
 
@@ -1101,9 +1093,6 @@ describe("the pane dates itself", () => {
     mocks.summary.data = summary({ checked_at: "2026-01-15T04:00:00.000Z" });
     render(<ConnectorHealthPane />);
 
-    // One permanently mounted region, so the announcement does not depend on a
-    // role appearing on a node that already existed — and it holds the
-    // consequence as well as the headline, which is the half a reader needs.
     const region = screen.getByRole("status");
     expect(region).toHaveTextContent(/recording appears to have stopped/i);
     expect(region).toHaveTextContent(/may no longer be current/i);
@@ -1151,8 +1140,6 @@ describe("a read that failed says so", () => {
 
     await userEvent.click(rowFor("alpha"));
 
-    // The summary above it is still readable — one connector's unreadable
-    // history must not take the page down with it.
     expect(screen.getByRole("table")).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: /retry|try again/i })
@@ -1190,7 +1177,7 @@ describe("a row expands to its recent syncs", () => {
     const cell = document.getElementById(
       rowFor("example-tracker").getAttribute("aria-controls")!
     );
-    expect(cell).toHaveClass("px-4", "whitespace-normal");
+    expect(cell).toHaveClass("whitespace-normal");
     const boundary = cell!.firstElementChild!;
     expect(boundary).toHaveClass("min-w-0", "[contain:inline-size]");
     const pane = boundary.firstElementChild!;
@@ -1228,7 +1215,7 @@ describe("a row expands to its recent syncs", () => {
     expect(pane.parentElement).toHaveClass("min-w-0");
   });
 
-  it("places the full-width schedule strip before recent syncs in the disclosure", async () => {
+  it("places the schedule before recent syncs in the disclosure", async () => {
     mocks.summary.data = summary({
       connectors: [
         { connector: "example-tracker", source_id: "main", configured: true },
@@ -1321,16 +1308,11 @@ describe("a row expands to its recent syncs", () => {
     });
     render(<ConnectorHealthPane />);
 
-    // One header row plus one body row: the gesture is on the `<tr>` and the
-    // role is not overridden, so the row stays in its table for a screen
-    // reader and still announces itself as a disclosure.
     expect(screen.getAllByRole("row")).toHaveLength(2);
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded");
   });
 
   it("opens the connector from anywhere in the row, not just its name", async () => {
-    // The complaint this answers: only the name was clickable, so the rest of
-    // a wide row looked interactive and did nothing.
     mocks.summary.data = summary({
       connectors: [
         {
@@ -1342,7 +1324,7 @@ describe("a row expands to its recent syncs", () => {
     });
     render(<ConnectorHealthPane />);
 
-    await userEvent.click(screen.getByText("sync ok"));
+    await userEvent.click(screen.getByText("Ready"));
 
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded", "true");
   });
@@ -1364,8 +1346,6 @@ describe("a row expands to its recent syncs", () => {
   });
 
   it("does not open the connector when a selection was dragged across it", async () => {
-    // Copying a connector name out of the table must not open it. The rule is
-    // shared with every other console listing, which is the point.
     mocks.summary.data = summary({
       connectors: [{ connector: "alpha", configured: true, last_sync: null }],
     });
@@ -1374,9 +1354,7 @@ describe("a row expands to its recent syncs", () => {
     const selection = window.getSelection();
     selection?.selectAllChildren(screen.getByRole("cell", { name: "alpha" }));
 
-    // Dispatched rather than driven through userEvent: a real pointer press
-    // collapses the selection before the handler sees it, so the one state
-    // this guard exists for cannot be reached that way.
+    // WORKAROUND: a userEvent pointer press collapses the selection before the click handler runs.
     fireEvent.click(rowFor("alpha"));
 
     expect(rowFor("alpha")).toHaveAttribute("aria-expanded", "false");
@@ -1389,4 +1367,1208 @@ it("names the page Connectors", () => {
   expect(
     screen.getByRole("heading", { name: "Connectors", level: 1 })
   ).toBeInTheDocument();
+});
+
+describe("connector workflow runs", () => {
+  const run = (index: number): ConnectorRun => ({
+    sync_id: `sync-${index}`,
+    status: "failed",
+    started_at: new Date(Date.parse(NOW) - index * 60_000).toISOString(),
+    finished_at: NOW,
+    duration_ms: 15_000,
+    stages: [],
+  });
+
+  const stamp = (seconds: number) =>
+    new Date(Date.parse(NOW) + seconds * 1000).toISOString();
+
+  function step(stage: string, start: number, end: number) {
+    return {
+      stage,
+      attempt: 1,
+      status: "succeeded",
+      queued_at: stamp(start),
+      started_at: stamp(start),
+      finished_at: stamp(end),
+      duration_ms: (end - start) * 1000,
+    };
+  }
+
+  async function openRun(latest: ConnectorRun) {
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "example", configured: true, latest_run: latest },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "example",
+      syncs: [],
+      window: 50,
+      runs: [latest],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("example"));
+    const current = screen.queryByRole("button", { name: "Current run" });
+    if (current) await userEvent.click(current);
+  }
+
+  it("shows the UTC date for each step across midnight", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      started_at: "2026-01-14T23:59:30Z",
+      finished_at: "2026-01-15T00:00:40Z",
+      stages: [
+        {
+          ...step("bronze", -60, -55),
+          started_at: "2026-01-14T23:59:30Z",
+          queued_at: "2026-01-14T23:59:30Z",
+          finished_at: "2026-01-14T23:59:35Z",
+        },
+        {
+          ...step("transform-legacy", -55, -45),
+          started_at: "2026-01-15T00:00:30Z",
+          queued_at: "2026-01-15T00:00:30Z",
+          finished_at: "2026-01-15T00:00:40Z",
+        },
+      ],
+    });
+
+    const steps = within(screen.getByRole("list", { name: "Run steps (UTC)" }));
+    const bronze = steps.getByText("Bronze").closest("li")!;
+    const gold = steps.getByText("Gold").closest("li")!;
+    expect(within(bronze).getByText("14 Jan 2026")).toBeVisible();
+    expect(within(bronze).getByText("23:59:30")).toBeVisible();
+    expect(within(gold).getByText("15 Jan 2026")).toBeVisible();
+    expect(within(gold).getByText("00:00:30")).toBeVisible();
+  });
+
+  it("compares reported record counts for workflow runs and historical loads", async () => {
+    const latest = { ...run(1), records_reported: 0 };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "example", configured: true, latest_run: latest },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "example",
+      window: 50,
+      runs: [latest, { ...run(2), records_reported: 1_234 }, run(3)],
+      syncs: [
+        {
+          job_id: "old",
+          status: "succeeded",
+          started_at: stamp(-300),
+          records_reported: 78,
+        },
+      ],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("example"));
+
+    const table = within(screen.getByRole("table", { name: "Recent syncs" }));
+    expect(table.getByRole("columnheader", { name: "Records" })).toBeVisible();
+    const counts = table
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => within(row).getAllByRole("cell")[3]);
+    expect(counts).toHaveLength(4);
+    expect(counts[0]).toHaveTextContent(/^0$/);
+    expect(counts[1]).toHaveTextContent(/^1,234$/);
+    expect(counts[2]).toHaveTextContent(/^—/);
+    expect(counts[3]).toHaveTextContent(/^78$/);
+  });
+
+  it("shows run steps immediately and updates them on mouse or keyboard selection", async () => {
+    const latest = {
+      ...run(1),
+      status: "succeeded",
+      stages: [step("bronze", -60, -55)],
+    };
+    const older = {
+      ...run(2),
+      status: "succeeded",
+      stages: [step("bronze", -120, -110)],
+    };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "example", configured: true, latest_run: latest },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "example",
+      window: 50,
+      syncs: [],
+      runs: [latest, older],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("example"));
+
+    const table = screen.getByRole("table", { name: "Recent syncs" });
+    const [latestRow, olderRow] = within(table).getAllByRole("row").slice(1);
+    const steps = () => screen.getByRole("list", { name: "Run steps (UTC)" });
+    expect(
+      screen.queryByRole("button", { name: "Run steps (UTC)" })
+    ).toBeNull();
+    expect(within(steps()).getByText("11:59:00")).toBeVisible();
+    expect(
+      steps().compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await userEvent.click(
+      within(olderRow).getByRole("cell", { name: "Ready" })
+    );
+    expect(within(steps()).getByText("11:58:00")).toBeVisible();
+    expect(olderRow).toHaveAttribute("data-state", "selected");
+    expect(within(olderRow).getByRole("button")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    const date = within(latestRow).getByRole("button", {
+      name: "15 Jan 2026 11:59:00",
+    });
+    date.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(within(steps()).getByText("11:59:00")).toBeVisible();
+    expect(date).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("region", { name: "Selected run" })
+    ).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("opens narrow history details directly after the selected row", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private readonly onResize: (
+          entries: { contentRect: { width: number } }[]
+        ) => void;
+
+        constructor(
+          onResize: (entries: { contentRect: { width: number } }[]) => void
+        ) {
+          this.onResize = onResize;
+        }
+
+        observe() {
+          this.onResize([{ contentRect: { width: 390 } }]);
+        }
+
+        disconnect() {}
+      }
+    );
+    try {
+      const runs = Array.from({ length: 6 }, (_, index) => run(index + 1));
+      mocks.summary.data = summary({
+        connectors: [
+          { connector: "jira", configured: true, latest_run: runs[0] },
+        ],
+      });
+      mocks.syncs.data = { connector: "jira", syncs: [], window: 50, runs };
+      render(<ConnectorHealthPane />);
+      await userEvent.click(rowFor("jira"));
+      const table = screen.getByRole("table", { name: "Recent syncs" });
+      const selectedRun = () =>
+        screen.getByRole("region", { name: "Selected run" });
+      expect(table).not.toContainElement(selectedRun());
+      const date = within(table).getByRole("button", {
+        name: "15 Jan 2026 11:58:00",
+      });
+      await userEvent.click(date);
+      expect(date.closest("tr")?.nextElementSibling).toContainElement(
+        selectedRun()
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Older runs" }));
+      expect(table).not.toContainElement(selectedRun());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("combines the working time of all six stages into four admin steps", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [
+        step("bronze", -60, -55),
+        step("transform-staging", -55, -45),
+        step("transform-jira-staging", -45, -30),
+        step("identity-seed", -30, -27),
+        step("transform-legacy", -27, -20),
+        step("transform-jira-silver", -20, 0),
+      ],
+    });
+    const rows = within(
+      screen.getByRole("list", { name: "Run steps (UTC)" })
+    ).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    for (const [index, [label, duration]] of [
+      ["Bronze", "5s"],
+      ["Silver", "25s"],
+      ["Identity", "3s"],
+      ["Gold", "27s"],
+    ].entries()) {
+      expect(within(rows[index]).getByText(label)).toBeVisible();
+      expect(within(rows[index]).getByText(duration)).toBeVisible();
+    }
+    await userEvent.click(
+      screen.getByRole("button", { name: "Last successful sync" })
+    );
+    const summary = screen
+      .getByRole("heading", { name: "Last successful sync" })
+      .closest("section")!;
+    expect(summary).toHaveTextContent(/Bronze5sSilver25sIdentity3sGold27s/);
+  });
+
+  it("merges overlapping waits and gaps into one Queued row per step", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [
+        step("bronze", -60, -50),
+        {
+          ...step("transform-staging", -30, -25),
+          queued_at: stamp(-48),
+          waits: [
+            { kind: "lock", started_at: stamp(-48), ended_at: stamp(-37) },
+            { kind: "placement", started_at: stamp(-40), ended_at: stamp(-32) },
+          ],
+        },
+        step("transform-jira-staging", -20, -10),
+        step("transform-legacy", -10, -3),
+      ],
+    });
+    const rows = within(
+      screen.getByRole("list", { name: "Run steps (UTC)" })
+    ).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toHaveTextContent(/Queued25s/);
+    expect(rows[2]).toHaveTextContent("Silver");
+    const queued = within(rows[1]).getByText("Queued");
+    await userEvent.hover(queued);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      /Waiting for a lock.*Waiting for cluster capacity/s
+    );
+    const band = within(
+      screen.getByRole("figure", { name: "Steps of the selected sync" })
+    );
+    expect(band.getByLabelText(/Queued · 20s/)).toBeVisible();
+    const gap = band.getByLabelText("15 Jan 2026 · 11:59:35 · Queued · 5s");
+    expect(gap).toBeVisible();
+    expect(band.queryByLabelText(/Queued · 3s/)).not.toBeInTheDocument();
+    await userEvent.unhover(queued);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    await userEvent.hover(gap);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      /^15 Jan 2026 · 11:59:35 · Queued · 5s$/
+    );
+    expect(gap).not.toHaveAccessibleDescription();
+  });
+
+  const currentRun = () =>
+    within(
+      screen.getByRole("heading", { name: "Current run" }).closest("section")!
+    );
+  const runSteps = () =>
+    within(screen.getByRole("list", { name: "Run steps (UTC)" }));
+  const runBand = () =>
+    within(screen.getByRole("figure", { name: "Steps of the selected sync" }));
+
+  it.each([
+    [179, "idle"],
+    [181, "unknown"],
+  ] as const)(
+    "uses the queue tone for %s minutes of waiting",
+    async (minutes, tone) => {
+      const queued = stamp(-minutes * 60);
+      await openRun({
+        ...run(1),
+        status: "queued",
+        started_at: queued,
+        finished_at: null,
+        stages: [
+          { stage: "bronze", attempt: 1, status: "queued", queued_at: queued },
+        ],
+      });
+
+      expectTone(within(rowFor("example")).getByText("Queued"), tone);
+      expectTone(currentRun().getByText("Queued"), tone);
+    }
+  );
+
+  it.each([
+    ["succeeded", "Ready", "ok"],
+    ["transforming", "Running", "active"],
+  ] as const)(
+    "renders the %s badge with its state tone",
+    async (status, label, tone) => {
+      await openRun({
+        ...run(1),
+        status,
+        finished_at: status === "succeeded" ? NOW : null,
+      });
+
+      expectTone(within(rowFor("example")).getByText(label), tone);
+    }
+  );
+
+  it.each([4, 7])(
+    "measures the minute queued after %s hours of Bronze work",
+    async (hours) => {
+      const started = -hours * 3600 - 60;
+      await openRun({
+        ...run(1),
+        status: "starting",
+        started_at: stamp(started),
+        finished_at: null,
+        duration_ms: null,
+        stages: [step("bronze", started, -60)],
+      });
+      const row = within(rowFor("example"));
+      for (const scope of [row, currentRun()]) {
+        const queued = scope.getByText("Queued");
+        expectTone(queued, "idle");
+        await userEvent.hover(queued);
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      }
+      expect(currentRun().getByText("1m 0s")).toBeVisible();
+      expect(runSteps().getByText("Queued").closest("li")).toHaveAttribute(
+        "aria-current",
+        "step"
+      );
+    }
+  );
+
+  it.each([
+    ["unknown", 300, "10m 0s"],
+    ["succeeded", 280, "20m 0s"],
+  ] as const)(
+    "uses the band’s neutral queue when Bronze is %s without a finish",
+    async (status, bronzeMinutes, queuedDuration) => {
+      await openRun({
+        ...run(300),
+        status: "queued",
+        finished_at: null,
+        stages: [
+          {
+            ...step("bronze", -300 * 60, (-300 + bronzeMinutes) * 60),
+            status,
+            finished_at: null,
+          },
+          {
+            stage: "transform-staging",
+            attempt: 1,
+            status: "queued",
+            queued_at: stamp(-600),
+            waits: [{ kind: "lock", started_at: stamp(-600) }],
+          },
+        ],
+      });
+      for (const scope of [within(rowFor("example")), currentRun()]) {
+        const state = scope.getByText("Queued");
+        expectTone(state, "idle");
+        await userEvent.hover(state);
+        expect(await screen.findByRole("tooltip")).toHaveTextContent(
+          /^Waiting for a lock$/
+        );
+        await userEvent.unhover(state);
+      }
+      const band = runBand().getByLabelText((label) =>
+        label.endsWith(`Queued · ${queuedDuration}`)
+      );
+      expect(band).toHaveClass("bg-muted-foreground/45");
+      expect(currentRun().getByText(queuedDuration)).toBeVisible();
+      const queued = runSteps().getByText("Queued");
+      expect(queued.closest("li")).toHaveTextContent(queuedDuration);
+      expect(queued.closest("li")).toHaveAttribute("aria-current", "step");
+      await userEvent.hover(queued);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        /^Waiting for a lock$/
+      );
+      expect(
+        screen.queryByText("Wait exceeded three hours")
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it("keeps the timing segment label out of its accessible description", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [step("transform-legacy", -60, 0)],
+    });
+    const segment = runBand().getByLabelText(
+      "15 Jan 2026 · 11:59:00 · Gold · 1m 0s"
+    );
+    await act(async () => {
+      segment.focus();
+    });
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("15 Jan 2026 · 11:59:00 · Gold · 1m 0s");
+    expect(segment).toHaveAccessibleName(
+      "15 Jan 2026 · 11:59:00 · Gold · 1m 0s"
+    );
+    expect(segment).toHaveAccessibleDescription("Metrics computed");
+  });
+
+  it("opens a managed row by clicking its Ready badge", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [step("transform-legacy", -60, 0)],
+    });
+    const row = rowFor("example");
+    await userEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(within(row).getByText("Ready"));
+    expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("opens a managed row by clicking its failure reason", async () => {
+    await openRun({
+      ...run(1),
+      stages: [
+        {
+          ...step("transform-legacy", -60, 0),
+          status: "failed",
+          reason: "pod_oom",
+        },
+      ],
+    });
+    const row = rowFor("example");
+    await userEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(
+      within(row).getByText("The sync exceeded its memory limit")
+    );
+    expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it.each(["wait_warning", "queued"])(
+    "announces the three-hour warning for %s",
+    async (status) => {
+      const started_at = stamp(-200 * 60);
+      await openRun({
+        ...run(1),
+        status,
+        started_at,
+        finished_at: null,
+        stages: [
+          { stage: "bronze", attempt: 1, status, queued_at: started_at },
+        ],
+      });
+      const user = userEvent.setup();
+      for (const scope of [within(rowFor("example")), currentRun()]) {
+        const queued = scope.getByText("Queued");
+        expectTone(queued, "unknown");
+        const trigger = queued.closest<HTMLElement>("[aria-describedby]")!;
+        expect(trigger).toHaveTextContent(/^Queued$/);
+        await user.hover(queued);
+        expect(await screen.findByRole("tooltip")).toHaveTextContent(
+          "Wait exceeded three hours"
+        );
+        expect(trigger).toHaveAccessibleDescription(
+          "Wait exceeded three hours"
+        );
+        await user.unhover(queued);
+        await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+      }
+      expect(runSteps().getByText("Queued").closest("li")).toHaveTextContent(
+        "3h 20m"
+      );
+    }
+  );
+
+  it("keeps the row open when its state badge is clicked and describes the tooltip on focus", async () => {
+    await openRun({
+      ...run(1),
+      stages: [
+        {
+          ...step("transform-legacy", -60, 0),
+          status: "failed",
+          reason: "pod_oom",
+        },
+      ],
+    });
+    const row = rowFor("example");
+    const badge = within(row).getByText("Failed · Gold");
+    const trigger = badge.closest<HTMLElement>("[tabindex]")!;
+    await act(async () => {
+      trigger.focus();
+    });
+    const tooltip = await screen.findByRole("tooltip");
+    expect(trigger).toHaveAttribute("aria-describedby", tooltip.id);
+    expect(trigger).toHaveAccessibleDescription(/transform-legacy.*pod_oom/);
+    await userEvent.click(badge);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows the current step and its running state in text", async () => {
+    await openRun({
+      ...run(1),
+      status: "transforming",
+      finished_at: null,
+      stages: [
+        step("bronze", -60, -30),
+        {
+          ...step("transform-staging", -30, 0),
+          status: "transforming",
+          finished_at: null,
+        },
+      ],
+    });
+    expect(currentRun().getByText("Silver · Running")).toBeVisible();
+    expect(runSteps().getByText("Silver").closest("li")).toHaveAttribute(
+      "aria-current",
+      "step"
+    );
+  });
+
+  it("shows a plain failure for an unfamiliar recorded reason and retains the reason for support", async () => {
+    await openRun({
+      ...run(1),
+      stages: [
+        {
+          ...step("transform-legacy", -60, 0),
+          status: "failed",
+          reason: "dbt_compile_error",
+        },
+      ],
+    });
+    const row = within(rowFor("example"));
+    expect(row.getByText("The step failed")).toBeVisible();
+    expect(row.queryByText("dbt_compile_error")).not.toBeInTheDocument();
+    await userEvent.hover(row.getByText("Failed · Gold"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      /transform-legacy.*dbt_compile_error/
+    );
+  });
+
+  it("counts overlapping Bronze attempts once and keeps a recovered run Ready", async () => {
+    await openRun({
+      ...run(5),
+      status: "succeeded",
+      stages: [
+        {
+          ...step("bronze", -300, -200),
+          status: "failed",
+          reason: "source_pod_oom",
+        },
+        { ...step("bronze", -250, -100), attempt: 2 },
+        step("transform-legacy", -100, 0),
+      ],
+    });
+    const bronze = runSteps().getByText("Bronze").closest("li")!;
+    expect(bronze).toHaveTextContent("3m 20s");
+    expect(within(bronze).getByRole("img", { name: "Complete" })).toBeVisible();
+    expect(runBand().getAllByLabelText(/Bronze · /)).toHaveLength(1);
+    expect(within(rowFor("example")).getByText("Ready")).toBeVisible();
+  });
+
+  it("extends a running step's band to the snapshot without a Queued tail", async () => {
+    await openRun({
+      ...run(10),
+      status: "transforming",
+      finished_at: null,
+      stages: [
+        step("bronze", -600, -300),
+        {
+          ...step("transform-staging", -300, 0),
+          status: "transforming",
+          finished_at: null,
+          duration_ms: 255_000,
+        },
+      ],
+    });
+    expect(runBand().queryByLabelText(/Queued/)).not.toBeInTheDocument();
+    expect(runBand().getByLabelText(/Silver · 5m 0s/)).toHaveStyle({
+      left: "50%",
+      width: "50%",
+    });
+    expect(runSteps().getByText("Silver").closest("li")).toHaveTextContent(
+      "5m 0s"
+    );
+    expect(currentRun().queryByText("Queued")).not.toBeInTheDocument();
+  });
+
+  it("keeps a cancelled run terminal and ends its open step at cancellation", async () => {
+    await openRun({
+      ...run(10),
+      status: "cancelled",
+      stages: [
+        step("bronze", -600, -300),
+        {
+          ...step("transform-staging", -300, 0),
+          status: "transforming",
+          finished_at: null,
+          duration_ms: 255_000,
+        },
+      ],
+    });
+    expect(within(rowFor("example")).getByText("Cancelled")).toBeVisible();
+    expect(screen.getByText("No active run")).toBeVisible();
+    expect(
+      screen.getByRole("listitem", {
+        name: "15 Jan 2026 · 11:50:00 · Cancelled",
+      })
+    ).toBeVisible();
+    const silver = runSteps().getByText("Silver").closest("li")!;
+    expect(silver).not.toHaveAttribute("aria-current");
+    expect(
+      within(silver).getByRole("img", { name: "Cancelled" })
+    ).toBeVisible();
+    expect(runBand().queryByLabelText(/Queued/)).not.toBeInTheDocument();
+    expect(runBand().getByLabelText(/Silver · 5m 0s/)).toBeVisible();
+  });
+
+  it("shows a queue timeout as one failed step in each view", async () => {
+    const queued_at = stamp(-400 * 60);
+    await openRun({
+      ...run(420),
+      status: "wait_timeout",
+      stages: [
+        step("bronze", -420 * 60, -400 * 60),
+        {
+          stage: "transform-staging",
+          attempt: 1,
+          status: "wait_timeout",
+          reason: "wait_timeout",
+          queued_at,
+          finished_at: NOW,
+          waits: [{ kind: "lock", started_at: queued_at, ended_at: NOW }],
+        },
+      ],
+    });
+    const row = within(rowFor("example"));
+    expectTone(row.getByText("Failed · Silver"), "failing");
+    expect(row.getByText("Waited over 6 hours")).toBeVisible();
+    expect(row.queryByText("Queued")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("listitem", {
+        name: "15 Jan 2026 · 05:00:00 · Failed · Silver",
+      })
+    ).toBeVisible();
+    const band = screen.getByRole("figure", {
+      name: "Steps of the selected sync",
+    });
+    const header = within(band.closest("section")!);
+    expect(header.getByText("Failed · Silver")).toBeVisible();
+    expect(header.getByText("Waited over 6 hours")).toBeVisible();
+    const silver = runSteps().getByText("Silver").closest("li")!;
+    expect(within(silver).getByRole("img", { name: "Failed" })).toBeVisible();
+    expect(
+      runBand().getByRole("button", { name: "Failed · Silver" })
+    ).toBeVisible();
+    expect(runSteps().getByText("Queued").closest("li")).toHaveTextContent(
+      "6h 40m"
+    );
+  });
+
+  it("shows an unconfirmed Bronze start as a neutral queue", async () => {
+    await openRun({
+      ...run(5),
+      status: "checking_start",
+      finished_at: null,
+      stages: [
+        {
+          stage: "bronze",
+          attempt: 1,
+          status: "checking_start",
+          queued_at: stamp(-300),
+        },
+      ],
+    });
+    const row = within(rowFor("example"));
+    expectTone(row.getByText("Queued"), "idle");
+    expect(row.queryByText("Unknown")).not.toBeInTheDocument();
+    const rows = runSteps().getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(/Queued5m 0s/);
+    expect(rows[0]).toHaveAttribute("aria-current", "step");
+    expect(rows[1]).toHaveTextContent("Bronze");
+  });
+
+  it("keeps check memory failures off the page", async () => {
+    await openRun({
+      ...run(1),
+      status: "succeeded",
+      stages: [
+        step("transform-legacy", -60, -10),
+        {
+          ...step("connector-checks", -8, -2),
+          status: "failed",
+          reason: "clickhouse_user_memory_limit",
+        },
+      ],
+    });
+    expect(within(rowFor("example")).getByText("Ready")).toBeVisible();
+    expect(screen.queryByText(/Quality checks failed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the run ready while checks wait for cluster capacity after Gold", async () => {
+    await openRun({
+      ...run(1),
+      status: "queued",
+      finished_at: null,
+      stages: [
+        step("transform-legacy", -60, -10),
+        {
+          stage: "connector-checks",
+          attempt: 1,
+          status: "queued",
+          queued_at: stamp(-8),
+          waits: [{ kind: "placement", started_at: stamp(-8) }],
+        },
+      ],
+    });
+    const timeline = within(
+      screen.getByRole("list", { name: "Run steps (UTC)" })
+    );
+    expect(within(rowFor("example")).getByText("Ready")).toBeVisible();
+    expect(timeline.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["transforming", "succeeded", null],
+    ["succeeded", "succeeded", NOW],
+    ["failed", "failed", NOW],
+  ] as const)(
+    "ends the run at Ready and hides %s checks",
+    async (status, runStatus, end) => {
+      await openRun({
+        ...run(1),
+        status: runStatus,
+        finished_at: end,
+        duration_ms: 60_000,
+        stages: [
+          step("transform-legacy", -60, -10),
+          {
+            ...step("connector-checks", -5, 0),
+            status,
+            finished_at: end,
+            waits: [
+              { kind: "placement", started_at: stamp(-8), ended_at: stamp(-5) },
+            ],
+          },
+        ],
+      });
+      const row = within(rowFor("example"));
+      const page = screen.getByTestId("page-manage-connector-health");
+      expect(within(page).queryAllByText(/\bchecks\b/i)).toHaveLength(0);
+      const accessibleText = [
+        ...page.querySelectorAll("[aria-label], [aria-description], [title]"),
+      ]
+        .flatMap((element) =>
+          ["aria-label", "aria-description", "title"].map((key) =>
+            element.getAttribute(key)
+          )
+        )
+        .join(" ");
+      expect(accessibleText).not.toMatch(/\bchecks\b/i);
+      expect(row.getByText("Ready")).toBeVisible();
+      expect(row.getByText("50s")).toBeVisible();
+      expect(screen.getByText("No active run")).toBeVisible();
+      expect(
+        screen.queryByText("No successful sync yet")
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("listitem", { name: "15 Jan 2026 · 11:59:00 · Ready" })
+      ).toHaveAttribute("aria-current", "true");
+      const band = screen.getByRole("figure", {
+        name: "Steps of the selected sync",
+      });
+      expect(within(band).getByLabelText(/Gold · 50s/)).toHaveStyle({
+        width: "100%",
+      });
+      expect(
+        within(band).queryByLabelText(/Queued|connector-checks/)
+      ).not.toBeInTheDocument();
+      expect(band.closest("section")).toHaveTextContent(
+        "15 Jan 2026 · 11:59:00 – 11:59:50 UTC"
+      );
+      const timeline = within(
+        screen.getByRole("list", { name: "Run steps (UTC)" })
+      );
+      expect(timeline.getAllByRole("listitem")).toHaveLength(1);
+      expect(timeline.getByText("Gold")).toBeVisible();
+    }
+  );
+
+  it.each([
+    ["airbyte_launch_rejected", "Airbyte refused the sync request", "failed"],
+    [
+      "airbyte_launch_unconfirmed",
+      "Airbyte did not confirm the sync launch",
+      "starting",
+    ],
+    [
+      "airbyte_launch_unreadable",
+      "The Airbyte job list was unavailable. The sync launch is not confirmed.",
+      "starting",
+    ],
+    [
+      "airbyte_pod_too_large",
+      "The Airbyte pod is too large for any eligible node",
+      "failed",
+    ],
+    [
+      "airbyte_capacity_wait_exceeded",
+      "The wait for Airbyte cluster capacity reached its time limit",
+      "failed",
+    ],
+  ] as const)(
+    "shows a terminal Bronze failure for %s",
+    async (reason, label, status) => {
+      await openRun({
+        ...run(1),
+        status,
+        finished_at: null,
+        stages: [
+          {
+            stage: "bronze",
+            status:
+              reason === "airbyte_pod_too_large" ||
+              reason === "airbyte_capacity_wait_exceeded"
+                ? "failed"
+                : "not_started",
+            reason,
+            attempt: 1,
+            queued_at: stamp(-55),
+            finished_at: NOW,
+          },
+        ],
+      });
+      const row = within(rowFor("example"));
+      const badge = row.getByText("Failed · Bronze");
+      expect(row.getByText(label)).toBeVisible();
+      expect(screen.queryByText(reason)).not.toBeInTheDocument();
+      expect(screen.getByText("No active run")).toBeVisible();
+      const timeline = within(
+        screen.getByRole("list", { name: "Run steps (UTC)" })
+      );
+      expect(timeline.getByRole("img", { name: "Failed" })).toBeVisible();
+      expect(timeline.getByText("Bronze").closest("li")).toHaveTextContent("—");
+      await userEvent.hover(badge);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        `bronze${reason}`
+      );
+    }
+  );
+
+  it("shows a plain Gold failure and keeps the ClickHouse error and stage in the tooltip", async () => {
+    await openRun({
+      ...run(1),
+      stages: [
+        {
+          ...step("transform-jira-silver", -60, 0),
+          status: "failed",
+          reason: "clickhouse_query_error:47:UNKNOWN_IDENTIFIER",
+        },
+      ],
+    });
+    const row = within(rowFor("example"));
+    const badge = row.getByText("Failed · Gold");
+    expect(
+      row.getByText("A calculation refers to an unknown field")
+    ).toBeVisible();
+    expect(
+      row.queryByText(/UNKNOWN_IDENTIFIER|transform-jira-silver/)
+    ).not.toBeInTheDocument();
+    await userEvent.hover(badge);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(
+      /transform-jira-silver.*ClickHouse reported UNKNOWN_IDENTIFIER \(code 47\)/
+    );
+    expect(tooltip).not.toHaveTextContent(
+      "clickhouse_query_error:47:UNKNOWN_IDENTIFIER"
+    );
+  });
+
+  it.each([
+    { status: "loading", finished_at: null, checked_at: NOW, label: "Bronze" },
+    { status: "failed", finished_at: NOW, checked_at: null, label: "Failed" },
+    {
+      status: "failed",
+      finished_at: NOW,
+      checked_at: NOW,
+      label: "no longer configured",
+    },
+  ])(
+    "shows $label for a managed row missing from inventory",
+    ({ status, finished_at, checked_at, label }) => {
+      mocks.summary.data = summary({
+        checked_at,
+        connectors: [
+          {
+            connector: "jira",
+            configured: false,
+            latest_run: { ...run(1), status, finished_at },
+          },
+        ],
+      });
+      render(<ConnectorHealthPane />);
+      expect(within(rowFor("jira")).getByText(label)).toBeVisible();
+    }
+  );
+
+  it("compares the active run to a success outside the window and opens distinct same-day timelines", async () => {
+    const latest = {
+      ...run(1),
+      status: "queued",
+      finished_at: null,
+      duration_ms: null,
+      wait_ms: 60_000,
+      load_ms: 0,
+      transform_ms: null,
+      records_reported: 0,
+      stages: [
+        {
+          stage: "bronze",
+          attempt: 1,
+          status: "queued",
+          queued_at: run(1).started_at,
+          waits: [
+            { kind: "placement" as const, started_at: run(1).started_at },
+          ],
+        },
+      ],
+    };
+    const failure = {
+      ...run(2),
+      stages: [
+        {
+          stage: "transform-jira-silver",
+          attempt: 2,
+          status: "failed",
+          reason: "clickhouse_memory_limit",
+          queued_at: "2026-01-15T11:58:00Z",
+          waits: [
+            {
+              kind: "placement" as const,
+              started_at: "2026-01-15T11:58:10Z",
+              ended_at: "2026-01-15T11:58:14Z",
+            },
+          ],
+          started_at: "2026-01-15T11:58:20Z",
+          finished_at: NOW,
+          duration_ms: 100_000,
+        },
+      ],
+    };
+    const lastSuccess = {
+      ...run(70),
+      status: "succeeded",
+      finished_at: stamp(-4060),
+      stages: [
+        step("bronze", -4200, -4080),
+        step("transform-legacy", -4080, -4060),
+      ],
+    };
+    mocks.summary.data = summary({
+      connectors: [
+        {
+          connector: "jira",
+          configured: true,
+          latest_run: latest,
+          last_successful_run: lastSuccess,
+          last_sync: {
+            job_id: "legacy",
+            status: "succeeded",
+            records_reported: 99,
+          },
+        },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      syncs: [],
+      window: 50,
+      runs: [
+        latest,
+        failure,
+        ...Array.from({ length: 50 }, (_, i) => run(i + 3)),
+      ],
+    };
+    render(<ConnectorHealthPane />);
+    const row = rowFor("jira");
+    expect(within(row).getByText("Queued")).toBeVisible();
+    expect(within(row).getByText("0")).toBeVisible();
+    expect(within(row).getByText("1m 0s so far")).toBeVisible();
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    await userEvent.click(row);
+    const card = (heading: string) =>
+      within(
+        screen.getByRole("heading", { name: heading }).closest("section")!
+      );
+    await userEvent.click(screen.getByRole("button", { name: "Current run" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Last successful sync" })
+    );
+    const current = card("Current run");
+    expect(current.getAllByText("Queued")).toHaveLength(1);
+    expect(current.getByText("1m 0s")).toBeVisible();
+    expect(current.getByText("Bronze")).toBeVisible();
+    expect(current.getByText("—")).toBeVisible();
+    const success = card("Last successful sync");
+    expect(success.getByText("2m 0s")).toBeVisible();
+    expect(success.getByText("20s")).toBeVisible();
+    const schedule = screen
+      .getByRole("heading", { name: "Schedule" })
+      .closest("[data-slot=connector-schedule-pane]")!;
+    expect(schedule.parentElement).toContainElement(
+      screen.getByRole("heading", { name: "Last successful sync" })
+    );
+    const history = screen.getByRole("list", { name: /status/i });
+    const marks = within(history).getAllByRole("listitem");
+    expect(marks).toHaveLength(50);
+    expect(marks.at(-1)).toHaveAttribute("aria-current", "true");
+    expect(within(history).queryByRole("button")).not.toBeInTheDocument();
+    const rows = () =>
+      within(screen.getByRole("list", { name: "Run steps (UTC)" }));
+    expect(rows().getByText("Bronze")).toBeVisible();
+    expect(rows().getByText("Queued").closest("li")).toHaveAttribute(
+      "aria-current",
+      "step"
+    );
+    expect(
+      screen.getByRole("figure", { name: "Steps of the selected sync" })
+    ).toContainElement(screen.getByLabelText(/Queued · 1m 0s/));
+    await userEvent.click(
+      within(screen.getByRole("table", { name: "Recent syncs" })).getByRole(
+        "button",
+        {
+          name: "15 Jan 2026 11:58:00",
+        }
+      )
+    );
+    expect(rows().getByText("Gold")).toBeVisible();
+    expect(screen.getByText("ClickHouse memory limit exceeded")).toBeVisible();
+    expect(rows().queryByText("Bronze")).not.toBeInTheDocument();
+    const strip = within(
+      screen.getByRole("figure", { name: "Steps of the selected sync" })
+    );
+    expect(strip.getByLabelText(/Queued · 20s/)).toHaveStyle({ left: "0%" });
+    expect(strip.getByLabelText(/Gold · 1m 40s/)).toHaveStyle({
+      width: "83.33333333333333%",
+    });
+    expect(rows().getByText("Queued").closest("li")).toHaveTextContent("20s");
+    expect(rows().queryByText("Waiting")).not.toBeInTheDocument();
+    expect(rows().getByText("Gold").closest("li")).toHaveTextContent("1m 40s");
+  });
+
+  it("keeps the 49 most recent historical loads alongside the first workflow", async () => {
+    const latest = run(2);
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true, latest_run: latest }],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      window: 50,
+      runs: [latest],
+      syncs: Array.from({ length: 50 }, (_, i) => ({
+        job_id: String(100 + i),
+        started_at: run(i === 0 ? 1 : i + 2).started_at,
+        status: "succeeded",
+        records_reported: 1234 + i,
+        duration_ms: 3000,
+      })).reverse(),
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    const marks = within(
+      screen.getByRole("list", { name: /status/i })
+    ).getAllByRole("listitem");
+    expect(marks).toHaveLength(50);
+    expect(marks[0]).toHaveAccessibleName("15 Jan 2026 · 11:10:00 · Ready");
+    expect(marks.at(-2)).toHaveAccessibleName(
+      "15 Jan 2026 · 11:58:00 · Failed"
+    );
+    expect(marks.at(-1)).toHaveAccessibleName("15 Jan 2026 · 11:59:00 · Ready");
+    const older = screen.getByRole("button", { name: "Older runs" });
+    for (let page = 1; page < 10; page++) await userEvent.click(older);
+    expect(screen.getByText("46–50 of 50")).toBeVisible();
+    const historyTable = screen.getByRole("table", { name: "Recent syncs" });
+    const oldest = within(historyTable).getByRole("button", {
+      name: "15 Jan 2026 11:10:00",
+    });
+    await userEvent.click(oldest);
+    expect(oldest).toHaveAttribute("aria-pressed", "true");
+    const details = within(
+      screen.getByRole("heading", { name: "Bronze (UTC)" }).closest("section")!
+    );
+    expect(details.getByText("1,282")).toBeVisible();
+    expect(details.getByText("3s")).toBeVisible();
+    expect(details.getByText("Ready")).toBeVisible();
+    expect(details.queryByText("Transformations")).not.toBeInTheDocument();
+  });
+
+  it("folds recorded jobs from every Bronze attempt into their workflow by job ID", async () => {
+    const latest = {
+      ...run(1),
+      stages: ["441", "442"].map((jobId, index) => ({
+        stage: "bronze",
+        attempt: index + 1,
+        status: "succeeded",
+        airbyte_job_id: jobId,
+      })),
+    };
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true, latest_run: latest }],
+    });
+    mocks.syncs.data = {
+      connector: "jira",
+      window: 50,
+      runs: [latest],
+      syncs: ["441", "442", "443"].map((jobId) => ({
+        job_id: jobId,
+        started_at: latest.started_at,
+        status: "succeeded",
+      })),
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    const history = within(screen.getByRole("list", { name: /status/i }));
+    expect(history.getAllByRole("listitem")).toHaveLength(2);
+    expect(history.getByRole("listitem", { name: /Ready$/ })).toBeVisible();
+    expect(history.getByRole("listitem", { name: /Failed$/ })).toBeVisible();
+  });
+
+  it("opens an empty run history before a new connector has synced", async () => {
+    mocks.summary.data = summary({
+      connectors: [{ connector: "jira", configured: true }],
+    });
+    mocks.syncs.data = { connector: "jira", syncs: [], window: 50, runs: [] };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("jira"));
+    expect(
+      screen.getByText("No sync has been recorded for this connector.")
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { pressed: true })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not present a terminal or unmeasured run as in progress or successful", async () => {
+    const terminal = { ...run(1), status: "wait_timeout" };
+    mocks.summary.data = summary({
+      connectors: [
+        { connector: "github", configured: true, latest_run: terminal },
+      ],
+    });
+    mocks.syncs.data = {
+      connector: "github",
+      syncs: [],
+      window: 50,
+      runs: [terminal],
+    };
+    render(<ConnectorHealthPane />);
+    await userEvent.click(rowFor("github"));
+    expect(screen.getByText("No active run")).toBeVisible();
+    expect(screen.getByText("No successful sync yet")).toBeVisible();
+    expect(screen.getByText("No recorded steps")).toBeVisible();
+    const row = within(rowFor("github"));
+    expectTone(row.getByText("Failed"), "failing");
+    expect(row.getByText("Waited over 6 hours")).toBeVisible();
+  });
 });

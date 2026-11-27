@@ -1,5 +1,6 @@
 import i18n from "@/i18n";
 
+import { formatStarted } from "@/lib/portal/connector-health";
 import { nextScheduledRuns } from "@/lib/portal/connector-schedule";
 
 export function scheduleRuns(
@@ -19,11 +20,6 @@ export function scheduleRuns(
     return [];
   }
 }
-
-const utcMonth = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  timeZone: "UTC",
-});
 
 function formatScheduleTime(
   value: string | Date | null | undefined,
@@ -51,17 +47,13 @@ function formatScheduleTime(
       ? i18n.t("connectors.schedule.at_time", { time: clock })
       : clock;
 
-  const day = `${time.getUTCDate()} ${utcMonth.format(time)}`;
-  const year = time.getUTCFullYear();
-  return i18n.t(
-    includePreposition
-      ? "connectors.schedule.on_date_at_time"
-      : "connectors.schedule.date_at_time",
-    {
-      date: year === now.getUTCFullYear() ? day : `${day} ${year}`,
-      time: clock,
-    }
-  );
+  const timestamp = formatStarted(time.toISOString());
+  const label = includeZone
+    ? i18n.t("connectors.schedule.with_utc", { words: timestamp })
+    : timestamp;
+  return includePreposition
+    ? i18n.t("connectors.schedule.on_timestamp", { time: label })
+    : label;
 }
 
 export function scheduleTime(

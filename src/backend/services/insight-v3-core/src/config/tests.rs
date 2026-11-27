@@ -24,6 +24,7 @@ fn valid_config() -> GearConfig {
         database_url: "mysql://insight:secret@mariadb.example.test:3306/insight_v3".to_owned(),
         identity_url: "http://identity-resolution.example.test:8082".to_owned(),
         alerts: AlertsConfig::default(),
+        external_sources: Vec::new(),
     }
 }
 
@@ -760,6 +761,60 @@ fn a_slack_destination_needs_a_bot_token_and_a_channel() {
         assert!(
             matches!(&outcome, Err(ConfigError::AlertDestinationField { name, field: refused }) if name == "ops" && *refused == field),
             "should refuse a blank {field}"
+        );
+    }
+}
+
+#[test]
+fn the_external_sources_are_read_into_the_registry_the_drilldown_links_through()
+-> Result<(), Box<dyn std::error::Error>> {
+    let config: GearConfig = serde_json::from_value(json!({
+        "external_sources": [{
+            "id": "source-a",
+            "provider": "github",
+            "web_base_url": "https://git.example.com"
+        }]
+    }))?;
+    let config = GearConfig {
+        external_sources: config.external_sources,
+        ..valid_config()
+    };
+
+    let validated = config.validate()?;
+
+    let links = validated.external_sources().evidence_links(
+        "github",
+        "source-a",
+        "commit",
+        Some("group/app"),
+        Some("a1b2c3"),
+    );
+    assert_eq!(
+        links.record.as_deref(),
+        Some("https://git.example.com/group/app/commit/a1b2c3")
+    );
+    Ok(())
+}
+
+#[test]
+fn an_unusable_external_source_stops_startup() {
+    for (id, web_base_url) in [
+        ("source-a", "https://git.example.com#fragment"),
+        ("source-a", "git.example.com"),
+        (" source-a", "https://git.example.com"),
+    ] {
+        let config = GearConfig {
+            external_sources: vec![ExternalSourceConfig {
+                id: id.to_owned(),
+                provider: insight_external_sources::ExternalSourceProvider::Github,
+                web_base_url: web_base_url.to_owned(),
+            }],
+            ..valid_config()
+        };
+
+        assert!(
+            matches!(config.validate(), Err(ConfigError::ExternalSources(_))),
+            "should refuse: {id:?} at {web_base_url}"
         );
     }
 }

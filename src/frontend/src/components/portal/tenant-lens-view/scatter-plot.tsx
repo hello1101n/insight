@@ -27,7 +27,6 @@ import { chartColor } from "@/lib/chart-palette";
 
 const SCATTER_CONFIG: ChartConfig = { y: { label: "y" } };
 
-/** Two measures per dimension value at once; size is an optional third. */
 export function ScatterSection({
   section,
   resolve,
@@ -50,8 +49,6 @@ export function ScatterSection({
     section.size ? rows(rs) : null,
     section.dimension
   );
-  // Two points always split cleanly into quadrants — that is geometry, not a
-  // reading. Ask for enough dots that position starts to mean something.
   if (points.length < 3) return null;
 
   const axisLabel = (r: NormalizedMetricResult) =>
@@ -63,7 +60,7 @@ export function ScatterSection({
         {section.title}
       </p>
       <Card>
-        <CardContent className="p-4">
+        <CardContent>
           {section.description ? (
             <p className="mb-3 text-xs text-muted-foreground">
               {section.description}

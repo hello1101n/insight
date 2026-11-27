@@ -23,7 +23,6 @@ describe("chart-format", () => {
   it("signs a rate as one, and rounds off the float's tail", () => {
     expect(groupedNumber(83.91167192429022, "%")).toBe("83.9%");
     expect(compactNumber(83.91167192429022, "%")).toBe("83.9%");
-    // Nothing to sign is nothing added — an em dash stays an em dash.
     expect(groupedNumber(null, "%")).toBe("—");
   });
 
@@ -34,9 +33,18 @@ describe("chart-format", () => {
   });
 
   it("takes the unit from the metric, which is the only thing that knows", () => {
-    expect(unitFor(["pass_rate"], "pass_rate")).toBe("%");
-    expect(unitFor(["pass_rate"], "runs")).toBe("");
-    expect(unitFor(undefined, "pass_rate")).toBe("");
+    expect(unitFor({ percents: ["pass_rate"] }, "pass_rate")).toBe("%");
+    expect(unitFor({ percents: ["pass_rate"] }, "runs")).toBe("");
+    expect(unitFor({}, "pass_rate")).toBe("");
+    expect(unitFor({ units: { lead: "h" } }, "lead")).toBe("h");
+    expect(unitFor({ units: { lead: "h" } }, "runs")).toBe("");
+  });
+
+  it("writes a duration column as at most two parts, compact or grouped", () => {
+    expect(groupedNumber(52, "h")).toBe("2d 4h");
+    expect(compactNumber(200, "min")).toBe("3h 20m");
+    expect(groupedNumber("45", "s")).toBe("45s");
+    expect(groupedNumber(null, "ms")).toBe("—");
   });
 
   it("leaves a missing number as a dash rather than printing null", () => {
@@ -63,7 +71,6 @@ describe("chart-format", () => {
   });
 
   it("cuts a category that would crowd the axis", () => {
-    // A commit sha is 40 characters; a whole axis of them is a smear.
     expect(categoryTick("51e8cfdcfa77d673719845850706f2ab")).toBe("51e8cfdcfa77d…");
     expect(categoryTick("insight/insight")).toBe("insight/insig…");
     expect(categoryTick("chatgpt")).toBe("chatgpt");

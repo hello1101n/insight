@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
-use sea_orm::{ConnectionTrait as _, DatabaseConnection, DbBackend, QueryResult, Statement};
+use sea_orm::{ConnectionTrait as _, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use uuid::Uuid;
 
 use crate::config::VisibilityPolicy;
 
+use super::sql_named::{BindError, bind_named, named_clauses, named_list};
 use super::visible_set_sql::CURRENT_VISIBLE_SET_CTE;
 
 const ORDER_KEY_CHARS: usize = 255;
@@ -21,6 +22,8 @@ pub(crate) enum PeopleListingError {
     InvalidPersonId(#[from] uuid::Error),
     #[error("people listing row contains invalid attributes")]
     InvalidAttributes(#[from] serde_json::Error),
+    #[error("people listing query does not bind")]
+    Bind(#[from] BindError),
 }
 
 impl From<sea_orm::TryGetError> for PeopleListingError {
@@ -85,7 +88,7 @@ pub async fn list_persons(
     tenant_id: Uuid,
     query: ListQuery<'_>,
 ) -> Result<Vec<PersonListRow>, PeopleListingError> {
-    let (sql, values) = build_query(tenant_id, query);
+    let (sql, values) = build_query(tenant_id, query)?;
     let statement = Statement::from_sql_and_values(DbBackend::MySql, &sql, values);
 
     rows_from(db.query_all_raw(statement).await?)
@@ -97,69 +100,62 @@ struct VisibleScopeSql {
     cte: String,
     filter: &'static str,
     manager_gate: &'static str,
-    values: Vec<sea_orm::Value>,
+    params: Vec<(String, Value)>,
 }
 
-fn visible_scope(visible_to: Option<VisibleTo<'_>>, tenant_id: Uuid) -> VisibleScopeSql {
+fn visible_scope(visible_to: Option<VisibleTo<'_>>) -> VisibleScopeSql {
     let Some(scope) = visible_to else {
         return VisibleScopeSql {
             recursive: "",
             cte: String::new(),
             filter: "",
             manager_gate: "",
-            values: Vec::new(),
+            params: Vec::new(),
         };
     };
-
-    let tenant = || sea_orm::Value::from(tenant_id.as_bytes().to_vec());
-    let viewer = || sea_orm::Value::from(scope.viewer_person_id.as_bytes().to_vec());
 
     VisibleScopeSql {
         recursive: "RECURSIVE ",
         cte: format!(",\n{CURRENT_VISIBLE_SET_CTE}"),
         filter: " AND EXISTS (SELECT 1 FROM visible_set vs WHERE vs.person_id = p.person_id)",
-        manager_gate: " AND (p.person_id = ? OR EXISTS (\
+        manager_gate: " AND (p.person_id = @viewer_person_id OR EXISTS (\
              SELECT 1 FROM visible_set vs WHERE vs.person_id = p.manager_person_id\
              ))",
-        values: vec![
-            viewer(),
-            tenant(),
-            viewer(),
-            tenant(),
-            scope.policy.is_flat().into(),
-            tenant(),
-            viewer(),
-            tenant(),
-            scope.org_source_type.into(),
-            viewer(),
+        params: vec![
+            ("viewer_person_id".to_owned(), bytes(scope.viewer_person_id)),
+            ("flat_tenant".to_owned(), scope.policy.is_flat().into()),
+            ("org_source_type".to_owned(), scope.org_source_type.into()),
         ],
     }
 }
 
-fn build_query(tenant_id: Uuid, query: ListQuery<'_>) -> (String, Vec<sea_orm::Value>) {
-    let mut values = vec![query.org_chart_source_type.to_owned().into()];
-    values.push(tenant_id.as_bytes().to_vec().into());
-    values.push(tenant_id.as_bytes().to_vec().into());
+fn build_query(tenant_id: Uuid, query: ListQuery<'_>) -> Result<(String, Vec<Value>), BindError> {
+    let mut params = vec![
+        ("tenant_id".to_owned(), bytes(tenant_id)),
+        (
+            "org_chart_source_type".to_owned(),
+            query.org_chart_source_type.into(),
+        ),
+        ("limit".to_owned(), query.limit.into()),
+    ];
 
-    let scope = visible_scope(query.restrict.visible_to, tenant_id);
+    let scope = visible_scope(query.restrict.visible_to);
     let recursive = scope.recursive;
     let visible_cte = scope.cte;
     let manager_gate = scope.manager_gate;
-    let mut filters = String::from(scope.filter);
-    values.extend(scope.values);
+    params.extend(scope.params);
 
-    append_filters(&mut filters, &mut values, query.terms, query.person_ids);
-    append_any_of(&mut filters, &mut values, query.any_of);
+    let (narrowing, narrowing_params) = narrowing_filters(query);
+    let filters = format!("{}{narrowing}", scope.filter);
+    params.extend(narrowing_params);
 
-    let resume = query.after.map_or_else(String::new, |_| {
-        " WHERE (order_key > ? OR (order_key = ? AND person_id > ?))".to_owned()
-    });
+    let mut resume = "";
     if let Some(after) = query.after {
-        values.push(after.order_key.into());
-        values.push(after.order_key.into());
-        values.push(after.person_id.as_bytes().to_vec().into());
+        resume = " WHERE (order_key > @after_key \
+                  OR (order_key = @after_key AND person_id > @after_person_id))";
+        params.push(("after_key".to_owned(), after.order_key.into()));
+        params.push(("after_person_id".to_owned(), bytes(after.person_id)));
     }
-    values.push(query.limit.into());
 
     let sql = format!(
         r"
@@ -171,8 +167,8 @@ fn build_query(tenant_id: Uuid, query: ListQuery<'_>) -> (String, Vec<sea_orm::V
                        ORDER BY insight_source_id
                    ) AS rn
             FROM org_chart
-            WHERE insight_source_type = ?
-              AND insight_tenant_id = ?
+            WHERE insight_source_type = @org_chart_source_type
+              AND insight_tenant_id = @tenant_id
               AND valid_to IS NULL
               AND parent_person_id IS NOT NULL
         ),
@@ -205,7 +201,7 @@ fn build_query(tenant_id: Uuid, query: ListQuery<'_>) -> (String, Vec<sea_orm::V
             LEFT JOIN ranked_managers oc
               ON  oc.child_person_id = p.person_id
               AND oc.rn = 1
-            WHERE p.insight_tenant_id = ? AND p.valid_to IS NULL
+            WHERE p.insight_tenant_id = @tenant_id AND p.valid_to IS NULL
         ){visible_cte}
         SELECT person_id, email, username, display_name, first_name, last_name,
                attributes, manager_person_id, manager_name, order_key
@@ -229,55 +225,47 @@ fn build_query(tenant_id: Uuid, query: ListQuery<'_>) -> (String, Vec<sea_orm::V
             WHERE 1 = 1{filters}
         ) keyed{resume}
         ORDER BY order_key, person_id
-        LIMIT ?
+        LIMIT @limit
     "
     );
 
-    (sql, values)
+    bind_named(&sql, &params)
 }
 
-fn append_any_of(filters: &mut String, values: &mut Vec<sea_orm::Value>, any_of: &[Uuid]) {
-    if any_of.is_empty() {
-        return;
-    }
+fn narrowing_filters(query: ListQuery<'_>) -> (String, Vec<(String, Value)>) {
+    let (named, named_params) = named_clauses(
+        "person",
+        query.person_ids.iter().copied().map(bytes),
+        |name| format!(" AND p.person_id = @{name}"),
+    );
 
-    let marks = vec!["?"; any_of.len()].join(", ");
-    filters.push_str(" AND p.person_id IN (");
-    filters.push_str(&marks);
-    filters.push(')');
-    values.extend(any_of.iter().map(|id| id.as_bytes().to_vec().into()));
+    let (matched, matched_params) = named_clauses(
+        "term",
+        query.terms.iter().map(|term| like_pattern(term).into()),
+        |name| {
+            format!(
+                " AND (p.display_name LIKE @{name} ESCAPE '!' OR p.first_name LIKE @{name} ESCAPE '!' \
+                 OR p.last_name LIKE @{name} ESCAPE '!' OR p.username LIKE @{name} ESCAPE '!' \
+                 OR p.email LIKE @{name} ESCAPE '!')"
+            )
+        },
+    );
+
+    let (any_of, any_of_params) = if query.any_of.is_empty() {
+        (String::new(), Vec::new())
+    } else {
+        let (list, params) = named_list("any_of", query.any_of.iter().copied().map(bytes));
+        (format!(" AND p.person_id IN ({list})"), params)
+    };
+
+    let mut params = named_params;
+    params.extend(matched_params);
+    params.extend(any_of_params);
+    (format!("{named}{matched}{any_of}"), params)
 }
 
-fn append_filters(
-    filters: &mut String,
-    values: &mut Vec<sea_orm::Value>,
-    terms: &[String],
-    person_ids: &[Uuid],
-) {
-    for person_id in person_ids {
-        filters.push_str(" AND p.person_id = ?");
-        values.push(person_id.as_bytes().to_vec().into());
-    }
-
-    for term in terms {
-        filters.push_str(
-            " AND (p.display_name LIKE ? ESCAPE '!' OR p.first_name LIKE ? ESCAPE '!' \
-             OR p.last_name LIKE ? ESCAPE '!' OR p.username LIKE ? ESCAPE '!' \
-             OR p.email LIKE ? ESCAPE '!')",
-        );
-        push_patterns(values, term);
-    }
-}
-
-fn push_patterns(values: &mut Vec<sea_orm::Value>, term: &str) {
-    let pattern = like_pattern(term);
-    values.extend([
-        pattern.clone().into(),
-        pattern.clone().into(),
-        pattern.clone().into(),
-        pattern.clone().into(),
-        pattern.into(),
-    ]);
+fn bytes(id: Uuid) -> Value {
+    id.as_bytes().to_vec().into()
 }
 
 fn like_pattern(term: &str) -> String {
@@ -314,12 +302,14 @@ fn rows_from(rows: Vec<QueryResult>) -> Result<Vec<PersonListRow>, PeopleListing
 mod tests {
     use super::*;
 
+    type R = anyhow::Result<()>;
+
     fn query(
         terms: &[String],
         person_ids: &[Uuid],
         restrict: Restrict<'_>,
         after: Option<After<'_>>,
-    ) -> (String, Vec<sea_orm::Value>) {
+    ) -> Result<(String, Vec<Value>), BindError> {
         build_query(
             Uuid::from_u128(1),
             ListQuery {
@@ -335,8 +325,8 @@ mod tests {
     }
 
     #[test]
-    fn browsing_orders_current_people_by_presented_label() {
-        let (sql, values) = query(&[], &[], Restrict::UNRESTRICTED, None);
+    fn browsing_orders_current_people_by_presented_label() -> R {
+        let (sql, values) = query(&[], &[], Restrict::UNRESTRICTED, None)?;
 
         assert!(sql.contains("valid_to IS NULL"));
         assert!(sql.contains("SELECT p.insight_tenant_id,\n                   p.person_id"));
@@ -348,10 +338,11 @@ mod tests {
         assert!(sql.contains("ORDER BY order_key, person_id"));
         assert!(sql.contains("NULLIF(TRIM(CONCAT_WS(' ',"));
         assert_eq!(sql.matches('?').count(), values.len());
+        Ok(())
     }
 
     #[test]
-    fn people_asked_for_by_id_widen_into_one_any_of_match() {
+    fn people_asked_for_by_id_widen_into_one_any_of_match() -> R {
         let any_of = [Uuid::from_u128(2), Uuid::from_u128(3), Uuid::from_u128(4)];
         let (sql, values) = build_query(
             Uuid::from_u128(1),
@@ -364,37 +355,40 @@ mod tests {
                 after: None,
                 limit: 3,
             },
-        );
+        )?;
 
         assert!(sql.contains("p.person_id IN (?, ?, ?)"), "{sql}");
         assert!(!sql.contains("p.person_id = ?"), "{sql}");
         assert_eq!(sql.matches('?').count(), values.len());
+        Ok(())
     }
 
     #[test]
-    fn every_term_and_named_person_narrows_the_page() {
+    fn every_term_and_named_person_narrows_the_page() -> R {
         let person_id = Uuid::from_u128(2);
         let terms = ["50%".to_owned(), "name_with_underscore".to_owned()];
-        let (sql, values) = query(&terms, &[person_id], Restrict::UNRESTRICTED, None);
+        let (sql, values) = query(&terms, &[person_id], Restrict::UNRESTRICTED, None)?;
 
         assert!(sql.contains("p.person_id = ?"));
         assert_eq!(sql.matches("p.display_name LIKE ?").count(), terms.len());
         assert_eq!(sql.matches('?').count(), values.len());
-        assert!(values.contains(&sea_orm::Value::from("%50!%%".to_owned())));
-        assert!(values.contains(&sea_orm::Value::from("%name!_with!_underscore%".to_owned())));
+        assert!(values.contains(&Value::from("%50!%%".to_owned())));
+        assert!(values.contains(&Value::from("%name!_with!_underscore%".to_owned())));
+        Ok(())
     }
 
     #[test]
-    fn distinct_person_ids_are_separate_match_requirements() {
+    fn distinct_person_ids_are_separate_match_requirements() -> R {
         let person_ids = [Uuid::from_u128(2), Uuid::from_u128(3)];
-        let (sql, values) = query(&[], &person_ids, Restrict::UNRESTRICTED, None);
+        let (sql, values) = query(&[], &person_ids, Restrict::UNRESTRICTED, None)?;
 
         assert_eq!(sql.matches("p.person_id = ?").count(), person_ids.len());
         assert_eq!(sql.matches('?').count(), values.len());
+        Ok(())
     }
 
     #[test]
-    fn caller_visibility_and_resume_are_both_applied() {
+    fn caller_visibility_and_resume_are_both_applied() -> R {
         let after = After {
             order_key: "0example person",
             person_id: Uuid::from_u128(4),
@@ -406,17 +400,18 @@ mod tests {
                 policy: VisibilityPolicy::OrgChart,
             }),
         };
-        let (sql, values) = query(&[], &[], restrict, Some(after));
+        let (sql, values) = query(&[], &[], restrict, Some(after))?;
 
         assert!(sql.contains("WITH RECURSIVE"));
         assert!(sql.contains("FROM visible_set vs"));
         assert!(sql.contains("LEFT JOIN presented_people manager"));
         assert!(sql.contains("order_key > ?"));
         assert_eq!(sql.matches('?').count(), values.len());
+        Ok(())
     }
 
     #[test]
-    fn the_own_row_exception_is_keyed_to_the_caller() {
+    fn the_own_row_exception_is_keyed_to_the_caller() -> R {
         let viewer = Uuid::from_u128(3);
         let restrict = Restrict {
             visible_to: Some(VisibleTo {
@@ -426,13 +421,11 @@ mod tests {
             }),
         };
 
-        let (sql, values) = query(&[], &[Uuid::from_u128(2)], restrict, None);
+        let (sql, values) = query(&[], &[Uuid::from_u128(2)], restrict, None)?;
 
         let gate = sql.find("p.person_id = ? OR");
         let bound = gate.map(|at| &values[sql[..at].matches('?').count()]);
-        assert_eq!(
-            bound,
-            Some(&sea_orm::Value::from(viewer.as_bytes().to_vec()))
-        );
+        assert_eq!(bound, Some(&Value::from(viewer.as_bytes().to_vec())));
+        Ok(())
     }
 }

@@ -29,13 +29,6 @@ export interface TeamCollectionDrilldownProps {
   className?: string;
 }
 
-/**
- * Drilldown for a metrics-backed group over a roster of people: the members
- * grid scoped to the group's full metric collection. Every cell is a
- * member's own value, trend, and standing vs their OWN department cohort —
- * nothing is pooled; the group card's judgment surfaces stay on the
- * dashboard.
- */
 export function TeamCollectionDrilldown({
   def,
   members,
@@ -74,7 +67,7 @@ export function TeamCollectionDrilldown({
   if (data.isPending) {
     return (
       <div className="flex h-full min-h-96 w-full items-center justify-center p-10">
-        <Spinner className="size-12 text-muted-foreground" />
+        <Spinner size="lg" />
       </div>
     );
   }

@@ -1,11 +1,3 @@
-/**
- * AI assistant settings as the portal's Manage zone renders them: the caller's
- * key, the context both scopes contribute to every explanation, and — for
- * admins — the system prompt the tenant runs.
- *
- * The Manage entry is hidden where the deployment does not offer explanations,
- * so the "not enabled" state is reached only by a bookmark or a stale tab.
- */
 import { Lock, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -46,8 +38,6 @@ export function AiAssistantBody() {
     return <Shell>Loading…</Shell>;
   }
 
-  // A failed check is not the same answer as "switched off" — saying "off"
-  // here would send an admin to the chart to fix a network blip.
   if (config.isError) {
     return (
       <Shell>
@@ -196,13 +186,10 @@ function SystemPromptCard() {
   const settings = useAiSettings(true);
   const save = useSaveAiSystemPrompt();
   const reset = useResetAiSystemPrompt();
-  // Null means "whatever the server holds" — the stored prompt arrives after
-  // the first render, and seeding state from it in an effect would overwrite
-  // an edit made while the read was still in flight.
-  const [draft, setDraft] = useState<string | null>(null);
+  const [unsavedEdit, setUnsavedEdit] = useState<string | null>(null);
 
   const stored = settings.data?.system_prompt ?? "";
-  const text = draft ?? stored;
+  const text = unsavedEdit ?? stored;
 
   return (
     <Card>
@@ -231,14 +218,14 @@ function SystemPromptCard() {
         <Textarea
           value={text}
           rows={10}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => setUnsavedEdit(event.target.value)}
           aria-label="System prompt"
         />
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             onClick={() =>
-              save.mutate(text, { onSuccess: () => setDraft(null) })
+              save.mutate(text, { onSuccess: () => setUnsavedEdit(null) })
             }
             disabled={text.trim().length === 0 || save.isPending}
           >
@@ -247,9 +234,7 @@ function SystemPromptCard() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => reset.mutate(undefined, { onSuccess: () => setDraft(null) })}
-            // Only once the read confirms a tenant prompt exists: enabled on an
-            // unknown state, a mis-click would delete a prompt nobody has seen.
+            onClick={() => reset.mutate(undefined, { onSuccess: () => setUnsavedEdit(null) })}
             disabled={reset.isPending || settings.data?.is_default !== false}
           >
             Reset to default

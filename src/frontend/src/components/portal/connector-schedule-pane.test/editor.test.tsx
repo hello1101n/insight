@@ -1,6 +1,7 @@
 import { pickPreset, presetLabel } from "./preset";
 import { mocks, read, pane, editCustom, pickTime } from "./fixtures";
 
+import { badgeVariants } from "@gears-frontx/ui-kit";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
@@ -55,10 +56,15 @@ it("prefills Custom from the compiled preset and disables Save until the ordered
   expect(save).toBeDisabled();
   fireEvent.submit(field.closest("form")!);
   expect(mocks.save).not.toHaveBeenCalled();
-  const help = screen.getByRole("link", { name: "Syntax help ↗" });
-  expect(help).toHaveAttribute("href", "https://crontab.guru");
-  expect(help).toHaveAttribute("target", "_blank");
-  expect(help).toHaveAttribute("rel", "noopener noreferrer");
+  const help = screen.getByRole("button", { name: "Syntax help" });
+  await userEvent.click(help);
+  const syntax = await screen.findByRole("dialog", { name: "Syntax help" });
+  expect(syntax).toHaveTextContent("Sunday is 0");
+  expect(syntax).toHaveTextContent("0 10 * * 1-5");
+  expect(syntax).toHaveTextContent("10:00 UTC");
+  await userEvent.keyboard("{Escape}");
+  expect(syntax).not.toBeVisible();
+  expect(help).toHaveFocus();
   expect(
     screen.getByText(/UTC · minute hour day month weekday/)
   ).toBeInTheDocument();
@@ -86,7 +92,9 @@ it("opens every stored expression as a row and warns before a preset replaces th
     "At 18:30, only on Sunday UTC",
   ])
     expect(screen.queryByText(reading), reading).not.toBeInTheDocument();
-  expect(screen.getByText("Replaces all 3 expressions")).toBeInTheDocument();
+  expect(
+    screen.queryByText("Replaces all 3 expressions")
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByText("Syncs on 3 expressions (all UTC).")
   ).not.toBeInTheDocument();
@@ -219,12 +227,12 @@ it("focuses a save failure alert once and lets the draft be edited again", async
 });
 
 it.each([
-  ["inherited", "Default", false],
-  ["applied", "Set by admin", true],
-  ["pending", "Pending", true],
+  ["inherited", "Default", false, "secondary"],
+  ["applied", "Set by admin", true, "success"],
+  ["pending", "Pending", true, "warning"],
 ] as const)(
   "keeps the header chip on one line for %s in both views",
-  async (status, label, requested) => {
+  async (status, label, requested, variant) => {
     mocks.query.data!.schedule.status = status;
     if (!requested) mocks.query.data!.schedule.requested = null;
     render(pane());
@@ -234,10 +242,9 @@ it.each([
       const slot = chip.closest('[data-slot="schedule-header-status"]');
       expect.soft(slot).not.toHaveClass("h-12");
       expect.soft(slot!.parentElement).not.toHaveClass("h-14");
-      expect.soft(chip).toHaveClass("whitespace-nowrap");
+      expect.soft(chip).toHaveClass(...badgeVariants({ variant }).split(" "));
       expect.soft(text).toHaveClass("truncate");
       expect.soft(chip).toHaveAttribute("title", text.textContent);
-      if (status === "pending") expect(chip).toHaveClass("text-warning");
       if (view === 0)
         await userEvent.click(screen.getByRole("button", { name: "Edit" }));
     }

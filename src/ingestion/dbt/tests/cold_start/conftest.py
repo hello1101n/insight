@@ -128,18 +128,57 @@ class Warehouse:
         sources = (json.loads(line) for line in listed.splitlines() if line.startswith("{"))
         return {source["identifier"] for source in sources if source["schema"] == schema}
 
-    def unbuildable_models(self) -> set[str]:
-        """The names `list_unbuildable_models` reports for this warehouse."""
+    def unbuildable_models(self, selected: set[str] | None = None) -> set[str]:
+        """The names `list_unbuildable_models` reports for this warehouse, for a run building `selected`."""
+        args = () if selected is None else ("--args", json.dumps({"selected": sorted(selected)}))
         listed = self._run(
-            str(Path(sys.executable).parent / "dbt"),
+            self.dbt,
             "--quiet",
             "run-operation",
             "list_unbuildable_models",
+            *args,
             "--profiles-dir",
             str(self.profiles_dir),
             cwd=DBT_DIR,
         )
         return set(listed.split())
+
+    def models(self, select: str, exclude: str = "") -> set[str]:
+        """The models `dbt ls` resolves for a run's --select and --exclude."""
+        excluded = ("--exclude", *exclude.split()) if exclude else ()
+        listed = self._run(
+            self.dbt,
+            "--quiet",
+            "ls",
+            "--resource-type",
+            "model",
+            "--output",
+            "name",
+            "--select",
+            *select.split(),
+            *excluded,
+            "--profiles-dir",
+            str(self.profiles_dir),
+            cwd=DBT_DIR,
+        )
+        return set(listed.split())
+
+    def dbt_run(self, select: str, exclude: set[str]) -> subprocess.CompletedProcess[str]:
+        """`dbt run` the way the pipeline step does, judging nothing about how it went."""
+        excluded = ("--exclude", *sorted(exclude)) if exclude else ()
+        return subprocess.run(
+            [self.dbt, "run", "--select", *select.split(), *excluded, "--profiles-dir", str(self.profiles_dir)],
+            env=self.env,
+            cwd=DBT_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT_S,
+        )
+
+    @property
+    def dbt(self) -> str:
+        return str(Path(sys.executable).parent / "dbt")
 
     def _run(self, *argv: str, cwd: Path | None = None) -> str:
         completed = subprocess.run(

@@ -78,6 +78,9 @@ airbyte:
   namespace: insight-infra
 
 ingestion:
+  airbyteSync:
+    capacityCheck:
+      podNamespaces: [insight, insight-infra, kube-system, envoy-gateway-system, cert-manager]
   templates:
     enabled: true
   reconcile:

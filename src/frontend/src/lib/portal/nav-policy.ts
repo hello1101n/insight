@@ -6,9 +6,7 @@ export interface NavPathSet {
   directions: ReadonlySet<string>;
   lenses: ReadonlySet<string>;
   personSections: ReadonlySet<string>;
-  /** Whole metric keys, e.g. `tasks.resolution_time`. */
   metrics: ReadonlySet<string>;
-  /** Family prefixes from `metric:ai.*`, stored WITH the dot (`ai.`). */
   metricFamilies: ReadonlySet<string>;
 }
 
@@ -43,13 +41,6 @@ type NavPath =
 
 const SEGMENT = /^(zone|item|dir|lens|section):([a-z0-9][a-z0-9_-]*)$/;
 
-/**
- * A metric path names a key of the analytics catalog, not a menu node, so it
- * is a root form rather than a segment under `zone:` — and its value carries
- * the dotted family (`tasks.resolution_time`). The trailing `.*` form takes a
- * whole family, because "every AI metric" is a standing product statement and
- * a list of today's keys would silently stop covering tomorrow's.
- */
 const METRIC = /^metric:([a-z0-9][a-z0-9_]*)\.([a-z0-9][a-z0-9_]*|\*)$/;
 
 function parsePath(raw: string): NavPath | null {
@@ -248,8 +239,6 @@ export function visiblePersonSections<T extends { id: string }>(
   );
 }
 
-/* ── Metrics ─────────────────────────────────────────────────────────── */
-
 function matches(set: NavPathSet, metricKey: string): boolean {
   if (set.metrics.has(metricKey)) return true;
   for (const family of set.metricFamilies) {
@@ -272,13 +261,6 @@ export function metricPlanned(
   return matches(policy.planned, metricKey);
 }
 
-/**
- * Whether a metric may appear on screen at all.
- *
- * Applied to the metric KEY rather than to each surface, so a metric this
- * install does not show cannot reach a tile, an attention row, a heatmap
- * column or a report column by a route nobody remembered to gate.
- */
 export function metricVisible(
   metricKey: string,
   showPlanned: boolean,
@@ -296,7 +278,6 @@ export function visibleMetricKeys(
   return keys.filter((key) => metricVisible(key, showPlanned, policy));
 }
 
-/** Whether this install gates any metric at all — lets callers skip the walk. */
 export function gatesAnyMetric(policy = navPolicy()): boolean {
   return (
     policy.hide.metrics.size > 0 ||

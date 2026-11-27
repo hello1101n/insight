@@ -103,7 +103,7 @@ it.each<{
     },
     status: "The deployment schedule is shown after 12:15 UTC.",
     rows: [
-      "Running · as of 12 Jan at 00:19 0 3 * * *; 0 15 * * * Europe/Sofia",
+      "Running · as of 12 Jan 2026 · 00:19:00 0 3 * * *; 0 15 * * * Europe/Sofia",
     ],
   },
   {
@@ -120,7 +120,7 @@ it.each<{
     },
     status: "The deployment schedule is shown after 12:15 UTC.",
     rows: [
-      "Running · as of 12 Nov 2025 at 00:19 0 3 * * *; 0 15 * * * controller time",
+      "Running · as of 12 Nov 2025 · 00:19:00 0 3 * * *; 0 15 * * * controller time",
     ],
   },
   {
@@ -133,7 +133,7 @@ it.each<{
     },
     status:
       "This instance has no sync schedule yet. Starts by 12:15 UTC. No sync job runs until then.",
-    rows: ["Target · saved by you on 14 Jan at 23:43 0 6 * * * UTC"],
+    rows: ["Target · saved by you on 14 Jan 2026 · 23:43:00 0 6 * * * UTC"],
   },
   {
     name: "Not scheduled yet without a saved target",
