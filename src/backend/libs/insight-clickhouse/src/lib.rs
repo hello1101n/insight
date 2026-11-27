@@ -10,7 +10,8 @@ pub mod test_support;
 pub mod topology;
 
 pub use config::Config;
-pub use coordination::{DDL_TASK_TIMEOUT, Unfinished};
+pub use consistency::ReplicaNotInQuorum;
+pub use coordination::{DDL_TASK_TIMEOUT, InactiveReplicasPending, Unfinished};
 pub use ddl::{Ddl, TableSpec};
 pub use error::Error;
 pub use missing_relation::MissingRelation;
@@ -40,6 +41,12 @@ impl Client {
         }
 
         Self { inner, config }
+    }
+
+    #[must_use]
+    pub fn with_log_comment(mut self, comment: String) -> Self {
+        self.inner = self.inner.with_setting("log_comment", comment);
+        self
     }
 
     /// Use bind parameters (`?`) for all user-supplied values.
@@ -88,6 +95,34 @@ impl Client {
         let mut insert = self.inner.insert::<T>(table).await?;
         for (name, value) in consistency::write_settings(self.config.topology) {
             insert = insert.with_setting(*name, *value);
+        }
+        Ok(insert)
+    }
+
+    /// Returns an insert that every active replica confirms, so a
+    /// [`Ddl::ReplacePartition`] finds the rows on any replica.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] if `table` is not a replicated table of this database,
+    /// or if the insert handle cannot be opened.
+    pub async fn insert_on_every_active_replica<T: clickhouse::Row>(
+        &self,
+        table: &str,
+    ) -> Result<clickhouse::insert::Insert<T>, Error> {
+        if !self.config.topology.is_replicated() {
+            return self.consistent_insert(table).await;
+        }
+
+        let active_replicas: u32 = self
+            .query("SELECT active_replicas FROM system.replicas WHERE database = ? AND table = ?")
+            .bind(&self.config.database)
+            .bind(table)
+            .fetch_one()
+            .await?;
+        let mut insert = self.inner.insert::<T>(table).await?;
+        for (name, value) in consistency::every_active_replica_settings(active_replicas) {
+            insert = insert.with_setting(name, value);
         }
         Ok(insert)
     }
@@ -434,6 +469,26 @@ mod tests {
         id: u64,
     }
 
+    #[tokio::test]
+    async fn with_log_comment_tags_every_query() -> Result<(), Box<dyn std::error::Error>> {
+        let capture = test_support::Capture::start().await?;
+        let client = Client::new(Config::new(capture.url(), "identity"))
+            .with_log_comment("insight:sync=example:stage=example".to_owned());
+
+        client
+            .query("SELECT id FROM t")
+            .fetch_all::<IdRow>()
+            .await?;
+
+        let received = capture.received();
+        assert_eq!(received.len(), 1);
+        assert_eq!(
+            received[0].pair("log_comment"),
+            Some("insight:sync=example:stage=example")
+        );
+        Ok(())
+    }
+
     async fn recorded(
         topology: Topology,
     ) -> Result<Vec<test_support::Received>, Box<dyn std::error::Error>> {
@@ -502,6 +557,45 @@ mod tests {
             assert!(!carries(other, &DDL_WAIT), "{other:?}");
         }
 
+        Ok(())
+    }
+
+    const THREE_ACTIVE_REPLICAS: [u8; 4] = 3_u32.to_le_bytes();
+
+    async fn every_active_replica_insert(
+        topology: Topology,
+    ) -> Result<Vec<test_support::Received>, Box<dyn std::error::Error>> {
+        let capture = test_support::Capture::answering(&THREE_ACTIVE_REPLICAS).await?;
+        let client = Client::new(Config::new(capture.url(), "identity").with_topology(topology));
+
+        let mut insert = client.insert_on_every_active_replica::<IdRow>("t").await?;
+        insert.write(&IdRow { id: 1 }).await?;
+        insert.end().await?;
+
+        Ok(capture.received())
+    }
+
+    #[tokio::test]
+    async fn a_replicated_insert_waits_for_every_active_replica()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let received = every_active_replica_insert(Topology::new(true, "insight_cluster")).await?;
+        let Ok([probe, write]) = <[test_support::Received; 2]>::try_from(received) else {
+            panic!("the replica count is read, then the rows are sent");
+        };
+
+        assert!(!carries(&probe, &QUORUM_PAIR), "{probe:?}");
+        assert_eq!(write.pair("insert_quorum"), Some("3"));
+        assert_eq!(write.pair("insert_quorum_parallel"), Some("0"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_single_node_insert_on_every_active_replica_is_a_plain_insert()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let received = every_active_replica_insert(Topology::Standalone).await?;
+
+        assert_eq!(received.len(), 1, "no replica count is read: {received:?}");
+        assert!(!carries(&received[0], &QUORUM_PAIR), "{received:?}");
         Ok(())
     }
 

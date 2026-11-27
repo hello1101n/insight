@@ -15,9 +15,9 @@ use super::AppState;
 use super::errors::ApiErrors;
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::drilldown::{
-    Asked, Column, CursorError, DEFAULT_PAGE_ROWS, DrilldownError, MAX_PAGE_ROWS, Page, Sort,
+    Asked, Column, CursorError, DEFAULT_PAGE_ROWS, DrilldownError, MAX_PAGE_ROWS, Page, Row, Sort,
 };
-use crate::domain::query::metric_query::ColumnKind;
+use crate::domain::query::metric_query::{ColumnKind, Unit};
 use crate::domain::query::time_window::WindowRequest;
 
 pub(crate) const MAX_CONCURRENT_PAGES: usize = 8;
@@ -136,12 +136,16 @@ pub(super) struct ColumnOut {
     r#type: &'static str,
     sortable: bool,
     percent: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unit: Option<&'static str>,
     exact: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct RowOut {
     values: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -265,8 +269,13 @@ fn response(metric: &str, asked: &Asked, page: Page) -> DrilldownResponse {
     }
 }
 
-pub(super) fn rows_out(rows: Vec<serde_json::Map<String, serde_json::Value>>) -> Vec<RowOut> {
-    rows.into_iter().map(|values| RowOut { values }).collect()
+pub(super) fn rows_out(rows: Vec<Row>) -> Vec<RowOut> {
+    rows.into_iter()
+        .map(|row| RowOut {
+            values: row.values,
+            link: row.link,
+        })
+        .collect()
 }
 
 pub(super) fn column_out(column: &Column, sortable: bool) -> ColumnOut {
@@ -280,6 +289,7 @@ pub(super) fn column_out(column: &Column, sortable: bool) -> ColumnOut {
         },
         sortable,
         percent: column.percent,
+        unit: column.unit.map(Unit::as_str),
         exact: column.exact,
     }
 }

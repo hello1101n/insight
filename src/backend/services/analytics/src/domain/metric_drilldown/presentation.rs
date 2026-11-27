@@ -4,7 +4,8 @@ use serde::Deserialize;
 
 use toolkit_canonical_errors::CanonicalError;
 
-use crate::domain::external_links::ExternalSourceRegistry;
+use insight_external_sources::ExternalSourceRegistry;
+
 use crate::domain::metric_definitions::definition::MetricInputRole;
 use crate::domain::metric_definitions::{EvidenceColumnType, EvidenceDetailColumn};
 
@@ -421,10 +422,11 @@ fn humanize_field_name(key: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use insight_external_sources::{ExternalSourceConfig, ExternalSourceProvider};
+
     use super::*;
     use crate::domain::metric_definitions::definition::AliasCollapse;
 
-    use crate::config::{ExternalSourceConfig, ExternalSourceProvider};
     use crate::domain::metric_definitions::{ComputationSpec, EvidencePresentation};
     use crate::domain::metric_definitions::{EvidenceGranularity, RatioDenominatorAggregation};
     use crate::domain::metric_drilldown::cursor::decode_cursor;

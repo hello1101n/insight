@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "libs/insight-clickhouse",
+    "libs/insight-external-sources",
     "libs/insight-http-client",
     "libs/insight-http-metrics",
     "libs/insight-log-context",
@@ -128,6 +129,7 @@ opentelemetry_sdk = { version = "0.32", features = ["metrics", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "metrics"] }
 
 insight-clickhouse = { path = "libs/insight-clickhouse" }
+insight-external-sources = { path = "libs/insight-external-sources" }
 insight-http-metrics = { path = "libs/insight-http-metrics" }
 insight-http-client = { path = "libs/insight-http-client" }
 insight-log-context = { path = "libs/insight-log-context" }

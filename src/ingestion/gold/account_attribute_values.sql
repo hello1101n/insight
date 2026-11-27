@@ -5,10 +5,10 @@
     schema=var('gold_database'),
     alias='account_attribute_values',
     tags=['gold'],
-    query_settings={
+    query_settings=instance_query_settings({
         'max_memory_usage': 3221225472,
         'max_threads': 4
-    }
+    })
 ) }}
 
 -- 'clear' claims participate in the window as interval closers, then drop in

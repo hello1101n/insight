@@ -30,6 +30,7 @@ reconcile__log() {{ printf '%s\\n' "$*" >&2; }}
 ab_destination_definition_by_name() {{ printf '%s\\t%s\\n' 'def-11111111' '{version}'; }}
 ab_destination_version() {{ printf '%s\\n' '{version}'; }}
 ab_ensure_destination() {{ printf 'dest-22222222'; }}
+ab_converge_destination_credentials() {{ :; }}
 """
 
 RECONCILE_ENV = """

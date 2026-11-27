@@ -48,6 +48,8 @@ reports:
   tempDir: /app/data/reports
   storageSizeLimit: 256Mi
 
+# Read only when global.externalSources is empty. Set global.externalSources
+# instead: insight-v3-core reads it too.
 externalSources: []
 
 # OpenTelemetry export. Off by default; the umbrella overrides these via

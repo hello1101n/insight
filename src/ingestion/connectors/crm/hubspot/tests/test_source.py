@@ -12,6 +12,7 @@ from airbyte_cdk.utils.traced_exception import AirbyteTracedException
 from source_hubspot import source as source_mod
 from source_hubspot.constants import CURATED_STREAMS, STREAM_REGISTRY
 from source_hubspot.models import HubspotConfig
+from source_hubspot.selection import PropertySelection
 from source_hubspot.source import SourceHubspot
 from source_hubspot.streams import (
     CrmArchivedListStream,
@@ -37,8 +38,9 @@ class FakeHubspotApi:
     properties_error = None
     association_reason = None
 
-    def __init__(self, access_token):
+    def __init__(self, access_token, selection=None):
         self.access_token = access_token
+        self.selection = selection or PropertySelection()
 
     def check_connection(self):
         return self.check_reason
@@ -54,6 +56,9 @@ class FakeHubspotApi:
     # streams() constructs streams around this instance
     def property_names(self, object_type):
         return ()
+
+    def money_property_names(self, object_type):
+        return frozenset()
 
     def generate_schema(self, object_type):
         return {"type": "object", "properties": {}}
@@ -83,6 +88,12 @@ class TestCheckConnection:
     def test_token_check_failure(self, source):
         FakeHubspotApi.check_reason = "bad token"
         assert source.check_connection(logging.getLogger(), CONFIG) == (False, "bad token")
+
+    def test_invalid_property_selection_fails_the_check(self, source):
+        config = {**CONFIG, "hubspot_property_selection": '{"deals": {"collect": ["x"], "ignore": ["x"]}}'}
+        ok, reason = source.check_connection(logging.getLogger(), config)
+        assert ok is False
+        assert "hubspot_property_selection" in reason
 
     def test_properties_probe_failure(self, source):
         FakeHubspotApi.properties_error = AirbyteTracedException(

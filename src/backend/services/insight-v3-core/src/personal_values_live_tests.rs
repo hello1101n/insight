@@ -695,7 +695,12 @@ async fn the_values_route_answers_each_person_and_team_from_the_rows() {
 fn times(page: &Page) -> Vec<&str> {
     page.rows
         .iter()
-        .map(|row| row.get("time").and_then(Value::as_str).unwrap_or_default())
+        .map(|row| {
+            row.values
+                .get("time")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        })
         .collect()
 }
 

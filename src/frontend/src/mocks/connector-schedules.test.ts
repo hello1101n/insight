@@ -19,6 +19,7 @@ type OpenApiDocument = {
     > &
       Record<
         | "ScheduleResponse"
+        | "ResourceState"
         | "LiveSchedule"
         | "InheritedSchedule"
         | "RequestedSchedule"
@@ -155,6 +156,14 @@ it("returns contract fields and UUID attribution in schedule and health response
   expect(initial.reconcile_interval_secs).toBeNull();
   expect(initial).not.toHaveProperty("next_attempt_at");
   fields(initial, schemas.ScheduleResponse);
+  fields(initial.resources, schemas.ResourceState);
+  expect(initial.resources).toEqual({
+    requested: {},
+    live: {},
+    inherited: {},
+    status: "inherited",
+    read_error: null,
+  });
   fields(initial.live, schemas.LiveSchedule);
   fields(initial.inherited, schemas.InheritedSchedule);
   expect(schemas.ScheduleOrigin.enum).toContain(initial.inherited.origin);
@@ -178,6 +187,10 @@ it("returns contract fields and UUID attribution in schedule and health response
       status === "pending" ? expect.any(String) : null
     );
     fields(state, schemas.ScheduleResponse);
+    fields(state.resources, schemas.ResourceState);
+    expect(state.resources.status).toBe(
+      status === "paused" ? "paused" : "inherited"
+    );
     expect(schemas.ScheduleStatus.enum).toContain(state.status);
     expect(schemas.ScheduleOrigin.enum).toContain(state.live.origin);
     const summary = mocks.summary("example-tracker", "main", null);

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from reconcile_inputs import sync_user
 from test_connector_schedule_runs import ROOT, bash
 from test_cronworkflow_error_logging import STUBS
 
@@ -59,6 +60,7 @@ def test_schedule_failure_preserves_the_sync_decision_and_counts_one_failed_inst
             *) printf 'unexpected %s\n' "$*" >> '{calls}'; return 1 ;;
           esac
         }}
+        {sync_user(tmp_path / "sync-user")}
         reconcile_run {dry_run} {no_sync_trigger}
         """,
         tmp_path,

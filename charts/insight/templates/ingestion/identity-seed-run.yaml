@@ -32,19 +32,39 @@ spec:
     - name: run
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: identity_pod_patch
+            default: "{}"
           - name: identity_image
             default: "{{ .Values.identityResolution.image.repository }}:{{ $identityTag }}"
+      synchronization:
+        mutexes:
+          - name: ch-identity
       activeDeadlineSeconds: 900
       retryStrategy:
         # Safe to repeat: the advisory lock and the operations journal make a
         # second run idempotent.
         limit: "2"
         retryPolicy: OnFailure
+      outputs:
+        parameters:
+          - name: query-pod-uid
+            valueFrom:
+              path: /app/data/pod-uid
+      podSpecPatch: {{ `'{{inputs.parameters.identity_pod_patch}}'` }}
       container:
         image: {{ `"{{inputs.parameters.identity_image}}"` }}
         imagePullPolicy: IfNotPresent
-        command: ["/app/identity-resolution"]
-        args: ["-c", "/app/config/insight.yaml", "seed", "--guard-ok"]
+        command: ["/bin/sh", "-ec"]
+        args:
+          - |
+            printf '%s' "$POD_UID" > /app/data/pod-uid
+            exec /app/identity-resolution "$@"
+          - identity-seed
+          - "-c"
+          - "/app/config/insight.yaml"
+          - seed
+          - "--guard-ok"
         volumeMounts:
           - name: identity-resolution-config
             mountPath: /app/config/insight.yaml
@@ -57,6 +77,19 @@ spec:
         envFrom:
           - secretRef:
               name: {{ .Values.identityResolution.existingSecret | quote }}
+        env:
+          - name: APP__gears__identity_resolution__config__clickhouse_user
+            value: {{ include "insight.clickhouse.syncUser" . | quote }}
+          - name: APP__gears__identity_resolution__config__clickhouse_password
+            {{- include "insight.clickhouse.syncPasswordRef" . | nindent 12 }}
+          - name: WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+          - name: INSIGHT_QUERY_TAG
+            value: "insight:sync=$(WORKFLOW_UID):stage=identity-seed:pod=$(POD_UID)"
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000

@@ -13,6 +13,7 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import * as customClient from "@/api/custom-client";
+import type { Widget } from "@/api/custom-client";
 
 import { MetricSummary, WidgetSummary } from "./definition-summary";
 
@@ -105,5 +106,51 @@ describe("<WidgetSummary>", () => {
     const link = await screen.findByRole("link", { name: "Commits per day" });
     expect(link).toHaveAttribute("href", "/dashboards/metrics/m-1");
     expect(customClient.fetchMetric).toHaveBeenCalledWith("m-1");
+  });
+});
+
+describe("<WidgetSummary> of each kind", () => {
+  it.each<[Widget, string, string]>([
+    [
+      { type: "bar", metric: "m-1", x: "team", y: "n", series: "outcome" },
+      "Axes",
+      "x team · y n · series outcome",
+    ],
+    [
+      { type: "heatmap", metric: "m-1", x: "bucket", value: "n" },
+      "Cells",
+      "x bucket · value n",
+    ],
+    [
+      { type: "funnel", metric: "m-1", stages: ["opened", "merged"] },
+      "Stages",
+      "opened, merged",
+    ],
+    [
+      {
+        type: "treemap",
+        metric: "m-1",
+        label: "repo",
+        value: "n",
+        group: "area",
+      },
+      "Tiles",
+      "label repo · value n · group area",
+    ],
+    [
+      { type: "scatter", metric: "m-1", x: "size", y: "hours", label: "pr" },
+      "Points",
+      "x size · y hours · label pr",
+    ],
+  ])("says what a %o widget draws", (widget, label, drawn) => {
+    vi.mocked(customClient.fetchMetric).mockResolvedValue({
+      name: "Metric",
+      definition: { dataset: "d", fields: [] },
+    });
+
+    render(<WidgetSummary widget={widget} />, { wrapper });
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText(drawn)).toBeInTheDocument();
   });
 });

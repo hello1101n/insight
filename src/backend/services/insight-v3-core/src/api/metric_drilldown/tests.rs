@@ -8,12 +8,17 @@ use base64::Engine as _;
 use serde_json::json;
 use tower::ServiceExt as _;
 
+use insight_external_sources::{
+    ExternalSourceConfig, ExternalSourceProvider, ExternalSourceRegistry,
+};
+
 use super::*;
 use crate::api::AppState;
 use crate::chat::ChatClient;
 use crate::domain::definition::DefinitionKind;
 use crate::domain::folders::DefinitionStore;
-use crate::domain::query::metric_query::MetricRunner;
+use crate::domain::query::metric_query::{MetricRunner, carried_column};
+use crate::domain::record_link::RecordLinks;
 use crate::store::definitions::memory::MemoryDefinitions;
 
 type R = Result<(), Box<dyn std::error::Error>>;
@@ -26,6 +31,10 @@ struct TestHarness {
 
 impl TestHarness {
     fn new(metrics_url: &str) -> Self {
+        Self::with_links(metrics_url, RecordLinks::default())
+    }
+
+    fn with_links(metrics_url: &str, links: RecordLinks) -> Self {
         let openapi = toolkit::api::OpenApiRegistryImpl::new();
         let metrics_client = insight_clickhouse::Client::new(insight_clickhouse::Config::new(
             metrics_url,
@@ -46,17 +55,20 @@ impl TestHarness {
                 }),
             )],
         );
-        let state = Arc::new(AppState::new(
-            MetricRunner::new(
-                metrics_client,
-                crate::domain::query::metric_query::People::new("identity"),
-            ),
-            definitions.clone(),
-            ChatClient::keyless(),
-            crate::store::identity::IdentityClient::fixed(true),
-            datasets,
-            crate::store::catalog::Catalog::fixed(Vec::new()),
-        ));
+        let state = Arc::new(
+            AppState::new(
+                MetricRunner::new(
+                    metrics_client,
+                    crate::domain::query::metric_query::People::new("identity"),
+                ),
+                definitions.clone(),
+                ChatClient::keyless(),
+                crate::store::identity::IdentityClient::fixed(true),
+                datasets,
+                crate::store::catalog::Catalog::fixed(Vec::new()),
+            )
+            .with_record_links(links),
+        );
         let router = register_routes(Router::new(), &openapi, state);
 
         Self {
@@ -414,6 +426,184 @@ async fn a_continued_walk_reads_the_window_its_first_page_resolved() -> R {
         sql[from..to].to_owned()
     };
     assert_eq!(window_of(&first_read), window_of(&last_read(&seen)));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_column_read_as_a_duration_names_its_unit_beside_its_percent() -> R {
+    let (url, _seen) = upstream().await;
+    let harness = TestHarness::new(&url);
+    let mut timed = lines_per_day();
+    timed["fields"][1]["unit"] = json!("s");
+    harness.store("lines_per_day", timed).await;
+
+    let (status, body) = harness.page("lines_per_day", json!({ "limit": 2 })).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["columns"][1]["key"], json!("total"));
+    assert_eq!(body["columns"][1]["unit"], json!("s"));
+    assert_eq!(body["columns"][1]["percent"], json!(false));
+    assert_eq!(body["columns"][0].get("unit"), None, "{body}");
+
+    Ok(())
+}
+
+const NO_ENGINE: &[u8] = b"\x01\x06engine\x06String";
+const NO_UUID: &[u8] = b"\x01\x04uuid\x06String";
+
+fn linked_to_the_example_host() -> RecordLinks {
+    let sources = ExternalSourceRegistry::new(&[ExternalSourceConfig {
+        id: "source-a".to_owned(),
+        provider: ExternalSourceProvider::Github,
+        web_base_url: "https://git.example.com".to_owned(),
+    }])
+    .unwrap_or_else(|error| panic!("the source must be valid: {error}"));
+
+    RecordLinks::new(sources, "insight")
+}
+
+/// Answers a per-record read with the keys it carried, and a grouped read
+/// with its groups alone, as ClickHouse would.
+async fn pull_request_warehouse() -> (String, Seen) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap_or_else(|error| panic!("the warehouse must bind: {error}"));
+    let address = listener
+        .local_addr()
+        .unwrap_or_else(|error| panic!("the warehouse must have an address: {error}"));
+    let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+    let recorded = seen.clone();
+    let router = Router::new().route(
+        "/",
+        post(move |sql: String| {
+            let recorded = recorded.clone();
+            async move {
+                if sql.contains("system.tables") {
+                    let empty = if sql.contains("toString(uuid)") {
+                        NO_UUID
+                    } else {
+                        NO_ENGINE
+                    };
+                    return empty.to_vec().into_response();
+                }
+                let grouped = sql.contains(" GROUP BY ");
+                if let Ok(mut recorded) = recorded.lock() {
+                    recorded.push(sql);
+                }
+
+                let data = if grouped {
+                    vec![json!({ "state": "MERGED", "prs": "3" })]
+                } else {
+                    let record = |title: &str, number: &str, source: &str| {
+                        let mut row =
+                            json!({ "title": title, "number": number, "__drilldown_twin": "1" });
+                        for (column, value) in [
+                            ("data_source", "insight_github"),
+                            ("source_id", source),
+                            ("project_key", "group"),
+                            ("repo_slug", "app"),
+                            ("pr_number", number),
+                        ] {
+                            row[carried_column(column)] = json!(value);
+                        }
+                        row
+                    };
+                    vec![
+                        record("Fix the build", "7", "source-a"),
+                        record("Tidy the docs", "8", "source-z"),
+                    ]
+                };
+                Json(json!({ "meta": [], "data": data })).into_response()
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+
+    (format!("http://{address}"), seen)
+}
+
+#[tokio::test]
+async fn a_pull_request_row_links_to_its_page_and_shows_none_of_the_keys_behind_the_link() -> R {
+    let (url, seen) = pull_request_warehouse().await;
+    let harness = TestHarness::with_links(&url, linked_to_the_example_host());
+    harness
+        .store(
+            "pull_requests",
+            json!({
+                "table": "silver.class_git_pull_requests",
+                "fields": [
+                    { "column": "title", "type": "string", "as_name": "title" },
+                    { "column": "pr_number", "type": "int", "as_name": "number" }
+                ]
+            }),
+        )
+        .await;
+
+    let (status, body) = harness.page("pull_requests", json!({})).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let keys: Vec<&str> = body["columns"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|column| column["key"].as_str())
+        .collect();
+    assert_eq!(keys, ["title", "number"], "{body}");
+    assert_eq!(
+        body["rows"],
+        json!([
+            {
+                "values": { "title": "Fix the build", "number": 7 },
+                "link": "https://git.example.com/group/app/pull/7"
+            },
+            { "values": { "title": "Tidy the docs", "number": 8 } }
+        ])
+    );
+
+    let sql = last_read(&seen);
+    for column in [
+        "data_source",
+        "source_id",
+        "project_key",
+        "repo_slug",
+        "pr_number",
+    ] {
+        assert!(sql.contains(&carried_column(column)), "{column}: {sql}");
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_grouped_row_has_no_link_and_its_read_carries_no_keys() -> R {
+    let (url, seen) = pull_request_warehouse().await;
+    let harness = TestHarness::with_links(&url, linked_to_the_example_host());
+    harness
+        .store(
+            "pull_requests_by_state",
+            json!({
+                "table": "silver.class_git_pull_requests",
+                "fields": [
+                    { "column": "state", "type": "string", "as_name": "state" },
+                    { "agg": "count", "column": "pr_id", "type": "int", "as_name": "prs" }
+                ],
+                "group_by": ["state"]
+            }),
+        )
+        .await;
+
+    let (status, body) = harness.page("pull_requests_by_state", json!({})).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["rows"],
+        json!([{ "values": { "state": "MERGED", "prs": 3 } }])
+    );
+    let sql = last_read(&seen);
+    assert!(!sql.contains("__drilldown_carried_"), "{sql}");
 
     Ok(())
 }

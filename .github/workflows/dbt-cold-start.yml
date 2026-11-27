@@ -21,7 +21,13 @@ on:
       - src/ingestion/gold/**
       - src/ingestion/connectors/**/dbt/**
       - src/ingestion/scripts/dbt_profiles.py
+      - src/ingestion/scripts/lib/ch-exec.sh
       - src/ingestion/scripts/create-databases.sh
+      - src/ingestion/scripts/bootstrap-db/provision-sync-access.sh
+      - src/ingestion/scripts/tests/test_sync_access.py
+      - src/ingestion/scripts/tests/test_sync_permissions.py
+      - src/backend/services/identity-resolution/src/infra/identity_inputs.rs
+      - charts/insight/README.md
       - src/ingestion/scripts/bootstrap-db/run-dbt.sh
       - src/ingestion/scripts/bootstrap-db/pins.env
       - .github/workflows/dbt-cold-start.yml
@@ -34,7 +40,13 @@ on:
       - src/ingestion/gold/**
       - src/ingestion/connectors/**/dbt/**
       - src/ingestion/scripts/dbt_profiles.py
+      - src/ingestion/scripts/lib/ch-exec.sh
       - src/ingestion/scripts/create-databases.sh
+      - src/ingestion/scripts/bootstrap-db/provision-sync-access.sh
+      - src/ingestion/scripts/tests/test_sync_access.py
+      - src/ingestion/scripts/tests/test_sync_permissions.py
+      - src/backend/services/identity-resolution/src/infra/identity_inputs.rs
+      - charts/insight/README.md
       - src/ingestion/scripts/bootstrap-db/run-dbt.sh
       - src/ingestion/scripts/bootstrap-db/pins.env
       - .github/workflows/dbt-cold-start.yml
@@ -94,6 +106,30 @@ jobs:
             "dbt-core==${DBT_CORE_VERSION}" \
             "dbt-clickhouse==${DBT_CLICKHOUSE_VERSION}" \
             -r src/ingestion/dbt/tests/cold_start/requirements.txt
+
+      - name: ClickHouse sync account tests
+        env:
+          SYNC_TEST_CLICKHOUSE_URL: http://127.0.0.1:8123
+        run: |
+          set -euo pipefail
+          : "${SYNC_TEST_CLICKHOUSE_URL:?}"
+          export SYNC_TEST_CLICKHOUSE_USER="$CLICKHOUSE_USER"
+          export SYNC_TEST_CLICKHOUSE_PASSWORD="$CLICKHOUSE_PASSWORD"
+          SYNC_TEST_CLICKHOUSE_CONTAINER_HOST="$(docker inspect -f '{{.NetworkSettings.Networks.bridge.IPAddress}}' "$CLICKHOUSE_CONTAINER")"
+          : "${SYNC_TEST_CLICKHOUSE_CONTAINER_HOST:?}"
+          export SYNC_TEST_CLICKHOUSE_CONTAINER_HOST
+          report="$RUNNER_TEMP/sync-account-tests.xml"
+          src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q --junitxml="$report" \
+            src/ingestion/scripts/tests/test_sync_access.py \
+            src/ingestion/scripts/tests/test_sync_permissions.py
+          python - "$report" <<'PY'
+          import sys
+          from xml.etree import ElementTree
+
+          report = ElementTree.parse(sys.argv[1])
+          if not report.findall(".//testcase") or report.findall(".//skipped"):
+              sys.exit("All ClickHouse sync account tests must run.")
+          PY
 
       - name: Cold-start tests
         run: src/ingestion/scripts/bootstrap-db/.venv/bin/pytest -q src/ingestion/dbt/tests/cold_start

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from reconcile_inputs import Definition, Source, listing, plan_row
+from reconcile_inputs import Definition, Source, listing, plan_row, sync_user
 from test_connector_schedule_client import GOOD
 from test_cronworkflow_error_logging import STUBS, run_caller
 from test_render_cronworkflow import _render
@@ -164,6 +164,7 @@ def test_one_failed_read_leaves_schedules_unchanged_and_finishes_other_work(
         reconcile_prune_removed_instances() {{ printf 'prune\n' >> '{calls}'; }}
         reconcile_gc_orphans() {{ printf 'gc\n' >> '{calls}'; }}
         sweep_run() {{ printf 'sweep\n' >> '{calls}'; }}
+        {sync_user(tmp_path / "sync-user")}
         if [[ '{caller}' == reconcile ]]; then
           reconcile_run {dry_run} 0 0 '{connector_scope}' '{source_scope}'
         else

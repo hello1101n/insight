@@ -33,9 +33,18 @@ describe("chart-format", () => {
   });
 
   it("takes the unit from the metric, which is the only thing that knows", () => {
-    expect(unitFor(["pass_rate"], "pass_rate")).toBe("%");
-    expect(unitFor(["pass_rate"], "runs")).toBe("");
-    expect(unitFor(undefined, "pass_rate")).toBe("");
+    expect(unitFor({ percents: ["pass_rate"] }, "pass_rate")).toBe("%");
+    expect(unitFor({ percents: ["pass_rate"] }, "runs")).toBe("");
+    expect(unitFor({}, "pass_rate")).toBe("");
+    expect(unitFor({ units: { lead: "h" } }, "lead")).toBe("h");
+    expect(unitFor({ units: { lead: "h" } }, "runs")).toBe("");
+  });
+
+  it("writes a duration column as at most two parts, compact or grouped", () => {
+    expect(groupedNumber(52, "h")).toBe("2d 4h");
+    expect(compactNumber(200, "min")).toBe("3h 20m");
+    expect(groupedNumber("45", "s")).toBe("45s");
+    expect(groupedNumber(null, "ms")).toBe("—");
   });
 
   it("leaves a missing number as a dash rather than printing null", () => {

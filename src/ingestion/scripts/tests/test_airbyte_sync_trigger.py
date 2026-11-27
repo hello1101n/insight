@@ -9,6 +9,7 @@ Run: pytest src/ingestion/scripts/tests
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -33,4 +34,4 @@ from airbyte_sync_trigger import triggered_job_id
     ],
 )
 def test_only_a_usable_job_id_reaches_stdout(resp, expected) -> None:
-    assert triggered_job_id(resp) == expected, f"should read: {resp!r}"
+    assert triggered_job_id(json.dumps(resp).encode()) == expected, f"should read: {resp!r}"

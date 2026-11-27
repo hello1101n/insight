@@ -1,0 +1,19 @@
+{
+  "$id": "gts://gts.frontx.mfes.ext.extension.v1~frontx.dashboard.mfe.widget_ext.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Widgets Extension",
+  "description": "Generated widget extension of the widgets domain. Narrows domain to the widgets domain; adds no field.",
+  "allOf": [
+    {
+      "$ref": "gts://gts.frontx.mfes.ext.extension.v1~"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "const": "gts.frontx.mfes.ext.domain.v1~frontx.dashboard.mfe.widgets.v1"
+        }
+      }
+    }
+  ]
+}

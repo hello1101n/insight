@@ -8,8 +8,9 @@ use thiserror::Error;
 
 use super::definition::DefinitionId;
 use super::metric_run::{MetricRuns, Source};
-use super::query::metric_query::{ColumnKind, CompiledQuery, MetricRunner};
+use super::query::metric_query::{ColumnKind, CompiledQuery, MetricRunner, Unit};
 use super::query::time_window::{Window, WindowRequest};
+use super::record_link::{RecordLinks, RecordRelation};
 use super::surfaces::CustomError;
 
 pub(crate) use cursor::CursorError;
@@ -40,12 +41,19 @@ pub(crate) struct Column {
     pub(crate) kind: ColumnKind,
     pub(crate) percent: bool,
     pub(crate) exact: bool,
+    pub(crate) unit: Option<Unit>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Row {
+    pub(crate) values: serde_json::Map<String, serde_json::Value>,
+    pub(crate) link: Option<String>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Page {
     pub(crate) columns: Vec<Column>,
-    pub(crate) rows: Vec<serde_json::Map<String, serde_json::Value>>,
+    pub(crate) rows: Vec<Row>,
     pub(crate) sort: Sort,
     pub(crate) next_cursor: Option<String>,
 }
@@ -70,11 +78,20 @@ pub(crate) enum DrilldownError {
 pub(crate) struct Drilldowns<'a> {
     runs: MetricRuns<'a>,
     runner: &'a MetricRunner,
+    links: &'a RecordLinks,
 }
 
 impl<'a> Drilldowns<'a> {
-    pub(crate) fn new(runs: MetricRuns<'a>, runner: &'a MetricRunner) -> Self {
-        Self { runs, runner }
+    pub(crate) fn new(
+        runs: MetricRuns<'a>,
+        runner: &'a MetricRunner,
+        links: &'a RecordLinks,
+    ) -> Self {
+        Self {
+            runs,
+            runner,
+            links,
+        }
     }
 
     pub(crate) async fn page(
@@ -91,7 +108,7 @@ impl<'a> Drilldowns<'a> {
         };
         let prepared = self
             .runs
-            .prepare(name, &window)
+            .prepare(name, &window, self.links)
             .await
             .map_err(DrilldownError::Custom)?;
         let columns = columns_of(&prepared.kinds, &prepared.compiled);
@@ -119,6 +136,7 @@ impl<'a> Drilldowns<'a> {
             fingerprint,
             resume,
             limit: asked.limit,
+            relation: prepared.relation,
         })
         .await
     }
@@ -133,6 +151,7 @@ struct Ordered<'o> {
     fingerprint: String,
     resume: Option<cursor::Envelope>,
     limit: usize,
+    relation: Option<RecordRelation>,
 }
 
 impl Drilldowns<'_> {
@@ -146,6 +165,7 @@ impl Drilldowns<'_> {
             fingerprint,
             resume,
             limit,
+            relation,
         } = read;
         if let Some(taken) = columns
             .iter()
@@ -187,7 +207,10 @@ impl Drilldowns<'_> {
         };
         let rows = rows
             .into_iter()
-            .map(|row| order::presented(row, &columns, compiled.hidden()))
+            .map(|row| Row {
+                link: relation.and_then(|relation| self.links.link(relation, &row)),
+                values: order::presented(row, &columns, compiled.hidden()),
+            })
             .collect();
 
         Ok(Page {
@@ -244,6 +267,7 @@ fn columns_of(kinds: &[(String, ColumnKind)], compiled: &CompiledQuery) -> Vec<C
             kind: *kind,
             percent: compiled.percents().contains(key),
             exact: compiled.exacts().contains(key),
+            unit: compiled.unit_of(key),
         })
         .collect()
 }

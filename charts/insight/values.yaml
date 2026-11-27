@@ -120,6 +120,15 @@ global:
     allowInsecurePrivateNetwork: false
   insightV3Core:
     deploy: false
+  # The source systems that drilldown rows link to. analytics and
+  # insight-v3-core both read this list. Each entry has an `id` (the
+  # `source_id` that the connector writes), a `provider` (github, gitlab,
+  # bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
+  #   - id: <source id>
+  #     provider: github
+  #     webBaseUrl: https://github.example.com
+  # An entry that is not valid stops both services at startup.
+  externalSources: []
   security:
     # bitnami charts check that the image belongs to their "secure images"
     # list. We use bitnamilegacy (see mariadb.image / redis.image) so we
@@ -223,15 +232,30 @@ ingestion:
   # `serviceaccount "argo-workflow" not found`.
   templates:
     enabled: true
-  toolboxImage: "ghcr.io/hello1101n/insight-toolbox:2026.11.24.14.01-d7a6e0f" # e.g. "ghcr.io/hello1101n/insight-toolbox:2026.04.28.10.34-b08b460"
+  toolboxImage: "ghcr.io/hello1101n/insight-toolbox:2026.11.26.15.17-d8dce08" # e.g. "ghcr.io/hello1101n/insight-toolbox:2026.04.28.10.34-b08b460"
   # The sample-data seeder's image, for TEST stands only. Nothing in the chart
   # runs it: `src/ingestion/tools/seed/seed-stand.sh` reads this value to render
   # a one-shot Job. Its own image rather than the toolbox on purpose — the
   # toolbox runs migrations on real stands and does not carry demo data. Empty
   # (the default) means the stand cannot be seeded until an operator names an
   # image, either here or with the script's `--image` flag.
-  seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.24.14.01-d7a6e0f" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
+  seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.26.15.17-d8dce08" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
+  syncResourceDefaults: {}
   airbyteSync:
+    capacityCheck:
+      enabled: true
+      nodeSelector: {}
+      tolerations: []
+      podNamespaces: []
+      pendingMaxAgeSeconds: 1800
+      waitLimitSeconds: 21600
+      requests:
+        orchestrator: {cpu: "1", memory: "2Gi"}
+        source: {cpu: "1", memory: "2Gi"}
+        destination: {cpu: "500m", memory: "1Gi"}
+        init: {cpu: "1", memory: "2Gi"}
+    launchConfirmationSeconds: 600
+    launchUnreadableSeconds: 1800
     pollIntervalSeconds: 30
     statusUnreadableThresholdSeconds: 1800
   # Data-quality checks: a CronWorkflow runs the dbt check catalog (the
@@ -266,6 +290,15 @@ ingestion:
     # Airbyte's JOB_KUBE_CONNECTOR_IMAGE_REGISTRY does not cover these: it only
     # prefixes references that name no registry.
     imageMirrors: {}
+    # Connector settings: one ConfigMap per instance with non-secret source
+    # config fields that the descriptor lists under `settings.fields`. Reconcile
+    # finds it by the connector and source-id annotations, as it finds the Secret.
+    #   connectorSettings:
+    #     - connector: hubspot
+    #       sourceId: main
+    #       data:
+    #         hubspot_property_selection: '{"deals": {"collect": [], "ignore": []}}'
+    connectorSettings: []
     # NB: the old `logs:` block (PVC/emptyDir file logger at
     # /var/log/insight) is gone — reconcile emits structured JSON to
     # stdout and the cluster's log collector is the durable destination.
@@ -353,6 +386,11 @@ clickhouse:
   # and this release creates, grants and revokes nothing. The topology guard
   # then only notes the missing replicated directory instead of refusing.
   provisionAccess: true
+  syncUser:
+    username: insight_sync
+    passwordSecret:
+      name: insight-db-creds
+      key: clickhouse-sync-password
   # When true (default), a post-install/post-upgrade Hook Job
   # (clickhouse-migrate-job) applies the schema migrations
   # (src/ingestion/scripts/migrations/*.sql) and the guarded heals against
@@ -627,7 +665,6 @@ analytics:
   sqlApi:
     tokenSecret: insight-sql-api-creds
     tokenKey: token
-  externalSources: []
   # Explaining a metric with an LLM. Off everywhere until an operator turns it
   # on, and turning it on without `tokenEncryptionKey` stops the service at
   # boot rather than accepting keys it cannot seal.
@@ -934,6 +971,8 @@ frontend:
     # lists is hidden.
     planned: []
 connectors:
+  runHistory:
+    runsPerInstance: 100
   infraFromUmbrella: true
   replicaCount: 1
   databaseName: connectors

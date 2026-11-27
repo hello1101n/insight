@@ -5,11 +5,11 @@
     engine=insight_engine('ReplacingMergeTree', '_version'),
     order_by=['unique_key'],
     settings={'allow_nullable_key': 1},
-    query_settings={
+    query_settings=instance_query_settings({
         'join_use_nulls': 1,
         'max_bytes_before_external_group_by': 2000000000,
         'max_bytes_before_external_sort': 2000000000,
-    },
+    }),
     tags=['jira', 'staging', 'silver:class_task_references']
 ) }}
 

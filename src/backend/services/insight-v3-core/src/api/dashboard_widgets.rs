@@ -16,7 +16,7 @@ use super::errors::ApiErrors;
 use super::{metric_drilldown, metric_run};
 use crate::domain::access::Caller;
 use crate::domain::definition::{DefinitionId, DefinitionKind};
-use crate::domain::surfaces::{CustomError, DrawnWidget, Reading};
+use crate::domain::surfaces::{CustomError, Reading};
 
 pub(crate) const MAX_CONCURRENT_WIDGET_RUNS: usize = 32;
 pub(crate) const WIDGET_RUN_ACQUIRE_TIMEOUT_SECS: u64 = 2;
@@ -147,15 +147,6 @@ fn ids(dashboard: &str, widget: &str) -> Result<(DefinitionId, DefinitionId), Ca
     Ok((dashboard, widget))
 }
 
-fn widget_json(drawn: &DrawnWidget) -> Value {
-    json!({
-        "id": drawn.id,
-        "name": drawn.name,
-        "body": drawn.body,
-        "clock": drawn.clock,
-    })
-}
-
 pub(crate) fn register_routes(
     router: Router,
     openapi: &dyn OpenApiRegistry,
@@ -172,7 +163,7 @@ pub(crate) fn register_routes(
         .param(dashboard())
         .json_response(
             StatusCode::OK,
-            "Each widget's id, name, body and the clock of the metric it draws",
+            "Each widget's id, name and body, and the clock, percent columns and duration units of the metric it draws",
         )
         .error_403(openapi)
         .error_404(openapi)
@@ -239,8 +230,7 @@ async fn list_widgets(
         .await
         .map_err(custom_error)?;
 
-    let items: Vec<Value> = drawn.iter().map(widget_json).collect();
-    Ok(Json(json!({ "items": items })).into_response())
+    Ok(Json(json!({ "items": drawn })).into_response())
 }
 
 async fn run_widget(

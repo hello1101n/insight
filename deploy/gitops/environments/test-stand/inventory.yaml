@@ -80,9 +80,7 @@ protected: true
 
 # ─── Namespaces ────────────────────────────────────────────────────────
 namespaces:
-  # The umbrella release namespace. Everything this env touches lives here,
-  # which is why a namespace-scoped ServiceAccount is enough for CI to deploy —
-  # no cluster-scoped grant is needed or wanted.
+  # The umbrella release namespace. The CI ServiceAccount also needs cluster grants for the deploy.
   services: insight
 
   # Read the warning before changing this.
@@ -114,8 +112,8 @@ release: insight
 # sandbox. Each key below existed as a reason not to use the official target;
 # declaring them is what lets CI and an operator run the same command.
 deploy:
-  # NO `--atomic`, and this is a property of a disposable stand rather than a
-  # preference. `--atomic` rolls a failed upgrade back to the previous
+  # NO `--rollback-on-failure`, and this is a property of a disposable stand rather than a
+  # preference. `--rollback-on-failure` rolls a failed upgrade back to the previous
   # revision, which here means two bad things at once: it reinstalls the
   # PREVIOUS chart — a downgrade, on a stand whose entire job is to show what
   # the newest one does — and it deletes the pods holding the reason it failed.
@@ -130,6 +128,7 @@ deploy:
   # refuses to upgrade forever ("has no deployed releases"). `deploy-insight`
   # detects that and says which command clears it.
   atomic: false
+  wait: legacy
 
 # ─── Keycloak realm ownership ──────────────────────────────────────────
 keycloak:
@@ -169,10 +168,8 @@ oidcClientSecret:
 # against this stand would install a second, competing copy of something
 # the cluster already has:
 #
-#   namespaces    — `insight` exists; the CI ServiceAccount is scoped to
-#                   it and cannot create namespaces anyway. `helm upgrade
-#                   --install --create-namespace` covers the only case
-#                   this toggle would have handled.
+#   namespaces    — The CI ServiceAccount needs an existing release namespace.
+#                   Its cluster grants do not permit it to create namespaces.
 #   ingressNginx  — the edge is Envoy Gateway. Installing ingress-nginx
 #                   would put a second LoadBalancer in front of the same
 #                   hostname.

@@ -73,6 +73,7 @@ impl Drilldowns<'_> {
             fingerprint,
             resume,
             limit: asked.limit,
+            relation: None,
         })
         .await
     }

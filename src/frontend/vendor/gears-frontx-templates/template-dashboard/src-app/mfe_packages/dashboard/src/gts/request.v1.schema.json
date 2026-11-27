@@ -1,0 +1,32 @@
+{
+  "$id": "gts://gts.frontx.dashboard.widget.request.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Request",
+  "description": "A request the dashboard root sends to the product's API: an own binding's request, or a named shared request of the dashboard.",
+  "type": "object",
+  "required": ["method", "path"],
+  "properties": {
+    "method": { "enum": ["GET", "POST"] },
+    "path": {
+      "type": "string",
+      "pattern": "^/([^/\\\\\\x00-\\x1F\\x7F][^\\x00-\\x1F\\x7F]*)?$",
+      "description": "An absolute same-origin path: a single leading slash not followed by a slash or a backslash, with no control characters; the query string is part of the path. The root resolves it against the page origin and rejects any other origin before sending."
+    },
+    "body": {
+      "description": "JSON body, allowed only with POST."
+    },
+    "variables": {
+      "type": "object",
+      "description": "Optional variables this request depends on: each key is a query key (GET) or a top-level body field (POST), each value the name of a variable whose value the host gives through the root's variables input. The root adds the host's value under that key before it sends the request, and re-runs the request when the value changes. A key already present in the path's query or in the body, a variable the host gives no value for, and a value that is not a string, a finite number or a boolean fail the cell.",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["method"], "properties": { "method": { "const": "GET" } } },
+      "then": { "not": { "required": ["body"] } }
+    }
+  ],
+  "unevaluatedProperties": false
+}

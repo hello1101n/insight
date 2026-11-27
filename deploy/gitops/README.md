@@ -97,7 +97,7 @@ deploy/gitops/
     ├── secret-fetch.sh          # password-manager stub for `make seal-secret`
     ├── compose-app-secrets.sh   # derives the app *-config Secrets from insight-db-creds
     ├── airbyte-setup.sh         # post-install Airbyte setup-wizard automation
-    ├── provision-ci-deployer.sh # namespace-scoped ServiceAccount for the test-stand CI deploy
+    ├── provision-ci-deployer.sh # ServiceAccount and RBAC for the test-stand CI deploy
     ├── recreate-test-stand.sh   # tear down + rebuild the test stand
     └── push-deploy-log.sh       # ships the deploy log into in-cluster Loki
 ```
@@ -130,7 +130,7 @@ Gateway creates per Gateway in `envoy-gateway-system`, labeled
 Before running any `make` target against a cluster:
 
 1. **Tooling** — `brew bundle install` then `make doctor`. Required:
-   `kubectl`, `helm`, `yq`, `jq`, `kubeseal`, plus whatever your
+   `kubectl`, Helm 4, `yq`, `jq`, `kubeseal`, plus whatever your
    password-manager backend needs. The default sample stub only needs
    `yq`.
 
@@ -229,7 +229,7 @@ AIRBYTE_SETUP_EMAIL=admin@example.com AIRBYTE_SETUP_ORG=Sandbox \
   make system            ENV=local
 make system-status       ENV=local   # what's installed in insight-infra
 
-# L3 — the umbrella app. Only touches the `insight` namespace. Applies
+# L3 — the umbrella app. Applies
 # every L3 sealed manifest, waits for `insight-db-creds` to materialise,
 # composes the derived `insight-analytics-config`,
 # `insight-identity-resolution-config`, and `insight-v3-core-config` Secrets,
@@ -239,6 +239,9 @@ make system-status       ENV=local   # what's installed in insight-infra
 make diff   ENV=local                # inspect what would change
 make deploy ENV=local
 ```
+
+`make diff`, `make validate-insight`, and the deploy preview render on the client.
+Those renders write local manifests without reading Secrets from the cluster.
 
 ## Adding a new environment
 
@@ -380,8 +383,9 @@ real `*.yaml` siblings beside them, safe to commit.
    to promote a new chart version. The Makefile reads it as
    `INSIGHT_VERSION` and passes `--version $INSIGHT_VERSION` to every
    `helm` invocation.
-3. `make deploy` pulls the chart at the pinned semver and runs
-   `helm upgrade --install --atomic`.
+3. `make deploy` pulls the chart at the pinned version and runs `helm upgrade --install`.
+   Helm uses `--rollback-on-failure` unless `deploy.atomic` is `false`.
+   Set `deploy.wait` to select a Helm wait strategy. The default is `watcher`.
 
 ### Automating the `.insight-version` bump
 

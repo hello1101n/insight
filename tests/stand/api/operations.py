@@ -200,7 +200,7 @@ CONNECTORS_OPERATIONS: Final[tuple[Operation, ...]] = tuple(
         connectors_path(f"/v1/connectors/{SOME_CONNECTOR}/{SOME_SOURCE_ID}/schedule"),
         "connectors",
     )
-    for method in ("GET", "PUT", "DELETE")
+    for method in ("GET", "PUT", "PATCH", "DELETE")
 )
 
 ALL_OPERATIONS: Final[tuple[Operation, ...]] = (

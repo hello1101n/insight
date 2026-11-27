@@ -1,0 +1,142 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.treemap_chart.v1",
+    "remoteEntry": "/widgets/treemap_chart/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.treemap_chart.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.treemap_chart.v1",
+      "exposedModule": "./treemap_chart"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChartData",
+      "description": "Data of a treemap_chart widget: the items of the treemap, each a labelled value, optionally in a group.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 60,
+              "description": "One to 60 items in the delivered order. When any item names a group, the widget nests the items one level by group in first-seen order, and a null group goes under its Other group. All values zero or null shows the empty state.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "value",
+                  "group"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "description": "The name of the item, which its tile writes while it fits."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "The value of the item; at or above 0 (a negative one fails the cell, naming the item's position, a cross-check the widget runs). A tile is as large as its value's share of the total. Null draws no tile, and the item stays in the data view."
+                  },
+                  "group": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "The name of the group the item is nested under, or null to nest it under the widget's Other group. Without any group the tiles take their colours one by one, and with groups they take their group's colour."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.treemap_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChartRender",
+      "description": "Render of a treemap_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "auto",
+              "description": "Where a tile writes its label and value, formatted by value_format: auto writes the label, cut with an ellipsis when it is longer than its tile, and the value under it where the tile fits the value (estimated from their lengths); a tile too small for even the first three characters of the label and the ellipsis writes neither, and its name and value stay in its tooltip, the text alternative and the data view. always writes both whatever the tile fits, and never writes neither. Without it, auto."
+            },
+            "show_share": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether a tile writes its value as a share of the total beside its value, and names it in its tooltip, the text alternative and the data view, formatted like the other percents. Without it, false."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a tile. Without it, false."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.treemap_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "TreemapChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.treemap_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.treemap_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.treemap_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import path from "path";
 import { defineConfig, loadEnv } from "vite";
 
 import { backendProxy } from "./vite.backend-proxy";
+import { frontxWidgets } from "./vite.frontx-widgets";
 import { uiKitLayer } from "./vite.ui-kit-layer";
 
 function localRelease(): string | undefined {
@@ -35,6 +36,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       uiKitLayer(),
       backendProxy(env),
+      frontxWidgets(),
     ],
     resolve: {
       alias: {

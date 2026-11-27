@@ -273,7 +273,9 @@ Both are written at session end regardless of the run's verdict — a failing
 run's ledger is the more useful of the two, and making the gate's input depend
 on the suite's result is backwards.
 
-- `.artifacts/stand_observed_endpoints.json` — the coverage ledger. Recording
+- `.artifacts/stand_observed_endpoints.json` — the coverage ledger. Each run
+  merges its calls into the file already there; delete it before a run the
+  gate should judge alone. Recording
   happens in `ApiClient.request`, not at construction, so this is the **API
   suite's** ledger: a browser journey holds a `PersonaSession` — which does
   carry a client — but never issues a request through it, so a ui-only run
@@ -282,13 +284,17 @@ on the suite's result is backwards.
   `api/conftest.py`. A ui-only run therefore produces no catalogue at all, and
   the gate requires one.
 
-The gate compares the two. It is stdlib-only, so it runs on a machine with no
-stand, no uv and no browser:
+The gate compares the two, and with `--spec` it also fails an operation the
+OpenAPI documents that no test calls. Release validation runs it with both
+specs. It is stdlib-only, so it runs on a machine with no stand, no uv and no
+browser:
 
 ```bash
 python3 tests/lib/insight_stand/coverage.py \
   --observed .artifacts/stand_observed_endpoints.json \
-  --catalogue .artifacts/stand_operations.json
+  --catalogue .artifacts/stand_operations.json \
+  --spec /api/connectors=docs/components/backend/connectors/openapi.json \
+  --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ```
 
 ## Hand off

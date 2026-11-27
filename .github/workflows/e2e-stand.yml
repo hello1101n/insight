@@ -191,7 +191,7 @@ jobs:
           fi
           if echo "$changes_to_test" | grep -q '^src/backend/'; then backend=true; fi
           if echo "$changes_to_test" | grep -q '^src/frontend/'; then frontend=true; fi
-          if echo "$changes_to_test" | grep -qE '^(src/backend/services/analytics/|src/backend/Dockerfile$|src/backend/\.dockerignore$|src/backend/libs/insight-clickhouse/|src/backend/docker-entrypoint\.sh$|src/backend/Cargo\.(toml|lock)$|\.github/workflows/(build-images|e2e-stand)\.yml$)'; then analytics=true; fi
+          if echo "$changes_to_test" | grep -qE '^(src/backend/services/analytics/|src/backend/Dockerfile$|src/backend/\.dockerignore$|src/backend/libs/(insight-clickhouse|insight-external-sources)/|src/backend/docker-entrypoint\.sh$|src/backend/Cargo\.(toml|lock)$|\.github/workflows/(build-images|e2e-stand)\.yml$)'; then analytics=true; fi
           # INVARIANT: these three cross into gateway.yml, which lints the chart
           # and runs its own e2e suite from these trees — so they read the raw
           # diff, not the stand's filtered list.

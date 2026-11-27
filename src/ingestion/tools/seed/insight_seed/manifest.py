@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from . import config, profiles
+from .custom_catalogue import CatalogueDoc, describe
 from .golden_metrics import GoldenMetricsDoc, build_golden_metrics
 from .manifest_sentinel import emit_manifest_sentinel
 
@@ -59,6 +60,11 @@ class Capabilities(TypedDict):
     service_principals: bool
     connector_schedules: bool
     idp: str
+    custom_catalogue: bool
+    portal_dashboards: bool
+    portal_metrics: bool
+    portal_widgets: bool
+    portal_datasets: bool
 
 
 class Manifest(TypedDict):
@@ -83,6 +89,7 @@ class Manifest(TypedDict):
     data_window: str
     anchor_date: str
     golden_metrics: GoldenMetricsDoc
+    custom_catalogue: CatalogueDoc | None
     seeded: list[str]
 
 
@@ -139,6 +146,7 @@ CANONICAL_ENV: dict[str, str] = {
     # The canonical stand carries the cross-tenant refusal fixture, so the
     # committed PROFILE.md describes a compose stand — the one the suite reads.
     config.CROSS_TENANT_FIXTURE_ENV: "1",
+    config.CUSTOM_CATALOGUE_DB_ENV: "insight_v3",
 }
 
 # Literals that must never reach the manifest. Checked before the file is
@@ -308,6 +316,10 @@ def build_manifest(
 
     personas = [_persona(p) for p in roster]
 
+    # INVARIANT: the `analytics` step writes the catalogue whenever this names a
+    # database, so the manifest declares it on the same condition.
+    catalogue = config.parse_custom_catalogue_database(env) is not None
+
     issuer = (env.get("AUTHENTICATOR_OIDC_ISSUER") or "").strip()
     # Mirrors `profiles.get_idp_source_type`: consumers use this value as the
     # identity source_type of the seeded login rows, so it must be the one
@@ -332,6 +344,11 @@ def build_manifest(
             "service_principals": config.service_principals_reachable(env),
             "connector_schedules": config.connector_schedules_present(env),
             "idp": idp,
+            "custom_catalogue": catalogue,
+            "portal_dashboards": catalogue,
+            "portal_metrics": catalogue,
+            "portal_widgets": catalogue,
+            "portal_datasets": catalogue,
         },
         "seed_revision": seed_revision(),
         "data_window": f"{window_start.isoformat()}..{anchor.isoformat()}",
@@ -339,6 +356,7 @@ def build_manifest(
         # The exact per-person totals the seeded rows imply, re-derived from
         # the generators' own deterministic plan — see `golden_metrics`.
         "golden_metrics": build_golden_metrics(roster, days=days, anchor=anchor),
+        "custom_catalogue": describe() if catalogue else None,
         "seeded": sorted(seeded or []),
     }
 

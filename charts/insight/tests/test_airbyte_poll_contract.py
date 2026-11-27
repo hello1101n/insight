@@ -17,7 +17,9 @@ def chart_dependencies() -> None:
 
 
 @pytest.mark.parametrize("threshold", [None, 3600])
-def test_poller_bounds_unreadability_without_a_job_deadline(chart_dependencies: None, threshold: int | None) -> None:
+def test_poller_configures_its_outage_threshold_without_a_job_deadline(
+    chart_dependencies: None, threshold: int | None
+) -> None:
     overrides = (
         [] if threshold is None else ["--set", f"ingestion.airbyteSync.statusUnreadableThresholdSeconds={threshold}"]
     )

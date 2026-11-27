@@ -9,6 +9,8 @@ pub(crate) mod connector_schedules {
         #[sea_orm(primary_key, auto_increment = false)]
         pub source_id: String,
         pub crons: Json,
+        pub resources: Option<Json>,
+        pub has_schedule_revision: bool,
         pub revision: u64,
         pub updated_by: Uuid,
         pub updated_at: ChronoDateTimeUtc,

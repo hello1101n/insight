@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::time::Duration;
 
@@ -7,7 +8,7 @@ use thiserror::Error;
 use clickhouse::sql::Identifier;
 
 use super::engine::TableEngine;
-use super::field::coerce_value;
+use super::field::{Unit, coerce_value};
 use super::filter::FilterBind;
 use super::people::People;
 use super::{CompiledQuery, UndatedQuery};
@@ -27,6 +28,8 @@ pub(crate) struct RunResult {
     pub(crate) columns: Vec<String>,
     pub(crate) rows: Vec<Vec<serde_json::Value>>,
     pub(crate) percents: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) units: BTreeMap<String, Unit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) undated: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -178,6 +181,7 @@ impl MetricRunner {
             columns,
             rows,
             percents: compiled.percents.clone(),
+            units: compiled.units.clone(),
             undated: None,
             clock: None,
         })

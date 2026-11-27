@@ -132,6 +132,7 @@ fn rows_map_each_person_to_its_value() {
             vec![json!(person(2).to_string()), Value::Null],
         ],
         percents: Vec::new(),
+        units: std::collections::BTreeMap::new(),
         undated: None,
         clock: None,
     };

@@ -39,10 +39,8 @@ it("wraps schedule values, attribution and status inside a nowrap table cell", (
     "min-w-0",
     "flex-wrap"
   );
-  expect(screen.getByText(/Saved by you/).closest("header")).toHaveClass(
-    "min-w-0",
-    "flex-wrap"
-  );
+  expect(content).toContainElement(screen.getByText(/Saved by you/));
+  expect(content.querySelector("header")).toHaveClass("min-w-0", "flex-wrap");
   expect(container.querySelector("[aria-live]")).not.toHaveClass(
     "whitespace-nowrap"
   );

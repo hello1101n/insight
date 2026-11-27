@@ -102,8 +102,8 @@ def ledger_rows(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
         "AIRBYTE_TOKEN": "example-token",
         "RECONCILE_DEST_CLICKHOUSE_HOST": "example.test",
         "RECONCILE_DEST_CLICKHOUSE_PORT": "8123",
-        "RECONCILE_DEST_CLICKHOUSE_USERNAME": "example-user",
-        "RECONCILE_DEST_CLICKHOUSE_PASSWORD": "example-password",
+        "RECONCILE_SWEEP_CLICKHOUSE_USERNAME": "example-user",
+        "RECONCILE_SWEEP_CLICKHOUSE_PASSWORD": "example-password",
         "RECONCILE_DEST_CLICKHOUSE_PROTOCOL": "http",
         "RECONCILE_DEST_CLICKHOUSE_CLUSTER_MODE": "false",
     }.items():

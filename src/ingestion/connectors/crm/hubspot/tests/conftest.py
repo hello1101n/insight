@@ -15,6 +15,7 @@ from typing import Any
 import pendulum
 import pytest
 from airbyte_cdk.utils import AirbyteTracedException
+from source_hubspot.selection import PropertySelection
 from source_hubspot.streams import (
     CrmArchivedListStream,
     CrmSearchStream,
@@ -106,6 +107,11 @@ class FakeHubspot:
 
     def property_names(self, object_type: str) -> tuple:
         return self._names
+
+    selection = PropertySelection()
+
+    def money_property_names(self, object_type: str) -> frozenset:
+        return frozenset()
 
     def generate_schema(self, object_type: str) -> Mapping[str, Any]:
         return {

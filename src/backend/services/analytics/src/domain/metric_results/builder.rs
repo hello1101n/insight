@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use toolkit_canonical_errors::CanonicalError;
 
-use crate::domain::external_links::ExternalSourceRegistry;
+use insight_external_sources::ExternalSourceRegistry;
+
 use crate::domain::metric_definitions::{ComputationSpec, MetricDefinition};
 
 use super::batch::{RankedDimension, RankedGroup};
@@ -1227,11 +1228,12 @@ mod tests {
             "2026-01-01",
             "2026-01-31",
         );
-        let registry = ExternalSourceRegistry::new(&[crate::config::ExternalSourceConfig {
-            id: "source-a".to_owned(),
-            provider: crate::config::ExternalSourceProvider::Github,
-            web_base_url: "https://code.example.test".to_owned(),
-        }])?;
+        let registry =
+            ExternalSourceRegistry::new(&[insight_external_sources::ExternalSourceConfig {
+                id: "source-a".to_owned(),
+                provider: insight_external_sources::ExternalSourceProvider::Github,
+                web_base_url: "https://code.example.test".to_owned(),
+            }])?;
 
         let MetricResultViewDto::Breakdown { values, .. } =
             build_breakdown_view(&req, &dimensions, rows, &registry)?

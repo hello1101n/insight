@@ -1,3 +1,6 @@
+pub(crate) mod capacity;
+
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use kube::api::{ApiResource, DynamicObject, GroupVersionKind, ListParams, Patch, PatchParams};
@@ -19,6 +22,8 @@ pub(crate) enum Error {
     Disabled,
     #[error("too many CronWorkflows")]
     Limit,
+    #[error("node allocatable resources are unavailable")]
+    NodeCapacity,
 }
 
 impl Error {
@@ -36,9 +41,15 @@ impl Error {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Cluster {
     api: Option<Api<DynamicObject>>,
+    pub(crate) client: Option<Client>,
+    pub(crate) airbyte_namespace: String,
+    pub(crate) airbyte_placement: capacity::AirbytePlacement,
+    pub(crate) query_log_replicas: String,
+    pub(crate) history_runs_per_instance: NonZeroU32,
+    pub(crate) airbyte_reader: crate::config::AirbyteReader,
     call_timeout: Duration,
     pub(crate) namespace: String,
     pub(crate) tenant_id: String,
@@ -49,6 +60,12 @@ impl Cluster {
     pub(crate) fn disabled() -> Self {
         Self {
             api: None,
+            client: None,
+            airbyte_namespace: String::new(),
+            airbyte_placement: capacity::AirbytePlacement::default(),
+            query_log_replicas: String::new(),
+            history_runs_per_instance: crate::config::history_runs_default(),
+            airbyte_reader: crate::config::AirbyteReader::default(),
             call_timeout: CALL_TIMEOUT,
             namespace: String::new(),
             tenant_id: String::new(),
@@ -63,6 +80,7 @@ impl Cluster {
             "CronWorkflow",
         ));
         Self {
+            client: Some(client.clone()),
             api: Some(Api::namespaced_with(client, namespace, &resource)),
             namespace: namespace.to_owned(),
             tenant_id: tenant_id.to_owned(),
@@ -127,5 +145,13 @@ impl Cluster {
             .await??;
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Debug for Cluster {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cluster")
+            .field("namespace", &self.namespace)
+            .finish_non_exhaustive()
     }
 }

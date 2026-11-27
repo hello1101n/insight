@@ -6,6 +6,7 @@ use super::paged::wrap;
 use super::*;
 use crate::domain::query::metric_query::{
     ColumnKind, FilterBind, MetricQuery, People, RECORD_COLUMN, TWIN_COLUMN, TableEngine,
+    carried_column,
 };
 use crate::domain::query::time_window::Window;
 
@@ -15,6 +16,7 @@ fn column(key: &str, kind: ColumnKind) -> Column {
         kind,
         percent: false,
         exact: false,
+        unit: None,
     }
 }
 
@@ -428,6 +430,13 @@ fn a_record_page_runs_newest_first_else_in_the_drilldown_order() {
 }
 
 fn compiled(value: serde_json::Value) -> crate::domain::query::metric_query::CompiledQuery {
+    carrying(value, &[])
+}
+
+fn carrying(
+    value: serde_json::Value,
+    carried: &[&str],
+) -> crate::domain::query::metric_query::CompiledQuery {
     let metric: MetricQuery =
         serde_json::from_value(value).unwrap_or_else(|error| panic!("valid metric: {error}"));
 
@@ -437,6 +446,7 @@ fn compiled(value: serde_json::Value) -> crate::domain::query::metric_query::Com
             &Window::legacy(),
             TableEngine::Other,
             None,
+            carried,
         )
         .unwrap_or_else(|error| panic!("compiles: {error}"))
 }
@@ -524,4 +534,93 @@ fn a_plain_read_over_a_table_numbers_its_twins_in_a_layer_of_its_own() {
     let grouped = grouped_over_a_table();
     assert!(!grouped.numbered());
     assert!(grouped.hidden().is_empty());
+}
+
+#[test]
+fn a_plain_read_carries_record_keys_that_order_and_number_its_rows_but_stay_hidden() {
+    let inner = carrying(
+        json!({
+            "table": "events",
+            "fields": [
+                { "column": "day", "type": "string", "as_name": "day" },
+                { "column": "lines", "type": "int", "as_name": "total" }
+            ]
+        }),
+        &["source_id", "commit_hash"],
+    );
+    let source = carried_column("source_id");
+    let hash = carried_column("commit_hash");
+    assert_eq!(
+        inner.hidden(),
+        [source.as_str(), hash.as_str(), TWIN_COLUMN]
+    );
+    assert!(
+        inner
+            .sql()
+            .contains(&format!("toString(`commit_hash`) AS `{hash}`")),
+        "{}",
+        inner.sql()
+    );
+    let order = OrderKey::build(&columns()[..2], &sort("day", false), inner.hidden());
+
+    let (sql, _) = wrap(&inner, &order, None, 100, &columns()[..2]);
+
+    assert!(
+        sql.contains(&format!(
+            "PARTITION BY __i.`day`, __i.`total`, __i.`{source}`, __i.`{hash}`)"
+        )),
+        "{sql}"
+    );
+    assert!(
+        sql.contains(&format!(
+            "ifNull(toString(__m.`{hash}`), '') AS `__drilldown_tie3`"
+        )),
+        "{sql}"
+    );
+    assert!(is_reserved(&hash));
+}
+
+#[test]
+fn a_read_that_joins_a_person_carries_the_keys_of_its_own_table() {
+    let inner = carrying(
+        json!({
+            "table": "silver.class_git_commits",
+            "fields": [
+                { "column": "author_email", "type": "string", "as_name": "author", "person": "email" },
+                { "column": "message", "type": "string", "as_name": "title" }
+            ]
+        }),
+        &["commit_hash"],
+    );
+
+    assert!(
+        inner.sql().contains(&format!(
+            "toString(`__f`.`commit_hash`) AS `{}`",
+            carried_column("commit_hash")
+        )),
+        "{}",
+        inner.sql()
+    );
+}
+
+#[test]
+fn a_grouped_read_carries_no_record_keys() {
+    let grouped = carrying(
+        json!({
+            "table": "events",
+            "fields": [
+                { "column": "day", "type": "string", "as_name": "day" },
+                { "column": "lines", "type": "int", "agg": "sum", "as_name": "total" }
+            ],
+            "group_by": ["day"]
+        }),
+        &["source_id"],
+    );
+
+    assert!(grouped.hidden().is_empty());
+    assert!(
+        !grouped.sql().contains(&carried_column("source_id")),
+        "{}",
+        grouped.sql()
+    );
 }

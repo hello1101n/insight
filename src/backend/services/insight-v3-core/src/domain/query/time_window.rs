@@ -49,6 +49,28 @@ impl Window {
             Self::Requested { grain, .. } => *grain,
         }
     }
+
+    fn previous(self) -> Result<Self, WindowError> {
+        let Self::Requested {
+            bounds: Bounds::Finite { from, to },
+            grain,
+        } = self
+        else {
+            return Err(WindowError::NoPreviousPeriod);
+        };
+        let length = to.signed_duration_since(from);
+        let earlier = from
+            .checked_sub_signed(length)
+            .ok_or(WindowError::Overflow)?;
+
+        Ok(Self::Requested {
+            bounds: Bounds::Finite {
+                from: earlier,
+                to: from,
+            },
+            grain,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -198,6 +220,7 @@ fn midnight(date: NaiveDate) -> Result<DateTime<Utc>, WindowError> {
 pub(crate) struct WindowRequest {
     range: Option<RequestedRange>,
     bucketed: bool,
+    previous: bool,
 }
 
 impl WindowRequest {
@@ -205,7 +228,18 @@ impl WindowRequest {
         Ok(Self {
             range: range.map(RequestedRange::parse).transpose()?,
             bucketed: bucketed.unwrap_or(true),
+            previous: false,
         })
+    }
+
+    pub(crate) fn previous(self) -> Result<Self, WindowError> {
+        match self.range {
+            None | Some(RequestedRange::AllTime) => Err(WindowError::NoPreviousPeriod),
+            Some(_) => Ok(Self {
+                previous: true,
+                ..self
+            }),
+        }
     }
 
     pub(crate) fn is_ranged(&self) -> bool {
@@ -217,7 +251,12 @@ impl WindowRequest {
             return Ok(Window::legacy());
         };
 
-        let window = range.resolve(now)?;
+        let current = range.resolve(now)?;
+        let window = if self.previous {
+            current.previous()?
+        } else {
+            current
+        };
 
         Ok(if self.bucketed {
             window
@@ -287,6 +326,11 @@ pub(crate) enum WindowError {
     Maximum(String),
     #[error("time range arithmetic overflowed")]
     Overflow,
+    #[error(
+        "a previous period moves a bounded range back by its own length; this run names no \
+         range, or the unbounded `inf`"
+    )]
+    NoPreviousPeriod,
 }
 
 #[cfg(test)]

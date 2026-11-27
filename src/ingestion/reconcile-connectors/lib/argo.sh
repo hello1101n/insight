@@ -210,8 +210,15 @@ argo_apply_cronworkflow() {
                 "$schedule" "$tenant" "$insight_source_id" \
                 "$dbt_select" "$schedule_origin" "${@:8:1}")" || return 1
   local apply_command=(kubectl apply -f -)
-  if [[ -n "${CONNECTOR_SCHEDULES_DB_NAME+x}${CONNECTOR_SCHEDULES_DB_NAME_FILE+x}" ]]; then
+  local managed_connection=""
+  if [[ "${9:-}" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+    managed_connection="$9"
+  fi
+  if [[ -n "${CONNECTOR_SCHEDULES_DB_NAME+x}${CONNECTOR_SCHEDULES_DB_NAME_FILE+x}${CONNECTOR_RESOURCE_DEFAULTS:-}" || -n "$managed_connection" ]]; then
     apply_command=(python3 "${ARGO_PY_DIR}/apply_connector_schedule.py" --connector "$connector" --source-id "$insight_source_id")
+    if [[ -n "$managed_connection" ]]; then
+      apply_command+=(--connection-id "$managed_connection")
+    fi
   fi
   if ! apply_out="$(printf '%s' "$rendered" | "${apply_command[@]}" 2>&1)"; then
     printf '%s: kubectl apply failed: %s\n' \
@@ -314,7 +321,11 @@ argo_submit_sync_trigger() {
     --dbt-select "$dbt_select" \
     --bump-kind "$bump_kind" \
     --tpl "${ARGO_TPL_DIR}/sync-trigger.yaml.tpl")" || return 1
-  if ! create_out="$(printf '%s' "$rendered" | kubectl create -f - 2>&1)"; then
+  local create_command=(kubectl create -f -)
+  if [[ -n "${CONNECTOR_SCHEDULES_DB_NAME+x}${CONNECTOR_SCHEDULES_DB_NAME_FILE+x}${CONNECTOR_RESOURCE_DEFAULTS:-}" ]]; then
+    create_command=(python3 "${ARGO_PY_DIR}/apply_connector_schedule.py" --create --connector "$connector" --source-id "$insight_source_id")
+  fi
+  if ! create_out="$(printf '%s' "$rendered" | "${create_command[@]}" 2>&1)"; then
     printf '%s: kubectl create failed: %s\n' \
       "$connector" "$create_out" >&2
     return 1

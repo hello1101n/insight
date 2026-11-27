@@ -1,3 +1,8 @@
+packages:
+  - "."
+  # A copy of the FrontX dashboard root package: scripts/vendor-frontx.sh writes it.
+  - "vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard"
+
 # Minimum number of minutes that must pass after a version is published before pnpm will install it.
 # This applies to all dependencies, including transitive ones.
 minimumReleaseAge: 10080
@@ -10,6 +15,10 @@ minimumReleaseAgeExclude:
 saveExact: true
 
 engineStrict: true
+
+blockExoticSubdeps: true
+
+trustPolicy: no-downgrade
 
 # Transitive pins for advisories with no fixed release from the direct dependency
 # yet. exceljs 4.4.0 still asks for the vulnerable ranges.

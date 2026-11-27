@@ -1,11 +1,10 @@
 use chrono::SubsecRound;
 use sea_orm::{ConnectOptions, Database};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::MigratorTrait;
 use serde_json::json;
 use uuid::Uuid;
 
 use super::*;
-use crate::migration::m20261110_000001_connector_schedules::Migration;
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
@@ -16,7 +15,7 @@ async fn health_enrichment_joins_saved_requests_with_live_jobs_by_instance() -> 
     let mut options = ConnectOptions::new(url);
     options.sqlx_logging(false);
     let db = Database::connect(options).await?;
-    Migration.up(&SchemaManager::new(&db)).await?;
+    crate::migration::Migrator::up(&db, None).await?;
     let connector = crate::test_support::connector_name();
     let now = Utc::now().trunc_subsecs(3);
     for (source, crons, revision) in [
@@ -84,7 +83,7 @@ async fn summary_preserves_verified_reset_and_refused_or_unverified_reset_status
     let mut options = ConnectOptions::new(std::env::var("INTEGRATION_TESTS_MARIADB_URL")?);
     options.sqlx_logging(false);
     let db = Database::connect(options).await?;
-    Migration.up(&SchemaManager::new(&db)).await?;
+    crate::migration::Migrator::up(&db, None).await?;
     for (scenario, expected) in [
         (Scenario::Accept, "inherited"),
         (Scenario::Refuse(403), "applied"),
