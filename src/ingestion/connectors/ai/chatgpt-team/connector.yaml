@@ -149,10 +149,23 @@ definitions:
       - type: ConstantBackoffStrategy
         backoff_time_in_seconds: 60
     response_filters:
-      - type: HttpResponseFilter
+      - &session_retry_filter
+        type: HttpResponseFilter
         http_codes: [401, 403]
         action: RETRY
         error_message: "chatgpt-team-proxy returned 401/403 — the browser session may still be settling; retrying."
+
+  # A follow-up page of user_list needs the query_id of the answer. Without it
+  # the walk can only stop early and store a partial day, so the sync fails.
+  chat_activity_error_handler: &chat_activity_error_handler
+    <<: *session_error_handler
+    response_filters:
+      - type: HttpResponseFilter
+        predicate: "{{ response.get('next_cursor') and not response.get('query_id') }}"
+        action: FAIL
+        failure_type: system_error
+        error_message: "user_list returned a next_cursor without a query_id. The day cannot continue, so the sync stops."
+      - *session_retry_filter
 
 check:
   type: CheckStream
@@ -294,7 +307,7 @@ streams:
           # first request of a day carries neither value.
           cursor: "{{ next_page_token['next_page_token']['cursor'] if next_page_token else '' }}"
           query_id: "{{ next_page_token['next_page_token']['query_id'] if next_page_token else '' }}"
-        error_handler: *session_error_handler
+        error_handler: *chat_activity_error_handler
       record_selector:
         type: RecordSelector
         extractor:
@@ -309,11 +322,19 @@ streams:
           type: CursorPagination
           page_size: 100
           cursor_value: "{{ {'cursor': response.get('next_cursor'), 'query_id': response.get('query_id')} }}"
-          stop_condition: "{{ not response.get('next_cursor') or not response.get('query_id') or last_page_size < page_size }}"
+          stop_condition: "{{ not response.get('next_cursor') or last_page_size < page_size }}"
         page_size_option:
           type: RequestOption
           field_name: page_size
           inject_into: request_parameter
+      # SAFETY: no answer shows that the endpoint restarted the walk, so a day is
+      # capped. At the cap the CDK reads the day again once, then fails the sync.
+      pagination_reset:
+        type: PaginationReset
+        action: RESET
+        limits:
+          type: PaginationResetLimits
+          number_of_records: 20000
     incremental_sync: *day_cursor
     transformations:
       - type: AddFields
