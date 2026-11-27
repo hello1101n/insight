@@ -92,7 +92,9 @@ it.each([
     expect(screen.getByText(afterHour)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     expect(
-      screen.getByText("Next (UTC)").parentElement!.querySelector("time")
+      screen
+        .getByText("Proposed runs (UTC)")
+        .parentElement!.querySelector("time")
     ).toHaveAttribute("datetime", nextAfterHour);
 
     await userEvent.click(minute);
@@ -107,7 +109,7 @@ it.each([
     expect(minute).toHaveTextContent("30");
     expect(screen.getByText(finalCron)).toBeInTheDocument();
     const times = screen
-      .getByText("Next (UTC)")
+      .getByText("Proposed runs (UTC)")
       .parentElement!.querySelectorAll("time");
     expect(Array.from(times, (time) => time.dateTime)).toEqual(nextRuns);
     expect(times[0]).toHaveTextContent(nextRuns[0].slice(11, 16));

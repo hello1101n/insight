@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useState, type MouseEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -11,7 +11,8 @@ import { ComingSoon } from "@/components/widgets/coming-soon";
 import {
   Badge,
   Button,
-  Card,
+  Collapsible,
+  CollapsibleContent,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -30,7 +31,8 @@ import {
   runDuration,
 } from "@/lib/portal/connector-runs";
 import { ConnectorSyncHistory } from "./connector-sync-history";
-import { ConnectorRunState } from "./connector-run-state";
+import { ConnectorTimestamp } from "./connector-timestamp";
+import { ConnectorRunState, RunningSyncIndicator } from "./connector-run-state";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorScheduleRequestChip } from "@/components/portal/connector-schedule-request-chip";
 import {
@@ -42,7 +44,6 @@ import {
   describeRecording,
   describeSchedule,
   formatRecords,
-  formatStarted,
   instanceKey,
   panelIdFor,
 } from "@/lib/portal/connector-health";
@@ -86,7 +87,7 @@ export function ConnectorHealthPane() {
   return (
     <div
       data-testid="page-manage-connector-health"
-      className="flex min-w-0 flex-col gap-3 p-4 md:p-6"
+      className="mx-auto flex w-full max-w-[121rem] min-w-0 flex-col gap-3 p-4 md:p-6"
     >
       <div>
         <h1 className="text-lg font-semibold tracking-tight">
@@ -167,7 +168,26 @@ export function ConnectorHealthPane() {
                 const key = instanceKey(row);
                 const open = expanded === key;
                 const panelId = panelIdFor(row);
-                const toggle = () => setExpanded(open ? null : key);
+                const toggle = (
+                  event:
+                    | MouseEvent<HTMLTableRowElement>
+                    | KeyboardEvent<HTMLTableRowElement>
+                ) => {
+                  setExpanded(open ? null : key);
+                  const trigger = event.currentTarget.cells[0];
+                  if (
+                    !open &&
+                    window.matchMedia?.(
+                      "(max-width: 639px), (max-height: 839px)"
+                    ).matches
+                  )
+                    requestAnimationFrame(() =>
+                      trigger?.scrollIntoView?.({
+                        block: "start",
+                        inline: "nearest",
+                      })
+                    );
+                };
                 return [
                   <TableRow
                     key={key}
@@ -177,12 +197,12 @@ export function ConnectorHealthPane() {
                     aria-expanded={open}
                     aria-controls={panelId}
                     onClick={(event) => {
-                      if (activatesRow(event)) toggle();
+                      if (activatesRow(event)) toggle(event);
                     }}
                     onKeyDown={(event) => {
                       if (!activatesRowByKey(event)) return;
                       event.preventDefault();
-                      toggle();
+                      toggle(event);
                     }}
                     className="cursor-pointer select-text"
                   >
@@ -191,7 +211,7 @@ export function ConnectorHealthPane() {
                         <ChevronRight
                           aria-hidden="true"
                           className={cn(
-                            "size-3.5 shrink-0",
+                            "size-3.5 shrink-0 transition-transform duration-350 motion-reduce:transition-none",
                             open && "rotate-90"
                           )}
                         />
@@ -208,12 +228,15 @@ export function ConnectorHealthPane() {
                           variant={TONE_BADGE[state.tone]}
                           data-tone={state.tone}
                         >
+                          {state.state === "syncing" && (
+                            <RunningSyncIndicator />
+                          )}
                           {state.label}
                         </Badge>
                       )}
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {formatStarted(latest?.started_at ?? null)}
+                      <ConnectorTimestamp value={latest?.started_at} />
                     </TableCell>
                     {run ? (
                       <TableCell className="text-right tabular-nums">
@@ -226,42 +249,42 @@ export function ConnectorHealthPane() {
                       {formatRecords(latest?.records_reported ?? null)}
                     </TableCell>
                   </TableRow>,
-                  open ? (
-                    <TableRow key={`syncs-${key}`}>
-                      <TableCell
-                        colSpan={COLUMNS}
-                        id={panelId}
-                        className="whitespace-normal"
+                  <Collapsible
+                    key={`syncs-${key}`}
+                    open={open}
+                    render={<TableRow aria-hidden={!open} />}
+                    className="hidden has-[[data-slot=connector-details]:not([hidden])]:table-row"
+                  >
+                    <TableCell
+                      colSpan={COLUMNS}
+                      id={panelId}
+                      className="h-auto! border-b-0! py-0! whitespace-normal"
+                    >
+                      <CollapsibleContent
+                        data-slot="connector-details"
+                        inert={!open}
+                        className="min-w-0 overflow-clip! [contain:inline-size] motion-safe:transition-[height,opacity] motion-safe:duration-350 motion-safe:ease-out motion-safe:data-[ending-style]:opacity-0 motion-safe:data-[starting-style]:opacity-0"
                       >
-                        <div className="min-w-0 [contain:inline-size]">
-                          <div className="sticky left-4 grid w-[calc(100cqw-2rem)] max-w-full min-w-0 grid-cols-1 gap-4 py-2 [overflow-wrap:anywhere] whitespace-normal">
-                            {row.configured && (
-                              <Card
-                                size="sm"
-                                className="@container min-w-0 p-4"
-                              >
-                                <ConnectorSchedulePane
-                                  row={row}
-                                  polling={polling}
-                                  reconcileIntervalSecs={
-                                    data.typical_read_interval_ms == null
-                                      ? null
-                                      : data.typical_read_interval_ms / 1000
-                                  }
-                                />
-                              </Card>
-                            )}
-                            <Card size="sm" className="min-w-0 p-4">
-                              <ConnectorSyncHistory
-                                instance={row}
-                                asOf={data.as_of}
+                        <ConnectorSyncHistory
+                          instance={row}
+                          asOf={data.as_of}
+                          schedule={
+                            row.configured ? (
+                              <ConnectorSchedulePane
+                                row={row}
+                                polling={polling}
+                                reconcileIntervalSecs={
+                                  data.typical_read_interval_ms == null
+                                    ? null
+                                    : data.typical_read_interval_ms / 1000
+                                }
                               />
-                            </Card>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : null,
+                            ) : undefined
+                          }
+                        />
+                      </CollapsibleContent>
+                    </TableCell>
+                  </Collapsible>,
                 ];
               })}
             </TableBody>

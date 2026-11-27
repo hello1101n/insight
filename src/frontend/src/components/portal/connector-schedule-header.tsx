@@ -24,7 +24,7 @@ export function ConnectorScheduleHeader({
     schedule?.pending_reason
   );
   return (
-    <header className="flex min-w-0 flex-wrap items-center gap-2">
+    <header className="flex min-h-8 min-w-0 flex-wrap items-center gap-2">
       <h3 className="shrink-0 text-sm font-medium">
         {t("connectors.schedule.heading")}
       </h3>

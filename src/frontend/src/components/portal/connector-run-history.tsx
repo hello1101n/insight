@@ -1,22 +1,17 @@
-import { Fragment, useId, useState, type ReactNode } from "react";
 import {
-  Activity,
-  Ban,
-  Check,
-  ChevronRight,
-  Circle,
-  Clock3,
-  X,
-} from "lucide-react";
+  Fragment,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Activity, Ban, Check, Circle, Clock3, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
-  Button,
   Card,
   CardTitle,
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -36,7 +31,6 @@ import { describeRunState } from "@/lib/portal/connector-run-view";
 import {
   describeRun,
   isActiveRun,
-  projectRun,
   queueDetails,
   queueSeverity,
   runDuration,
@@ -45,106 +39,20 @@ import {
   stepLabel,
 } from "@/lib/portal/connector-runs";
 import { cn } from "@/lib/utils";
+import { useHeightTransition } from "@/hooks/use-height-transition";
 import {
   historySegmentStyle,
   TONE_BADGE,
   TONE_STYLE,
 } from "./connector-health-tone";
 import { ConnectorRunBands } from "./connector-run-bands";
-import { ConnectorRunState, RunTooltip } from "./connector-run-state";
-
-function RunMetrics({
-  run,
-  title,
-  empty,
-  asOf,
-}: {
-  run?: ConnectorRun | null;
-  title: string;
-  empty: string;
-  asOf: string;
-}) {
-  const { t } = useTranslation();
-  const timing = run && summarizeRun(run, asOf);
-  const state = run && describeRunState(run, asOf, timing ?? undefined);
-  const queuedLabel = t("connectors.runs.queued");
-  const metrics = timing
-    ? timing.steps.map((step) => ({
-        label: stepLabel(step.step),
-        details: [stepDetail(step.step)],
-        duration: step.duration,
-        tone: null as ConnectorTone | null,
-      }))
-    : [];
-  if (timing?.queued)
-    metrics.unshift({
-      label: queuedLabel,
-      details: queueDetails(timing.queued.reasons, timing.queued.tone),
-      duration: timing.queued.duration,
-      tone: timing.queued.tone === "idle" ? null : timing.queued.tone,
-    });
-
-  return (
-    <Card
-      size="sm"
-      render={<section />}
-      className="min-w-0 items-start gap-2 p-3"
-    >
-      <CardTitle render={<h3 />} className="text-sm">
-        {title}
-      </CardTitle>
-      {run == null ? (
-        <p className="text-xs text-muted-foreground">{empty}</p>
-      ) : (
-        <>
-          <p className="text-xs tabular-nums">
-            {formatStarted(run.started_at)}
-            {run.finished_at && <> – {formatStarted(run.finished_at)}</>}
-          </p>
-          {!metrics.some(({ label }) => label === state?.label) && (
-            <ConnectorRunState
-              run={run}
-              asOf={asOf}
-              timing={timing ?? undefined}
-              showRunning
-            />
-          )}
-          {metrics.length > 0 && (
-            <dl className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(5rem,100%),1fr))] gap-2 border-t pt-2">
-              {metrics.map(({ label, details, duration, tone }) => (
-                <div key={label}>
-                  <dt className="text-xs text-muted-foreground">
-                    {label === state?.label ? (
-                      <ConnectorRunState
-                        run={run}
-                        asOf={asOf}
-                        timing={timing ?? undefined}
-                        showRunning
-                      />
-                    ) : (
-                      <RunTooltip lines={details}>
-                        {tone ? (
-                          <Badge variant={TONE_BADGE[tone]} data-tone={tone}>
-                            {label}
-                          </Badge>
-                        ) : (
-                          label
-                        )}
-                      </RunTooltip>
-                    )}
-                  </dt>
-                  <dd className="text-sm font-medium tabular-nums">
-                    {formatDuration(duration)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
+import {
+  ConnectorRunState,
+  RunningSyncIndicator,
+  RunTooltip,
+} from "./connector-run-state";
+import { ConnectorSyncTable } from "./connector-sync-table";
+import { ConnectorRunPeriod, ConnectorTimestamp } from "./connector-timestamp";
 
 function StepEvent({
   at,
@@ -183,41 +91,41 @@ function StepEvent({
               ? Activity
               : Circle;
   const stamp = at == null ? undefined : new Date(at).toISOString();
-  const label = formatStarted(stamp);
   return (
     <li
       aria-current={current ? "step" : undefined}
-      className="group grid grid-cols-[8ch_1.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2 text-sm sm:gap-x-3"
+      className="grid min-w-min grow basis-[calc((100%-0.375rem)/2)] grid-cols-[1rem_max-content_1fr] items-center gap-x-1 gap-y-0.5 rounded-md border px-1.5 py-0.5 text-xs sm:px-2 sm:py-1 @lg:basis-0"
     >
-      <time
-        dateTime={stamp}
-        title={label}
-        aria-label={label}
-        className="pt-0.5 text-xs text-muted-foreground tabular-nums"
-      >
-        {stamp ? label.slice(11, 19) : label}
-      </time>
-      <span className="relative flex h-full min-h-5 justify-center after:absolute after:top-4 after:bottom-[-1.125rem] after:left-1/2 after:w-px after:bg-border group-last:after:hidden">
+      <ConnectorTimestamp
+        value={stamp}
+        className="col-span-3 row-start-2 text-xs text-muted-foreground tabular-nums"
+      />
+      <span className="col-start-1 row-start-1 flex justify-center">
         <span
           role="img"
           aria-label={pending ? undefined : stateLabel}
           aria-hidden={pending || undefined}
           title={pending ? undefined : stateLabel}
           className={cn(
-            "relative z-1 grid size-5 place-items-center rounded-full",
+            "grid size-4 place-items-center rounded-full",
             pending
               ? "border border-dashed border-muted-foreground/50 bg-card"
               : TONE_STYLE[tone],
-            current && "ring-2 ring-current/45 ring-offset-2 ring-offset-card"
+            current && "inset-ring-1 inset-ring-current/45"
           )}
         >
-          {!pending && (
-            <Icon className="size-3" aria-hidden="true" strokeWidth={2.5} />
-          )}
+          {!pending &&
+            (kind === "running" && current ? (
+              <RunningSyncIndicator />
+            ) : (
+              <Icon className="size-3" aria-hidden="true" strokeWidth={2.5} />
+            ))}
         </span>
       </span>
-      <div className="min-w-0">{children}</div>
-      <span className="pt-0.5 text-right text-xs text-muted-foreground tabular-nums">
+      <div className="col-start-2 row-start-1 whitespace-nowrap">
+        {children}
+      </div>
+      <span className="col-start-3 row-start-1 text-right whitespace-nowrap text-muted-foreground tabular-nums">
         {formatDuration(duration)}
       </span>
     </li>
@@ -246,85 +154,65 @@ function QueuedEvent({
 
 function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
   const { t } = useTranslation();
-  const startStamp = formatStarted(run.started_at).replace(/Z$/, "");
-  const endStamp = formatStarted(run.finished_at).replace(/Z$/, "");
-  const sameDay = startStamp.slice(0, 10) === endStamp.slice(0, 10);
   const timing = summarizeRun(run, asOf);
   const heading = t("connectors.runs.timeline");
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-2 text-sm tabular-nums">
-        <strong className="font-semibold">
-          <time dateTime={run.started_at}>{startStamp}</time>
-          {run.finished_at && (
-            <>
-              {" "}
-              –{" "}
-              <time dateTime={run.finished_at}>
-                {sameDay ? endStamp.slice(11) : endStamp}
-              </time>
-            </>
-          )}{" "}
-          UTC
+    <section className="min-w-0 space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs tabular-nums sm:text-sm">
+        <strong className="min-w-0 font-semibold whitespace-normal">
+          <ConnectorRunPeriod
+            startedAt={run.started_at}
+            finishedAt={run.finished_at}
+          />
         </strong>
-        <div className="flex flex-wrap items-start gap-2 text-xs text-muted-foreground">
-          {runDuration(run, asOf)}
-          <ConnectorRunState run={run} asOf={asOf} timing={timing} />
+        <div className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">{runDuration(run, asOf)}</span>
+          <ConnectorRunState
+            run={run}
+            asOf={asOf}
+            timing={timing}
+            inlineReason
+          />
         </div>
       </div>
       <ConnectorRunBands timing={timing} />
       {timing.steps.length > 0 || timing.trailingQueue ? (
-        <Card size="sm" className="min-w-0 p-3 sm:p-4">
-          <Collapsible defaultOpen>
-            <CardTitle render={<h4 />} className="text-sm">
-              <CollapsibleTrigger
-                type="button"
-                className="group flex w-full cursor-pointer items-center justify-between gap-2 rounded-sm text-start focus-visible:outline-2"
-              >
-                {heading}
-                <ChevronRight
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-foreground group-aria-expanded:rotate-90"
-                />
-              </CollapsibleTrigger>
-            </CardTitle>
-            <CollapsibleContent>
-              <ol aria-label={heading} className="pt-2">
-                {timing.steps.map(({ step, queued, failure, ...event }) => {
-                  const state = describeRun(event.status);
-                  return (
-                    <Fragment key={step}>
-                      {queued && (
-                        <QueuedEvent
-                          queue={queued}
-                          timedOut={failure?.status === "wait_timeout"}
-                        />
-                      )}
-                      <StepEvent
-                        {...event}
-                        tone={state.tone}
-                        pending={state.kind === "queued"}
-                      >
-                        <RunTooltip
-                          lines={[
-                            stepDetail(step),
-                            ...(failure ? stageFailureDetails(failure) : []),
-                          ]}
-                        >
-                          <strong className="font-medium">
-                            {stepLabel(step)}
-                          </strong>
-                        </RunTooltip>
-                      </StepEvent>
-                    </Fragment>
-                  );
-                })}
-                {timing.trailingQueue && (
-                  <QueuedEvent queue={timing.trailingQueue} />
-                )}
-              </ol>
-            </CollapsibleContent>
-          </Collapsible>
+        <Card size="sm" className="min-w-0 px-2 py-1.5">
+          <CardTitle render={<h5 />} className="text-sm">
+            {heading}
+          </CardTitle>
+          <ol aria-label={heading} className="flex flex-wrap gap-1.5 pt-1.5">
+            {timing.steps.map(({ step, queued, failure, ...event }) => {
+              const state = describeRun(event.status);
+              return (
+                <Fragment key={step}>
+                  {queued && (
+                    <QueuedEvent
+                      queue={queued}
+                      timedOut={failure?.status === "wait_timeout"}
+                    />
+                  )}
+                  <StepEvent
+                    {...event}
+                    tone={state.tone}
+                    pending={state.kind === "queued"}
+                  >
+                    <RunTooltip
+                      lines={[
+                        stepDetail(step),
+                        ...(failure ? stageFailureDetails(failure) : []),
+                      ]}
+                    >
+                      <strong className="font-medium">{stepLabel(step)}</strong>
+                    </RunTooltip>
+                  </StepEvent>
+                </Fragment>
+              );
+            })}
+            {timing.trailingQueue && (
+              <QueuedEvent queue={timing.trailingQueue} />
+            )}
+          </ol>
         </Card>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -339,8 +227,6 @@ interface Props {
   runs: ConnectorRun[];
   syncs: SyncFact[];
   limit: number;
-  latest?: ConnectorRun | null;
-  lastSuccess?: ConnectorRun | null;
   asOf: string;
 }
 
@@ -369,11 +255,11 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   const status = describeSync(sync);
   return (
     <section className="space-y-2">
-      <h4 className="text-sm font-semibold">
+      <h5 className="text-sm font-semibold">
         {t("connectors.history.load_utc", { step: stepLabel("bronze") })}
-      </h4>
+      </h5>
       <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
-        <time>{formatStarted(sync.started_at)}</time>
+        <ConnectorTimestamp value={sync.started_at} />
         <Badge variant={TONE_BADGE[status.tone]} data-tone={status.tone}>
           {status.label}
         </Badge>
@@ -394,106 +280,176 @@ function HistoricalLoad({ sync, asOf }: { sync: SyncFact; asOf: string }) {
   );
 }
 
-export function ConnectorRunHistory({
-  runs,
-  syncs,
-  limit,
-  latest,
-  lastSuccess,
-  asOf,
-}: Props) {
+export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
   const { t } = useTranslation();
   const heading = useId();
+  const detailsId = `${heading}-detail`;
+  const container = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<"narrow" | "stacked" | "wide">(
+    "stacked"
+  );
   const [selectedId, select] = useState<string | null>(null);
-  const recent = latest ? projectRun(latest) : undefined;
-  const managed = runs.map(projectRun);
-  if (recent && !managed.some((run) => run.sync_id === recent.sync_id))
-    managed.unshift(recent);
 
-  const current = recent ?? managed[0];
-  const recordedSuccess = lastSuccess && projectRun(lastSuccess);
-  const newestSuccess = managed.find((run) => run.status === "succeeded");
-  const successful =
-    newestSuccess &&
-    (!recordedSuccess ||
-      Date.parse(newestSuccess.started_at) >
-        Date.parse(recordedSuccess.started_at))
-      ? newestSuccess
-      : recordedSuccess;
-  const history = recentHistory(managed, syncs, limit);
+  useLayoutEffect(() => {
+    const element = container.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    function updateLayout(width: number) {
+      setLayout(width < 512 ? "narrow" : width >= 1040 ? "wide" : "stacked");
+    }
+    updateLayout(element.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) =>
+      updateLayout(entry.contentRect.width)
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const history = recentHistory(runs, syncs, limit);
   const selected = history.find((item) => item.id === selectedId) ?? history[0];
+
+  const [detailsRef, captureDetailsHeight] = useHeightTransition<HTMLElement>(
+    selected?.id
+  );
+  const inlineDetails = layout === "narrow" && selectedId !== null;
+
+  function openRun(id: string) {
+    if (id !== selected?.id) captureDetailsHeight();
+    select(id);
+    requestAnimationFrame(() => {
+      const details = detailsRef.current;
+      details?.focus({ preventScroll: true });
+      details?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
+
+  const details = selected && (
+    <section
+      ref={detailsRef}
+      id={detailsId}
+      aria-labelledby={`${detailsId}-heading`}
+      tabIndex={-1}
+      className="min-w-0 scroll-mt-16 space-y-1.5 rounded-md border bg-muted/20 p-2 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 @min-[1040px]:col-start-2 @min-[1040px]:row-start-1 @min-[1040px]:p-3"
+    >
+      <h4 id={`${detailsId}-heading`} className="text-xs font-semibold">
+        {t("connectors.runs.selected")}
+      </h4>
+      {"sync_id" in selected.record ? (
+        <Timeline run={selected.record} asOf={asOf} />
+      ) : (
+        <HistoricalLoad sync={selected.record} asOf={asOf} />
+      )}
+    </section>
+  );
+
   return (
-    <div className="@container min-w-0 space-y-4 whitespace-normal">
-      <div className="grid min-w-0 gap-2 @lg:grid-cols-2">
-        <RunMetrics
-          title={t("connectors.runs.latest_success")}
-          empty={t("connectors.runs.no_success")}
-          run={successful}
-          asOf={asOf}
-        />
-        <RunMetrics
-          title={t("connectors.runs.current")}
-          empty={t("connectors.runs.no_current")}
-          run={current && isActiveRun(current) ? current : null}
-          asOf={asOf}
-        />
-      </div>
-      <section aria-labelledby={heading} className="space-y-2">
-        <h3 id={heading} className="text-sm font-semibold">
-          {t("connectors.history.heading")}
-          {history.length > 0 && ` · ${history.length}`}
-        </h3>
-        <ol
-          aria-label={t("connectors.history.statuses_label")}
-          className="grid w-full min-w-0"
-          style={{ gridTemplateColumns: `repeat(${limit}, minmax(0, 1fr))` }}
-        >
-          {history.toReversed().map(({ id, record }) => {
-            const state =
-              "sync_id" in record
-                ? describeRunState(record, asOf)
-                : describeSync(record);
-            const severity =
-              "kind" in state && state.kind === "queued"
-                ? queueSeverity(state.tone)
-                : null;
-            const label = [
-              formatStarted(record.started_at),
-              state.label,
-              severity,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <li key={id} className="group min-w-0">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={<Button type="button" size="sm" variant="ghost" />}
-                    className="relative block h-7 w-full min-w-0 rounded-none border-0 bg-transparent p-0 hover:bg-transparent focus-visible:z-10 aria-pressed:after:absolute aria-pressed:after:inset-x-0 aria-pressed:after:bottom-0.5 aria-pressed:after:mx-auto aria-pressed:after:h-0.5 aria-pressed:after:w-full aria-pressed:after:max-w-6 aria-pressed:after:rounded-full aria-pressed:after:bg-foreground"
-                    aria-label={label}
-                    aria-pressed={id === selected?.id}
-                    onClick={() => select(id)}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
-                        historySegmentStyle(record.status, state.tone)
+    <div
+      ref={container}
+      className="@container min-w-0 space-y-1.5 whitespace-normal sm:space-y-2"
+    >
+      <section aria-labelledby={heading} className="space-y-1.5 sm:space-y-2">
+        <div className="flex items-center gap-3">
+          <h3 id={heading} className="shrink-0 text-sm font-semibold">
+            {t("connectors.history.heading")}
+            {history.length > 0 && ` · ${history.length}`}
+          </h3>
+          {history.length > 0 && (
+            <ol
+              aria-label={t("connectors.history.statuses_label")}
+              className="grid max-w-xs min-w-0 flex-1"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(history.length, 1)}, minmax(0, 1fr))`,
+              }}
+            >
+              {history.toReversed().map(({ id, record }) => {
+                const state =
+                  "sync_id" in record
+                    ? describeRunState(record, asOf)
+                    : describeSync(record);
+                const severity =
+                  "kind" in state && state.kind === "queued"
+                    ? queueSeverity(state.tone)
+                    : null;
+                const label = [
+                  formatStarted(record.started_at),
+                  state.label,
+                  severity,
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <Tooltip key={id}>
+                    <TooltipTrigger
+                      render={<li />}
+                      role="listitem"
+                      tabIndex={-1}
+                      className="group relative h-7 min-w-0"
+                      aria-label={label}
+                      aria-current={id === selected?.id || undefined}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
+                          historySegmentStyle(record.status, state.tone)
+                        )}
+                      />
+                      {id === selected?.id && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-x-0 bottom-0.5 mx-auto h-0.5 max-w-6 rounded-full bg-foreground"
+                        />
                       )}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent role="tooltip">{label}</TooltipContent>
-                </Tooltip>
-              </li>
-            );
-          })}
-        </ol>
-        {selected &&
-          ("sync_id" in selected.record ? (
-            <Timeline run={selected.record} asOf={asOf} />
-          ) : (
-            <HistoricalLoad sync={selected.record} asOf={asOf} />
-          ))}
+                    </TooltipTrigger>
+                    <TooltipContent role="tooltip">{label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+        {selected ? (
+          <div className="grid min-w-0 gap-2 @min-[1040px]:grid-cols-[minmax(0,6fr)_minmax(0,5fr)] @min-[1040px]:items-start @min-[1040px]:gap-4">
+            {layout === "stacked" && details}
+            <div className="min-w-0 @min-[1040px]:col-start-1 @min-[1040px]:row-start-1">
+              <ConnectorSyncTable
+                id={`${heading}-table`}
+                selection={{
+                  selectedId: selected.id,
+                  detailsId,
+                  inlineDetails: inlineDetails ? details : undefined,
+                  onSelect: openRun,
+                }}
+                rows={history.map(({ id, record }) => {
+                  if ("sync_id" in record)
+                    return {
+                      id,
+                      status: describeRunState(record, asOf),
+                      started: record.started_at,
+                      duration: runDuration(record, asOf),
+                      inFlight: isActiveRun(record),
+                      records: record.records_reported,
+                    };
+
+                  const state = describeSync(record);
+                  const duration = describeDuration(record, asOf);
+                  return {
+                    id,
+                    status: state,
+                    started: record.started_at,
+                    duration: duration.text,
+                    inFlight: duration.inFlight,
+                    records: record.records_reported,
+                  };
+                })}
+              />
+            </div>
+            {layout !== "stacked" && !inlineDetails && details}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("connectors.history.empty")}
+          </p>
+        )}
       </section>
     </div>
   );

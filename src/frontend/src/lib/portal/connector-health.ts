@@ -350,8 +350,19 @@ export function formatRecords(records: number | null | undefined): string {
   return records.toLocaleString("en-US");
 }
 
+const utcDate = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeZone: "UTC",
+});
+
+export function connectorTimestamp(value: string | null | undefined) {
+  const parsed = parseStamp(value);
+  if (parsed === null) return null;
+  const iso = new Date(parsed).toISOString();
+  return { iso, date: utcDate.format(parsed), time: iso.slice(11, 19) };
+}
+
 export function formatStarted(startedAt: string | null | undefined): string {
-  const parsed = parseStamp(startedAt);
-  if (parsed === null) return UNMEASURED;
-  return `${new Date(parsed).toISOString().replace("T", " ").slice(0, 19)}Z`;
+  const stamp = connectorTimestamp(startedAt);
+  return stamp ? `${stamp.date} · ${stamp.time}` : UNMEASURED;
 }
