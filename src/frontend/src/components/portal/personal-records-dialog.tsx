@@ -101,13 +101,14 @@ function Records({
       [],
     [pages, columns]
   );
+  const complete = !query.hasNextPage;
   const marker = useMemo((): EvidenceMarker | undefined => {
-    if (!pages || !valueKey) return undefined;
+    if (!pages || !valueKey || !complete) return undefined;
     const row = medianRow(
       pages.flatMap((page) => page.rows.map((record) => record.values[valueKey]))
     );
     return row == null ? undefined : { row, column: valueKey, label: "Median" };
-  }, [pages, valueKey]);
+  }, [pages, valueKey, complete]);
   const pageLimitReached =
     (pages?.length ?? 0) >= MAX_PAGES && query.hasNextPage;
 

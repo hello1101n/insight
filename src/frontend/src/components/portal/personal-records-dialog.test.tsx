@@ -210,6 +210,59 @@ describe("PersonalRecordsDialog", () => {
     expect(within(rowOf(dialog, "Lin")).getByText("Median")).toBeInTheDocument();
   });
 
+  it("marks no row while another page of records exists", async () => {
+    mocks.fetchPersonalRecords
+      .mockResolvedValueOnce(
+        records(
+          [
+            { author: "Ada", lines: 5 },
+            { author: "Grace", lines: 1 },
+            { author: "Lin", lines: 3 },
+          ],
+          "page-2",
+          { columns: LINES, value: "lines" },
+        ),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    open();
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("table");
+    expect(within(dialog).queryByText("Median")).toBeNull();
+  });
+
+  it("marks the median of every page once the last page has loaded", async () => {
+    mocks.fetchPersonalRecords
+      .mockResolvedValueOnce(
+        records(
+          [
+            { author: "Ada", lines: 5 },
+            { author: "Grace", lines: 1 },
+          ],
+          "page-2",
+          { columns: LINES, value: "lines" },
+        ),
+      )
+      .mockResolvedValueOnce(
+        records(
+          [
+            { author: "Lin", lines: 9 },
+            { author: "Kay", lines: 7 },
+          ],
+          null,
+          { columns: LINES, value: "lines" },
+        ),
+      );
+
+    open();
+
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Kay");
+    expect(within(dialog).getAllByText("Median")).toHaveLength(1);
+    expect(within(rowOf(dialog, "Ada")).getByText("Median")).toBeInTheDocument();
+  });
+
   it("marks no row when the answer names no value column", async () => {
     mocks.fetchPersonalRecords.mockResolvedValue(
       records(
