@@ -444,7 +444,7 @@ describe("an unmeasured value is not a zero", () => {
       expect(formatStarted(junk)).toBe(UNMEASURED);
     }
     expect(formatStarted("2026-01-15T09:00:00.000Z")).toBe(
-      "2026-01-15 09:00:00Z"
+      "15 Jan 2026 · 09:00:00"
     );
   });
 });

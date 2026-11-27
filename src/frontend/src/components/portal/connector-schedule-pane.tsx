@@ -26,6 +26,7 @@ import {
   useWriteConnectorSchedule,
 } from "@/queries/connector-health";
 import { useConnectorScheduleAuthor } from "@/queries/connector-schedule-author";
+import { useHeightTransition } from "@/hooks/use-height-transition";
 
 export function ConnectorSchedulePane({
   row,
@@ -41,6 +42,7 @@ export function ConnectorSchedulePane({
   const write = useWriteConnectorSchedule(row);
   const [failedRevision, setFailedRevision] = useState<number>();
   const [editing, setEditing] = useState(false);
+  const [scheduleBody, captureScheduleHeight] = useHeightTransition(editing);
   const [retryError, setRetryError] = useState<
     (ReturnType<typeof saveError> & { read: ScheduleRead }) | null
   >(null);
@@ -102,11 +104,12 @@ export function ConnectorSchedulePane({
   useEffect(() => {
     if (editing || write.isPending || focusRequest === focusedRequest.current)
       return;
-    editButton.current?.focus();
+    editButton.current?.focus({ preventScroll: true });
     focusedRequest.current = focusRequest;
   }, [editing, focusRequest, write.isPending]);
 
   function close() {
+    captureScheduleHeight();
     setFocusRequest((request) => request + 1);
     setEditing(false);
   }
@@ -177,7 +180,11 @@ export function ConnectorSchedulePane({
   const person = useConnectorScheduleAuthor(request?.updated_by);
 
   return (
-    <>
+    <div
+      ref={scheduleBody}
+      data-slot="connector-schedule-pane"
+      className="min-w-0"
+    >
       <div aria-live="polite" className="sr-only">
         <span key={`${seen.identity}/${seen.revision}/${seen.status}`}>
           {seen.message}
@@ -191,34 +198,36 @@ export function ConnectorSchedulePane({
           onClose={close}
         />
       ) : (
-        <div className="min-w-0 space-y-3 [overflow-wrap:anywhere] whitespace-normal">
+        <div className="min-w-0 space-y-2 [overflow-wrap:anywhere] whitespace-normal">
           <ConnectorScheduleHeader
             schedule={schedule}
             loading={query.isPending && !schedule && row.source_id != null}
           >
-            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-3">
-              {override && (
-                <span className="text-xs text-muted-foreground">
-                  {t("connectors.schedule.request_author", {
-                    person,
-                    time: scheduleTimePhrase(request.updated_at),
-                  })}
-                </span>
-              )}
-              {schedule && (
-                <Button
-                  ref={editButton}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={write.isPending}
-                  onClick={() => setEditing(true)}
-                >
-                  {t("common.actions.edit")}
-                </Button>
-              )}
-            </div>
+            {schedule && (
+              <Button
+                ref={editButton}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                disabled={write.isPending}
+                onClick={() => {
+                  captureScheduleHeight();
+                  setEditing(true);
+                }}
+              >
+                {t("common.actions.edit")}
+              </Button>
+            )}
           </ConnectorScheduleHeader>
+          {override && (
+            <p className="text-xs text-muted-foreground">
+              {t("connectors.schedule.request_author", {
+                person,
+                time: scheduleTimePhrase(request.updated_at),
+              })}
+            </p>
+          )}
           <div
             className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
             data-slot="schedule-value"
@@ -228,6 +237,17 @@ export function ConnectorSchedulePane({
               defaultUnknown={differs && !override}
             />
           </div>
+          {schedule?.status === "inherited" &&
+            schedule.inherited?.origin === "annotation" && (
+              <ConnectorScheduleDetails text="insight.cyberfabric.com/schedule" />
+            )}
+          {!differs && live?.timezone && (
+            <ConnectorScheduleRuns
+              crons={live.crons}
+              timezone={live.timezone}
+              suspended={live.suspended}
+            />
+          )}
           {schedule && (
             <ConnectorScheduleStatus
               schedule={schedule}
@@ -243,17 +263,6 @@ export function ConnectorSchedulePane({
                 <ConnectorScheduleDetails text={visibleRetryError.details} />
               )}
             </Alert>
-          )}
-          {schedule?.status === "inherited" &&
-            schedule.inherited?.origin === "annotation" && (
-              <ConnectorScheduleDetails text="insight.cyberfabric.com/schedule" />
-            )}
-          {!differs && live?.timezone && (
-            <ConnectorScheduleRuns
-              crons={live.crons}
-              timezone={live.timezone}
-              suspended={live.suspended}
-            />
           )}
           {query.isPending && row.source_id != null && (
             <p className="text-sm text-muted-foreground">
@@ -274,7 +283,7 @@ export function ConnectorSchedulePane({
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 

@@ -43,7 +43,7 @@ vi.mock("@/queries/connector-schedule-author", () => ({
 
 import { ConnectorHealthPane } from "./connector-health";
 
-it("bounds expanded schedules, the editor and all history rows without widening the main table", async () => {
+it("bounds expanded schedules, the editor and older history pages without widening the main table", async () => {
   const live = {
     crons: ["0 3 * * *"],
     timezone: "UTC",
@@ -98,6 +98,7 @@ it("bounds expanded schedules, the editor and all history rows without widening 
       "max-w-full",
       "min-w-0",
       "grid-cols-1",
+      "@min-[58rem]:grid-cols-[clamp(19rem,24%,26rem)_minmax(0,1fr)]",
       "[overflow-wrap:anywhere]",
       "whitespace-normal"
     );
@@ -115,9 +116,9 @@ it("bounds expanded schedules, the editor and all history rows without widening 
     "[overflow-wrap:anywhere]"
   );
   expectBounds();
-  await userEvent.click(screen.getByRole("button", { name: "Show all 50" }));
+  await userEvent.click(screen.getByRole("button", { name: "Older runs" }));
   const history = screen.getByRole("table", { name: "Recent syncs" });
-  expect(within(history).getAllByRole("row")).toHaveLength(51);
+  expect(within(history).getAllByRole("row")).toHaveLength(6);
   expect(history).toHaveClass("w-full", "max-w-full", "table-fixed");
   expect(history.parentElement).toHaveClass(
     "min-w-0",
