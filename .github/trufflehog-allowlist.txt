@@ -10,6 +10,8 @@ cf6ede857587d567  Gitlab             .github/workflows/ghcr-cleanup.yml  # GHCR 
 c33b583e8c9da202  Gitlab             src/backend/services/analytics/src/domain/external_links.rs  # external source provider type, not a token
 ef9a241f59d1ac1e  Gitlab             src/backend/services/analytics/src/domain/external_links.rs  # external source provider identifier, not a token
 39892f6bed26751a  Gitlab             src/backend/libs/insight-external-sources/src/lib.rs  # external source provider type, not a token
+24746d7444c0de94  Gitlab             src/backend/libs/insight-external-sources/src/tests.rs  # external source config type in a test, not a token
+3b0188d531a838b8  Gitlab             src/backend/libs/insight-external-sources/src/tests.rs  # external source provider type in a test, not a token
 1c236cb81bf7da61  Gitlab             docs/CONNECTORS_REFERENCE.md  # code identifier / constant name
 bd0c5f545b463920  Gitlab             docs/components/deployment/gitops/SPEC.md  # code identifier / constant name
 bd093b6d7b23051a  Gitlab             docs/components/deployment/specs/PRD.md  # code identifier / constant name
