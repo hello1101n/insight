@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
@@ -286,47 +285,35 @@ function CombinedValue({
   const parts = combinedParts(column, byKey, entityId);
   if (!parts) return <span className="text-muted-foreground">—</span>;
 
+  const text = parts.map((part) => part.text).join(" / ");
   const targets = parts.flatMap(({ result }) => {
     const selection = result?.drilldown
       ? evidenceSelection(result.selection, entityId)
       : null;
     return result && selection ? [{ selection, label: result.label }] : [];
   });
-  const figure = `${parts.map((part) => part.text).join(" / ")} ${column.unit}`;
+  const [first] = targets;
+  if (!evidence || !first) return <span>{text}</span>;
 
+  const figure = `${text} ${column.unit}`;
   return (
-    <span>
-      {parts.map(({ text, value, result }, index) => {
-        const target = targets.find((t) => t.selection.metric_key === result?.metric_key);
-        return (
-          <Fragment key={result?.metric_key ?? index}>
-            {index > 0 ? " / " : null}
-            {evidence && result && target && value != null ? (
-              <button
-                type="button"
-                aria-label={`${personName} — ${result.label}: ${text} ${column.unit}`}
-                onClick={() =>
-                  evidence.openEvidenceTargets(targets, {
-                    activeMetricKey: target.selection.metric_key,
-                    title: [
-                      column.label,
-                      personName,
-                      figure,
-                      formatRange(target.selection.period.from, target.selection.period.to),
-                    ].join(" · "),
-                  })
-                }
-                className="cursor-pointer hover:text-primary hover:underline"
-              >
-                {text}
-              </button>
-            ) : (
-              <span>{text}</span>
-            )}
-          </Fragment>
-        );
-      })}
-    </span>
+    <button
+      type="button"
+      aria-label={`${personName} — ${column.label}: ${figure}`}
+      onClick={() =>
+        evidence.openEvidenceTargets(targets, {
+          title: [
+            column.label,
+            personName,
+            figure,
+            formatRange(first.selection.period.from, first.selection.period.to),
+          ].join(" · "),
+        })
+      }
+      className="-mx-1 cursor-pointer rounded-sm px-1 hover:bg-primary/10 hover:text-primary"
+    >
+      {text}
+    </button>
   );
 }
 

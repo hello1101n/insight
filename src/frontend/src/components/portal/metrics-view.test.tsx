@@ -708,8 +708,7 @@ describe("MetricsView", () => {
       </EvidenceDialogContext.Provider>,
     );
 
-    expect(screen.getByRole("button", { name: "b — Lines added: +1.5 KLOC" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "b — Lines removed: −0.2 KLOC" }));
+    await userEvent.click(screen.getByRole("button", { name: "b — Lines: +1.5 / −0.2 KLOC" }));
 
     expect(openEvidenceTargets).toHaveBeenCalledWith(
       [
@@ -728,11 +727,28 @@ describe("MetricsView", () => {
           }),
         }),
       ],
-      {
-        activeMetricKey: "git.default_branch_lines_removed",
-        title: expect.stringMatching(/^Lines · b · \+1\.5 \/ −0\.2 KLOC · 1 Jul/),
-      },
+      { title: expect.stringMatching(/^Lines · b · \+1\.5 \/ −0\.2 KLOC · 1 Jul/) },
     );
+  });
+
+  it("shows the Lines figure as one button, not one per part", () => {
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(
+      <EvidenceDialogContext.Provider
+        value={{ openEvidence: vi.fn(), openEvidenceTargets: vi.fn(), openEvidencePeople: vi.fn() }}
+      >
+        <MetricsView />
+      </EvidenceDialogContext.Provider>,
+    );
+    const rowOfB = screen
+      .getAllByRole("rowheader")
+      .find((cell) => cell.textContent === "b")!
+      .closest("tr")!;
+
+    const [cell] = within(rowOfB).getAllByRole("cell");
+    expect(within(cell).getAllByRole("button")).toHaveLength(1);
+    expect(within(cell).getByRole("button")).toHaveTextContent("+1.5 / −0.2");
   });
 
   it("ranks people by lines added plus removed when Lines is sorted", async () => {
