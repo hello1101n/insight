@@ -365,6 +365,9 @@ function PersonalInfo({ definition }: { definition: PersonalMetricDefinition }) 
         {description ? (
           <PopoverDescription className={TEXT_BODY}>{description}</PopoverDescription>
         ) : null}
+        <p className={cn(TEXT_BODY, "text-muted-foreground")}>
+          {t(`metrics_view.direction.${definition.direction}`)}
+        </p>
         {shared ? (
           <p className={cn(TEXT_BODY, "text-muted-foreground")}>
             {t("metrics_view.shared_by", {

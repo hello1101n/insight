@@ -950,6 +950,20 @@ describe("MetricsView personal metrics", () => {
     expect(screen.getByText("Shared by Ada, 2 Jan 2026")).toBeInTheDocument();
   });
 
+  it.each([
+    ["higher_is_better", "Higher is better"],
+    ["lower_is_better", "Lower is better"],
+    ["neutral", "Neutral"],
+  ] as const)("says in a personal metric's info that %s reads as %s", async (direction, said) => {
+    mocks.personal = [personalDefinition(personalMetric({ direction }))];
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "About Support load" }));
+
+    expect(await screen.findByText(said)).toBeInTheDocument();
+  });
+
   it("leaves Shared by out of the info of a metric nobody shared", async () => {
     mocks.personal = [personalDefinition(personalMetric({ shared_by: null }))];
     const user = userEvent.setup();

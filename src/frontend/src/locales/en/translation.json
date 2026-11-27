@@ -1215,6 +1215,11 @@
     "exit_compare": "Exit compare",
     "about_metric": "About {{label}}",
     "shared_by": "Shared by {{name}}, {{date}}",
+    "direction": {
+      "higher_is_better": "Higher is better",
+      "lower_is_better": "Lower is better",
+      "neutral": "Neutral"
+    },
     "not_loaded": "Could not load",
     "loading": "Loading…"
   },
