@@ -12,7 +12,7 @@ name: hubspot
 #   holds money (source_hubspot/selection.py). The money columns stay in the
 #   schema and are NULL. property_definitions gets a `selection` column; the
 #   destination adds it on the next sync, so no full refresh is needed.
-version: "3.12.0"
+version: "3.13.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync
@@ -24,7 +24,7 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.24.13.03-17d28da"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.27.11.23-9da2a48"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"

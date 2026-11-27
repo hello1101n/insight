@@ -165,7 +165,7 @@ it("replaces the hourly minute, previews the draft and sends a numeric minute cr
   expect(minute).toHaveValue("22");
   expect(screen.getByText("22 * * * *")).toBeInTheDocument();
   expect(
-    screen.getByText("Next (UTC)").parentElement!.querySelector("time")
+    screen.getByText("Proposed runs (UTC)").parentElement!.querySelector("time")
   ).toHaveTextContent("12:22");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(mocks.save).toHaveBeenCalledWith({
@@ -227,7 +227,7 @@ it.each(["daily", "hours-2", "weekdays"])(
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     await pickTimePart("Minute", "30");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
-    expect(screen.getAllByText("Next (UTC)")).toHaveLength(1);
+    expect(screen.getAllByText("Proposed runs (UTC)")).toHaveLength(1);
     expect(screen.queryByText(/your time/)).not.toBeInTheDocument();
   }
 );

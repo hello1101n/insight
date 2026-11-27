@@ -11,10 +11,12 @@ export function ConnectorScheduleRuns({
   crons,
   timezone = "UTC",
   suspended = false,
+  preview = false,
 }: {
   crons: string[];
   timezone?: string;
   suspended?: boolean;
+  preview?: boolean;
 }) {
   const { t } = useTranslation();
   const now = new Date();
@@ -29,7 +31,9 @@ export function ConnectorScheduleRuns({
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
       <span className="text-muted-foreground">
-        {t("connectors.schedule.next_utc")}
+        {preview
+          ? t("connectors.editor.proposed_runs_utc")
+          : t("connectors.schedule.next_utc")}
       </span>
       <ol className="flex min-w-0 flex-wrap gap-2">
         {runs.map((run) => (

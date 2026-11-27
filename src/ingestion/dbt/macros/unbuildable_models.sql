@@ -18,12 +18,18 @@
   project's own on-run-start hooks, so it always stands by the time a model
   reads it.
 
+  `selected` names the models the coming run builds (`dbt ls --output name`
+  of its --select and --exclude). Pass it when the run builds part of the
+  project: a model outside it that is not in the warehouse is absent, so a
+  class whose every present arm is such a model is unbuildable. Without it,
+  the run is taken to build every model.
+
   INVARIANT: the probe reads bronze, never staging. Staging is built during the
   same run, so a contributor whose relation does not exist yet is still present
   by the time its class reads it — probing staging here would exclude classes
   that were about to become buildable.
 -#}
-{% macro unbuildable_models() %}
+{% macro unbuildable_models(selected=none) %}
   {%- set names = [] -%}
   {%- if execute -%}
     {%- set models = [] -%}
@@ -83,7 +89,8 @@
           {%- set ok.value = fed.value -%}
         {%- endif -%}
         {%- do buildable.update({node.unique_id: ok.value}) -%}
-        {%- if ok.value and not present.get(node.unique_id, False) -%}
+        {%- set built_by_run = selected is none or node.name in selected -%}
+        {%- if ok.value and built_by_run and not present.get(node.unique_id, False) -%}
           {%- do present.update({node.unique_id: True}) -%}
           {%- set pass.changed = True -%}
         {%- endif -%}
@@ -97,10 +104,10 @@
   {{ return(names | sort) }}
 {% endmacro %}
 
-{% macro list_unbuildable_models() %}
+{% macro list_unbuildable_models(selected=none) %}
   {#- print(), not log(): `dbt --quiet run-operation` then emits the list and
       nothing else, so a caller can splice it straight into --exclude. -#}
-  {{- print(unbuildable_models() | join(' ')) -}}
+  {{- print(unbuildable_models(selected) | join(' ')) -}}
 {% endmacro %}
 
 {#-

@@ -22,6 +22,7 @@ on:
       - src/ingestion/connectors/task-tracking/jira/dbt/**
       - src/ingestion/dbt/macros/jira/**
       - src/ingestion/dbt/macros/silver_incremental_watermark.sql
+      - src/ingestion/dbt/macros/union_by_tag.sql
       - src/ingestion/silver/task-tracking/class_task_field_history.sql
       - src/ingestion/dbt/tests/jira/**
       # The post-sync checks test_post_sync_checks.py plants defects for.
@@ -41,6 +42,7 @@ on:
       - src/ingestion/connectors/task-tracking/jira/dbt/**
       - src/ingestion/dbt/macros/jira/**
       - src/ingestion/dbt/macros/silver_incremental_watermark.sql
+      - src/ingestion/dbt/macros/union_by_tag.sql
       - src/ingestion/silver/task-tracking/class_task_field_history.sql
       - src/ingestion/dbt/tests/jira/**
       # The post-sync checks test_post_sync_checks.py plants defects for.
