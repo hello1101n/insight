@@ -105,13 +105,13 @@ function StepEvent({
   return (
     <li
       aria-current={current ? "step" : undefined}
-      className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5 rounded-md border px-1.5 py-0.5 text-xs sm:px-2 sm:py-1"
+      className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5 rounded-md border px-1.5 py-0.5 text-xs sm:px-2 sm:py-1"
     >
       <ConnectorTimestamp
         value={stamp}
-        className="col-span-3 row-start-2 text-xs text-muted-foreground tabular-nums"
+        className="col-span-2 row-start-2 text-xs text-muted-foreground tabular-nums"
       />
-      <span className="col-start-1 row-start-1 flex justify-center">
+      <span className="col-start-1 row-start-1 flex justify-center self-start">
         <span
           role="img"
           aria-label={pending ? undefined : stateLabel}
@@ -133,10 +133,12 @@ function StepEvent({
             ))}
         </span>
       </span>
-      <div className="col-start-2 row-start-1 min-w-0">{children}</div>
-      <span className="col-start-3 row-start-1 text-right text-xs text-muted-foreground tabular-nums">
-        {formatDuration(duration)}
-      </span>
+      <div className="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <span className="whitespace-nowrap">{children}</span>
+        <span className="ml-auto whitespace-nowrap text-muted-foreground tabular-nums">
+          {formatDuration(duration)}
+        </span>
+      </div>
     </li>
   );
 }

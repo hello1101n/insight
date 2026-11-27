@@ -22,6 +22,7 @@ import {
   stepDetail,
   stepLabel,
 } from "@/lib/portal/connector-runs";
+import { cn } from "@/lib/utils";
 import { TONE_BADGE } from "./connector-health-tone";
 import { ConnectorRunState, RunTooltip } from "./connector-run-state";
 import { ConnectorRunPeriod } from "./connector-timestamp";
@@ -31,11 +32,13 @@ function RunMetrics({
   title,
   empty,
   asOf,
+  current = false,
 }: {
   run?: ConnectorRun | null;
   title: string;
   empty: string;
   asOf: string;
+  current?: boolean;
 }) {
   const { t } = useTranslation();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -102,10 +105,29 @@ function RunMetrics({
         </div>
         {run && metrics.length > 0 && (
           <CollapsibleContent>
-            <dl className="mt-1 grid w-full grid-cols-[repeat(auto-fit,minmax(min(6rem,100%),1fr))] gap-2 border-t pt-1">
+            <dl
+              className={cn(
+                "mt-1 grid w-full border-t pt-1",
+                current
+                  ? "grid-cols-[repeat(4,minmax(0,max-content))] justify-between gap-x-1 gap-y-2"
+                  : "grid-cols-[repeat(auto-fit,minmax(min(6rem,100%),1fr))] gap-2"
+              )}
+            >
               {metrics.map(({ label, details, duration, tone }) => (
-                <div key={label}>
-                  <dt className="text-xs text-muted-foreground">
+                <div
+                  key={label}
+                  className={cn(
+                    "min-w-0",
+                    current && "row-span-2 grid grid-rows-subgrid gap-y-0",
+                    current && label === queuedLabel && "col-span-full"
+                  )}
+                >
+                  <dt
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      current && "flex min-h-5 items-center"
+                    )}
+                  >
                     {label === state?.label ? (
                       <ConnectorRunState
                         run={run}
@@ -159,6 +181,7 @@ export function ConnectorRunSummary({
         empty={t("connectors.runs.no_current")}
         run={current && isActiveRun(current) ? current : null}
         asOf={asOf}
+        current
       />
       <RunMetrics
         title={t("connectors.runs.latest_success")}
