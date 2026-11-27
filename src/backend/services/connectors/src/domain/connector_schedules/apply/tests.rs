@@ -216,6 +216,8 @@ async fn refused_or_mismatched_resets_never_report_inherited_from_origin_alone()
                 connector: "example-tracker".to_owned(),
                 source_id: "main".to_owned(),
                 crons: serde_json::json!([]),
+                resources: None,
+                has_schedule_revision: true,
                 revision: 2,
                 updated_by: uuid::Uuid::from_u128(1),
                 updated_at: now,
@@ -223,7 +225,7 @@ async fn refused_or_mismatched_resets_never_report_inherited_from_origin_alone()
             .append_exec_results([MockExecResult::default()])
             .into_connection();
         assert!(matches!(
-            stored(&db, &stub.cluster, &instance).await,
+            stored(&db, &stub.cluster, &instance, false).await,
             Err(Error::NotChanged(_))
         ));
         assert_eq!(

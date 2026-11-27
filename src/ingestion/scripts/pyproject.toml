@@ -7,9 +7,7 @@ name = "insight-ingestion-scripts"
 version = "0.1.0"
 description = "Deploy-time ClickHouse schema tooling shipped in the ingestion toolbox image"
 requires-python = ">=3.12"
-# Deliberately dependency-free: this runs in the migration Job, which talks to
-# ClickHouse over HTTP with nothing but the standard library.
-dependencies = []
+dependencies = ["pydantic>=2,<3"]
 
 [project.optional-dependencies]
 dev = [
@@ -21,14 +19,21 @@ testpaths = ["tests"]
 
 [tool.setuptools]
 py-modules = [
+    "airbyte_admission",
     "airbyte_auth",
+    "airbyte_estimate",
+    "airbyte_launch",
+    "airbyte_resources",
     "airbyte_sync_poll",
     "airbyte_sync_trigger",
+    "api_response",
+    "capacity_lease",
     "data_quality_findings",
     "dbt_completed",
     "dbt_profiles",
     "insight_logging",
     "load_field_value_map",
+    "pod_capacity",
 ]
 packages = ["tenant_migration"]
 

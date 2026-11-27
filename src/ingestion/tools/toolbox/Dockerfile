@@ -29,7 +29,7 @@ RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release
 # only reaches the image through an explicit pin.
 COPY scripts/bootstrap-db/pins.env /tmp/pins.env
 RUN . /tmp/pins.env && \
-    pip install --no-cache-dir "dbt-clickhouse==${DBT_CLICKHOUSE_VERSION}" "dbt-core==${DBT_CORE_VERSION}" "certifi==2026.10.19" && \
+    pip install --no-cache-dir "dbt-clickhouse==${DBT_CLICKHOUSE_VERSION}" "dbt-core==${DBT_CORE_VERSION}" "certifi==2026.10.19" "pydantic>=2,<3" && \
     printf 'PyMySQL==%s --hash=sha256:%s\n' "$PYMYSQL_VERSION" "$PYMYSQL_WHEEL_SHA256" > /tmp/schedule-requirements.txt && \
     pip install --no-cache-dir --no-deps --only-binary=:all: --require-hashes -r /tmp/schedule-requirements.txt && \
     rm /tmp/pins.env /tmp/schedule-requirements.txt

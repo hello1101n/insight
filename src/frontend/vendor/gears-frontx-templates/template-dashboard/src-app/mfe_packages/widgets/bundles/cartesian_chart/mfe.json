@@ -1,0 +1,406 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.cartesian_chart.v1",
+    "remoteEntry": "/widgets/cartesian_chart/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.cartesian_chart.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.cartesian_chart.v1",
+      "exposedModule": "./cartesian_chart"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChartData",
+      "description": "Data of a cartesian_chart widget, in long format.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "series"
+          ],
+          "properties": {
+            "series": {
+              "type": "array",
+              "description": "One entry per series, each with its name and points.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "points"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "x",
+                        "y"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "x": {
+                          "type": [
+                            "string",
+                            "number",
+                            "null"
+                          ],
+                          "description": "On a value axis, a number. On a time axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds. On a category axis, any value. A mismatch is checked by the widget."
+                        },
+                        "y": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "On a series of a log y axis, above zero. A y not above zero there is checked by the widget."
+                        },
+                        "size": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "A scatter series only (on another type, a cross-check the widget runs): the point's size; its area grows in proportion to it, within the radius range the widget sets. Null or absent draws the smallest point."
+                        },
+                        "label": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "A scatter series only (on another type, a cross-check the widget runs): what the point is, such as a repository name. On a chart of scatter series only, the tooltip shows it over the point's values. The text alternative and the data view list it in its own column. Null or absent shows none."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.cartesian_chart_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChartRender",
+      "description": "Render of a cartesian_chart widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "series": {
+              "type": "array",
+              "description": "How each data series is drawn. A data series without an entry here draws as unlisted_type (bars when it is not set) on the primary y axis, in the stack group of unlisted_stack_group when it is set.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The series name, matching a series name in the data."
+                  },
+                  "type": {
+                    "enum": [
+                      "bar",
+                      "line",
+                      "area",
+                      "scatter"
+                    ],
+                    "description": "How the series is drawn."
+                  },
+                  "y_axis": {
+                    "enum": [
+                      "primary",
+                      "secondary"
+                    ],
+                    "default": "primary",
+                    "description": "Which y axis the series uses. Without it, the primary axis."
+                  },
+                  "stack_group": {
+                    "type": "string",
+                    "description": "Optional stack group. Series with the same stack group on the same y axis are stacked in delivered order: bars and areas together, lines together."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "A line or area only: a name written at the end of the series, at its last point, for example a target."
+                  },
+                  "line_style": {
+                    "enum": [
+                      "solid",
+                      "dashed"
+                    ],
+                    "default": "solid",
+                    "description": "A line or area only. Without it, solid."
+                  },
+                  "mark_extremes": {
+                    "enum": [
+                      "min",
+                      "max",
+                      "both"
+                    ],
+                    "description": "A line or area only (on another type, a cross-check the widget runs, cpt-frontx-dashboard-algo-widget-catalog-cartesian-checks): a mark with its value on the series' lowest point, highest point, or both; of equal values, the first point in axis order (the drawn order), skipping nulls."
+                  }
+                }
+              }
+            },
+            "unlisted_type": {
+              "enum": [
+                "bar",
+                "line",
+                "area",
+                "scatter"
+              ],
+              "default": "bar",
+              "description": "How each data series without an entry in series is drawn, such as a series whose name comes only with the data. Such a series draws as if it had an entry of this type on the primary y axis, so it follows the rules of that type. An entry in series keeps its own type. Without it, bar."
+            },
+            "series_tones": {
+              "$ref": "gts://gts.frontx.dashboard.widget.tones.v1~",
+              "description": "Optional tone of each data series by its name, drawn in place of its palette colour: its bars, line, area or points, and its marks in the legend and the tooltip. A series with no tone keeps its palette colour."
+            },
+            "unlisted_stack_group": {
+              "type": "string",
+              "description": "The stack group of each data series without an entry in series, such as a series whose name comes only with the data. Such a series draws as if it had an entry of type unlisted_type (bar without it) on the primary y axis with this stack_group, so it stacks by the same rules. An entry in series keeps its own stack_group or none. Without it, a series without an entry is in no stack group."
+            },
+            "x_axis": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "category",
+                    "value",
+                    "time"
+                  ],
+                  "default": "category",
+                  "description": "Without it, category."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written under the x axis ticks, and the x column heading of the data view and the text alternative."
+                },
+                "value_format": {
+                  "$ref": "gts://gts.frontx.dashboard.widget.value_format.v1~",
+                  "description": "Optional format of the x numbers on a value axis, of the shared value_format type: the ticks in compact notation, as the y ticks, and the tooltip, the data view and the text alternative in full. A category or time axis ignores it. Without it, the x numbers show as plain numbers."
+                },
+                "tick_labels": {
+                  "enum": [
+                    "auto",
+                    "every"
+                  ],
+                  "default": "auto",
+                  "description": "auto skips tick labels that would collide, and on a category axis keeps the first and the last category labelled; every labels each category, thinning out to every second, third and so on only when the labels cannot fit; a value or time axis has no categories, so there every acts as auto. On a category axis, with either value, a level label longer than its room is first cut with an ellipsis: on a vertical chart to its category's band, on a horizontal chart to its category column. A cut label keeps at least 10 characters and as many more as two categories need to read apart; the tooltip, the data view and the text alternative show the whole name. Without it, auto."
+                },
+                "tick_angle": {
+                  "enum": [
+                    0,
+                    -45,
+                    -90,
+                    "auto"
+                  ],
+                  "default": 0,
+                  "description": "Rotation of the tick labels in degrees; a tilted axis grows to fit them, so a tilted label is never cut. auto turns the ticks of a category axis only as far as each category needs to keep its whole label: 0, then -45, then -90; when no turn fits every label, the turn that labels more categories, -45 on a tie; a value or time axis stays level. Without it, 0."
+                }
+              }
+            },
+            "y_axis": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "value",
+                    "log"
+                  ],
+                  "default": "value",
+                  "description": "Without it, value."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written along the primary y axis, outside its ticks."
+                }
+              }
+            },
+            "y_axis_secondary": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Settings of the secondary y axis, used by series whose y_axis is secondary.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "value",
+                    "log"
+                  ],
+                  "default": "value",
+                  "description": "Without it, value."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "A title written along the secondary y axis, outside its ticks."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Written after every tick value of the secondary axis, for example %."
+                }
+              }
+            },
+            "legend_position": {
+              "enum": [
+                "top",
+                "right",
+                "bottom",
+                "left",
+                "none"
+              ],
+              "default": "bottom",
+              "description": "none hides the legend. Without it, bottom."
+            },
+            "value_labels": {
+              "enum": [
+                "auto",
+                "always",
+                "never"
+              ],
+              "default": "never",
+              "description": "Values written at the end of the bars (above a bar that grows up, below one that grows down; a zero bar has none): always, never, or auto when every bar is wide enough for its value. Without it, never."
+            },
+            "stack_labels": {
+              "enum": [
+                "segments",
+                "total"
+              ],
+              "default": "segments",
+              "description": "What a value label of a stacked bar shows: segments, each segment's value at its end; total, one label per stack, the sum of the delivered values of its bars at that x, at the end of the stack. A bar outside any stack writes its own value either way, and value_labels decides whether labels show. Without it, segments."
+            },
+            "max_bar_width": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional largest thickness of a bar in pixels: its width on a vertical chart, its height on a horizontal one. A bar stays centred in its band, and the band keeps its width. value_labels auto judges the drawn width. Without it, a bar takes its share of 80% of its band."
+            },
+            "drill_down": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the chart offers its data view and opens it from a click on a mark. Without it, false."
+            },
+            "orientation": {
+              "enum": [
+                "vertical",
+                "horizontal"
+              ],
+              "default": "vertical",
+              "description": "horizontal puts the categories on the vertical axis and the values on the horizontal one, for every series type; it needs a category x axis (a cross-check the widget runs). tick_angle does not apply to a horizontal chart. Without it, vertical."
+            },
+            "stack_mode": {
+              "enum": [
+                "absolute",
+                "percent"
+              ],
+              "default": "absolute",
+              "description": "percent draws each stack group as shares of 100% at each x, its axis in percents and the tooltip with the value and its share. Every series on such an axis is in a stack group, no stacked value is negative (cross-checks the widget runs), and an x where a group sums to 0 draws 0% for each member. Without it, absolute."
+            },
+            "size_label": {
+              "type": "string",
+              "description": "The name of a scatter point's size, in the tooltip and the data view column. Without it, Size."
+            },
+            "reference_lines": {
+              "type": "array",
+              "maxItems": 8,
+              "description": "Lines across the plot at a value, in the muted tone of the axes. A line outside the data extends its axis to hold it.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "axis": {
+                    "enum": [
+                      "y",
+                      "y_secondary",
+                      "x"
+                    ],
+                    "default": "y",
+                    "description": "The axis the value is on. y_secondary needs a series on the secondary axis (a cross-check the widget runs). Without it, y."
+                  },
+                  "value": {
+                    "type": [
+                      "number",
+                      "string"
+                    ],
+                    "description": "A number on a value axis (on a percent stacked axis, a share from 0 to 1; on a log axis, above zero); on a time x axis, an ISO 8601 date-time string, a bare YYYY-MM-DD date read as its UTC midnight (a date of the calendar: 2026-02-30 fails), or a number of epoch milliseconds, as a point's x there; a category on a category x axis. A string anywhere else, a number on a category x axis, or a value outside these rules fails a cross-check the widget runs."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Text written at the line's end."
+                  },
+                  "line_style": {
+                    "enum": [
+                      "dashed",
+                      "solid"
+                    ],
+                    "default": "dashed",
+                    "description": "Without it, dashed."
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.cartesian_chart.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "CartesianChart",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.cartesian_chart.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.cartesian_chart.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.cartesian_chart_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

@@ -219,7 +219,12 @@ impl Gear for InsightV3CoreGear {
                 destinations: alerts.destinations(),
             });
         }
-        let app = Arc::new(app);
+        let app = Arc::new(
+            app.with_record_links(crate::domain::record_link::RecordLinks::new(
+                config.external_sources().clone(),
+                config.clickhouse_database(),
+            )),
+        );
         let runtime = RuntimeState {
             app: Arc::clone(&app),
             admission,

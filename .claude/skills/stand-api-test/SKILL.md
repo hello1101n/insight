@@ -59,8 +59,8 @@ the same story. That is the house style; match it.
 ## The catalogue, and why 401 lives in one place
 
 `operations.py` is read from the **route tables** in
-`src/backend/services/{analytics,identity-resolution}/src/api/`. Both services
-emit their own OpenAPI document, but the route tables stay the source
+`src/backend/services/{analytics,connectors,identity-resolution}/src/api/`. The
+services emit their own OpenAPI documents, but the route tables stay the source
 here: the catalogue must list what the gateway *routes*, which includes the
 `/internal/*` S2S pair that is deliberately outside the generated document.
 
@@ -81,8 +81,10 @@ operation by `test_gateway.py`, and spot-checked here so this module carries its
 own reason for using a session at all." One per module, never one per
 operation.
 
-Adding an operation means adding a row to `ANALYTICS_OPERATIONS` or
-`IDENTITY_OPERATIONS`. Path parameters use the `SOME_ID` stand-in so the
+Adding an operation means adding a row to `ANALYTICS_OPERATIONS`,
+`CONNECTORS_OPERATIONS` or `IDENTITY_OPERATIONS`, and a test that calls it: the
+coverage gate fails an operation the OpenAPI documents that no test calls.
+Path parameters use the `SOME_ID` stand-in so the
 `template` derives itself; the coverage gate groups by template, and a test
 hitting a real id would otherwise be reported as swept-only.
 
@@ -278,12 +280,18 @@ uv run --project tests --frozen python tests/generate_schemas.py --check
 A direct pytest run against an instance needs the variables `insight-stand`
 lists under Commands.
 
-Then reconcile the gate, which is what "closing a coverage gap" means:
+Then reconcile the gate, which is what "closing a coverage gap" means. Judge
+it on a full API run from an empty ledger: a filtered run leaves unrelated
+gaps, and the suite merges its calls into the ledger already on disk.
 
 ```bash
+rm -f .artifacts/stand_observed_endpoints.json
+./dev-compose.sh test-stand test --instance=worktree --ignore=tests/stand/ui
 python3 tests/lib/insight_stand/coverage.py \
   --observed .artifacts/stand_observed_endpoints.json \
-  --catalogue .artifacts/stand_operations.json
+  --catalogue .artifacts/stand_operations.json \
+  --spec /api/connectors=docs/components/backend/connectors/openapi.json \
+  --spec /api/analytics=docs/components/backend/analytics/openapi.json
 ```
 
 8. Hand a claim marked `EXPECTED TO FAIL` to `file-bug-insight` rather than

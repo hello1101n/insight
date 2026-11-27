@@ -84,12 +84,12 @@ async fn seed_and_publish(
 }
 
 fn publish_after_seed(
-    result: Result<crate::domain::sync_service::SyncOutcome, crate::sync_runner::SyncRunError>,
+    result: Result<crate::sync_runner::RunReport, crate::sync_runner::SyncRunError>,
 ) -> anyhow::Result<()> {
     use crate::sync_runner::SyncRunError;
     match result {
-        Ok(outcome) => {
-            tracing::info!(?outcome, "persons-sync published the seeded log");
+        Ok(report) => {
+            tracing::info!(?report, "persons-sync published the seeded log");
             Ok(())
         }
         Err(SyncRunError::LockBusy) => {
@@ -140,27 +140,33 @@ impl RestApiCapability for IdentityResolutionGear {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::sync_service::{SyncOutcome, SyncSummary};
-    use crate::sync_runner::SyncRunError;
+    use crate::domain::sync_service::{SyncOutcome, SyncSummary, TenantReport, TenantResult};
+    use crate::sync_runner::{RunReport, SyncRunError};
 
-    fn published() -> SyncOutcome {
-        SyncOutcome::Published(SyncSummary {
-            rows: 1,
-            max_id: Some(1),
-            max_created_at: Some("2026-01-01T00:00:00".to_owned()),
-            synced_at: "2026-01-01T00:00:01".to_owned(),
-        })
+    fn report(outcome: SyncOutcome) -> RunReport {
+        RunReport {
+            tenants: vec![TenantReport {
+                tenant: uuid::Uuid::from_u128(1),
+                result: TenantResult::Synced(outcome),
+            }],
+        }
     }
 
     #[test]
     fn a_published_seed_is_a_success() {
-        assert!(publish_after_seed(Ok(published())).is_ok());
+        let outcome = SyncOutcome::Published(SyncSummary {
+            rows: 1,
+            max_id: Some(1),
+            max_created_at: Some("2026-01-01T00:00:00".to_owned()),
+            synced_at: "2026-01-01T00:00:01".to_owned(),
+        });
+        assert!(publish_after_seed(Ok(report(outcome))).is_ok());
     }
 
     #[test]
     fn an_already_current_snapshot_is_a_success() {
         let outcome = SyncOutcome::AlreadyCurrent { max_id: Some(1) };
-        assert!(publish_after_seed(Ok(outcome)).is_ok());
+        assert!(publish_after_seed(Ok(report(outcome))).is_ok());
     }
 
     #[test]

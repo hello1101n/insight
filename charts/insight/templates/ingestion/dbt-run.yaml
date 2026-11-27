@@ -19,6 +19,12 @@ spec:
       #  bash. See ingestion-templates SECURITY notes in DESIGN.md.
       inputs:
         parameters:
+          {{- include "insight.syncResources.input" . | nindent 10 }}
+          - name: dbt_pod_patch
+            default: "{}"
+          - name: stage_name
+            default: ""
+          - name: lock_group
           - name: dbt_select
           # Space-separated selectors to subtract from the selection (same
           # grammar as dbt_select). The pipeline uses it to keep a graph-walk
@@ -43,13 +49,23 @@ spec:
           - name: clickhouse_port
             default: {{ include "insight.clickhouse.port" . | quote }}
           - name: clickhouse_user
-            default: {{ required "clickhouse.username is required" .Values.clickhouse.username | quote }}
+            default: {{ include "insight.clickhouse.syncUser" . | quote }}
       # 2h. Incremental dbt runs finish in seconds, but full-refresh
       # (triggered manually or by a future major-bump dispatch per
       # PR #456 / ADR-0015) can rebuild the entire staging+silver
       # layer for a connector. 30m caps were observed killing the
       # job on hubspot full-refresh.
+      synchronization:
+        mutexes:
+          - name: {{ `"ch-{{inputs.parameters.lock_group}}"` }}
       activeDeadlineSeconds: 7200
+      outputs:
+        parameters:
+          - name: dbt-pod-uid
+            valueFrom:
+              path: /tmp/dbt-pod-uid
+              default: ""
+      podSpecPatch: {{ `'{{inputs.parameters.dbt_pod_patch}}'` }}
       script:
         image: {{ `"{{inputs.parameters.toolbox_image}}"` }}
         # IfNotPresent so dev clusters use the locally-built `insight-toolbox:local`
@@ -60,10 +76,15 @@ spec:
         command: [bash]
         env:
           - name: CLICKHOUSE_PASSWORD
+            {{- include "insight.clickhouse.syncPasswordRef" . | nindent 12 }}
+          - name: DBT_POD_UID
             valueFrom:
-              secretKeyRef:
-                name: {{ required "clickhouse.passwordSecret.name is required" .Values.clickhouse.passwordSecret.name | quote }}
-                key:  {{ required "clickhouse.passwordSecret.key is required"  .Values.clickhouse.passwordSecret.key  | quote }}
+              fieldRef:
+                fieldPath: metadata.uid
+          - name: DBT_WORKFLOW_UID
+            value: {{ `"{{workflow.uid}}"` }}
+          - name: DBT_STAGE_NAME
+            value: {{ `"{{inputs.parameters.stage_name}}"` }}
           - name: DBT_SELECT
             value: {{ `"{{inputs.parameters.dbt_select}}"` }}
           - name: DBT_EXCLUDE
@@ -75,7 +96,7 @@ spec:
           - name: CLICKHOUSE_PORT
             value: {{ `"{{inputs.parameters.clickhouse_port}}"` }}
           - name: CLICKHOUSE_USER
-            value: {{ `"{{inputs.parameters.clickhouse_user}}"` }}
+            value: {{ include "insight.clickhouse.syncUser" . | quote }}
           # Warehouse topology from the platform ConfigMap (epic #2010):
           # the profile's `cluster` key and the dbt project's cluster vars.
           - name: CLICKHOUSE_CLUSTER_MODE
@@ -96,6 +117,7 @@ spec:
                 key: INSIGHT_LOG_LEVEL
         source: |
           set -euo pipefail
+          printf '%s' "$DBT_POD_UID" > /tmp/dbt-pod-uid
           cd /ingestion/dbt
           # Writes profiles.yml from env vars without ever interpolating user
           # input into YAML or shell text — closes the parameter-injection sink
@@ -148,8 +170,20 @@ spec:
           # decided here, not in the model. A graph walk (`tag:X+`) reaches gold
           # models reading classes no connector on this install feeds; without
           # this the whole run dies on them.
+          # The check also needs the models THIS run builds: a contributor that
+          # another connector's pipeline builds is absent here until it is in
+          # the warehouse, so its class must wait (#127).
+          OPERATION_ARGS=()
+          if [[ "$RC" -eq 0 && -n "${DBT_SELECT:-}" ]]; then
+            read -r -a SELECT_TERMS <<< "$DBT_SELECT"
+            read -r -a EXCLUDE_TERMS <<< "${DBT_EXCLUDE:-}"
+            RUN_MODELS="$(dbt --quiet ls --profiles-dir . --resource-type model --output name \
+              --select "${SELECT_TERMS[@]}" ${EXCLUDE_TERMS[@]+--exclude "${EXCLUDE_TERMS[@]}"})" || RC=$?
+            OPERATION_ARGS=(--args "$(printf '%s\n' "${RUN_MODELS:-}" \
+              | python3 -c 'import json, sys; print(json.dumps({"selected": sys.stdin.read().split()}))')")
+          fi
           if [[ "$RC" -eq 0 ]]; then
-            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir .)" || RC=$?
+            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir . ${OPERATION_ARGS[@]+"${OPERATION_ARGS[@]}"})" || RC=$?
           fi
           read -r -a EXCLUDED <<< "${DBT_EXCLUDE:-} ${UNBUILDABLE:-}"
           EXCLUDE_ARGS=()

@@ -1,0 +1,87 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.markdown_card.v1",
+    "remoteEntry": "/widgets/markdown_card/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.markdown_card.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.markdown_card.v1",
+      "exposedModule": "./markdown_card"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.markdown_card_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MarkdownCardRender",
+      "description": "Render of a markdown_card widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "properties": {
+            "tone": {
+              "enum": [
+                "default",
+                "destructive"
+              ],
+              "default": "default",
+              "description": "Optional tone of the card: destructive writes the body in the kit's destructive colour and marks the card as an alert (role alert), for a note that something is wrong, such as a widget that is no longer on the dashboard. default (the default) writes it in the text colour."
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The markdown to show: CommonMark, including links and images. Embedded HTML is shown as text."
+            },
+            "heading_style": {
+              "enum": [
+                "default",
+                "section"
+              ],
+              "default": "default",
+              "description": "Optional look of the body's headings: default draws them as titles; section draws each one as a small uppercase section heading in the muted colour, at the kit's label size and weight, as a dashboard draws the heading over a group of cells. The heading level stays the one the markdown gives."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.markdown_card.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "MarkdownCard",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.markdown_card.v1"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.markdown_card_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

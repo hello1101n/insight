@@ -71,7 +71,7 @@ fn build_state_with_ch(
         report_generations: Arc::new(tokio::sync::Semaphore::new(1)),
         report_artifacts: Arc::new(tokio::sync::Semaphore::new(1)),
         config: GearConfig::default(),
-        external_links: crate::domain::external_links::ExternalSourceRegistry::default(),
+        external_links: insight_external_sources::ExternalSourceRegistry::default(),
     }
 }
 
@@ -899,7 +899,7 @@ fn app_with_usage_collection_off(db: DatabaseConnection, tenant: Uuid) -> Router
         report_generations: Arc::new(tokio::sync::Semaphore::new(1)),
         report_artifacts: Arc::new(tokio::sync::Semaphore::new(1)),
         config,
-        external_links: crate::domain::external_links::ExternalSourceRegistry::default(),
+        external_links: insight_external_sources::ExternalSourceRegistry::default(),
     });
     super::register_routes(Router::new(), &openapi, state)
         .layer(from_fn_with_state(tenant, inject_host_context))

@@ -9,7 +9,7 @@ Usage:
   check.py relation --name db.table --rows N     a service's table on every node
   check.py absent   --name db.table              a service's table gone from every node
   check.py quorum-boundary --out boundary.json    where every node's query log ends now
-  check.py quorum --after boundary.json           the persons sync since then wrote and read with quorum
+  check.py quorum --after boundary.json           the persons sync since then wrote, read and replaced with quorum
   check.py sweep --after boundary.json            the reconcile sweep since then reached the ledger with quorum
 
 Runs in the dbt venv, whose dbt-clickhouse brings clickhouse-connect.
@@ -471,9 +471,10 @@ def statements_since(after: str, where: str, settings: tuple[str, ...]) -> list[
 
 def check_quorum(after: str) -> None:
     """On a cluster, the persons sync run since the boundary confirmed its
-    staging insert on a quorum and read its count back sequentially consistent
-    — the pair that makes the count it judges the batch by mean something
-    (insight-clickhouse's consistency.rs)."""
+    staging insert on every replica and read its count back sequentially
+    consistent (insight-clickhouse's consistency.rs). Each partition replace
+    waited for every active replica. A replace reads the staging parts of the
+    replica that runs it, and the proxy can send it to any replica."""
     if not replicated():
         emit("ok  quorum settings are not expected on a standalone warehouse")
         return
@@ -490,16 +491,33 @@ def check_quorum(after: str) -> None:
         raise Failure(f"no insert into {PERSONS_STAGING_PREFIX}* in any node's query log since the boundary")
     if not reads:
         raise Failure(f"no read of {PERSONS_STAGING_PREFIX}* in any node's query log since the boundary")
-    unconfirmed = [row for row in inserts if (row[1], row[2]) != ("auto", "0")]
+    every_replica = str(len(nodes()))
+    unconfirmed = [row for row in inserts if (row[1], row[2]) != (every_replica, "0")]
     if unconfirmed:
         raise Failure(
-            f"{len(unconfirmed)}/{len(inserts)} persons staging insert(s) ran without insert_quorum=auto, insert_quorum_parallel=0"
+            f"{len(unconfirmed)}/{len(inserts)} persons staging insert(s) ran without "
+            f"insert_quorum={every_replica}, insert_quorum_parallel=0"
         )
     stale = [row for row in reads if row[3] != "1"]
     if stale:
         raise Failure(f"{len(stale)}/{len(reads)} persons staging read(s) ran without select_sequential_consistency=1")
+    replaces = statements_since(
+        after,
+        f"query LIKE '%REPLACE PARTITION%{PERSONS_STAGING_PREFIX.split('.')[1]}%'",
+        ("alter_sync", "replication_wait_for_inactive_replica_timeout"),
+    )
+    if not replaces:
+        raise Failure(f"no partition replace from {PERSONS_STAGING_PREFIX}* in any node's query log since the boundary")
+    unwaited = [row for row in replaces if (row[1], row[2]) != ("2", "0")]
+    if unwaited:
+        raise Failure(
+            f"{len(unwaited)}/{len(replaces)} persons partition replace(s) ran without "
+            "alter_sync=2, replication_wait_for_inactive_replica_timeout=0"
+        )
     emit(
-        f"ok  {len(inserts)} persons staging insert(s) confirmed on a quorum, {len(reads)} read(s) sequentially consistent"
+        f"ok  {len(inserts)} persons staging insert(s) confirmed on every replica, "
+        f"{len(reads)} read(s) sequentially consistent, {len(replaces)} partition replace(s) "
+        "waited for every active replica"
     )
 
 

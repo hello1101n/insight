@@ -2,7 +2,9 @@ use std::fmt::Write as _;
 
 use super::cursor::{CursorError, CursorKey, KeyValue};
 use super::{Column, Sort};
-use crate::domain::query::metric_query::{ColumnKind, FilterBind, RECORD_COLUMN, TWIN_COLUMN};
+use crate::domain::query::metric_query::{
+    ColumnKind, FilterBind, RECORD_COLUMN, TWIN_COLUMN, is_carried,
+};
 
 pub(super) const INNER: &str = "__m";
 const FLAG: &str = "__drilldown_flag";
@@ -15,6 +17,7 @@ pub(super) fn is_reserved(name: &str) -> bool {
         || name == RECORD_COLUMN
         || name == TWIN_COLUMN
         || name.starts_with(TIE)
+        || is_carried(name)
 }
 
 #[derive(Debug)]

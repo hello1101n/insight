@@ -1,13 +1,17 @@
 pub(crate) mod answerable;
+pub(crate) mod composite;
 
 use serde_json::Value;
 
 use super::{KindError, Reference};
 use crate::domain::datasets::{self, Datasets};
+use crate::domain::definition::{DefinitionKind, Lookup};
 use crate::domain::kinds::metric::answerable::effective_clock;
+use crate::domain::query::composite::Composite;
+use crate::domain::query::metric::{COMBINE_KEY, Metric};
 use crate::domain::query::metric_query::TableEngine;
 use crate::domain::query::metric_query::over::Over;
-use crate::domain::query::metric_query::{MetricQuery, MetricQueryError, People};
+use crate::domain::query::metric_query::{CompiledQuery, MetricQuery, MetricQueryError, People};
 use crate::domain::query::time_window::{Bounds, Grain, Window};
 use crate::domain::violation::{Reason, Violation};
 
@@ -21,19 +25,31 @@ const A_WINDOW: Window = Window::Requested {
 
 pub(crate) async fn check(
     body: &Value,
+    definitions: &dyn Lookup,
     datasets: &dyn Datasets,
     over: CompileAgainst<'_>,
 ) -> Result<(), KindError> {
-    let metric: MetricQuery = serde_json::from_value(body.clone()).map_err(KindError::Body)?;
+    match Metric::parse(body.clone()).map_err(KindError::Body)? {
+        Metric::Query(query) => check_query(&query, datasets, over).await,
+        Metric::Composite(composite) => {
+            check_composite(&composite, definitions, datasets, over).await
+        }
+    }
+}
 
+async fn check_query(
+    metric: &MetricQuery,
+    datasets: &dyn Datasets,
+    over: CompileAgainst<'_>,
+) -> Result<(), KindError> {
     let Some(named) = metric.dataset() else {
         let dated = metric.has_clock().map_err(KindError::Compile)?;
-        return compiles(&metric, over.people, None, dated);
+        return compiles(metric, over.people, None, dated);
     };
     if metric.addresses_a_relation() {
         return Err(KindError::Compile(MetricQueryError::AddressesARelation));
     }
-    reaches_past_the_declaration(&metric)?;
+    reaches_past_the_declaration(metric)?;
     metric.check_window().map_err(KindError::Compile)?;
 
     let Some(ready) = datasets::ready(datasets, named)
@@ -43,7 +59,7 @@ pub(crate) async fn check(
         return Err(KindError::DatasetNotReady(named.to_owned()));
     };
 
-    let violations = answerable::check(&metric, &ready.declaration);
+    let violations = answerable::check(metric, &ready.declaration);
     if !violations.is_empty() {
         return Err(KindError::Unanswerable(violations));
     }
@@ -53,9 +69,66 @@ pub(crate) async fn check(
         database: over.database,
         table: &ready.table,
     };
-    let dated = effective_clock(&metric, &ready.declaration).is_some();
+    let dated = effective_clock(metric, &ready.declaration).is_some();
 
-    compiles(&metric, over.people, Some(relation), dated)
+    compiles(metric, over.people, Some(relation), dated)
+}
+
+async fn check_composite(
+    composite: &Composite,
+    definitions: &dyn Lookup,
+    datasets: &dyn Datasets,
+    over: CompileAgainst<'_>,
+) -> Result<(), KindError> {
+    let children = composite::children(composite, definitions, datasets).await?;
+
+    children
+        .compile(composite, over.people, &Window::legacy(), over.database)
+        .map_err(KindError::Composite)?;
+    if children.dated() {
+        children
+            .compile(composite, over.people, &A_WINDOW, over.database)
+            .map_err(KindError::Composite)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn compiled(
+    body: &Value,
+    definitions: &dyn Lookup,
+    datasets: &dyn Datasets,
+    over: CompileAgainst<'_>,
+) -> Result<CompiledQuery, KindError> {
+    let query = match Metric::parse(body.clone()).map_err(KindError::Body)? {
+        Metric::Query(query) => query,
+        Metric::Composite(composite) => {
+            let children = composite::children(&composite, definitions, datasets).await?;
+            return children
+                .compile(&composite, over.people, &Window::legacy(), over.database)
+                .map_err(KindError::Composite);
+        }
+    };
+
+    let Some(named) = query.dataset() else {
+        query.check_table().map_err(KindError::Compile)?;
+        return query
+            .compile_window(over.people, &Window::legacy(), TableEngine::Other, None)
+            .map_err(KindError::Compile);
+    };
+    let ready = datasets::ready(datasets, named)
+        .await
+        .map_err(KindError::Datasets)?
+        .ok_or_else(|| KindError::DatasetNotReady(named.to_owned()))?;
+    let relation = Over {
+        declaration: &ready.declaration,
+        database: over.database,
+        table: &ready.table,
+    };
+
+    query
+        .compile_over(over.people, &Window::legacy(), relation)
+        .map_err(KindError::Compile)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -109,8 +182,33 @@ fn reaches_past_the_declaration(metric: &MetricQuery) -> Result<(), KindError> {
     ))
 }
 
-pub(crate) fn refers_to(_body: &Value) -> Vec<Reference> {
-    Vec::new()
+pub(crate) fn refers_to(body: &Value) -> Vec<Reference> {
+    let Some(combined) = body.get(COMBINE_KEY).and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    let mut named = Vec::new();
+    for metric in combined.values().filter_map(Value::as_str) {
+        let reference = Reference::new(DefinitionKind::Metric, metric);
+        if !named.contains(&reference) {
+            named.push(reference);
+        }
+    }
+
+    named
+}
+
+pub(crate) fn rename_reference(mut body: Value, from: &str, to: &str) -> Value {
+    let Some(combined) = body.get_mut(COMBINE_KEY).and_then(Value::as_object_mut) else {
+        return body;
+    };
+    for metric in combined.values_mut() {
+        if metric.as_str() == Some(from) {
+            *metric = Value::String(to.to_owned());
+        }
+    }
+
+    body
 }
 
 pub(crate) fn reads_dataset(body: &Value) -> Option<String> {

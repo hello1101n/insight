@@ -5,6 +5,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use super::sql_named::bind_named;
+
 const COLUMNS: &str = "person_role_id, insight_tenant_id, person_id, role_id, \
      valid_from, valid_to, author_person_id, reason, created_at";
 
@@ -171,9 +173,9 @@ pub async fn try_soft_delete_protecting_last_admin(
         FROM person_roles
         WHERE insight_tenant_id = (
                 SELECT insight_tenant_id FROM person_roles
-                WHERE person_role_id = ?
+                WHERE person_role_id = @person_role_id
               )
-          AND role_id  = ?
+          AND role_id  = @admin_role_id
           AND valid_to IS NULL
         FOR UPDATE
     ";
@@ -187,24 +189,26 @@ pub async fn try_soft_delete_protecting_last_admin(
                     SELECT COUNT(*)
                     FROM person_roles AS adm
                     WHERE adm.insight_tenant_id = pr.insight_tenant_id
-                      AND adm.role_id           = ?
+                      AND adm.role_id           = @admin_role_id
                       AND adm.valid_to IS NULL
                 ) AS active_admin_cnt
             FROM person_roles AS pr
-            WHERE pr.person_role_id = ?
+            WHERE pr.person_role_id = @person_role_id
               AND pr.valid_to IS NULL
         ) AS row_with_count
           ON row_with_count.person_role_id = target.person_role_id
         SET target.valid_to = UTC_TIMESTAMP(6),
-            target.reason   = COALESCE(?, target.reason)
+            target.reason   = COALESCE(@reason, target.reason)
         WHERE target.valid_to IS NULL
           AND (
-              row_with_count.role_id <> ?
+              row_with_count.role_id <> @admin_role_id
               OR row_with_count.active_admin_cnt > 1
           )
     ";
-    let admin = admin_role_id.as_bytes().to_vec();
-    let pr = person_role_id.as_bytes().to_vec();
+    let admin = ("admin_role_id", admin_role_id.as_bytes().to_vec().into());
+    let target = ("person_role_id", person_role_id.as_bytes().to_vec().into());
+    let (lock_sql, lock_values) = bind_named(LOCK_SQL, &[admin.clone(), target.clone()])?;
+    let (sql, values) = bind_named(SQL, &[admin, target, ("reason", reason.into())])?;
 
     let txn = db
         .begin_with_config(Some(IsolationLevel::RepeatableRead), None)
@@ -212,16 +216,16 @@ pub async fn try_soft_delete_protecting_last_admin(
 
     txn.query_one_raw(Statement::from_sql_and_values(
         DbBackend::MySql,
-        LOCK_SQL,
-        [pr.clone().into(), admin.clone().into()],
+        &lock_sql,
+        lock_values,
     ))
     .await?;
 
     let rows = txn
         .execute_raw(Statement::from_sql_and_values(
             DbBackend::MySql,
-            SQL,
-            [admin.clone().into(), pr.into(), reason.into(), admin.into()],
+            &sql,
+            values,
         ))
         .await?
         .rows_affected();

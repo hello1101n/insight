@@ -4,7 +4,10 @@ use toolkit::api::{
     OpenApiRegistry, OperationBuilder, ParamSpec, ResponseHeaderSpec, ResponseHeaderType,
 };
 
-use crate::domain::connector_schedules::dto::{ScheduleRequest, ScheduleResponse};
+use crate::domain::connector_schedules::{
+    dto::{ScheduleRequest, ScheduleResponse},
+    resources::Resources,
+};
 
 const PATH: &str = "/v1/connectors/{connector}/{source_id}/schedule";
 
@@ -60,6 +63,8 @@ pub(super) fn register(mut router: Router, openapi: &dyn OpenApiRegistry) -> Rou
         .handler(super::put)
         .register(router, openapi);
 
+    router = register_resources(router, openapi);
+
     router = OperationBuilder::delete(PATH)
         .operation_id("connectors_api.schedules.delete")
         .summary("Clear requested connector schedules (admin)")
@@ -92,6 +97,30 @@ pub(super) fn register(mut router: Router, openapi: &dyn OpenApiRegistry) -> Rou
         .register(router, openapi);
 
     router
+}
+
+fn register_resources(router: Router, openapi: &dyn OpenApiRegistry) -> Router {
+    OperationBuilder::patch(PATH)
+        .operation_id("connectors_api.schedules.patch_resources")
+        .summary("Update the resource overrides of a connector instance (admin)")
+        .authenticated()
+        .no_license_required()
+        .path_param("connector", "Connector name")
+        .path_param("source_id", "Connector instance source id")
+        .param(ParamSpec::header("If-Match").required(true).description("Single quoted decimal revision"))
+        .json_request::<Resources>(openapi, "Merge patch of resource overrides in millicores and bytes. Omit a field to retain its value. Send null to inherit its default.")
+        .json_response_with_schema::<ScheduleResponse>(openapi, StatusCode::OK, "Saved settings and live CronWorkflow state")
+        .response_header(etag())
+        .standard_errors(openapi)
+        .error_409(openapi)
+        .error_503(openapi)
+        .problem_response(openapi, StatusCode::PRECONDITION_FAILED, "Stale revision")
+        .response_header(etag())
+        .problem_response(openapi, StatusCode::PRECONDITION_REQUIRED, "If-Match required")
+        .problem_response(openapi, StatusCode::UNSUPPORTED_MEDIA_TYPE, "Content-Type application/json required")
+        .problem_response(openapi, StatusCode::UNPROCESSABLE_ENTITY, "Resource requests exceed node capacity")
+        .handler(super::patch)
+        .register(router, openapi)
 }
 
 fn etag() -> ResponseHeaderSpec {

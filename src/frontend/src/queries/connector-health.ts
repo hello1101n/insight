@@ -222,5 +222,6 @@ export function useConnectorSyncs(
     queryFn: () => getConnectorSyncs(instance as ConnectorInstanceRef),
     enabled: instance !== null,
     staleTime: 0,
+    refetchInterval: RECHECK_MS,
   });
 }

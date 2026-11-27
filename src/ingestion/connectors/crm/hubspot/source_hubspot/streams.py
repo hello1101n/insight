@@ -46,6 +46,7 @@ import requests
 from airbyte_cdk.models import SyncMode
 from airbyte_cdk.sources.streams.core import Stream, StreamData
 from airbyte_cdk.sources.streams.http import HttpClient
+from pydantic import ValidationError
 
 from source_hubspot.api import Hubspot, _TimeoutSession
 from source_hubspot.associations import AssociationFetcher
@@ -62,7 +63,15 @@ from source_hubspot.constants import (
     STREAM_REGISTRY,
 )
 from source_hubspot.envelope import envelope, inject_envelope_properties
-from source_hubspot.models import HistoryObject, HistoryPage, PropertyChange, RecordPage, parse_answer
+from source_hubspot.models import (
+    HistoryObject,
+    HistoryPage,
+    PropertyChange,
+    PropertyDescriptor,
+    RecordPage,
+    parse_answer,
+    unexpected_payload,
+)
 from source_hubspot.rate_limiting import HubspotErrorHandler
 
 logger = logging.getLogger("airbyte")
@@ -248,14 +257,21 @@ class HubspotStream(Stream, ABC):
     def _finalize_batch(self, batch: list[MutableMapping[str, Any]]) -> Iterable[MutableMapping[str, Any]]:
         if self._associations is not None:
             self._associations.enrich(batch)
+        money_property_names = self._money_property_names()
         for record in batch:
             yield envelope(
                 record,
                 tenant_id=self._tenant_id,
                 source_id=self._source_id,
                 allowed_property_names=self._allowed_property_names,
+                excluded_property_names=money_property_names,
                 collision_seen=self._envelope_collisions_seen,
             )
+
+    def _money_property_names(self) -> frozenset[str]:
+        if self._registry["kind"] != "crm_object":
+            return frozenset()
+        return self._hubspot.money_property_names(self._object_type)
 
     # ------- Subclass contract ----------------------------------------------
 
@@ -677,6 +693,7 @@ class PropertyDefinitionsStream(HubspotStream):
                 "updatedAt": {"type": ["string", "null"], "format": "date-time"},
                 "archived": {"type": ["boolean", "null"]},
                 "archivedAt": {"type": ["string", "null"], "format": "date-time"},
+                "selection": {"type": ["string", "null"]},
             },
         }
         return inject_envelope_properties(schema)
@@ -690,11 +707,13 @@ class PropertyDefinitionsStream(HubspotStream):
                     name = definition.get("name")
                     if not name:
                         continue
+                    descriptor = _property_descriptor(definition, self._stream_name)
                     record = {
                         **definition,
                         "id": f"{object_type}:{name}",
                         "objectType": object_type,
                         "archived": archived or bool(definition.get("archived")),
+                        "selection": self._hubspot.selection.status(object_type, descriptor).value,
                     }
                     yield _with_cursor(record, self.cursor_field)
 
@@ -783,6 +802,13 @@ class PropertyHistoryStream(CrmSearchStream):
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _property_descriptor(definition: Mapping[str, Any], stream_name: str) -> PropertyDescriptor:
+    try:
+        return PropertyDescriptor.model_validate(definition)
+    except ValidationError as exc:
+        raise unexpected_payload(f"property definition on '{stream_name}'", exc) from None
 
 
 def _after_exceeds_cap(after: str) -> bool:

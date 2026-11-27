@@ -1,0 +1,63 @@
+{{- define "insight-connectors.platformRbac" -}}
+{{- if .Values.cluster.enabled }}
+{{- $account := include "insight-connectors.fullname" . }}
+{{- $name := printf "%s.%s" $account .Release.Namespace }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+{{- $airbyte := .Values.runHistory.airbyteNamespace | default .Release.Namespace }}
+{{- if ne $airbyte .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: {{ $airbyte }}
+  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-observer
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  {{- with .Values.runHistory.airbyteReader.secret }}
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ . | quote }}]
+    verbs: [get]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: {{ $airbyte }}
+  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-observer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "insight-connectors.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Namespace }}-{{ include "insight-connectors.fullname" . }}-observer
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not .Values.infraFromUmbrella }}
+{{ include "insight-connectors.platformRbac" . }}
+{{- end }}

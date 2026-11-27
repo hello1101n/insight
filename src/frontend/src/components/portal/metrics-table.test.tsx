@@ -76,7 +76,7 @@ const prCycleTime: TimeMetric = {
   served: [2.5, 26.75, 49.03333333333333, 0.25, 130.5],
   figure: 26.75,
   figureText: "26 h 45 min",
-  shown: ["2 h 30 min", "26 h 45 min", "49 h 2 min", "15 min", "131 h"],
+  shown: ["2 h 30 min", "26 h 45 min", "49 h 2 min", "15 min", "130 h 30 min"],
 };
 
 const taskPickupTime: TimeMetric = {

@@ -1,0 +1,123 @@
+{
+  "manifest": {
+    "id": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.radial_progress.v1",
+    "remoteEntry": "/widgets/radial_progress/remoteEntry.js"
+  },
+  "entries": [
+    {
+      "id": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.radial_progress.v1",
+      "requiredProperties": [
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.theme.v1~",
+        "gts.frontx.mfes.comm.shared_property.v1~frontx.mfes.comm.language.v1~"
+      ],
+      "actions": [
+        "gts.frontx.mfes.comm.action.v1~frontx.dashboard.mfe.render_widget.v1~"
+      ],
+      "domainActions": [],
+      "manifest": "gts.frontx.mfes.mfe.mf_manifest.v1~frontx.dashboard.widgets.radial_progress.v1",
+      "exposedModule": "./radial_progress"
+    }
+  ],
+  "extensions": [],
+  "schemas": [
+    {
+      "$id": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radial_progress.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgressData",
+      "description": "Data of a radial_progress widget: one value against its target.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget_data.widget_data.v1~"
+        },
+        {
+          "type": "object",
+          "required": [
+            "current",
+            "target"
+          ],
+          "properties": {
+            "current": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The value the ring fills by, over target; at or above 0 (a negative one fails the cell, a cross-check the widget runs). Full when it reaches or exceeds target; the text alternative says it is over the target only when it is above target. Null shows the empty state."
+            },
+            "target": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "The value of a full ring; above 0 (one at or below 0 fails the cell, a cross-check the widget runs). Null shows the empty state."
+            },
+            "goal": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Optional goal: a tick on the ring at goal over target, and the goal in the text alternative and tooltip. A goal outside the ring extends nothing, its tick stands at the nearer end and the text says it is outside the ring. Null or absent shows no goal."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radial_progress_render.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgressRender",
+      "description": "Render of a radial_progress widget: its presentation fields, closed.",
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.render.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "display": {
+              "enum": [
+                "percent",
+                "value",
+                "both"
+              ],
+              "default": "percent",
+              "description": "What the centre of the ring shows: percent, the share of target; value, current formatted by value_format; both, the percent with the value under it. Without it, percent."
+            },
+            "center_label": {
+              "type": "string",
+              "description": "Optional short caption under the centre number. Left out in a low cell. Where it does not fit the hole, it stands under the ring when the cell is taller than the ring by its line, and is left out otherwise."
+            },
+            "goal_label": {
+              "type": "string",
+              "description": "Optional name of the goal, in the ring's text alternative and tooltip. Without it, Goal."
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    {
+      "$id": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~frontx.dashboard.widget.radial_progress.v1~",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "RadialProgress",
+      "x-gts-traits": {
+        "entry": "gts.frontx.mfes.mfe.entry.v1~frontx.mfes.mfe.entry_mf.v1~frontx.dashboard.mfe.radial_progress.v1",
+        "data_type": "gts.frontx.dashboard.widget_data.widget_data.v1~frontx.dashboard.widget_data.radial_progress.v1~"
+      },
+      "allOf": [
+        {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~frontx.dashboard.widget.data_widget.v1~"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "render": {
+              "$ref": "gts://gts.frontx.dashboard.widget.render.v1~frontx.dashboard.widget.radial_progress_render.v1~"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  ]
+}

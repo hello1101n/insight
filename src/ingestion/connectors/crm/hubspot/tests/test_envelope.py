@@ -43,6 +43,20 @@ class TestEnvelope:
         assert raw_properties["my_custom"] == "x"
         assert raw_properties["uncurated_std"] == "y"
 
+    def test_excluded_property_reaches_neither_a_column_nor_raw_data(self):
+        record = {"id": "1", "properties": {"amount": "10", "my_invoice_total": "7", "dealname": "Example deal"}}
+        out = envelope(
+            record,
+            tenant_id="T",
+            source_id="S",
+            allowed_property_names=frozenset({"amount", "dealname"}),
+            excluded_property_names=frozenset({"amount", "my_invoice_total"}),
+        )
+        assert "properties_amount" not in out
+        assert out["properties_dealname"] == "Example deal"
+        assert json.loads(out["raw_data"])["properties"] == {"dealname": "Example deal"}
+        assert record["properties"]["amount"] == "10", "the caller's record must stay unchanged"
+
     def test_allowlisted_property_keeps_its_column_when_empty(self):
         out = wrap(
             {"id": "1", "properties": {"amount": None, "dealname": ""}}, allowed=frozenset({"amount", "dealname"})

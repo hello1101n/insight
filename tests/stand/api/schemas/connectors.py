@@ -63,6 +63,19 @@ class RequestedSchedule(BaseModel):
     updated_by: UUID
 
 
+class Resources(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    airbyte_cpu_millis: int | None = Field(None, ge=0)
+    airbyte_memory_bytes: int | None = Field(None, ge=0)
+    dbt_cpu_millis: int | None = Field(None, ge=0)
+    dbt_memory_bytes: int | None = Field(None, ge=0)
+    dbt_query_memory_bytes: int | None = Field(None, ge=0)
+    identity_cpu_millis: int | None = Field(None, ge=0)
+    identity_memory_bytes: int | None = Field(None, ge=0)
+
+
 class ScheduleOrigin(StrEnum):
     api = 'api'
     annotation = 'annotation'
@@ -107,15 +120,9 @@ class SyncFact(BaseModel):
     status: str = Field(..., description="The mover's own word for how the sync ended, or `unknown` where the\nrecorded word was outside its documented vocabulary.")
 
 
-class SyncHistoryResponse(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    connector: str
-    source_id: str | None = Field(None, description="The installation's own id within that tenant. Absent with `tenant_id`.")
-    syncs: list[SyncFact] = Field(..., description='A bounded window, newest first — not the full retained history.')
-    tenant_id: str | None = Field(None, description='Tenant of the installation the window was narrowed to, echoed back.\nAbsent where the caller asked for the connector rather than one\ninstallation of it, in which case the window spans every instance under\nthat name.')
-    window: int = Field(..., description='How many rows this window holds at most, so the page can say the list\nis a window rather than everything.', ge=0)
+class WaitKind(StrEnum):
+    lock = 'lock'
+    placement = 'placement'
 
 
 class AppliedSchedule(BaseModel):
@@ -160,6 +167,17 @@ class LiveSchedule(BaseModel):
     timezone: str | None = None
 
 
+class ResourceState(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    inherited: Resources | None = None
+    live: Resources | None = None
+    read_error: str | None = None
+    requested: Resources
+    status: ScheduleStatus | None = None
+
+
 class ScheduleObservation(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -180,9 +198,20 @@ class ScheduleResponse(BaseModel):
     read_error: str | None = None
     reconcile_interval_secs: int | None = None
     requested: RequestedSchedule | None = None
+    resources: ResourceState
     revision: int = Field(..., ge=0)
     source_id: str
     status: ScheduleStatus | None = None
+
+
+class StageWait(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    ended_at: AwareDatetime | None = None
+    holder: str | None = None
+    kind: WaitKind
+    started_at: AwareDatetime
 
 
 class HealthScheduleRequest(BaseModel):
@@ -195,13 +224,63 @@ class HealthScheduleRequest(BaseModel):
     revision: int = Field(..., ge=0)
 
 
+class RunStage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    airbyte_job_id: str | None = None
+    attempt: int = Field(..., ge=0)
+    duration_ms: int | None = Field(None, ge=0)
+    finished_at: AwareDatetime | None = None
+    peak_query_memory_bytes: int | None = Field(None, ge=0)
+    queued_at: AwareDatetime
+    reason: str | None = None
+    resources: Resources | None = None
+    stage: str
+    started_at: AwareDatetime | None = None
+    status: str
+    waits: list[StageWait]
+
+
+class Run(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    duration_ms: int | None = Field(None, ge=0)
+    execution_started_at: AwareDatetime
+    finished_at: AwareDatetime | None = None
+    load_ms: int | None = Field(None, ge=0)
+    records_reported: int | None = Field(None, ge=0)
+    stages: list[RunStage]
+    started_at: AwareDatetime
+    status: str
+    sync_id: str
+    transform_ms: int | None = Field(None, ge=0)
+    wait_ms: int | None = Field(None, ge=0)
+
+
+class SyncHistoryResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    connector: str
+    history_read_error: str | None = None
+    runs: list[Run]
+    source_id: str | None = Field(None, description="The installation's own id within that tenant. Absent with `tenant_id`.")
+    syncs: list[SyncFact] = Field(..., description='A bounded window, newest first — not the full retained history.')
+    tenant_id: str | None = Field(None, description='Tenant of the installation the window was narrowed to, echoed back.\nAbsent where the caller asked for the connector rather than one\ninstallation of it, in which case the window spans every instance under\nthat name.')
+    window: int = Field(..., description='How many rows this window holds at most, so the page can say the list\nis a window rather than everything.', ge=0)
+
+
 class ConnectorHealth(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     configured: bool = Field(..., description='Present in the newest sealed snapshot of the set the controller manages.')
     connector: str
+    last_successful_run: Run | None = None
     last_sync: SyncFact | None = None
+    latest_run: Run | None = None
     schedule: AppliedSchedule | None = None
     schedule_request: HealthScheduleRequest | None = None
     source_id: str | None = Field(None, description="The installation's own id within that tenant. Absent with `tenant_id`.")
@@ -216,5 +295,6 @@ class ConnectorHealthResponse(BaseModel):
     checked_at: str | None = Field(None, description='When the mover was last read. Absent before the first sweep sealed.')
     connectors: list[ConnectorHealth]
     history_available: bool = Field(..., description='False when nothing has been recorded at all, so the page can say so\ninstead of implying health.')
+    history_read_error: str | None = None
     schedule_read_error: str | None = None
     typical_read_interval_ms: int | None = Field(None, description='The median gap between the recent sealed ticks. Measured, not\nconfigured — nothing on this path knows what cadence was intended.\nAbsent where too few ticks are recorded to establish one.', ge=0)

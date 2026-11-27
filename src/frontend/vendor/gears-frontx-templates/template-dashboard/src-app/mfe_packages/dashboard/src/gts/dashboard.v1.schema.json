@@ -1,0 +1,81 @@
+{
+  "$id": "gts://gts.frontx.dashboard.dashboard.dashboard.v1~",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dashboard",
+  "description": "Top-level container of a dashboard: identifier, title, optional description, optional named shared requests, and the embedded layout of cells on the ui-kit Grid.",
+  "type": "object",
+  "required": ["id", "title", "layout"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "x-gts-instance-ref": "gts.frontx.dashboard.dashboard.dashboard.v1~",
+      "description": "Combined anonymous instance identifier: the dashboard type chain followed by a lowercase UUID, for example gts.frontx.dashboard.dashboard.dashboard.v1~<uuid>. No separate type field exists; the base operand is a literal, never /$id."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable dashboard title."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional longer description of the dashboard purpose."
+    },
+    "requests": {
+      "type": "object",
+      "description": "Optional named shared requests. A shared-form binding names one of these in its source. Each name matches ^[a-z][a-z0-9_]{0,63}$ and maps to a request of the request type. Plain data, not GTS instances.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "additionalProperties": { "$ref": "gts://gts.frontx.dashboard.widget.request.v1~" }
+    },
+    "layout": { "$ref": "#/$defs/layout" }
+  },
+  "unevaluatedProperties": false,
+  "$defs": {
+    "layout": {
+      "type": "object",
+      "description": "Layout embedded in a Dashboard: an ordered array of cells, placed by the ui-kit Grid in this order. Inlined as the Dashboard layout property; not a GTS type and not independently addressable.",
+      "required": ["cells"],
+      "properties": {
+        "cells": {
+          "type": "array",
+          "description": "Ordered array of layout cells, in reading and keyboard order. May be empty; an empty array renders nothing and shows no placeholder.",
+          "items": { "$ref": "#/$defs/cell" }
+        },
+        "flexible": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether spans may move inside each size class's range to fill rows (the ui-kit Grid's flexible mode). Without it, true."
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "cell": {
+      "type": "object",
+      "description": "Embedded cell within a Layout: its size class and height class on the ui-kit Grid, the widget it renders, and an optional widget for its larger view. Inlined as each item of the layout cells array; not a GTS type and not independently addressable.",
+      "required": ["size", "widget"],
+      "properties": {
+        "size": {
+          "enum": ["small", "medium", "large"],
+          "description": "Size class of the cell on the ui-kit Grid. The Grid picks the span from it at the width of the dashboard area."
+        },
+        "height": {
+          "enum": ["low", "high"],
+          "default": "low",
+          "description": "Height class of the cell: low is one row track, high is two row tracks and the gap between them. Without it, low."
+        },
+        "frame": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the root draws the cell's card: border, background, header and larger-view button. Without it, true. With false the widget's content sits straight in the grid cell, for a section heading or paragraph from a markdown_card; the loader and the cannot-be-shown text still show. A widget in such a cell must carry no title or description and the cell no larger_view, or the cell fails. Such a cell is drawn full width between the grid groups at the height of its content, so it must have size large and no height, or the cell fails."
+        },
+        "widget": {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~",
+          "description": "The widget rendered in this cell, embedded inline. It is registered on its own against the widget type that its id names. A data widget carries its own embedded binding in data."
+        },
+        "larger_view": {
+          "$ref": "gts://gts.frontx.dashboard.widget.widget.v1~",
+          "description": "Optional widget shown in the larger view of this cell, embedded inline and registered on its own. It is a second widget instance with its own id. When it is absent, the cell hides its larger-view button."
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}

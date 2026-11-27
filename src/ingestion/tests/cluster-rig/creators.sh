@@ -65,6 +65,7 @@ rig_secret() {
   case "$1" in
     clickhouse-password) printf '%s' "${CLICKHOUSE_PASSWORD}" ;;
     clickhouse-presentation-password) printf '%s' "${CLICKHOUSE_PRESENTATION_PASSWORD}" ;;
+    clickhouse-sync-password | password) printf '%s' "${CLICKHOUSE_SYNC_PASSWORD}" ;;
     *) return 1 ;;
   esac
 }

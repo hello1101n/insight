@@ -134,6 +134,16 @@ class PortalShell:
             entry = self.entry(self.safe_navigation(self.rail.zones()), zone)
             entry.click()
 
+    def reopen_zone(self, zone: str) -> None:
+        with step(f"Open the {zone} zone afresh"):
+            zones = self.safe_navigation(self.rail.zones())
+            entry = self.entry(zones, zone)
+            # Picking the open zone's own rail item keeps the page that is open.
+            if entry.get_attribute("data-active") is not None:
+                zones.and_(self.page.locator(":not([data-active])")).first.click()
+                expect(entry).not_to_have_attribute("data-active", re.compile(".*"))
+            entry.click()
+
     def open_pane_entry(self, label: str) -> None:
         with step(f'Open "{label}" in the pane'):
             self.entry(self.pane_buttons, label).click()

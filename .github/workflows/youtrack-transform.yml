@@ -9,6 +9,7 @@ on:
       - src/ingestion/connectors/task-tracking/youtrack/dbt/**
       - src/ingestion/dbt/macros/youtrack/**
       - src/ingestion/dbt/macros/silver_incremental_watermark.sql
+      - src/ingestion/dbt/macros/union_by_tag.sql
       - src/ingestion/dbt/macros/task_event_order.sql
       - src/ingestion/dbt/macros/task_same_instant_order.sql
       - src/ingestion/dbt/macros/create_task_config_tables.sql
@@ -28,6 +29,7 @@ on:
       - src/ingestion/connectors/task-tracking/youtrack/dbt/**
       - src/ingestion/dbt/macros/youtrack/**
       - src/ingestion/dbt/macros/silver_incremental_watermark.sql
+      - src/ingestion/dbt/macros/union_by_tag.sql
       - src/ingestion/dbt/macros/task_event_order.sql
       - src/ingestion/dbt/macros/task_same_instant_order.sql
       - src/ingestion/dbt/macros/create_task_config_tables.sql

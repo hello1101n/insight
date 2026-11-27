@@ -15,11 +15,20 @@ export interface TableWidget extends WidgetBase {
   columns: string[];
 }
 
+export interface Target {
+  value: number;
+  label?: string;
+}
+
 export interface SeriesWidget extends WidgetBase {
   type: "line" | "area";
   x: string;
   y: string;
+  series?: string;
+  target?: Target;
 }
+
+export type SeriesTone = "success" | "danger" | "warning" | "info" | "neutral";
 
 export interface BarWidget extends WidgetBase {
   type: "bar";
@@ -27,12 +36,19 @@ export interface BarWidget extends WidgetBase {
   y: string;
   series?: string;
   labels?: boolean;
+  horizontal?: boolean;
+  stack?: "percent";
+  target?: Target;
+  colors?: Record<string, SeriesTone>;
 }
+
+export type Better = "higher" | "lower" | "neutral";
 
 export interface StatWidget extends WidgetBase {
   type: "stat";
   value: string;
   label?: string;
+  compare?: { better?: Better };
 }
 
 export interface PieWidget extends WidgetBase {
@@ -41,8 +57,44 @@ export interface PieWidget extends WidgetBase {
   value: string;
 }
 
+export interface HeatmapWidget extends WidgetBase {
+  type: "heatmap";
+  x: string;
+  y?: string;
+  value: string;
+}
+
+export interface FunnelWidget extends WidgetBase {
+  type: "funnel";
+  stages: string[];
+}
+
+export interface TreemapWidget extends WidgetBase {
+  type: "treemap";
+  label: string;
+  value: string;
+  group?: string;
+}
+
+export interface ScatterWidget extends WidgetBase {
+  type: "scatter";
+  x: string;
+  y: string;
+  size?: string;
+  series?: string;
+  label?: string;
+}
+
 export type Widget =
-  TableWidget | SeriesWidget | BarWidget | StatWidget | PieWidget;
+  | TableWidget
+  | SeriesWidget
+  | BarWidget
+  | StatWidget
+  | PieWidget
+  | HeatmapWidget
+  | FunnelWidget
+  | TreemapWidget
+  | ScatterWidget;
 
 export interface MetricRead {
   field?: string;
@@ -157,6 +209,8 @@ export interface DashboardWidget {
   name: string;
   body: Widget;
   clock?: EffectiveClock | null;
+  percents?: string[];
+  units?: Partial<Record<string, DurationUnit>>;
 }
 
 export type GrantLevel = "viewer" | "editor";
@@ -277,10 +331,13 @@ export interface DatasetRecords {
   limit: number;
 }
 
+export type DurationUnit = "ms" | "s" | "min" | "h" | "d";
+
 export interface MetricResult {
   columns: string[];
   rows: unknown[][];
   percents?: string[];
+  units?: Partial<Record<string, DurationUnit>>;
 }
 
 export type DrilldownSort = MetricEvidenceSort;
@@ -296,10 +353,13 @@ export interface DrilldownRequest {
 export interface DrilldownColumn extends MetricEvidenceColumn {
   sortable: boolean;
   percent: boolean;
+  unit?: DurationUnit | null;
   exact: boolean;
 }
 
-export type DrilldownRow = Pick<MetricEvidenceRow, "values">;
+export type DrilldownRow = Pick<MetricEvidenceRow, "values"> & {
+  link?: string;
+};
 
 export interface DrilldownPage {
   selection: {

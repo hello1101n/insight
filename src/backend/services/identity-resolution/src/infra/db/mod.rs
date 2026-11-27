@@ -22,7 +22,13 @@ mod email_map_live_tests;
 #[cfg(test)]
 mod employee_id_map_live_tests;
 #[cfg(test)]
+mod login_binding_live_tests;
+#[cfg(test)]
+mod org_chart_rebuild_live_tests;
+#[cfg(test)]
 mod person_listing_live_tests;
+#[cfg(test)]
+mod person_roles_live_tests;
 #[cfg(test)]
 mod profile_resolve_live_tests;
 #[cfg(test)]

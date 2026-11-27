@@ -37,11 +37,12 @@ import { cn } from "@/lib/utils";
 import { useVisibilityPolicy } from "@/queries/identity-me";
 
 export function PeopleNav({ nav }: { nav: ZoneNav }) {
+  const view = resolveZoneItem("people", useNavLocation().item);
   return (
     <>
       <PeopleViews nav={nav} />
       {nav.activeZone === "person" ? <PersonSectionsNav /> : null}
-      {nav.activeZone === "people" ? <WorkChart /> : null}
+      {nav.activeZone === "people" && view !== "metrics" ? <WorkChart /> : null}
     </>
   );
 }

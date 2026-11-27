@@ -38,6 +38,7 @@ struct StateData {
     field_managers: Vec<Option<String>>,
     lists: usize,
     pending_patch: Option<Value>,
+    node_list: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -84,10 +85,12 @@ impl Stub {
             field_managers: Vec::new(),
             lists: 0,
             pending_patch: None,
+            node_list: None,
         }));
         let path = "/apis/argoproj.io/v1alpha1/namespaces/example/cronworkflows";
         let app = Router::new()
             .route(path, get(list))
+            .route("/api/v1/nodes", get(nodes))
             .route(&format!("{path}/{{name}}"), get(read).patch(patch))
             .with_state(Arc::clone(&state));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -102,6 +105,10 @@ impl Stub {
             state,
             task,
         })
+    }
+
+    pub(crate) async fn set_nodes(&self, items: Value) {
+        self.state.lock().await.node_list = Some(items);
     }
 
     pub(crate) async fn lists(&self) -> usize {
@@ -149,6 +156,17 @@ fn failure(code: u16) -> Response {
     (StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), Json(json!({
         "apiVersion":"v1", "kind":"Status", "status":"Failure", "message":"synthetic private server detail", "reason": if code == 404 { "NotFound" } else { "Error" }, "code":code
     }))).into_response()
+}
+
+async fn nodes(State(state): State<Arc<Mutex<StateData>>>) -> Response {
+    let state = state.lock().await;
+    state.node_list.as_ref().map_or_else(
+        || failure(403),
+        |items| {
+            Json(json!({"apiVersion": "v1", "kind": "NodeList", "metadata": {}, "items": items}))
+                .into_response()
+        },
+    )
 }
 
 async fn read(State(state): State<Arc<Mutex<StateData>>>, Path(name): Path<String>) -> Response {
@@ -255,11 +273,20 @@ fn commit(state: &mut StateData, patch: &Value) -> bool {
     {
         return false;
     }
-    if patch.get("spec").is_some() && state.scenario != Scenario::Mismatch {
+    if state.scenario != Scenario::Mismatch
+        && let Some(parameters) = patch.pointer("/spec/workflowSpec/arguments/parameters")
+    {
+        state.object["spec"]["workflowSpec"]["arguments"]["parameters"] = parameters.clone();
+    }
+    if patch["spec"].get("schedules").is_some() && state.scenario != Scenario::Mismatch {
         state.object["spec"]["schedules"] = patch["spec"]["schedules"].clone();
         state.object["spec"]["timezone"] = patch["spec"]["timezone"].clone();
         state.object["metadata"]["annotations"]["insight.cyberfabric.com/schedule-origin"] =
             patch["metadata"]["annotations"]["insight.cyberfabric.com/schedule-origin"].clone();
+    }
+    let resource_marker = "insight.cyberfabric.com/airbyte-resources-managed";
+    if let Some(marker) = patch["metadata"]["annotations"].get(resource_marker) {
+        state.object["metadata"]["annotations"][resource_marker] = marker.clone();
     }
     if let Some(marker) =
         patch["metadata"]["annotations"].get("insight.cyberfabric.com/schedule-fence")

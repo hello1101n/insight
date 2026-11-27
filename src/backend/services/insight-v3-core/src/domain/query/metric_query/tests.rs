@@ -1611,6 +1611,7 @@ fn paged(value: serde_json::Value) -> CompiledQuery {
             &crate::domain::query::time_window::Window::legacy(),
             TableEngine::Other,
             None,
+            &[],
         )
         .unwrap_or_else(|error| panic!("compiles paged: {error}"))
 }
@@ -1777,7 +1778,13 @@ fn a_paged_plain_read_over_a_dataset_carries_the_records_id_beside_the_columns()
     }));
 
     let paged = plain
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
     assert!(
         paged.sql.contains(", `id` AS `__drilldown_record` FROM"),
@@ -1792,7 +1799,13 @@ fn a_paged_plain_read_over_a_dataset_carries_the_records_id_beside_the_columns()
     assert!(!whole.sql.contains("__drilldown_record"), "{}", whole.sql);
 
     let paged_grouped = grouped
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
     assert!(paged_grouped.hidden().is_empty());
 }
@@ -1817,7 +1830,13 @@ fn an_authored_limit_over_a_dataset_cuts_behind_the_records_id() {
     }));
 
     let paged = top
-        .compile_paged(&people(), &Window::legacy(), TableEngine::Other, Some(over))
+        .compile_paged(
+            &people(),
+            &Window::legacy(),
+            TableEngine::Other,
+            Some(over),
+            &[],
+        )
         .unwrap_or_else(|error| panic!("compiles: {error}"));
 
     assert!(
@@ -1903,4 +1922,103 @@ fn over_a_dataset_column_types_follow_the_declaration_as_column_kinds_do() {
         json!(5),
         "a quoted Int64 from a declared int arrives as a number"
     );
+}
+
+#[test]
+fn a_duration_field_carries_its_unit_into_the_compiled_query() {
+    let metric = query(json!({
+        "table": "silver.runs",
+        "fields": [
+            { "column": "pipeline", "type": "string", "as_name": "pipeline" },
+            { "column": "duration_s", "type": "int", "agg": "avg", "as_name": "average", "unit": "s" },
+            { "column": "duration_s", "type": "int", "agg": "max", "as_name": "longest", "unit": "h" },
+            { "agg": "count", "type": "int", "as_name": "runs" }
+        ],
+        "group_by": ["pipeline"]
+    }));
+
+    let compiled = metric
+        .compile(&people())
+        .unwrap_or_else(|error| panic!("compiles: {error}"));
+
+    assert_eq!(compiled.unit_of("average"), Some(Unit::Seconds));
+    assert_eq!(compiled.unit_of("longest"), Some(Unit::Hours));
+    assert_eq!(compiled.unit_of("runs"), None);
+    assert_eq!(compiled.unit_of("pipeline"), None);
+}
+
+#[test]
+fn every_unit_a_duration_is_read_in_parses_and_no_other() {
+    for (said, unit) in [
+        ("ms", Unit::Milliseconds),
+        ("s", Unit::Seconds),
+        ("min", Unit::Minutes),
+        ("h", Unit::Hours),
+        ("d", Unit::Days),
+    ] {
+        let parsed: Unit = serde_json::from_value(json!(said))
+            .unwrap_or_else(|error| panic!("`{said}` parses: {error}"));
+        assert_eq!(parsed, unit, "{said}");
+        assert_eq!(unit.as_str(), said, "{said}");
+    }
+
+    for refused in ["sec", "week", "H", ""] {
+        let parsed: Result<Unit, _> = serde_json::from_value(json!(refused));
+        assert!(parsed.is_err(), "should refuse: {refused:?}");
+    }
+}
+
+#[test]
+fn a_field_that_is_not_a_number_cannot_carry_a_unit() {
+    let refused = [
+        json!({ "column": "pipeline", "type": "string", "as_name": "pipeline", "unit": "s" }),
+        json!({ "column": "started", "type": "string", "agg": "max", "as_name": "latest", "unit": "d" }),
+    ];
+
+    for field in refused {
+        let metric = query(json!({ "table": "silver.runs", "fields": [field.clone()] }));
+
+        assert!(
+            matches!(
+                metric.compile(&people()),
+                Err(MetricQueryError::UnitOnText(_))
+            ),
+            "should refuse: {field}"
+        );
+    }
+}
+
+#[test]
+fn over_a_dataset_a_unit_follows_the_declared_type_of_the_field() {
+    let declaration: crate::domain::kinds::dataset::declaration::Declaration =
+        serde_json::from_value(json!({
+            "title": "Runs",
+            "fields": [
+                { "name": "seconds", "path": "seconds", "type": "int" },
+                { "name": "started", "path": "started", "type": "datetime" }
+            ]
+        }))
+        .unwrap_or_else(|error| panic!("the declaration parses: {error}"));
+    let over = over::Over {
+        declaration: &declaration,
+        database: "insight_datasets",
+        table: "ds_runs_1",
+    };
+    let numeric = query(json!({
+        "dataset": "runs",
+        "fields": [{ "field": "seconds", "type": "string", "as_name": "seconds", "unit": "s" }]
+    }));
+    let dated = query(json!({
+        "dataset": "runs",
+        "fields": [{ "field": "started", "type": "int", "as_name": "started", "unit": "s" }]
+    }));
+
+    let compiled = numeric
+        .compile_over(&people(), &Window::legacy(), over)
+        .unwrap_or_else(|error| panic!("a declared int takes a unit: {error}"));
+    assert_eq!(compiled.unit_of("seconds"), Some(Unit::Seconds));
+    assert!(matches!(
+        dated.compile_over(&people(), &Window::legacy(), over),
+        Err(MetricQueryError::UnitOnText(ref name)) if name == "started"
+    ));
 }

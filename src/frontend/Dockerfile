@@ -3,6 +3,8 @@ FROM --platform=$BUILDPLATFORM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bf
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# INVARIANT: the frozen install reads the manifest of every workspace member.
+COPY vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard/package.json vendor/gears-frontx-templates/template-dashboard/src-app/mfe_packages/dashboard/
 
 # WORKAROUND: node images past 24 ship no corepack, and its package collides with the image's yarn bins.
 RUN npm install -g "pnpm@$(node -p 'require("/app/package.json").packageManager.split("@")[1]')"

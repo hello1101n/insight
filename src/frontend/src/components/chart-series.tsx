@@ -9,7 +9,7 @@ import {
 
 import { formatAxisTick } from "@/lib/format";
 
-const BAR_MAX_PX = 24;
+export const BAR_MAX_PX = 24;
 
 const LONE_DOT_RADIUS_PX = 3;
 

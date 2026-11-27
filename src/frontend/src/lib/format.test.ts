@@ -57,7 +57,7 @@ describe("formatMetricNumber / formatMetricValue / metricDisplayUnit", () => {
     expect(formatHoursDuration(0)).toBe("0 min");
     expect(formatHoursDuration(-1.5)).toBe("-1 h 30 min");
     expect(formatHoursDuration(1.9999)).toBe("2 h");
-    expect(formatHoursDuration(1234.6)).toBe("1,235 h");
+    expect(formatHoursDuration(1234.6)).toBe("1,234 h 36 min");
     expect(formatMetricValue(1.25, "decimal", "h")).toBe("1 h 15 min");
     expect(formatMetricFigure(1.25, "decimal", "h")).toBe("1 h 15 min");
     expect(metricDisplayUnit("decimal", "h")).toBeUndefined();
