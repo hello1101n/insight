@@ -156,11 +156,11 @@ The optional config field `hubspot_property_selection` holds the decisions for o
 {"deals": {"collect": ["deal_type"], "ignore": ["internal_notes"]}}
 ```
 
-An instance without the field has no decisions yet: the connector requests every property that is not money, and every status is `collected` or `forbidden`. Write a first ConfigMap with `tools/selection_baseline.py` to start the review.
+An instance without the field has no decisions yet: the connector requests every property that is not money, and every status is `collected` or `forbidden`. Write the first values file with `tools/selection_baseline.py` to start the review.
 
 The curated set is the bronze column allowlist plus `MODEL_PROPERTIES_BY_OBJECT`: the properties the dbt models read from `raw_data` (for example `hs_merged_object_ids` of tickets). A test fails when a model reads a property outside the curated set.
 
-Put it in a settings ConfigMap, not in the Secret. With Helm, set `ingestion.reconcile.connectorSettings`; with the gitops flow, add a file to `environments/<env>/connector-settings/`. The reconciler finds the ConfigMap by the same two annotations as the Secret and adds the field to the source config (see `deploy/gitops/environments/local/connector-settings/`). A changed ConfigMap updates the source on the next reconcile tick.
+Put it in a settings ConfigMap, not in the Secret. Set `ingestion.reconcile.connectorSettings` in the chart values, and the chart renders the ConfigMap. The gitops flow passes `environments/<env>/connector-settings.yaml` to Helm as a second values file (see `deploy/gitops/environments/local/connector-settings.yaml.example`). The reconciler finds the ConfigMap by the same two annotations as the Secret and adds the field to the source config. A changed ConfigMap updates the source on the next reconcile tick.
 
 `property_definitions` writes a `selection` status for each property (`source_hubspot/selection.py`):
 
@@ -186,7 +186,7 @@ The connector does not request a property that holds money, also when the proper
 
 The money columns (`properties_amount`, `properties_annualrevenue`, …) stay in the advertised schema, so the bronze tables keep their shape. Records written by this version have NULL in them, and so do `amount`, `amount_home`, `acv`, `tcv`, `arr`, `currency` and `exchange_rate` in `class_crm_deals`.
 
-The connector does not change stored rows. Money values written by an earlier version stay in bronze (columns, `raw_data`, `deals_property_history`) and in staging and silver until a record changes. Remove them with a separate purge if the installation must not hold them. Free text (deal names, descriptions, notes, email bodies) can still contain an amount: this filter reads property types, not text.
+The connector does not change stored rows. Money values written by an earlier version stay in bronze (columns, `raw_data`, `deals_property_history`) and in staging and silver until a record changes. Remove them with a separate purge if the installation must not hold them. The purge must cover the same set as the connector: every property in `MONEY_PROPERTY_NAMES` and every property with a currency flag, for each object type. Run the purge after the new version is deployed. A sync on an earlier version writes the money again. Free text (deal names, descriptions, notes, email bodies) can still contain an amount: this filter reads property types, not text.
 
 ### Deleted / archived records
 Each archived stream runs as **client-side incremental on `archivedAt`** — page the full archived set, drop records at-or-below the prior cursor state, batch_read full properties for the survivors. After the first sync, only newly-archived rows write to Bronze. Silver UNIONs the live and archived sources and ranks rows by `greatest(updatedAt, archivedAt)` so an archive event outranks the prior live update. Silver rows carry it as `is_deleted` / `deleted_at`.

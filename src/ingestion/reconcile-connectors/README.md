@@ -50,6 +50,9 @@ cfg-hash (`python/connector_settings.py`). A changed ConfigMap moves the cfg-has
 so the next tick updates the source and starts a sync. An instance without a
 ConfigMap keeps its cfg-hash.
 
+The chart renders the settings ConfigMaps from `ingestion.reconcile.connectorSettings`.
+Helm deletes a ConfigMap when its entry leaves the values.
+
 Reconcile refuses a ConfigMap with a field that `settings.fields` does not list,
 a field that the Secret or the platform also sets, or a second ConfigMap for the
 same instance. The source then stays as it is, and the run counts the instance
