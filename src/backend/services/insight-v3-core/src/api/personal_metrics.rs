@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{Json, Router};
 use chrono::{SecondsFormat, Utc};
 use futures::{StreamExt as _, TryStreamExt as _};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use toolkit::api::{OpenApiRegistry, OperationBuilder, ParamSpec};
 use toolkit_canonical_errors::{CanonicalError, resource_error};
@@ -21,7 +21,7 @@ use super::dashboard_widgets::{
 };
 use super::definitions::owner_names;
 use super::errors::ApiErrors;
-use super::metric_drilldown::{ColumnOut, REBUILT, RowOut, column_out, rows_out};
+use super::metric_drilldown::REBUILT;
 use crate::domain::access::{Caller, Owner, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::drilldown::{DEFAULT_PAGE_ROWS, DrilldownError, Records};
@@ -107,13 +107,6 @@ struct RecordsRequest {
 
 impl toolkit::api::api_dto::RequestApiDto for RecordsRequest {}
 
-#[derive(Debug, Serialize)]
-struct RecordsResponse {
-    columns: Vec<ColumnOut>,
-    rows: Vec<RowOut>,
-    next_cursor: Option<String>,
-}
-
 #[derive(Debug)]
 enum Read {
     Values(Values),
@@ -183,7 +176,9 @@ pub(crate) fn register_routes(
         .json_request::<RecordsRequest>(openapi, "The person, the period and the cursor to the next page")
         .json_response(
             StatusCode::OK,
-            "One page of the person's rows, its columns, and the cursor to the next",
+            "One page of the person's rows, its columns, the cursor to the next, \
+             and in `value` the key of the column that holds each row's value, \
+             when a column holds it",
         )
         .error_400(openapi)
         .error_403(openapi)
@@ -288,16 +283,7 @@ async fn read_records(
         .await
         .map_err(|error| records_error(caller, &marked.id, error))?;
 
-    Ok(Json(RecordsResponse {
-        columns: page
-            .columns
-            .iter()
-            .map(|column| column_out(column, false))
-            .collect(),
-        rows: rows_out(page.rows),
-        next_cursor: page.next_cursor,
-    })
-    .into_response())
+    Ok(Json(records::records_out(page, &marked.mark.value_field)).into_response())
 }
 
 fn checked(request: ValuesRequest) -> Result<Checked, CanonicalError> {
@@ -637,6 +623,8 @@ fn unidentified() -> CanonicalError {
         .with_reason(crate::api::UNIDENTIFIED)
         .create()
 }
+
+mod records;
 
 #[cfg(test)]
 mod tests;

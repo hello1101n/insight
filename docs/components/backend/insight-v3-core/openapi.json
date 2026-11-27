@@ -5803,7 +5803,7 @@
                 }
               }
             },
-            "description": "One page of the person's rows, its columns, and the cursor to the next"
+            "description": "One page of the person's rows, its columns, the cursor to the next, and in `value` the key of the column that holds each row's value, when a column holds it"
           },
           "400": {
             "content": {

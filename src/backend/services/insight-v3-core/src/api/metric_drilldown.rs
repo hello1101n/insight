@@ -132,7 +132,7 @@ struct Selection {
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct ColumnOut {
     key: String,
-    label: String,
+    pub(super) label: String,
     r#type: &'static str,
     sortable: bool,
     percent: bool,

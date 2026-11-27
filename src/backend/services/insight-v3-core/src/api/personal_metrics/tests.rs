@@ -254,10 +254,14 @@ impl Harness {
     }
 
     async fn marked_as(&self, raw: &str, label: &str, body: &Value) {
+        self.marked_by(raw, label, body, &lines_mark()).await;
+    }
+
+    async fn marked_by(&self, raw: &str, label: &str, body: &Value, mark: &PersonalMark) {
         self.metric(raw, label, body).await;
         let marked = self
             .definitions
-            .mark(&id(raw), Some(&lines_mark()))
+            .mark(&id(raw), Some(mark))
             .await
             .unwrap_or_else(|error| panic!("the mark is stored: {error}"));
         assert!(marked, "`{raw}` is a stored metric");
@@ -1115,11 +1119,11 @@ async fn records_answer_in_the_drilldown_shape() {
     assert_eq!(
         answer.body["columns"],
         json!([
-            { "key": "time", "label": "time", "type": "date",
+            { "key": "time", "label": "Time", "type": "date",
               "sortable": false, "percent": false, "exact": false },
-            { "key": "author", "label": "author", "type": "string",
+            { "key": "author", "label": "Author", "type": "string",
               "sortable": false, "percent": false, "exact": false },
-            { "key": "lines", "label": "lines", "type": "number",
+            { "key": "lines", "label": "Lines", "type": "number",
               "sortable": false, "percent": false, "exact": false }
         ])
     );
@@ -1133,7 +1137,62 @@ async fn records_answer_in_the_drilldown_shape() {
         .map(|answer| answer.keys().collect())
         .unwrap_or_default();
     keys.sort();
-    assert_eq!(keys, ["columns", "next_cursor", "rows"]);
+    assert_eq!(keys, ["columns", "next_cursor", "rows", "value"]);
+}
+
+#[test]
+fn a_records_column_title_is_its_key_in_plain_words() {
+    for (key, title) in [
+        ("LINES_ADDED", "Lines added"),
+        ("time", "Time"),
+        ("pr_cycle_time", "Pr cycle time"),
+        ("Author", "Author"),
+        ("lines", "Lines"),
+    ] {
+        assert_eq!(super::records::title(key), title, "the title of `{key}`");
+    }
+}
+
+#[tokio::test]
+async fn records_name_the_column_that_holds_the_value() {
+    let harness = Harness::new().await;
+    harness.marked("lines_merged", "Lines merged").await;
+
+    let answer = harness
+        .records(ADMIN, "lines_merged", records_of(ALICE))
+        .await;
+
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["value"], json!("lines"));
+}
+
+#[tokio::test]
+async fn records_name_no_value_column_when_the_value_reads_no_column() {
+    let harness = Harness::new().await;
+    let counted = json!({
+        "dataset": "commits",
+        "time": { "field": "occurred_at" },
+        "fields": [
+            { "field": "author", "type": "string", "as_name": "author" },
+            { "type": "int", "agg": "count", "as_name": "commits" }
+        ],
+        "group_by": ["author"]
+    });
+    let mark = PersonalMark {
+        value_field: "commits".to_owned(),
+        ..lines_mark()
+    };
+    harness
+        .marked_by("commits_made", "Commits made", &counted, &mark)
+        .await;
+
+    let answer = harness
+        .records(ADMIN, "commits_made", records_of(ALICE))
+        .await;
+
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body.get("value"), None);
+    assert_eq!(answer.body["columns"][1]["key"], json!("author"));
 }
 
 #[tokio::test]
