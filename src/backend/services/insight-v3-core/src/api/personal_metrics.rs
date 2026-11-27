@@ -8,7 +8,7 @@ use axum::http::{HeaderMap, StatusCode, header::AUTHORIZATION};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router};
 use chrono::{SecondsFormat, Utc};
-use futures::{StreamExt as _, TryStreamExt as _};
+use futures::StreamExt as _;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use toolkit::api::{OpenApiRegistry, OperationBuilder, ParamSpec};
@@ -238,7 +238,7 @@ async fn read_values(
         .map_err(PersonalMetricApiError::custom_error)?;
     require_visible(&state, &headers, &checked.everyone, "person_ids").await?;
 
-    let reads = values_of(&state, &personal, caller, &metrics, &checked.asked).await?;
+    let reads = values_of(&state, &personal, caller, &metrics, &checked.asked).await;
 
     Ok(Json(answer(&metrics, &checked.asked, reads)).into_response())
 }
@@ -447,7 +447,7 @@ async fn values_of(
     caller: Caller,
     metrics: &[Marked],
     asked: &Asked,
-) -> Result<Vec<Read>, CanonicalError> {
+) -> Vec<Read> {
     let runs: Vec<_> = metrics
         .iter()
         .map(|marked| value_of(state, personal, caller, marked, asked))
@@ -455,7 +455,7 @@ async fn values_of(
 
     futures::stream::iter(runs)
         .buffered(RUNS_AT_ONCE)
-        .try_collect()
+        .collect()
         .await
 }
 
@@ -465,24 +465,24 @@ async fn value_of(
     caller: Caller,
     marked: &Marked,
     asked: &Asked,
-) -> Result<Read, CanonicalError> {
+) -> Read {
     let Some(_permit) = run_slot(state).await else {
         tracing::warn!(
             capacity = MAX_CONCURRENT_WIDGET_RUNS,
             metric_id = marked.id,
             "a personal metric found no run slot"
         );
-        return Ok(failed(caller, RUNS_BUSY.to_owned()));
+        return failed(caller, RUNS_BUSY.to_owned());
     };
 
     match personal.values(marked, asked).await {
-        Ok(values) => Ok(Read::Values(values)),
-        Err(CustomError::Compile(source @ MetricQueryError::RangeExceedsMaximum(_))) => Err(
-            invalid("metrics", format!("metric `{}`: {source}", marked.id)),
-        ),
+        Ok(values) => Read::Values(values),
+        Err(CustomError::Compile(source @ MetricQueryError::RangeExceedsMaximum(_))) => {
+            failed(caller, source.to_string())
+        }
         Err(error) => {
             tracing::error!(%error, metric_id = marked.id, "a personal metric could not be read");
-            Ok(failed(caller, admin_detail(&error)))
+            failed(caller, admin_detail(&error))
         }
     }
 }

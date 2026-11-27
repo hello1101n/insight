@@ -742,56 +742,68 @@ async fn values_refuse_a_date_that_is_not_a_day() {
 }
 
 #[tokio::test]
-async fn values_refuse_a_period_longer_than_the_metric_allows() {
+async fn values_tell_an_admin_which_metric_caps_the_period_and_keep_the_others() {
     let harness = Harness::new().await;
     let mut capped = lines_metric();
     capped["max_range"] = json!("P30D");
+    harness.marked("lines_merged", "Lines merged").await;
     harness
         .marked_as("lines_capped", "Lines capped", &capped)
         .await;
 
-    let refused = harness
+    let answer = harness
         .values(
             ADMIN,
             json!({
-                "metrics": ["lines_capped"],
+                "metrics": ["lines_capped", "lines_merged"],
                 "person_ids": [ALICE],
-                "from": "2026-01-01",
-                "to": "2026-03-01"
+                "from": "2026-08-01",
+                "to": "2026-10-01"
             }),
         )
         .await;
 
-    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
-    let said = refused.body.to_string();
-    assert!(said.contains("lines_capped"), "{said}");
-    assert!(said.contains("exceeds maximum `P30D`"), "{said}");
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(answer.body["values"][0]["metric"], json!("lines_merged"));
+    assert_eq!(answer.body["values"][0]["value"], json!(15));
+    assert_eq!(answer.body["errors"][0]["metric"], json!("lines_capped"));
+    let detail = answer.body["errors"][0]["detail"].to_string();
+    assert!(detail.contains("exceeds maximum `P30D`"), "{detail}");
 }
 
 #[tokio::test]
-async fn values_refuse_a_member_a_period_longer_than_the_metric_allows() {
+async fn values_hide_from_a_member_which_metric_caps_the_period_and_keep_the_others() {
     let harness = Harness::new().await;
     let mut capped = lines_metric();
     capped["max_range"] = json!("P30D");
+    harness.marked("lines_merged", "Lines merged").await;
     harness
         .marked_as("lines_capped", "Lines capped", &capped)
         .await;
+    harness.grant("lines_merged", "everyone", ADMIN).await;
     harness.grant("lines_capped", "everyone", ADMIN).await;
 
-    let refused = harness
+    let answer = harness
         .values(
             MEMBER,
             json!({
-                "metrics": ["lines_capped"],
+                "metrics": ["lines_capped", "lines_merged"],
                 "person_ids": [ALICE],
-                "from": "2026-01-01",
-                "to": "2026-03-01"
+                "from": "2026-08-01",
+                "to": "2026-10-01"
             }),
         )
         .await;
 
-    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{}", refused.body);
-    assert_eq!(field_of(&refused), json!("metrics"));
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert_eq!(
+        answer.body,
+        json!({
+            "values": [{ "metric": "lines_merged", "person_id": ALICE, "value": 15 }],
+            "teams": [],
+            "errors": [{ "metric": "lines_capped" }]
+        })
+    );
 }
 
 #[tokio::test]
