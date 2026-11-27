@@ -181,7 +181,7 @@ export function ConnectorSyncTable({
                         type="button"
                         aria-controls={selection.detailsId}
                         aria-pressed={selection.selectedId === row.id}
-                        className="rounded-sm text-start underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground focus-visible:outline-2"
+                        className="cursor-pointer rounded-sm text-start hover:text-foreground focus-visible:outline-2"
                         onClick={() => selection.onSelect(row.id)}
                       >
                         <ConnectorTimestamp value={row.started} />

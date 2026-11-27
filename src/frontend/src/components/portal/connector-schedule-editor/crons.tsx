@@ -1,7 +1,15 @@
+import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { Button, Input } from "@gears-frontx/ui-kit";
+import {
+  Button,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@gears-frontx/ui-kit";
 
 import { rowIndex, type Violation } from "./refusals";
 
@@ -118,16 +126,34 @@ export function CronRows({
 
   return (
     <div className="min-w-0 space-y-2">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>{t("connectors.editor.fields")}</span>
-        <a
-          href="https://crontab.guru"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline"
-        >
-          {t("connectors.editor.syntax_help")}
-        </a>
+        <Popover>
+          <PopoverTrigger
+            openOnHover
+            render={<button type="button" />}
+            className="inline-flex min-h-6 cursor-help items-center gap-1 rounded-sm text-primary focus-visible:outline-2"
+          >
+            <CircleHelp className="size-3.5 shrink-0" aria-hidden="true" />
+            {t("connectors.editor.syntax_help")}
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            initialFocus={false}
+            className="w-72 max-w-[calc(100vw-1.5rem)] space-y-2 text-xs"
+          >
+            <PopoverTitle className="text-sm font-semibold">
+              {t("connectors.editor.syntax_help")}
+            </PopoverTitle>
+            <p>{t("connectors.editor.syntax_help_fields")}</p>
+            <p>{t("connectors.editor.syntax_help_symbols")}</p>
+            <p>
+              <code className="font-mono">0 10 * * 1-5</code>
+              {" · "}
+              {t("connectors.editor.syntax_help_example")}
+            </p>
+          </PopoverContent>
+        </Popover>
       </div>
       {crons.map((cron, index) => (
         <CronRow
