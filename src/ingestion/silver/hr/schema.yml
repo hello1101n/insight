@@ -26,7 +26,7 @@ models:
   - name: class_hr_working_hours
     description: "Scheduled working hours per active employee from all HR sources"
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - unique_combination_of_columns:
           combination_of_columns:
             - insight_tenant_id
             - email
