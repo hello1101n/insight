@@ -2,5 +2,5 @@ apiVersion: v2
 name: insight-v3-core
 description: Insight v3 Core — token-authenticated raw-data ingestion
 version: 0.1.0
-appVersion: "2026.11.25.17.35-c66825e"
+appVersion: "2026.11.26.10.09-d114178"
 type: application
