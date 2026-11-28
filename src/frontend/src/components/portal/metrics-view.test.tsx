@@ -242,13 +242,35 @@ describe("MetricsView", () => {
     expect(screen.queryByText(/metrics with data/)).toBeNull();
   });
 
-  it("counts only the people compared above a comparison", async () => {
+  it("names both people above a comparison of two", async () => {
     const user = userEvent.setup();
     render(<MetricsView />);
 
     await compare(user, ["a", "b"]);
 
-    expect(screen.getByText("Comparing 2 people")).toBeInTheDocument();
+    expect(screen.getByText("Comparing a and b")).toBeInTheDocument();
+  });
+
+  it("counts the people and names the group median above a comparison of three or more", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b", "c"]);
+
+    expect(
+      screen.getByText("Comparing 3 people · differences from group median"),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the people compared on the Compare button while a comparison is open", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+    expect(screen.getByRole("button", { name: "People · 2" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Exit compare" }));
+    expect(screen.getByRole("button", { name: "Compare" })).toBeInTheDocument();
   });
 
   it("shows a manager's reports once expanded", async () => {
@@ -771,6 +793,7 @@ describe("MetricsView", () => {
     const { lines } = await downloadCsv(user);
 
     expect(lines.slice(1).map((line) => line[0])).toEqual(["a"]);
+    expect(screen.getByRole("button", { name: "People · 1" })).toBeInTheDocument();
   });
 
   it("adds each person's role to the download when the page shows one", async () => {

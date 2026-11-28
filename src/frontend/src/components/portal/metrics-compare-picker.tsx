@@ -31,6 +31,7 @@ export function MetricsComparePicker({
   const [draft, setDraft] = useState<string[]>([]);
   const [query, setQuery] = useState("");
 
+  const comparedCount = people.filter((person) => picked.includes(person.entityId)).length;
   const needle = query.trim().toLocaleLowerCase();
   const matches = (name: string) => !needle || name.toLocaleLowerCase().includes(needle);
   const sortedPeople = [...people].sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -64,7 +65,9 @@ export function MetricsComparePicker({
       <PopoverTrigger
         render={
           <Button type="button" variant="outline" size="sm" icon={<Users />}>
-            Compare
+            {picked.length > 0
+              ? t("metrics_view.compare_people", { count: comparedCount })
+              : t("metrics_view.compare")}
           </Button>
         }
       />

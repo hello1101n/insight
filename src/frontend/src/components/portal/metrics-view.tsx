@@ -1,5 +1,6 @@
 import { useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
 import type { DateRange } from "@/api/period-to-date-range";
@@ -349,7 +350,7 @@ function MetricsBody({
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-sm text-muted-foreground">
           {comparing
-            ? t("metrics_view.comparing", { count: inView.length })
+            ? comparingNote(t, compared)
             : t("metrics_view.people_count", { count: inView.length })}
         </p>
         {allManagers.length > 0 && !sort && !comparing ? (
@@ -412,6 +413,15 @@ function MetricsBody({
       )}
     </section>
   );
+}
+
+function comparingNote(t: TFunction, compared: readonly MembersGridMember[]): string {
+  const [first, second] = compared;
+  if (compared.length === 2 && first && second) {
+    return t("metrics_view.comparing_two", { first: first.displayName, second: second.displayName });
+  }
+  if (compared.length >= 3) return t("metrics_view.comparing_median", { count: compared.length });
+  return t("metrics_view.comparing", { count: compared.length });
 }
 
 function EmptyNote({ text }: { text: string }) {
