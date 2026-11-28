@@ -1208,7 +1208,12 @@
     "clear_all": "Clear all",
     "comparing": "Comparing {{count}} people",
     "people_count": "{{count}} people",
-    "exit_compare": "Exit compare"
+    "exit_compare": "Exit compare",
+    "lines": {
+      "label": "Lines",
+      "description": "Lines added and removed that reached the default branch",
+      "unit": "KLOC"
+    }
   },
   "dashboards": {
     "no_shared": "No shared dashboards",

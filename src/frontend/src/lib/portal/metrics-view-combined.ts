@@ -1,4 +1,5 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
+import i18n from "@/i18n";
 import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 
 export const LINES_KEY = "git.default_branch_lines";
@@ -16,9 +17,15 @@ export interface CombinedColumn {
 const COMBINED_COLUMNS: readonly CombinedColumn[] = [
   {
     key: LINES_KEY,
-    label: "Lines",
-    description: "Lines added and removed that reached the default branch",
-    unit: "KLOC",
+    get label() {
+      return i18n.t("metrics_view.lines.label");
+    },
+    get description() {
+      return i18n.t("metrics_view.lines.description");
+    },
+    get unit() {
+      return i18n.t("metrics_view.lines.unit");
+    },
     scale: 1000,
     digits: 1,
     parts: [

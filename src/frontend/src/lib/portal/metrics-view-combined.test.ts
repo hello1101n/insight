@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import i18n from "@/i18n";
+import translation from "@/locales/en/translation.json";
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import { keysWithData } from "@/lib/portal/metrics-view";
@@ -118,6 +120,54 @@ describe("combined Lines column", () => {
     expect(combinedFigure(lines, byKey, "a")).toBe("+90.4 / −5.1");
     expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / —");
     expect(combinedFigure(lines, byKey, "c")).toBeNull();
+  });
+});
+
+describe("combined Lines texts", () => {
+  const lines = structuredClone(translation.metrics_view.lines);
+
+  afterEach(() => {
+    i18n.addResourceBundle("en", "translation", { metrics_view: { lines } }, true, true);
+  });
+
+  it("takes the label, description and unit from the translations", () => {
+    i18n.addResourceBundle(
+      "en",
+      "translation",
+      { metrics_view: { lines: { label: "Zeilen", description: "Zeilen im Hauptzweig", unit: "KZ" } } },
+      true,
+      true,
+    );
+    const catalog = withCombinedColumns([
+      definition("git.default_branch_lines_added"),
+      definition("git.default_branch_lines_removed"),
+    ]);
+    const results = withCombinedResults(
+      new Map([
+        ["git.default_branch_lines_added", result("git.default_branch_lines_added", [["a", 1500]])],
+        ["git.default_branch_lines_removed", result("git.default_branch_lines_removed", [["a", 200]])],
+      ]),
+    );
+
+    expect(combinedColumn(LINES_KEY)).toMatchObject({
+      label: "Zeilen",
+      description: "Zeilen im Hauptzweig",
+      unit: "KZ",
+    });
+    expect(catalog.find((m) => m.metric_key === LINES_KEY)).toMatchObject({
+      label: "Zeilen",
+      description: "Zeilen im Hauptzweig",
+      unit: "KZ",
+    });
+    expect(results.get(LINES_KEY)).toMatchObject({ label: "Zeilen", unit: "KZ" });
+  });
+
+  it("ships the English Lines texts", () => {
+    expect(lines).toEqual({
+      label: "Lines",
+      description: "Lines added and removed that reached the default branch",
+      unit: "KLOC",
+    });
   });
 });
 
