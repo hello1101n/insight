@@ -117,13 +117,18 @@ export function compareOverTime(
   return { delta, better: result.direction === "lower_is_better" ? delta < 0 : delta > 0 };
 }
 
+function formatDurationDelta(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  return minutes > 0 && minutes < 60 ? `${minutes} min` : formatClockDuration(hours);
+}
+
 export function formatDelta(delta: number, result: ValueFormat): string {
   const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
   const size = Math.abs(delta);
 
   if (result.format === "percent") return `${sign}${formatMetricNumber(size, "percent")} pp`;
   if (result.format === "currency") return `${sign}${formatMetricNumber(size, "currency")}`;
-  if (isClockDuration(result.format, result.unit)) return `${sign}${formatClockDuration(size)}`;
+  if (isClockDuration(result.format, result.unit)) return `${sign}${formatDurationDelta(size)}`;
 
   const number = formatMetricNumber(size, result.format);
   return result.unit ? `${sign}${number} ${result.unit}` : `${sign}${number}`;
