@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
-import type { DateRange } from "@/api/period-to-date-range";
+import { localToday, type DateRange } from "@/api/period-to-date-range";
 import { useViewer } from "@/auth";
+import { MetricsChangeDatePanel } from "@/components/portal/metrics-change-date-panel";
 import { MetricsComparePicker } from "@/components/portal/metrics-compare-picker";
 import { MetricsCompareTable } from "@/components/portal/metrics-compare-table";
 import { MetricsDownloadMenu } from "@/components/portal/metrics-download-menu";
@@ -12,6 +13,7 @@ import {
   MetricsTable,
   type MetricsSort,
 } from "@/components/portal/metrics-table";
+import { MetricsTeamTimeTable } from "@/components/portal/metrics-team-time-table";
 import { orgScopeGate } from "@/components/portal/org-scope-gate";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import {
@@ -33,6 +35,14 @@ import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
 import {
+  DEFAULT_TEAM_TIME_WEEKS,
+  latestChangeDate,
+  resolveChangeDate,
+  teamTimePeriods,
+  type TeamTimePeriods,
+  type TeamTimeWeeks,
+} from "@/lib/portal/metrics-team-time";
+import {
   compareTeams,
   rolesById,
   keysWithData,
@@ -41,7 +51,14 @@ import {
   metricsRows,
   metricsViewCatalog,
   sortRows,
+  type CompareTeam,
 } from "@/lib/portal/metrics-view";
+import {
+  metricsViewFilename,
+  metricsViewMatrix,
+  teamTimeFilename,
+  teamTimeMatrix,
+} from "@/lib/portal/metrics-view-export";
 import {
   setMetricsViewPaneShown,
   useMetricsViewPaneShown,
@@ -53,10 +70,13 @@ import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useShellLayout } from "@/lib/portal/use-shell-layout";
 import { byFamily } from "@/lib/reports/families";
 import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
-import { useMetricsViewData } from "@/queries/metrics-view";
+import { useMetricsViewData, type MetricsViewData } from "@/queries/metrics-view";
 import type { IdentityPerson } from "@/types/insight";
 
 const TEST_ID = "page-people-metrics";
+const NO_KEYS: string[] = [];
+const NO_IDS: string[] = [];
+const LEAVE_TEAM_TIME = { team: undefined, change: undefined, weeks: undefined };
 
 function comparedNames(
   compareParam: string,
@@ -97,7 +117,13 @@ export function MetricsView() {
     [catalog],
   );
 
-  const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
+  const {
+    metrics: metricsParam,
+    compare: compareParam,
+    team: teamParam,
+    change: changeParam,
+    weeks: weeksParam,
+  } = usePortalSearch();
   const setSearch = useSetPortalSearch();
   const picked = useMemo(
     () =>
@@ -137,9 +163,33 @@ export function MetricsView() {
   const compared = compareParam
     ? comparedNames(compareParam, members)
     : [];
-  usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
-  const data = useMetricsViewData(metricKeys, memberIds, dateRange);
+  const teams = useMemo(() => compareTeams(pivot), [pivot]);
+  const timeTeam = teamParam ? (teams.find((team) => team.id === teamParam) ?? null) : null;
+  const weeks = weeksParam ?? DEFAULT_TEAM_TIME_WEEKS;
+  const today = localToday();
+  const change = resolveChangeDate(changeParam, weeks, today);
+  const periods = useMemo(() => teamTimePeriods(change, weeks), [change, weeks]);
+  usePageTitle(
+    timeTeam
+      ? t("people.team_possessive", { name: timeTeam.name })
+      : compared.length > 0
+        ? compared.join(", ")
+        : null,
+  );
+
+  const data = useMetricsViewData(
+    metricKeys,
+    timeTeam ? timeTeam.memberIds : memberIds,
+    timeTeam ? periods.after : dateRange,
+  );
+  const before = useMetricsViewData(
+    timeTeam ? metricKeys : NO_KEYS,
+    timeTeam ? timeTeam.memberIds : NO_IDS,
+    periods.before,
+  );
+  const compareTeamOverTime = (teamId: string) =>
+    setSearch({ compare: undefined, team: teamId, change, weeks });
 
   const gate = orgScopeGate({
     "data-testid": TEST_ID,
@@ -149,12 +199,13 @@ export function MetricsView() {
     membersError: false,
     memberCount: members.length,
     gridPending: definitions.isPending,
-    gridError: definitions.isError || data.isError,
+    gridError: definitions.isError || data.isError || before.isError,
     emptyLabel: t("metrics_view.no_people"),
     onRetry: () => {
       orgScope.refetch();
       void definitions.refetch();
       data.refetch();
+      before.refetch();
     },
   });
 
@@ -224,18 +275,34 @@ export function MetricsView() {
           </PopoverContent>
         </Popover>
       </div>
-      {gate ?? (
-        <MetricsBody
-          key={orgScope.pivotPersonId}
-          pivot={pivot}
-          people={people}
-          members={members}
-          metricKeys={metricKeys}
-          byKey={data.byKey}
-          loading={data.isPending}
-          range={dateRange}
-        />
-      )}
+      {gate ??
+        (timeTeam ? (
+          <TeamTimeBody
+            team={timeTeam}
+            members={members}
+            teams={teams}
+            metricKeys={metricKeys}
+            after={data}
+            before={before}
+            periods={periods}
+            change={change}
+            weeks={weeks}
+            today={today}
+            onCompareTeam={compareTeamOverTime}
+          />
+        ) : (
+          <MetricsBody
+            key={orgScope.pivotPersonId}
+            pivot={pivot}
+            people={people}
+            members={members}
+            metricKeys={metricKeys}
+            byKey={data.byKey}
+            loading={data.isPending}
+            range={dateRange}
+            onCompareTeam={compareTeamOverTime}
+          />
+        ))}
     </div>
   );
 }
@@ -299,6 +366,7 @@ function MetricsBody({
   byKey,
   loading,
   range,
+  onCompareTeam,
 }: {
   pivot: IdentityPerson | null;
   people: ReadonlyArray<{ person_id: string; display_name?: string | null }>;
@@ -307,6 +375,7 @@ function MetricsBody({
   byKey: Map<string, NormalizedMetricResult>;
   loading: boolean;
   range: DateRange;
+  onCompareTeam: (teamId: string) => void;
 }) {
   const { t } = useTranslation();
   const { setScope } = usePortalNavActions();
@@ -314,7 +383,7 @@ function MetricsBody({
   const setSearch = useSetPortalSearch();
   const comparing = compareParam ? compareParam.split(",") : null;
   const setComparing = (ids: string[] | null) =>
-    setSearch({ compare: ids?.length ? ids.join(",") : undefined });
+    setSearch({ ...LEAVE_TEAM_TIME, compare: ids?.length ? ids.join(",") : undefined });
   const [sort, setSort] = useState<MetricsSort | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(pivot ? [normalizePersonId(pivot.person_id)] : []),
@@ -380,9 +449,19 @@ function MetricsBody({
             teams={teams}
             picked={comparing ?? []}
             onCompare={setComparing}
+            onCompareTeam={onCompareTeam}
           />
           <MetricsDownloadMenu
-            view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
+            matrix={() =>
+              metricsViewMatrix({
+                people: comparing ? compared : rows,
+                keys: columns,
+                byKey,
+                roles,
+                range,
+              })
+            }
+            filename={(extension) => metricsViewFilename(range, extension)}
             disabled={metricKeys.length === 0 || loading}
           />
         </div>
@@ -411,6 +490,105 @@ function MetricsBody({
           onScope={(entityId) => setScope({ root: entityId })}
         />
       )}
+    </section>
+  );
+}
+
+function TeamTimeBody({
+  team,
+  members,
+  teams,
+  metricKeys,
+  after,
+  before,
+  periods,
+  change,
+  weeks,
+  today,
+  onCompareTeam,
+}: {
+  team: CompareTeam;
+  members: readonly MembersGridMember[];
+  teams: readonly CompareTeam[];
+  metricKeys: readonly string[];
+  after: MetricsViewData;
+  before: MetricsViewData;
+  periods: TeamTimePeriods;
+  change: string;
+  weeks: TeamTimeWeeks;
+  today: Date;
+  onCompareTeam: (teamId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const setSearch = useSetPortalSearch();
+  const loading = after.isPending || before.isPending;
+  const withData = new Set([
+    ...keysWithData(metricKeys, after.byKey, team.memberIds),
+    ...keysWithData(metricKeys, before.byKey, team.memberIds),
+  ]);
+  const keys = metricKeys.filter((key) => withData.has(key));
+  const view = { keys, after: after.byKey, before: before.byKey, memberIds: team.memberIds, periods };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <MetricsComparePicker
+          people={members}
+          teams={teams}
+          picked={[]}
+          onCompare={(ids) => setSearch({ ...LEAVE_TEAM_TIME, compare: ids.join(",") })}
+          team={team.id}
+          onCompareTeam={onCompareTeam}
+          align="start"
+        />
+        <p className="text-sm">
+          {t("metrics_view.team_roster", {
+            team: t("people.team_possessive", { name: team.name }),
+            count: team.memberIds.length,
+          })}
+        </p>
+        <div className="ms-auto flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            icon={<X />}
+            onClick={() => setSearch(LEAVE_TEAM_TIME)}
+          >
+            {t("metrics_view.exit_compare")}
+          </Button>
+          <MetricsDownloadMenu
+            matrix={() => teamTimeMatrix(view)}
+            filename={(extension) => teamTimeFilename(periods, extension)}
+            disabled={metricKeys.length === 0 || loading}
+          />
+        </div>
+      </div>
+      <div className="flex flex-col items-start gap-3 lg:flex-row">
+        <div className="w-full min-w-0 flex-1">
+          {metricKeys.length === 0 ? (
+            <EmptyNote text={t("metrics_view.no_metrics")} />
+          ) : loading ? (
+            <CenteredSpinner className="min-h-[40vh]" />
+          ) : (
+            <MetricsTeamTimeTable {...view} />
+          )}
+        </div>
+        <div className="w-full shrink-0 lg:w-80">
+          <MetricsChangeDatePanel
+            change={change}
+            weeks={weeks}
+            latest={latestChangeDate(weeks, today)}
+            onChange={(next) => setSearch({ change: next }, { replace: true })}
+            onWeeks={(next) =>
+              setSearch(
+                { weeks: next, change: resolveChangeDate(change, next, today) },
+                { replace: true },
+              )
+            }
+          />
+        </div>
+      </div>
     </section>
   );
 }

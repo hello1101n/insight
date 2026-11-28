@@ -1,4 +1,4 @@
-import { addDays, format, subDays } from "date-fns";
+import { addDays, subDays } from "date-fns";
 
 import { parseISOCalendarDate, toISODate, type DateRange } from "@/api/period-to-date-range";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
@@ -49,17 +49,24 @@ export function resolveChangeDate(
   return change && change < latest ? change : latest;
 }
 
+const DAY_MONTH: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
+const DAY_MONTH_YEAR: Intl.DateTimeFormatOptions = { ...DAY_MONTH, year: "numeric" };
+
+export function formatChangeDay(iso: string, withYear = false): string {
+  return dayOf(iso).toLocaleDateString("en-GB", withYear ? DAY_MONTH_YEAR : DAY_MONTH);
+}
+
 export function formatPeriodRange({ from, to }: DateRange): string {
   const start = dayOf(from);
   const end = dayOf(to);
 
   if (start.getFullYear() !== end.getFullYear()) {
-    return `${format(start, "d MMM yyyy")} – ${format(end, "d MMM yyyy")}`;
+    return `${formatChangeDay(from, true)} – ${formatChangeDay(to, true)}`;
   }
   if (start.getMonth() !== end.getMonth()) {
-    return `${format(start, "d MMM")} – ${format(end, "d MMM")}`;
+    return `${formatChangeDay(from)} – ${formatChangeDay(to)}`;
   }
-  return `${format(start, "d")}–${format(end, "d MMM")}`;
+  return `${start.getDate()}–${formatChangeDay(to)}`;
 }
 
 export function teamSum(

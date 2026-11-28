@@ -1227,7 +1227,18 @@
     "group_median": "Group median",
     "selected_people": "{{count}} selected people",
     "present_count": "n = {{count}}",
-    "view_records": "View records"
+    "view_records": "View records",
+    "team_time_caption": "A team's metrics before and after a change date",
+    "after": "After · {{range}}",
+    "before": "Before · {{range}}",
+    "change_date": "Change date · {{date}}",
+    "weeks_one": "{{count}} week",
+    "weeks_other": "{{count}} weeks",
+    "mode_people": "People and teams",
+    "mode_team_time": "Team over time",
+    "find_team": "Find a team",
+    "open_team": "Open",
+    "team_roster": "{{team}} · Current roster · {{count}} people"
   },
   "dashboards": {
     "no_shared": "No shared dashboards",

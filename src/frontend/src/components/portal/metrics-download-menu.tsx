@@ -10,19 +10,16 @@ import {
   DropdownMenuTrigger,
   toast,
 } from "@gears-frontx/ui-kit";
-import { downloadMatrixCsv, downloadMatrixXlsx } from "@/lib/export/matrix";
-import {
-  metricsViewFilename,
-  metricsViewMatrix,
-  type MetricsViewExport,
-} from "@/lib/portal/metrics-view-export";
+import { downloadMatrixCsv, downloadMatrixXlsx, type Matrix } from "@/lib/export/matrix";
 import { recordUsageEvent } from "@/telemetry";
 
 export function MetricsDownloadMenu({
-  view,
+  matrix,
+  filename,
   disabled,
 }: {
-  view: MetricsViewExport;
+  matrix: () => Matrix;
+  filename: (extension: "csv" | "xlsx") => string;
   disabled: boolean;
 }) {
   const { t } = useTranslation();
@@ -32,11 +29,7 @@ export function MetricsDownloadMenu({
     recordUsageEvent("export", "metrics-view:xlsx");
     setExporting(true);
     try {
-      await downloadMatrixXlsx(
-        metricsViewFilename(view.range, "xlsx"),
-        t("metrics_view.title"),
-        metricsViewMatrix(view),
-      );
+      await downloadMatrixXlsx(filename("xlsx"), t("metrics_view.title"), matrix());
     } catch {
       toast.add({ type: "error", title: t("metrics_view.download.failed") });
     } finally {
@@ -46,7 +39,7 @@ export function MetricsDownloadMenu({
 
   function downloadCsv(): void {
     recordUsageEvent("export", "metrics-view:csv");
-    downloadMatrixCsv(metricsViewFilename(view.range, "csv"), metricsViewMatrix(view));
+    downloadMatrixCsv(filename("csv"), matrix());
   }
 
   return (

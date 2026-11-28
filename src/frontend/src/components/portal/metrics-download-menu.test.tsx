@@ -23,13 +23,7 @@ vi.mock("@/lib/export/matrix", () => ({
 
 vi.mock("@/telemetry", () => ({ recordUsageEvent: vi.fn() }));
 
-const VIEW = {
-  people: [{ entityId: "p-jane", displayName: "Jane Doe" }],
-  keys: [],
-  byKey: new Map(),
-  roles: new Map(),
-  range: { from: "2026-07-01", to: "2026-07-31" },
-};
+const MATRIX = { columns: ["Person"], rows: [["Jane Doe"]] };
 
 describe("MetricsDownloadMenu", () => {
   beforeEach(() => {
@@ -40,7 +34,13 @@ describe("MetricsDownloadMenu", () => {
   it("tells the user when the Excel file cannot be made, and lets them try again", async () => {
     mocks.downloadMatrixXlsx.mockRejectedValue(new Error("chunk failed to load"));
     const user = userEvent.setup();
-    render(<MetricsDownloadMenu view={VIEW} disabled={false} />);
+    render(
+      <MetricsDownloadMenu
+        matrix={() => MATRIX}
+        filename={(extension) => `metrics.${extension}`}
+        disabled={false}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Download" }));
     await user.click(await screen.findByRole("menuitem", { name: "Excel (.xlsx)" }));

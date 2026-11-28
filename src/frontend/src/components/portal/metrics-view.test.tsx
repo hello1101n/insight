@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   definitions: [] as MetricDefinition[],
   requestedKeys: [] as readonly string[],
   requestedIds: [] as readonly string[],
+  requestedPeriods: [] as Array<{ ids: readonly string[]; from: string; to: string }>,
+  byPeriod: new Map<string, Map<string, NormalizedMetricResult>>(),
   definitionsError: false,
   refetchDefinitions: vi.fn(),
   downloadBlob: vi.fn<(blob: Blob, filename: string) => void>(),
@@ -72,10 +74,19 @@ vi.mock("@/queries/metric-definitions", () => ({
   }),
 }));
 vi.mock("@/queries/metrics-view", () => ({
-  useMetricsViewData: (keys: readonly string[], ids: readonly string[]) => {
+  useMetricsViewData: (
+    keys: readonly string[],
+    ids: readonly string[],
+    range: { from: string; to: string },
+  ) => {
+    if (ids.length === 0) {
+      return { byKey: new Map(), isPending: false, isError: false, refetch: vi.fn() };
+    }
     mocks.requestedKeys = keys;
     mocks.requestedIds = ids;
-    return mocks.data;
+    mocks.requestedPeriods.push({ ids, from: range.from, to: range.to });
+    const byKey = mocks.byPeriod.get(range.from);
+    return byKey ? { ...mocks.data, byKey } : mocks.data;
   },
 }));
 vi.mock("@/lib/portal/use-shell-layout", () => ({
@@ -183,6 +194,8 @@ beforeEach(() => {
   ];
   mocks.data.isPending = false;
   mocks.data.isError = false;
+  mocks.requestedPeriods = [];
+  mocks.byPeriod = new Map();
   mocks.data.byKey = new Map([
     [
       "git.default_branch_commits",
@@ -223,7 +236,15 @@ beforeEach(() => {
     ],
   ]);
   act(() => {
-    portalRouter.set({ scope: undefined, direct: false, metrics: undefined, compare: undefined });
+    portalRouter.set({
+      scope: undefined,
+      direct: false,
+      metrics: undefined,
+      compare: undefined,
+      team: undefined,
+      change: undefined,
+      weeks: undefined,
+    });
     setMetricsViewPaneShown(false);
   });
 });
@@ -905,4 +926,179 @@ describe("MetricsView", () => {
     expect(shown.result.current).toBe(true);
     expect(screen.getByRole("button", { name: "Hide menu" })).toBeInTheDocument();
   });
+
+  describe("a team over time", () => {
+    const TEAM_A = { team: pid("a"), change: "2026-10-15", weeks: 2 } as const;
+
+    function teamPeriods() {
+      mocks.byPeriod.set(
+        "2026-10-15",
+        new Map([
+          [
+            "git.default_branch_commits",
+            result("git.default_branch_commits", "Default branch commits", [
+              [pid("a"), 40],
+              [pid("c"), 30],
+              [pid("b"), 1000],
+            ]),
+          ],
+        ]),
+      );
+      mocks.byPeriod.set(
+        "2026-10-01",
+        new Map([
+          [
+            "git.default_branch_commits",
+            result("git.default_branch_commits", "Default branch commits", [
+              [pid("a"), 24],
+              [pid("c"), 30],
+            ]),
+          ],
+        ]),
+      );
+    }
+
+    const teamCells = () =>
+      within(within(screen.getByRole("table")).getByRole("row", { name: /^Default branch commits/ }))
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+
+    it("opens one team from the Compare picker, today's roster in both periods", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 28, 12));
+      try {
+        const user = userEvent.setup();
+        render(<MetricsView />);
+
+        await user.click(screen.getByRole("button", { name: "Compare" }));
+        await user.click(screen.getByRole("button", { name: "Team over time" }));
+        await user.click(screen.getByRole("radio", { name: "a's team" }));
+        await user.click(screen.getByRole("button", { name: "Open" }));
+
+        expect(portalRouter.search).toMatchObject({
+          team: pid("a"),
+          change: "2026-11-14",
+          weeks: 2,
+        });
+        expect(portalRouter.search.compare).toBeUndefined();
+        expect(screen.getByText("a's team · Current roster · 2 people")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks for the team's people once for each period", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      const periods = mocks.requestedPeriods.map(({ ids, from, to }) => ({
+        ids: [...ids].sort(),
+        from,
+        to,
+      }));
+      const team = [pid("a"), pid("c")].sort();
+      expect(periods).toContainEqual({ ids: team, from: "2026-10-15", to: "2026-10-28" });
+      expect(periods).toContainEqual({ ids: team, from: "2026-10-01", to: "2026-10-14" });
+      expect(periods.every((period) => period.ids.join() === team.join())).toBe(true);
+    });
+
+    it("compares the team's totals After and Before the change date", () => {
+      teamPeriods();
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      expect(
+        within(screen.getByRole("table"))
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual(["Metric", "After · 15–28 Oct", "Before · 1–14 Oct"]);
+      expect(teamCells()).toEqual(["70 +16", "54"]);
+    });
+
+    it("puts the Compare button first and Exit compare and Download last", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      const order = [
+        screen.getByRole("button", { name: "Compare" }),
+        screen.getByText("a's team · Current roster · 2 people"),
+        screen.getByRole("button", { name: "Exit compare" }),
+        screen.getByRole("button", { name: "Download" }),
+      ];
+      for (const [earlier, later] of order.slice(0, -1).map((node, index) => [node, order[index + 1]!])) {
+        expect(earlier!.compareDocumentPosition(later!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    });
+
+    it("moves the change date to the day clicked in the side panel", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      expect(screen.getByRole("heading", { name: "Change date · 15 Oct" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /October 8th, 2026/ }));
+
+      expect(portalRouter.search).toMatchObject({ team: pid("a"), change: "2026-10-08", weeks: 2 });
+    });
+
+    it("sets the weeks on each side from the side panel", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "4 weeks" }));
+
+      expect(portalRouter.search).toMatchObject({ change: "2026-10-15", weeks: 4 });
+      expect(
+        within(screen.getByRole("table"))
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual(["Metric", "After · 15 Oct – 11 Nov", "Before · 17 Sept – 14 Oct"]);
+    });
+
+    it("clears the team, the change date and the weeks from the link on Exit compare", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "Exit compare" }));
+
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(portalRouter.search.change).toBeUndefined();
+      expect(portalRouter.search.weeks).toBeUndefined();
+      expect(rowHeaders()).toEqual(["boss", "a", "b"]);
+    });
+
+    it("leaves the team for a comparison of people picked in the Compare picker", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "Compare" }));
+      await user.click(screen.getByRole("button", { name: "People and teams" }));
+      await user.click(screen.getByRole("checkbox", { name: "a" }));
+      await user.click(screen.getByRole("checkbox", { name: "b" }));
+      await user.click(screen.getByRole("button", { name: "Compare (2)" }));
+
+      expect(portalRouter.search).toMatchObject({ compare: `${pid("a")},${pid("b")}` });
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(screen.getByText("Comparing a and b")).toBeInTheDocument();
+    });
+
+    it("downloads the table on screen, one row per metric", async () => {
+      teamPeriods();
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      const { filename, lines } = await downloadCsv(user);
+
+      expect(filename).toBe("metrics-view_team_2026-10-01_2026-10-28.csv");
+      expect(lines).toEqual([
+        ["Metric", "After · 2026-10-15 – 2026-10-28", "Before · 2026-10-01 – 2026-10-14"],
+        ["Default branch commits", "70", "54"],
+      ]);
+    });
+  });
 });
+

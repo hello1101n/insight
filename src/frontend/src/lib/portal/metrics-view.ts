@@ -228,6 +228,12 @@ const COMPUTATION_LABEL: Record<NormalizedMetricResult["computation"], string> =
   distinct_count: "Total",
 };
 
+export function computationWord(
+  result: Pick<NormalizedMetricResult, "computation">,
+): string {
+  return COMPUTATION_LABEL[result.computation];
+}
+
 export function columnFormula(
   result: Pick<NormalizedMetricResult, "computation" | "format" | "unit">,
 ): string {
