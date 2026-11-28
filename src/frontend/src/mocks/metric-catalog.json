@@ -800,6 +800,18 @@
     "computation": "sum"
   },
   {
+    "metric_key": "git.pr_comments_on_others",
+    "label": "PR comments on others' PRs",
+    "short_label": "Comments on others",
+    "description": "Comments written on other people's pull requests",
+    "explanation": "Comments the person wrote on pull requests that other people opened — conversation and inline review comments alike — dated by posting. A comment whose request author cannot be determined counts here, so the value equals the others half of PR comments.",
+    "unit": "comments",
+    "format": "integer",
+    "direction": "neutral",
+    "entity_type": "person",
+    "computation": "sum"
+  },
+  {
     "metric_key": "collab.messages_sent",
     "label": "Chat messages sent",
     "short_label": "Chat msgs",

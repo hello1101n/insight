@@ -847,7 +847,7 @@ SELECT
     '' AS account_id,
     assumeNotNull(metric_date) AS metric_date,
     toNullable(toDateTime64(observed_at, 3)) AS observed_at,
-    if(event_kind = 'review', 'review_submitted', 'pr_comment') AS measure_key,
+    review_measure AS measure_key,
     -- The silver event key disambiguates several events by one person on one
     -- request; per-PR keying would collapse them into one record.
     concat(repository_value, ':pr:', toString(pr_id), ':', measure_key, ':', coalesce(event_key, '')) AS record_id,
@@ -866,6 +866,11 @@ SELECT
         'destination_branch', destination_branch_label
     ) AS details
 FROM {{ ref('git_review_events') }}
+ARRAY JOIN multiIf(
+    event_kind = 'review', ['review_submitted'],
+    comment_target_value = 'others', ['pr_comment', 'pr_comment_on_others'],
+    ['pr_comment']
+) AS review_measure
 WHERE tenant_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src

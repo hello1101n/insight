@@ -560,6 +560,14 @@ is an order statistic instead, and always answers with one that did.
 - Shape: integer, neutral, unit comments
 - Notes: Comments the person wrote on pull requests — conversation and inline review comments alike — dated by posting. The comment target dimension splits comments on the person's own requests from comments on other people's; a comment whose request author cannot be determined counts under others, so the two halves always add up to the total.
 
+## git.pr_comments_on_others — PR comments on others' PRs
+
+- Source: git (git_metric_observations)
+- Reads: pr_comment_on_others
+- Formula: sum(pr_comment_on_others)
+- Shape: integer, neutral, unit comments
+- Notes: Comments the person wrote on pull requests that other people opened — conversation and inline review comments alike — dated by posting. A comment whose request author cannot be determined counts here, so the value equals the others half of PR comments.
+
 ## collab.messages_sent — Chat messages sent
 
 - Source: collab (collab_metric_observations)
