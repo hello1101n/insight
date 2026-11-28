@@ -8,7 +8,7 @@ type: cdk
 # 1.27.0: every stream stamps its source as `insight_source_id`, not `source_id`.
 # MINOR per ADR-0015: reconcile republishes the connector and refreshes the
 # catalog, and `tenant_migration` renames the column of stored Bronze first.
-version: "1.27.0"
+version: "1.28.0"
 # On-prem Active Directory user directory via LDAP/LDAPS (ldap3).
 # Sibling of ms-entra (cloud Entra ID): same class_people / identity_inputs
 # Silver contract, different transport (LDAP, not Microsoft Graph).
@@ -23,7 +23,7 @@ images:
     name: source-active-directory-insight
     dockerfile: ./Dockerfile
     context: .
-    image: ghcr.io/hello1101n/source-active-directory-insight:2026.11.20.13.24-f15a8f6
+    image: ghcr.io/hello1101n/source-active-directory-insight:2026.11.28.15.43-4007598
 connection:
   namespace: bronze_active_directory
 secret:
