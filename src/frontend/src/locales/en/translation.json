@@ -1197,6 +1197,7 @@
     "count": "Metrics: {{picked}} of {{total}}",
     "selected_count": "{{count}} selected",
     "reset_to_defaults": "Reset to defaults",
+    "team_time_window": "{{date}} · {{days}} days each",
     "select_all": "Select all",
     "select_all_metrics": "Select all metrics",
     "clear_all_metrics": "Clear all metrics",

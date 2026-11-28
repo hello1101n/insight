@@ -10,6 +10,13 @@ import {
 } from "@gears-frontx/ui-kit";
 import { PeriodSelectorBar } from "@/components/widgets/period-selector-bar";
 import { usePortalPeriod } from "@/hooks/use-portal-period";
+import {
+  DEFAULT_TEAM_TIME_WEEKS,
+  formatChangeDay,
+  resolveChangeDate,
+  type TeamTimeWeeks,
+} from "@/lib/portal/metrics-team-time";
+import { usePortalSearch } from "@/lib/portal/portal-search";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useNavLocation } from "@/lib/portal/use-nav-location";
 import { useCohortOptions } from "@/lib/portal/use-cohort-options";
@@ -40,6 +47,7 @@ function ViewFilters() {
   const { isFlat } = useVisibilityPolicy();
   const showPlanned = usePortalShowPlanned();
   const cohortShown = showPlanned && !isFlat;
+  const { team, change, weeks } = usePortalSearch();
 
   return (
     <div
@@ -74,12 +82,36 @@ function ViewFilters() {
           <SliceSelect dims={dims} />
         </span>
       ) : null}
-      <PeriodSelectorBar
-        period={period}
-        customRange={customRange}
-        onPeriodChange={setPeriod}
-        onRangeChange={setCustomRange}
-      />
+      {team ? (
+        <TeamTimeWindow
+          change={change}
+          weeks={weeks ?? DEFAULT_TEAM_TIME_WEEKS}
+        />
+      ) : (
+        <PeriodSelectorBar
+          period={period}
+          customRange={customRange}
+          onPeriodChange={setPeriod}
+          onRangeChange={setCustomRange}
+        />
+      )}
     </div>
+  );
+}
+
+function TeamTimeWindow({ change, weeks }: { change?: string; weeks: TeamTimeWeeks }) {
+  const { t } = useTranslation();
+  const day = resolveChangeDate(change, weeks, new Date());
+
+  return (
+    <span className="flex shrink-0 items-center gap-2 text-sm">
+      <span className="rounded-md border px-3 py-1.5">
+        {t("metrics_view.team_time_window", {
+          date: formatChangeDay(day, true),
+          days: 7 * weeks,
+        })}
+      </span>
+      <span className="text-xs text-muted-foreground">{t("common.period.utc")}</span>
+    </span>
   );
 }
