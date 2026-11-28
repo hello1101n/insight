@@ -1,4 +1,4 @@
-import { useMemo, useState, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
@@ -166,6 +166,12 @@ export function MetricsView() {
 
   const teams = useMemo(() => compareTeams(pivot), [pivot]);
   const timeTeam = teamParam ? (teams.find((team) => team.id === teamParam) ?? null) : null;
+  const treeLoaded = !orgScope.isLoading && !orgScope.isError;
+  const teamOutOfScope = treeLoaded && teamParam != null && timeTeam == null;
+  useEffect(() => {
+    if (teamOutOfScope) setSearch(LEAVE_TEAM_TIME, { replace: true });
+  }, [teamOutOfScope, setSearch]);
+
   const weeks = weeksParam ?? DEFAULT_TEAM_TIME_WEEKS;
   const today = localToday();
   const change = resolveChangeDate(changeParam, weeks, today);

@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   personId: null as string | null,
   layout: "wide" as "phone" | "narrow" | "wide",
   roster: [] as PeopleListItem[],
+  rosterPending: false,
+  rosterError: false,
   definitions: [] as MetricDefinition[],
   requestedKeys: [] as readonly string[],
   requestedIds: [] as readonly string[],
@@ -60,8 +62,8 @@ vi.mock("@/queries/identity-me", () => ({
 vi.mock("@/queries/visible-roster", () => ({
   useVisibleRoster: () => ({
     roster: mocks.roster,
-    isPending: false,
-    isError: false,
+    isPending: mocks.rosterPending,
+    isError: mocks.rosterError,
     retry: () => {},
   }),
 }));
@@ -186,6 +188,8 @@ beforeEach(() => {
   mocks.downloadBlob.mockReset();
   mocks.policy = null;
   mocks.roster = peopleFromIdentityTree(tree);
+  mocks.rosterPending = false;
+  mocks.rosterError = false;
   mocks.definitions = [
     definition("collab.messages_sent", "Messages"),
     definition("git.default_branch_commits", "Default branch commits"),
@@ -1067,6 +1071,31 @@ describe("MetricsView", () => {
       expect(portalRouter.search.change).toBeUndefined();
       expect(portalRouter.search.weeks).toBeUndefined();
       expect(rowHeaders()).toEqual(["boss", "a", "b"]);
+    });
+
+    it("clears a team outside the new scope from the link, in place of the current entry", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      act(() => portalRouter.set({ scope: pid("b") }));
+
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(portalRouter.search.change).toBeUndefined();
+      expect(portalRouter.search.weeks).toBeUndefined();
+      expect(portalRouter.navigations.at(-1)).toMatchObject({ replace: true });
+      expect(rowHeaders()).toEqual(["b"]);
+    });
+
+    it.each([
+      ["loads", "rosterPending"],
+      ["fails to load", "rosterError"],
+    ] as const)("keeps the team in the link while the org tree %s", (_case, flag) => {
+      mocks[flag] = true;
+      mocks.roster = [];
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      expect(portalRouter.search).toMatchObject(TEAM_A);
     });
 
     it("leaves the team for a comparison of people picked in the Compare picker", async () => {
