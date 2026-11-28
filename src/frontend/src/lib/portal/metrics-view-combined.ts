@@ -118,14 +118,16 @@ export interface CombinedPart {
   result: NormalizedMetricResult | undefined;
 }
 
-export function combinedParts(
+export type PartValue = (result: NormalizedMetricResult) => number | null;
+
+function partsBy(
   column: CombinedColumn,
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
-  entityId: string,
+  valueOf: PartValue,
 ): CombinedPart[] | null {
   const found = column.parts.map((part) => {
     const result = byKey.get(part.metricKey);
-    return { part, result, value: result ? finiteValue(result, entityId) : null };
+    return { part, result, value: result ? valueOf(result) : null };
   });
   if (found.every(({ value }) => value == null)) return null;
 
@@ -136,11 +138,27 @@ export function combinedParts(
   }));
 }
 
+export function combinedParts(
+  column: CombinedColumn,
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  entityId: string,
+): CombinedPart[] | null {
+  return partsBy(column, byKey, (result) => finiteValue(result, entityId));
+}
+
+export function combinedFigureBy(
+  column: CombinedColumn,
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  valueOf: PartValue,
+): string | null {
+  const parts = partsBy(column, byKey, valueOf);
+  return parts ? parts.map((part) => part.text).join(" / ") : null;
+}
+
 export function combinedFigure(
   column: CombinedColumn,
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
   entityId: string,
 ): string | null {
-  const parts = combinedParts(column, byKey, entityId);
-  return parts ? parts.map((part) => part.text).join(" / ") : null;
+  return combinedFigureBy(column, byKey, (result) => finiteValue(result, entityId));
 }

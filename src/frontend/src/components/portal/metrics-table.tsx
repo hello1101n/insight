@@ -4,8 +4,9 @@ import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
 
 import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
+import { useOpenRecords } from "@/components/portal/use-open-records";
 import { formatRange } from "@/lib/date-range-label";
-import { formatMetricFigure, formatMetricValue } from "@/lib/format";
+import { formatMetricFigure, isClockDuration } from "@/lib/format";
 import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   combinedColumn,
@@ -13,7 +14,8 @@ import {
   type CombinedColumn,
 } from "@/lib/portal/metrics-view-combined";
 import {
-  headerUnit,
+  columnFormula,
+  formatViewValue,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,
@@ -109,7 +111,11 @@ export function MetricsTable({
                   >
                     <span className="whitespace-normal">
                       {label}
-                      <UnitNote result={result} className="block" />
+                      {result ? (
+                        <span className="block font-normal text-muted-foreground">
+                          {columnFormula(result)}
+                        </span>
+                      ) : null}
                     </span>
                     {direction === "descending" ? (
                       <ArrowDown className="size-3 shrink-0" aria-hidden />
@@ -203,39 +209,31 @@ export function MetricValue({
   result,
   entityId,
   personName,
+  withUnit = false,
 }: {
   result: NormalizedMetricResult | undefined;
   entityId: string;
   personName: string;
+  withUnit?: boolean;
 }) {
-  const evidence = useMetricEvidenceOptional();
+  const openRecords = useOpenRecords(result, entityId, personName);
   const value = result ? finiteValue(result, entityId) : null;
   if (!result || value == null) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const text = formatMetricFigure(value, result.format, result.unit);
-  const fullText = formatMetricValue(value, result.format, result.unit);
-  const selection = result.drilldown
-    ? evidenceSelection(result.selection, entityId)
-    : null;
-  if (!selection || !evidence) return <span>{text}</span>;
+  const fullText = formatViewValue(value, result);
+  const text =
+    withUnit || isClockDuration(result.format, result.unit)
+      ? fullText
+      : formatMetricFigure(value, result.format, result.unit);
+  if (!openRecords) return <span>{text}</span>;
 
   return (
     <button
       type="button"
       aria-label={`${personName} — ${result.label}: ${fullText}`}
-      onClick={() =>
-        evidence.openEvidenceTargets([{ selection, label: result.label }], {
-          activeMetricKey: selection.metric_key,
-          title: [
-            result.label,
-            personName,
-            fullText,
-            formatRange(selection.period.from, selection.period.to),
-          ].join(" · "),
-        })
-      }
+      onClick={openRecords}
       className="cursor-pointer hover:text-primary hover:underline"
     >
       {text}
@@ -248,11 +246,13 @@ export function MetricCell({
   byKey,
   entityId,
   personName,
+  withUnit = false,
 }: {
   metricKey: string;
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   entityId: string;
   personName: string;
+  withUnit?: boolean;
 }) {
   const column = combinedColumn(metricKey);
   if (column) {
@@ -262,11 +262,17 @@ export function MetricCell({
         byKey={byKey}
         entityId={entityId}
         personName={personName}
+        withUnit={withUnit}
       />
     );
   }
   return (
-    <MetricValue result={byKey.get(metricKey)} entityId={entityId} personName={personName} />
+    <MetricValue
+      result={byKey.get(metricKey)}
+      entityId={entityId}
+      personName={personName}
+      withUnit={withUnit}
+    />
   );
 }
 
@@ -275,17 +281,21 @@ function CombinedValue({
   byKey,
   entityId,
   personName,
+  withUnit,
 }: {
   column: CombinedColumn;
   byKey: ReadonlyMap<string, NormalizedMetricResult>;
   entityId: string;
   personName: string;
+  withUnit: boolean;
 }) {
   const evidence = useMetricEvidenceOptional();
   const parts = combinedParts(column, byKey, entityId);
   if (!parts) return <span className="text-muted-foreground">—</span>;
 
   const text = parts.map((part) => part.text).join(" / ");
+  const figure = `${text} ${column.unit}`;
+  const shown = withUnit ? figure : text;
   const targets = parts.flatMap(({ result }) => {
     const selection = result?.drilldown
       ? evidenceSelection(result.selection, entityId)
@@ -293,9 +303,8 @@ function CombinedValue({
     return result && selection ? [{ selection, label: result.label }] : [];
   });
   const [first] = targets;
-  if (!evidence || !first) return <span>{text}</span>;
+  if (!evidence || !first) return <span>{shown}</span>;
 
-  const figure = `${text} ${column.unit}`;
   return (
     <button
       type="button"
@@ -312,19 +321,7 @@ function CombinedValue({
       }
       className="-mx-1 cursor-pointer rounded-sm px-1 hover:bg-primary/10 hover:text-primary"
     >
-      {text}
+      {shown}
     </button>
   );
-}
-
-export function UnitNote({
-  result,
-  className,
-}: {
-  result: NormalizedMetricResult | undefined;
-  className: string;
-}) {
-  const unit = result ? headerUnit(result.label, result.format, result.unit) : null;
-  if (!unit) return null;
-  return <span className={cn("font-normal text-muted-foreground", className)}>{unit}</span>;
 }

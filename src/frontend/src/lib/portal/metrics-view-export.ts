@@ -3,7 +3,12 @@ import i18n from "@/i18n";
 import type { Matrix, MatrixCell } from "@/lib/export/matrix";
 import { isDurationUnit, roundMetricValue } from "@/lib/format";
 import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
-import { combinedColumn, combinedFigure } from "@/lib/portal/metrics-view-combined";
+import { teamSum, type TeamTimePeriods } from "@/lib/portal/metrics-team-time";
+import {
+  combinedColumn,
+  combinedFigure,
+  combinedFigureBy,
+} from "@/lib/portal/metrics-view-combined";
 
 export interface MetricsViewExport {
   people: ReadonlyArray<{ entityId: string; displayName: string }>;
@@ -42,6 +47,12 @@ function columnTitle(key: string, result: NormalizedMetricResult | undefined): s
   return unit && !namesUnit(label, unit) ? `${label} (${unit})` : label;
 }
 
+function fileNumber(value: number, result: NormalizedMetricResult): number {
+  return isDurationUnit(result.unit)
+    ? Math.round(value * 100) / 100
+    : roundMetricValue(value, result.format);
+}
+
 function fileValue(
   result: NormalizedMetricResult | undefined,
   entityId: string,
@@ -49,11 +60,7 @@ function fileValue(
   if (!result) return null;
 
   const value = finiteValue(result, entityId);
-  if (value == null) return null;
-
-  return isDurationUnit(result.unit)
-    ? Math.round(value * 100) / 100
-    : roundMetricValue(value, result.format);
+  return value == null ? null : fileNumber(value, result);
 }
 
 export function metricsViewMatrix({
@@ -89,4 +96,50 @@ export function metricsViewMatrix({
 
 export function metricsViewFilename(range: DateRange, extension: "csv" | "xlsx"): string {
   return `metrics-view_${range.from}_${range.to}.${extension}`;
+}
+
+export interface TeamTimeExport {
+  keys: readonly string[];
+  after: ReadonlyMap<string, NormalizedMetricResult>;
+  before: ReadonlyMap<string, NormalizedMetricResult>;
+  memberIds: readonly string[];
+  periods: TeamTimePeriods;
+}
+
+function filePeriod(range: DateRange): string {
+  return `${range.from} – ${range.to}`;
+}
+
+export function teamTimeMatrix({
+  keys,
+  after,
+  before,
+  memberIds,
+  periods,
+}: TeamTimeExport): Matrix {
+  const columns = [
+    i18n.t("metrics_view.metric"),
+    i18n.t("metrics_view.after", { range: filePeriod(periods.after) }),
+    i18n.t("metrics_view.before", { range: filePeriod(periods.before) }),
+  ];
+  const rows = keys.flatMap((key): MatrixCell[][] => {
+    const result = after.get(key) ?? before.get(key);
+    if (!result) return [];
+
+    const column = combinedColumn(key);
+    const total = (side: ReadonlyMap<string, NormalizedMetricResult>): MatrixCell => {
+      if (column) return combinedFigureBy(column, side, (part) => teamSum(part, memberIds));
+
+      const sideResult = side.get(key);
+      const value = sideResult ? teamSum(sideResult, memberIds) : null;
+      return value == null ? null : fileNumber(value, result);
+    };
+    return [[columnTitle(key, result), total(after), total(before)]];
+  });
+
+  return { columns, rows };
+}
+
+export function teamTimeFilename(periods: TeamTimePeriods, extension: "csv" | "xlsx"): string {
+  return `metrics-view_team_${periods.before.from}_${periods.after.to}.${extension}`;
 }

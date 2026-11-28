@@ -62,6 +62,21 @@ export function formatHoursDuration(hours: number): string {
   return `${sign}${wholeHours} ${HOURS_UNIT} ${m} min`;
 }
 
+export function isClockDuration(fmt: MetricFormat, unit?: string | null): boolean {
+  return fmt !== "percent" && fmt !== "currency" && isDurationUnit(unit);
+}
+
+export function formatClockDuration(hours: number): string {
+  const totalMinutes = Math.round(Math.abs(hours) * 60);
+  const sign = hours < 0 && totalMinutes > 0 ? "-" : "";
+  const h = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const hoursText = `${sign}${NF_THOUSANDS.format(h)} ${HOURS_UNIT}`;
+  if (minutes === 0) return hoursText;
+
+  return `${hoursText} ${String(minutes).padStart(2, "0")} min`;
+}
+
 export function formatMetricNumber(
   v: number | null | undefined,
   fmt: MetricFormat,

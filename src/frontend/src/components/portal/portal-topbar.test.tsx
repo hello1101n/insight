@@ -71,7 +71,7 @@ vi.mock("@/hooks/use-portal-period", () => ({
   }),
 }));
 vi.mock("@/components/widgets/period-selector-bar", () => ({
-  PeriodSelectorBar: () => <div />,
+  PeriodSelectorBar: () => <div data-testid="period-bar" />,
 }));
 vi.mock("@/components/portal/slice-select", () => ({
   SliceSelect: ({ dims }: { dims: { key: string; label: string }[] }) => (
@@ -182,5 +182,22 @@ describe("PortalTopBar · planned sections", () => {
 
     act(() => setPortalShowPlanned(true));
     expect(screen.getByText("Cohort")).toBeInTheDocument();
+  });
+});
+
+describe("PortalTopBar · team over time", () => {
+  it("shows the change date and the window instead of the period presets", async () => {
+    act(() => portalRouter.set({ team: pid("boss"), change: "2025-10-15", weeks: 2 }));
+    bar();
+
+    expect(await screen.findByText("15 Oct 2025 · 14 days each")).toBeInTheDocument();
+    expect(screen.queryByTestId("period-bar")).not.toBeInTheDocument();
+  });
+
+  it("keeps the period presets without a team in the link", async () => {
+    bar();
+
+    expect(await screen.findByTestId("period-bar")).toBeInTheDocument();
+    expect(screen.queryByText(/days each/)).not.toBeInTheDocument();
   });
 });

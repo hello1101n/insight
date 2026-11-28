@@ -27,9 +27,13 @@ const mocks = vi.hoisted(() => ({
   personId: null as string | null,
   layout: "wide" as "phone" | "narrow" | "wide",
   roster: [] as PeopleListItem[],
+  rosterPending: false,
+  rosterError: false,
   definitions: [] as MetricDefinition[],
   requestedKeys: [] as readonly string[],
   requestedIds: [] as readonly string[],
+  requestedPeriods: [] as Array<{ ids: readonly string[]; from: string; to: string }>,
+  byPeriod: new Map<string, Map<string, NormalizedMetricResult>>(),
   definitionsError: false,
   refetchDefinitions: vi.fn(),
   downloadBlob: vi.fn<(blob: Blob, filename: string) => void>(),
@@ -58,8 +62,8 @@ vi.mock("@/queries/identity-me", () => ({
 vi.mock("@/queries/visible-roster", () => ({
   useVisibleRoster: () => ({
     roster: mocks.roster,
-    isPending: false,
-    isError: false,
+    isPending: mocks.rosterPending,
+    isError: mocks.rosterError,
     retry: () => {},
   }),
 }));
@@ -72,10 +76,19 @@ vi.mock("@/queries/metric-definitions", () => ({
   }),
 }));
 vi.mock("@/queries/metrics-view", () => ({
-  useMetricsViewData: (keys: readonly string[], ids: readonly string[]) => {
+  useMetricsViewData: (
+    keys: readonly string[],
+    ids: readonly string[],
+    range: { from: string; to: string },
+  ) => {
+    if (ids.length === 0) {
+      return { byKey: new Map(), isPending: false, isError: false, refetch: vi.fn() };
+    }
     mocks.requestedKeys = keys;
     mocks.requestedIds = ids;
-    return mocks.data;
+    mocks.requestedPeriods.push({ ids, from: range.from, to: range.to });
+    const byKey = mocks.byPeriod.get(range.from);
+    return byKey ? { ...mocks.data, byKey } : mocks.data;
   },
 }));
 vi.mock("@/lib/portal/use-shell-layout", () => ({
@@ -88,7 +101,7 @@ vi.mock("@/hooks/use-portal-period", () => ({
   }),
 }));
 
-import { MetricsView } from "./metrics-view";
+import { MetricsView } from "./index";
 
 function definition(
   key: string,
@@ -213,6 +226,8 @@ beforeEach(() => {
   mocks.downloadBlob.mockReset();
   mocks.policy = null;
   mocks.roster = peopleFromIdentityTree(tree);
+  mocks.rosterPending = false;
+  mocks.rosterError = false;
   mocks.definitions = [
     definition("collab.messages_sent", "Messages"),
     definition("git.default_branch_commits", "Default branch commits"),
@@ -221,6 +236,8 @@ beforeEach(() => {
   ];
   mocks.data.isPending = false;
   mocks.data.isError = false;
+  mocks.requestedPeriods = [];
+  mocks.byPeriod = new Map();
   mocks.data.byKey = new Map([
     [
       "git.default_branch_commits",
@@ -261,7 +278,15 @@ beforeEach(() => {
     ],
   ]);
   act(() => {
-    portalRouter.set({ scope: undefined, direct: false, metrics: LINKED, compare: undefined });
+    portalRouter.set({
+      scope: undefined,
+      direct: false,
+      metrics: LINKED,
+      compare: undefined,
+      team: undefined,
+      change: undefined,
+      weeks: undefined,
+    });
     setMetricsViewPaneShown(false);
   });
   delete window.__INSIGHT_CONFIG__;
@@ -282,13 +307,35 @@ describe("MetricsView", () => {
     expect(screen.queryByText(/metrics with data/)).toBeNull();
   });
 
-  it("counts only the people compared above a comparison", async () => {
+  it("names both people above a comparison of two", async () => {
     const user = userEvent.setup();
     render(<MetricsView />);
 
     await compare(user, ["a", "b"]);
 
-    expect(screen.getByText("Comparing 2 people")).toBeInTheDocument();
+    expect(screen.getByText("Comparing a and b")).toBeInTheDocument();
+  });
+
+  it("counts the people and names the group median above a comparison of three or more", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b", "c"]);
+
+    expect(
+      screen.getByText("Comparing 3 people · differences from group median"),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the people compared on the Compare button while a comparison is open", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+    expect(screen.getByRole("button", { name: "People · 2" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Exit compare" }));
+    expect(screen.getByRole("button", { name: "Compare" })).toBeInTheDocument();
   });
 
   it("shows a manager's reports once expanded", async () => {
@@ -310,9 +357,9 @@ describe("MetricsView", () => {
   it("names every metric column in full, under its family", () => {
     render(<MetricsView />);
 
-    expect(screen.getByRole("columnheader", { name: "Default branch commits" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^Default branch commits/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Development · Git" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^Messages/ })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /Tasks closed/ })).not.toBeInTheDocument();
   });
 
@@ -346,7 +393,7 @@ describe("MetricsView", () => {
       .find((cell) => cell.textContent === "b")!
       .closest("tr")!;
 
-    expect(header).toHaveTextContent("PR sizelines");
+    expect(header).toHaveTextContent("PR sizeTotal · lines");
     expect(within(rowOfB).getAllByRole("cell").map((cell) => cell.textContent)).toContain("237");
   });
 
@@ -463,6 +510,78 @@ describe("MetricsView", () => {
     expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits", "collab.messages_sent"]);
   });
 
+  it("counts the picked metrics in the picker's top bar", async () => {
+    mocks.definitions.push(
+      definition("git.default_branch_prs_merged", "PRs merged"),
+      definition("tasks.bugs_fixed", "Bugs fixed"),
+      definition("tasks.reopen_rate", "Reopen rate"),
+    );
+    act(() =>
+      portalRouter.set({
+        metrics: "git.default_branch_prs_merged,tasks.bugs_fixed,tasks.reopen_rate",
+      }),
+    );
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 6" }));
+
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("restores the default set when Reset to defaults is pressed", async () => {
+    act(() => portalRouter.set({ metrics: "collab.messages_sent" }));
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
+
+    expect(portalRouter.search.metrics).toBeUndefined();
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBeNull();
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
+  });
+
+  it("names every catalog metric in the link on Select all, apart from Reset to defaults", async () => {
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Select all metrics" }));
+
+    expect(portalRouter.search.metrics).toBe(
+      "git.default_branch_commits,tasks.closed,collab.messages_sent",
+    );
+  });
+
+  it("keeps the picker open while a metric's description card is open", async () => {
+    mocks.definitions[0] = definition("collab.messages_sent", "Messages", {
+      description: "Messages sent in team channels.",
+    });
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("button", { name: "About Messages" }));
+    await user.click(screen.getByText("Messages sent in team channels."));
+
+    expect(screen.getByText("Messages sent in team channels.")).toBeInTheDocument();
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Messages" })).toBeChecked();
+  });
+
+  it("clears the selection with Clear all and shows a zero count", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Clear all metrics" }));
+
+    expect(portalRouter.search.metrics).toBe("none");
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+  });
+
   it("scopes the table to the person whose name is clicked", async () => {
     render(<MetricsView />);
 
@@ -487,6 +606,17 @@ describe("MetricsView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
 
     expect(rowHeaders()).toEqual(["boss", "c", "b", "a"]);
+  });
+
+  it("returns to the manager tree when the sorted metric leaves the table", async () => {
+    render(<MetricsView />);
+    const tree = rowHeaders();
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+
+    expect(rowHeaders()).toEqual(tree);
+    expect(screen.getByRole("button", { name: /^(Expand|Collapse) all$/ })).toBeInTheDocument();
   });
 
   it("opens the records behind a value when it is clicked", async () => {
@@ -535,7 +665,10 @@ describe("MetricsView", () => {
     await compare(user, ["a", "b"]);
 
     const table = screen.getByRole("table");
-    expect(rowHeaders()).toEqual(["Default branch commits", "Messages"]);
+    expect(rowHeaders()).toEqual([
+      "Default branch commitsHigher is better",
+      "MessagesHigher is better",
+    ]);
     expect(
       within(table)
         .getAllByRole("columnheader")
@@ -545,7 +678,7 @@ describe("MetricsView", () => {
       within(within(table).getByRole("row", { name: /Default branch commits/ }))
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["10−50%", "20 (best)"]);
+    ).toEqual(["10 −10 vs b", "20 Best"]);
   });
 
   it("marks the smallest value best when lower is better", async () => {
@@ -566,7 +699,17 @@ describe("MetricsView", () => {
       within(within(screen.getByRole("table")).getByRole("row", { name: /PR cycle time/ }))
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["10 (best)", "40+300%"]);
+    ).toEqual(["10 Best", "40 +30 vs a"]);
+  });
+
+  it("writes the team of the manager two compared people share once, above the table", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+
+    expect(screen.getByText("boss's team")).toBeInTheDocument();
+    expect(screen.getByRole("table")).not.toHaveTextContent("boss's team");
   });
 
   it("adds a whole team to the comparison in one pick", async () => {
@@ -581,7 +724,7 @@ describe("MetricsView", () => {
       within(screen.getByRole("table"))
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
-    ).toEqual(["Metric", "a", "c"]);
+    ).toEqual(["Metric", "aboss's team", "ca's team"]);
   });
 
   it("opens the records behind a compared value when it is clicked", async () => {
@@ -633,7 +776,10 @@ describe("MetricsView", () => {
 
     mocks.data.isPending = false;
     view.rerender(<MetricsView />);
-    expect(rowHeaders()).toEqual(["Default branch commits", "Messages"]);
+    expect(rowHeaders()).toEqual([
+      "Default branch commitsHigher is better",
+      "MessagesHigher is better",
+    ]);
   });
 
   it("asks for everyone under the scope even with direct reports only on", () => {
@@ -687,7 +833,9 @@ describe("MetricsView", () => {
       "git.default_branch_lines_added",
       "git.default_branch_lines_removed",
     ]);
-    expect(screen.getByRole("columnheader", { name: /Lines/ })).toHaveTextContent("LinesKLOC");
+    expect(screen.getByRole("columnheader", { name: /Lines/ })).toHaveTextContent(
+      "LinesTotal · KLOC",
+    );
     const rowOfB = screen
       .getAllByRole("rowheader")
       .find((cell) => cell.textContent === "b")!
@@ -763,6 +911,25 @@ describe("MetricsView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sort by Lines" }));
 
     expect(rowHeaders()).toEqual(["a", "b", "boss", "c"]);
+  });
+
+  it("shows each compared person's Lines figure with its unit, as plain values", async () => {
+    const user = userEvent.setup();
+    addLineMetrics([
+      [pid("a"), 100, 5000],
+      [pid("b"), 1500, 200],
+    ]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+
+    expect(rowHeaders()).toEqual(["LinesNeutral"]);
+    expect(
+      within(within(screen.getByRole("table")).getByRole("row", { name: /^Lines/ }))
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["+0.1 / −5.0 KLOC", "+1.5 / −0.2 KLOC"]);
   });
 
   it("offers the Lines column in the picker", async () => {
@@ -938,6 +1105,7 @@ describe("MetricsView", () => {
     const { lines } = await downloadCsv(user);
 
     expect(lines.slice(1).map((line) => line[0])).toEqual(["a"]);
+    expect(screen.getByRole("button", { name: "People · 1" })).toBeInTheDocument();
   });
 
   it("adds each person's role to the download when the page shows one", async () => {
@@ -1049,4 +1217,238 @@ describe("MetricsView", () => {
     expect(shown.result.current).toBe(true);
     expect(screen.getByRole("button", { name: "Hide menu" })).toBeInTheDocument();
   });
+
+  describe("a team over time", () => {
+    const TEAM_A = { team: pid("a"), change: "2026-10-15", weeks: 2 } as const;
+
+    function teamPeriods() {
+      mocks.byPeriod.set(
+        "2026-10-15",
+        new Map([
+          [
+            "git.default_branch_commits",
+            result("git.default_branch_commits", "Default branch commits", [
+              [pid("a"), 40],
+              [pid("c"), 30],
+              [pid("b"), 1000],
+            ]),
+          ],
+        ]),
+      );
+      mocks.byPeriod.set(
+        "2026-10-01",
+        new Map([
+          [
+            "git.default_branch_commits",
+            result("git.default_branch_commits", "Default branch commits", [
+              [pid("a"), 24],
+              [pid("c"), 30],
+            ]),
+          ],
+        ]),
+      );
+    }
+
+    const teamCells = () =>
+      within(within(screen.getByRole("table")).getByRole("row", { name: /^Default branch commits/ }))
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent);
+
+    it("opens one team from the Compare picker, today's roster in both periods", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 28, 12));
+      try {
+        const user = userEvent.setup();
+        render(<MetricsView />);
+
+        await user.click(screen.getByRole("button", { name: "Compare" }));
+        await user.click(screen.getByRole("button", { name: "Team over time" }));
+        await user.click(screen.getByRole("radio", { name: "a's team" }));
+        await user.click(screen.getByRole("button", { name: "Open" }));
+
+        expect(portalRouter.search).toMatchObject({
+          team: pid("a"),
+          change: "2026-11-14",
+          weeks: 2,
+        });
+        expect(portalRouter.search.compare).toBeUndefined();
+        expect(screen.getByText("a's team · Current roster · 2 people")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks for the team's people once for each period", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      const periods = mocks.requestedPeriods.map(({ ids, from, to }) => ({
+        ids: [...ids].sort(),
+        from,
+        to,
+      }));
+      const team = [pid("a"), pid("c")].sort();
+      expect(periods).toContainEqual({ ids: team, from: "2026-10-15", to: "2026-10-28" });
+      expect(periods).toContainEqual({ ids: team, from: "2026-10-01", to: "2026-10-14" });
+      expect(periods.every((period) => period.ids.join() === team.join())).toBe(true);
+    });
+
+    it("compares the team's totals After and Before the change date", () => {
+      teamPeriods();
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      expect(
+        within(screen.getByRole("table"))
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual(["Metric", "After · 15–28 Oct", "Before · 1–14 Oct"]);
+      expect(teamCells()).toEqual(["70 +16", "54"]);
+    });
+
+    it("puts the Compare button first and Exit compare and Download last", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      const order = [
+        screen.getByRole("button", { name: "Compare" }),
+        screen.getByText("a's team · Current roster · 2 people"),
+        screen.getByRole("button", { name: "Exit compare" }),
+        screen.getByRole("button", { name: "Download" }),
+      ];
+      for (const [earlier, later] of order.slice(0, -1).map((node, index) => [node, order[index + 1]!])) {
+        expect(earlier!.compareDocumentPosition(later!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    });
+
+    it("moves the change date to the day clicked in the side panel", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      expect(screen.getByRole("heading", { name: "Change date · 15 Oct" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /October 8th, 2026/ }));
+
+      expect(portalRouter.search).toMatchObject({ team: pid("a"), change: "2026-10-08", weeks: 2 });
+    });
+
+    it("sets the weeks on each side from the side panel", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "4 weeks" }));
+
+      expect(portalRouter.search).toMatchObject({ change: "2026-10-15", weeks: 4 });
+      expect(
+        within(screen.getByRole("table"))
+          .getAllByRole("columnheader")
+          .map((header) => header.textContent),
+      ).toEqual(["Metric", "After · 15 Oct – 11 Nov", "Before · 17 Sept – 14 Oct"]);
+    });
+
+    it("clears the team, the change date and the weeks from the link on Exit compare", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "Exit compare" }));
+
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(portalRouter.search.change).toBeUndefined();
+      expect(portalRouter.search.weeks).toBeUndefined();
+      expect(rowHeaders()).toEqual(["boss", "a", "b"]);
+    });
+
+    it("clears a team outside the new scope from the link, in place of the current entry", () => {
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      act(() => portalRouter.set({ scope: pid("b") }));
+
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(portalRouter.search.change).toBeUndefined();
+      expect(portalRouter.search.weeks).toBeUndefined();
+      expect(portalRouter.navigations.at(-1)).toMatchObject({ replace: true });
+      expect(rowHeaders()).toEqual(["b"]);
+    });
+
+    it.each([
+      ["loads", "rosterPending"],
+      ["fails to load", "rosterError"],
+    ] as const)("keeps the team in the link while the org tree %s", (_case, flag) => {
+      mocks[flag] = true;
+      mocks.roster = [];
+      act(() => portalRouter.set(TEAM_A));
+      render(<MetricsView />);
+
+      expect(portalRouter.search).toMatchObject(TEAM_A);
+    });
+
+    it("leaves the team for a comparison of people picked in the Compare picker", async () => {
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      await user.click(screen.getByRole("button", { name: "Compare" }));
+      await user.click(screen.getByRole("button", { name: "People and teams" }));
+      await user.click(screen.getByRole("checkbox", { name: "a" }));
+      await user.click(screen.getByRole("checkbox", { name: "b" }));
+      await user.click(screen.getByRole("button", { name: "Compare (2)" }));
+
+      expect(portalRouter.search).toMatchObject({ compare: `${pid("a")},${pid("b")}` });
+      expect(portalRouter.search.team).toBeUndefined();
+      expect(screen.getByText("Comparing a and b")).toBeInTheDocument();
+    });
+
+    it("sums the team's lines added and removed apart in each period, in one Lines row", () => {
+      mocks.definitions.push(
+        definition("git.default_branch_lines_added", "Lines added", { unit: "lines" }),
+        definition("git.default_branch_lines_removed", "Lines removed", { unit: "lines" }),
+      );
+      const lines = (added: Array<[string, number]>, removed: Array<[string, number]>) =>
+        new Map([
+          [
+            "git.default_branch_lines_added",
+            result("git.default_branch_lines_added", "Lines added", added, { unit: "lines" }),
+          ],
+          [
+            "git.default_branch_lines_removed",
+            result("git.default_branch_lines_removed", "Lines removed", removed, {
+              unit: "lines",
+            }),
+          ],
+        ]);
+      mocks.byPeriod.set("2026-10-15", lines([[pid("a"), 1500], [pid("c"), 900]], [[pid("a"), 200]]));
+      mocks.byPeriod.set("2026-10-01", lines([[pid("a"), 300]], [[pid("c"), 100]]));
+      act(() => portalRouter.set({ ...TEAM_A, metrics: "git.default_branch_lines" }));
+      render(<MetricsView />);
+
+      expect(mocks.requestedKeys).toEqual([
+        "git.default_branch_lines_added",
+        "git.default_branch_lines_removed",
+      ]);
+      expect(
+        within(within(screen.getByRole("table")).getByRole("row", { name: /^Lines/ }))
+          .getAllByRole("cell")
+          .map((cell) => cell.textContent),
+      ).toEqual(["+2.4 / −0.2 KLOC", "+0.3 / −0.1 KLOC"]);
+    });
+
+    it("downloads the table on screen, one row per metric", async () => {
+      teamPeriods();
+      act(() => portalRouter.set(TEAM_A));
+      const user = userEvent.setup();
+      render(<MetricsView />);
+
+      const { filename, lines } = await downloadCsv(user);
+
+      expect(filename).toBe("metrics-view_team_2026-10-01_2026-10-28.csv");
+      expect(lines).toEqual([
+        ["Metric", "After · 2026-10-15 – 2026-10-28", "Before · 2026-10-01 – 2026-10-14"],
+        ["Default branch commits", "70", "54"],
+      ]);
+    });
+  });
 });
+

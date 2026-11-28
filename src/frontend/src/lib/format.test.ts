@@ -10,6 +10,8 @@ import {
   formatUtcAge,
   formatUtcClock,
   formatUtcInstant,
+  formatClockDuration,
+  isClockDuration,
   metricDisplayUnit,
   roundMetricValue,
   splitMetricValue,
@@ -106,5 +108,34 @@ describe("small formatters", () => {
 
     expect(formatUtcAge("2026-08-01T10:15:00.000000", now)).toBe("7 days ago");
     expect(formatUtcAge("2026-08-01T10:15:00Z", now)).toBe("7 days ago");
+  });
+});
+
+describe("formatClockDuration", () => {
+  it.each([
+    [0.7833, "0 h 47 min"],
+    [46.0667, "46 h 04 min"],
+    [9.4833, "9 h 29 min"],
+    [0, "0 h"],
+    [1.9999, "2 h"],
+    [12, "12 h"],
+    [1234.5, "1,234 h 30 min"],
+    [-1.5, "-1 h 30 min"],
+    [-0.001, "0 h"],
+  ])("writes %s hours as %s", (hours, text) => {
+    expect(formatClockDuration(hours)).toBe(text);
+  });
+});
+
+describe("isClockDuration", () => {
+  it.each([
+    ["decimal", "h", true],
+    ["integer", "h", true],
+    ["percent", "h", false],
+    ["currency", "h", false],
+    ["decimal", "d", false],
+    ["decimal", null, false],
+  ] as const)("is %s with unit %s: %s", (format, unit, expected) => {
+    expect(isClockDuration(format, unit)).toBe(expected);
   });
 });

@@ -5,7 +5,9 @@ import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
 import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view-combined";
 
-import { metricsViewFilename, metricsViewMatrix } from "./metrics-view-export";
+import { teamTimePeriods } from "@/lib/portal/metrics-team-time";
+
+import { metricsViewFilename, metricsViewMatrix, teamTimeMatrix } from "./metrics-view-export";
 
 const RANGE = { from: "2026-07-01", to: "2026-07-31" };
 const PERIOD = "2026-07-01 – 2026-07-31";
@@ -221,6 +223,35 @@ describe("metricsViewMatrix Lines column", () => {
       columns: ["Person", "Period", "Lines (KLOC)"],
       rows: [["Jane Doe", PERIOD, "+1.5 / −0.2"]],
     });
+  });
+});
+
+describe("teamTimeMatrix Lines column", () => {
+  it("writes the team's lines added and removed as one cell per period, in KLOC", () => {
+    const lines = (added: Array<[string, number | null]>, removed: Array<[string, number | null]>) =>
+      withCombinedResults(
+        new Map([
+          [
+            "git.default_branch_lines_added",
+            result("git.default_branch_lines_added", "Lines added", added),
+          ],
+          [
+            "git.default_branch_lines_removed",
+            result("git.default_branch_lines_removed", "Lines removed", removed),
+          ],
+        ]),
+      );
+
+    const matrix = teamTimeMatrix({
+      keys: [LINES_KEY],
+      after: lines([["p-jane", 1500], ["p-sam", 900]], [["p-jane", 200], ["p-sam", 100]]),
+      before: lines([["p-jane", 300]], [["p-jane", null]]),
+      memberIds: ["p-jane", "p-sam"],
+      periods: teamTimePeriods("2026-10-15", 2),
+    });
+
+    expect(matrix.columns[0]).toBe("Metric");
+    expect(matrix.rows).toEqual([["Lines (KLOC)", "+2.4 / −0.3", "+0.3 / —"]]);
   });
 });
 

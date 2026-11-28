@@ -1,6 +1,10 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
-import { metricDisplayUnit } from "@/lib/format";
+import type { MetricDirection } from "@/api/metric-results-client";
+import {
+  formatClockDuration,
+  formatMetricValue,
+  isClockDuration,
+} from "@/lib/format";
 import {
   personDisplayName,
   type PersonNaming,
@@ -220,44 +224,31 @@ export function compareTeams(root: IdentityPerson | null): CompareTeam[] {
   ];
 }
 
-export interface CompareCell {
-  best: boolean;
-  gap: number | null;
+export function formatViewValue(
+  value: number,
+  result: Pick<NormalizedMetricResult, "format" | "unit">,
+): string {
+  return isClockDuration(result.format, result.unit)
+    ? formatClockDuration(value)
+    : formatMetricValue(value, result.format, result.unit);
 }
 
-export function compareGaps(
-  values: ReadonlyArray<number | null>,
-  direction: MetricDirection,
-): CompareCell[] {
-  const present = values.filter((value): value is number => value != null);
-  const best = direction === "lower_is_better" ? Math.min(...present) : Math.max(...present);
-  const ranked =
-    direction !== "neutral" && present.length >= 2 && present.some((value) => value !== best);
-
-  return values.map((value) => {
-    if (!ranked || value == null) return { best: false, gap: null };
-    if (value === best) return { best: true, gap: null };
-    return {
-      best: false,
-      gap: best === 0 ? null : Math.round(((value - best) / Math.abs(best)) * 100),
-    };
-  });
+export interface PersonTeam {
+  id: string;
+  name: string;
 }
 
-export function formatGap(gap: number | null): string {
-  if (gap == null) return "";
-  if (gap === 0) return "≈";
-  return `${gap > 0 ? "+" : "−"}${Math.abs(gap)}%`;
-}
-
-export function headerUnit(
-  label: string,
-  format: MetricFormat,
-  unit: string | null,
-): string | null {
-  const shown = metricDisplayUnit(format, unit);
-  if (!shown) return null;
-  return label.toLocaleLowerCase().includes(shown.toLocaleLowerCase()) ? null : shown;
+export function teamsById(root: IdentityPerson | null): Map<string, PersonTeam> {
+  const teams = new Map<string, PersonTeam>();
+  const walk = (node: IdentityPerson) => {
+    const team = { id: normalizePersonId(node.person_id), name: personDisplayName(node) };
+    for (const report of node.subordinates) {
+      teams.set(normalizePersonId(report.person_id), team);
+      walk(report);
+    }
+  };
+  if (root) walk(root);
+  return teams;
 }
 
 export function rolesById(root: IdentityPerson | null): Map<string, string> {
@@ -269,4 +260,59 @@ export function rolesById(root: IdentityPerson | null): Map<string, string> {
   };
   if (root) walk(root);
   return roles;
+}
+
+const COMPUTATION_LABEL: Record<NormalizedMetricResult["computation"], string> = {
+  sum: "Total",
+  ratio: "Ratio",
+  median: "Median",
+  percentile: "Percentile",
+  stddev: "Std dev",
+  distinct_count: "Total",
+};
+
+export function computationWord(
+  result: Pick<NormalizedMetricResult, "computation">,
+): string {
+  return COMPUTATION_LABEL[result.computation];
+}
+
+export function columnFormula(
+  result: Pick<NormalizedMetricResult, "computation" | "format" | "unit">,
+): string {
+  const unit = isClockDuration(result.format, result.unit)
+    ? "h min"
+    : result.format === "percent"
+      ? "%"
+      : result.format === "currency"
+        ? "USD"
+        : result.unit;
+
+  const word = COMPUTATION_LABEL[result.computation];
+  if (unit != null) return `${word} · ${unit}`;
+
+  return result.computation === "sum" || result.computation === "distinct_count"
+    ? `${word} · count`
+    : word;
+}
+
+const DIRECTION_LABEL: Record<MetricDirection, string> = {
+  higher_is_better: "Higher is better",
+  lower_is_better: "Lower is better",
+  neutral: "Neutral",
+};
+
+const DIRECTION_PREFIXED: ReadonlySet<NormalizedMetricResult["computation"]> = new Set([
+  "median",
+  "percentile",
+  "stddev",
+]);
+
+export function directionNote(
+  result: Pick<NormalizedMetricResult, "computation" | "direction">,
+): string {
+  const direction = DIRECTION_LABEL[result.direction];
+  return DIRECTION_PREFIXED.has(result.computation)
+    ? `${COMPUTATION_LABEL[result.computation]} · ${direction}`
+    : direction;
 }

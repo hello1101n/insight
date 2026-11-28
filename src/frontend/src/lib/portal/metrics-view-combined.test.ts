@@ -9,6 +9,7 @@ import { keysWithData } from "@/lib/portal/metrics-view";
 import {
   combinedColumn,
   combinedFigure,
+  combinedFigureBy,
   LINES_KEY,
   requestedMetricKeys,
   withCombinedColumns,
@@ -120,6 +121,27 @@ describe("combined Lines column", () => {
     expect(combinedFigure(lines, byKey, "a")).toBe("+90.4 / −5.1");
     expect(combinedFigure(lines, byKey, "b")).toBe("+1.5 / —");
     expect(combinedFigure(lines, byKey, "c")).toBeNull();
+  });
+
+  it("writes one figure from a total of each part, such as a team sum", () => {
+    const byKey = new Map([
+      [
+        "git.default_branch_lines_added",
+        result("git.default_branch_lines_added", [["a", 1500], ["b", 900]]),
+      ],
+      [
+        "git.default_branch_lines_removed",
+        result("git.default_branch_lines_removed", [["a", null], ["b", null]]),
+      ],
+    ]);
+    const lines = combinedColumn(LINES_KEY)!;
+    const sum = (part: NormalizedMetricResult) => {
+      const values = ["a", "b"].flatMap((id) => finiteValue(part, id) ?? []);
+      return values.length === 0 ? null : values.reduce((total, value) => total + value, 0);
+    };
+
+    expect(combinedFigureBy(lines, byKey, sum)).toBe("+2.4 / —");
+    expect(combinedFigureBy(lines, byKey, () => null)).toBeNull();
   });
 });
 
