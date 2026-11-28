@@ -186,12 +186,13 @@ function Timeline({ run, asOf }: { run: ConnectorRun; asOf: string }) {
               const state = describeRun(event.status);
               return (
                 <Fragment key={step}>
-                  {queued && (
-                    <QueuedEvent
-                      queue={queued}
-                      timedOut={failure?.status === "wait_timeout"}
-                    />
-                  )}
+                  {queued &&
+                    (queued.current || failure?.status === "wait_timeout") && (
+                      <QueuedEvent
+                        queue={queued}
+                        timedOut={failure?.status === "wait_timeout"}
+                      />
+                    )}
                   <StepEvent
                     {...event}
                     tone={state.tone}
@@ -377,31 +378,33 @@ export function ConnectorRunHistory({ runs, syncs, limit, asOf }: Props) {
                   .filter(Boolean)
                   .join(" · ");
                 return (
-                  <Tooltip key={id}>
-                    <TooltipTrigger
-                      render={<li />}
-                      role="listitem"
-                      tabIndex={-1}
-                      className="group relative h-7 min-w-0"
-                      aria-label={label}
-                      aria-current={id === selected?.id || undefined}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
-                          historySegmentStyle(record.status, state.tone)
-                        )}
-                      />
-                      {id === selected?.id && (
+                  <li key={id} className="group min-w-0">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={<button type="button" />}
+                        className="relative block h-7 w-full min-w-0 cursor-pointer hover:brightness-90 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-ring"
+                        aria-label={label}
+                        aria-pressed={id === selected?.id}
+                        aria-controls={detailsId}
+                        onClick={() => openRun(id)}
+                      >
                         <span
                           aria-hidden="true"
-                          className="absolute inset-x-0 bottom-0.5 mx-auto h-0.5 max-w-6 rounded-full bg-foreground"
+                          className={cn(
+                            "absolute inset-x-0 top-1/2 h-3 -translate-y-1/2 border-background/50 group-not-last:border-r group-first:rounded-l-full group-last:rounded-r-full",
+                            historySegmentStyle(record.status, state.tone)
+                          )}
                         />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent role="tooltip">{label}</TooltipContent>
-                  </Tooltip>
+                        {id === selected?.id && (
+                          <span
+                            aria-hidden="true"
+                            className="absolute inset-x-0 bottom-0.5 mx-auto h-0.5 max-w-6 rounded-full bg-foreground"
+                          />
+                        )}
+                      </TooltipTrigger>
+                      <TooltipContent role="tooltip">{label}</TooltipContent>
+                    </Tooltip>
+                  </li>
                 );
               })}
             </ol>
