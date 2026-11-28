@@ -60,7 +60,8 @@ enum Commands {
         /// Seed mode; only `link-by-email` is implemented.
         #[arg(long, default_value = seed_runner::LINK_BY_EMAIL_MODE)]
         mode: String,
-        /// Override the input guard (no `identity_inputs` rows for the tenant).
+        /// Override the input guard (no `identity_inputs` rows for the tenant)
+        /// and the tenant guard (seeding a new tenant beside others).
         #[arg(long)]
         force: bool,
         /// Exit 0 when another run holds the lock: connectors finishing
