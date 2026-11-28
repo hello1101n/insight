@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import i18n from "@/i18n";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
+import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view-combined";
+
 import { metricsViewFilename, metricsViewMatrix } from "./metrics-view-export";
 
 const RANGE = { from: "2026-07-01", to: "2026-07-31" };
@@ -189,6 +191,36 @@ describe("metricsViewMatrix", () => {
     });
 
     expect(matrix.columns).toEqual(["Person", "Period"]);
+  });
+});
+
+describe("metricsViewMatrix Lines column", () => {
+  it("writes lines added and removed as one cell, in KLOC", () => {
+    const byKey = withCombinedResults(
+      new Map([
+        [
+          "git.default_branch_lines_added",
+          result("git.default_branch_lines_added", "Lines added", [["p-jane", 1500]]),
+        ],
+        [
+          "git.default_branch_lines_removed",
+          result("git.default_branch_lines_removed", "Lines removed", [["p-jane", 200]]),
+        ],
+      ]),
+    );
+
+    const matrix = metricsViewMatrix({
+      people: [jane],
+      keys: [LINES_KEY],
+      byKey,
+      roles: new Map(),
+      range: RANGE,
+    });
+
+    expect(matrix).toEqual({
+      columns: ["Person", "Period", "Lines (KLOC)"],
+      rows: [["Jane Doe", PERIOD, "+1.5 / −0.2"]],
+    });
   });
 });
 

@@ -71,16 +71,16 @@ def stale_keys_query(snapshot: Relation, source: Relation) -> str:
     source_schema, source_table = source
     return (
         f"SELECT DISTINCT unique_key FROM `{schema}`.`{table}` "
-        "WHERE tenant_id = {tenant:String} AND unique_key NOT IN ("
+        "WHERE insight_tenant_id = {tenant:String} AND unique_key NOT IN ("
         f"SELECT unique_key FROM `{source_schema}`.`{source_table}` FINAL "
-        "WHERE tenant_id = {tenant:String})"
+        "WHERE insight_tenant_id = {tenant:String})"
     )
 
 
 def source_rows_query(source: Relation) -> str:
     """How many rows one tenant holds in a snapshot's source."""
     source_schema, source_table = source
-    return f"SELECT count() FROM `{source_schema}`.`{source_table}` FINAL WHERE tenant_id = {{tenant:String}}"
+    return f"SELECT count() FROM `{source_schema}`.`{source_table}` FINAL WHERE insight_tenant_id = {{tenant:String}}"
 
 
 def delete_statement(snapshot: Relation) -> str:
@@ -88,7 +88,7 @@ def delete_statement(snapshot: Relation) -> str:
     schema, table = snapshot
     return (
         f"ALTER TABLE `{schema}`.`{table}` DELETE "
-        "WHERE tenant_id = {tenant:String} AND has({keys:Array(String)}, unique_key)"
+        "WHERE insight_tenant_id = {tenant:String} AND has({keys:Array(String)}, unique_key)"
     )
 
 

@@ -26,14 +26,14 @@ WITH resolved_authors AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_gitlab.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
     FROM {{ source('bronze_gitlab', 'commit_authors') }} FINAL
     WHERE COALESCE(author_account_id, 0) > 0
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 -- WORKAROUND: ClickHouse substitutes the alias `email` into the array literal
@@ -41,8 +41,8 @@ WITH resolved_authors AS (
 directory_addresses AS (
     SELECT
         id,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         collected_at,
         address,
         field
@@ -58,19 +58,19 @@ directory_emails AS (
     SELECT
         toString(id) AS account_id,
         lower(trimBoth(address)) AS email,
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         concat('bronze_gitlab.users.', field) AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
     FROM directory_addresses
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 roster_addresses AS (
     SELECT
         id,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         collected_at,
         address,
         field
@@ -86,12 +86,12 @@ roster_emails AS (
     SELECT
         toString(id) AS account_id,
         lower(trimBoth(address)) AS email,
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         concat('bronze_gitlab.group_members.', field) AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
     FROM roster_addresses
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 -- The private commit address states the account id it was issued to. The
@@ -101,26 +101,26 @@ noreply_commits AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_gitlab.commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_gitlab', 'commits') }} FINAL
     WHERE COALESCE(author_account_id, 0) > 0
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 noreply_request_commits AS (
     SELECT
         toString(author_account_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_gitlab.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_gitlab', 'pull_request_commits') }} FINAL
     WHERE COALESCE(author_account_id, 0) > 0
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 observations AS (
@@ -148,8 +148,8 @@ every_pair AS (
 SELECT
     account_id,
     email,
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     -- Which source named the pair first, for provenance on the claim.
     -- assumeNotNull because argMin and min inherit the ordering column's
     -- nullability, and these feed silver.identity_inputs where a Nullable
@@ -160,4 +160,4 @@ SELECT
 FROM every_pair
 -- The full connection scope, not just the pair: the same numeric id names
 -- different accounts on different GitLab instances.
-GROUP BY account_id, email, tenant_id, source_id
+GROUP BY account_id, email, insight_tenant_id, insight_source_id

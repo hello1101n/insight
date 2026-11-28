@@ -307,6 +307,23 @@ describe("useMetricsViewData", () => {
     expect(req.compare_to).toBeUndefined();
   });
 
+  it("asks for every metric as the server defines it, with no dimension filter", async () => {
+    const { result } = renderHook(
+      () =>
+        useMetricsViewData(
+          ["git.pr_comments", "git.pr_comments_on_others", "git.commits"],
+          ["a@x.com"],
+          RANGE,
+        ),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.has("git.commits")).toBe(true));
+
+    const metrics = mock.mock.calls[0]![0].metrics;
+    expect(metrics.map((m) => m.filters)).toEqual([undefined, undefined, undefined]);
+  });
+
   it("asks again for the new period when the period changes", async () => {
     const { result, rerender } = renderHook(
       ({ range }) => useMetricsViewData(["git.commits"], ["a@x.com"], range),

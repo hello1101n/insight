@@ -28,7 +28,8 @@
 
 SELECT
     s.unique_key                                            AS unique_key,
-    s.source_id                                             AS insight_source_id,
+    {{ bronze_tenant('s.insight_tenant_id') }}                                 AS insight_tenant_id,
+    s.insight_source_id                                             AS insight_source_id,
     CAST('jira' AS String)                                  AS data_source,
     replaceRegexpOne(toString(s.status_id), '\.0+$', '')    AS status_id,
     s.name                                                  AS status_name,

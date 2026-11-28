@@ -133,7 +133,7 @@ rules:
     verbs: [create]
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [roles, rolebindings]
-    resourceNames: [insight-airbyte-auth-reader, insight-airbyte-capacity.insight, insight-insight-connectors-observer]
+    resourceNames: [insight-airbyte-auth-reader, insight-airbyte-capacity.insight, insight-insight-connectors-observer, insight-tenant-cutover-hook-airbyte-auth]
     verbs: [get, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

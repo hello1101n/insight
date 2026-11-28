@@ -12,17 +12,17 @@
 ) }}
 
 SELECT
-    l.tenant_id AS tenant_id,
-    l.source_id AS source_id,
+    l.insight_tenant_id AS insight_tenant_id,
+    l.insight_source_id AS insight_source_id,
     l.projectId AS project_id,
     l.id AS launch_id,
     fromUnixTimestamp64Milli(l.lastModifiedDate, 'UTC') AS launch_modified_at
 FROM {{ source('bronze_allure', 'launches') }} AS l FINAL
 LEFT ANTI JOIN (
-    SELECT DISTINCT tenant_id, source_id, launchId
+    SELECT DISTINCT insight_tenant_id, insight_source_id, launchId
     FROM {{ source('bronze_allure', 'test_results') }} FINAL
 ) AS r
-    ON r.tenant_id = l.tenant_id AND r.source_id = l.source_id AND r.launchId = l.id
+    ON r.insight_tenant_id = l.insight_tenant_id AND r.insight_source_id = l.insight_source_id AND r.launchId = l.id
 WHERE l.closed
     AND l.lastModifiedDate < toUnixTimestamp64Milli(now64(3)) - 2 * 86400000
 LIMIT 100

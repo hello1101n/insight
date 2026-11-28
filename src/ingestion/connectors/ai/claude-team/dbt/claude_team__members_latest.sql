@@ -22,8 +22,8 @@
 -- email is kept — the account stays bindable by hand.
 
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }}                                                 AS insight_tenant_id,
+    insight_source_id,
     unique_key,
     JSONExtractString(COALESCE(toString(account), '{}'), 'uuid')          AS account_uuid,
     JSONExtractString(COALESCE(toString(account), '{}'), 'email_address') AS email_address,

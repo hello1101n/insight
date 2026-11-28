@@ -7,6 +7,9 @@
   NULL and '' both normalize to '' (value absent), so transitions into and out
   of NULL are recorded like any other change.
 
+  The tenant is read through bronze_tenant(): the snapshot carries Bronze's
+  Nullable tenant as-is, so a NULL, empty or non-UUID one fails the build here.
+
   A field emits claims only if the snapshot versions on it: keep `fields`
   within the snapshot's check_cols, or a change lands with the observed_at of
   the next tracked change instead of its own. Customer-defined fields in the
@@ -36,8 +39,8 @@
 WITH versioned AS (
     SELECT
         unique_key,
-        coalesce(tenant_id, '')                          AS insight_tenant_id,
-        coalesce(source_id, '')                          AS insight_source_id,
+        {{ bronze_tenant() }}                            AS insight_tenant_id,
+        coalesce(insight_source_id, '')                          AS insight_source_id,
         coalesce(toString({{ entity_id_col }}), '')      AS source_account_id,
         toDateTime64(_tracked_at, 3)                     AS observed_at,
         _airbyte_extracted_at                            AS ingested_at,

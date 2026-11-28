@@ -24,8 +24,8 @@
 
 WITH pages AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         unique_key,
         page_id,
         space_id,
@@ -49,8 +49,8 @@ WITH pages AS (
 
 spaces AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         space_id,
         name                                                                AS space_name,
         url                                                                 AS space_url
@@ -61,22 +61,22 @@ spaces AS (
 {%- if jira_user %}
 , users AS (
     SELECT
-        tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         account_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_jira', 'jira_user') }}
     WHERE email IS NOT NULL AND trim(email) != ''
-    QUALIFY row_number() OVER (PARTITION BY tenant_id, account_id ORDER BY _airbyte_extracted_at DESC) = 1
+    QUALIFY row_number() OVER (PARTITION BY insight_tenant_id, account_id ORDER BY _airbyte_extracted_at DESC) = 1
 )
 {%- endif %}
 
 -- Explicit `AS column_name` aliases are required: ClickHouse keeps the
 -- table-alias prefix in the projected column name otherwise (e.g. column
--- becomes `p.tenant_id` instead of `tenant_id`), which breaks downstream
+-- becomes `p.insight_tenant_id` instead of `insight_tenant_id`), which breaks downstream
 -- consumers and `not_null`/`unique` tests.
 SELECT
-    p.tenant_id                                                             AS tenant_id,
-    p.source_id                                                             AS source_id,
+    p.insight_tenant_id                                                             AS insight_tenant_id,
+    p.insight_source_id                                                             AS insight_source_id,
     p.unique_key                                                            AS unique_key,
     p.page_id                                                               AS page_id,
     p.space_id                                                              AS space_id,
@@ -98,14 +98,14 @@ SELECT
     p._version                                                              AS _version
 FROM pages p
 LEFT JOIN spaces s
-    ON p.tenant_id = s.tenant_id
-   AND p.source_id = s.source_id
+    ON p.insight_tenant_id = s.insight_tenant_id
+   AND p.insight_source_id = s.insight_source_id
    AND p.space_id  = s.space_id
 {%- if jira_user %}
 LEFT JOIN users ua
-    ON p.tenant_id = ua.tenant_id
+    ON p.insight_tenant_id = ua.insight_tenant_id
    AND p.author_id = ua.account_id
 LEFT JOIN users ue
-    ON p.tenant_id = ue.tenant_id
+    ON p.insight_tenant_id = ue.insight_tenant_id
    AND p.last_editor_id = ue.account_id
 {%- endif %}

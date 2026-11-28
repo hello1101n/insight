@@ -23,7 +23,7 @@ too, and re-seeding it would resurrect a value an operator removed.
 Mapping file format — TSV, one decision per line, `#` comments and blank lines
 ignored, optional header line:
 
-    tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  [note]
+    insight_tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  [note]
 
 `field` names what is standardized (e.g. `issue_type`); `target_value` must lie
 in that field's canonical domain. `display_name` is required: it records the
@@ -32,7 +32,7 @@ vendor value detectable.
 
 `defaults.tsv` format — same conventions, all columns required:
 
-    tenant_id  insight_source_id  field  default_value
+    insight_tenant_id  insight_source_id  field  default_value
 
 Two more reserved files carry the other operator-authored task tables, so a
 source whose vendor states neither its field roles nor its status categories
@@ -41,12 +41,17 @@ source whose vendor states neither its field roles nor its status categories
 `roles.tsv` lands in `config.task_field_roles` — which vendor field plays which
 metric role. All but `note` required:
 
-    tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  [note]
+    insight_tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  [note]
 
 `task-values.tsv` lands in `config.task_value_map` — the canonical category of
 one vendor value of a field, today the status lifecycle category:
 
-    tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  [note]
+    insight_tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  [note]
+
+The first column is the tenant. Its value is ignored: every row is written
+under the install's tenant, INSIGHT_TENANT_ID (authenticator.oidc.defaultTenantId),
+so a bundle written under a former tenant, or with the column left empty, loads
+as the install's. A header line may name it `insight_tenant_id` or `tenant_id`.
 
 The operator states business columns only. `valid_from` / `recorded_at` /
 `recorded_by` are the loader's, which is what makes a hand-written file unable
@@ -55,6 +60,7 @@ baseline and applies to all history; a later correction is an operator INSERT
 with a real `valid_from`, and this loader never touches it.
 
 Required env (set by the Hook Job):
+    INSIGHT_TENANT_ID    the install's tenant, a lowercase UUID
     CLICKHOUSE_URL       e.g. http://ch-host:8123
     CLICKHOUSE_USER, CLICKHOUSE_PASSWORD
     CLICKHOUSE_CLUSTER_MODE  true -> every request carries the session a replicated
@@ -70,11 +76,12 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -101,14 +108,14 @@ TSV_ESCAPES = str.maketrans(
     {"\\": "\\\\", "\b": "\\b", "\f": "\\f", "\r": "\\r", "\n": "\\n", "\t": "\\t", "\0": "\\0", "'": "\\'"}
 )
 
-KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field", "source_key")
+KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field", "source_key")
 VALUE_COLUMNS = ("display_name", "target_value", "note")
 MIN_COLUMNS = 7
 MAX_COLUMNS = 8
-DEFAULTS_COLUMNS = ("tenant_id", "insight_source_id", "field", "default_value")
-ROLE_KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field_id")
+DEFAULTS_COLUMNS = ("insight_tenant_id", "insight_source_id", "field", "default_value")
+ROLE_KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field_id")
 ROLE_VALUE_COLUMNS = ("role", "precedence", "value_unit", "unit_multiplier", "note")
-VALUE_KEY_COLUMNS = ("tenant_id", "insight_source_id", "data_source", "field_id", "value_id")
+VALUE_KEY_COLUMNS = ("insight_tenant_id", "insight_source_id", "data_source", "field_id", "value_id")
 VALUE_VALUE_COLUMNS = ("value_display", "canonical_value", "note")
 
 # The roles gold matches (task_field_roles_current, task_issue_state); `ignored`
@@ -240,7 +247,8 @@ def _parse_files[RowT: Keyed](
             if header_allowed:
                 header_allowed = False
 
-                if fields[0].lower() == "tenant_id":
+                # `tenant_id` names the column in a bundle written before the warehouse renamed it.
+                if fields[0].lower() in ("insight_tenant_id", "tenant_id"):
                     continue
 
             problem = rejection(fields)
@@ -275,8 +283,8 @@ def parse_task_values(files: Iterable[tuple[str, str]]) -> list[TaskValue]:
 def _rejection(fields: Sequence[str]) -> str | None:
     if not MIN_COLUMNS <= len(fields) <= MAX_COLUMNS:
         return f"expected {MIN_COLUMNS}-{MAX_COLUMNS} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:MIN_COLUMNS]):
-        return f"the first {MIN_COLUMNS} columns are all required"
+    if any(value == "" for value in fields[1:MIN_COLUMNS]):
+        return f"columns 2-{MIN_COLUMNS} are all required"
 
     # A typo passes every later gate silently: the consumer models filter on the
     # canonical domain, so an unknown spelling reads as an absent decision.
@@ -286,8 +294,8 @@ def _rejection(fields: Sequence[str]) -> str | None:
 def _defaults_rejection(fields: Sequence[str]) -> str | None:
     if len(fields) != len(DEFAULTS_COLUMNS):
         return f"expected {len(DEFAULTS_COLUMNS)} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields):
-        return f"all {len(DEFAULTS_COLUMNS)} columns are required"
+    if any(value == "" for value in fields[1:]):
+        return f"columns 2-{len(DEFAULTS_COLUMNS)} are all required"
 
     return _domain_problem(field=fields[2], value=fields[3], value_column="default_value")
 
@@ -296,8 +304,8 @@ def _roles_rejection(fields: Sequence[str]) -> str | None:
     required = len(ROLE_KEY_COLUMNS) + len(ROLE_VALUE_COLUMNS) - 1
     if not required <= len(fields) <= required + 1:
         return f"expected {required}-{required + 1} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:required]):
-        return f"the first {required} columns are all required"
+    if any(value == "" for value in fields[1:required]):
+        return f"columns 2-{required} are all required"
     role, precedence, value_unit, multiplier = fields[4:8]
     if role not in ROLES:
         return f"role {role!r} is not one of {', '.join(sorted(ROLES))}"
@@ -318,8 +326,8 @@ def _task_values_rejection(fields: Sequence[str]) -> str | None:
     required = len(VALUE_KEY_COLUMNS) + len(VALUE_VALUE_COLUMNS) - 1
     if not required <= len(fields) <= required + 1:
         return f"expected {required}-{required + 1} tab-separated columns, got {len(fields)}"
-    if any(value == "" for value in fields[:required]):
-        return f"the first {required} columns are all required"
+    if any(value == "" for value in fields[1:required]):
+        return f"columns 2-{required} are all required"
     if fields[6] not in TASK_VALUE_DOMAIN:
         return f"canonical_value {fields[6]!r} is not one of {', '.join(sorted(TASK_VALUE_DOMAIN))}"
     return None
@@ -381,6 +389,22 @@ def read_task_config(directory: Path) -> tuple[list[Role], list[TaskValue]]:
     return roles, values
 
 
+TENANT_ENV = "INSIGHT_TENANT_ID"
+TENANT_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def install_tenant() -> str:
+    """The install's tenant; every row is written under it, whatever the bundle's first column says."""
+    tenant = os.environ.get(TENANT_ENV) or ""
+    if not TENANT_UUID.match(tenant):
+        raise MappingFileError(f"{TENANT_ENV} must be the install's tenant as a lowercase UUID, got {tenant!r}")
+    return tenant
+
+
+def stamp[RowT](rows: Iterable[RowT], tenant: str) -> list[RowT]:
+    return [replace(row, tenant_id=tenant) for row in rows]  # type: ignore[type-var]
+
+
 def deduplicate[RowT: Keyed](rows: Iterable[RowT]) -> list[RowT]:
     """Collapse a key declared twice across the bundle; the first wins."""
     seen: set[tuple[str, ...]] = set()
@@ -416,9 +440,9 @@ def insert_statement(mappings: Sequence[Mapping], *, recorded_by: str) -> str:
     structure = ", ".join(f"{column} String" for column in (*KEY_COLUMNS, *VALUE_COLUMNS))
     return (
         f"INSERT INTO {MAP_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field, source_key, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field, source_key, valid_from, recorded_at, "
         f"target_value, display_name, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field, source_key, "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field, source_key, "
         f"toDateTime64(0, 3), now64(3), target_value, display_name, note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -432,8 +456,8 @@ def defaults_insert_statement(defaults: Sequence[Default], *, recorded_by: str) 
     structure = ", ".join(f"{column} String" for column in DEFAULTS_COLUMNS)
     return (
         f"INSERT INTO {DEFAULTS_TABLE} "
-        f"(tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, field, toDateTime64(0, 3), now64(3), "
+        f"(insight_tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
+        f"SELECT insight_tenant_id, insight_source_id, field, toDateTime64(0, 3), now64(3), "
         f"default_value, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -450,9 +474,9 @@ def roles_insert_statement(roles: Sequence[Role], *, recorded_by: str) -> str:
     structure = ", ".join(f"{column} String" for column in (*ROLE_KEY_COLUMNS, *ROLE_VALUE_COLUMNS))
     return (
         f"INSERT INTO {ROLES_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field_id, valid_from, recorded_at, "
         f"role, precedence, value_unit, unit_multiplier, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field_id, toDateTime64(0, 3), now64(3), "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field_id, toDateTime64(0, 3), now64(3), "
         f"role, toUInt8(precedence), value_unit, toFloat64(unit_multiplier), note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -469,9 +493,9 @@ def task_values_insert_statement(values: Sequence[TaskValue], *, recorded_by: st
     structure = ", ".join(f"{column} String" for column in (*VALUE_KEY_COLUMNS, *VALUE_VALUE_COLUMNS))
     return (
         f"INSERT INTO {VALUES_TABLE} "
-        f"(tenant_id, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, "
+        f"(insight_tenant_id, insight_source_id, data_source, field_id, value_id, valid_from, recorded_at, "
         f"canonical_value, value_display, note, recorded_by) "
-        f"SELECT tenant_id, insight_source_id, data_source, field_id, value_id, toDateTime64(0, 3), now64(3), "
+        f"SELECT insight_tenant_id, insight_source_id, data_source, field_id, value_id, toDateTime64(0, 3), now64(3), "
         f"canonical_value, value_display, note, {_lit(recorded_by)} "
         f"FROM input('{structure}') FORMAT TSV\n{rows}\n"
     )
@@ -688,6 +712,7 @@ def main() -> int:
         return 0
 
     try:
+        tenant = install_tenant()
         mappings, defaults = read_bundle(directory)
         roles, values = read_task_config(directory)
     except MappingFileError as error:
@@ -698,6 +723,7 @@ def main() -> int:
         LOG.warning("no data rows — nothing to load", extra={"dir": str(directory)})
         return 0
 
+    mappings, defaults, roles, values = (stamp(rows, tenant) for rows in (mappings, defaults, roles, values))
     execute, fetch_rows = _http_client()
     inserted = load(mappings, recorded_by=recorded_by, execute=execute, fetch_rows=fetch_rows)
     defaults_inserted = load_defaults(defaults, recorded_by=recorded_by, execute=execute, fetch_rows=fetch_rows)

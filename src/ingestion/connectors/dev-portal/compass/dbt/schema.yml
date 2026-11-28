@@ -22,6 +22,10 @@ models:
   - name: compass__components
     description: "Deduplicated Compass component catalog — one row per component, with its owning team id and the raw JSON columns (labels, links, event sources, dependency edges) that silver will flatten."
     columns:
+      - name: insight_tenant_id
+        data_tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null

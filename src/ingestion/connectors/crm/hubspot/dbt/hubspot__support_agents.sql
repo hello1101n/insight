@@ -18,7 +18,7 @@ WITH owners AS (
 
 SELECT
     {{ hubspot_support_key(['user_id']) }}             AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     user_id                                            AS agent_id,

@@ -118,8 +118,8 @@ def _comment(comment_id: str, body: dict[str, Any], extracted_at: str) -> dict[s
     return {
         **_airbyte(extracted_at),
         "id": comment_id,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{comment_id}",
         "comment_id": int(comment_id),
         "id_readable": "APP-1",
@@ -144,8 +144,8 @@ def _project(project_id: int, key: str) -> dict[str, Any]:
     return {
         **_airbyte(FIRST_READ),
         "id": str(project_id),
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-project-{project_id}",
         "project_id": project_id,
         "project_key": key,

@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'commit_hash'],
+    order_by=['insight_tenant_id', 'data_source', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -33,8 +33,8 @@
 -- query already holding the rest of that build.
 WITH collected_file_changes AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_hash,
@@ -54,14 +54,14 @@ WITH collected_file_changes AS (
             ''
         ) AS unknown_content_carrier
     FROM {{ ref('git_commit_file_changes') }}
-    WHERE (tenant_id, data_source, commit_hash, file_path) NOT IN (
-        SELECT tenant_id, data_source, commit_hash, file_path
+    WHERE (insight_tenant_id, data_source, commit_hash, file_path) NOT IN (
+        SELECT insight_tenant_id, data_source, commit_hash, file_path
         FROM {{ ref('git_superseded_file_changes') }}
     )
 ),
 earliest_carriers AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         data_source,
         project_key,
         repo_slug,
@@ -77,12 +77,12 @@ earliest_carriers AS (
         -- then free to take each column from a different carrier and emit a
         -- row no commit reported.
         argMin(
-            (source_id, commit_hash, file_extension, change_type, lines_added, lines_removed),
+            (insight_source_id, commit_hash, file_extension, change_type, lines_added, lines_removed),
             (observed_at, committer_date, commit_hash)
         ) AS carrier
     FROM collected_file_changes
     GROUP BY
-        tenant_id,
+        insight_tenant_id,
         data_source,
         project_key,
         repo_slug,
@@ -91,8 +91,8 @@ earliest_carriers AS (
         unknown_content_carrier
 )
 SELECT
-    tenant_id,
-    tupleElement(carrier, 1) AS source_id,
+    insight_tenant_id,
+    tupleElement(carrier, 1) AS insight_source_id,
     project_key,
     repo_slug,
     tupleElement(carrier, 2) AS commit_hash,

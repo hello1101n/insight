@@ -260,7 +260,6 @@ pub struct NotReadyDrilldown {
 pub struct ValidatedMetricDrilldown {
     pub selection: MetricDrilldownSelection,
     pub tenant_id: uuid::Uuid,
-    pub enforce_tenant_scope: bool,
     pub from: NaiveDate,
     pub to: NaiveDate,
     pub limit: usize,

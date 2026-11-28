@@ -26,7 +26,7 @@ models:
   - name: class_hr_working_hours
     description: "Scheduled working hours per active employee from all HR sources"
     tests:
-      - dbt_utils.unique_combination_of_columns:
+      - unique_combination_of_columns:
           combination_of_columns:
             - insight_tenant_id
             - email
@@ -75,6 +75,7 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: insight_source_type
         description: "Source system discriminator (bamboohr, workday, ms-entra, active-directory)"
         tests:
@@ -155,8 +156,9 @@ models:
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
-        description: "tenant_id-email-day"
+        description: "insight_tenant_id-email-day"
         tests:
           - not_null
           - unique

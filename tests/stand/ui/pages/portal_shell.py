@@ -72,7 +72,7 @@ class PortalShell:
         statuses = page.get_by_role("status").and_(page.locator('[class*="destructive"]'))
         self.visible_errors = alerts.or_(statuses).filter(visible=True)
 
-    def go(self) -> None:
+    def go(self, path: str = PATH) -> None:
         with step("Open Insight"):
             failed: list[str] = []
 
@@ -86,7 +86,7 @@ class PortalShell:
 
             self.page.on("requestfailed", record)
             try:
-                self.page.goto(self.PATH, wait_until="load")
+                self.page.goto(path, wait_until="load")
                 if failed:
                     # A connection reset between the runner and the CDN leaves the
                     # shell blank for good; a person would reload, and so do we, once.

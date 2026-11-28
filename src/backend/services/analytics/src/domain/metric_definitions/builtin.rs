@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn registry_declares_the_expected_counts() {
         assert_eq!(builtin_sources().len(), 7, "builtin source count");
-        assert_eq!(builtin_metrics().len(), 110, "builtin metric count");
+        assert_eq!(builtin_metrics().len(), 111, "builtin metric count");
     }
 
     #[test]
@@ -363,6 +363,7 @@ mod tests {
             ("pr_created_merged", "default_pr_created_merged"),
             ("pr_merged", "default_pr_merged"),
             ("pr_merged", "non_default_pr_merged"),
+            ("pr_comment", "pr_comment_on_others"),
         ] {
             assert_eq!(
                 declared_presentation("git", split),

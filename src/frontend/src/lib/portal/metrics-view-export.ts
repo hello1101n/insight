@@ -2,8 +2,8 @@ import type { DateRange } from "@/api/period-to-date-range";
 import i18n from "@/i18n";
 import type { Matrix, MatrixCell } from "@/lib/export/matrix";
 import { isDurationUnit, roundMetricValue } from "@/lib/format";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue } from "@/lib/portal/metrics-view";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import { combinedColumn, combinedFigure } from "@/lib/portal/metrics-view-combined";
 
 export interface MetricsViewExport {
   people: ReadonlyArray<{ entityId: string; displayName: string }>;
@@ -76,7 +76,12 @@ export function metricsViewMatrix({
     person.displayName,
     ...(withRoles ? [roles.get(person.entityId) ?? null] : []),
     period,
-    ...keys.map((key) => fileValue(byKey.get(key), person.entityId)),
+    ...keys.map((key) => {
+      const column = combinedColumn(key);
+      return column
+        ? combinedFigure(column, byKey, person.entityId)
+        : fileValue(byKey.get(key), person.entityId);
+    }),
   ]);
 
   return { columns, rows };

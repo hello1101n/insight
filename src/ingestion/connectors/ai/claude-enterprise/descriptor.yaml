@@ -19,7 +19,13 @@ name: claude-enterprise
 #   shape and the RMT promotion step is gone (#2877). MINOR per ADR-0015:
 #   reconcile must republish this connector so the connection catalog is
 #   refreshed; nothing already stored changes meaning.
-version: "3.3.0"
+# 3.4.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+# 3.5.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "3.5.0"
 schedule: "0 11 * * *"   # daily at 11:00 UTC — accommodates Anthropic's 10:00 UTC aggregation
 workflow: sync
 

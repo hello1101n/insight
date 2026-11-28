@@ -122,8 +122,8 @@ global:
     deploy: false
   # The source systems that drilldown rows link to. analytics and
   # insight-v3-core both read this list. Each entry has an `id` (the
-  # `source_id` that the connector writes), a `provider` (github, gitlab,
-  # bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
+  # `insight_source_id` that the connector writes), a `provider` (github,
+  # gitlab, bitbucket_cloud, jira or youtrack) and a `webBaseUrl`. Example:
   #   - id: <source id>
   #     provider: github
   #     webBaseUrl: https://github.example.com
@@ -134,12 +134,6 @@ global:
     # list. We use bitnamilegacy (see mariadb.image / redis.image) so we
     # have to allow "insecure" images — otherwise the chart refuses to deploy.
     allowInsecureImages: true
-  # Optional single-tenant seed UUID. NGINX_BFF: the request tenant comes ONLY
-  # from the signed gateway JWT (the api-gateway plugin default fallback was
-  # removed), so this no longer affects request-time tenant — it only feeds the
-  # analytics metric-catalog fallback + identity-resolution's bootstrap-admin
-  # seed. Empty (default) = no default anywhere; a missing tenant fails closed.
-  tenantDefaultId: ""
   # ═════════════════════════════════════════════════════════════════════════
   #  OBSERVABILITY — logs & traces EMISSION (the product contract)
   # ═════════════════════════════════════════════════════════════════════════
@@ -232,14 +226,14 @@ ingestion:
   # `serviceaccount "argo-workflow" not found`.
   templates:
     enabled: true
-  toolboxImage: "ghcr.io/hello1101n/insight-toolbox:2026.11.26.15.17-d8dce08" # e.g. "ghcr.io/hello1101n/insight-toolbox:2026.04.28.10.34-b08b460"
+  toolboxImage: "ghcr.io/hello1101n/insight-toolbox:2026.11.27.16.53-9b43095" # e.g. "ghcr.io/hello1101n/insight-toolbox:2026.04.28.10.34-b08b460"
   # The sample-data seeder's image, for TEST stands only. Nothing in the chart
   # runs it: `src/ingestion/tools/seed/seed-stand.sh` reads this value to render
   # a one-shot Job. Its own image rather than the toolbox on purpose — the
   # toolbox runs migrations on real stands and does not carry demo data. Empty
   # (the default) means the stand cannot be seeded until an operator names an
   # image, either here or with the script's `--image` flag.
-  seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.26.15.17-d8dce08" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
+  seedImage: "ghcr.io/hello1101n/insight-seed:2026.11.27.16.53-9b43095" # e.g. "ghcr.io/hello1101n/insight-seed:2026.04.28.10.34-b08b460"
   syncResourceDefaults: {}
   airbyteSync:
     capacityCheck:
@@ -273,6 +267,22 @@ ingestion:
     ttlSecondsAfterCompletion: 1800
     ttlSecondsAfterSuccess: 600
     ttlSecondsAfterFailure: 3600
+  # The tenant cutover (deploy/TENANT_IDENTITY_UPGRADE.md): a pre-upgrade hook
+  # migrates the stored tenant when anything is left to migrate, and a
+  # post-upgrade hook then submits a background full dbt rebuild. Both exit at
+  # once on an install with nothing to migrate.
+  tenantCutover:
+    # The helm --timeout of this deploy, in seconds (`make deploy` sets it from
+    # TIMEOUT). An upgrade fails the render below 10800 (3h): the pre-upgrade
+    # hook may migrate for 2h50m, and a helm that gives up or rolls back meanwhile
+    # leaves the previous release on migrated tables. A deploy that can cut
+    # over must also run without --rollback-on-failure.
+    helmTimeoutSeconds: 10800
+    # How long the pre-upgrade hook waits for running workflows and Airbyte
+    # jobs to finish before it fails the deploy (and resumes everything).
+    idleTimeoutSeconds: 1800
+    # Deadline of each dbt step of the rebuild (the default dbt-run step has 2h).
+    dbtStepDeadlineSeconds: 21600
   # Reconcile loop: descriptor-driven Airbyte connector reconciliation,
   # cron-scheduled inside the cluster (see templates/ingestion/reconcile-cron.yaml).
   reconcile:
@@ -282,7 +292,6 @@ ingestion:
     destinationName: "" # Optional: name of the Bronze destination managed by reconcile. Default `clickhouse-bronze`.
     destinationDatabase: "" # Optional: the database of the Bronze destination. Default: `default` in cluster mode, clickhouse.database standalone.
     argoInstanceId: "" # Optional. Set only if the cluster's Argo workflow controller runs with `instanceID:` configured (e.g. "argo-workflows-insight" on dev-vhc). Empty leaves the controller-instanceid label off — controllers without instanceID accept that.
-    tenantId: "" # Set to the Insight tenant slug (used in source/connection names per ADR-0005). No silent default.
     # Registry mirrors for connector images (descriptor images.cdk.image),
     # applied before reconcile registers them in Airbyte. For a cluster that
     # may only pull from its own registry, e.g.
@@ -510,6 +519,11 @@ authenticator:
     clientId: "insight-authenticator"
     clientSecret: ""
     redirectUri: "" # browser-facing callback, through the gateway edge
+    # REQUIRED. The install's one tenant, a lowercase UUID. The Keycloak realm
+    # stamps it as the `tenant_id` claim on every token, and data, connectors,
+    # identity and authorization all read this same value; set it once and
+    # never change it.
+    defaultTenantId: ""
     # How a login finds its person. Two modes, declared — never a fallback
     # chain, so a token that cannot answer the configured question is refused
     # rather than quietly answered a different way:
@@ -628,7 +642,7 @@ keycloakConfig:
   #   - name: INSIGHT_AUTHENTICATOR_CLIENT_SECRET
   #     valueFrom:
   #       secretKeyRef: {name: insight-oidc, key: oidc-client-secret}
-  # The Job also injects INSIGHT_TENANT_ID from global.tenantDefaultId (set):
+  # The Job also injects INSIGHT_TENANT_ID from authenticator.oidc.defaultTenantId:
   # realm IdP mappers pin the tenant per environment, never from IdP claims.
   extraEnv: []
   # Glob(s) config-cli imports, comma-separated. config-cli FAILS on any
@@ -694,11 +708,6 @@ analytics:
   # `credentials.autoGenerate: true`; on the gitops path the config Secret
   # pre-exists and this ref stays an inert optional.
   migrateEnvSecret: "insight-analytics-migrate-env"
-  # Metric Catalog single-tenant fallback comes from
-  # `global.tenantDefaultId` (DESIGN §2.2 cpt-metric-cat-constraint-tenant-
-  # default). The session-bound tenant from the gateway ALWAYS wins; this
-  # global default fires only on header-less callers. Empty global value =
-  # strict mode (400 tenant_unresolved on header-less requests).
   # Gateway-JWT verification (NGINX_BFF R1). The oidc-authn-plugin resolves the
   # authenticator's JWKS via OIDC discovery over https on `issuer` (the authn-tls
   # FQDN, rendered with `tpl`). It trusts the issuer's CA (ca.crt) from the
@@ -886,7 +895,7 @@ identityResolution:
   databaseName: "identity"
   # First-admin seed: on migrate,
   # this person UUID gets an active `admin` assignment in
-  # `global.tenantDefaultId`, idempotently. The person row must already
+  # `authenticator.oidc.defaultTenantId`, idempotently. The person row must already
   # exist in `persons` for that tenant. Empty string disables the runner.
   bootstrapAdminPersonId: ""
   # The ONE source trusted to say who exists: the persons-seed mints a person for
@@ -970,6 +979,9 @@ frontend:
     # toggled by the viewer's "Show planned sections" switch. A path in both
     # lists is hidden.
     planned: []
+  metricsView:
+    # INVARIANT: An empty list uses built-in defaults. URL and saved picks take precedence.
+    defaultMetrics: []
 connectors:
   runHistory:
     runsPerInstance: 100

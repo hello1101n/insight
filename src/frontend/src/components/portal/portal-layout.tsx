@@ -2,7 +2,6 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { Navigate, Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-import { MockBanner } from "@/components/mock-banner";
 import { ViewAsBanner } from "@/components/view-as-banner";
 import { ContextPane, ZonePages } from "@/components/portal/context-pane";
 import {
@@ -65,7 +64,6 @@ export function PortalLayout() {
           {/* WORKAROUND: the kit's SidebarProvider sets a tooltip delay of 0
               for everything inside it, sidebar or not. */}
           <TooltipProvider delay={TOOLTIP_DELAY_MS}>
-            <MockBanner />
             <ViewAsBanner />
             <PortalTopBar />
             <ZoneGuard>

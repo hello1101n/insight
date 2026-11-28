@@ -144,19 +144,14 @@ def test_chart_renders_without_ingestion_templates() -> None:
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-@pytest.mark.parametrize("tenant", ["", "example-tenant"])
-def test_cluster_integration_follows_ingestion_templates(enabled: bool, tenant: str) -> None:
+def test_cluster_integration_follows_ingestion_templates(enabled: bool) -> None:
+    tenant = "11111111-2222-4333-8444-555555555555"
     result = render(
         "--set",
         f"ingestion.templates.enabled={str(enabled).lower()}",
         "--set-string",
-        f"ingestion.reconcile.tenantId={tenant}",
+        f"authenticator.oidc.defaultTenantId={tenant}",
     )
-    if enabled and not tenant:
-        assert result.returncode != 0
-        assert "tenantId is required" in result.stderr
-        return
-
     assert result.returncode == 0, result.stderr
     documents = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
     configmap = resource(documents, "ConfigMap", "contract-test-connectors-gears-config")

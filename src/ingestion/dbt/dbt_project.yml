@@ -18,6 +18,12 @@ clean-targets:
   - dbt_packages
 
 vars:
+  # What a Bronze row with a NULL, empty or non-UUID tenant (or a staging row
+  # with a NULL unique_key) does: 'throw' fails the model's build, 'warn' keeps
+  # the row for the `not_null`/`not_empty` tenant tests to report. Read only by
+  # macros/bronze_tenant.sql.
+  bronze_tenant_on_invalid: throw
+
   # ClickHouse database gold serving relations materialize into. Single flip
   # point for the deferred `insight` -> `presentation` relocation (#1979): the
   # gold macros and per-model configs read this rather than a literal.
@@ -29,6 +35,12 @@ vars:
   # agrees without each one growing a flag. Jinja in dbt_project.yml renders to
   # text, so `cluster_mode` is the STRING "true"/"false", never a boolean.
   cluster_mode: "{{ env_var('CLICKHOUSE_CLUSTER_MODE', 'false') }}"
+
+  # Whether a never-built model over all-empty bronze is left out of a run
+  # (macros/unbuildable_models.sql). 'false' builds it anyway: the lanes that
+  # build the whole graph over freshly created, empty bronze (field parity) set
+  # DBT_SKIP_EMPTY_BRONZE=false. Absent bronze is skipped either way. A STRING.
+  skip_empty_bronze: "{{ env_var('DBT_SKIP_EMPTY_BRONZE', 'true') }}"
 
   # Minimum age before drop_orphaned_incremental_intermediates treats a
   # `__dbt_new_data_*` relation as abandoned. Must exceed the longest dbt run

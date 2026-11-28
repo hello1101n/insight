@@ -3,15 +3,15 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import type { DateRange } from "@/api/period-to-date-range";
-import { MetricValue, UnitNote } from "@/components/portal/metrics-table";
+import { MetricCell, UnitNote } from "@/components/portal/metrics-table";
 import {
   PersonalRecordsDialog,
   type PersonalRecordsTarget,
 } from "@/components/portal/personal-records-dialog";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { PersonalMetricDefinition } from "@/lib/portal/personal-metrics";
-import { compareGaps, finiteValue, formatGap } from "@/lib/portal/metrics-view";
+import { compareGaps, formatGap } from "@/lib/portal/metrics-view";
 import { cn } from "@/lib/utils";
 
 const STICKY_START = "sticky start-0 z-10 bg-card";
@@ -99,8 +99,9 @@ export function MetricsCompareTable({
                         cell.best && "font-semibold",
                       )}
                     >
-                      <MetricValue
-                        result={result}
+                      <MetricCell
+                        metricKey={key}
+                        byKey={byKey}
                         entityId={person.entityId}
                         personName={person.displayName}
                         onOpen={

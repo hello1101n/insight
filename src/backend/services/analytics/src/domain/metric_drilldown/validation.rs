@@ -250,7 +250,6 @@ async fn validate_common(
         ValidatedMetricDrilldown {
             selection,
             tenant_id,
-            enforce_tenant_scope: false,
             from,
             to,
             limit,

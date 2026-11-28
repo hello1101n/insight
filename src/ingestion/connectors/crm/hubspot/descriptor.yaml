@@ -12,7 +12,10 @@ name: hubspot
 #   holds money (source_hubspot/selection.py). The money columns stay in the
 #   schema and are NULL. property_definitions gets a `selection` column; the
 #   destination adds it on the next sync, so no full refresh is needed.
-version: "3.14.0"
+# 3.15.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "3.16.0"
 type: cdk
 schedule: "0 6 * * *"
 workflow: sync
@@ -24,7 +27,7 @@ images:
     name: source-hubspot-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.27.14.58-3d4c626"
+    image: "ghcr.io/hello1101n/source-hubspot-insight:2026.11.28.15.43-4007598"
 dbt_select: "tag:hubspot+"
 connection:
   namespace: "bronze_hubspot"

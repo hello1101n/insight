@@ -26,6 +26,14 @@ sources:
           error_after: {count: 120, period: hour}
 
 models:
+  - name: cursor__usage_events
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+
   - name: cursor__event_cost_daily
     description: >
       Cursor priced usage rolled up from the per-event grain to
@@ -34,6 +42,11 @@ models:
       assert_cursor_event_cost_attributed. Ephemeral: inlined as a CTE by each
       consumer, which applies its own day bound.
     columns:
+      - name: tenant_key
+        description: "Canonical tenant of the day; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: charged_cents
         description: >
           Sum of the day's `chargedCents`. That field is an event's full priced
@@ -64,7 +77,8 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
       - name: unique_key
         description: "Composite dedup key: tenant-source-userId-day"
         tests:
@@ -158,10 +172,11 @@ models:
       SCD2 snapshot of Cursor team members. Appends a new row when
       name, role, or isRemoved changes.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -191,10 +206,11 @@ models:
         description: "Member ID (stable identifier)"
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: field_name

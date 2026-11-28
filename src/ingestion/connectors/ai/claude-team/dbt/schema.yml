@@ -46,7 +46,8 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -163,7 +164,8 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -244,6 +246,14 @@ models:
         tests:
           - not_null
 
+  - name: claude_team__ai_overage_daily
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+
   - name: claude_team__members_latest
     description: >
       Members stream flattened to one row per account, with the serialized
@@ -252,6 +262,11 @@ models:
       email are kept, since the account remains bindable by hand.
       ReplacingMergeTree so the SCD2 snapshot can read it with FINAL.
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null

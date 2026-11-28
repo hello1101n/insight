@@ -4,10 +4,11 @@ models:
   - name: class_git_item_events
     description: "Unified pull-request lifecycle events from all sources (GitHub today). Issue events belong to the task class."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key; the vendor event id is the natural key"
         tests:
@@ -29,10 +30,11 @@ models:
   - name: class_git_repositories
     description: "Unified git repositories from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -61,10 +63,11 @@ models:
       trigger_category='other' and is_gate=0. A different gate is a
       different class, not a flag here.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key (one per run attempt)"
         tests:
@@ -93,7 +96,7 @@ models:
         description: >
           First-attempt creation time. On a retry, started_at moves to the
           last attempt while this stays put — duration must never mix the two.
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the run belongs to, vendor-native full name"
@@ -131,16 +134,17 @@ models:
       without an event is pending and stays visible. Accumulates past the
       source API retention window — never --full-refresh.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the deployment belongs to"
@@ -172,16 +176,17 @@ models:
       status can land syncs after its deployment. Accumulates past the source
       API retention window — never --full-refresh.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "Connector source instance id"
       - name: repo_full_name
         description: "Repository the deployment belongs to"
@@ -210,10 +215,11 @@ models:
   - name: class_git_repository_branches
     description: "Unified git repository branches from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -223,10 +229,11 @@ models:
   - name: class_git_commits
     description: "Unified git commits from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -264,10 +271,11 @@ models:
   - name: class_git_file_changes
     description: "Unified git file changes from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -287,10 +295,11 @@ models:
   - name: class_git_pull_requests
     description: "Unified git pull requests from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -326,10 +335,11 @@ models:
   - name: class_git_pull_requests_reviewers
     description: "Unified git pull request reviewers from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -339,10 +349,11 @@ models:
   - name: class_git_pull_requests_comments
     description: "Unified git pull request comments from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -352,10 +363,11 @@ models:
   - name: class_git_pull_requests_commits
     description: "Unified git pull request commits from all sources (GitHub, Bitbucket, GitLab)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
@@ -365,16 +377,17 @@ models:
   - name: class_git_pr_review_events
     description: "Unified pull-request review activity from GitHub and Bitbucket Cloud: one row per review verdict or pull-request comment. Comment and review bodies stay in bronze — silver keeps the event, not the text."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: unique_key
         description: "Composite deduplication key"
         tests:
           - not_null
           - unique
-      - name: source_id
+      - name: insight_source_id
         description: "The connector instance the event was collected through"
       - name: project_key
         description: "Repository owner or Bitbucket workspace"
@@ -416,7 +429,7 @@ models:
   - name: fct_git_pr
     description: "PR-row facts: adds person_key, state_norm, cycle_time_h"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: unique_key
         tests: [not_null, unique]
@@ -427,7 +440,7 @@ models:
   - name: fct_git_commit
     description: "Commit-row facts: adds person_key, week"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: unique_key
         tests: [not_null, unique]
@@ -438,7 +451,7 @@ models:
   - name: fct_git_file_change
     description: "File-change-row facts: adds person_key (via commit), week, file_category. Inner-joined to fct_git_commit on commit_hash — orphan file changes excluded."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: unique_key
         tests: [not_null, unique]
@@ -451,7 +464,7 @@ models:
   - name: fct_git_review
     description: "Review-row facts: adds reviewer person_key (reviewer-login namespace, not unified with email-based person_key)."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: unique_key
         tests: [not_null, unique]
@@ -460,27 +473,27 @@ models:
         tests: [not_null]
 
   - name: mtr_git_person_totals
-    description: "Per-person git totals: prs, commits, loc, clean_loc, avg cycle time. Grain: (tenant_id, person_key)."
+    description: "Per-person git totals: prs, commits, loc, clean_loc, avg cycle time. Grain: (insight_tenant_id, person_key)."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: person_key
         tests: [not_null]
       - name: unique_key
-        description: "concat(tenant_id, '|', person_key) — enforces one row per person per tenant"
+        description: "concat(insight_tenant_id, '|', person_key) — enforces one row per person per tenant"
         tests: [not_null, unique]
 
   - name: mtr_git_person_weekly
-    description: "Per-person per-week git trend: commits, prs_merged, code_loc, spec_lines, config_loc. Grain: (tenant_id, person_key, week)."
+    description: "Per-person per-week git trend: commits, prs_merged, code_loc, spec_lines, config_loc. Grain: (insight_tenant_id, person_key, week)."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests: [not_null]
       - name: person_key
         tests: [not_null]
       - name: week
         tests: [not_null]
       - name: unique_key
-        description: "concat(tenant_id, '|', person_key, '|', week) — enforces one row per person per tenant per week"
+        description: "concat(insight_tenant_id, '|', person_key, '|', week) — enforces one row per person per tenant per week"
         tests: [not_null, unique]
       - name: code_loc
         description: "Lines added in code-category files (file_category='code'). Excludes vendored/generated files (file_category='vendored')."

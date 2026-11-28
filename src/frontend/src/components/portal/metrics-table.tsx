@@ -19,9 +19,13 @@ import {
 } from "@gears-frontx/ui-kit";
 import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, formatMetricValue, formatUtcInstant } from "@/lib/format";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
-  finiteValue,
+  combinedColumn,
+  combinedParts,
+  type CombinedColumn,
+} from "@/lib/portal/metrics-view-combined";
+import {
   headerUnit,
   type MetricGroup,
   type MetricsRow,
@@ -234,8 +238,9 @@ export function MetricsTable({
                       className="inline-block h-3 w-10 animate-pulse rounded bg-muted align-middle"
                     />
                   ) : (
-                    <MetricValue
-                      result={byKey.get(key)}
+                    <MetricCell
+                      metricKey={key}
+                      byKey={byKey}
                       entityId={row.entityId}
                       personName={row.displayName}
                       onOpen={
@@ -371,6 +376,87 @@ function PersonalInfo({ definition }: { definition: PersonalMetricDefinition }) 
         ) : null}
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function MetricCell({
+  metricKey,
+  byKey,
+  entityId,
+  personName,
+  onOpen,
+}: {
+  metricKey: string;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+  personName: string;
+  onOpen?: (shown: string) => void;
+}) {
+  const column = combinedColumn(metricKey);
+  if (column) {
+    return (
+      <CombinedValue
+        column={column}
+        byKey={byKey}
+        entityId={entityId}
+        personName={personName}
+      />
+    );
+  }
+  return (
+    <MetricValue
+      result={byKey.get(metricKey)}
+      entityId={entityId}
+      personName={personName}
+      onOpen={onOpen}
+    />
+  );
+}
+
+function CombinedValue({
+  column,
+  byKey,
+  entityId,
+  personName,
+}: {
+  column: CombinedColumn;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+  personName: string;
+}) {
+  const evidence = useMetricEvidenceOptional();
+  const parts = combinedParts(column, byKey, entityId);
+  if (!parts) return <span className="text-muted-foreground">—</span>;
+
+  const text = parts.map((part) => part.text).join(" / ");
+  const targets = parts.flatMap(({ result }) => {
+    const selection = result?.drilldown
+      ? evidenceSelection(result.selection, entityId)
+      : null;
+    return result && selection ? [{ selection, label: result.label }] : [];
+  });
+  const [first] = targets;
+  if (!evidence || !first) return <span>{text}</span>;
+
+  const figure = `${text} ${column.unit}`;
+  return (
+    <button
+      type="button"
+      aria-label={`${personName} — ${column.label}: ${figure}`}
+      onClick={() =>
+        evidence.openEvidenceTargets(targets, {
+          title: [
+            column.label,
+            personName,
+            figure,
+            formatRange(first.selection.period.from, first.selection.period.to),
+          ].join(" · "),
+        })
+      }
+      className="-mx-1 cursor-pointer rounded-sm px-1 hover:bg-primary/10 hover:text-primary"
+    >
+      {text}
+    </button>
   );
 }
 

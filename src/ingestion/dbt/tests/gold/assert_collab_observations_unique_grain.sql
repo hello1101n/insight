@@ -4,7 +4,7 @@
 -- FINAL dedup regressed on a class read or a measure branch fanned out —
 -- sums and distinct counts would silently inflate.
 SELECT
-    tenant_id,
+    insight_tenant_id,
     entity_id,
     account_source_type,
     account_source_id,
@@ -15,5 +15,5 @@ SELECT
     subject_key,
     count() AS row_count
 FROM {{ ref('collab_metric_observations') }}
-GROUP BY tenant_id, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions, subject_key
+GROUP BY insight_tenant_id, entity_id, account_source_type, account_source_id, account_id, metric_date, measure_key, dimensions, subject_key
 HAVING count() > 1

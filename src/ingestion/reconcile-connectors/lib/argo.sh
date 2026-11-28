@@ -284,6 +284,21 @@ argo_delete_former_tenant_cronworkflows() {
   return "$rc"
 }
 
+# Unsuspends this instance's schedule. A merge patch, so the apply's
+# last-applied configuration never carries `suspend` and a later apply keeps
+# whatever an operator sets.
+argo_resume_cronworkflow() {
+  local connector="$1" tenant="$2" source_id="$3"
+  local name out
+  name="$(argo_cron_workflow_name "$connector" "$tenant" "$source_id")" || return 1
+  if ! out="$(kubectl -n "${INSIGHT_NAMESPACE}" patch cronworkflow.argoproj.io/"${name}" \
+        --type merge -p '{"spec":{"suspend":false}}' 2>&1)"; then
+    printf '%s: kubectl patch failed: %s\n' "$name" "$out" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
 # Only this instance's own schedule. Its siblings keep theirs, and the shapes
 # that name no instance are left where they are: they are shared, and removing
 # one instance is not a reason to touch what the others may still be using.

@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'data_source', 'commit_hash'],
+    order_by=['insight_tenant_id', 'data_source', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -19,8 +19,8 @@
 -- default branch of any connected repository counts. #3354
 
 SELECT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     project_key,
     repo_slug,
     commit_hash,
@@ -43,17 +43,17 @@ SELECT
     -- sit in different repositories.
     if(
         {{ git_on_default_branch('is_default_branch') }}
-            OR (tenant_id, data_source, commit_hash) IN (
-                SELECT tenant_id, data_source, commit_hash
+            OR (insight_tenant_id, data_source, commit_hash) IN (
+                SELECT insight_tenant_id, data_source, commit_hash
                 FROM {{ ref('git_default_branch_commits') }}
             ),
         'default',
         'non_default'
     ) AS branch_scope_value,
     {{ git_branch_scope_label('branch_scope_value') }} AS branch_scope_label,
-    if(coalesce(project_key, '') = '', '__unknown__', concat(coalesce(toString(source_id), ''), ':', project_key)) AS project_value,
+    if(coalesce(project_key, '') = '', '__unknown__', concat(coalesce(toString(insight_source_id), ''), ':', project_key)) AS project_value,
     if(coalesce(project_key, '') = '', 'Unknown', project_key) AS project_label,
-    concat(coalesce(toString(source_id), ''), ':', coalesce(project_key, ''), '/', coalesce(repo_slug, '')) AS repository_value,
+    concat(coalesce(toString(insight_source_id), ''), ':', coalesce(project_key, ''), '/', coalesce(repo_slug, '')) AS repository_value,
     if(coalesce(project_key, '') = '', coalesce(repo_slug, ''), concat(project_key, '/', repo_slug)) AS repository_label,
     replaceOne(data_source, 'insight_', '') AS source_value,
     {{ git_source_label('source_value') }} AS source_label,
@@ -62,7 +62,7 @@ SELECT
             tuple('branch_scope', branch_scope_value, branch_scope_label),
             tuple('repository', repository_value, repository_label),
             tuple('project', project_value, project_label),
-            tuple('source_id', coalesce(toString(source_id), ''), coalesce(toString(source_id), '')),
+            tuple('source_id', coalesce(toString(insight_source_id), ''), coalesce(toString(insight_source_id), '')),
             tuple('source', source_value, source_label)
         ]
         AS Array(Tuple(key String, value String, label Nullable(String)))
@@ -76,8 +76,8 @@ WHERE trimBoth(author_email) != ''
   -- later carrier of a patch an earlier commit authored) re-applies work
   -- counted on another commit, so it contributes neither a commit nor —
   -- because every file-change CTE attaches through this set — any lines.
-  AND (tenant_id, data_source, commit_hash) NOT IN (
-      SELECT tenant_id, data_source, commit_hash
+  AND (insight_tenant_id, data_source, commit_hash) NOT IN (
+      SELECT insight_tenant_id, data_source, commit_hash
       FROM {{ ref('git_derived_commits') }}
   )
 -- INVARIANT: a copy whose own repository shows the landing (its flag, or a
@@ -85,17 +85,17 @@ WHERE trimBoth(author_email) != ''
 -- repository dimension names where the work went whenever a copy can say;
 -- repository coordinates only break the remaining ties.
 ORDER BY
-    tenant_id,
+    insight_tenant_id,
     data_source,
     commit_hash,
     (
         {{ git_on_default_branch('is_default_branch') }}
-            OR (tenant_id, source_id, project_key, repo_slug, commit_hash) IN (
-                SELECT tenant_id, source_id, project_key, repo_slug, commit_hash
+            OR (insight_tenant_id, insight_source_id, project_key, repo_slug, commit_hash) IN (
+                SELECT insight_tenant_id, insight_source_id, project_key, repo_slug, commit_hash
                 FROM {{ ref('git_default_branch_commits') }}
             )
     ) DESC,
-    source_id,
+    insight_source_id,
     project_key,
     repo_slug
-LIMIT 1 BY tenant_id, data_source, commit_hash
+LIMIT 1 BY insight_tenant_id, data_source, commit_hash

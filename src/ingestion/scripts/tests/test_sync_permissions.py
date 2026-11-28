@@ -24,6 +24,7 @@ CONFIG_TABLES = (
     "ai_seat_tier_map",
     "ai_credit_pricing",
 )
+TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 def run(command: list[str], env: dict[str, str], *, data: str | None = None) -> str:
@@ -35,8 +36,8 @@ def run(command: list[str], env: dict[str, str], *, data: str | None = None) -> 
 def airbyte_write(directory: Path, env: dict[str, str], url: str, user: str, password: str) -> None:
     hubspot = {
         "unique_key": "example-owner",
-        "tenant_id": "example",
-        "source_id": "example",
+        "insight_tenant_id": TENANT,
+        "insight_source_id": "example",
         "teams": '[{"id":"example","name":"Example"}]',
         "data_source": "hubspot",
         "updatedAt": "2026-01-01T00:00:00Z",
@@ -197,7 +198,8 @@ def test_sync_account_runs_the_warehouse_paths(tmp_path: Path, provisioning: str
         assert sql("SELECT count() FROM dbt_test__audit.assert_changelog_items_not_double_encoded", sync=True) == "0"
 
         sql(
-            "CREATE VIEW identity.identity_inputs AS SELECT 'example' AS insight_source_type, "
+            f"CREATE VIEW identity.identity_inputs AS SELECT toUUID('{TENANT}') AS insight_tenant_id, "
+            "'example' AS insight_source_type, "
             "toUUID('00000000-0000-0000-0000-000000000001') AS insight_source_id, "
             "'example' AS source_account_id, 'email' AS value_type, 'user@example.com' AS value, "
             "now64(3) AS _synced_at, 'UPSERT' AS operation_type",
@@ -206,7 +208,7 @@ def test_sync_account_runs_the_warehouse_paths(tmp_path: Path, provisioning: str
         reader = ROOT / "src/backend/services/identity-resolution/src/infra/identity_inputs.rs"
         query = re.search(r'const STREAM_SQL: &str = r"(.*?)";', reader.read_text(), flags=re.S)
         assert query is not None
-        assert "user@example.com" in sql(query[1], sync=True)
+        assert "user@example.com" in sql(query[1].replace("?", f"'{TENANT}'"), sync=True)
         sql("SELECT if(count() = 0, NULL, max(id)) FROM identity.identity_persons", sync=True)
         sql("SELECT toUnixTimestamp64Milli(max(_synced_at)) FROM identity.identity_persons", sync=True)
         staging = "identity.identity_persons_staging_fixture"

@@ -527,7 +527,7 @@ async fn require_known_account(
         return Ok(());
     }
 
-    let reader = evidence_reader(state);
+    let reader = evidence_reader(state, tenant);
     let observed = reader
         .has_account(account)
         .await
@@ -943,7 +943,7 @@ pub async fn search_accounts(
     );
     let resume = account_resume_from(params.cursor.as_deref(), tenant, &scope)?;
 
-    let reader = evidence_reader(&state);
+    let reader = evidence_reader(&state, tenant);
     let page = reader
         .list(
             (!needle.is_empty()).then_some(needle.as_str()),
@@ -1038,7 +1038,7 @@ pub async fn sources(
 ) -> Result<impl IntoResponse, CanonicalError> {
     require_admin(&state.db, &ctx).await?;
 
-    let items = evidence_reader(&state)
+    let items = evidence_reader(&state, ctx.subject_tenant_id())
         .sources()
         .await
         .map_err(|e| internal(&e, "failed to read the sources"))?;
@@ -1287,7 +1287,7 @@ pub async fn person_accounts(
     let bindings = resolution_repo::current_bindings(&state.db, tenant, &accounts)
         .await
         .map_err(|e| internal(&e, "failed to read current bindings"))?;
-    let evidence = read_evidence(&state).await?;
+    let evidence = read_evidence(&state, tenant).await?;
     let by_account: HashMap<&SourceAccountKey, &AccountEvidence> =
         evidence.accounts.iter().map(|e| (&e.account, e)).collect();
 
@@ -1324,7 +1324,7 @@ const KIND_SPEC: ListSpec = ListSpec {
 };
 
 async fn build_review(state: &AppState, tenant: Uuid) -> Result<(Review, bool), CanonicalError> {
-    let evidence = read_evidence(state).await?;
+    let evidence = read_evidence(state, tenant).await?;
     let bindings = resolution_repo::current_bindings_in_tenant(
         &state.db,
         tenant,
@@ -1377,17 +1377,18 @@ async fn candidate_cards(
         .map_err(|e| internal(&e, "failed to read candidate cards"))
 }
 
-pub(super) fn evidence_reader(state: &AppState) -> ClickHouseEvidenceReader {
+pub(super) fn evidence_reader(state: &AppState, tenant: Uuid) -> ClickHouseEvidenceReader {
     ClickHouseEvidenceReader::connect(
         &state.config.clickhouse_url,
         &state.config.clickhouse_database,
         &state.config.clickhouse_user,
         &state.config.clickhouse_password,
+        tenant,
     )
 }
 
-async fn read_evidence(state: &AppState) -> Result<EvidenceSnapshot, CanonicalError> {
-    evidence_reader(state)
+async fn read_evidence(state: &AppState, tenant: Uuid) -> Result<EvidenceSnapshot, CanonicalError> {
+    evidence_reader(state, tenant)
         .accounts()
         .await
         .map_err(|e| internal(&e, "failed to read connector evidence"))

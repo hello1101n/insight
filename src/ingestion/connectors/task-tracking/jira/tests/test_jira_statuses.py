@@ -46,8 +46,8 @@ def test_tenant_source_stamping(http_mocker: HttpMocker) -> None:
     output = read_stream(_CONNECTOR, _STREAM, config)
 
     rec = output.records[0].record.data
-    assert rec["tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_tenant_id"] == config["insight_tenant_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["unique_key"] == (f"{config['insight_tenant_id']}-{config['insight_source_id']}-6")
     assert rec["status_id"] == 6
     # statusCategory flattening — the done-category detection downstream

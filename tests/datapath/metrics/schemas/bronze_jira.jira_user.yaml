@@ -8,8 +8,8 @@ schemas:
     additionalProperties: false
     properties:
       unique_key: { type: string }
-      source_id: { type: string }
-      tenant_id: { type: [string, "null"] }
+      insight_source_id: { type: string }
+      insight_tenant_id: { type: [string, "null"] }
       account_id: { type: string }
       email: { type: [string, "null"] }
       display_name: { type: [string, "null"] }

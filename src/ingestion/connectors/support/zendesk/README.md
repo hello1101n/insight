@@ -58,8 +58,8 @@ stringData:
 | `zendesk_start_date` | no | Earliest day to read, `YYYY-MM-DD`. Empty reads the whole account, so every ticket keeps its `Create` event |
 | `zendesk_jira_external_id` | no | External ID of the Jira integration V2. Empty skips the V2 links |
 
-`tenant_id`, `source_id` and `unique_key` are added to every record
-(`{tenant_id}-{source_id}-{id}`); do not put them in the Secret.
+`insight_tenant_id`, `insight_source_id` and `unique_key` are added to every record
+(`{insight_tenant_id}-{insight_source_id}-{id}`); do not put them in the Secret.
 
 Local development: copy `src/ingestion/secrets/connectors/zendesk.yaml.example`
 to `zendesk.yaml` (gitignored), fill it in, run `./secrets/apply.sh`.

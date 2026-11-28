@@ -77,8 +77,8 @@ WITH src AS (
     {% set arm_loop = loop %}
     {% for tbl in hubspot_bronze_tables(arm.table, archived=arm.archived) %}
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        insight_source_id,
         unique_key,
         id                                              AS activity_id,
         '{{ arm.type }}'                                AS activity_type,

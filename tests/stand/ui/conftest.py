@@ -33,9 +33,12 @@ import os
 import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
+from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import pytest
 from _pytest.terminal import TerminalReporter
+from api.analytics import query_window
 from insight_stand import (
     ADMIN_ROLE,
     LEAD_ROLE,
@@ -80,6 +83,7 @@ def navigation_extras(pytestconfig: pytest.Config) -> list[str]:
 
 
 SHOW_PLANNED_KEY = "insight.portal.showPlanned"
+SMOKE_WINDOW_DAYS = 30
 
 
 def _show_planned_sections(context: BrowserContext, base_url: str) -> None:
@@ -179,8 +183,12 @@ def browser_page_with_planned_off_for(
 
 @pytest.fixture
 def portal_smoke_for(
-    browser_page_for: Callable[[str], Page], base_url: str
+    browser_page_for: Callable[[str], Page], base_url: str, stand_manifest: Manifest
 ) -> Iterator[Callable[[str], PortalPage]]:
+    start, end = query_window(
+        stand_manifest, max_days=SMOKE_WINDOW_DAYS - 1, end_by=datetime.now(UTC).date()
+    )
+    search = urlencode({"from": start, "to": end})
     with ExitStack() as observers:
 
         def portal_for(name: str) -> PortalPage:
@@ -188,7 +196,7 @@ def portal_smoke_for(
             watch = PageWatch(page.context, base_url)
             observers.enter_context(watch.observing(os.environ.get("INSIGHT_FORCE_500") or None))
             shell = PortalShell(page)
-            shell.go()
+            shell.go(f"{PortalShell.PATH}?{search}")
             return PortalPage(shell, watch)
 
         yield portal_for

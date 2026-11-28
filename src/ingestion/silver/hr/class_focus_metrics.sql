@@ -10,11 +10,11 @@
 ) }}
 
 SELECT
-    ma.tenant_id                                                    AS insight_tenant_id,
+    ifNull(ma.insight_tenant_id, '')                                        AS insight_tenant_id,
     ma.person_key                                                   AS email,
     ma.date                                                         AS day,
     concat(
-        ma.tenant_id, '-',
+        ifNull(ma.insight_tenant_id, ''), '-',
         ma.person_key, '-',
         toString(ma.date)
     )                                                               AS unique_key,
@@ -61,22 +61,22 @@ SELECT
 FROM {{ ref('class_collab_meeting_activity') }} ma FINAL
 LEFT JOIN {{ ref('class_hr_working_hours') }} wh FINAL
     ON ma.person_key = lower(wh.email)
-   AND ma.tenant_id = wh.insight_tenant_id
+   AND ma.insight_tenant_id = wh.insight_tenant_id
 WHERE ma.person_key != ''
   AND ma.date IS NOT NULL
 {% if is_incremental() %}
   -- INVARIANT: the recent days pick up working-hours changes; any older person-day is
   -- re-derived once a meeting row newer than the one it was derived from arrives.
   AND (
-      ma.date > {{ instance_incremental_watermark('day', ['ma.tenant_id'], ['insight_tenant_id'], '3 DAY') }}
-      OR (ma.tenant_id, ma.person_key, ma.date) IN (
+      ma.date > {{ instance_incremental_watermark('day', ['ma.insight_tenant_id'], ['insight_tenant_id'], '3 DAY') }}
+      OR (ma.insight_tenant_id, ma.person_key, ma.date) IN (
           SELECT
-              changed.tenant_id,
+              changed.insight_tenant_id,
               changed.person_key,
               changed.date
           FROM {{ ref('class_collab_meeting_activity') }} AS changed FINAL
           LEFT JOIN {{ this }} AS derived FINAL
-              ON derived.insight_tenant_id = changed.tenant_id
+              ON derived.insight_tenant_id = changed.insight_tenant_id
               AND derived.email = changed.person_key
               AND derived.day = changed.date
           WHERE changed._version > ifNull(derived.source_version, 0)
@@ -84,7 +84,7 @@ WHERE ma.person_key != ''
   )
 {% endif %}
 GROUP BY
-    ma.tenant_id,
+    ma.insight_tenant_id,
     ma.person_key,
     ma.date,
     COALESCE(nullIf(wh.working_hours_per_day, 0), 8.0)

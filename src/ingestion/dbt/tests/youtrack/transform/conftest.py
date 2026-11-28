@@ -34,7 +34,7 @@ from bronze import create_bronze  # noqa: E402
 from dbt_profiles import Connection, build_profile  # noqa: E402
 
 SOURCE = "synthetic-youtrack"
-TENANT = "synthetic-tenant"
+TENANT = "bbbbbbbb-2222-4222-8222-222222222222"
 
 
 class Warehouse:
@@ -47,14 +47,30 @@ class Warehouse:
         }
 
     def dbt(self, command: str, *args: str) -> None:
-        messages = []
+        success, log = self.dbt_status(command, *args)
+        assert success, log
+
+    def dbt_status(self, command: str, *args: str) -> tuple[bool, str]:
+        """Run dbt and hand back whether it succeeded and its log, judging nothing."""
+        messages: list[str] = []
         result = dbtRunner(callbacks=[lambda e: messages.append(e.info.msg)]).invoke(
             [command, "--project-dir", str(DBT), "--profiles-dir", str(self.profile), "--quiet", *args]
         )
-        assert result.success, "\n".join(messages)[-10000:]
+        return result.success, "\n".join(messages)[-10000:]
 
     def build(self, selector: str = "tag:youtrack", full_refresh: bool = False) -> None:
         self.dbt("run", "--select", selector, *(["--full-refresh"] if full_refresh else []))
+
+    def failing_tests(self, names: Sequence[str]) -> set[str]:
+        result = dbtRunner().invoke(
+            ["test", "--project-dir", str(DBT), "--profiles-dir", str(self.profile), "--quiet", "--select", *names]
+        )
+        assert result.result is not None, f"dbt test did not run: {result.exception}"
+        return {
+            outcome.node.name
+            for outcome in result.result.results
+            if outcome.node.resource_type == "test" and outcome.status in {"fail", "error"}
+        }
 
     def insert(self, table: str, row: Mapping[str, object], observed: str = "2026-01-10T00:00:00") -> None:
         assert table in self.tables
@@ -63,8 +79,8 @@ class Warehouse:
             "_airbyte_extracted_at": datetime.fromisoformat(observed).replace(tzinfo=UTC),
             "_airbyte_meta": "{}",
             "_airbyte_generation_id": 0,
-            "tenant_id": TENANT,
-            "source_id": SOURCE,
+            "insight_tenant_id": TENANT,
+            "insight_source_id": SOURCE,
             **row,
         }
         self.client.insert("bronze_youtrack." + table, [list(values.values())], column_names=list(values))

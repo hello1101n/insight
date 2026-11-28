@@ -313,6 +313,14 @@ export function normalizeMetricResults(
   );
 }
 
+export function finiteValue(
+  result: NormalizedMetricResult,
+  entityId: string
+): number | null {
+  const { value } = forEntity(result, entityId);
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
 export function forEntity(
   result: NormalizedMetricResult,
   entityId: string

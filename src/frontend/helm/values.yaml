@@ -56,6 +56,10 @@ nav:
   # A path in both lists is hidden.
   planned: []
 
+metricsView:
+  # INVARIANT: An empty list uses built-in defaults. URL and saved picks take precedence.
+  defaultMetrics: []
+
 resources:
   requests:
     cpu: 50m

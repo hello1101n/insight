@@ -7,9 +7,9 @@ schemas:
     type: object
     additionalProperties: false
     properties:
-      tenant_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
       unique_key: {type: string}
-      source_id: {type: string}
+      insight_source_id: {type: string}
       # Numeric JSON ids/counts the connector stores as Decimal(38,9); accept
       # number|string|null to match the real column via the seeder's coercion.
       worklog_id: {type: [number, string, "null"]}

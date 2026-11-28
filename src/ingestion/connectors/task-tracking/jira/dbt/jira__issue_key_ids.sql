@@ -29,7 +29,8 @@
 WITH issue_rows AS (
     -- Every row, not the newest: bronze keeps one per key the connector saw.
     SELECT
-        CAST(source_id AS String)                                     AS insight_source_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(1)                                                    AS precedence
@@ -38,7 +39,8 @@ WITH issue_rows AS (
     UNION ALL
 
     SELECT
-        CAST(source_id AS String)                                     AS insight_source_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(1)                                                    AS precedence
@@ -50,7 +52,8 @@ WITH issue_rows AS (
     -- The census lists every issue a visible project holds, whatever its last
     -- update, so a key outside the sync window still resolves.
     SELECT
-        CAST(source_id AS String)                                     AS insight_source_id,
+        {{ bronze_tenant() }}                                         AS insight_tenant_id,
+        CAST(insight_source_id AS String)                                     AS insight_source_id,
         COALESCE(toString(id_readable), '')                           AS issue_key,
         CAST(jira_id AS String)                                       AS issue_id,
         toUInt8(2)                                                    AS precedence
@@ -63,6 +66,7 @@ WITH issue_rows AS (
 -- issue the entry belongs to.
 moves AS (
     SELECT
+        insight_tenant_id,
         insight_source_id,
         arrayJoin([
             JSONExtractString(item, 'fromString'),
@@ -74,7 +78,8 @@ moves AS (
         toUInt8(3)                                                    AS precedence
     FROM (
         SELECT
-            CAST(source_id AS String)                                 AS insight_source_id,
+            {{ bronze_tenant() }}                                     AS insight_tenant_id,
+            CAST(insight_source_id AS String)                                 AS insight_source_id,
             COALESCE(toString(jira_id), '')                           AS issue_id,
             arrayJoin(JSONExtractArrayRaw(COALESCE(items, '[]')))     AS item
         FROM {{ source('bronze_jira', 'jira_issue_history') }}
@@ -88,6 +93,7 @@ moves AS (
 
 linked_now AS (
     SELECT
+        insight_tenant_id,
         insight_source_id,
         target_key                                                    AS issue_key,
         target_id                                                     AS issue_id,
@@ -98,6 +104,7 @@ linked_now AS (
 -- A parent change names the parent by id and by the key it had then.
 parent_changes AS (
     SELECT
+        insight_tenant_id,
         insight_source_id,
         arrayJoin([
             (COALESCE(value_from_string, ''), COALESCE(value_from, '')),
@@ -111,29 +118,30 @@ parent_changes AS (
 ),
 
 every_pair AS (
-    SELECT insight_source_id, issue_key, issue_id, precedence FROM issue_rows
+    SELECT insight_tenant_id, insight_source_id, issue_key, issue_id, precedence FROM issue_rows
     UNION ALL
-    SELECT insight_source_id, issue_key, issue_id, precedence FROM moves
+    SELECT insight_tenant_id, insight_source_id, issue_key, issue_id, precedence FROM moves
     UNION ALL
-    SELECT insight_source_id, issue_key, issue_id, precedence FROM linked_now
+    SELECT insight_tenant_id, insight_source_id, issue_key, issue_id, precedence FROM linked_now
     UNION ALL
-    SELECT insight_source_id, issue_key, issue_id, precedence FROM parent_changes
+    SELECT insight_tenant_id, insight_source_id, issue_key, issue_id, precedence FROM parent_changes
 ),
 
 -- A key carries its project prefix and an id is all digits; a pair that is not
 -- one of each names no issue.
 well_formed AS (
-    SELECT insight_source_id, issue_key, issue_id, precedence
+    SELECT insight_tenant_id, insight_source_id, issue_key, issue_id, precedence
     FROM every_pair
     WHERE match(issue_key, '^[^-]+-[0-9]+$')
       AND match(issue_id, '^[0-9]+$')
 )
 
 SELECT
-    CAST(concat(insight_source_id, '-', issue_key) AS String)        AS unique_key,
+    CAST(concat(ifNull(insight_tenant_id, ''), '-', insight_source_id, '-', issue_key) AS String) AS unique_key,
+    insight_tenant_id,
     insight_source_id,
     issue_key,
     argMin(issue_id, (precedence, issue_id))                          AS issue_id,
     toUnixTimestamp64Milli(now64(3))                                  AS _version
 FROM well_formed
-GROUP BY insight_source_id, issue_key
+GROUP BY insight_tenant_id, insight_source_id, issue_key

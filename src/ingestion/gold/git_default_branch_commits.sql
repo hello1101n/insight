@@ -1,7 +1,7 @@
 {{ config(
     materialized='table',
     engine=insight_engine('MergeTree'),
-    order_by=['tenant_id', 'source_id', 'project_key', 'repo_slug', 'commit_hash'],
+    order_by=['insight_tenant_id', 'insight_source_id', 'project_key', 'repo_slug', 'commit_hash'],
     schema=var('gold_database'),
     settings={'allow_nullable_key': 1},
     tags=['gold'],
@@ -43,14 +43,14 @@ WITH
 -- branches resolves the same way on every read.
 repository_default_branches AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         project_key,
         repo_slug,
         min(branch_name) AS branch_name
     FROM {{ ref('class_git_repository_branches') }} FINAL
     WHERE is_default = 1
-    GROUP BY tenant_id, source_id, project_key, repo_slug
+    GROUP BY insight_tenant_id, insight_source_id, project_key, repo_slug
 ),
 
 -- The content that reached the default branch, by path, and the FIRST time it
@@ -74,8 +74,8 @@ repository_default_branches AS (
 -- may well have preceded. Unknown must refuse, not guess.
 landed_content AS (
     SELECT
-        landed_change.tenant_id AS tenant_id,
-        landed_change.source_id AS source_id,
+        landed_change.insight_tenant_id AS insight_tenant_id,
+        landed_change.insight_source_id AS insight_source_id,
         landed_change.project_key AS project_key,
         landed_change.repo_slug AS repo_slug,
         landed_change.file_path AS file_path,
@@ -87,8 +87,8 @@ landed_content AS (
         ) AS arrived_at
     FROM {{ ref('class_git_file_changes') }} AS landed_change FINAL
     INNER JOIN {{ ref('class_git_commits') }} AS carrier FINAL
-        ON carrier.tenant_id IS NOT DISTINCT FROM landed_change.tenant_id
-        AND carrier.source_id IS NOT DISTINCT FROM landed_change.source_id
+        ON carrier.insight_tenant_id IS NOT DISTINCT FROM landed_change.insight_tenant_id
+        AND carrier.insight_source_id IS NOT DISTINCT FROM landed_change.insight_source_id
         AND carrier.project_key = landed_change.project_key
         AND carrier.repo_slug = landed_change.repo_slug
         AND carrier.commit_hash = landed_change.commit_hash
@@ -98,8 +98,8 @@ landed_content AS (
               AND coalesce(landed_change.post_image_oid, '') = ''
       )
     GROUP BY
-        landed_change.tenant_id,
-        landed_change.source_id,
+        landed_change.insight_tenant_id,
+        landed_change.insight_source_id,
         landed_change.project_key,
         landed_change.repo_slug,
         landed_change.file_path,
@@ -113,8 +113,8 @@ landed_content AS (
 -- order promotes nothing — the comparison below is false for it.
 unlanded_commits AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         project_key,
         repo_slug,
         commit_hash,
@@ -124,30 +124,30 @@ unlanded_commits AS (
       AND is_merge_commit = 0
 )
 SELECT DISTINCT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     project_key,
     repo_slug,
     commit_hash,
     data_source
 FROM (
     SELECT
-        links.tenant_id AS tenant_id,
-        links.source_id AS source_id,
+        links.insight_tenant_id AS insight_tenant_id,
+        links.insight_source_id AS insight_source_id,
         links.project_key AS project_key,
         links.repo_slug AS repo_slug,
         links.commit_hash AS commit_hash,
         links.data_source AS data_source
     FROM {{ ref('class_git_pull_requests_commits') }} AS links FINAL
     INNER JOIN {{ ref('class_git_pull_requests') }} AS prs FINAL
-        ON prs.tenant_id = links.tenant_id
-        AND prs.source_id = links.source_id
+        ON prs.insight_tenant_id = links.insight_tenant_id
+        AND prs.insight_source_id = links.insight_source_id
         AND prs.project_key = links.project_key
         AND prs.repo_slug = links.repo_slug
         AND prs.pr_id = links.pr_id
     INNER JOIN repository_default_branches AS defaults
-        ON defaults.tenant_id = links.tenant_id
-        AND defaults.source_id = links.source_id
+        ON defaults.insight_tenant_id = links.insight_tenant_id
+        AND defaults.insight_source_id = links.insight_source_id
         AND defaults.project_key = links.project_key
         AND defaults.repo_slug = links.repo_slug
     WHERE prs.state = 'MERGED'
@@ -156,22 +156,22 @@ FROM (
     UNION ALL
 
     SELECT
-        branch_change.tenant_id AS tenant_id,
-        branch_change.source_id AS source_id,
+        branch_change.insight_tenant_id AS insight_tenant_id,
+        branch_change.insight_source_id AS insight_source_id,
         branch_change.project_key AS project_key,
         branch_change.repo_slug AS repo_slug,
         branch_change.commit_hash AS commit_hash,
         branch_change.data_source AS data_source
     FROM {{ ref('class_git_file_changes') }} AS branch_change FINAL
     INNER JOIN unlanded_commits AS candidate
-        ON candidate.tenant_id IS NOT DISTINCT FROM branch_change.tenant_id
-        AND candidate.source_id IS NOT DISTINCT FROM branch_change.source_id
+        ON candidate.insight_tenant_id IS NOT DISTINCT FROM branch_change.insight_tenant_id
+        AND candidate.insight_source_id IS NOT DISTINCT FROM branch_change.insight_source_id
         AND candidate.project_key = branch_change.project_key
         AND candidate.repo_slug = branch_change.repo_slug
         AND candidate.commit_hash = branch_change.commit_hash
     INNER JOIN landed_content AS landed
-        ON landed.tenant_id IS NOT DISTINCT FROM branch_change.tenant_id
-        AND landed.source_id IS NOT DISTINCT FROM branch_change.source_id
+        ON landed.insight_tenant_id IS NOT DISTINCT FROM branch_change.insight_tenant_id
+        AND landed.insight_source_id IS NOT DISTINCT FROM branch_change.insight_source_id
         AND landed.project_key = branch_change.project_key
         AND landed.repo_slug = branch_change.repo_slug
         AND landed.file_path = branch_change.file_path

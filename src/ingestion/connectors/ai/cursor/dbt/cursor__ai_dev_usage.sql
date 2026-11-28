@@ -33,7 +33,7 @@ WITH daily AS (
         *,
         toDate(fromUnixTimestamp64Milli(CAST(date AS Int64))) AS day_key,
         row_number() OVER (
-            PARTITION BY coalesce(tenant_id, ''), coalesce(source_id, ''),
+            PARTITION BY coalesce(insight_tenant_id, ''), coalesce(insight_source_id, ''),
                          lower(trim(email)), toDate(fromUnixTimestamp64Milli(CAST(date AS Int64)))
             ORDER BY coalesce(userId, '')
         )                                                 AS email_day_rank
@@ -62,16 +62,16 @@ WITH daily AS (
       -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
       -- the day window keeps re-deriving recent days whose joined streams arrive late.
       AND (
-          toDate(fromUnixTimestamp64Milli(CAST(date AS Int64))) > {{ instance_incremental_watermark('day', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-          OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+          toDate(fromUnixTimestamp64Milli(CAST(date AS Int64))) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+          OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id']) }}
       )
     {% endif %}
 )
 
 SELECT
-    d.tenant_id                                     AS insight_tenant_id,
-    d.source_id                                     AS source_id,
-    CAST(concat(coalesce(d.tenant_id, ''), '-', coalesce(d.source_id, ''), '-', coalesce(d.userId, ''), '-', toString(d.day_key)) AS String)
+    {{ bronze_tenant('d.insight_tenant_id') }}      AS insight_tenant_id,
+    d.insight_source_id                                     AS insight_source_id,
+    CAST(concat(insight_tenant_id, '-', coalesce(d.insight_source_id, ''), '-', coalesce(d.userId, ''), '-', toString(d.day_key)) AS String)
                                                     AS unique_key,
     lower(trim(d.email))                            AS email,
     CAST(NULL AS Nullable(String))                  AS api_key_id,
@@ -120,7 +120,7 @@ SELECT
     CAST(NULL AS Nullable(String))                  AS seat_status
 FROM daily AS d
 LEFT JOIN {{ ref('cursor__event_cost_daily') }} AS c
-       ON coalesce(d.tenant_id, '') = c.tenant_key
-      AND coalesce(d.source_id, '') = c.source_key
+       ON coalesce(d.insight_tenant_id, '') = c.tenant_key
+      AND coalesce(d.insight_source_id, '') = c.source_key
       AND lower(trim(d.email)) = c.email
       AND d.day_key = c.day

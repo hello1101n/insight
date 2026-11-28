@@ -12,7 +12,8 @@
 
 SELECT
     CAST(unique_key AS Nullable(String))                    AS unique_key,
-    CAST(source_id AS Nullable(String))                     AS insight_source_id,
+    {{ bronze_tenant() }}                                   AS insight_tenant_id,
+    CAST(insight_source_id AS Nullable(String))                     AS insight_source_id,
     CAST('github' AS String)                                AS data_source,
     CAST(toString(id) AS Nullable(String))                  AS project_id,
     CAST(full_name AS Nullable(String))                     AS project_key,

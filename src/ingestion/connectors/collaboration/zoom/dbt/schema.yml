@@ -28,6 +28,25 @@ sources:
           error_after: {count: 168, period: hour}
 
 models:
+  - name: zoom__users_snapshot
+    description: "SCD2 snapshot of bronze_zoom.users. A new version is written when a tracked user field changes."
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
+      - name: unique_key
+        tests:
+          - not_null
+
+  - name: zoom__users_fields_history
+    description: "Field-level change log derived from zoom__users_snapshot. One row per changed field per version transition."
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
+
   - name: zoom__meeting_sessions
     description: >
       Zoom meeting-session stitching → per (tenant, source, uuid)
@@ -42,10 +61,11 @@ models:
       stitching decision per uuid (a late-arriving session can
       re-cluster earlier sessions in the same chain).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -88,9 +108,10 @@ models:
       from the host on bronze_zoom.meetings. A day can carry organized
       meetings alone, when the host never joined.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null
