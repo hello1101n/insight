@@ -138,7 +138,7 @@ function renderTable({
 const table = () => screen.getByRole("table");
 
 function cellsOf(label: string): string[] {
-  const row = within(table()).getByRole("row", { name: new RegExp(`^${label}`) });
+  const row = within(table()).getByRole("row", { name: (name) => name.startsWith(label) });
   return within(row)
     .getAllByRole("cell")
     .map((cell) => cell.textContent ?? "");

@@ -72,7 +72,7 @@ const EMAILS_SENT: Row = {
 };
 
 function rowOf(label: string): HTMLElement {
-  return within(screen.getByRole("table")).getByRole("row", { name: new RegExp(`^${label}`) });
+  return within(screen.getByRole("table")).getByRole("row", { name: (name) => name.startsWith(label) });
 }
 
 function cellsOf(label: string): string[] {

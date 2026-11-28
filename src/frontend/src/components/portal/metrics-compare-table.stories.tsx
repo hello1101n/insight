@@ -180,7 +180,7 @@ export const TestEachNameStartsWhereItsValueStarts: Story = {
 
     for (const name of ["Alexandra Fernandez", "Bo Ng"]) {
       const nameEdge = canvas.getByRole("link", { name }).getBoundingClientRect().left;
-      const value = canvas.getByRole("button", { name: new RegExp(`^${name} — `) });
+      const value = canvas.getByRole("button", { name: (accessible) => accessible.startsWith(`${name} — `) });
       const valueEdge = value.closest("td")!.firstElementChild!.getBoundingClientRect().left;
 
       await expect(
