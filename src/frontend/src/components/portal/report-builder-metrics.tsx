@@ -240,30 +240,32 @@ function MetricFamilyGroup({
                 checked && "bg-primary/5 font-medium"
               )}
             >
-              <label
-                htmlFor={`report-${metric.metric_key}`}
-                className={cn(
-                  "flex min-w-0 items-center gap-2",
-                  metric.reason == null && "cursor-pointer"
-                )}
-              >
-                <Checkbox
-                  id={`report-${metric.metric_key}`}
-                  checked={checked}
-                  disabled={metric.reason != null}
-                  onCheckedChange={toggle}
-                />
-                <span className="min-w-0 flex-1 truncate" title={metric.label}>
-                  {metric.label}
-                </span>
-              </label>
-              {metric.description?.trim() || metric.explanation?.trim() ? (
-                <MetricDescription
-                  label={metric.label}
-                  description={metric.description?.trim() ?? ""}
-                  explanation={metric.explanation?.trim() ?? ""}
-                />
-              ) : null}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <label
+                  htmlFor={`report-${metric.metric_key}`}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2",
+                    metric.reason == null && "cursor-pointer"
+                  )}
+                >
+                  <Checkbox
+                    id={`report-${metric.metric_key}`}
+                    checked={checked}
+                    disabled={metric.reason != null}
+                    onCheckedChange={toggle}
+                  />
+                  <span className="min-w-0 flex-1 truncate" title={metric.label}>
+                    {metric.label}
+                  </span>
+                </label>
+                {metric.description?.trim() || metric.explanation?.trim() ? (
+                  <MetricDescription
+                    label={metric.label}
+                    description={metric.description?.trim() ?? ""}
+                    explanation={metric.explanation?.trim() ?? ""}
+                  />
+                ) : null}
+              </span>
               <span
                 aria-hidden="true"
                 className="shrink-0 text-xs text-muted-foreground uppercase"
