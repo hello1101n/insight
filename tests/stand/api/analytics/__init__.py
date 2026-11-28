@@ -21,13 +21,13 @@ from insight_stand import Manifest
 MAX_QUERY_SPAN_DAYS: Final[int] = 399
 
 
-def query_window(manifest: Manifest, *, max_days: int = MAX_QUERY_SPAN_DAYS) -> tuple[str, str]:
+def query_window(
+    manifest: Manifest, *, max_days: int = MAX_QUERY_SPAN_DAYS, end_by: date | None = None
+) -> tuple[str, str]:
     """The widest slice of the seeded window the analytics API will actually answer for.
 
-    Returns `(from, to)` as ISO dates: the manifest's `data_window` end, and a
-    start no more than `max_days` before it. A seed window narrower than the
-    cap is returned unchanged, so the ordinary case still asks about everything
-    that was seeded.
+    Returns `(from, to)` as ISO dates. The end is the last seeded date up to
+    `end_by`, if specified. The start is no more than `max_days` before it.
 
     The TAIL rather than the head, deliberately. Both ends carry seeded rows,
     so either would answer — but the recent end is the one a dashboard opens
@@ -54,6 +54,12 @@ def query_window(manifest: Manifest, *, max_days: int = MAX_QUERY_SPAN_DAYS) -> 
             f"the manifest at {manifest.source_path} carries data_window "
             f"{manifest.data_window!r}, whose ends are not ISO dates: {exc}"
         ) from None
+
+    if end_by is not None:
+        end = min(end, end_by)
+    assert start <= end, (
+        f"the manifest at {manifest.source_path} has no dates in the requested window"
+    )
 
     earliest = end - timedelta(days=max_days)
     return max(start, earliest).isoformat(), end.isoformat()

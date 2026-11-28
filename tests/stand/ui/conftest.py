@@ -33,6 +33,7 @@ import os
 import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 import pytest
@@ -184,7 +185,9 @@ def browser_page_with_planned_off_for(
 def portal_smoke_for(
     browser_page_for: Callable[[str], Page], base_url: str, stand_manifest: Manifest
 ) -> Iterator[Callable[[str], PortalPage]]:
-    start, end = query_window(stand_manifest, max_days=SMOKE_WINDOW_DAYS - 1)
+    start, end = query_window(
+        stand_manifest, max_days=SMOKE_WINDOW_DAYS - 1, end_by=datetime.now(UTC).date()
+    )
     search = urlencode({"from": start, "to": end})
     with ExitStack() as observers:
 
