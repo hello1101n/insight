@@ -15,6 +15,8 @@ from dbt.cli.main import dbtRunner
 
 ARM_MODEL = "youtrack__task_comments"
 PROBES = ("union_probe_a", "union_probe_b")
+VIEW_PROBE = "union_probe_view"
+VIEW_ROWS = 200
 WIDE_PROBE = "union_probe_wide"
 WIDE_ROWS = 20_000
 WIDE_VALUE_BYTES = 20_000
@@ -36,10 +38,10 @@ def latest_over(case: Warehouse, tables: tuple[str, ...]) -> str:
 
 @pytest.fixture
 def probes(case: Warehouse) -> Iterator[Warehouse]:
-    for table in (*PROBES, WIDE_PROBE):
+    for table in (*PROBES, VIEW_PROBE, WIDE_PROBE):
         case.client.command(f"DROP TABLE IF EXISTS staging.{table}")
     yield case
-    for table in (*PROBES, WIDE_PROBE):
+    for table in (*PROBES, VIEW_PROBE, WIDE_PROBE):
         case.client.command(f"DROP TABLE IF EXISTS staging.{table}")
 
 
@@ -49,7 +51,7 @@ def test_union_by_tag_reads_every_arm_of_the_class(case: Warehouse) -> None:
         case, f"-- depends_on: {{{{ ref('{ARM_MODEL}') }}}}\n{{{{ union_by_tag('silver:class_task_comments') }}}}"
     )
     union = sql.split("\n", 1)[1]
-    assert union.count(f"`staging`.`{ARM_MODEL}`") == 2, f"should read the arm for versions and for rows: {union}"
+    assert union.count(f"`staging`.`{ARM_MODEL}`") == 3, f"should read the arm for keys, versions and rows: {union}"
 
 
 def test_the_newest_version_of_a_key_wins_across_arms(probes: Warehouse) -> None:
@@ -84,6 +86,19 @@ def test_the_newest_version_of_a_key_wins_across_arms(probes: Warehouse) -> None
         ("unversioned", "None", "only"),
         ("versioned", "2", "newest"),
     ], f"should keep one newest row per key, NULL keys and versions included: {rows}"
+
+
+def test_a_view_arm_with_a_new_version_on_each_read_keeps_its_rows(probes: Warehouse) -> None:
+    probes.client.command(
+        f"CREATE VIEW staging.{VIEW_PROBE} AS SELECT CAST(toString(number) AS Nullable(String)) AS unique_key, "
+        "toUnixTimestamp64Milli(now64(3)) AS _version, sleepEachRow(0.001) AS pause "
+        f"FROM numbers({VIEW_ROWS})"
+    )
+
+    union = latest_over(probes, (VIEW_PROBE,))
+    rows = probes.client.query(f"SELECT count() FROM ({union})").result_rows
+
+    assert rows == [(VIEW_ROWS,)], f"should keep every key of a view whose version moves between reads: {rows}"
 
 
 def test_the_union_does_not_hold_wide_rows_in_memory(probes: Warehouse) -> None:

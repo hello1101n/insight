@@ -75,12 +75,14 @@
   version alone, and only the winning rows are read whole, so memory follows
   the number of keys, not the width of the rows.
 
+  INVARIANT: a key with one row matches on the key alone. A view arm with a
+  `now64()` version gives a new version on each read and matches no winner.
   INVARIANT: keys and versions compare as (isNull, assumeNotNull) pairs; a
   plain IN never matches NULL and would drop a NULL key or version.
-  INVARIANT: the relations are read twice, so a view arm runs twice. A key
-  whose relation another run replaces between the reads matches no winning
-  version and leaves this batch; its newer version passes the next run's
-  watermark, so it is late, not lost.
+  INVARIANT: the relations are read three times, so a view arm runs three
+  times. A key whose relation another run replaces between the reads can
+  match no winning version and leave this batch; its newer version passes the
+  next run's watermark, so it is late, not lost.
 -#}
 {% macro union_relations_latest(relations, dedup_version_col) %}
       SELECT * FROM (
@@ -90,8 +92,19 @@
       {%- endfor %}
       ) AS _ubt
       {% if dedup_version_col %}
-      WHERE (isNull(unique_key), assumeNotNull(unique_key),
-             isNull({{ dedup_version_col }}), assumeNotNull({{ dedup_version_col }})) IN (
+      WHERE (isNull(unique_key), assumeNotNull(unique_key)) IN (
+          SELECT isNull(unique_key), assumeNotNull(unique_key)
+          FROM (
+          {%- for relation in relations %}
+              SELECT unique_key FROM {{ relation }}
+              {%- if not loop.last %} UNION ALL {% endif %}
+          {%- endfor %}
+          ) AS _ubt_keys
+          GROUP BY unique_key
+          HAVING count() = 1
+      )
+      OR (isNull(unique_key), assumeNotNull(unique_key),
+          isNull({{ dedup_version_col }}), assumeNotNull({{ dedup_version_col }})) IN (
           SELECT isNull(unique_key), assumeNotNull(unique_key),
                  isNull(winning_version), assumeNotNull(winning_version)
           FROM (
@@ -103,6 +116,7 @@
               {%- endfor %}
               ) AS _ubt_versions
               GROUP BY unique_key
+              HAVING count() > 1
           )
       )
       LIMIT 1 BY unique_key

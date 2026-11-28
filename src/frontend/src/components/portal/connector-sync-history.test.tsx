@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import type {
+  ConnectorRun,
   ConnectorSyncHistory as History,
   SyncFact,
 } from "@/api/connector-health-client";
@@ -137,6 +138,45 @@ it("pages through history from the keyboard without expanding the table", async 
   expect(older).toBeDisabled();
   await userEvent.click(newer);
   expect(screen.getByText("6–10 of 11")).toBeVisible();
+});
+
+it("selects a run from the status strip and shows its page", async () => {
+  const recordedRuns = runs(12).map(
+    ({ job_id, started_at, ...sync }): ConnectorRun => ({
+      ...sync,
+      sync_id: job_id,
+      started_at: started_at!,
+      stages: [],
+    })
+  );
+  mocks.data = { ...instance, runs: recordedRuns, syncs: [], window: 50 };
+  render(
+    <AppTooltips>
+      <ConnectorSyncHistory instance={instance} asOf={NOW} />
+    </AppTooltips>
+  );
+
+  const strip = screen.getByRole("list", {
+    name: "Recorded sync statuses, newest on the right",
+  });
+  const older = within(strip).getByRole("button", { name: /11:49:00/ });
+  await userEvent.click(older);
+
+  expect(older).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText("11–12 of 12")).toBeVisible();
+  expect(
+    within(screen.getByRole("region", { name: "Selected run" })).getByText(
+      /11:49:00/
+    )
+  ).toBeVisible();
+
+  const newer = within(strip).getByRole("button", { name: /12:00:00/ });
+  newer.focus();
+  await userEvent.keyboard("{Enter}");
+
+  expect(newer).toHaveAttribute("aria-pressed", "true");
+  expect(older).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByText("1–5 of 12")).toBeVisible();
 });
 
 it.each([
