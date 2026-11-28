@@ -106,6 +106,10 @@ jobs:
 
       - name: Bootstrap from connectors + dbt + migrations
         id: bootstrap
+        env:
+          # Bronze here is created by `discover` and never synced, so every
+          # table is empty; build over it anyway, or nothing is left to audit.
+          DBT_SKIP_EMPTY_BRONZE: "false"
         run: |
           set -euo pipefail
           "${BOOTSTRAP_DIR}/bootstrap-db.sh" "${BOOTSTRAP_DIR}/connectors-config.yaml"

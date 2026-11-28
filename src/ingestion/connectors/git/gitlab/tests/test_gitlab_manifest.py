@@ -96,7 +96,7 @@ def test_every_stream_stamps_tenant_source_and_data_source() -> None:
             if transform["type"] == "AddFields"
             for field in transform["fields"]
         }
-        if not {"tenant_id", "source_id", "data_source", "unique_key"} <= stamped:
+        if not {"insight_tenant_id", "insight_source_id", "data_source", "unique_key"} <= stamped:
             missing.append(stream["name"])
     assert not missing, missing
 

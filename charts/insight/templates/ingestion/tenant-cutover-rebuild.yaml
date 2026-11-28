@@ -1,0 +1,167 @@
+{{/*
+The background rebuild after a tenant cutover, submitted by the post-upgrade
+hook (templates/tenant-cutover-hooks.yaml) only when tenant_migration moved
+something. A full dbt refresh of every buildable model, in the order a sync
+uses — staging, everything upstream of it and the identity inputs, the identity
+seed, then everything else, gold included — through the dbt-run template. The
+history relations refuse the full refresh and run incrementally. The identity
+map views (`tag:identity:map`) are recreated in the first step: until then they
+read columns the migration renamed, and analytics person queries fail. Which models
+are buildable is dbt's own judgement (`list_unbuildable_models`, inside dbt-run):
+a model whose Bronze is absent or empty is skipped and rebuilds on its
+connector's next sync.
+
+Every step runs whatever the one before it did: a failed model must not keep
+the identity inputs, the seed or gold from building. The writers the pre-upgrade
+hook suspended are resumed by the exit handler, so they are resumed however the
+Workflow ends — models failed, a step's deadline, the Workflow's own deadline.
+A failed step then fails the Workflow at the `report` step, which says which
+steps failed; each step's log names its failed models. The resume deletes the
+state ConfigMap, so the next deploy does not submit the rebuild again: a failed
+model rebuilds on its connector's next sync, or by hand.
+
+SECURITY: no template takes an input that reaches a command; the only
+expressions are the step statuses `report` is conditioned on. The two steps
+that need the cutover ServiceAccount (it patches CronWorkflows and creates
+Jobs) are fixed templates with hard-coded commands and carry that account
+themselves; every other pod runs as argo-workflow, as dbt-run does.
+*/}}
+{{- if .Values.ingestion.templates.enabled }}
+{{- $name := printf "%s-tenant-cutover" (include "insight.fullname" .) }}
+{{- $staging := "+tag:staging +identity_inputs tag:identity:map" }}
+{{- $stepDeadline := .Values.ingestion.tenantCutover.dbtStepDeadlineSeconds | toString }}
+{{- if not (regexMatch "^[1-9][0-9]*$" $stepDeadline) }}
+{{- fail (printf "ingestion.tenantCutover.dbtStepDeadlineSeconds must be a positive whole number of seconds, got %q" $stepDeadline) }}
+{{- end }}
+{{- /* The seed step's own bound; tenant-cutover.sh `seed` waits SEED_TIMEOUT_SECONDS (3600) for its Job. */}}
+{{- $seedDeadline := 3900 }}
+{{- /* Every step may run to its own deadline and still leave room for `report`, so the
+     Workflow's deadline never cuts a step short: a step that hits its deadline fails, the next
+     runs, and the exit handler resumes the writers. */}}
+{{- $workflowDeadline := add (mul 2 (atoi $stepDeadline)) $seedDeadline 1800 }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: [cronworkflows]
+    verbs: [get, list, patch]
+  - apiGroups: ["batch"]
+    resources: [cronjobs]
+    verbs: [get, list, patch]
+  - apiGroups: ["batch"]
+    resources: [jobs]
+    verbs: [get, list, create]
+  - apiGroups: [""]
+    resources: [pods, pods/log]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ $name }}]
+    verbs: [get, delete]
+  # The Argo executor writes step results through the pod's ServiceAccount.
+  - apiGroups: ["argoproj.io"]
+    resources: [workflowtaskresults]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: tenant-cutover-rebuild
+  labels:
+    {{- include "insight.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tenant-cutover
+spec:
+  # dbt-run's own account; only the two cutover steps below take {{ $name }}.
+  serviceAccountName: argo-workflow
+  entrypoint: rebuild
+  onExit: resume-writers
+  activeDeadlineSeconds: {{ $workflowDeadline }}
+  ttlStrategy:
+    secondsAfterSuccess: 604800
+  {{- with .Values.global.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  templates:
+    - name: rebuild
+      steps:
+        - - name: staging
+            templateRef: {name: dbt-run, template: run}
+            continueOn: {failed: true}
+            arguments:
+              parameters:
+                - {name: lock_group, value: staging}
+                - {name: dbt_select, value: {{ $staging | quote }}}
+                - {name: dbt_full_refresh, value: "true"}
+                - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
+        - - name: identity-seed
+            template: identity-seed
+            continueOn: {failed: true}
+        # An empty selection is the whole buildable graph; what step one built is left out.
+        - - name: everything-else
+            templateRef: {name: dbt-run, template: run}
+            continueOn: {failed: true}
+            arguments:
+              parameters:
+                - {name: lock_group, value: downstream}
+                - {name: dbt_select, value: ""}
+                - {name: dbt_exclude, value: {{ $staging | quote }}}
+                - {name: dbt_full_refresh, value: "true"}
+                - {name: active_deadline_seconds, value: {{ $stepDeadline | quote }}}
+        # continueOn leaves the Workflow green; this step turns any failed step into a failed Workflow.
+        - - name: report
+            template: report
+            when: "'{{`{{steps.staging.status}}`}}' != 'Succeeded' || '{{`{{steps.identity-seed.status}}`}}' != 'Succeeded' || '{{`{{steps.everything-else.status}}`}}' != 'Succeeded'"
+    - name: report
+      container:
+        image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" .Values.ingestion.toolboxImage | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [bash, /ingestion/scripts/tenant-cutover.sh, report]
+        env:
+          {{- include "insight.tenantCutover.env" . | nindent 10 }}
+{{- range $step := list (list "identity-seed" "seed") (list "resume-writers" "resume") }}
+    - name: {{ index $step 0 }}
+      serviceAccountName: {{ $name }}
+      {{- if eq (index $step 0) "identity-seed" }}
+      activeDeadlineSeconds: {{ $seedDeadline }}
+      {{- end }}
+      container:
+        image: {{ required "ingestion.toolboxImage is required when ingestion.templates.enabled=true" $.Values.ingestion.toolboxImage | quote }}
+        imagePullPolicy: IfNotPresent
+        command: [bash, /ingestion/scripts/tenant-cutover.sh, {{ index $step 1 }}]
+        env:
+          {{- include "insight.tenantCutover.env" $ | nindent 10 }}
+{{- end }}
+{{- end }}

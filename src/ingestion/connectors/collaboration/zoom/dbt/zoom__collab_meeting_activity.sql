@@ -87,12 +87,12 @@ recently_extracted_meetings AS (
     SELECT DISTINCT meeting_uuid
     FROM {{ participants }}
     WHERE _airbyte_extracted_at
-          > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
     UNION DISTINCT
     SELECT DISTINCT uuid AS meeting_uuid
     FROM {{ meetings }}
     WHERE _airbyte_extracted_at
-          > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
 ),
 
 dates_to_rebuild AS (
@@ -120,32 +120,32 @@ zoom_user_emails AS (
     -- INVARIANT: a display name stands in for an email only when exactly one Zoom
     -- user of the account carries it; a shared name resolves to nobody.
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         name_key,
         -- WORKAROUND: the output must not reuse the inner column's name, or the
         -- HAVING below resolves the alias and ClickHouse rejects the nested aggregate.
         any(email) AS user_email
     FROM (
         SELECT
-            tenant_id,
-            source_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id,
             lowerUTF8(trim(display_name)) AS name_key,
             lower(email) AS email
         FROM {{ source('bronze_zoom', 'users') }}
         WHERE email IS NOT NULL AND email != ''
           AND display_name IS NOT NULL AND trim(display_name) != ''
         ORDER BY _airbyte_extracted_at DESC
-        LIMIT 1 BY tenant_id, source_id, id
+        LIMIT 1 BY insight_tenant_id, insight_source_id, id
     )
-    GROUP BY tenant_id, source_id, name_key
+    GROUP BY insight_tenant_id, insight_source_id, name_key
     HAVING uniqExact(email) = 1
 ),
 
 deduped_participants AS (
     SELECT
-        p.tenant_id AS tenant_id,
-        p.source_id AS source_id,
+        p.insight_tenant_id AS insight_tenant_id,
+        p.insight_source_id AS insight_source_id,
         p.meeting_uuid AS meeting_uuid,
         p.participant_uuid AS participant_uuid,
         if(p.email IS NOT NULL AND p.email != '', p.email, nullIf(u.user_email, '')) AS email,
@@ -163,8 +163,8 @@ deduped_participants AS (
         p.extracted_at AS extracted_at
     FROM (
         SELECT
-            tenant_id,
-            source_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id,
             meeting_uuid,
             participant_uuid,
             email,
@@ -186,18 +186,18 @@ deduped_participants AS (
         {%- endif %}
         -- WORKAROUND: Airbyte re-emits identical participant rows; keep the latest one.
         ORDER BY _airbyte_extracted_at DESC
-        LIMIT 1 BY tenant_id, source_id, meeting_uuid, participant_uuid, joined_at
+        LIMIT 1 BY insight_tenant_id, insight_source_id, meeting_uuid, participant_uuid, joined_at
     ) AS p
     LEFT JOIN zoom_user_emails AS u
-        ON u.tenant_id = p.tenant_id
-        AND u.source_id = p.source_id
+        ON u.insight_tenant_id = p.insight_tenant_id
+        AND u.insight_source_id = p.insight_source_id
         AND u.name_key = p.name_key
 ),
 
 attendee_sessions AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         if(
             name_key != '' OR (email IS NOT NULL AND email != ''),
@@ -211,8 +211,8 @@ attendee_sessions AS (
 
 attendance AS (
     SELECT DISTINCT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         attendee
     FROM attendee_sessions
@@ -222,8 +222,8 @@ attendee_presence AS (
     -- INVARIANT: an attendee's own overlapping sessions merge into one presence, so
     -- presence counts people, not devices.
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         sipHash64(attendee) AS attendee_hash,
         arrayFold(
@@ -240,13 +240,13 @@ attendee_presence AS (
         ) AS presence_spans
     FROM attendee_sessions
     WHERE left_at IS NOT NULL AND left_at > joined_at
-    GROUP BY tenant_id, source_id, meeting_uuid, attendee
+    GROUP BY insight_tenant_id, insight_source_id, meeting_uuid, attendee
 ),
 
 presence_changes AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         change.1 AS changed_at,
         change.2 AS present_delta,
@@ -260,20 +260,20 @@ presence_changes AS (
 
 presence_steps AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         changed_at,
         sum(present_delta) AS present_delta,
         groupBitXor(attendee_hash) AS attendee_toggle
     FROM presence_changes
-    GROUP BY tenant_id, source_id, meeting_uuid, changed_at
+    GROUP BY insight_tenant_id, insight_source_id, meeting_uuid, changed_at
 ),
 
 presence_segments AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         changed_at AS segment_from,
         leadInFrame(changed_at) OVER meeting_timeline AS segment_until,
@@ -282,12 +282,12 @@ presence_segments AS (
     FROM presence_steps
     WINDOW
         meeting_timeline AS (
-            PARTITION BY tenant_id, source_id, meeting_uuid
+            PARTITION BY insight_tenant_id, insight_source_id, meeting_uuid
             ORDER BY changed_at
             ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
         ),
         meeting_so_far AS (
-            PARTITION BY tenant_id, source_id, meeting_uuid
+            PARTITION BY insight_tenant_id, insight_source_id, meeting_uuid
             ORDER BY changed_at
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         )
@@ -297,8 +297,8 @@ solo_segments AS (
     -- INVARIANT: with exactly one person present, the XOR of present hashes is that
     -- person's hash, because each presence span toggles its hash in and out once.
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         meeting_uuid,
         present_hashes AS attendee_hash,
         segment_from,
@@ -311,8 +311,8 @@ sessions_with_company AS (
     -- INVARIANT: company time is the session minus the stretches where its attendee was
     -- the only person present, so a pause with nobody else adds nothing.
     SELECT
-        own.tenant_id AS tenant_id,
-        own.source_id AS source_id,
+        own.insight_tenant_id AS insight_tenant_id,
+        own.insight_source_id AS insight_source_id,
         own.meeting_uuid AS meeting_uuid,
         own.email AS email,
         own.person_key AS person_key,
@@ -337,15 +337,15 @@ sessions_with_company AS (
         )))) AS company_seconds
     FROM deduped_participants AS own
     LEFT JOIN solo_segments AS solo
-        ON solo.tenant_id = own.tenant_id
-        AND solo.source_id = own.source_id
+        ON solo.insight_tenant_id = own.insight_tenant_id
+        AND solo.insight_source_id = own.insight_source_id
         AND solo.meeting_uuid = own.meeting_uuid
         AND solo.attendee_hash = sipHash64(own.person_key)
     -- A row with neither an email nor a display name is nobody's.
     WHERE (own.email IS NOT NULL AND own.email != '') OR own.name_key != ''
     GROUP BY
-        own.tenant_id,
-        own.source_id,
+        own.insight_tenant_id,
+        own.insight_source_id,
         own.meeting_uuid,
         own.participant_uuid,
         own.email,
@@ -362,8 +362,8 @@ sessions_with_company AS (
 
 attended_days AS (
     SELECT
-        p.tenant_id AS tenant_id,
-        p.source_id AS source_id,
+        p.insight_tenant_id AS insight_tenant_id,
+        p.insight_source_id AS insight_source_id,
         p.person_key AS person_key,
         toDate(p.joined_at, 'UTC') AS date,
         min(p.email) AS attendee_email,
@@ -371,7 +371,7 @@ attended_days AS (
         -- INVARIANT: 'email' says the row is keyed by person_key and carries no
         -- account; gold emits the account triple only for the other values.
         if(min(p.email) IS NULL, 'zoom-guest', 'email') AS account_source_type,
-        if(min(p.email) IS NULL, coalesce(p.source_id, ''), '') AS account_source_id,
+        if(min(p.email) IS NULL, coalesce(p.insight_source_id, ''), '') AS account_source_id,
         if(min(p.email) IS NULL, any(p.name_key), '') AS account_id,
         -- INVARIANT: logical_meeting_id folds host-drop rejoins into one meeting;
         -- meeting_uuid stands in until the meeting is stitched.
@@ -393,15 +393,15 @@ attended_days AS (
     FROM sessions_with_company AS p
     LEFT JOIN {{ ref('zoom__meeting_sessions') }} AS ml FINAL
         ON p.meeting_uuid = ml.uuid
-        AND p.tenant_id = ml.tenant_id
-        AND p.source_id = ml.source_id
-    GROUP BY tenant_id, source_id, person_key, date
+        AND p.insight_tenant_id = ml.insight_tenant_id
+        AND p.insight_source_id = ml.insight_source_id
+    GROUP BY insight_tenant_id, insight_source_id, person_key, date
 ),
 
 hosted_sessions AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         uuid AS meeting_uuid,
         email AS host_email,
         parseDateTimeBestEffortOrNull(start_time) AS started_at,
@@ -414,32 +414,32 @@ hosted_sessions AS (
       AND uuid IN (SELECT meeting_uuid FROM meetings_in_scope)
     {%- endif %}
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY tenant_id, source_id, uuid
+    LIMIT 1 BY insight_tenant_id, insight_source_id, uuid
 ),
 
 attended_by_others AS (
     SELECT
-        h.tenant_id AS tenant_id,
-        h.source_id AS source_id,
+        h.insight_tenant_id AS insight_tenant_id,
+        h.insight_source_id AS insight_source_id,
         h.meeting_uuid AS meeting_uuid,
         h.host_email AS host_email,
         h.started_at AS started_at,
         max(h.extracted_at) AS extracted_at
     FROM hosted_sessions AS h
     INNER JOIN attendance AS a
-        ON a.tenant_id = h.tenant_id
-        AND a.source_id = h.source_id
+        ON a.insight_tenant_id = h.insight_tenant_id
+        AND a.insight_source_id = h.insight_source_id
         AND a.meeting_uuid = h.meeting_uuid
         AND a.attendee != lower(h.host_email)
-    GROUP BY tenant_id, source_id, meeting_uuid, host_email, started_at
+    GROUP BY insight_tenant_id, insight_source_id, meeting_uuid, host_email, started_at
 ),
 
 organized_days AS (
     -- INVARIANT: like attendance, a stitched meeting counts once per UTC day it ran,
     -- so organized and attended meetings stay comparable day by day.
     SELECT
-        o.tenant_id AS tenant_id,
-        o.source_id AS source_id,
+        o.insight_tenant_id AS insight_tenant_id,
+        o.insight_source_id AS insight_source_id,
         lower(o.host_email) AS person_key,
         toDate(o.started_at, 'UTC') AS date,
         min(o.host_email) AS organizer_email,
@@ -448,15 +448,15 @@ organized_days AS (
     FROM attended_by_others AS o
     LEFT JOIN {{ ref('zoom__meeting_sessions') }} AS ml FINAL
         ON o.meeting_uuid = ml.uuid
-        AND o.tenant_id = ml.tenant_id
-        AND o.source_id = ml.source_id
-    GROUP BY tenant_id, source_id, person_key, date
+        AND o.insight_tenant_id = ml.insight_tenant_id
+        AND o.insight_source_id = ml.insight_source_id
+    GROUP BY insight_tenant_id, insight_source_id, person_key, date
 ),
 
 person_days AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         person_key,
         date,
         attendee_email                AS contact_email,
@@ -475,8 +475,8 @@ person_days AS (
     FROM attended_days
     UNION ALL
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         person_key,
         date,
         organizer_email               AS contact_email,
@@ -496,9 +496,9 @@ person_days AS (
 )
 
 SELECT
-    tenant_id,
-    source_id AS insight_source_id,
-    MD5(concat(tenant_id, '-', source_id, '-', person_key, '-', toString(date))) AS unique_key,
+    insight_tenant_id,
+    insight_source_id,
+    MD5(concat(insight_tenant_id, '-', insight_source_id, '-', person_key, '-', toString(date))) AS unique_key,
     argMax(contact_email, (from_attendance, contact_email)) AS user_id,
     toNullable(max(display_name)) AS user_name,
     user_id AS email,
@@ -526,4 +526,4 @@ FROM person_days
 {%- if is_incremental() %}
 WHERE date IN (SELECT date FROM dates_to_rebuild)
 {%- endif %}
-GROUP BY tenant_id, source_id, person_key, date
+GROUP BY insight_tenant_id, insight_source_id, person_key, date

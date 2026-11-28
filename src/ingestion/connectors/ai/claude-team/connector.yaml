@@ -48,8 +48,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -82,10 +82,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -112,8 +112,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -141,10 +141,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -179,8 +179,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           # The reading's own date, so the grain is in the data and not only in
           # the key. `collected_at` beside it keeps the time of that reading.
@@ -257,10 +257,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           # The read day belongs in the key. This endpoint reports the billing
           # month in progress and carries no history, so a month exists only in
@@ -321,8 +321,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -410,10 +410,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -461,8 +461,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -539,10 +539,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [unique_key]
@@ -581,7 +581,7 @@ spec:
       insight_tenant_id:
         type: string
         title: Insight Tenant ID
-        description: Tenant isolation identifier (UUID), injected as `tenant_id` field into every record
+        description: Tenant isolation identifier (UUID), injected as `insight_tenant_id` field into every record
         order: 0
       claude_org_id:
         type: string

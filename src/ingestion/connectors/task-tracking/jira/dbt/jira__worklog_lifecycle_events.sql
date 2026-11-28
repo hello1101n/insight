@@ -22,8 +22,8 @@
 WITH transitions AS (
     SELECT
         entity_id                                               AS worklog_id,
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         multiIf(
             field_name = 'is_deleted' AND new_value = '1',          'remove',
             field_name = 'edited_at' AND old_value = '',            'add',
@@ -42,12 +42,13 @@ WITH transitions AS (
 -- issue; `assert_jira_substream_rows_without_issue_id` reports those.
 worklog_issue AS (
     SELECT
-        source_id,
+        {{ bronze_tenant() }}                                   AS insight_tenant_id,
+        insight_source_id,
         toString(worklog_id)                                    AS worklog_id,
         any(COALESCE(jira_id, issueId))                         AS jira_id
     FROM {{ source('bronze_jira', 'jira_worklogs') }}
     WHERE worklog_id IS NOT NULL
-    GROUP BY source_id, worklog_id
+    GROUP BY insight_tenant_id, insight_source_id, worklog_id
 ),
 
 -- The identity timestamp is event_at, not detection time: detection time comes
@@ -57,7 +58,8 @@ worklog_issue AS (
 -- millisecond timestamp for add/set and the tombstone's for remove.
 resolved AS (
     SELECT
-        t.source_id                                             AS source_id,
+        t.insight_tenant_id                                             AS insight_tenant_id,
+        t.insight_source_id                                             AS insight_source_id,
         t.worklog_id                                            AS worklog_id,
         t.action                                                AS action,
         t.detected_at                                           AS detected_at,
@@ -76,15 +78,16 @@ resolved AS (
         )                                                       AS event_at
     FROM transitions AS t
     LEFT JOIN {{ ref('jira__worklog_state') }} AS st FINAL
-        ON st.tenant_id = t.tenant_id
-        AND st.source_id = t.source_id
+        ON st.insight_tenant_id = t.insight_tenant_id
+        AND st.insight_source_id = t.insight_source_id
         AND st.worklog_id = t.worklog_id
     LEFT JOIN worklog_issue AS own
-        ON own.source_id = t.source_id
+        ON own.insight_tenant_id = t.insight_tenant_id
+        AND own.insight_source_id = t.insight_source_id
         AND own.worklog_id = t.worklog_id
     LEFT JOIN {{ ref('jira__issue_availability_state') }} AS av FINAL
-        ON av.tenant_id = t.tenant_id
-        AND av.source_id = t.source_id
+        ON av.insight_tenant_id = t.insight_tenant_id
+        AND av.insight_source_id = t.insight_source_id
         AND av.jira_id = own.jira_id
     WHERE t.action != ''
       AND own.jira_id IS NOT NULL
@@ -93,9 +96,10 @@ resolved AS (
 SELECT
     -- The class's one key formula: the issue by its immutable id, the event
     -- by the worklog's own id, action and instant.
-    {{ jira_history_key("CAST(t.source_id AS String)", "COALESCE(t.jira_id, '')", "'worklog'",
+    {{ jira_history_key('t.insight_tenant_id', "CAST(t.insight_source_id AS String)", "COALESCE(t.jira_id, '')", "'worklog'",
                          "concat('worklog:', COALESCE(t.worklog_id, ''), ':', t.action, ':', toString(toUnixTimestamp64Milli(t.event_at)))") }} AS unique_key,
-    CAST(t.source_id AS String)                                 AS insight_source_id,
+    ifNull(t.insight_tenant_id, '')                                     AS insight_tenant_id,
+    CAST(t.insight_source_id AS String)                                 AS insight_source_id,
     CAST('jira' AS String)                                      AS data_source,
     COALESCE(t.jira_id, '')                                     AS issue_id,
     COALESCE(t.id_readable, '')                                 AS id_readable,
@@ -121,7 +125,7 @@ FROM (
     SELECT
         *,
         toUInt32(row_number() OVER (
-            PARTITION BY source_id, jira_id, toUnixTimestamp64Milli(event_at)
+            PARTITION BY insight_tenant_id, insight_source_id, jira_id, toUnixTimestamp64Milli(event_at)
             ORDER BY toUInt64OrZero(worklog_id), worklog_id,
                      multiIf(action = 'add', 0, action = 'set', 1, 2)
         ) - 1)                                                  AS same_instant_rank

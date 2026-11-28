@@ -71,12 +71,12 @@ kubectl apply -f src/ingestion/secrets/connectors/zulip-proxy.yaml
 - `staging.zulip_proxy__users_fields_history` — field-level history for SCD2 columns.
 - `staging.zulip_proxy__identity_inputs` — feeds Identity Manager (email → person).
 - `staging.zulip_proxy__collab_chat_activity` — `class_collab_chat_activity` daily roll-up
-  per (`tenant_id`, `source_id`, `email`, `date`).
+  per (`insight_tenant_id`, `insight_source_id`, `email`, `date`).
 
 ## Operational notes
 
 - A 401 response from the proxy fails the run with an operator-actionable log line that names
-  `connector=zulip-proxy` and the offending `source_id`. Action: rotate the Bearer token in the
+  `connector=zulip-proxy` and the offending source (its `insight_source_id`). Action: rotate the Bearer token in the
   K8s Secret and re-run.
 - 429 and 503 responses are honored with `Retry-After`; 5xx are retried with exponential backoff
   up to 5 attempts.

@@ -222,7 +222,6 @@ async fn run_case(
         &profiles,
         ReportExecutionContext {
             tenant_id: TENANT_ID,
-            enforce_tenant_scope: true,
         },
         &runner,
         sink,
@@ -288,7 +287,7 @@ fn synthetic_observation_sql(people: usize, periods: usize) -> String {
     let rows = people.saturating_mul(periods);
     format!(
         "SELECT \
-         '{TENANT_ID}' AS tenant_id, \
+         '{TENANT_ID}' AS insight_tenant_id, \
          'benchmark' AS source_key, \
          'person' AS entity_type, \
          concat('00000000-0000-0000-0000-', leftPad(toString(intDiv(number, {periods}) + 1), 12, '0')) AS entity_id, \

@@ -40,11 +40,11 @@ stages AS (
 ),
 
 merge_targets AS (
-    SELECT tenant_id, insight_source_id, merged_id, any(ticket_id) AS merged_into_id
+    SELECT insight_tenant_id, insight_source_id, merged_id, any(ticket_id) AS merged_into_id
     FROM tickets
     ARRAY JOIN splitByChar(';', properties['hs_merged_object_ids']) AS merged_id
     WHERE merged_id != ''
-    GROUP BY tenant_id, insight_source_id, merged_id
+    GROUP BY insight_tenant_id, insight_source_id, merged_id
 ),
 
 custom_property_keys AS (
@@ -57,7 +57,7 @@ custom_property_keys AS (
 
 SELECT
     {{ hubspot_support_key(['t.ticket_id']) }}         AS unique_key,
-    t.tenant_id                                        AS tenant_id,
+    t.insight_tenant_id                                        AS insight_tenant_id,
     t.insight_source_id                                AS insight_source_id,
     'hubspot'                                          AS data_source,
     t.ticket_id                                        AS ticket_id,
@@ -84,13 +84,13 @@ SELECT
     nullIf(m.merged_into_id, '')                       AS merged_into_id,
     -- INVARIANT: test each property key against one shared set. A join that puts the list of names on each ticket row exceeds the memory limit.
     toJSONString(mapFilter(
-        (k, v) -> (t.tenant_id, t.insight_source_id, k) IN custom_property_keys,
+        (k, v) -> (t.insight_tenant_id, t.insight_source_id, k) IN custom_property_keys,
         t.properties
     ))                                                 AS custom_attrs,
     CAST(t.collected_at AS DateTime64(3))              AS collected_at,
     {{ hubspot_support_version() }}                    AS _version
 FROM tickets AS t
 LEFT JOIN stages AS s
-    ON s.tenant_id = t.tenant_id AND s.insight_source_id = t.insight_source_id AND s.stage_id = t.stage_id
+    ON s.insight_tenant_id = t.insight_tenant_id AND s.insight_source_id = t.insight_source_id AND s.stage_id = t.stage_id
 LEFT JOIN merge_targets AS m
-    ON m.tenant_id = t.tenant_id AND m.insight_source_id = t.insight_source_id AND m.merged_id = t.ticket_id
+    ON m.insight_tenant_id = t.insight_tenant_id AND m.insight_source_id = t.insight_source_id AND m.merged_id = t.ticket_id

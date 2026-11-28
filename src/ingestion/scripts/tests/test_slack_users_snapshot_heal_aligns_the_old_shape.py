@@ -29,12 +29,12 @@ MEMBERS = "bronze_slack.users"
 
 OWN_FLAGS = "coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
 ACTIVITY_GUESTS = (
-    " OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
+    " OR (insight_tenant_id, insight_source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
     " FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id"
     " HAVING argMax(coalesce(is_guest, false), date))"
 )
 MEMBERS_BOTS_AND_GUESTS = (
-    " OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
+    " OR (insight_tenant_id, insight_source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id"
     " FROM bronze_slack.users FINAL"
     " WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
 )
@@ -52,7 +52,7 @@ SHAPE_ALTERS = [
 
 
 def function_body(name: str) -> str:
-    match = re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", HEALS.read_text(), re.MULTILINE | re.DOTALL)
+    match = re.search(rf"^{name}\(\) \{{[^\n]*\n.*?^\}}\n", HEALS.read_text(), re.MULTILINE | re.DOTALL)
     assert match, f"{HEALS.name} no longer defines {name}"
     return match.group(0)
 
@@ -76,9 +76,11 @@ _ch_http_query() {{
     *"FROM system.columns"*"name='is_guest'"*)
       [[ "{is_guest_type}" == "{PROBE_FAILS}" ]] && {{ printf 'Code: 999. DB::Exception: Service unavailable\\n'; return 22; }}
       printf '%s' "{is_guest_type}" ;;
+    *"FROM system.columns"*"database='bronze_slack'"*) printf 'Nullable(String)' ;;
     *) ;;
   esac
 }}
+{function_body("_slack_bronze_reads")}
 {function_body(HEAL)}
 {HEAL}
 echo '{REACHED_THE_END}'

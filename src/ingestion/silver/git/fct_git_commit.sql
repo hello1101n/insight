@@ -10,8 +10,8 @@
 ) }}
 
 SELECT
-    c.tenant_id,
-    c.source_id,
+    c.insight_tenant_id,
+    c.insight_source_id,
     c.unique_key,
     c.project_key,
     c.repo_slug,
@@ -34,4 +34,4 @@ SELECT
     c._airbyte_extracted_at
 FROM {{ ref('class_git_commits') }} AS c FINAL
 -- INVARIANT: the class mixes connectors with independent `_version` clocks, so the boundary is per source.
-{{ silver_incremental_watermark(['tenant_id', 'source_id', 'data_source'], alias='c') }}
+{{ silver_incremental_watermark(['insight_tenant_id', 'insight_source_id', 'data_source'], alias='c') }}

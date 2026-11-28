@@ -65,8 +65,8 @@ WITH reference AS (
     -- than it ends with, so judging an older read against a newer reference
     -- would reject sound reads.
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
-        coalesce(source_id, '')                         AS source_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        coalesce(insight_source_id, '')                         AS insight_source_id,
         toDateOrNull(date)                              AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
         -- Not aliased `total_users`: the alias shadows the source column and
@@ -78,7 +78,7 @@ WITH reference AS (
     WHERE date IS NOT NULL
       AND trim(date) != ''
       AND total_users IS NOT NULL
-    GROUP BY insight_tenant_id, source_id, day, read_id
+    GROUP BY insight_tenant_id, insight_source_id, day, read_id
 
 ),
 
@@ -94,19 +94,19 @@ first_reference AS (
     -- would judge them.
     SELECT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         min(read_id)                                    AS since_read,
         toUInt8(1)                                      AS instance_has_references
     FROM reference
-    GROUP BY insight_tenant_id, source_id
+    GROUP BY insight_tenant_id, insight_source_id
 
 ),
 
 read_state AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
-        coalesce(source_id, '')                         AS source_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        coalesce(insight_source_id, '')                         AS insight_source_id,
         toDateOrNull(date)                              AS day,
         JSONExtractInt(_airbyte_meta, 'sync_id')        AS read_id,
         -- Counts only rows the serving layer can attribute, so a headcount
@@ -117,7 +117,7 @@ read_state AS (
     FROM {{ source('bronze_chatgpt_team', 'chatgpt_team_codex_user_daily') }}
     WHERE date IS NOT NULL
       AND trim(date) != ''
-    GROUP BY insight_tenant_id, source_id, day, read_id
+    GROUP BY insight_tenant_id, insight_source_id, day, read_id
 
 ),
 
@@ -125,18 +125,18 @@ admitted_reads AS (
 
     SELECT
         r.insight_tenant_id                             AS insight_tenant_id,
-        r.source_id                                     AS source_id,
+        r.insight_source_id                                     AS insight_source_id,
         r.day                                           AS day,
         r.read_id                                       AS read_id
     FROM read_state AS r
     LEFT JOIN first_reference AS f
            ON f.insight_tenant_id = r.insight_tenant_id
-          AND f.source_id = r.source_id
+          AND f.insight_source_id = r.insight_source_id
     -- coalesce, not IS NULL: without join_use_nulls an unmatched LEFT JOIN
     -- yields the column's default rather than NULL, and both readings must
     -- give the same verdict.
-    WHERE (r.insight_tenant_id, r.source_id, r.day, r.read_id, r.people) IN (
-              SELECT insight_tenant_id, source_id, day, read_id, read_total_users
+    WHERE (r.insight_tenant_id, r.insight_source_id, r.day, r.read_id, r.people) IN (
+              SELECT insight_tenant_id, insight_source_id, day, read_id, read_total_users
               FROM reference
           )
        OR coalesce(f.instance_has_references, 0) = 0
@@ -158,8 +158,8 @@ admitted_reads AS (
 codex_sessions AS (
 
     SELECT
-        coalesce(tenant_id, '')                         AS insight_tenant_id,
-        coalesce(source_id, '')                         AS source_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        coalesce(insight_source_id, '')                         AS insight_source_id,
         trim(user_id)                                   AS user_id,
         toDateOrNull(date)                              AS day,
         credit_total,
@@ -208,11 +208,11 @@ codex_sessions AS (
 )
 
 SELECT
-    tenant_id                                           AS insight_tenant_id,
-    source_id,
+    {{ bronze_tenant() }}                               AS insight_tenant_id,
+    insight_source_id,
     CAST(concat(
-        coalesce(tenant_id, ''), '-',
-        coalesce(source_id, ''), '-',
+        insight_tenant_id, '-',
+        coalesce(insight_source_id, ''), '-',
         lower(trim(coalesce(email, ''))), '-',
         coalesce(date, '')
     ) AS String)                                        AS unique_key,
@@ -371,21 +371,21 @@ FROM (
     -- The read this row came from has to have brought the whole day. Rejected
     -- whole rather than row by row: a short read is short in an unknown place,
     -- so the people it DID return say nothing about the ones it did not.
-    WHERE (coalesce(tenant_id, ''),
-           coalesce(source_id, ''),
+    WHERE ({{ bronze_tenant() }},
+           coalesce(insight_source_id, ''),
            toDateOrNull(date),
            JSONExtractInt(_airbyte_meta, 'sync_id')) IN (
-              SELECT insight_tenant_id, source_id, day, read_id FROM admitted_reads
+              SELECT insight_tenant_id, insight_source_id, day, read_id FROM admitted_reads
           )
     ORDER BY _airbyte_extracted_at DESC
     -- Dedup on the SAME normalized key the unique_key uses (lower(trim(email))),
     -- else two case-variant spellings of one address both survive and then
     -- collide on unique_key (unique-test failure).
-    LIMIT 1 BY tenant_id, source_id, lower(trim(email)), date
+    LIMIT 1 BY insight_tenant_id, insight_source_id, lower(trim(email)), date
     ) AS lb
     LEFT JOIN codex_sessions AS s
-           ON coalesce(lb.tenant_id, '') = s.insight_tenant_id
-          AND coalesce(lb.source_id, '') = s.source_id
+           ON {{ bronze_tenant('lb.insight_tenant_id') }} = s.insight_tenant_id
+          AND coalesce(lb.insight_source_id, '') = s.insight_source_id
           AND trim(coalesce(lb.user_id, '')) = s.user_id
           AND toDateOrNull(lb.date) = s.day
 )
@@ -408,7 +408,7 @@ WHERE email IS NOT NULL
   -- INVARIANT: the read-time arm admits an older day a backfill re-reads (#4243);
   -- the day window keeps re-deriving recent days whose joined streams arrive late.
   AND (
-      toDate(date) > {{ instance_incremental_watermark('day', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id'], '3 DAY') }}
-      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['tenant_id', 'source_id'], ['insight_tenant_id', 'source_id']) }}
+      toDate(date) > {{ instance_incremental_watermark('day', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
+      OR _airbyte_extracted_at > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id']) }}
   )
 {% endif %}

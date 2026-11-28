@@ -26,7 +26,7 @@ active_seats AS (
         first days of a month that would flag every seat at once. -#}
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         email
     FROM {{ ref('class_ai_dev_usage') }} FINAL
     WHERE source = 'claude_team'
@@ -39,7 +39,7 @@ reported_seats AS (
 
     SELECT DISTINCT
         insight_tenant_id,
-        source_id,
+        insight_source_id,
         email
     FROM {{ ref('class_ai_overage') }} FINAL
     WHERE source = 'claude_team'
@@ -49,11 +49,11 @@ reported_seats AS (
 
 SELECT
     a.insight_tenant_id AS insight_tenant_id,
-    a.source_id         AS source_id,
+    a.insight_source_id         AS insight_source_id,
     a.email             AS email,
     billing_month       AS period_month
 FROM active_seats AS a
 LEFT ANTI JOIN reported_seats AS r
     ON a.insight_tenant_id = r.insight_tenant_id
-   AND a.source_id = r.source_id
+   AND a.insight_source_id = r.insight_source_id
    AND a.email = r.email

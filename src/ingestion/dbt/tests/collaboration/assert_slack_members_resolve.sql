@@ -40,7 +40,7 @@ WHERE nullIf(u.user_id, '') IS NOT NULL
       toUUID(UUIDNumToString(sipHash128(coalesce(u.insight_source_id, '')))),
       lower(trimBoth(u.user_id))
   ) NOT IN (
-      SELECT source_id, account_id
+      SELECT insight_source_id, account_id
       FROM ({{ resolve_person_id_by_account() }})
       WHERE source_type = 'slack'
   )
@@ -76,7 +76,7 @@ WHERE u.is_guest IS NULL
       toUUID(UUIDNumToString(sipHash128(coalesce(u.insight_source_id, '')))),
       lower(trimBoth(u.user_id))
   ) NOT IN (
-      SELECT source_id, account_id
+      SELECT insight_source_id, account_id
       FROM ({{ resolve_person_id_by_account() }})
       WHERE source_type = 'slack'
   )

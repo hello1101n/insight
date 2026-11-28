@@ -12,8 +12,8 @@
 -- approval or requested changes; a comment is a note a person wrote.
 WITH projects AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
         COALESCE(path, '') AS repo_slug
@@ -25,18 +25,18 @@ WITH projects AS (
 -- is stable across syncs.
 account_email AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         account_id,
         argMin(email, (email LIKE '%@users.noreply.%', observed_at, email)) AS email
     FROM {{ ref('gitlab__account_emails') }}
-    GROUP BY tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, insight_source_id, account_id
 ),
 
 events AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         unique_key,
         project_id,
         COALESCE(mr_iid, 0) AS pr_id,
@@ -59,8 +59,8 @@ events AS (
 )
 
 SELECT
-    e.tenant_id AS tenant_id,
-    e.source_id AS source_id,
+    e.insight_tenant_id AS insight_tenant_id,
+    e.insight_source_id AS insight_source_id,
     e.unique_key AS unique_key,
     p.project_key AS project_key,
     p.repo_slug AS repo_slug,
@@ -78,16 +78,16 @@ SELECT
     e._airbyte_extracted_at AS _airbyte_extracted_at
 FROM events AS e
 INNER JOIN projects AS p
-    ON p.tenant_id = e.tenant_id
-    AND p.source_id = e.source_id
+    ON p.insight_tenant_id = e.insight_tenant_id
+    AND p.insight_source_id = e.insight_source_id
     AND p.project_id = e.project_id
 -- The pairs table carries no extraction time, so a pair learned later does not
 -- re-trigger rows already staged; the address catches up when the event's own
 -- bronze row is re-extracted.
 LEFT JOIN account_email AS ae
-    ON ae.tenant_id = e.tenant_id
-    AND ae.source_id = e.source_id
+    ON ae.insight_tenant_id = e.insight_tenant_id
+    AND ae.insight_source_id = e.insight_source_id
     AND ae.account_id = e.actor_account_id
 {% if is_incremental() %}
-WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.tenant_id', 'e.source_id']) }}
+WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.insight_source_id']) }}
 {% endif %}

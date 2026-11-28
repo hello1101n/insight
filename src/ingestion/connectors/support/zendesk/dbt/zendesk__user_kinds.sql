@@ -8,7 +8,7 @@
 
 SELECT
     {{ zendesk_key(["JSONExtractRaw(payload, 'id')"]) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     {{ zendesk_id('payload', "'id'") }}                AS user_id,
     multiIf(

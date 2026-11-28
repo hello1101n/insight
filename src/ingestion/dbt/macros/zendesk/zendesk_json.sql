@@ -15,8 +15,8 @@ parseDateTime64BestEffortOrNull(JSONExtractString({{ json }}, {{ key }}), 3, 'UT
 {%- macro zendesk_bronze(table) -%}
 (
     SELECT
-        coalesce(tenant_id, '')      AS tenant_id,
-        coalesce(source_id, '')      AS insight_source_id,
+        {{ bronze_tenant() }}        AS insight_tenant_id,
+        coalesce(insight_source_id, '')      AS insight_source_id,
         coalesce(payload_json, '{}') AS payload,
         _airbyte_extracted_at        AS collected_at
     FROM {{ source('bronze_zendesk', table) }} FINAL
@@ -24,7 +24,7 @@ parseDateTime64BestEffortOrNull(JSONExtractString({{ json }}, {{ key }}), 3, 'UT
 {%- endmacro -%}
 
 {%- macro zendesk_key(parts) -%}
-concat(tenant_id, '-', insight_source_id{% for part in parts %}, '-', coalesce(toString({{ part }}), ''){% endfor %})
+concat(insight_tenant_id, '-', insight_source_id{% for part in parts %}, '-', coalesce(toString({{ part }}), ''){% endfor %})
 {%- endmacro -%}
 
 {%- macro zendesk_version() -%}

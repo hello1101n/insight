@@ -43,7 +43,7 @@ bronze:
 
   bronze_jira.jira_issue:
     - $ref: ../templates/jira_task.yaml#/templates/jira_issue
-      tenant_id: "{{ tenant }}"
+      insight_tenant_id: "{{ tenant }}"
       id: "10601"
       jira_id: "10601"
       unique_key: jira-test-NSH-1

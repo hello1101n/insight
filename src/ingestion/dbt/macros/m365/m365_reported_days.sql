@@ -36,11 +36,11 @@ ifNull({{ column }}, 0){% if not loop.last %} + {% endif %}
 
 {% macro m365_reported_days(stream) %}
 SELECT
-    ifNull(tenant_id, '') AS tenant_id,
-    ifNull(source_id, '') AS insight_source_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
+    ifNull(insight_source_id, '') AS insight_source_id,
     toDate(reportRefreshDate) AS report_day
 FROM {{ source('bronze_m365', stream) }} FINAL
-GROUP BY tenant_id, insight_source_id, report_day
+GROUP BY insight_tenant_id, insight_source_id, report_day
 HAVING countIf(
     {{ m365_last_activity_day() }} < report_day
     AND {{ m365_activity_expr(stream) }}
@@ -48,7 +48,7 @@ HAVING countIf(
 {%- endmacro %}
 
 {% macro m365_day_was_reported(stream) %}
-(ifNull(tenant_id, ''), ifNull(source_id, ''), toDate(reportRefreshDate)) IN (
+({{ bronze_tenant() }}, ifNull(insight_source_id, ''), toDate(reportRefreshDate)) IN (
     {{ m365_reported_days(stream) }}
 )
 {%- endmacro %}

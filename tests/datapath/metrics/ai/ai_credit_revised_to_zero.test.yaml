@@ -56,7 +56,7 @@ bronze:
 
   # ── The operator's pricing: one current configuration, no history ──
   config.ai_credit_pricing:
-    - { tenant_id: "{{ tenant }}", insight_source_id: "chatgpt-team-test", source: chatgpt_team,
+    - { insight_tenant_id: "{{ tenant }}", insight_source_id: "chatgpt-team-test", source: chatgpt_team,
         unique_key: pricing-chatgpt, credit_price_minor_units: 4, billed_currency: EUR,
         native_minor_to_usd_cents_rate: 1.08, is_deleted: 0, note: "", recorded_by: "",
         _version: "2026-12-01T00:00:00.000Z" }

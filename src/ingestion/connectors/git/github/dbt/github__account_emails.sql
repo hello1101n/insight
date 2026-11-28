@@ -26,8 +26,8 @@ WITH resolved_authors AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_github.commit_authors.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(collected_at)) AS seen_at
     FROM {{ source('bronze_github', 'commit_authors') }} FINAL
@@ -35,49 +35,49 @@ WITH resolved_authors AS (
     -- e-mail" — it does NOT exclude bots, which carry real numeric ids.
     WHERE COALESCE(author_id, 0) > 0
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 commit_accounts AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_github.pull_request_commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
     WHERE COALESCE(author_id, 0) > 0
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 committer_accounts AS (
     SELECT
         toString(committer_id) AS account_id,
         lower(trimBoth(COALESCE(committer_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_github.pull_request_commits.committer_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at
     FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
     WHERE COALESCE(committer_id, 0) > 0
       AND COALESCE(committer_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 profile_emails AS (
     SELECT
         toString(author_id) AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_github.pull_request_diff_stats.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(updated_at)) AS seen_at
     FROM {{ source('bronze_github', 'pull_request_diff_stats') }} FINAL
     WHERE COALESCE(author_id, 0) > 0
       AND COALESCE(author_email, '') != ''
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 -- `12345678+octocat@users.noreply.github.com` states the numeric account id
@@ -86,13 +86,13 @@ noreply_commits AS (
     SELECT
         extract(COALESCE(author_email, ''), '^([0-9]+)\\+[^@]+@users\\.noreply\\.github\\.com$') AS account_id,
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         'bronze_github.commits.author_email' AS observed_in,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_github', 'commits') }} FINAL
     WHERE author_email LIKE '%@users.noreply.github.com'
-    GROUP BY account_id, email, tenant_id, source_id, observed_in
+    GROUP BY account_id, email, insight_tenant_id, insight_source_id, observed_in
 ),
 
 -- Every login↔id pair GitHub itself asserted, for resolving the pre-2017
@@ -105,8 +105,8 @@ noreply_commits AS (
 -- two ids maps to nobody.
 login_to_id AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         login,
         -- id_str, not account_id: aliasing any(x) back to x makes the HAVING's
         -- uniqExact resolve to the aggregate (ILLEGAL_AGGREGATION).
@@ -115,8 +115,8 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(author_login, ''))) AS login,
             toString(author_id) AS id_str,
-            tenant_id,
-            source_id
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id
         FROM {{ source('bronze_github', 'commit_authors') }} FINAL
         WHERE COALESCE(author_id, 0) > 0
           AND COALESCE(author_login, '') != ''
@@ -126,8 +126,8 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(author_login, ''))) AS login,
             toString(author_id) AS id_str,
-            tenant_id,
-            source_id
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id
         FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
         WHERE COALESCE(author_id, 0) > 0
           AND COALESCE(author_login, '') != ''
@@ -137,8 +137,8 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(committer_login, ''))) AS login,
             toString(committer_id) AS id_str,
-            tenant_id,
-            source_id
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id
         FROM {{ source('bronze_github', 'pull_request_commits') }} FINAL
         WHERE COALESCE(committer_id, 0) > 0
           AND COALESCE(committer_login, '') != ''
@@ -148,13 +148,13 @@ login_to_id AS (
         SELECT
             lower(trimBoth(COALESCE(login, ''))) AS login,
             toString(member_id) AS id_str,
-            tenant_id,
-            source_id
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id
         FROM {{ source('bronze_github_directory', 'org_members') }} FINAL
         WHERE COALESCE(member_id, 0) > 0
           AND COALESCE(login, '') != ''
     )
-    GROUP BY tenant_id, source_id, login
+    GROUP BY insight_tenant_id, insight_source_id, login
     HAVING uniqExact(id_str) = 1
 ),
 
@@ -169,25 +169,25 @@ legacy_noreply_commits AS (
     SELECT
         m.account_id AS account_id,
         c.email AS email,
-        c.tenant_id AS tenant_id,
-        c.source_id AS source_id,
+        c.insight_tenant_id AS insight_tenant_id,
+        c.insight_source_id AS insight_source_id,
         'bronze_github.commits.author_email' AS observed_in,
         c.seen_at AS seen_at
     FROM (
         SELECT
             lower(trimBoth(extract(COALESCE(author_email, ''), '^([^@+]+)@users\\.noreply\\.github\\.com$'))) AS login,
             lower(trimBoth(COALESCE(author_email, ''))) AS email,
-            tenant_id,
-            source_id,
+            {{ bronze_tenant() }} AS insight_tenant_id,
+            insight_source_id,
             max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
         FROM {{ source('bronze_github', 'commits') }} FINAL
         WHERE author_email LIKE '%@users.noreply.github.com'
-        GROUP BY login, email, tenant_id, source_id
+        GROUP BY login, email, insight_tenant_id, insight_source_id
     ) AS c
     INNER JOIN login_to_id AS m
         ON  m.login     = c.login
-        AND m.tenant_id = c.tenant_id
-        AND m.source_id = c.source_id
+        AND m.insight_tenant_id = c.insight_tenant_id
+        AND m.insight_source_id = c.insight_source_id
     WHERE c.login != ''
 ),
 
@@ -218,8 +218,8 @@ every_pair AS (
 SELECT
     account_id,
     email,
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     -- Which source named the pair first, for provenance on the claim.
     -- assumeNotNull because argMin and min inherit the ordering column's
     -- nullability: these two feed silver.identity_inputs.value_field_name and
@@ -234,4 +234,4 @@ FROM every_pair
 -- accounts on different hosts (github.com and an Enterprise Server both count
 -- from 1) — a pair collapsed across scopes lands its claim under an arbitrary
 -- one.
-GROUP BY account_id, email, tenant_id, source_id
+GROUP BY account_id, email, insight_tenant_id, insight_source_id

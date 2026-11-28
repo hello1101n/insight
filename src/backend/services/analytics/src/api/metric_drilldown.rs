@@ -62,7 +62,6 @@ pub async fn query_metric_drilldown(
             )));
         }
     };
-    req.enforce_tenant_scope = state.config.metric_catalog.enforce_tenant_scope;
 
     let names = roster_names(&state, &req).await?;
     req.search_person_ids = people_named_like(&names, req.selection.search.as_deref());
@@ -122,7 +121,6 @@ pub async fn export_metric_drilldown(
             .await;
         }
     };
-    validated.enforce_tenant_scope = state.config.metric_catalog.enforce_tenant_scope;
     let names = roster_names(&state, &validated).await?;
     validated.search_person_ids = people_named_like(&names, validated.selection.search.as_deref());
 

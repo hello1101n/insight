@@ -10,7 +10,7 @@
 -- no longer lists, so `last_seen_at` is how a reader tells a removed link.
 WITH integration_links AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'ticket_id'") }}     AS ticket_id,
         {{ zendesk_id('payload', "'issue_id'") }}      AS issue_id,
@@ -23,7 +23,7 @@ WITH integration_links AS (
 
 integration_v2_links AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'ticket_id'") }}     AS ticket_id,
         {{ zendesk_id('payload', "'issue_id'") }}      AS issue_id,
@@ -42,7 +42,7 @@ links AS (
 
 link_pairs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         ticket_id,
         issue_id,
@@ -52,12 +52,12 @@ link_pairs AS (
         max(collected_at)                              AS last_seen_at
     FROM links
     WHERE ticket_id IS NOT NULL AND issue_id IS NOT NULL
-    GROUP BY tenant_id, insight_source_id, ticket_id, issue_id, found_by
+    GROUP BY insight_tenant_id, insight_source_id, ticket_id, issue_id, found_by
 )
 
 SELECT
     {{ zendesk_key(["'jira'", 'found_by', 'ticket_id', 'issue_id']) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     ticket_id,

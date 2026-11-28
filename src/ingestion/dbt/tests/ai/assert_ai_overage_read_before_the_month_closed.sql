@@ -29,7 +29,7 @@ WITH toStartOfMonth(today()) AS current_month,
    tokens, and a trimming one would glue `closed_month` to `SELECT`. #}
 SELECT
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     source,
     closed_month                                                   AS billing_month,
     max(collected_at)                                              AS last_read,
@@ -38,6 +38,6 @@ FROM {{ ref('class_ai_overage') }} FINAL
 WHERE period_month = closed_month
 GROUP BY
     insight_tenant_id,
-    source_id,
+    insight_source_id,
     source
 HAVING hours_unread > 6

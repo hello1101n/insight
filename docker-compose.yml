@@ -60,7 +60,7 @@ x-backend-env: &backend-env
 
 # The source system of the seeded git data, on an example host. analytics and
 # insight-v3-core link drilldown rows to records through it. The id is the
-# `source_id` that the seed writes. The value is one inline list, which the
+# `insight_source_id` that the seed writes. The value is one inline list, which the
 # config loader reads from a single environment variable.
 x-external-sources: &external-sources '[{id = "74feab6d-c93d-5859-60c5-892b64471c08", provider = "github", web_base_url = "https://git.example.com"}]'
 

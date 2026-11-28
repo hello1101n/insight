@@ -22,24 +22,24 @@
 -- reports the new state alone.
 WITH pull_request_events AS (
     SELECT
-        tenant_id,
-        source_id,
-        unique_key,
-        repo_full_name,
+        {{ bronze_tenant('e.insight_tenant_id') }} AS insight_tenant_id,
+        e.insight_source_id AS insight_source_id,
+        e.unique_key AS unique_key,
+        e.repo_full_name AS repo_full_name,
         'pull_request' AS item_type,
-        item_number,
-        event_id,
-        event_type,
-        event_at,
-        actor_login,
-        target_login,
-        label_name,
+        e.item_number AS item_number,
+        e.event_id AS event_id,
+        e.event_type AS event_type,
+        e.event_at AS event_at,
+        e.actor_login AS actor_login,
+        e.target_login AS target_login,
+        e.label_name AS label_name,
         '' AS field_name,
         '' AS prev_value,
         '' AS new_value,
-        state_reason,
-        _airbyte_extracted_at
-    FROM {{ source('bronze_github', 'pull_request_timeline_events') }} FINAL
+        e.state_reason AS state_reason,
+        e._airbyte_extracted_at AS _airbyte_extracted_at
+    FROM {{ source('bronze_github', 'pull_request_timeline_events') }} AS e FINAL
     {% if is_incremental() %}
     WHERE _airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at') }}
     {% endif %}
@@ -48,8 +48,8 @@ events AS (
     SELECT * FROM pull_request_events
 )
 SELECT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[2] AS repo_slug,

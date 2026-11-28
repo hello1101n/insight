@@ -25,6 +25,8 @@ WALK_SELECT = "tag:zendesk+"
 def other_connector_bronze(fresh_install: Warehouse) -> Warehouse:
     fresh_install.execute("CREATE DATABASE IF NOT EXISTS bronze_hubspot")
     fresh_install.execute("CREATE TABLE IF NOT EXISTS bronze_hubspot.owners (id String) ENGINE = MergeTree ORDER BY id")
+    # One row: empty bronze counts as absent (#163), and this arm must count as present.
+    fresh_install.execute("INSERT INTO bronze_hubspot.owners VALUES ('owner-1')")
     return fresh_install
 
 

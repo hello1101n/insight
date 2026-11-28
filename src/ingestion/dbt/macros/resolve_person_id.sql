@@ -33,10 +33,8 @@
   Excluded accounts (bots, CI, service accounts — bound to the reserved
   excluded person) claim nothing, so their emails resolve to no one.
 
-  No tenant filter — single-tenant reality (#1550); the tenant column is in
-  the log when that changes. And no join on tenant between the two stores:
-  `identity_inputs` carries a producer-side hashed tenant that never equals
-  the journal's, so the account triple is the only sound key across them.
+  Scoped per tenant: both stores carry the canonical tenant, the map emits
+  it, and every consumer joins on it alongside the email.
 
   This macro is deliberately the ONLY place resolution semantics live.
   Future smarts — per-source maps ("this email as seen by git sources"),
@@ -71,17 +69,20 @@
     {#- The connector evidence has never been built: resolve nothing rather
         than fail the build, exactly as an empty journal would. -#}
     SELECT
+        ''                                   AS insight_tenant_id,
         ''                                   AS email,
         toUUID('00000000-0000-0000-0000-000000000000') AS person_id
     WHERE 0
 {%- else -%}
     SELECT
+        ae.insight_tenant_id                         AS insight_tenant_id,
         ae.email                             AS email,
         any(cb.person_id)                    AS person_id
     FROM (
         SELECT DISTINCT
+            toString(insight_tenant_id)      AS insight_tenant_id,
             insight_source_type              AS source_type,
-            insight_source_id                AS source_id,
+            insight_source_id,
             source_account_id                AS account_id,
             lower(trimBoth(value))           AS email
         FROM identity.identity_inputs
@@ -92,8 +93,9 @@
     ) AS ae
     INNER JOIN (
         SELECT
+            toString(insight_tenant_id)      AS insight_tenant_id,
             insight_source_type              AS source_type,
-            insight_source_id                AS source_id,
+            insight_source_id,
             trimBoth(value_effective)        AS account_id,
             person_id
         FROM identity.identity_persons
@@ -101,26 +103,28 @@
           AND value_effective IS NOT NULL
           AND trimBoth(value_effective) != ''
         ORDER BY
+            insight_tenant_id,
             source_type,
-            source_id,
+            insight_source_id,
             account_id,
             created_at DESC,
             id DESC
-        LIMIT 1 BY source_type, source_id, account_id
+        LIMIT 1 BY insight_tenant_id, source_type, insight_source_id, account_id
     ) AS cb
-        ON cb.source_type = ae.source_type
-       AND cb.source_id = ae.source_id
+        ON cb.insight_tenant_id = ae.insight_tenant_id
+       AND cb.source_type = ae.source_type
+       AND cb.insight_source_id = ae.insight_source_id
        AND cb.account_id = ae.account_id
     WHERE ae.email != ''
       AND cb.person_id != {{ excluded_person_id() }}
-    GROUP BY ae.email
+    GROUP BY ae.insight_tenant_id, ae.email
     HAVING uniqExact(cb.person_id) = 1
 {%- endif -%}
 {% endmacro %}
 
 {#-
   The account-first companion of resolve_person_id(): the CURRENT
-  `(source_type, source_id, account_id) -> person_id` map, straight from the
+  `(source_type, insight_source_id, account_id) -> person_id` map, straight from the
   bindings — no email hop. For facts that carry the author's source account id
   (git pull requests), the account is the source's own primary key for the
   person: it survives an empty or private profile email, a squash-merge that
@@ -149,15 +153,17 @@
     {#- The identity journal has never been created: resolve nothing rather
         than fail the build, mirroring resolve_person_id(). -#}
     SELECT
+        ''                                   AS insight_tenant_id,
         ''                                   AS source_type,
-        toUUID('00000000-0000-0000-0000-000000000000') AS source_id,
+        toUUID('00000000-0000-0000-0000-000000000000') AS insight_source_id,
         ''                                   AS account_id,
         toUUID('00000000-0000-0000-0000-000000000000') AS person_id
     WHERE 0
 {%- else -%}
     SELECT
+        toString(insight_tenant_id)      AS insight_tenant_id,
         insight_source_type              AS source_type,
-        insight_source_id                AS source_id,
+        insight_source_id,
         lower(trimBoth(value_effective)) AS account_id,
         person_id
     FROM identity.identity_persons
@@ -165,27 +171,29 @@
       AND value_effective IS NOT NULL
       AND trimBoth(value_effective) != ''
     ORDER BY
+        insight_tenant_id,
         source_type,
-        source_id,
+        insight_source_id,
         account_id,
         created_at DESC,
         id DESC
-    LIMIT 1 BY source_type, source_id, account_id
+    LIMIT 1 BY insight_tenant_id, source_type, insight_source_id, account_id
 {%- endif -%}
 {% endmacro %}
 
 {#-
   The join for models whose rows carry (account_source_type,
   account_source_id, account_id). INVARIANT: identity stores
-  insight_source_id as sipHash128 of the connector's raw source_id (see the
+  insight_source_id as sipHash128 of the connector's raw insight_source_id (see the
   connectors' identity_inputs models), while class relations carry the raw
   string — the hash below must stay in lockstep with that minting expression
   or the join silently matches nothing.
 -#}
 {% macro resolved_person_id_by_account_join(rel) %}
     LEFT JOIN ({{ resolve_person_id_by_account() }}) AS account_map
-        ON account_map.source_type = {{ rel }}.account_source_type
-       AND account_map.source_id = toUUID(UUIDNumToString(sipHash128(coalesce({{ rel }}.account_source_id, ''))))
+        ON account_map.insight_tenant_id = toString({{ rel }}.insight_tenant_id)
+       AND account_map.source_type = {{ rel }}.account_source_type
+       AND account_map.insight_source_id = toUUID(UUIDNumToString(sipHash128(coalesce({{ rel }}.account_source_id, ''))))
        AND account_map.account_id = lower(trimBoth({{ rel }}.account_id))
 {% endmacro %}
 
@@ -197,7 +205,8 @@
 
 {% macro resolved_person_id_join(rel) %}
     LEFT JOIN ({{ resolve_person_id() }}) AS identity_map
-        ON identity_map.email = lower(trimBoth({{ rel }}.entity_id))
+        ON identity_map.insight_tenant_id = toString({{ rel }}.insight_tenant_id)
+       AND identity_map.email = lower(trimBoth({{ rel }}.entity_id))
 {% endmacro %}
 
 

@@ -3,7 +3,7 @@
 `_plan_pages` decides every page before a row is written precisely because two
 downstream relations are derived from that list rather than drawn beside it:
 the activity row's `pages_created`, and the engagement rows, which gold joins
-back onto `(tenant_id, source_id, page_id)` INNER and credits to the PAGE's
+back onto `(insight_tenant_id, insight_source_id, page_id)` INNER and credits to the PAGE's
 author. A count drawn independently would either double-count a person's day or
 strand comments on a page that was never emitted, and gold would answer with a
 number nobody can trace to a page.

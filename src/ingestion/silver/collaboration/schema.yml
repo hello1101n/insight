@@ -60,10 +60,11 @@ models:
       status filter. Guest or offboarded activity belongs in a separate
       model over bronze.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         description: "Source instance identifier"
         tests:
@@ -176,10 +177,11 @@ models:
   - name: class_collab_meeting_activity
     description: "Unified daily meeting activity per user from all collaboration sources (M365 Teams, Zoom)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         description: "Source instance identifier"
         tests:
@@ -270,10 +272,11 @@ models:
   - name: class_collab_email_activity
     description: "Unified daily email activity per user (M365 Outlook)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         description: "Source instance identifier"
         tests:
@@ -299,10 +302,11 @@ models:
   - name: class_collab_document_activity
     description: "Unified daily document activity per user (M365 OneDrive + SharePoint)"
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         description: "Source instance identifier"
         tests:

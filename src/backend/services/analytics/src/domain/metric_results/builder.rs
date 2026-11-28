@@ -718,7 +718,6 @@ mod tests {
             },
             compare_to: None,
             metrics: Vec::new(),
-            enforce_tenant_scope: true,
         }
     }
 

@@ -32,6 +32,10 @@ models:
       new row when any of `name`, `email`, `role`, `is_suspended` changes
       for a given user.
     columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null
@@ -40,6 +44,11 @@ models:
     description: >
       Field-level change log derived from the users snapshot. One row per
       changed field per version transition.
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
 
   - name: outline__identity_inputs
     description: >
@@ -57,10 +66,11 @@ models:
       Outline endpoint exposing emails; embedded user objects omit the email
       field on self-hosted instances). No cross-connector JOIN needed.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -96,10 +106,11 @@ models:
       author_email resolved via LEFT JOIN with the connector's own
       wiki_users stream (embedded createdBy objects omit email).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -143,10 +154,11 @@ models:
       from parent_comment_id. Aggregations: total_comments, footer_comments,
       inline_comments, replies, unique_commenters, unresolved_inline_count.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key

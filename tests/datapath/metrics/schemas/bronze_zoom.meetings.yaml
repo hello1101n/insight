@@ -37,8 +37,8 @@ schemas:
       has_automated_captions: {type: [boolean, "null"]}
       has_meeting_summary: {type: [boolean, "null"]}
       avg_jointime_cost: {type: [number, "null"]}
-      tenant_id: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       unique_key: {type: [string, "null"]}
       video_quality: {type: [string, "null"]}
       screen_share_quality: {type: [string, "null"]}

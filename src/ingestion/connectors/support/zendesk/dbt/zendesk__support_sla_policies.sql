@@ -8,7 +8,7 @@
 
 WITH policy_metrics AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS policy_id,
         JSONExtractString(payload, 'title')            AS title,
@@ -21,7 +21,7 @@ WITH policy_metrics AS (
 
 SELECT
     {{ zendesk_key(['policy_id', "JSONExtractString(metric_json, 'metric')", "JSONExtractString(metric_json, 'priority')"]) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     policy_id,

@@ -122,8 +122,8 @@ def _issue_key(case: CensusCase, updated: str, extracted_at: str) -> dict[str, A
         **_airbyte(extracted_at),
         "id": case.jira_id,
         "key": case.key,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{case.jira_id}",
         "id_readable": case.key,
         "jira_id": case.jira_id,
@@ -136,7 +136,7 @@ def _flagged(scenario: Scenario) -> set[str]:
     invocation = scenario.warehouse.dbt_status("test", "--select", CHECK)
     assert "error" not in invocation.statuses, invocation.log
     rows = scenario.warehouse.rows(
-        "SELECT jira_id FROM dbt_test__audit.assert_census_issue_has_full_record WHERE source_id = {source:String}",
+        "SELECT jira_id FROM dbt_test__audit.assert_census_issue_has_full_record WHERE insight_source_id = {source:String}",
         {"source": SOURCE_ID},
     )
     return {row["jira_id"] for row in rows}

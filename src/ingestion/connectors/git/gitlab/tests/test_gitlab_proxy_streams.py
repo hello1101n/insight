@@ -83,8 +83,8 @@ def test_commits_paginate_and_key_on_the_project_id(http_mocker: HttpMocker) -> 
     assert not output.errors
     assert len(output.records) == 2
     rec = output.records[0].record.data
-    assert rec["tenant_id"] == config["insight_tenant_id"]
-    assert rec["source_id"] == config["insight_source_id"]
+    assert rec["insight_tenant_id"] == config["insight_tenant_id"]
+    assert rec["insight_source_id"] == config["insight_source_id"]
     assert rec["data_source"] == "insight_gitlab"
     assert rec["project_id"] == 7
     assert rec["repo_path"] == "acme/app"

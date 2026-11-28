@@ -595,7 +595,7 @@ impl MetricDefinitionValidator {
 }
 
 const OBSERVATION_COLUMNS: &[&str] = &[
-    "tenant_id",
+    "insight_tenant_id",
     "source_key",
     "entity_type",
     "entity_id",
@@ -611,7 +611,7 @@ const OBSERVATION_COLUMNS: &[&str] = &[
 ];
 
 const EVIDENCE_COLUMN_TYPES: &[(&str, &str)] = &[
-    ("tenant_id", "String"),
+    ("insight_tenant_id", "String"),
     ("source_key", "String"),
     ("entity_type", "String"),
     ("entity_id", "String"),
@@ -636,15 +636,20 @@ const EVIDENCE_COLUMN_TYPES: &[(&str, &str)] = &[
 
 const PERSON_MAP_TABLE: (&str, &str) = ("identity", "person_map");
 
-const PERSON_MAP_COLUMNS: &[&str] = &["email", "person_id"];
+const PERSON_MAP_COLUMNS: &[&str] = &["insight_tenant_id", "email", "person_id"];
 
 const ACCOUNT_ASSIGNMENT_TABLE: (&str, &str) = ("identity", "account_assignment");
 
-const ACCOUNT_ASSIGNMENT_COLUMNS: &[&str] =
-    &["source_type", "source_id", "account_id", "person_id"];
+const ACCOUNT_ASSIGNMENT_COLUMNS: &[&str] = &[
+    "insight_tenant_id",
+    "source_type",
+    "insight_source_id",
+    "account_id",
+    "person_id",
+];
 
 const COHORT_COLUMNS: &[&str] = &[
-    "tenant_id",
+    "insight_tenant_id",
     "entity_type",
     "entity_id",
     "cohort_key",

@@ -22,8 +22,8 @@
 
 WITH issue_properties AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         arrayJoin([
             ('state',     'state',     0, 0),
             ('assignees', 'user',      1, 1),
@@ -32,13 +32,13 @@ WITH issue_properties AS (
         ]) AS prop,
         max(_airbyte_extracted_at) AS observed_at
     FROM {{ source('bronze_github', 'repositories') }} FINAL
-    GROUP BY tenant_id, source_id, prop
+    GROUP BY insight_tenant_id, insight_source_id, prop
 ),
 
 declared AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         prop.1 AS field_id,
         prop.1 AS field_name,
         prop.2 AS field_type,
@@ -50,8 +50,8 @@ declared AS (
 
 catalogued AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         COALESCE(field_id, '') AS field_id,
         COALESCE(field_name, '') AS field_name,
         lower(COALESCE(data_type, '')) AS field_type,
@@ -66,8 +66,8 @@ catalogued AS (
 -- would invite a binding that resolves nothing.
 board_status AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         concat('project_status:', COALESCE(project_id, ''))  AS field_id,
         'Status'                                             AS field_name,
         'single_select'                                      AS field_type,
@@ -79,7 +79,7 @@ board_status AS (
     WHERE COALESCE(is_mirror, true) = false
       AND COALESCE(data_type, '') = 'SINGLE_SELECT'
       AND COALESCE(project_id, '') != ''
-    GROUP BY tenant_id, source_id, field_id, project_key
+    GROUP BY insight_tenant_id, insight_source_id, field_id, project_key
 ),
 
 every_field AS (
@@ -88,15 +88,16 @@ every_field AS (
     SELECT *, CAST(NULL AS Nullable(String)) AS project_key FROM catalogued
     UNION ALL
     SELECT
-        tenant_id, source_id, field_id, field_name, field_type,
+        insight_tenant_id, insight_source_id, field_id, field_name, field_type,
         is_multi, has_id, observed_at,
         CAST(project_key AS Nullable(String)) AS project_key
     FROM board_status
 )
 
 SELECT
-    CAST(concat(tenant_id, ':', source_id, ':github:field:', field_id) AS Nullable(String)) AS unique_key,
-    CAST(COALESCE(source_id, '') AS String)                 AS insight_source_id,
+    CAST(concat(insight_tenant_id, ':', insight_source_id, ':github:field:', field_id) AS Nullable(String)) AS unique_key,
+    insight_tenant_id,
+    CAST(COALESCE(insight_source_id, '') AS String)                 AS insight_source_id,
     CAST('github' AS String)                                AS data_source,
     CAST(project_key AS Nullable(String))                   AS project_key,
     CAST(field_id AS String)                                AS field_id,

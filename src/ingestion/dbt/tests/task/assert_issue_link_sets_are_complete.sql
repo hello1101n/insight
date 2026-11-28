@@ -26,7 +26,8 @@
 
 WITH sets AS (
     SELECT
-        COALESCE(source_id, '')                                 AS insight_source_id,
+        COALESCE(insight_tenant_id, '')                                 AS insight_tenant_id,
+        COALESCE(insight_source_id, '')                                 AS insight_source_id,
         concat(COALESCE(repo_full_name, ''), '#', toString(COALESCE(item_number, 0))) AS id_readable,
         arrayJoin([
             ('sub_issues',   JSONLength(COALESCE(sub_issues_json, '[]')),             COALESCE(sub_issues_total, 0)),
@@ -38,6 +39,7 @@ WITH sets AS (
 )
 
 SELECT
+    insight_tenant_id,
     insight_source_id,
     id_readable,
     s.1 AS link_set,

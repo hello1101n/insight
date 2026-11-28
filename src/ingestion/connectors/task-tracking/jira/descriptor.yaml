@@ -44,7 +44,7 @@ name: jira
 # Rows written before this were rebuilt on the new key by the deploy hook of
 # every release the upgrade floor admits (docs/operations/
 # CLICKHOUSE-UPGRADE-FLOOR.md): `unique_key` is the sort key and cannot be
-# updated in place. Readers dedup by (source_id, jira_id) regardless — the
+# updated in place. Readers dedup by (insight_source_id, jira_id) regardless — the
 # issue's stable key within a source, which is what joins use; `unique_key`
 # exists for ReplacingMergeTree alone. `id_readable` keeps the mutable key as
 # an attribute — the rename is a fact about the issue.
@@ -169,7 +169,18 @@ name: jira
 # config error, and the check also reads `jira_user`, so invalid credentials
 # fail both the check and the sync instead of collecting nothing (#3744, #3746).
 # PATCH per ADR-0015: the manifest changes and nothing stored changes.
-version: "18.4.1"
+# 19.0.0 (major): every Jira producer of a task class carries `tenant_id` after
+# `unique_key` and leads its key with the tenant, and the journal derives,
+# deletes and batches per tenant. MAJOR because rows already written change
+# key, and only the full refresh a major dispatches (ADR-0015) replaces them in
+# the journal, its lifecycle arms and the silver classes.
+# 19.1.0: every stream stamps its tenant as `insight_tenant_id`, not `tenant_id`.
+# MINOR per ADR-0015: reconcile republishes the manifest and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+# 19.2.0: every stream stamps its source as `insight_source_id`, not `source_id`.
+# MINOR per ADR-0015: reconcile republishes the connector and refreshes the
+# catalog, and `tenant_migration` renames the column of stored Bronze first.
+version: "19.2.0"
 # 22:10 and 10:10 UTC: clear of the 02:00-06:00 daily block and of github's
 # 4-hourly ticks, which rebuild the same task chain; :10 misses the */15
 # reconcile and identity-seed ticks.

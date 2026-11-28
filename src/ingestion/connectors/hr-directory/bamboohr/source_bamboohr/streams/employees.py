@@ -42,8 +42,8 @@ SCHEMA: Mapping[str, Any] = {
         "location": NULLABLE_STR,
         "raw_data": {"type": ["object", "null"], "additionalProperties": True},
         "firstName": NULLABLE_STR,
-        "source_id": NULLABLE_STR,
-        "tenant_id": NULLABLE_STR,
+        "insight_source_id": NULLABLE_STR,
+        "insight_tenant_id": NULLABLE_STR,
         "workEmail": NULLABLE_STR,
         "department": NULLABLE_STR,
         "supervisor": NULLABLE_STR,
@@ -59,7 +59,7 @@ SCHEMA: Mapping[str, Any] = {
     },
 }
 
-FRAMEWORK_FIELDS = frozenset({"raw_data", "tenant_id", "source_id", "unique_key"})
+FRAMEWORK_FIELDS = frozenset({"raw_data", "insight_tenant_id", "insight_source_id", "unique_key"})
 
 # Bronze columns projected out of the report row. Derived from the schema so the
 # projection and the declared column set cannot drift apart.
@@ -285,8 +285,8 @@ class EmployeesStream(Stream):
 
         record: dict[str, Any] = {name: row.get(name) for name in BUSINESS_FIELDS}
         record["raw_data"] = payload
-        record["tenant_id"] = self._tenant_id
-        record["source_id"] = self._source_id
+        record["insight_tenant_id"] = self._tenant_id
+        record["insight_source_id"] = self._source_id
         record["unique_key"] = f"{self._tenant_id}-{self._source_id}-{employee_id}"
         return record
 

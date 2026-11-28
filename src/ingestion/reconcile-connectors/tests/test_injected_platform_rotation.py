@@ -36,6 +36,7 @@ kubectl() {
 }
 valsec_check_secret()    { return 0; }
 reconcile_definitions()  { printf 'noop\\tnone\\tdef-1\\n'; }
+reconcile_catalog_tag()  { printf 'catalog:current'; }
 reconcile_rename_former_tenant() { return 0; }
 reconcile_classify_change() { printf 'noop'; }
 reconcile_resolve_schedule() { printf 'annotation\\n0 5 * * *\\n0 17 * * *'; }
@@ -51,7 +52,7 @@ adopt_tag_connection() {
 import json, sys
 path, cfg_hash = sys.argv[1], sys.argv[2][:12]
 connections = json.load(open(path))
-connections[0]["tags"] = [{"name": "insight"}, {"name": f"cfg-hash:{cfg_hash}"}]
+connections[0]["tags"] = [{"name": "insight"}, {"name": f"cfg-hash:{cfg_hash}"}, {"name": "catalog:current"}]
 json.dump(connections, open(path, "w"))
 PY
 }
@@ -92,7 +93,7 @@ def seed(tmp_path: Path) -> None:
         "sourceId": "src-1",
         "destinationId": DESTINATION,
         "name": f"{SOURCE_NAME}-conn",
-        "tags": [{"name": "insight"}],
+        "tags": [{"name": "insight"}, {"name": "catalog:current"}],
     }
     (tmp_path / "sources.json").write_text(json.dumps([source]), encoding="utf-8")
     (tmp_path / "connections.json").write_text(json.dumps([connection]), encoding="utf-8")

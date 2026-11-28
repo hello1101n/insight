@@ -36,13 +36,13 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.ai_seat_tier_map
         (
-            tenant_id         String,
+            insight_tenant_id         String,
             insight_source_id String,
             -- The class's own `source` value ('claude_team'), not its data_source:
             -- the binding is per vendor, and that is the column gold joins on.
             source            LowCardinality(String),
             tier_ref          String,
-            unique_key        String DEFAULT concat(tenant_id, ':', insight_source_id, ':',
+            unique_key        String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':',
                                                     source, ':', tier_ref),
             seat_source_id    String DEFAULT '',
             seat_tier         String,
@@ -80,7 +80,7 @@
     {% do run_query("
         CREATE TABLE IF NOT EXISTS config.ai_credit_pricing
         (
-            tenant_id               String,
+            insight_tenant_id               String,
             insight_source_id       String,
             -- The class's own `source` value ('chatgpt_team'), matching
             -- ai_seat_tier_map: the price is per vendor, not per connector run.
@@ -88,7 +88,7 @@
             -- Informational only. The replacement key is the pricing scope
             -- below, not this: a caller writing its own unique_key must not be
             -- able to make two rows of one scope coexist.
-            unique_key              String DEFAULT concat(tenant_id, ':', insight_source_id, ':', source),
+            unique_key              String DEFAULT concat(insight_tenant_id, ':', insight_source_id, ':', source),
             -- Minor units of billed_currency per ONE credit. Decimal so a
             -- sub-cent price does not round to nothing before it is summed.
             credit_price_minor_units Decimal(18, 6),
@@ -109,6 +109,6 @@
         -- vendor default differ by insight_source_id, so they stay separate
         -- rows; two writes of one scope replace each other, whatever unique_key
         -- either of them carries.
-        ORDER BY (tenant_id, insight_source_id, source)
+        ORDER BY (insight_tenant_id, insight_source_id, source)
     ") %}
 {% endmacro %}

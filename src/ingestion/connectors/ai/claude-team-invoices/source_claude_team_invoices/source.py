@@ -93,6 +93,13 @@ class SourceClaudeTeamInvoices(AbstractSource):
         except ValueError as error:
             return False, str(error)
 
+        if not parsed.insight_tenant_id.strip():
+            return False, (
+                "insight_tenant_id MUST be set to a non-empty tenant UUID; an "
+                "empty value would stamp every record with an unscoped tenant, "
+                "breaking tenant isolation."
+            )
+
         if not parsed.insight_source_id.strip():
             return False, (
                 "insight_source_id MUST be set via the "

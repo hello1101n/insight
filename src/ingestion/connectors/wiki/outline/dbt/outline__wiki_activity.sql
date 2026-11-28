@@ -44,8 +44,8 @@
 
 WITH revisions AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         page_id,
         nullIf(author_id, '')                                                 AS author_id,
         nullIf(author_email, '')                                              AS author_email,
@@ -63,7 +63,7 @@ revisions_with_ordinal AS (
     SELECT
         *,
         row_number() OVER (
-            PARTITION BY tenant_id, source_id, page_id
+            PARTITION BY insight_tenant_id, insight_source_id, page_id
             ORDER BY created_at_ts
         ) AS revision_ordinal
     FROM revisions
@@ -78,7 +78,7 @@ revisions_with_gap AS (
         dateDiff(
             'second',
             lagInFrame(created_at_ts) OVER (
-                PARTITION BY tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ),
             created_at_ts
@@ -96,7 +96,7 @@ revisions_with_session AS (
         *,
         sum(CASE WHEN gap_seconds IS NULL OR gap_seconds > {{ session_gap_seconds }} THEN 1 ELSE 0 END)
             OVER (
-                PARTITION BY tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ) AS session_id
     FROM revisions_with_gap
@@ -104,8 +104,8 @@ revisions_with_session AS (
 
 agg AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         author_id,
         -- Embedded email per (author, day): latest revision wins. Normally
         -- empty (see header) — the wiki_users JOIN below is the resolver.
@@ -126,13 +126,13 @@ agg AS (
         max(extracted_at)                                                   AS extracted_at_max
     FROM revisions_with_session
     WHERE day IS NOT NULL
-    GROUP BY tenant_id, source_id, author_id, day
+    GROUP BY insight_tenant_id, insight_source_id, author_id, day
 ),
 
 users AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         user_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_outline', 'wiki_users') }}
@@ -141,11 +141,11 @@ users AS (
 )
 
 SELECT
-    a.tenant_id                                                             AS tenant_id,
-    a.source_id                                                             AS source_id,
+    a.insight_tenant_id                                                             AS insight_tenant_id,
+    a.insight_source_id                                                             AS insight_source_id,
     CAST(concat(
-        coalesce(a.tenant_id, ''), '-',
-        coalesce(a.source_id, ''), '-',
+        a.insight_tenant_id, '-',
+        coalesce(a.insight_source_id, ''), '-',
         a.author_id, '-',
         toString(a.day)
     ) AS String)                                                            AS unique_key,
@@ -161,6 +161,6 @@ SELECT
     toUnixTimestamp64Milli(a.extracted_at_max)                              AS _version
 FROM agg a
 LEFT JOIN users u
-    ON a.tenant_id = u.tenant_id
-   AND a.source_id = u.source_id
+    ON a.insight_tenant_id = u.insight_tenant_id
+   AND a.insight_source_id = u.insight_source_id
    AND a.author_id = u.user_id
