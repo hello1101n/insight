@@ -10,7 +10,7 @@
 {% for model in evidence_models %}
 SELECT
     '{{ model }}' AS evidence_model,
-    tenant_id,
+    insight_tenant_id,
     source_key,
     measure_key,
     entity_id,
@@ -18,7 +18,7 @@ SELECT
     record_id,
     count() AS row_count
 FROM {{ ref(model) }}
-GROUP BY tenant_id, source_key, measure_key, entity_id, metric_date, record_id
+GROUP BY insight_tenant_id, source_key, measure_key, entity_id, metric_date, record_id
 HAVING count() > 1
 {% if not loop.last %}
 UNION ALL

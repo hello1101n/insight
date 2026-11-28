@@ -44,7 +44,7 @@ fn row(pairs: &[(&str, Value)]) -> Map<String, Value> {
 fn a_commit() -> Vec<(&'static str, Value)> {
     vec![
         ("data_source", json!("insight_github")),
-        ("source_id", json!("source-a")),
+        ("insight_source_id", json!("source-a")),
         ("project_key", json!("group")),
         ("repo_slug", json!("app")),
         ("commit_hash", json!("a1b2c3")),
@@ -83,7 +83,7 @@ fn a_record_links_to_its_page_in_the_source_system() {
             RecordRelation::PullRequest,
             vec![
                 ("data_source", json!("insight_gitlab")),
-                ("source_id", json!("source-b")),
+                ("insight_source_id", json!("source-b")),
                 ("project_key", json!("group")),
                 ("repo_slug", json!("app")),
                 ("pr_number", json!("42")),
@@ -95,7 +95,7 @@ fn a_record_links_to_its_page_in_the_source_system() {
             RecordRelation::PullRequest,
             vec![
                 ("data_source", json!("insight_github")),
-                ("source_id", json!("source-a")),
+                ("insight_source_id", json!("source-a")),
                 ("project_key", json!("")),
                 ("repo_slug", json!("group/app")),
                 ("pr_number", json!("7")),
@@ -132,7 +132,7 @@ fn a_record_the_registry_cannot_place_has_no_link() {
         ),
         (
             "an unknown source",
-            with(&a_commit(), "source_id", json!("source-z")),
+            with(&a_commit(), "insight_source_id", json!("source-z")),
         ),
         (
             "a source of another provider",
@@ -143,7 +143,10 @@ fn a_record_the_registry_cannot_place_has_no_link() {
             "an empty reference",
             with(&a_commit(), "commit_hash", json!("")),
         ),
-        ("a null source", with(&a_commit(), "source_id", Value::Null)),
+        (
+            "a null source",
+            with(&a_commit(), "insight_source_id", Value::Null),
+        ),
         ("a missing repository", without(&a_commit(), "repo_slug")),
     ];
 

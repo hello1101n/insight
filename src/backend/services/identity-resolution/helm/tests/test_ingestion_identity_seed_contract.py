@@ -33,7 +33,7 @@ INGESTION = [
     "--set",
     "ingestion.toolboxImage=ghcr.io/example/insight-toolbox:0.0.0-test",
     "--set",
-    f"global.tenantDefaultId={TENANT}",
+    f"authenticator.oidc.defaultTenantId={TENANT}",
 ]
 
 
@@ -195,6 +195,24 @@ def test_a_model_whose_bronze_is_absent_is_excluded_alongside_the_steps_own_excl
     )
     assert rc == 0, output
     assert "--exclude tag:github identity_inputs class_crm_users hubspot__crm_users" in output
+
+
+def test_each_model_left_out_is_printed_with_its_reason(docs, tmp_path) -> None:
+    """`list_unbuildable_models` answers `name<TAB>reason` per line; the name
+    reaches --exclude and the line reaches the log, so no skip is silent."""
+    rc, output = _run_script(
+        tmp_path,
+        _dbt_run_script(docs),
+        selected="model.a",
+        remaining="model.a",
+        select="tag:hubspot+",
+        exclude="",
+        unbuildable="class_crm_teams\tno contributor tagged silver:class_crm_teams is built\n"
+        "hubspot__crm_teams\tbronze empty: bronze_hubspot.owners",
+    )
+    assert rc == 0, output
+    assert "not built: hubspot__crm_teams\tbronze empty: bronze_hubspot.owners" in output
+    assert "--exclude class_crm_teams hubspot__crm_teams" in output
 
 
 def test_an_empty_selector_still_runs_everything(docs, tmp_path) -> None:

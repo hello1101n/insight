@@ -48,8 +48,8 @@
 
 WITH versions AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         page_id,
         author_id,
         toUInt32(coalesce(version_number, 0))                                AS version_number,
@@ -70,7 +70,7 @@ versions_with_gap AS (
         dateDiff(
             'second',
             lagInFrame(created_at_ts) OVER (
-                PARTITION BY tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ),
             created_at_ts
@@ -88,7 +88,7 @@ versions_with_session AS (
         *,
         sum(CASE WHEN gap_seconds IS NULL OR gap_seconds > {{ session_gap_seconds }} THEN 1 ELSE 0 END)
             OVER (
-                PARTITION BY tenant_id, source_id, page_id, author_id
+                PARTITION BY insight_tenant_id, insight_source_id, page_id, author_id
                 ORDER BY created_at_ts
             ) AS session_id
     FROM versions_with_gap
@@ -96,8 +96,8 @@ versions_with_session AS (
 
 agg AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         author_id,
         day,
         -- uniqExact (not uniq): uniq is HyperLogLog and can miscount by a
@@ -116,27 +116,27 @@ agg AS (
         max(extracted_at)                                                   AS extracted_at_max
     FROM versions_with_session
     WHERE day IS NOT NULL
-    GROUP BY tenant_id, source_id, author_id, day
+    GROUP BY insight_tenant_id, insight_source_id, author_id, day
 )
 
 {%- if jira_user %}
 , users AS (
     SELECT
-        tenant_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
         account_id,
         lower(trim(email))                                                  AS email
     FROM {{ source('bronze_jira', 'jira_user') }}
     WHERE email IS NOT NULL AND trim(email) != ''
-    QUALIFY row_number() OVER (PARTITION BY tenant_id, account_id ORDER BY _airbyte_extracted_at DESC) = 1
+    QUALIFY row_number() OVER (PARTITION BY insight_tenant_id, account_id ORDER BY _airbyte_extracted_at DESC) = 1
 )
 {%- endif %}
 
 SELECT
-    a.tenant_id,
-    a.source_id,
+    a.insight_tenant_id,
+    a.insight_source_id,
     CAST(concat(
-        coalesce(a.tenant_id, ''), '-',
-        coalesce(a.source_id, ''), '-',
+        a.insight_tenant_id, '-',
+        coalesce(a.insight_source_id, ''), '-',
         a.author_id, '-',
         toString(a.day)
     ) AS String)                                                            AS unique_key,
@@ -153,6 +153,6 @@ SELECT
 FROM agg a
 {%- if jira_user %}
 LEFT JOIN users u
-    ON a.tenant_id = u.tenant_id
+    ON a.insight_tenant_id = u.insight_tenant_id
    AND a.author_id = u.account_id
 {%- endif %}

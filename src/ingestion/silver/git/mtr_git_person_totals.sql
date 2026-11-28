@@ -17,19 +17,19 @@
 -- value (empty string for non-Nullable String) instead of NULL after FOJ.
 -- A subsequent `coalesce(prs.person_key, commits.person_key, …)` then picks
 -- the empty string and the joining key is lost. We anchor on the union of
--- all (tenant_id, person_key) tuples and LEFT JOIN each metric CTE onto it,
+-- all (insight_tenant_id, person_key) tuples and LEFT JOIN each metric CTE onto it,
 -- which keeps the join key authoritative on the anchor side.
 
 WITH all_keys AS (
-    SELECT tenant_id, person_key
+    SELECT insight_tenant_id, person_key
     FROM {{ ref('fct_git_pr') }} FINAL
     WHERE person_key != ''
     UNION DISTINCT
-    SELECT tenant_id, person_key
+    SELECT insight_tenant_id, person_key
     FROM {{ ref('fct_git_commit') }} FINAL
     WHERE is_merge_commit = 0 AND person_key != ''
     UNION DISTINCT
-    SELECT tenant_id, person_key
+    SELECT insight_tenant_id, person_key
     FROM {{ ref('fct_git_file_change') }} FINAL
     WHERE is_merge_commit = 0
       AND file_category = 'code'
@@ -37,41 +37,41 @@ WITH all_keys AS (
 ),
 prs AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         person_key,
         count()                                                AS prs_created,
         countIf(state_norm = 'merged')                         AS prs_merged,
         avgIf(cycle_time_h, cycle_time_h IS NOT NULL)          AS avg_pr_cycle_time_h
     FROM {{ ref('fct_git_pr') }} FINAL
     WHERE person_key != ''
-    GROUP BY tenant_id, person_key
+    GROUP BY insight_tenant_id, person_key
 ),
 commits AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         person_key,
         count()                           AS commits,
         SUM(lines_added + lines_removed)  AS loc
     FROM {{ ref('fct_git_commit') }} FINAL
     WHERE is_merge_commit = 0
       AND person_key != ''
-    GROUP BY tenant_id, person_key
+    GROUP BY insight_tenant_id, person_key
 ),
 clean AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         person_key,
         SUM(lines_added) AS clean_loc
     FROM {{ ref('fct_git_file_change') }} FINAL
     WHERE is_merge_commit = 0
       AND file_category = 'code'
       AND person_key != ''
-    GROUP BY tenant_id, person_key
+    GROUP BY insight_tenant_id, person_key
 )
 SELECT
-    ak.tenant_id                          AS tenant_id,
+    ak.insight_tenant_id                          AS insight_tenant_id,
     ak.person_key                         AS person_key,
-    concat(coalesce(ak.tenant_id, ''), '|', ak.person_key) AS unique_key,
+    concat(coalesce(ak.insight_tenant_id, ''), '|', ak.person_key) AS unique_key,
     coalesce(prs.prs_created, 0)          AS prs_created,
     coalesce(prs.prs_merged, 0)           AS prs_merged,
     prs.avg_pr_cycle_time_h               AS avg_pr_cycle_time_h,
@@ -79,6 +79,6 @@ SELECT
     coalesce(commits.loc, 0)              AS loc,
     coalesce(clean.clean_loc, 0)          AS clean_loc
 FROM all_keys ak
-LEFT JOIN prs     USING (tenant_id, person_key)
-LEFT JOIN commits USING (tenant_id, person_key)
-LEFT JOIN clean   USING (tenant_id, person_key)
+LEFT JOIN prs     USING (insight_tenant_id, person_key)
+LEFT JOIN commits USING (insight_tenant_id, person_key)
+LEFT JOIN clean   USING (insight_tenant_id, person_key)

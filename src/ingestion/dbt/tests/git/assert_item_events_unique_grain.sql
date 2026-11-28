@@ -3,8 +3,8 @@
 -- different unique_key values, so RMT cannot collapse them and a consumer
 -- folding a multi-valued field would apply the same add/remove twice.
 SELECT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     item_type,
     item_number,
     event_id,
@@ -12,8 +12,8 @@ SELECT
     uniqExact(unique_key) AS distinct_unique_keys
 FROM {{ ref('class_git_item_events') }} FINAL
 GROUP BY
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     item_type,
     item_number,
     event_id

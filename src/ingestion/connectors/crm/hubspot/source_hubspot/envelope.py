@@ -26,7 +26,9 @@ DATA_SOURCE = "hubspot"
 # Field names injected by the envelope. A HubSpot property that collides
 # (unlikely but possible with custom flat-top properties) would otherwise be
 # silently overwritten; we log and drop it instead.
-_RESERVED_FIELD_NAMES = frozenset({"tenant_id", "source_id", "unique_key", "data_source", "collected_at", "raw_data"})
+_RESERVED_FIELD_NAMES = frozenset(
+    {"insight_tenant_id", "insight_source_id", "unique_key", "data_source", "collected_at", "raw_data"}
+)
 
 # Per-property string truncation cap. Bounds the worst-case row width
 # regardless of how a portal customizes its CRM (some custom properties hold
@@ -96,7 +98,7 @@ def envelope(
       outside the advertised schema are still recoverable downstream.
     - Drops the properties named in ``excluded_property_names`` from both,
       so a value HubSpot sends unrequested is not stored.
-    - Adds ``tenant_id`` / ``source_id`` / ``unique_key`` / ``data_source`` /
+    - Adds ``insight_tenant_id`` / ``insight_source_id`` / ``unique_key`` / ``data_source`` /
       ``collected_at``.
 
     ``collision_seen`` gates one-shot-per-stream warnings on reserved-name
@@ -150,8 +152,8 @@ def envelope(
         canonical = json.dumps(record, sort_keys=True, default=str)
         hs_id = f"nohash:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:16]}"
 
-    out["tenant_id"] = tenant_id
-    out["source_id"] = source_id
+    out["insight_tenant_id"] = tenant_id
+    out["insight_source_id"] = source_id
     out["unique_key"] = f"{tenant_id}-{source_id}-{hs_id}"
     out["data_source"] = DATA_SOURCE
     out["collected_at"] = _now_iso()
@@ -166,8 +168,8 @@ def _warn_once(seen: MutableSet[str] | None, key: str) -> None:
 
 
 ENVELOPE_FIELDS_SCHEMA = {
-    "tenant_id": {"type": "string"},
-    "source_id": {"type": "string"},
+    "insight_tenant_id": {"type": "string"},
+    "insight_source_id": {"type": "string"},
     "unique_key": {"type": "string"},
     "data_source": {"type": "string"},
     "collected_at": {"type": "string", "format": "date-time"},

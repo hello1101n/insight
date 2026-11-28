@@ -67,10 +67,11 @@ jobs:
     # `environment:` cannot sit on a job that `uses:` a reusable workflow, so
     # it is declared here rather than on the caller.
     environment: insight-test-stand
-    # INVARIANT: Candidate validation has an 80-minute total budget, including
-    # setup and the gold rebuild. Runs with seeding allow 210 minutes, above the
-    # combined step ceilings.
-    timeout-minutes: ${{ inputs.candidate_artifact != '' && 80 || 210 }}
+    # INVARIANT: Candidate validation has an 80-minute budget, including setup
+    # and the gold rebuild, plus the 171 minutes the upgrade step may take
+    # beyond its usual 14 (the tenant cutover). Runs with seeding allow 210 plus
+    # the same. A job timeout below the upgrade step's would SIGKILL helm.
+    timeout-minutes: ${{ inputs.candidate_artifact != '' && 251 || 381 }}
     env:
       ENV_NAME: test-stand
       VALUES_FILE: deploy/gitops/environments/test-stand/values.yaml
@@ -317,7 +318,7 @@ jobs:
           echo "KUBECONFIG=$target" >> "$GITHUB_ENV"
 
       # The upgrade step's `timeout-minutes` must stay above helm's own
-      # `--timeout 10m`: a step timeout SIGKILLs helm and wedges the release.
+      # `--timeout 3h`: a step timeout SIGKILLs helm and wedges the release.
       - name: 'Stage 1/5 — mask the OIDC client secret'
         id: deploy_secret
         run: |
@@ -378,7 +379,10 @@ jobs:
 
       - name: 'Stage 1/5 — upgrade the release through the official gitops target'
         id: deploy_upgrade
-        timeout-minutes: 14
+        # Above helm's 3h: an upgrade may run the tenant cutover's pre hook
+        # (up to 2h50m), and the chart refuses to render an upgrade whose helm
+        # timeout is shorter. Helm returns as soon as the release is ready.
+        timeout-minutes: 185
         run: |
           set -euo pipefail
           make -C deploy/gitops --no-print-directory deploy \
@@ -386,7 +390,7 @@ jobs:
             CHART="$CHART_REF" \
             CONFIRM=yes-deploy-test-stand \
             INSIGHT_VERSION="$CHART_VERSION" \
-            TIMEOUT=10m \
+            TIMEOUT=3h \
             2>&1 | python3 "$REDACT"
 
       - name: 'Stage 1/5 — confirm the edge still routes'

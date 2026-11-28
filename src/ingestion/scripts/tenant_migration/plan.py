@@ -1,19 +1,43 @@
-"""What the migration would change, and every reason it refuses to.
-
-Nothing here writes. A plan with refusals is never applied.
-"""
+"""What the migration would change. Nothing here writes."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass
 
-from tenant_migration import ddl, keys
+from tenant_migration import keys
 from tenant_migration.clickhouse import ClickHouse
-from tenant_migration.inventory import WORK_SUFFIXES, Table, Unfit
-from tenant_migration.keys import Tenants
-from tenant_migration.prerequisites import jira_issues_keyed_by_issue_key, youtrack_comments_without_id
+from tenant_migration.inventory import InventoryError, Table, param_text
 
-FOREIGN_SAMPLE = 5
+#: One install holds one tenant; a few more (empty, the UUID, a legacy name) are what a key can lead with.
+MAX_TENANTS = 16
+#: Free disk `apply` needs, as a multiple of the bytes the tables it changes take: the copies (1x;
+#: the originals stay beside them as backups until `finalize`) plus the merges that settle each copy.
+#: Measured: a peak of 1.23x with the copies' short `old_parts_lifetime` (apply.COPY_OLD_PARTS_LIFETIME);
+#: at the default, 1.66x, and a dev run ran out of disk past 1.9x. 2x leaves room for a large table's
+#: last merge.
+DISK_HEADROOM = 2
+
+
+class DiskSpaceError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class Disk:
+    """A ClickHouse disk, its free bytes, and the bytes on it of the tables `apply` would copy."""
+
+    name: str
+    free: int
+    in_scope: int
+
+    @property
+    def needed(self) -> int:
+        return DISK_HEADROOM * self.in_scope
+
+    @property
+    def short(self) -> bool:
+        return self.free < self.needed
 
 
 @dataclass(frozen=True)
@@ -21,88 +45,94 @@ class TablePlan:
     table: Table
     rows: int
     moving: int
-    ambiguous: int
-    foreign: tuple[str, ...]
-    leftovers: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Plan:
-    tenants: Tenants
-    tables: list[TablePlan]
-    refusals: list[str] = field(default_factory=list)
-    comment_ids_to_fill: int = 0
+    #: The tenants the table's rows hold now ('' for none); a table without a tenant column holds none.
+    tenants: tuple[str, ...] = ()
 
     @property
-    def changing(self) -> list[TablePlan]:
-        return [t for t in self.tables if t.moving]
+    def pending(self) -> bool:
+        return self.table.renames or self.table.adds or bool(self.table.drops) or self.moving > 0
+
+    @property
+    def change(self) -> str:
+        table, parts = self.table, []
+        if table.adds:
+            parts.append(f"adds {table.target}")
+        if table.renames_tenant:
+            parts.append(f"renames {table.tenant} to {table.target}")
+        if table.renames_source:
+            parts.append(f"renames {table.source} to {table.source_target}")
+        if table.drops:
+            parts.append(f"drops the empty {', '.join(table.drops)}")
+        return ", ".join(parts) or "sets the tenant"
 
 
-def _stats_sql(table: Table, tenants: Tenants) -> str:
-    columns = table.columns
-    ambiguous = keys.key_is_ambiguous(columns, tenants) if columns.key else "0"
-    tenant = keys.tenant_value(columns.tenant)
-    return (
-        f"SELECT count(), countIf({keys.moves(columns, tenants)}), countIf({ambiguous}), "
-        f"arrayStringConcat(groupUniqArrayIf({FOREIGN_SAMPLE})({tenant}, {keys.foreign_tenant(columns.tenant, tenants)}), ',') "
-        f"FROM {table.sql()}"
+def survey_table(ch: ClickHouse, table: Table, tenant: str) -> TablePlan:
+    held = f"groupUniqArray({MAX_TENANTS})({keys.old_tenant(table)})" if table.tenant else "[]"
+    ((rows, moving, tenants),) = ch.rows(
+        f"SELECT count(), countIf({keys.foreign(table)}), toJSONString({held}) FROM {table.rel.sql()} AS src",
+        params=keys.tenant_params(tenant),
+    )
+    if table.drops and int(rows):
+        held = ", ".join(f"{c} beside insight_{c}" for c in table.drops)
+        raise InventoryError(
+            f"{table.rel}: holds {held} and has {rows} row(s) — the old columns are dropped only from an empty "
+            "table; settle its rows by hand. Nothing was changed"
+        )
+    return TablePlan(table=table, rows=int(rows), moving=int(moving), tenants=tuple(sorted(json.loads(tenants))))
+
+
+def survey(ch: ClickHouse, tables: list[Table], tenant: str) -> list[TablePlan]:
+    return [survey_table(ch, t, tenant) for t in tables]
+
+
+def render(plans: list[TablePlan]) -> str:
+    pending = [p for p in plans if p.pending]
+    lines = [f"{'relation':<64} {'rows':>12} {'moving':>12}  change"]
+    lines += [f"{p.table.relation:<64} {p.rows:>12} {p.moving:>12}  {p.change}" for p in pending]
+    lines.append(f"tables changing: {len(pending)}")
+    return "\n".join(lines)
+
+
+def disks(ch: ClickHouse, plans: list[TablePlan]) -> list[Disk]:
+    """Each disk holding a pending table's active parts, with what those parts take."""
+    names = [p.table.relation for p in plans if p.pending]
+    if not names:
+        return []
+    rows = ch.rows(
+        """
+        SELECT p.disk_name, any(d.free_space), sum(p.bytes_on_disk)
+        FROM system.parts AS p
+        INNER JOIN system.disks AS d ON d.name = p.disk_name
+        WHERE p.active AND concat(p.database, '.', p.table) IN {tables:Array(String)}
+        GROUP BY p.disk_name
+        ORDER BY p.disk_name
+        """,
+        params={"tables": "[" + ", ".join(param_text(n) for n in names) + "]"},
+    )
+    return [Disk(name, int(free), int(in_scope)) for name, free, in_scope in rows]
+
+
+def _gib(n: int) -> str:
+    return f"{n / 2**30:.1f} GiB"
+
+
+def render_disks(found: list[Disk]) -> str:
+    return "\n".join(
+        f"disk {d.name}: {_gib(d.free)} free, the tables to migrate take {_gib(d.in_scope)}, "
+        f"apply needs {_gib(d.needed)} free ({DISK_HEADROOM}x){' — TOO LITTLE' if d.short else ''}"
+        for d in found
     )
 
 
-def _leftovers(ch: ClickHouse, table: Table) -> tuple[str, ...]:
-    names = ", ".join(f"'{table.name}{suffix}'" for suffix in WORK_SUFFIXES)
-    rows = ch.rows(f"SELECT name FROM system.tables WHERE database = '{table.database}' AND name IN ({names})")
-    return tuple(f"{table.database}.{name}" for (name,) in rows)
-
-
-def survey_table(ch: ClickHouse, table: Table, tenants: Tenants) -> TablePlan:
-    ((rows, moving, ambiguous, foreign),) = ch.rows(_stats_sql(table, tenants))
-    return TablePlan(
-        table=table,
-        rows=int(rows),
-        moving=int(moving),
-        ambiguous=int(ambiguous),
-        foreign=tuple(t for t in foreign.split(",") if t),
-        leftovers=_leftovers(ch, table),
-    )
-
-
-def refusals(tables: list[TablePlan], unfit_with_rows: list[tuple[Unfit, int]]) -> list[str]:
-    """Every reason the plan cannot be applied; empty when it can."""
-    reasons = [f"{u.relation}: {n} row(s), and {u.reason}" for u, n in unfit_with_rows]
-    for t in tables:
-        if t.foreign:
-            reasons.append(
-                f"{t.table.relation}: holds another tenant ({', '.join(t.foreign)}) — this install keeps several"
+def check_disks(found: list[Disk]) -> None:
+    """Refuse before anything changes when a disk lacks the room the copies need."""
+    short = [d for d in found if d.short]
+    if short:
+        raise DiskSpaceError(
+            "; ".join(
+                f"disk {d.name} has {_gib(d.free)} free, but the tables to migrate take {_gib(d.in_scope)} "
+                f"and apply needs {DISK_HEADROOM}x that ({_gib(d.needed)}) free"
+                for d in short
             )
-        if t.ambiguous:
-            reasons.append(
-                f"{t.table.relation}: {t.ambiguous} key(s) start like a moving tenant but not with it and their source"
-            )
-        if t.leftovers:
-            reasons.append(
-                f"{t.table.relation}: an earlier run left {', '.join(t.leftovers)} — finalize or roll back first"
-            )
-    return reasons
-
-
-def _rows_of(ch: ClickHouse, unfit: Unfit) -> int:
-    """Read from system.tables: an unfit table's own name may not be a plain identifier.
-
-    A MergeTree that reports no count is taken to hold rows, so it is refused.
-    """
-    database, name = unfit.relation.split(".", 1)
-    return ch.scalar(
-        "SELECT ifNull(total_rows, 1) FROM system.tables"
-        f" WHERE database = {ddl.literal(database)} AND name = {ddl.literal(name)}"
-    )
-
-
-def survey(ch: ClickHouse, found: list[Table | Unfit], tenants: Tenants) -> Plan:
-    tables = [survey_table(ch, t, tenants) for t in found if isinstance(t, Table)]
-    unfit = [(u, _rows_of(ch, u)) for u in found if isinstance(u, Unfit)]
-    reasons = refusals(tables, [(u, n) for u, n in unfit if n])
-    reasons += [f"{stale} — deploy this release before migrating" for stale in jira_issues_keyed_by_issue_key(ch)]
-    return Plan(
-        tenants=tenants, tables=tables, refusals=reasons, comment_ids_to_fill=youtrack_comments_without_id(ch, tenants)
-    )
+            + ". Free disk space or grow the volume, then deploy again. Nothing was changed"
+        )

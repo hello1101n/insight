@@ -184,7 +184,7 @@ The service reads the gold, silver and identity relations and writes nothing the
 
 - [ ] `p1` - **ID**: `cpt-insightspec-constraint-analytics-tenant-claim`
 
-The tenant is the signed `tenant_id` claim of the gateway JWT, resolved by the single-tenant resolver; there is no tenant header. The tenant predicate on readings, drilldown, reports and absences is enforced only when `metric_catalog.enforce_tenant_scope` is on; it defaults to off and no chart value sets it, so by default those reads match every tenant in the warehouse. Custom SQL observations carry whatever tenant their author emits. The SQL explorer is not filtered by tenant.
+The tenant is the signed `tenant_id` claim of the gateway JWT, resolved by the single-tenant resolver; there is no tenant header. Every read of readings, drilldown, reports and absences carries the tenant predicate bound to the session tenant; there is no switch to turn it off. Custom SQL observations carry whatever tenant their author emits. The SQL explorer is not filtered by tenant.
 
 ## 3. Technical Architecture
 
@@ -552,7 +552,6 @@ One Deployment behind the gateway, plus the `migrate` hook Job that runs before 
 
 The code as it stands, recorded so a reader does not assume otherwise:
 
-- **Tenant isolation of metric reads is opt-in.** The tenant predicate on readings, drilldown, reports and absences is a no-op until `metric_catalog.enforce_tenant_scope` is turned on (section 2.2).
 - **Any authenticated caller can redefine a built-in metric for the tenant.** The custom-metric routes carry no admin check, and a custom metric may reuse a built-in key, which then takes its place for every reader in the tenant.
 - **The SQL explorer reads across tenants.** It applies no tenant filter; it relies on its ClickHouse grants.
 - **No caching.** A Redis URL setting and dependency exist; nothing reads or writes Redis.

@@ -7,10 +7,11 @@ models:
       AI silver retains daily usage summaries, so rows use source_summary
       granularity except active-day population rows.
     columns: &metric_evidence_columns
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source family"
         tests:
@@ -126,11 +127,12 @@ models:
       than once. Materialized so the collapse runs once per build in its own
       query budget rather than once per reference inside the evidence build.
     columns:
-      - name: tenant_id
-        description: >
-          Tenant isolation field. Nullable on the git class relations and
-          preserved as such here, so no not_null test.
-      - name: source_id
+      - name: insight_tenant_id
+        description: "Tenant isolation field; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+      - name: insight_source_id
         description: "Connector instance of the surviving carrier"
       - name: project_key
         description: "Project the repository belongs to"
@@ -280,10 +282,11 @@ models:
       person-grain column anchor: this family's source_key and entity_type
       would fail its accepted-values pins.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source family — always ci here"
         tests:
@@ -301,7 +304,7 @@ models:
       - name: entity_id
         description: >
           The tenant id, verbatim — the shape the results compiler expects
-          for tenant-entity reads (entity_id = tenant_id). No identity
+          for tenant-entity reads (entity_id = insight_tenant_id). No identity
           resolution happens for this family.
         tests:
           - not_null
@@ -351,7 +354,7 @@ models:
                   - commits_observed
       - name: record_id
         description: >
-          Deterministic total-order key within the measure scope; source_id
+          Deterministic total-order key within the measure scope; insight_source_id
           leads it, so two source instances covering the same repository
           cannot collide.
         tests:
@@ -417,10 +420,11 @@ models:
       the same rewriting rule erases it once the month's real readings arrive —
       a month whose only reading is that one keeps it.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -492,10 +496,11 @@ models:
       probes it at runtime (`OBSERVATION_COLUMNS`); changing it requires a
       coordinated backend change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -581,10 +586,11 @@ models:
       validator probes (`OBSERVATION_COLUMNS`); changing it requires a
       coordinated backend change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -715,10 +721,11 @@ models:
       (`OBSERVATION_COLUMNS`); changing it requires a coordinated backend
       change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -823,10 +830,11 @@ models:
       validator probes (`OBSERVATION_COLUMNS`); changing it requires a
       coordinated backend change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -966,7 +974,7 @@ models:
       field-history pivot runs once per build instead of once per measure
       branch.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
@@ -1044,7 +1052,7 @@ models:
       a single account made, so the row resolves account-first; a day several
       accounts of one email made resolves through the email.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
@@ -1093,10 +1101,11 @@ models:
       analytics service schema validator probes (`OBSERVATION_COLUMNS`);
       changing it requires a coordinated backend change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -1114,7 +1123,7 @@ models:
       - name: entity_id
         description: >
           The tenant id, verbatim — the shape the results compiler expects
-          for tenant-entity reads (entity_id = tenant_id). No person ever
+          for tenant-entity reads (entity_id = insight_tenant_id). No person ever
           appears in this family (issue #2803, decision 5).
         tests:
           - not_null
@@ -1186,10 +1195,11 @@ models:
       schema validator probes (`OBSERVATION_COLUMNS`); changing it requires
       a coordinated backend change.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
+          - not_empty
       - name: source_key
         description: "Logical source key registered in the metric registry"
         tests:
@@ -1314,7 +1324,7 @@ models:
       published contract probed by the analytics service schema validator
       (`COHORT_COLUMNS`).
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         description: "Tenant isolation field"
         tests:
           - not_null
@@ -1354,10 +1364,11 @@ models:
       line columns are Nullable and an all-NULL group sums to NULL, which no
       join could tell from a commit the file-change stream never reached.
     columns:
-      - name: tenant_id
-        description: >
-          Tenant isolation field. Nullable on the git class relations and
-          preserved as such here, so no not_null test.
+      - name: insight_tenant_id
+        description: "Tenant isolation field; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: data_source
         description: "Git source discriminator (insight_github, insight_gitlab, ...)"
         tests:
@@ -1381,22 +1392,23 @@ models:
       changes — the measuring device for diff collection, since the size
       metrics report a commit's own total when its changes were never collected
       and so no longer show the gap themselves. Measured on the class relations
-      and grouped per source_id on purpose: collection is a property of a
+      and grouped per insight_source_id on purpose: collection is a property of a
       connector instance, and the gold commit set deliberately collapses one
       hash across a fork and its upstream, which would let a healthy instance
       hide a broken one. Merge commits are excluded — every connector skips
       their diffs by design. Judge a live instance by recent_collected_pct; the
       all-time share carries history no re-read can reach.
     columns:
-      - name: tenant_id
-        description: >
-          Tenant isolation field. Nullable on the git class relations and
-          preserved as such here, so no not_null test.
+      - name: insight_tenant_id
+        description: "Tenant isolation field; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: data_source
         description: "Git source discriminator (insight_github, insight_gitlab, ...)"
         tests:
           - not_null
-      - name: source_id
+      - name: insight_source_id
         description: "Connector instance the commits were collected by"
       - name: commits
         description: "Non-merge commits the instance delivered"
@@ -1434,8 +1446,8 @@ models:
   - name: identity_resolution_coverage
     description: >
       Identity-resolution match rate measured over ACTIVITY (evidence source
-      rows), one row per source (git/ai_usage/ai_cost/collab/task/wiki) plus
-      hr_cohorts for the peer-membership relation. A VIEW joining the same
+      rows), one row per tenant and source (git/ai_usage/ai_cost/collab/task/wiki)
+      plus hr_cohorts for the peer-membership relation. A VIEW joining the same
       live `identity.person_map` the runtime joins, so the rate describes what
       a dashboard would show right now rather than what a past build stamped.
       Row-weighted on purpose —
@@ -1444,6 +1456,10 @@ models:
       (roughly the operator decisions that would close it). The "match rate
       is reported" surface of the identity epic for the metrics pipeline.
     columns:
+      - name: insight_tenant_id
+        description: "Tenant the rows belong to; rates are never pooled across tenants"
+        tests:
+          - not_null
       - name: source_key
         description: "Observation source_key, or 'hr_cohorts' for the cohort membership"
         tests:

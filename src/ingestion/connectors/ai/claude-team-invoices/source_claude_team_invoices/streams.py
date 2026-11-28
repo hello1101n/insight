@@ -189,8 +189,8 @@ class InvoiceLines(Stream, CheckpointMixin):
 
     def _envelope(self, record: dict[str, Any]) -> dict[str, Any]:
         """Inject the framework fields every bronze row carries (ADR-0004)."""
-        record["tenant_id"] = self._tenant_id
-        record["source_id"] = self._source_id
+        record["insight_tenant_id"] = self._tenant_id
+        record["insight_source_id"] = self._source_id
         record["data_source"] = "insight_claude_team"
         record["collected_at"] = _now_iso()
         record["unique_key"] = "-".join([self._tenant_id, self._source_id, *(str(p) for p in unique_key_parts(record))])

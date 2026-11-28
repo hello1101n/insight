@@ -32,7 +32,7 @@ WEBHOOK = "https://discord.example.test/api/webhooks/1/x"
 
 BASE = {
     "global.insightV3Core.deploy": "true",
-    "global.tenantDefaultId": TENANT,
+    "authenticator.oidc.defaultTenantId": TENANT,
     "identityResolution.deploy": "true",
     "clickhouse.host": "ch",
     "clickhouse.username": "u",
@@ -42,7 +42,6 @@ BASE = {
     "mariadb.database": "insight",
     "redis.host": "redis",
     "redpanda.brokers": "rp:9092",
-    "ingestion.reconcile.tenantId": "default",
     "authenticator.oidc.issuerUrl": "https://idp",
     "authenticator.oidc.clientId": "c",
     "authenticator.oidc.clientSecret": "s",
@@ -93,7 +92,9 @@ def refused(umbrella: Path, **overrides: str) -> str:
 
 
 def config_secret(docs: list[dict]) -> dict[str, str]:
-    (secret,) = [doc for doc in docs if doc.get("kind") == "Secret" and doc["metadata"]["name"] == "insight-v3-core-config"]
+    (secret,) = [
+        doc for doc in docs if doc.get("kind") == "Secret" and doc["metadata"]["name"] == "insight-v3-core-config"
+    ]
     return secret["stringData"]
 
 
@@ -125,7 +126,9 @@ def test_destinations_in_values_under_gitops_refuse_to_render_without_a_sealed_s
 def test_a_sealed_secret_carries_the_destinations_under_gitops(umbrella: Path) -> None:
     docs = rendered(umbrella, **ALERTS_ON, **GITOPS, **{"insightV3Core.alerts.existingSecret": "sealed-alerts"})
 
-    (deployment,) = [doc for doc in docs if doc.get("kind") == "Deployment" and doc["metadata"]["name"].endswith("-v3-core")]
+    (deployment,) = [
+        doc for doc in docs if doc.get("kind") == "Deployment" and doc["metadata"]["name"].endswith("-v3-core")
+    ]
     sources = deployment["spec"]["template"]["spec"]["containers"][0]["envFrom"]
     assert {"secretRef": {"name": "sealed-alerts"}} in sources
 

@@ -6,7 +6,7 @@
 -- column outgrew the total it belongs to.
 WITH kinds AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         metric_date,
         sum(value) AS kinds_total
@@ -14,11 +14,11 @@ WITH kinds AS (
     WHERE measure_key = 'meetings_attended'
       AND has(dimensions.2, 'm365')
       AND subject_key = entity_id
-    GROUP BY tenant_id, entity_id, metric_date
+    GROUP BY insight_tenant_id, entity_id, metric_date
 ),
 reported AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         {{ normalized_email('person_key') }} AS entity_id,
         date AS metric_date,
         sum(meetings_attended + ifNull(calls_count, 0)) AS reported_total
@@ -26,17 +26,17 @@ reported AS (
     WHERE data_source = 'insight_m365'
       AND person_key LIKE '%@%'
       AND date IS NOT NULL
-    GROUP BY tenant_id, entity_id, metric_date
+    GROUP BY insight_tenant_id, entity_id, metric_date
 )
 SELECT
-    reported.tenant_id,
+    reported.insight_tenant_id,
     reported.entity_id,
     reported.metric_date,
     reported.reported_total,
     kinds.kinds_total
 FROM reported
 LEFT JOIN kinds
-    ON kinds.tenant_id = reported.tenant_id
+    ON kinds.insight_tenant_id = reported.insight_tenant_id
    AND kinds.entity_id = reported.entity_id
    AND kinds.metric_date = reported.metric_date
 WHERE ifNull(kinds.kinds_total, -1) != reported.reported_total

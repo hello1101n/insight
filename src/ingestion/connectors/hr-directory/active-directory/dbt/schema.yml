@@ -30,10 +30,11 @@ models:
         description: AD objectGUID.
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: field_name
@@ -84,10 +85,11 @@ models:
     description: >
       Active Directory users → class_people (Silver Step 1). Identity key: `email` (mail with UPN fallback). `source_person_id` is the AD objectGUID — stable across renames and reusable as the directory join key.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -106,6 +108,7 @@ models:
       - name: workspace_id
         tests:
           - not_null
+          - not_empty
       - name: status
         description: >
           Normalised from accountEnabled: active / terminated, or unknown when accountEnabled is NULL. Never defaults to active — that silently inflates headcount.
@@ -120,6 +123,11 @@ models:
       attribute_claims macro. Emits the class_person_attribute_claims contract;
       unioned into silver by the silver:class_person_attribute_claims tag.
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null

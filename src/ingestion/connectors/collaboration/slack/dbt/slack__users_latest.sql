@@ -17,25 +17,24 @@ WITH
 {% if activity %}
 activity_users AS (
     SELECT
-        insight_tenant_id AS tenant_id,
-        insight_source_id AS source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         user_id,
         nullIf(argMaxIf(assumeNotNull(email_address), date, coalesce(email_address, '') != ''), '') AS activity_email,
         argMax(is_guest, date) AS activity_is_guest
     FROM {{ source('bronze_slack', 'users_details') }} FINAL
-    WHERE insight_tenant_id IS NOT NULL
-      AND insight_source_id IS NOT NULL
+    WHERE insight_source_id IS NOT NULL
       AND coalesce(user_id, '') != ''
     GROUP BY
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         user_id
 ),
 {% else %}
 activity_users AS (
     SELECT
-        CAST(NULL AS Nullable(String)) AS tenant_id,
-        CAST(NULL AS Nullable(String)) AS source_id,
+        CAST(NULL AS Nullable(String)) AS insight_tenant_id,
+        CAST(NULL AS Nullable(String)) AS insight_source_id,
         CAST(NULL AS Nullable(String)) AS user_id,
         CAST(NULL AS Nullable(String)) AS activity_email,
         CAST(NULL AS Nullable(Bool)) AS activity_is_guest
@@ -46,23 +45,22 @@ activity_users AS (
 {% if members %}
 member_users AS (
     SELECT
-        insight_tenant_id AS tenant_id,
-        insight_source_id AS source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         user_id,
         nullIf(coalesce(email, ''), '') AS member_email,
         coalesce(nullIf(real_name, ''), nullIf(display_name, '')) AS member_display_name,
         is_bot AS member_is_bot,
         coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false) AS member_is_guest
     FROM {{ source('bronze_slack', 'users') }} FINAL
-    WHERE insight_tenant_id IS NOT NULL
-      AND insight_source_id IS NOT NULL
+    WHERE insight_source_id IS NOT NULL
       AND coalesce(user_id, '') != ''
 ),
 {% else %}
 member_users AS (
     SELECT
-        CAST(NULL AS Nullable(String)) AS tenant_id,
-        CAST(NULL AS Nullable(String)) AS source_id,
+        CAST(NULL AS Nullable(String)) AS insight_tenant_id,
+        CAST(NULL AS Nullable(String)) AS insight_source_id,
         CAST(NULL AS Nullable(String)) AS user_id,
         CAST(NULL AS Nullable(String)) AS member_email,
         CAST(NULL AS Nullable(String)) AS member_display_name,
@@ -74,34 +72,34 @@ member_users AS (
 
 known_users AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         user_id
     FROM activity_users
     UNION DISTINCT
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         user_id
     FROM member_users
 )
 
 SELECT
-    k.tenant_id AS tenant_id,
-    k.source_id AS source_id,
+    k.insight_tenant_id AS insight_tenant_id,
+    k.insight_source_id AS insight_source_id,
     k.user_id AS user_id,
     -- INVARIANT: the Activity email wins; the Members email is the fallback.
     coalesce(a.activity_email, m.member_email) AS email,
     m.member_display_name AS display_name,
-    concat(k.tenant_id, '-', k.source_id, '-', k.user_id) AS unique_key
+    concat(k.insight_tenant_id, '-', k.insight_source_id, '-', k.user_id) AS unique_key
 FROM known_users AS k
 LEFT JOIN activity_users AS a
-    ON a.tenant_id = k.tenant_id
-   AND a.source_id = k.source_id
+    ON a.insight_tenant_id = k.insight_tenant_id
+   AND a.insight_source_id = k.insight_source_id
    AND a.user_id = k.user_id
 LEFT JOIN member_users AS m
-    ON m.tenant_id = k.tenant_id
-   AND m.source_id = k.source_id
+    ON m.insight_tenant_id = k.insight_tenant_id
+   AND m.insight_source_id = k.insight_source_id
    AND m.user_id = k.user_id
 -- INVARIANT: a bot or a proven guest never becomes an account. Each one would mint a person.
 WHERE k.user_id != 'USLACKBOT'

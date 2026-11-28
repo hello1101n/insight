@@ -8,7 +8,7 @@
 
 WITH comments AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         ticket_id,
         child_id,
@@ -22,7 +22,7 @@ WITH comments AS (
 
 SELECT
     {{ zendesk_key(['c.child_id']) }}                  AS unique_key,
-    c.tenant_id                                        AS tenant_id,
+    c.insight_tenant_id                                        AS insight_tenant_id,
     c.insight_source_id                                AS insight_source_id,
     'zendesk'                                          AS data_source,
     c.child_id                                         AS interaction_id,
@@ -36,6 +36,6 @@ SELECT
     {{ zendesk_version() }}                            AS _version
 FROM comments AS c
 LEFT JOIN {{ ref('zendesk__user_kinds') }} AS k
-    ON k.tenant_id = c.tenant_id
+    ON k.insight_tenant_id = c.insight_tenant_id
    AND k.insight_source_id = c.insight_source_id
    AND k.user_id = {{ zendesk_id('c.child', "'author_id'") }}

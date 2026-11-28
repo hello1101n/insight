@@ -17,10 +17,12 @@
 #      what an existing installation's last deploy and last sync left behind;
 #      the fixtures below then add the rows a connector would have synced into
 #      it.
-#   2. Deploy the working tree: run this branch's apply-ch-migrations.sh end
+#   2. Deploy the working tree as the chart's hooks do: tenant_migration (the
+#      pre-upgrade cutover hook), then this branch's apply-ch-migrations.sh end
 #      to end — exactly what the Helm clickhouse-migrate hook runs — and then
 #      the first sync after it: this tree's whole buildable graph over the
-#      warm bronze and silver, with dbt pinned from this tree's pins.env.
+#      warm bronze and silver, with dbt pinned from this tree's pins.env, in
+#      full when the migration moved anything (the cutover's rebuild).
 #
 # Both phases run against the branch's CLICKHOUSE_SERVER_IMAGE: real
 # installations upgrade the server before or after the app on their own
@@ -62,8 +64,17 @@ trap 'rm -rf "$WORKDIR"' EXIT
 # database, carries the cluster clause; one in a Replicated database must not.
 source "$REPO_ROOT/src/ingestion/scripts/lib/ch-topology.sh"
 
+# The install's tenant, a UUID as every release since #3661 requires, and the
+# names the base gives its tenant column (`tenant_id` before #3661) and its
+# stamped source column (`source_id` before tenant_migration renamed it).
+WARM_TENANT="7e57a7e5-0000-4000-8000-000000000001"
+WARM_TENANT_COLUMN=insight_tenant_id
+WARM_SOURCE_COLUMN=source_id
+
 warm_sql() {
-  ch_render_topology | run_ch
+  sed -e "s/__TENANT_COLUMN__/${WARM_TENANT_COLUMN}/g" -e "s/__SOURCE_COLUMN__/${WARM_SOURCE_COLUMN}/g" \
+    -e "s/__WARM_TENANT__/${WARM_TENANT}/g" \
+    | ch_render_topology | run_ch
 }
 
 if ! git -C "$REPO_ROOT" cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
@@ -109,14 +120,14 @@ create_connector_bronze() {
     port=80
   fi
   local pins="$tree/src/ingestion/scripts/bootstrap-db/pins.env"
-  echo "=== Creating bronze for github, gitlab and jira through destination-clickhouse ==="
+  echo "=== Creating bronze for github, gitlab, jira and youtrack through destination-clickhouse ==="
   CLICKHOUSE_PROTOCOL="$protocol" \
   CLICKHOUSE_HOST="${hostport%%:*}" \
   CLICKHOUSE_PORT="$port" \
   DESTINATION_CLICKHOUSE_IMAGE="$(grep '^DESTINATION_CLICKHOUSE_IMAGE=' "$pins" | cut -d= -f2)" \
   SOURCE_DECLARATIVE_MANIFEST_IMAGE="$(grep '^SOURCE_DECLARATIVE_MANIFEST_IMAGE=' "$pins" | cut -d= -f2)" \
     bash "$tree/src/ingestion/scripts/bootstrap-db/seed-connectors.sh" \
-      "$tree/src/ingestion/scripts/bootstrap-db/connectors-config.yaml" github gitlab jira
+      "$tree/src/ingestion/scripts/bootstrap-db/connectors-config.yaml" github gitlab jira youtrack
 }
 
 # A sync as the Argo dbt-run step runs it (the shape of the cluster rig's
@@ -125,6 +136,7 @@ create_connector_bronze() {
 # silver; its own build-gold.sh still plays that.
 build_graph() {
   local tree="$1" venv="$2" label="$3"
+  shift 3
   local profiles="$WORKDIR/profiles-$label" target="$WORKDIR/dbt-$label"
   local path="$venv/bin:$PATH" project="$tree/src/ingestion/dbt" unbuildable excluded=()
   if ! syncs_the_buildable_graph "$tree"; then
@@ -139,7 +151,7 @@ build_graph() {
   read -r -a excluded <<< "$unbuildable"
   echo "=== dbt run over the buildable graph, excluding ${#excluded[@]} unbuildable model(s) ==="
   (cd "$project" && PATH="$path" dbt --no-use-colors run --profiles-dir "$profiles" \
-    --target-path "$target" --log-path "$target/logs" ${excluded[@]+--exclude "${excluded[@]}"})
+    --target-path "$target" --log-path "$target/logs" ${excluded[@]+--exclude "${excluded[@]}"} "$@")
 }
 
 echo "=== Step 1: install base $(git -C "$REPO_ROOT" rev-parse --short "$BASE_SHA") (warm state) ==="
@@ -155,6 +167,12 @@ if syncs_the_buildable_graph "$WORKDIR" && ! create_connector_bronze "$WORKDIR";
   echo "::error title=warm-upgrade base install failed::The BASE connectors (${BASE_SHA}) did not create their bronze — not this PR's fault. Check whether the base tree's seed-connectors.sh is broken against a fresh ClickHouse."
   exit 1
 fi
+
+WARM_TENANT_COLUMN="$(ch_tenant_column bronze_github pull_requests)"
+if [[ -n "$(ch_column_type bronze_github pull_requests insight_source_id)" ]]; then
+  WARM_SOURCE_COLUMN=insight_source_id
+fi
+echo "=== The base names its tenant column ${WARM_TENANT_COLUMN} and its source column ${WARM_SOURCE_COLUMN} ==="
 
 # A base tree from before #3561 built gold inside the hook above; a later one
 # leaves it to the sync. Either way the warm state needs the base's silver and
@@ -184,7 +202,7 @@ CREATE DATABASE IF NOT EXISTS bronze_github /*@@ON_CLUSTER@@*/;
 CREATE DATABASE IF NOT EXISTS bronze_gitlab /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_github.pull_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
@@ -192,7 +210,7 @@ CREATE TABLE IF NOT EXISTS bronze_github.pull_requests /*@@ON_CLUSTER@@*/
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_gitlab.pull_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
@@ -209,13 +227,13 @@ seed_git_close_time_warm_state() {
 -- answer from the later one, so a lookup that takes whichever row a part merge
 -- left behind fails here.
 INSERT INTO bronze_github.pull_requests
-    (unique_key, tenant_id, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
-    ('warm-gh-reopened', 'warm', 'warm', 'closed',
+    ('warm-gh-reopened', '__WARM_TENANT__', 'warm', 'closed',
      '2026-01-01T00:00:00Z', '2026-01-01T02:00:00Z', '',
      'warm-raw-1', '2026-01-01 03:00:00', '{}', 0),
-    ('warm-gh-reopened', 'warm', 'warm', 'closed',
+    ('warm-gh-reopened', '__WARM_TENANT__', 'warm', 'closed',
      '2026-01-01T00:00:00Z', '2026-01-01T02:00:00Z', '2026-01-01T10:00:00Z',
      'warm-raw-2', '2026-01-02 00:00:00', '{}', 0);
 -- The pre-#3250 GitLab stream, which only an upgrading installation has, beside
@@ -224,36 +242,36 @@ VALUES
 -- legacy row here is deliberately the MORE recently extracted of the two.
 CREATE TABLE IF NOT EXISTS bronze_gitlab.merge_requests /*@@ON_CLUSTER@@*/
 (
-    unique_key Nullable(String), tenant_id Nullable(String), source_id Nullable(String),
+    unique_key Nullable(String), __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     state Nullable(String), created_at Nullable(String), closed_at Nullable(String),
     merged_at Nullable(String), _airbyte_raw_id String,
     _airbyte_extracted_at DateTime64(3), _airbyte_meta String, _airbyte_generation_id UInt32
 )
 ENGINE = /*@@REPLICATED@@*/MergeTree ORDER BY _airbyte_raw_id;
 INSERT INTO bronze_gitlab.merge_requests
-    (unique_key, tenant_id, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
-    ('warm-gl-reopened', 'warm', 'warm', 'closed',
+    ('warm-gl-reopened', '__WARM_TENANT__', 'warm', 'closed',
      '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z', '',
      'warm-raw-legacy', '2026-01-09 00:00:00', '{}', 0);
 INSERT INTO bronze_gitlab.pull_requests
-    (unique_key, tenant_id, source_id, state, created_at, closed_at, merged_at,
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, state, created_at, closed_at, merged_at,
      _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id)
 VALUES
-    ('warm-gl-reopened', 'warm', 'warm', 'merged',
+    ('warm-gl-reopened', '__WARM_TENANT__', 'warm', 'merged',
      '2026-01-04T00:00:00Z', '2026-01-04T01:00:00Z', '2026-01-04T09:00:00Z',
      'warm-raw-new', '2026-01-05 00:00:00', '{}', 0);
 INSERT INTO silver.class_git_pull_requests
-    (tenant_id, source_id, unique_key, pr_id, state, created_on, closed_on, data_source, _version)
+    (__TENANT_COLUMN__, __SOURCE_COLUMN__, unique_key, pr_id, state, created_on, closed_on, data_source, _version)
 VALUES
-    ('warm', 'warm', 'warm-gh-reopened', 9001, 'MERGED',
+    ('__WARM_TENANT__', 'warm', 'warm-gh-reopened', 9001, 'MERGED',
      '2026-01-01 00:00:00', '2026-01-01 02:00:00', 'insight_github', 1),
-    ('warm', 'warm', 'warm-gl-reopened', 9003, 'MERGED',
+    ('__WARM_TENANT__', 'warm', 'warm-gl-reopened', 9003, 'MERGED',
      '2026-01-04 00:00:00', '2026-01-04 01:00:00', 'insight_gitlab', 1),
-    ('warm', 'warm', 'warm-gh-open', 9004, 'OPEN',
+    ('__WARM_TENANT__', 'warm', 'warm-gh-open', 9004, 'OPEN',
      '2026-01-06 00:00:00', NULL, 'insight_github', 1),
-    ('warm', 'warm', 'warm-bb-recovered', 9002, 'MERGED',
+    ('__WARM_TENANT__', 'warm', 'warm-bb-recovered', 9002, 'MERGED',
      '2026-01-05 00:00:00', '2026-01-05 07:00:00', 'insight_bitbucket_cloud', 1);
 SQL
 }
@@ -274,7 +292,7 @@ assert_git_close_time_recovered() {
       toString(countIf(unique_key = 'warm-bb-recovered' AND closed_on_reported IS NULL)), '|',
       toString(countIf(unique_key = 'warm-gh-open' AND closed_on_reported IS NULL)))
     FROM silver.class_git_pull_requests FINAL
-    WHERE tenant_id = 'warm'" | _ch_http_query | tr -d '\n')"
+    WHERE ${WARM_TENANT_COLUMN} = '${WARM_TENANT}'" | _ch_http_query | tr -d '\n')"
   if [[ "${got}" != "${expected}" ]]; then
     echo "::error title=warm upgrade left a stale close time::Expected '${expected}' — the reopened-then-merged GitHub request reporting its merge from the NEWER bronze generation, the GitLab one reporting the merge the CURRENT stream states rather than the legacy stream's close, and the Bitbucket and still-open rows reporting nothing — but got '${got}'. The rollout must recompute the reported close from bronze under the merged_at-first contract, not copy the settled closed_on — see #3362."
     exit 1
@@ -294,7 +312,7 @@ seed_jira_issue_identity_warm_state() {
 CREATE DATABASE IF NOT EXISTS bronze_jira /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
@@ -302,54 +320,54 @@ ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY un
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue_keys /*@@ON_CLUSTER@@*/ AS bronze_jira.jira_issue;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_issue_history /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), items Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_comments /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), body Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_worklogs /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     id_readable Nullable(String), jira_id Nullable(String), issueId Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
 
 INSERT INTO bronze_jira.jira_issue
-    (unique_key, tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
-    ('warm-jira-1-101', 'warm', 'jira-1', 'WARM-1', '101', 'raw-i1', '2026-01-02 00:00:00');
+    ('warm-jira-1-101', '__WARM_TENANT__', 'jira-1', 'WARM-1', '101', 'raw-i1', '2026-01-02 00:00:00');
 INSERT INTO bronze_jira.jira_issue_keys
-    (unique_key, tenant_id, source_id, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
-    ('warm-jira-1-102', 'warm', 'jira-1', 'WARM-2', '102', 'raw-k1', '2026-01-02 00:00:00');
+    ('warm-jira-1-102', '__WARM_TENANT__', 'jira-1', 'WARM-2', '102', 'raw-k1', '2026-01-02 00:00:00');
 
 INSERT INTO bronze_jira.jira_issue_history
-    (unique_key, tenant_id, source_id, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, items, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
-    ('warm-jira-h-current', 'warm', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h1', '2026-01-03 00:00:00'),
-    ('warm-jira-h-unknown', 'warm', 'jira-1', 'WARM-GONE-9', NULL, '[]', 'raw-h3', '2026-01-03 00:00:00'),
-    ('warm-jira-h-known', 'warm', 'jira-1', 'WARM-1', '999', '[]', 'raw-h4', '2026-01-03 00:00:00'),
+    ('warm-jira-h-current', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h1', '2026-01-03 00:00:00'),
+    ('warm-jira-h-unknown', '__WARM_TENANT__', 'jira-1', 'WARM-GONE-9', NULL, '[]', 'raw-h3', '2026-01-03 00:00:00'),
+    ('warm-jira-h-known', '__WARM_TENANT__', 'jira-1', 'WARM-1', '999', '[]', 'raw-h4', '2026-01-03 00:00:00'),
     -- Extracted just now: a sync landed it minutes before the deploy, which is
     -- the window the rebuild carries rows over from. It must come out of the
     -- deploy filled like the rest, not reinstated as the connector wrote it.
-    ('warm-jira-h-recent', 'warm', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h5', now());
+    ('warm-jira-h-recent', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, '[]', 'raw-h5', now());
 INSERT INTO bronze_jira.jira_comments
-    (unique_key, tenant_id, source_id, id_readable, jira_id, body, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, body, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
-    ('warm-jira-c-keys', 'warm', 'jira-1', 'WARM-2', NULL, 'comment', 'raw-c1', '2026-01-03 00:00:00');
+    ('warm-jira-c-keys', '__WARM_TENANT__', 'jira-1', 'WARM-2', NULL, 'comment', 'raw-c1', '2026-01-03 00:00:00');
 INSERT INTO bronze_jira.jira_worklogs
-    (unique_key, tenant_id, source_id, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
+    (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, id_readable, jira_id, issueId, _airbyte_raw_id, _airbyte_extracted_at)
 VALUES
-    ('warm-jira-w-own', 'warm', 'jira-1', 'WARM-GONE-9', NULL, '777', 'raw-w1', '2026-01-03 00:00:00'),
-    ('warm-jira-w-key', 'warm', 'jira-1', 'WARM-1', NULL, NULL, 'raw-w2', '2026-01-03 00:00:00');
+    ('warm-jira-w-own', '__WARM_TENANT__', 'jira-1', 'WARM-GONE-9', NULL, '777', 'raw-w1', '2026-01-03 00:00:00'),
+    ('warm-jira-w-key', '__WARM_TENANT__', 'jira-1', 'WARM-1', NULL, NULL, 'raw-w2', '2026-01-03 00:00:00');
 SQL
 }
 
@@ -389,19 +407,19 @@ assert_jira_issue_identity_recovered() {
 # MergeTree keyed by source. Bronze has already forgotten the first extraction —
 # what it holds now is younger — so the upgrade must carry the recorded instant
 # over rather than re-derive it. One source still has bronze rows to name its
-# tenant; the other does not, and keeps an empty one.
+# tenant; the other does not, and takes the one the cutover stamped.
 seed_jira_catalogue_first_seen_warm_state() {
   echo "=== Seeding the pre-history Jira catalogue first-sync record ==="
   warm_sql <<'SQL'
 CREATE DATABASE IF NOT EXISTS bronze_jira /*@@ON_CLUSTER@@*/;
 CREATE TABLE IF NOT EXISTS bronze_jira.jira_fields /*@@ON_CLUSTER@@*/
 (
-    unique_key String, tenant_id Nullable(String), source_id Nullable(String),
+    unique_key String, __TENANT_COLUMN__ Nullable(String), __SOURCE_COLUMN__ Nullable(String),
     _airbyte_raw_id String, _airbyte_extracted_at DateTime64(3)
 )
 ENGINE = /*@@REPLICATED@@*/ReplacingMergeTree(_airbyte_extracted_at) ORDER BY unique_key;
-INSERT INTO bronze_jira.jira_fields (unique_key, tenant_id, source_id, _airbyte_raw_id, _airbyte_extracted_at)
-VALUES ('warm-jira-1-summary', 'warm', 'jira-1', 'raw-f1', '2026-03-01 00:00:00');
+INSERT INTO bronze_jira.jira_fields (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, _airbyte_raw_id, _airbyte_extracted_at)
+VALUES ('warm-jira-1-summary', '__WARM_TENANT__', 'jira-1', 'raw-f1', '2026-03-01 00:00:00');
 
 DROP TABLE IF EXISTS staging.jira__catalogue_first_seen;
 CREATE TABLE staging.jira__catalogue_first_seen
@@ -419,21 +437,81 @@ SQL
 assert_jira_catalogue_first_seen_kept() {
   echo "=== Asserting the catalogue first sync survived the upgrade ==="
   local got expected
-  expected="$(ch_replicated_prefix)ReplacingMergeTree|-jira-gone,,jira-gone,2026-01-02 00:00:00.000;warm-jira-1,warm,jira-1,2026-01-01 00:00:00.000"
+  expected="$(ch_replicated_prefix)ReplacingMergeTree|${WARM_TENANT}-jira-1,${WARM_TENANT},jira-1,2026-01-01 00:00:00.000;${WARM_TENANT}-jira-gone,${WARM_TENANT},jira-gone,2026-01-02 00:00:00.000"
   got="$(printf "SELECT concat(
       (SELECT engine FROM system.tables WHERE database = 'staging' AND name = 'jira__catalogue_first_seen'), '|',
       arrayStringConcat(groupArray(row), ';'))
     FROM
     (
-        SELECT concat(unique_key, ',', tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
+        SELECT concat(unique_key, ',', insight_tenant_id, ',', insight_source_id, ',', toString(catalogue_first_sync)) AS row
         FROM staging.jira__catalogue_first_seen FINAL
         ORDER BY unique_key
     )" | _ch_http_query | tr -d '\n')"
   if [[ "${got}" != "${expected}" ]]; then
-    echo "::error title=warm upgrade lost the Jira catalogue first sync::Expected '${expected}' — the record rebuilt as a ReplacingMergeTree keyed by tenant and source, each source keeping the instant it was first recorded with, and the tenant taken from bronze where bronze still names one — but got '${got}'."
+    echo "::error title=warm upgrade lost the Jira catalogue first sync::Expected '${expected}' — the record rebuilt as a ReplacingMergeTree keyed by tenant and source, each source keeping the instant it was first recorded with, and every source under the install's tenant, even one bronze no longer holds — but got '${got}'."
     exit 1
   fi
   echo "=== Jira catalogue first sync kept through the upgrade ==="
+}
+
+# The base sync built the YouTrack field observations, a history relation,
+# without a tenant column (or, on a base that has one, rows predating it). The
+# cutover gives every row the install's tenant; a rebuild cannot.
+seed_youtrack_field_observation_warm_state() {
+  echo "=== Seeding the pre-tenant YouTrack field observations ==="
+  warm_sql <<'SQL'
+INSERT INTO bronze_youtrack.youtrack_custom_fields (unique_key, __TENANT_COLUMN__, __SOURCE_COLUMN__, _airbyte_raw_id, _airbyte_extracted_at)
+VALUES ('warm-yt-1-field-1', '__WARM_TENANT__', 'yt-1', 'raw-y1', '2026-01-01 00:00:00');
+INSERT INTO staging.youtrack__field_observations
+    (unique_key, insight_source_id, field_id, field_name, field_type, observed_at, _version)
+VALUES
+    ('warm-yt-1-field-1-2026-01-01 00:00:00', 'yt-1', 'field-1', 'Priority', 'enum', '2026-01-01 00:00:00', 1),
+    ('stray-yt-1-field-2-2026-01-01 00:00:00', 'yt-1', 'field-2', 'State', 'state', '2026-01-01 00:00:00', 1);
+SQL
+}
+
+assert_youtrack_field_observation_tenants() {
+  echo "=== Asserting the field observations carry the tenant ==="
+  local got
+  local expected="2|field-1:${WARM_TENANT};field-2:${WARM_TENANT}"
+  got="$(printf "SELECT concat(
+      toString((SELECT position FROM system.columns WHERE database = 'staging' AND table = 'youtrack__field_observations' AND name = 'insight_tenant_id')), '|',
+      arrayStringConcat(groupArray(concat(field_id, ':', ifNull(insight_tenant_id, 'NULL'))), ';'))
+    FROM (SELECT field_id, insight_tenant_id FROM staging.youtrack__field_observations FINAL ORDER BY field_id)" | _ch_http_query | tr -d '\n')"
+  if [[ "${got}" != "${expected}" ]]; then
+    echo "::error title=warm upgrade left YouTrack field observations without the tenant::Expected '${expected}' — insight_tenant_id right after unique_key and every row under the install's tenant — but got '${got}'."
+    exit 1
+  fi
+  echo "=== YouTrack field observations carry the tenant ==="
+}
+
+# The base sync built task class producers and a class, which the cutover's
+# full rebuild replaces; rows written without a tenant must not survive it.
+seed_task_tenant_warm_state() {
+  echo "=== Seeding task class producer and class rows without a tenant ==="
+  warm_sql <<'SQL'
+INSERT INTO staging.jira__task_comments (unique_key, insight_source_id, comment_id, _version)
+VALUES ('jira-1-comment-1', 'jira-1', '1', 1);
+INSERT INTO staging.youtrack__task_issuetypes (unique_key, insight_source_id, issue_type_id, _version)
+VALUES ('yt-1-youtrack-type-1', 'yt-1', '1', 1);
+INSERT INTO silver.class_task_comments (unique_key, insight_source_id, comment_id, _version)
+VALUES ('jira-1-comment-1', 'jira-1', '1', 1);
+SQL
+}
+
+assert_redeploy_converges() {
+  echo "=== Redeploying over the first sync ==="
+  if ! PATH="$WORKDIR/branch-venv/bin:$PATH" \
+      bash "$REPO_ROOT/src/ingestion/scripts/apply-ch-migrations.sh"; then
+    echo "::error title=a redeploy after the first sync fails::This tree's deploy hook does not converge when run again over the relations its own first sync built."
+    exit 1
+  fi
+  if migration plan --exit-code >/dev/null; then
+    echo "=== The cutover finds nothing left to migrate ==="
+  else
+    echo "::error title=the cutover does not converge::tenant_migration still finds tables to migrate after the upgrade and its first sync."
+    exit 1
+  fi
 }
 
 # A warm installation's worklog snapshot keeps the column types its first
@@ -471,10 +549,37 @@ seed_warm_bronze
 seed_git_close_time_warm_state
 seed_jira_issue_identity_warm_state
 seed_jira_catalogue_first_seen_warm_state
+seed_youtrack_field_observation_warm_state
+seed_task_tenant_warm_state
 seed_worklog_snapshot_warm_type
 
 echo "=== Step 2: deploy the working tree onto the warm state ==="
 dbt_venv_for "$REPO_ROOT/src/ingestion/scripts/bootstrap-db/pins.env" "$WORKDIR/branch-venv"
+
+# The pre-upgrade cutover hook: tenant_migration under the install's tenant.
+# When it moved anything, the post-upgrade hook's rebuild is a full refresh.
+migration() {
+  (cd "$REPO_ROOT/src/ingestion/scripts" && INSIGHT_TENANT_ID="$WARM_TENANT" python3 -m tenant_migration "$@")
+}
+REFRESH=()
+if ! migration plan --exit-code; then
+  REFRESH=(--full-refresh)
+fi
+if ! migration apply; then
+  echo "::error title=warm upgrade fails — the tenant cutover does not converge::tenant_migration apply failed against relations an earlier release created."
+  exit 1
+fi
+for relation in bronze_github.pull_requests bronze_jira.jira_fields; do
+  if [[ -z "$(ch_column_type "${relation%%.*}" "${relation##*.}" insight_source_id)" \
+      || -n "$(ch_column_type "${relation%%.*}" "${relation##*.}" source_id)" ]]; then
+    echo "::error title=warm upgrade fails — the source column is not renamed::${relation} must carry insight_source_id and no source_id after tenant_migration apply."
+    exit 1
+  fi
+done
+# Every layer the assertions below read (bronze, staging, silver) now carries the new names.
+WARM_TENANT_COLUMN=insight_tenant_id
+WARM_SOURCE_COLUMN=insight_source_id
+
 if ! PATH="$WORKDIR/branch-venv/bin:$PATH" \
     bash "$REPO_ROOT/src/ingestion/scripts/apply-ch-migrations.sh"; then
   echo "::error title=warm upgrade fails — the deploy hook does not converge::This tree's migrations or heals fail against relations an earlier release created. Every statement in that hook must be idempotent and guarded — per the Warehouse contract changes rules in AGENTS.md."
@@ -484,12 +589,15 @@ fi
 assert_git_close_time_recovered
 assert_jira_issue_identity_recovered
 assert_jira_catalogue_first_seen_kept
+assert_youtrack_field_observation_tenants
 assert_worklog_snapshot_type_narrowed
 
 echo "=== Step 3: the first sync after the upgrade — this tree's buildable graph over the warm warehouse ==="
-if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch; then
+if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch ${REFRESH[@]+"${REFRESH[@]}"}; then
   echo "::error title=first sync after the upgrade fails — forgotten heal::A model reads a bronze/silver/staging column this branch adds but no heal widens an existing relation with, so the first connector sync after this release fails on every installation that already holds data. Ship the companion ALTER — a ch_table_exists-guarded heal in src/ingestion/scripts/apply-ch-migrations.sh, for silver.class_* as for staging.* — per the Warehouse contract changes rules in AGENTS.md."
   exit 1
 fi
+
+assert_redeploy_converges
 
 echo "=== Warm upgrade OK: every relation the first sync reads is covered by a migration or heal ==="

@@ -34,8 +34,8 @@
 
 WITH observations AS (
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'gitlab' AS insight_source_type,
         account_id AS source_account_id,
         'email' AS value_type,
@@ -54,8 +54,8 @@ WITH observations AS (
     UNION ALL
 
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'gitlab' AS insight_source_type,
         account_id AS source_account_id,
         'display_name' AS value_type,
@@ -70,8 +70,8 @@ WITH observations AS (
     -- The unowned e-mail claims itself, so the console has an account to show
     -- and a value to search on.
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'gitlab-commit-email' AS insight_source_type,
         email AS source_account_id,
         'email' AS value_type,
@@ -86,8 +86,8 @@ WITH observations AS (
     -- The git author name, so the operator recognises whose address it is
     -- rather than deciding on an e-mail alone.
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'gitlab-commit-email' AS insight_source_type,
         email AS source_account_id,
         'display_name' AS value_type,

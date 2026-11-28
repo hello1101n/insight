@@ -45,7 +45,9 @@ def _analytics_secret(manifests: str) -> dict:
     ("extra", "expected"), [((), False), (("--set", "analytics.metricCatalog.tenantMetricsEnabled=true"), True)]
 )
 def test_tenant_metrics_are_opt_in_per_installation(umbrella_deps, extra: tuple[str, ...], expected: bool) -> None:
-    code, out, err = render(umbrella_deps, *UMBRELLA_BASE, "--set", f"global.tenantDefaultId={TENANT}", *extra)
+    code, out, err = render(
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"authenticator.oidc.defaultTenantId={TENANT}", *extra
+    )
     assert code == 0, err
 
     assert _analytics_config(out)["metric_catalog"]["tenant_metrics_enabled"] is expected
@@ -53,12 +55,22 @@ def test_tenant_metrics_are_opt_in_per_installation(umbrella_deps, extra: tuple[
     assert _v3_core_config(out)["external_sources"] == []
 
 
+@pytest.mark.parametrize("extra", [(), ("--set", "analytics.metricCatalog.enforceTenantScope=false")])
+def test_no_install_can_render_a_tenant_scope_switch(umbrella_deps, extra: tuple[str, ...]) -> None:
+    code, out, err = render(
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"authenticator.oidc.defaultTenantId={TENANT}", *extra
+    )
+    assert code == 0, err
+
+    assert "enforce_tenant_scope" not in _analytics_config(out)["metric_catalog"], f"with {extra!r}"
+
+
 def test_analytics_visibility_policy_reuses_identity_resolution_setting(umbrella_deps) -> None:
     code, out, err = render(
         umbrella_deps,
         *UMBRELLA_BASE,
         "--set",
-        f"global.tenantDefaultId={TENANT}",
+        f"authenticator.oidc.defaultTenantId={TENANT}",
         "--set",
         "identityResolution.visibilityPolicy=flat",
     )
@@ -90,7 +102,7 @@ def _sources(prefix: str) -> list[str]:
 
 def test_one_external_source_list_reaches_analytics_and_insight_v3_core(umbrella_deps) -> None:
     code, out, err = render(
-        umbrella_deps, *UMBRELLA_BASE, "--set", f"global.tenantDefaultId={TENANT}", *_sources("global")
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"authenticator.oidc.defaultTenantId={TENANT}", *_sources("global")
     )
     assert code == 0, err
 
@@ -100,7 +112,7 @@ def test_one_external_source_list_reaches_analytics_and_insight_v3_core(umbrella
 
 def test_an_analytics_only_external_source_list_still_reaches_analytics(umbrella_deps) -> None:
     code, out, err = render(
-        umbrella_deps, *UMBRELLA_BASE, "--set", f"global.tenantDefaultId={TENANT}", *_sources("analytics")
+        umbrella_deps, *UMBRELLA_BASE, "--set", f"authenticator.oidc.defaultTenantId={TENANT}", *_sources("analytics")
     )
     assert code == 0, err
 

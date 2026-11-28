@@ -76,8 +76,8 @@ def _envelope(source_id: str, tenant_uuid: str) -> dict[str, object]:
         "_airbyte_extracted_at": anchor_datetime(),
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": tenant_uuid,
-        "source_id": source_id,
+        "insight_tenant_id": tenant_uuid,
+        "insight_source_id": source_id,
     }
 
 
@@ -152,8 +152,8 @@ def seed_m365_teams_activity(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "reportRefreshDate",
         "reportPeriod",
         "userPrincipalName",
@@ -229,8 +229,8 @@ def seed_m365_email_activity(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "reportRefreshDate",
         "reportPeriod",
         "userPrincipalName",
@@ -350,8 +350,8 @@ def seed_zoom_meetings(
     meeting_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "uuid",
         "id",
         "topic",
@@ -365,8 +365,8 @@ def seed_zoom_meetings(
     participant_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "meeting_uuid",
         "id",
         "participant_uuid",

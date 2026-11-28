@@ -65,6 +65,7 @@ export CLICKHOUSE_CLUSTER_NAME="${CLICKHOUSE_CLUSTER_NAME:-}"
 
 source "$SCRIPT_DIR/lib/ch-topology.sh"
 source "$SCRIPT_DIR/lib/retired-relations.sh"
+source "$SCRIPT_DIR/lib/heal-identity-map-tenant.sh"
 source "$SCRIPT_DIR/lib/warehouse-floor.sh"
 
 bash "$SCRIPT_DIR/create-databases.sh"
@@ -92,6 +93,9 @@ echo "=== Dropping gold identity backups the views superseded ==="
 drop_superseded_gold_backup insight metric_entity_cohorts_current
 drop_superseded_gold_backup insight identity_resolution_coverage
 
+echo "=== Dropping identity map views that predate their tenant ==="
+heal_identity_map_tenants
+
 echo "=== Applying ClickHouse migrations ==="
 # A migration that creates a relation spells its engine family behind the
 # `/*@@REPLICATED@@*/` marker, which ch_render_topology expands for the
@@ -115,6 +119,15 @@ drop_retired_table_if_empty identity aliases
 for table in support_tickets support_ticket_ids support_agents support_ticket_events zendesk_satisfaction_ratings; do
   drop_retired_table_if_empty bronze_zendesk "${table}"
 done
+# INVARIANT: bronze of the old Slack connector — `users` keyed by `slack_user_id`, `messages` by `user`,
+# and `channels`, which the current connector does not write. None carries `user_id`; the current
+# connector's `users` and `messages` do, and it recreates them on its first sync. Each drops only
+# while empty and in that old shape: one holding rows is left in place for an operator.
+for table in users messages channels; do
+  ch_table_exists bronze_slack "${table}" || continue
+  [[ -z "$(ch_column_type bronze_slack "${table}" user_id)" ]] || continue
+  drop_retired_table_if_empty bronze_slack "${table}"
+done
 # INVARIANT: can fire at the floor: any dropped materialized view leaves its inner table behind.
 drop_orphaned_inner_tables insight
 
@@ -124,7 +137,7 @@ echo "=== Healing Jira bronze issue identity ==="
 # `id_readable`, the key at fetch time. The id is recovered from the two issue
 # streams, read WITHOUT FINAL: an issue's superseded rows may still map a key it
 # no longer answers to. The pairs are joined in a SELECT and the table is
-# rebuilt from the result, keyed by (tenant_id, source_id, id_readable) because
+# rebuilt from the result, keyed by (tenant, source, id_readable) because
 # one bronze holds every connector instance. Worklogs prefer Jira's own
 # `issueId`. Guarded on the rows it would change, so a converged warehouse pays
 # one SELECT per table and nothing else.
@@ -254,21 +267,23 @@ SQL
 # Counts only the rows the pairs can actually fill: a key no issue stream ever
 # delivered stays NULL forever, and counting it would re-run the rebuild on
 # every deploy. Worklogs carry Jira's own issueId and count whenever it is set.
+# Bronze names its tenant `insight_tenant_id` and its source `insight_source_id`:
+# the pre-upgrade hook's tenant_migration renamed both before this runs.
 _jira_rows_needing_issue_id() {
-  local table="$1" own="0"
+  local table="$1" own="0" t=insight_tenant_id ti=insight_tenant_id tk=insight_tenant_id
   [[ "${table}" == "jira_worklogs" ]] && own="issueId IS NOT NULL"
   ch_scalar "$(printf "SELECT count() FROM bronze_jira.%s
           WHERE jira_id IS NULL
             AND (%s
-                 OR (id_readable IS NOT NULL AND tenant_id IS NOT NULL AND source_id IS NOT NULL
-                     AND (assumeNotNull(tenant_id), assumeNotNull(source_id), assumeNotNull(id_readable)) IN (
-                   SELECT assumeNotNull(tenant_id), assumeNotNull(source_id), assumeNotNull(id_readable)
+                 OR (id_readable IS NOT NULL AND ${t} IS NOT NULL AND insight_source_id IS NOT NULL
+                     AND (assumeNotNull(${t}), assumeNotNull(insight_source_id), assumeNotNull(id_readable)) IN (
+                   SELECT assumeNotNull(${ti}), assumeNotNull(insight_source_id), assumeNotNull(id_readable)
                    FROM bronze_jira.jira_issue
-                   WHERE tenant_id IS NOT NULL AND source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
+                   WHERE ${ti} IS NOT NULL AND insight_source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
                    UNION ALL
-                   SELECT assumeNotNull(tenant_id), assumeNotNull(source_id), assumeNotNull(id_readable)
+                   SELECT assumeNotNull(${tk}), assumeNotNull(insight_source_id), assumeNotNull(id_readable)
                    FROM bronze_jira.jira_issue_keys
-                   WHERE tenant_id IS NOT NULL AND source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL)))" \
+                   WHERE ${tk} IS NOT NULL AND insight_source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL)))" \
     "${table}" "${own}")"
 }
 
@@ -276,21 +291,22 @@ _jira_rows_needing_issue_id() {
 # of its ids, and the aggregate is where that choice is made rather than
 # whichever row the join below met first.
 _jira_issue_id_pairs() {
+  local ti=insight_tenant_id tk=insight_tenant_id
   cat <<SQL
-    SELECT tenant_id, source_id, id_readable, any(jira_id) AS jira_id
+    SELECT insight_tenant_id, insight_source_id, id_readable, any(jira_id) AS jira_id
     FROM
     (
-        SELECT assumeNotNull(tenant_id) AS tenant_id, assumeNotNull(source_id) AS source_id,
+        SELECT assumeNotNull(${ti}) AS insight_tenant_id, assumeNotNull(insight_source_id) AS insight_source_id,
                assumeNotNull(id_readable) AS id_readable, assumeNotNull(jira_id) AS jira_id
         FROM bronze_jira.jira_issue
-        WHERE tenant_id IS NOT NULL AND source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
+        WHERE ${ti} IS NOT NULL AND insight_source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
         UNION ALL
-        SELECT assumeNotNull(tenant_id) AS tenant_id, assumeNotNull(source_id) AS source_id,
+        SELECT assumeNotNull(${tk}) AS insight_tenant_id, assumeNotNull(insight_source_id) AS insight_source_id,
                assumeNotNull(id_readable) AS id_readable, assumeNotNull(jira_id) AS jira_id
         FROM bronze_jira.jira_issue_keys
-        WHERE tenant_id IS NOT NULL AND source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
+        WHERE ${tk} IS NOT NULL AND insight_source_id IS NOT NULL AND id_readable IS NOT NULL AND jira_id IS NOT NULL
     )
-    GROUP BY tenant_id, source_id, id_readable
+    GROUP BY insight_tenant_id, insight_source_id, id_readable
 SQL
 }
 
@@ -300,17 +316,18 @@ SQL
 # keeps it, which is what makes the rebuild re-runnable, and `ANY` takes at
 # most one match, so the rebuild is row for row whatever the pairs hold.
 _jira_substream_issue_id_select() {
-  local table="$1" own="s.jira_id"
+  local table="$1" own="s.jira_id" t=insight_tenant_id pairs
   [[ "${table}" == "jira_worklogs" ]] && own="COALESCE(s.jira_id, s.issueId)"
+  pairs="$(_jira_issue_id_pairs)" || return 1
   cat <<SQL
 SELECT s.* REPLACE (COALESCE(${own}, nullIf(pairs.jira_id, '')) AS jira_id)
 FROM bronze_jira.${table} AS s
 LEFT ANY JOIN
 (
-$(_jira_issue_id_pairs)
+${pairs}
 ) AS pairs
-ON (assumeNotNull(s.tenant_id), assumeNotNull(s.source_id), assumeNotNull(s.id_readable))
- = (pairs.tenant_id, pairs.source_id, pairs.id_readable)
+ON (assumeNotNull(s.${t}), assumeNotNull(s.insight_source_id), assumeNotNull(s.id_readable))
+ = (pairs.insight_tenant_id, pairs.insight_source_id, pairs.id_readable)
 SQL
 }
 
@@ -649,16 +666,16 @@ _GIT_PR_REPORTED_CLOSE_TARGETS=(
 # the legacy one by DECLARATION, not by whichever happened to be extracted
 # later — a clock is not a contract.
 _git_pr_reported_close_branch() {
-  local relation="$1" stream_rank="$2"
+  local relation="$1" stream_rank="$2" tenant=insight_tenant_id
   cat <<SQL
-    SELECT assumeNotNull(tenant_id) AS tenant_id,
-           assumeNotNull(source_id) AS source_id,
+    SELECT assumeNotNull(${tenant}) AS insight_tenant_id,
+           assumeNotNull(insight_source_id) AS insight_source_id,
            assumeNotNull(unique_key) AS unique_key,
            COALESCE(nullIf(merged_at, ''), nullIf(closed_at, ''), '') AS reported_close,
            toUInt8(${stream_rank}) AS stream_rank,
            _airbyte_extracted_at AS extracted_at
     FROM ${relation}
-    WHERE tenant_id IS NOT NULL AND source_id IS NOT NULL AND unique_key IS NOT NULL
+    WHERE ${tenant} IS NOT NULL AND insight_source_id IS NOT NULL AND unique_key IS NOT NULL
 SQL
 }
 
@@ -669,7 +686,7 @@ SQL
 # it on every deploy. The count and the INSERT read this one expression, so the
 # rows written and the rows counted cannot drift apart.
 _git_pr_rows_needing_reported_close() {
-  local db="$1" table="$2" eligible="$3" lookup="$4"
+  local db="$1" table="$2" eligible="$3" lookup="$4" tenant=insight_tenant_id source=insight_source_id
   cat <<SQL
 FROM
 (
@@ -681,10 +698,10 @@ LEFT JOIN
 (
 ${lookup}
 ) AS src
-ON (assumeNotNull(t.tenant_id), assumeNotNull(t.source_id), assumeNotNull(t.unique_key))
- = (src.tenant_id, src.source_id, src.unique_key)
+ON (assumeNotNull(t.${tenant}), assumeNotNull(t.${source}), assumeNotNull(t.unique_key))
+ = (src.insight_tenant_id, src.insight_source_id, src.unique_key)
 WHERE t.closed_on_reported IS NULL
-  AND t.unique_key IS NOT NULL AND t.tenant_id IS NOT NULL AND t.source_id IS NOT NULL
+  AND t.unique_key IS NOT NULL AND t.${tenant} IS NOT NULL AND t.${source} IS NOT NULL
   AND (${eligible})
   AND (coalesce(src.reported_close, '') != '' OR (t.state = 'CLOSED' AND t.closed_on IS NOT NULL))
 SQL
@@ -714,12 +731,12 @@ backfill_git_pr_reported_close() {
   # remaining tie — so the answer is a function of the data alone, not of
   # which part a merge happened to leave behind.
   lookup="$(cat <<SQL
-    SELECT tenant_id, source_id, unique_key,
+    SELECT insight_tenant_id, insight_source_id, unique_key,
            argMax(reported_close, (stream_rank, extracted_at, reported_close)) AS reported_close
     FROM
     (
 ${branches})
-    GROUP BY tenant_id, source_id, unique_key
+    GROUP BY insight_tenant_id, insight_source_id, unique_key
 SQL
 )"
 
@@ -955,7 +972,7 @@ heal_ai_overage_placeholder_shape() {
     drop_retired_table_if_empty silver class_ai_overage
     ch_table_exists silver class_ai_overage || return 0
   fi
-  for column in insight_tenant_id source_id email account_id data_source; do
+  for column in insight_tenant_id insight_source_id source_id email account_id data_source; do
     retype_column silver class_ai_overage "${column}" 'Nullable(String)'
   done
 }
@@ -986,45 +1003,34 @@ SQL
 
 heal_zoom_participant_device_columns
 
-echo "=== Renaming the Slack activity platform columns ==="
-# The destination drops a column that leaves the stream catalog. The rename
-# must land before the first sync of the new connector, or stored rows lose
-# their tenant. A rename moves no row. A converged table has no old column.
-# INVARIANT: repairs releases without #4342 (main before 0.7.200); delete once every CH_FLOOR_RELEASES release runs it.
-heal_slack_users_details_platform_columns() {
-  local old new old_type new_type
-  ch_table_exists bronze_slack users_details || return 0
-  for old in tenant_id source_id; do
-    new="insight_${old}"
-    old_type="$(ch_column_type bronze_slack users_details "${old}")"
-    new_type="$(ch_column_type bronze_slack users_details "${new}")"
-    [[ -n "${old_type}" && -z "${new_type}" ]] || continue
-    echo "  bronze_slack.users_details: ${old} -> ${new}"
-    run_ch <<SQL
-ALTER TABLE bronze_slack.users_details RENAME COLUMN ${old} TO ${new};
-SQL
-  done
-}
-
-heal_slack_users_details_platform_columns
-
 echo "=== Aligning the Slack users snapshot with slack__users_latest ==="
 # The snapshot refuses to append when its columns differ from its source.
 # The old shape kept bots and guests. A kept version mints its member as an account,
 # so the heal removes the versions that slack__users_latest now drops, before the guest flag goes.
 # INVARIANT: repairs releases without #4328 (main before the release that ships it); delete once every CH_FLOOR_RELEASES release runs it.
+# Only a bronze table that carries every column the subquery reads is consulted: an old connector's
+# `users` (keyed by `slack_user_id`, no `user_id`) can stand beside the snapshot while it holds rows.
+_slack_bronze_reads() {  # table column...
+  local table="$1" column
+  ch_table_exists bronze_slack "${table}" || return 1
+  shift
+  for column in insight_tenant_id insight_source_id user_id "$@"; do
+    [[ -n "$(ch_column_type bronze_slack "${table}" "${column}")" ]] || return 1
+  done
+}
+
 heal_slack_users_snapshot_columns() {
-  local is_guest_type
+  local is_guest_type tenant=insight_tenant_id source=insight_source_id
   local excluded="coalesce(is_guest, false) OR user_id = 'USLACKBOT'"
   ch_table_exists staging slack__users_snapshot || return 0
   is_guest_type="$(ch_column_type staging slack__users_snapshot is_guest)"
   echo "  staging.slack__users_snapshot"
   if [[ -n "${is_guest_type}" ]]; then
-    if ch_table_exists bronze_slack users_details; then
-      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id HAVING argMax(coalesce(is_guest, false), date))"
+    if _slack_bronze_reads users_details is_guest date; then
+      excluded+=" OR (${tenant}, ${source}, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users_details FINAL GROUP BY insight_tenant_id, insight_source_id, user_id HAVING argMax(coalesce(is_guest, false), date))"
     fi
-    if ch_table_exists bronze_slack users; then
-      excluded+=" OR (tenant_id, source_id, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users FINAL WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
+    if _slack_bronze_reads users is_bot is_restricted is_ultra_restricted; then
+      excluded+=" OR (${tenant}, ${source}, user_id) IN (SELECT insight_tenant_id, insight_source_id, user_id FROM bronze_slack.users FINAL WHERE coalesce(is_bot, false) OR coalesce(is_restricted, false) OR coalesce(is_ultra_restricted, false))"
     fi
     run_ch <<SQL
 ALTER TABLE staging.slack__users_snapshot DELETE WHERE ${excluded} SETTINGS mutations_sync = 2;

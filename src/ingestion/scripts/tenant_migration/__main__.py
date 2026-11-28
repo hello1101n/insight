@@ -1,87 +1,93 @@
-"""Move a warm install's stored tenant to the canonical tenant UUID.
+"""Move a warm install's stored tenant to the install's tenant UUID.
 
-    python3 -m tenant_migration plan     --tenant <uuid> --old-tenant <key>
-    python3 -m tenant_migration apply    --tenant <uuid> --old-tenant <key> --dump-dir <new dir>
-    python3 -m tenant_migration rollback
-    python3 -m tenant_migration restore  --dump-dir <dir>
+    python3 -m tenant_migration plan [--exit-code]
+    python3 -m tenant_migration apply
     python3 -m tenant_migration finalize
 
-`--old-tenant` is the tenant segment the install's keys were written with; rows
-with an empty tenant move too. Run with connectors and dbt stopped.
+The tenant is INSIGHT_TENANT_ID (authenticator.oidc.defaultTenantId), a
+lowercase UUID; nothing else is read. Every MergeTree table in `bronze_*`,
+`config`, `staging`, `silver` and `insight` (gold), and every history relation,
+that still names its tenant `tenant_id` or its source `source_id`, holds a
+tenant other than the UUID, or (in silver, or a history relation) has no tenant
+at all, is copied into `<table>__tenant_copy` with each row's tenant and key
+prefix moved to the UUID, checked, and EXCHANGEd in; the original is then
+renamed `<table>__tenant_backup`. The sync ledger (`ingestion_history`) is not
+touched.
+A table already in that shape is skipped.
 
-`apply` keeps each original until `finalize`. After an interruption anywhere,
-`rollback` puts the originals back and `finalize` keeps what is live; both, and
-`restore`, read the state from the warehouse and can be run again until they
-succeed.
+`plan` reads only; with --exit-code it exits 1 while any table is pending.
+Both `plan` and `apply` exit 2 when a disk holding the tables to change has
+less free space than `DISK_HEADROOM` (2) times what those tables take.
+`apply` migrates every pending table or none: on any failure it puts back each
+original it already swapped out and exits 2 (3 when that undo failed too). Run
+with every writer stopped (the chart's pre-upgrade hook does). `finalize` drops
+the backups, orphans included, by hand, once the install is proven.
 
-Required env: CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD.
+Required env: CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, INSIGHT_TENANT_ID.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import sys
-from pathlib import Path
+from types import FrameType
 
 from tenant_migration import apply as migration
 from tenant_migration.clickhouse import ClickHouse, ClickHouseError
-from tenant_migration.inventory import BACKUP, discover, history_relations
-from tenant_migration.keys import TenantError, Tenants
-from tenant_migration.plan import Plan, survey
-from tenant_migration.prerequisites import fill_youtrack_comment_ids
+from tenant_migration.ddl import DdlError
+from tenant_migration.inventory import BACKUP, InventoryError, discover, history_relations
+from tenant_migration.keys import TenantError, parse_tenant
+from tenant_migration.plan import DiskSpaceError, TablePlan, check_disks, disks, render, render_disks, survey
+
+TENANT_ENV = "INSIGHT_TENANT_ID"
+PENDING = 1
+FAILED = 2
+#: The run failed and some table could not be put back: writers must stay stopped.
+UNDO_FAILED = 3
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tenant_migration", description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("plan", "apply"):
-        command = commands.add_parser(name)
-        command.add_argument("--tenant", required=True, help="the canonical tenant, a lowercase UUID")
-        command.add_argument("--old-tenant", required=True, help="the tenant the stored keys carry now")
-        if name == "apply":
-            command.add_argument("--dump-dir", required=True, type=Path, help="a new directory for the dump")
-    commands.add_parser("rollback")
+    commands.add_parser("plan").add_argument(
+        "--exit-code", action="store_true", help=f"exit {PENDING} while any table is pending"
+    )
+    commands.add_parser("apply")
     commands.add_parser("finalize")
-    commands.add_parser("restore").add_argument("--dump-dir", required=True, type=Path)
     return parser
 
 
-def render(plan: Plan) -> str:
-    lines = [f"{'relation':<64} {'rows':>12} {'moving':>12}"]
-    lines += [f"{t.table.relation:<64} {t.rows:>12} {t.moving:>12}" for t in plan.tables if t.rows]
-    lines.append(f"tables changing: {len(plan.changing)}; YouTrack comment ids to fill: {plan.comment_ids_to_fill}")
-    lines += [f"REFUSED {reason}" for reason in plan.refusals]
-    return "\n".join(lines)
+def _plan(ch: ClickHouse, tenant: str) -> list[TablePlan]:
+    return survey(ch, discover(ch, history_relations()), tenant)
 
 
-def _plan(ch: ClickHouse, args: argparse.Namespace) -> Plan:
-    tenants = Tenants.parse(args.tenant, args.old_tenant)
-    return survey(ch, discover(ch, history_relations()), tenants)
+def _interrupted(signum: int, _frame: FrameType | None) -> None:
+    raise KeyboardInterrupt(f"stopped by signal {signum}")
 
 
 def run(args: argparse.Namespace, ch: ClickHouse) -> int:
+    if args.command == "finalize":
+        print("\n".join(f"dropped {r}" for r in migration.finalize(ch)) or "nothing to finalize")
+        return 0
+    tenant = parse_tenant(os.environ.get(TENANT_ENV), TENANT_ENV)
+    print(f"tenant: {tenant} (from {TENANT_ENV})")
+    plans = _plan(ch, tenant)
+    print(render(plans), flush=True)
+    leftovers = migration.leftover_copies(ch)
+    for rel in leftovers:
+        print(f"left by a killed run: {rel}__tenant_copy (apply settles it)")
+    pending = any(p.pending for p in plans) or bool(leftovers)
+    found = disks(ch, plans)
+    if found:
+        print(render_disks(found), flush=True)
+    check_disks(found)
     if args.command == "plan":
-        plan = _plan(ch, args)
-        print(render(plan))
-        return 1 if plan.refusals else 0
-    if args.command == "apply":
-        plan = _plan(ch, args)
-        print(render(plan))
-        if plan.refusals:
-            return 1
-        moved = migration.apply(
-            ch, plan, args.dump_dir, before_rewrite=[lambda: fill_youtrack_comment_ids(ch, plan.tenants)]
-        )
-        print(migration.describe(moved))
-        print(f"migrated {len(moved)} table(s); originals kept as *{BACKUP} until `finalize` or `rollback`")
-        return 0
-    if args.command == "rollback":
-        print("\n".join(f"rolled back {r}" for r in migration.rollback(ch)) or "nothing to roll back")
-        return 0
-    if args.command == "restore":
-        print("\n".join(f"restored {r}" for r in migration.restore(ch, args.dump_dir)) or "nothing to restore")
-        return 0
-    print("\n".join(f"dropped {r}" for r in migration.finalize(ch)) or "nothing to finalize")
+        return PENDING if args.exit_code and pending else 0
+    signal.signal(signal.SIGTERM, _interrupted)
+    migrated = migration.apply(ch, plans, tenant)
+    print(f"migrated {len(migrated)} table(s); originals kept as <table>{BACKUP}* until `finalize`")
     return 0
 
 
@@ -89,9 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         return run(args, ClickHouse.from_env())
-    except (TenantError, ClickHouseError, migration.MigrationError, FileExistsError) as error:
+    except migration.UndoError as error:
         print(f"error: {error}", file=sys.stderr)
-        return 1
+        return UNDO_FAILED
+    except (TenantError, ClickHouseError, InventoryError, DdlError, DiskSpaceError, migration.MigrationError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return FAILED
 
 
 if __name__ == "__main__":

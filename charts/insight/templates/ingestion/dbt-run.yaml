@@ -38,6 +38,10 @@ spec:
           # "false" runs incremental.
           - name: dbt_full_refresh
             default: "false"
+          # The step's deadline; the tenant cutover's whole-graph rebuild
+          # passes a longer one.
+          - name: active_deadline_seconds
+            default: "7200"
           # Operator-pinned values from umbrella chart. Submitter may override
           # per-call but typically just submits and gets these defaults baked in
           # at chart-render time. `insight.<dep>.host/port` helpers resolve the
@@ -58,7 +62,7 @@ spec:
       synchronization:
         mutexes:
           - name: {{ `"ch-{{inputs.parameters.lock_group}}"` }}
-      activeDeadlineSeconds: 7200
+      activeDeadlineSeconds: {{ `"{{inputs.parameters.active_deadline_seconds}}"` }}
       outputs:
         parameters:
           - name: dbt-pod-uid
@@ -170,20 +174,22 @@ spec:
           # decided here, not in the model. A graph walk (`tag:X+`) reaches gold
           # models reading classes no connector on this install feeds; without
           # this the whole run dies on them.
-          # The check also needs the models THIS run builds: a contributor that
-          # another connector's pipeline builds is absent here until it is in
-          # the warehouse, so its class must wait (#127).
-          OPERATION_ARGS=()
-          if [[ "$RC" -eq 0 && -n "${DBT_SELECT:-}" ]]; then
-            read -r -a SELECT_TERMS <<< "$DBT_SELECT"
-            read -r -a EXCLUDE_TERMS <<< "${DBT_EXCLUDE:-}"
-            RUN_MODELS="$(dbt --quiet ls --profiles-dir . --resource-type model --output name \
-              --select "${SELECT_TERMS[@]}" ${EXCLUDE_TERMS[@]+--exclude "${EXCLUDE_TERMS[@]}"})" || RC=$?
-            OPERATION_ARGS=(--args "$(printf '%s\n' "${RUN_MODELS:-}" \
-              | python3 -c 'import json, sys; print(json.dumps({"selected": sys.stdin.read().split()}))')")
+          # The check is handed this run's own node set: a model outside it is
+          # not built here, so it counts only if it can be read now. A run split
+          # into steps then never reads a relation neither step put there.
+          # Each left-out model is printed with its reason (absent or empty
+          # bronze, a parent not built) so no model is skipped silently.
+          read -r -a STEP_EXCLUDE <<< "${DBT_EXCLUDE:-}"
+          if [[ "$RC" -eq 0 ]]; then
+            IN_RUN="$(dbt --quiet ls --profiles-dir . --resource-type model --output name ${DBT_SELECT:+--select "$DBT_SELECT"} ${STEP_EXCLUDE[@]+--exclude "${STEP_EXCLUDE[@]}"})" || RC=$?
           fi
           if [[ "$RC" -eq 0 ]]; then
-            UNBUILDABLE="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir . ${OPERATION_ARGS[@]+"${OPERATION_ARGS[@]}"})" || RC=$?
+            UNBUILDABLE_REPORT="$(dbt --quiet run-operation list_unbuildable_models --profiles-dir . \
+              --args "{selected: '$(tr '\n' ' ' <<< "${IN_RUN:-}")', reasons: true}")" || RC=$?
+            if [[ -n "${UNBUILDABLE_REPORT:-}" ]]; then
+              sed 's/^/not built: /' <<< "$UNBUILDABLE_REPORT"
+            fi
+            UNBUILDABLE="$(cut -f1 <<< "${UNBUILDABLE_REPORT:-}" | tr '\n' ' ')"
           fi
           read -r -a EXCLUDED <<< "${DBT_EXCLUDE:-} ${UNBUILDABLE:-}"
           EXCLUDE_ARGS=()

@@ -133,7 +133,7 @@ def test_umbrella_uses_existing_password_secrets_for_both_workloads(connectors_u
         "--set",
         "credentials.autoGenerate=false",
         "--set",
-        "ingestion.reconcile.tenantId=11111111-2222-4333-8444-555555555555",
+        "authenticator.oidc.defaultTenantId=11111111-2222-4333-8444-555555555555",
         "--set",
         "mariadb.host=database.example.test",
         "--set",

@@ -46,12 +46,12 @@ streams:
         $schema: http://json-schema.org/schema#
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         properties:
           unique_key: {type: ["string", "null"]}
-          tenant_id: {type: ["string", "null"]}
-          source_id: {type: ["string", "null"]}
+          insight_tenant_id: {type: ["string", "null"]}
+          insight_source_id: {type: ["string", "null"]}
           data_source: {type: ["string", "null"]}
           space_id: {type: ["string", "null"]}
           name: {type: ["string", "null"]}
@@ -112,10 +112,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [data_source]
@@ -165,12 +165,12 @@ streams:
         $schema: http://json-schema.org/schema#
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         properties:
           unique_key: {type: ["string", "null"]}
-          tenant_id: {type: ["string", "null"]}
-          source_id: {type: ["string", "null"]}
+          insight_tenant_id: {type: ["string", "null"]}
+          insight_source_id: {type: ["string", "null"]}
           data_source: {type: ["string", "null"]}
           page_id: {type: ["string", "null"]}
           space_id: {type: ["string", "null"]}
@@ -259,10 +259,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [data_source]
@@ -325,12 +325,12 @@ streams:
         $schema: http://json-schema.org/schema#
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         properties:
           unique_key: {type: ["string", "null"]}
-          tenant_id: {type: ["string", "null"]}
-          source_id: {type: ["string", "null"]}
+          insight_tenant_id: {type: ["string", "null"]}
+          insight_source_id: {type: ["string", "null"]}
           data_source: {type: ["string", "null"]}
           page_id: {type: ["string", "null"]}
           revision_id: {type: ["string", "null"]}
@@ -473,10 +473,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [data_source]
@@ -523,12 +523,12 @@ streams:
         $schema: http://json-schema.org/schema#
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         properties:
           unique_key: {type: ["string", "null"]}
-          tenant_id: {type: ["string", "null"]}
-          source_id: {type: ["string", "null"]}
+          insight_tenant_id: {type: ["string", "null"]}
+          insight_source_id: {type: ["string", "null"]}
           data_source: {type: ["string", "null"]}
           comment_id: {type: ["string", "null"]}
           page_id: {type: ["string", "null"]}
@@ -595,10 +595,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [data_source]
@@ -654,12 +654,12 @@ streams:
         $schema: http://json-schema.org/schema#
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         properties:
           unique_key: {type: ["string", "null"]}
-          tenant_id: {type: ["string", "null"]}
-          source_id: {type: ["string", "null"]}
+          insight_tenant_id: {type: ["string", "null"]}
+          insight_source_id: {type: ["string", "null"]}
           data_source: {type: ["string", "null"]}
           user_id: {type: ["string", "null"]}
           name: {type: ["string", "null"]}
@@ -720,10 +720,10 @@ streams:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
-            path: [tenant_id]
+            path: [insight_tenant_id]
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
-            path: [source_id]
+            path: [insight_source_id]
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path: [data_source]

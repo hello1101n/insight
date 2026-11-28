@@ -9,8 +9,8 @@
 
 -- Object columns land as String or JSON depending on the installation; toString reads both.
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
+    insight_source_id,
     unique_key,
     toInt64(COALESCE(projectId, 0)) AS project_id,
     toInt64(COALESCE(id, 0)) AS field_id,

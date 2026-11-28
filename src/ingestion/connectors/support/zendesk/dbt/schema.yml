@@ -23,9 +23,131 @@ sources:
       - name: zendesk_jira_links_v2
 
 models:
+  - name: zendesk__support_agents
+    description: "Per-source staging projection of Zendesk agents. Unioned into silver.class_support_agents."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_customers
+    description: "Per-source staging projection of Zendesk customers. Unioned into silver.class_support_customers."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_field_definitions
+    description: "Per-source staging projection of Zendesk ticket field definitions. Unioned into silver.class_support_field_definitions."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_group_memberships
+    description: "Per-source staging projection of Zendesk group memberships. Unioned into silver.class_support_group_memberships."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_groups
+    description: "Per-source staging projection of Zendesk groups. Unioned into silver.class_support_groups."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_interactions
+    description: "Per-source staging projection of Zendesk interactions. Unioned into silver.class_support_interactions."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_kb_articles
+    description: "Per-source staging projection of Zendesk knowledge-base article events. Unioned into silver.class_support_kb_articles."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_satisfaction
+    description: "Per-source staging projection of Zendesk satisfaction ratings. Unioned into silver.class_support_satisfaction."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_schedules
+    description: "Per-source staging projection of Zendesk schedules. Unioned into silver.class_support_schedules."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_sla_events
+    description: "Per-source staging projection of Zendesk SLA events. Unioned into silver.class_support_sla_events."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_sla_policies
+    description: "Per-source staging projection of Zendesk SLA policies. Unioned into silver.class_support_sla_policies."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_ticket_field_history
+    description: "Per-source staging projection of Zendesk ticket field history. Unioned into silver.class_support_ticket_field_history."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: zendesk__support_ticket_issue_links
     description: "Ticket links to Jira issues from both Zendesk Jira integration versions; one row per ticket, issue and integration version."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
+  - name: zendesk__support_tickets
+    description: "Per-source staging projection of Zendesk tickets. Unioned into silver.class_support_tickets."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: zendesk__ticket_event_items
     description: "One row per field a ticket update set, or per comment it added; parsed from the bulk ticket-event export."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
   - name: zendesk__user_kinds
     description: "Each Zendesk user's author kind: agent, end_user or system."
+    columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty

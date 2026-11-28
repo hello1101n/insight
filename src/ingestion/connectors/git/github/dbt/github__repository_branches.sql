@@ -10,8 +10,8 @@
 -- The proxy keys every row by the repository's https clone URL, whose last two
 -- path segments are the owner and the repo name.
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
+    insight_source_id,
     unique_key,
     arrayElement(splitByChar('/', COALESCE(repository, '')), -2) AS project_key,
     replaceRegexpOne(arrayElement(splitByChar('/', COALESCE(repository, '')), -1), '\\.git$', '') AS repo_slug,

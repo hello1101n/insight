@@ -25,8 +25,8 @@ SCHEMA: Mapping[str, Any] = {
         "entries_json": {"type": "string"},
         "window_start": {"type": "string"},
         "window_end": {"type": "string"},
-        "tenant_id": NULLABLE_STR,
-        "source_id": NULLABLE_STR,
+        "insight_tenant_id": NULLABLE_STR,
+        "insight_source_id": NULLABLE_STR,
         "unique_key": {"type": "string"},
     },
 }
@@ -72,8 +72,8 @@ class WhosOutStream(Stream):
             "entries_json": json.dumps(rows, separators=(",", ":")),
             "window_start": self._start_date,
             "window_end": end,
-            "tenant_id": self._tenant_id,
-            "source_id": self._source_id,
+            "insight_tenant_id": self._tenant_id,
+            "insight_source_id": self._source_id,
             "unique_key": json.dumps([self._tenant_id, self._source_id], separators=(",", ":")),
         }
 

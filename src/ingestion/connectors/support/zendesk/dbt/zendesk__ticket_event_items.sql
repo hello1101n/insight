@@ -12,7 +12,7 @@
 
 WITH audits AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'ticket_id'") }}     AS ticket_id,
         {{ zendesk_id('payload', "'id'") }}            AS audit_id,
@@ -26,7 +26,7 @@ WITH audits AS (
 
 children AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         ticket_id,
         audit_id,
@@ -53,7 +53,7 @@ fields_set AS (
 
 SELECT
     {{ zendesk_key(['audit_id', "coalesce(" ~ zendesk_id('child', "'id'") ~ ", toString(child_index))", 'field.1']) }} AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     ticket_id,
     audit_id,

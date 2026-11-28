@@ -90,9 +90,9 @@ def namespace(spec: TestYaml, *, key: str, caller_email: str) -> Scenario:
     hr_ids = {}
     for table, rows in spec.bronze.items():
         for row in rows:
-            for column in ("source_id", "insight_source_id"):
-                if table.startswith("bronze_") and isinstance(row.get(column), str) and row[column]:
-                    sources[row[column]] = prefix + row[column]
+            source = row.get("insight_source_id")
+            if table.startswith("bronze_") and isinstance(source, str) and source:
+                sources[source] = prefix + source
             if table == "bronze_bamboohr.employees" and row.get("id"):
                 hr_ids[str(row["id"])] = prefix + str(row["id"])
 

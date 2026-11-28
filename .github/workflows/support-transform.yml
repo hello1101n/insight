@@ -1,0 +1,161 @@
+name: Support transformations
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - src/ingestion/connectors/support/zendesk/dbt/**
+      - src/ingestion/connectors/support/zendesk/connector.yaml
+      - src/ingestion/connectors/support/zendesk/descriptor.yaml
+      - src/ingestion/connectors/crm/hubspot/**
+      - src/ingestion/dbt/macros/zendesk/**
+      - src/ingestion/dbt/macros/hubspot/**
+      - src/ingestion/dbt/macros/union_by_tag.sql
+      - src/ingestion/silver/support/**
+      - src/ingestion/dbt/tests/zendesk/**
+      - src/ingestion/dbt/tests/hubspot/**
+      - src/ingestion/connectors/hr-directory/bamboohr/**
+      - src/ingestion/connectors/hr-directory/active-directory/**
+      - src/ingestion/connectors/ai/chatgpt-team/**
+      - src/ingestion/dbt/macros/bronze_tenant.sql
+      - src/ingestion/dbt/macros/attribute_claims.sql
+      - src/ingestion/dbt/macros/instance_incremental_watermark.sql
+      - src/ingestion/silver/hr/**
+      - src/ingestion/dbt/tests/bamboohr/**
+      - src/ingestion/dbt/tests/chatgpt_team/**
+      - src/ingestion/dbt/tests/active_directory/**
+      - src/ingestion/dbt/tests/disposable.py
+      - src/ingestion/dbt/tests/bronze.py
+      - src/ingestion/dbt/dbt_project.yml
+      - src/ingestion/scripts/bootstrap-db/**
+      - src/ingestion/scripts/dbt_profiles.py
+      - .github/workflows/support-transform.yml
+      - .github/workflows/scripts/start-clickhouse.sh
+  push:
+    branches: [main]
+    paths:
+      - src/ingestion/connectors/support/zendesk/dbt/**
+      - src/ingestion/connectors/support/zendesk/connector.yaml
+      - src/ingestion/connectors/support/zendesk/descriptor.yaml
+      - src/ingestion/connectors/crm/hubspot/**
+      - src/ingestion/dbt/macros/zendesk/**
+      - src/ingestion/dbt/macros/hubspot/**
+      - src/ingestion/dbt/macros/union_by_tag.sql
+      - src/ingestion/silver/support/**
+      - src/ingestion/dbt/tests/zendesk/**
+      - src/ingestion/dbt/tests/hubspot/**
+      - src/ingestion/connectors/hr-directory/bamboohr/**
+      - src/ingestion/connectors/hr-directory/active-directory/**
+      - src/ingestion/connectors/ai/chatgpt-team/**
+      - src/ingestion/dbt/macros/bronze_tenant.sql
+      - src/ingestion/dbt/macros/attribute_claims.sql
+      - src/ingestion/dbt/macros/instance_incremental_watermark.sql
+      - src/ingestion/silver/hr/**
+      - src/ingestion/dbt/tests/bamboohr/**
+      - src/ingestion/dbt/tests/chatgpt_team/**
+      - src/ingestion/dbt/tests/active_directory/**
+      - src/ingestion/dbt/tests/disposable.py
+      - src/ingestion/dbt/tests/bronze.py
+      - src/ingestion/dbt/dbt_project.yml
+      - src/ingestion/scripts/bootstrap-db/**
+      - src/ingestion/scripts/dbt_profiles.py
+      - .github/workflows/support-transform.yml
+      - .github/workflows/scripts/start-clickhouse.sh
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  transformations:
+    name: transformations
+    runs-on: ${{ (vars.INSIGHT_FORCE_GITHUB_HOSTED == 'true' || github.repository != 'constructorfabric/insight' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-latest' || 'insight-large' }}
+    timeout-minutes: 45
+    env:
+      CLICKHOUSE_CONTAINER: support-transform-clickhouse
+      CLICKHOUSE_USER: insight
+      CLICKHOUSE_PASSWORD: insight
+      CLICKHOUSE_DATABASE: insight
+      CLICKHOUSE_HOST: 127.0.0.1
+      CLICKHOUSE_HTTP_PORT: "8123"
+      ZENDESK_TEST_DISPOSABLE: "yes"
+      HUBSPOT_TEST_DISPOSABLE: "yes"
+      # The env-driven suites below (tests/disposable.py) create their own bronze and profile.
+      TRANSFORM_TEST_DISPOSABLE: "yes"
+      CLICKHOUSE_PORT: "8123"
+      VENV: ${{ github.workspace }}/.support-dbt-venv
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Start ClickHouse on the pinned version
+        run: |
+          set -euo pipefail
+          cat src/ingestion/scripts/bootstrap-db/pins.env >> "$GITHUB_ENV"
+          . src/ingestion/scripts/bootstrap-db/pins.env
+          export CLICKHOUSE_SERVER_IMAGE
+          .github/workflows/scripts/start-clickhouse.sh "${CLICKHOUSE_CONTAINER}"
+          # WORKAROUND: the destination container cannot reach the runner's loopback.
+          echo "CLICKHOUSE_CONTAINER_HOST=$(docker network inspect bridge -f '{{ (index .IPAM.Config 0).Gateway }}')" >> "$GITHUB_ENV"
+
+      - name: Install pinned dbt and the suite's deps
+        run: |
+          set -euo pipefail
+          python -m venv "${VENV}"
+          "${VENV}/bin/pip" install --quiet \
+            "dbt-core==${DBT_CORE_VERSION}" \
+            "dbt-clickhouse==${DBT_CLICKHOUSE_VERSION}" \
+            -r src/ingestion/dbt/tests/zendesk/transform/requirements.txt
+
+      - name: Zendesk transformation tests
+        working-directory: src/ingestion/dbt/tests/zendesk/transform
+        run: |
+          set -euo pipefail
+          "${VENV}/bin/pytest" -q --durations=10
+
+      - name: HubSpot transformation tests
+        if: ${{ !cancelled() }}
+        working-directory: src/ingestion/dbt/tests/hubspot/transform
+        run: |
+          set -euo pipefail
+          "${VENV}/bin/pytest" -q --durations=10
+
+      - name: BambooHR transformation tests
+        if: ${{ !cancelled() }}
+        working-directory: src/ingestion/dbt/tests/bamboohr
+        env:
+          DBT_EXECUTABLE: ${{ env.VENV }}/bin/dbt
+        run: |
+          set -euo pipefail
+          "${VENV}/bin/pytest" -q --durations=10
+
+      - name: ChatGPT Team transformation tests
+        if: ${{ !cancelled() }}
+        working-directory: src/ingestion/dbt/tests/chatgpt_team
+        env:
+          DBT_EXECUTABLE: ${{ env.VENV }}/bin/dbt
+        run: |
+          set -euo pipefail
+          "${VENV}/bin/pytest" -q --durations=10
+
+      - name: Active Directory transformation tests
+        if: ${{ !cancelled() }}
+        working-directory: src/ingestion/dbt/tests/active_directory
+        env:
+          DBT_EXECUTABLE: ${{ env.VENV }}/bin/dbt
+        run: |
+          set -euo pipefail
+          "${VENV}/bin/pytest" -q --durations=10
+
+      - name: ClickHouse logs
+        if: failure()
+        run: docker logs --tail 200 "${CLICKHOUSE_CONTAINER}" || true

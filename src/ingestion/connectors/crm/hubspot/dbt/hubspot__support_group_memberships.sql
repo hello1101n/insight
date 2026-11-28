@@ -23,7 +23,7 @@ WITH memberships AS (
 
 SELECT
     {{ hubspot_support_key(['user_id', 'team_id']) }}  AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     CAST(concat(coalesce(user_id, ''), '-', team_id) AS Nullable(String)) AS membership_id,

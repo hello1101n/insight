@@ -72,11 +72,11 @@ definitions:
 
   standard_fields: &standard_fields
     - type: AddedFieldDefinition
-      path: [tenant_id]
+      path: [insight_tenant_id]
       value: "{{ config['insight_tenant_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
-      path: [source_id]
+      path: [insight_source_id]
       value: "{{ config['insight_source_id'] }}"
       value_type: string
     - type: AddedFieldDefinition
@@ -107,8 +107,8 @@ streams:
         type: object
         additionalProperties: true
         properties:
-          tenant_id: { type: string }
-          source_id: { type: string }
+          insight_tenant_id: { type: string }
+          insight_source_id: { type: string }
           unique_key: { type: string }
           collected_at: { type: string }
           data_source: { type: string }
@@ -250,7 +250,7 @@ spec:
         type: string
         minLength: 1
         title: Insight Tenant ID
-        description: Tenant isolation identifier, injected as `tenant_id` on every record.
+        description: Tenant isolation identifier, injected as `insight_tenant_id` on every record.
         order: 0
       insight_source_id:
         type: string

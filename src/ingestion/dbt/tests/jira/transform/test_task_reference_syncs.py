@@ -160,8 +160,8 @@ def _stamp(records: Rows, *, source: str, tenant: str) -> Rows:
     return [
         {
             **record,
-            "source_id": source,
-            "tenant_id": tenant,
+            "insight_source_id": source,
+            "insight_tenant_id": tenant,
             "unique_key": str(record["unique_key"]).replace(SOURCE_ID, source).replace(TENANT_ID, tenant),
         }
         for record in records

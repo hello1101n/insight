@@ -21,6 +21,10 @@ models:
       of `full_name`, `email`, `is_active`, `role`, `recipient_id`, `uuid`
       changes for a given user.
     columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
       - name: unique_key
         tests:
           - not_null
@@ -29,6 +33,11 @@ models:
     description: >
       Field-level change log derived from the users snapshot. One row per
       changed field per version transition.
+    columns:
+      - name: insight_tenant_id
+        tests:
+          - not_null
+          - not_empty
 
   - name: zulip_proxy__identity_inputs
     description: >
@@ -47,9 +56,10 @@ models:
       (direct/group/channel) are NULL — the proxy only exposes aggregated
       totals per sender per bucket.
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null

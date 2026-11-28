@@ -15,20 +15,20 @@
 -- property carries its current status.
 WITH latest AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         argMax(objectType, _airbyte_extracted_at) AS object_type,
         argMax(name, _airbyte_extracted_at)       AS property_name,
         argMax(selection, _airbyte_extracted_at)  AS selection,
         argMax(archived, _airbyte_extracted_at)   AS archived
     FROM {{ source('bronze_hubspot', 'property_definitions') }}
-    GROUP BY tenant_id, source_id, unique_key
+    GROUP BY insight_tenant_id, insight_source_id, unique_key
 )
 
 SELECT
     selection AS problem,
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     object_type,
     property_name
 FROM latest

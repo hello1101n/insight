@@ -14,8 +14,8 @@
 -- cannot give. A reviewer who never acted stays a `requested` row.
 WITH projects AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         id AS project_id,
         COALESCE(namespace_full_path, '') AS project_key,
         COALESCE(path, '') AS repo_slug
@@ -24,8 +24,8 @@ WITH projects AS (
 
 requested AS (
     SELECT
-        mr.tenant_id AS tenant_id,
-        mr.source_id AS source_id,
+        {{ bronze_tenant('mr.insight_tenant_id') }} AS insight_tenant_id,
+        mr.insight_source_id AS insight_source_id,
         concat(mr.unique_key, ':reviewer:', toString(JSONExtractInt(reviewer, 'id'))) AS unique_key,
         mr.project_id AS project_id,
         COALESCE(mr.iid, 0) AS pr_id,
@@ -41,8 +41,8 @@ requested AS (
 
 verdicts AS (
     SELECT
-        n.tenant_id AS tenant_id,
-        n.source_id AS source_id,
+        {{ bronze_tenant('n.insight_tenant_id') }} AS insight_tenant_id,
+        n.insight_source_id AS insight_source_id,
         n.unique_key AS unique_key,
         n.project_id AS project_id,
         COALESCE(n.mr_iid, 0) AS pr_id,
@@ -73,8 +73,8 @@ reviews AS (
 )
 
 SELECT
-    r.tenant_id AS tenant_id,
-    r.source_id AS source_id,
+    r.insight_tenant_id AS insight_tenant_id,
+    r.insight_source_id AS insight_source_id,
     r.unique_key AS unique_key,
     p.project_key AS project_key,
     p.repo_slug AS repo_slug,
@@ -89,9 +89,9 @@ SELECT
     r._airbyte_extracted_at AS _airbyte_extracted_at
 FROM reviews AS r
 INNER JOIN projects AS p
-    ON p.tenant_id = r.tenant_id
-    AND p.source_id = r.source_id
+    ON p.insight_tenant_id = r.insight_tenant_id
+    AND p.insight_source_id = r.insight_source_id
     AND p.project_id = r.project_id
 {% if is_incremental() %}
-WHERE r._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['r.tenant_id', 'r.source_id']) }}
+WHERE r._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['r.insight_tenant_id', 'r.insight_source_id']) }}
 {% endif %}

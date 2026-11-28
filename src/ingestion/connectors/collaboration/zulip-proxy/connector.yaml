@@ -119,11 +119,11 @@ streams:
             type:
               - number
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type:
               - string
               - "null"
-          source_id:
+          insight_source_id:
             type:
               - string
               - "null"
@@ -137,11 +137,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path:
@@ -250,11 +250,11 @@ streams:
               - "null"
           created_at:
             type: string
-          tenant_id:
+          insight_tenant_id:
             type:
               - string
               - "null"
-          source_id:
+          insight_source_id:
             type:
               - string
               - "null"
@@ -269,11 +269,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
           - type: AddedFieldDefinition
             path:

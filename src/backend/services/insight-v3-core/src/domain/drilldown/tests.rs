@@ -522,9 +522,9 @@ fn a_plain_read_carries_record_keys_that_order_and_number_its_rows_but_stay_hidd
                 { "column": "lines", "type": "int", "as_name": "total" }
             ]
         }),
-        &["source_id", "commit_hash"],
+        &["insight_source_id", "commit_hash"],
     );
-    let source = carried_column("source_id");
+    let source = carried_column("insight_source_id");
     let hash = carried_column("commit_hash");
     assert_eq!(
         inner.hidden(),
@@ -590,12 +590,12 @@ fn a_grouped_read_carries_no_record_keys() {
             ],
             "group_by": ["day"]
         }),
-        &["source_id"],
+        &["insight_source_id"],
     );
 
     assert!(grouped.hidden().is_empty());
     assert!(
-        !grouped.sql().contains(&carried_column("source_id")),
+        !grouped.sql().contains(&carried_column("insight_source_id")),
         "{}",
         grouped.sql()
     );

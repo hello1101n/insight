@@ -51,49 +51,49 @@
 
 WITH workspace_accounts AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         lower(trimBoth(COALESCE(account_id, ''))) AS account_id,
         observed_in
     FROM (
-        SELECT tenant_id, source_id, author_account_id AS account_id,
+        SELECT insight_tenant_id, insight_source_id, author_account_id AS account_id,
                'bronze_bitbucket_cloud.pull_requests.author_account_id' AS observed_in
         FROM {{ source('bronze_bitbucket_cloud', 'pull_requests') }} FINAL
 
         UNION ALL
 
-        SELECT tenant_id, source_id, closed_by_account_id AS account_id,
+        SELECT insight_tenant_id, insight_source_id, closed_by_account_id AS account_id,
                'bronze_bitbucket_cloud.pull_requests.closed_by_account_id' AS observed_in
         FROM {{ source('bronze_bitbucket_cloud', 'pull_requests') }} FINAL
 
         UNION ALL
 
-        SELECT tenant_id, source_id, actor_account_id AS account_id,
+        SELECT insight_tenant_id, insight_source_id, actor_account_id AS account_id,
                'bronze_bitbucket_cloud.pull_request_activity.actor_account_id' AS observed_in
         FROM {{ source('bronze_bitbucket_cloud', 'pull_request_activity') }} FINAL
 
         UNION ALL
 
-        SELECT tenant_id, source_id, author_account_id AS account_id,
+        SELECT insight_tenant_id, insight_source_id, author_account_id AS account_id,
                'bronze_bitbucket_cloud.pull_request_commits.author_account_id' AS observed_in
         FROM {{ source('bronze_bitbucket_cloud', 'pull_request_commits') }} FINAL
 
         UNION ALL
 
-        SELECT tenant_id, source_id, account_id,
+        SELECT insight_tenant_id, insight_source_id, account_id,
                'bronze_bitbucket_cloud.workspace_members.account_id' AS observed_in
         FROM {{ source('bronze_bitbucket_cloud', 'workspace_members') }} FINAL
     )
     WHERE COALESCE(account_id, '') != ''
     -- One row per account; the first column to name it is its provenance.
-    ORDER BY tenant_id, source_id, account_id, observed_in
-    LIMIT 1 BY tenant_id, source_id, account_id
+    ORDER BY insight_tenant_id, insight_source_id, account_id, observed_in
+    LIMIT 1 BY insight_tenant_id, insight_source_id, account_id
 ),
 
 observations AS (
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'bitbucket' AS insight_source_type,
         account_id AS source_account_id,
         'id' AS value_type,
@@ -106,8 +106,8 @@ observations AS (
     UNION ALL
 
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'bitbucket' AS insight_source_type,
         account_id AS source_account_id,
         'email' AS value_type,
@@ -126,8 +126,8 @@ observations AS (
     UNION ALL
 
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'bitbucket' AS insight_source_type,
         lower(trimBoth(COALESCE(account_id, ''))) AS source_account_id,
         'display_name' AS value_type,
@@ -144,8 +144,8 @@ observations AS (
     -- The unowned e-mail claims itself, so the console has an account to show
     -- and a value to search on.
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'bitbucket-commit-email' AS insight_source_type,
         email AS source_account_id,
         'email' AS value_type,
@@ -161,8 +161,8 @@ observations AS (
     -- rather than deciding on an e-mail alone. The persons-seed also names the
     -- person it mints from this.
     SELECT
-        toUUID(UUIDNumToString(sipHash128(coalesce(tenant_id, '')))) AS insight_tenant_id,
-        toUUID(UUIDNumToString(sipHash128(coalesce(source_id, '')))) AS insight_source_id,
+        {{ tenant_uuid('insight_tenant_id') }} AS insight_tenant_id,
+        toUUID(UUIDNumToString(sipHash128(coalesce(insight_source_id, '')))) AS insight_source_id,
         'bitbucket-commit-email' AS insight_source_type,
         email AS source_account_id,
         'display_name' AS value_type,
