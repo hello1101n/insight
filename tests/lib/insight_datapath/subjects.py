@@ -29,6 +29,7 @@ LOG = logging.getLogger("datapath.subjects")
 #: persons-seed's own exit codes.
 _ANOTHER_RUN_HOLDS_THE_LOCK = 2
 _REFUSED_BY_AN_INPUT_GUARD = 3
+_REFUSED_BY_THE_TENANT_GUARD = 4
 
 
 class SubjectError(RuntimeError):
@@ -55,21 +56,29 @@ class Subjects:
         project: str,
         env_file: Path,
         tenant_id: str,
+        new_tenant: bool = False,
     ) -> None:
         self.cfg = cfg
         self.repo_root = repo_root
         self.project = project
         self.env_file = env_file
         self.tenant_id = tenant_id
+        self.new_tenant = new_tenant
 
     def for_tenant(self, tenant_id: str) -> Subjects:
-        """The same instance's people, minted and read under another tenant."""
+        """The same instance's people, minted and read under another tenant.
+
+        Its first seed meets a `persons` log holding only the stand's own tenant,
+        which the tenant guard refuses; an operator onboards a new tenant with
+        `--force`, and so does this.
+        """
         return Subjects(
             self.cfg,
             repo_root=self.repo_root,
             project=self.project,
             env_file=self.env_file,
             tenant_id=tenant_id,
+            new_tenant=True,
         )
 
     def publish(self, *, timeout_s: float = 600.0) -> None:
@@ -98,6 +107,7 @@ class Subjects:
                     "-c",
                     "/app/config/insight.yaml",
                     "seed",
+                    *(["--force"] if self.new_tenant else []),
                 ],
                 cwd=self.repo_root,
                 env={**os.environ, "COMPOSE_PROJECT_NAME": self.project},
@@ -117,6 +127,7 @@ class Subjects:
         reason = {
             _ANOTHER_RUN_HOLDS_THE_LOCK: "another run holds the lock",
             _REFUSED_BY_AN_INPUT_GUARD: "an input guard refused the run",
+            _REFUSED_BY_THE_TENANT_GUARD: "the tenant guard refused the run",
         }.get(result.returncode, "the run failed")
         raise SubjectError(
             f"persons-seed exited {result.returncode}: {reason}\n"
