@@ -979,6 +979,9 @@ frontend:
     # toggled by the viewer's "Show planned sections" switch. A path in both
     # lists is hidden.
     planned: []
+  metricsView:
+    # INVARIANT: An empty list uses built-in defaults. URL and saved picks take precedence.
+    defaultMetrics: []
 connectors:
   runHistory:
     runsPerInstance: 100

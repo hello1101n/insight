@@ -174,6 +174,9 @@ sources:
       - key: pr_comment
         evidence_granularity: event
         evidence_presentation: *review_row
+      - key: pr_comment_on_others
+        evidence_granularity: event
+        evidence_presentation: *review_row
       - key: default_commit_count
         evidence_granularity: event
         evidence_presentation: *commit_row
@@ -2070,6 +2073,28 @@ metrics:
         measure_key: pr_comment
     dimensions:
       - comment_target
+      - project
+      - repository
+      - source
+  - metric_key: git.pr_comments_on_others
+    source_key: git
+    subject: pull_requests
+    tags:
+      - review
+    label: PR comments on others' PRs
+    short_label: Comments on others
+    description: Comments written on other people's pull requests
+    explanation: Comments the person wrote on pull requests that other people opened — conversation and inline review comments alike — dated by posting. A comment whose request author cannot be determined counts here, so the value equals the others half of PR comments.
+    unit: comments
+    format: integer
+    direction: neutral
+    entity_type: person
+    computation: sum
+    peer_cohort_key: org_unit
+    inputs:
+      - input_role: value
+        measure_key: pr_comment_on_others
+    dimensions:
       - project
       - repository
       - source

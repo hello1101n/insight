@@ -672,6 +672,7 @@ models:
                   - pr_approval_to_merge_hours
                   - review_submitted
                   - pr_comment
+                  - pr_comment_on_others
                   - default_commit_count
                   - non_default_commit_count
                   - default_code_lines_added

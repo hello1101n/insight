@@ -480,10 +480,6 @@
   "error_boundary": {
     "title": "Something went wrong"
   },
-  "mock_banner": {
-    "title": "Synthetic data",
-    "description_html": "UI is rendering using mock data."
-  },
   "view_as_banner": {
     "title": "Viewing as {{email}}",
     "description": "You are signed in as {{impersonator}} and seeing the portal as this person.",
@@ -1212,7 +1208,12 @@
     "clear_all": "Clear all",
     "comparing": "Comparing {{count}} people",
     "people_count": "{{count}} people",
-    "exit_compare": "Exit compare"
+    "exit_compare": "Exit compare",
+    "lines": {
+      "label": "Lines",
+      "description": "Lines added and removed that reached the default branch",
+      "unit": "KLOC"
+    }
   },
   "dashboards": {
     "no_shared": "No shared dashboards",

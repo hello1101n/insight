@@ -53,7 +53,7 @@ To enable synthetic data for an offline / demo session, copy `.env.example` to `
 VITE_ENABLE_MOCKS=true
 ```
 
-A yellow warning strip renders at the top of the page whenever mocks are active so synthetic values cannot be mistaken for real ones. Set `VITE_HIDE_MOCK_BANNER=true` to hide the strip during screenshots — mocks remain active. Prod builds (`pnpm build`) drop the mock subtree entirely.
+Prod builds (`pnpm build`) drop the mock subtree entirely.
 
 Seeded mock people: `bob.park@example.com`, `carol.chen@example.com`, `alice.kim@example.com`, `frank.moss@example.com` (see [src/mocks/registry.ts](src/mocks/registry.ts)).
 
@@ -103,7 +103,6 @@ src/
     widgets/             #   Feature widgets (dashboard/, metric-views/, …)
     app-sidebar.tsx      #   Org-tree sidebar (recursive nav)
     theme-provider.tsx   #   Light/dark/system theme (localStorage-backed)
-    mock-banner.tsx      #   Warning strip when mocks are on
     app-error-boundary.tsx
     error-fallback.tsx
   hooks/                 # Shared hooks (use-period, use-mobile)
@@ -171,7 +170,6 @@ Build-time (Vite, `.env.local`):
 | Variable | Description |
 |---|---|
 | `VITE_ENABLE_MOCKS` | `"true"` to enable MSW (dev only; stripped from prod). |
-| `VITE_HIDE_MOCK_BANNER` | `"true"` to hide the warning strip while mocks are on (for screenshots). |
 | `VITE_API_PROXY_TARGET` | Dev-only `/api` proxy target (e.g. `http://localhost:8080`). |
 | `VITE_API_BASE` | Override analytics API base URL (default `/api/analytics/v1`). |
 | `VITE_CONNECTORS_BASE` | Override connector health, syncs and ingestion API base URL (default `/api/connectors/v1`). |

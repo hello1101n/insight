@@ -6,11 +6,13 @@ import {
   type PersonNaming,
 } from "@/lib/identities/person-display";
 import {
-  forEntity,
+  finiteValue,
   type NormalizedMetricResult,
 } from "@/lib/metrics/collection";
 import { normalizePersonId } from "@/lib/metrics/entity";
 import { byFamily, familyName, familyOf } from "@/lib/reports/families";
+import { combinedColumn, LINES_KEY } from "@/lib/portal/metrics-view-combined";
+import { runtimeConfig } from "@/lib/runtime-config";
 import type { IdentityPerson } from "@/types/insight";
 
 export interface MetricsRow {
@@ -28,6 +30,52 @@ export interface MetricGroup {
 }
 
 export type SortDirection = "ascending" | "descending";
+
+export const DEFAULT_METRIC_KEYS: readonly string[] = [
+  LINES_KEY,
+  "git.pr_size",
+  "git.default_branch_prs_merged",
+  "git.default_branch_merge_rate",
+  "git.pr_cycle_time_h",
+  "git.reviews_performed",
+  "git.pr_comments_on_others",
+  "ai.active_days",
+  "tasks.closed",
+];
+
+function standMetricKeys(): readonly string[] {
+  return runtimeConfig().metricsView?.defaultMetrics ?? [];
+}
+
+export function defaultMetricOrder(
+  standKeys: readonly string[] = standMetricKeys(),
+): readonly string[] {
+  return standKeys.length > 0 ? standKeys : DEFAULT_METRIC_KEYS;
+}
+
+export function defaultMetricKeys(
+  catalogKeys: readonly string[],
+  standKeys: readonly string[] = standMetricKeys(),
+): string[] {
+  const defaults = new Set(defaultMetricOrder(standKeys));
+  return catalogKeys.filter((key) => defaults.has(key));
+}
+
+export function orderMetricKeys(
+  keys: readonly string[],
+  order: readonly string[],
+): string[] {
+  const rank = new Map(order.map((key, index) => [key, index]));
+  const first = keys
+    .filter((key) => rank.has(key))
+    .sort((a, b) => rank.get(a)! - rank.get(b)!);
+  const byFamily = new Map<string, string[]>();
+  for (const key of [...first, ...keys.filter((key) => !rank.has(key))]) {
+    const family = familyOf(key);
+    byFamily.set(family, [...(byFamily.get(family) ?? []), key]);
+  }
+  return [...byFamily.values()].flat();
+}
 
 function servesData(metric: MetricDefinition): boolean {
   if (metric.schema_status === "error") return false;
@@ -57,22 +105,17 @@ export function chunkKeys(keys: readonly string[], size: number): string[][] {
   return chunks;
 }
 
-export function finiteValue(
-  result: NormalizedMetricResult,
-  entityId: string,
-): number | null {
-  const { value } = forEntity(result, entityId);
-  return value != null && Number.isFinite(value) ? value : null;
-}
-
 export function keysWithData(
   keys: readonly string[],
   byKey: ReadonlyMap<string, NormalizedMetricResult>,
   entityIds: readonly string[],
 ): string[] {
   return keys.filter((key) => {
-    const result = byKey.get(key);
-    return result != null && entityIds.some((id) => finiteValue(result, id) != null);
+    const sources = combinedColumn(key)?.parts.map((part) => part.metricKey) ?? [key];
+    return sources.some((source) => {
+      const result = byKey.get(source);
+      return result != null && entityIds.some((id) => finiteValue(result, id) != null);
+    });
   });
 }
 

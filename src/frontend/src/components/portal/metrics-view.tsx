@@ -1,4 +1,4 @@
-import { useMemo, useState, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { Columns3, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 
@@ -33,6 +33,9 @@ import { normalizePersonId } from "@/lib/metrics/entity";
 import { usePageTitle } from "@/lib/portal/document-title-frame";
 import {
   compareTeams,
+  defaultMetricKeys,
+  defaultMetricOrder,
+  orderMetricKeys,
   rolesById,
   keysWithData,
   metricGroups,
@@ -40,6 +43,12 @@ import {
   metricsViewCatalog,
   sortRows,
 } from "@/lib/portal/metrics-view";
+import {
+  requestedMetricKeys,
+  withCombinedColumns,
+  withCombinedResults,
+} from "@/lib/portal/metrics-view-combined";
+import { readStoredMetricsPick, storeMetricsPick } from "@/lib/portal/metrics-view-pick";
 import {
   setMetricsViewPaneShown,
   useMetricsViewPaneShown,
@@ -80,7 +89,9 @@ export function MetricsView() {
 
   const catalog = useMemo(
     () =>
-      metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      withCombinedColumns(
+        metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      ),
     [definitions.data, showPlanned],
   );
   const catalogKeys = useMemo(
@@ -97,22 +108,32 @@ export function MetricsView() {
 
   const { metrics: metricsParam, compare: compareParam } = usePortalSearch();
   const setSearch = useSetPortalSearch();
+  const [storedPick, setStoredPick] = useState(readStoredMetricsPick);
+  if (metricsParam != null && metricsParam !== storedPick) setStoredPick(metricsParam);
+  const pickParam = metricsParam ?? storedPick;
   const picked = useMemo(
-    () =>
-      metricsParam == null ? null : metricsParam === "none" ? [] : metricsParam.split(","),
-    [metricsParam],
+    () => (pickParam == null ? null : pickParam === "none" ? [] : pickParam.split(",")),
+    [pickParam],
   );
-  const setPicked = (next: string[] | null) =>
-    setSearch(
-      { metrics: next == null ? undefined : next.length === 0 ? "none" : next.join(",") },
-      { replace: true },
-    );
-  const selected = picked ?? catalogKeys;
+  useEffect(() => {
+    if (metricsParam != null) storeMetricsPick(metricsParam);
+  }, [metricsParam]);
+  const setPicked = (next: string[] | null) => {
+    const value = next == null ? null : next.length === 0 ? "none" : next.join(",");
+    setSearch({ metrics: value ?? undefined }, { replace: true });
+    storeMetricsPick(value);
+    setStoredPick(value);
+  };
+  const defaultKeys = useMemo(() => defaultMetricKeys(catalogKeys), [catalogKeys]);
+  const selected = picked ?? defaultKeys;
   const setSelected = (action: SetStateAction<string[]>) =>
     setPicked(typeof action === "function" ? action(selected) : action);
   const metricKeys = useMemo(() => {
     const chosen = new Set(selected);
-    return catalogKeys.filter((key) => chosen.has(key));
+    return orderMetricKeys(
+      catalogKeys.filter((key) => chosen.has(key)),
+      defaultMetricOrder(),
+    );
   }, [catalogKeys, selected]);
 
   const { pivot, roster } = orgScope;
@@ -137,7 +158,9 @@ export function MetricsView() {
     : [];
   usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
-  const data = useMetricsViewData(metricKeys, memberIds, dateRange);
+  const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
+  const data = useMetricsViewData(requestKeys, memberIds, dateRange);
+  const byKey = useMemo(() => withCombinedResults(data.byKey), [data.byKey]);
 
   const gate = orgScopeGate({
     "data-testid": TEST_ID,
@@ -189,7 +212,7 @@ export function MetricsView() {
                 variant="ghost"
                 size="sm"
                 aria-label={t("metrics_view.select_all_metrics")}
-                onClick={() => setPicked(null)}
+                onClick={() => setPicked(catalogKeys)}
               >
                 {t("metrics_view.select_all")}
               </Button>
@@ -218,7 +241,7 @@ export function MetricsView() {
           people={people}
           members={members}
           metricKeys={metricKeys}
-          byKey={data.byKey}
+          byKey={byKey}
           loading={data.isPending}
           range={dateRange}
         />
