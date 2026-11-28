@@ -98,22 +98,27 @@ pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Resu
         .collect()
 }
 
-/// A tenant other than `tenant_id` that `persons` already holds, if any: the
-/// seed's wrong-tenant guard. One probe on `idx_tenant_person`.
+/// A tenant `persons` holds while it holds nothing under `tenant_id`, if any:
+/// the seed's wrong-tenant guard. Other tenants beside `tenant_id` are not
+/// reported. Two probes on `idx_tenant_person`.
 ///
 /// # Errors
 ///
 /// Returns an error if the query fails.
-pub async fn other_tenant(
+pub async fn other_tenant_only(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> anyhow::Result<Option<Uuid>> {
-    const SQL: &str = "SELECT insight_tenant_id FROM persons WHERE insight_tenant_id <> ? LIMIT 1";
+    const SQL: &str = "SELECT insight_tenant_id FROM persons WHERE insight_tenant_id <> ? \
+                       AND NOT EXISTS (SELECT 1 FROM persons WHERE insight_tenant_id = ?) LIMIT 1";
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::MySql,
             SQL,
-            [tenant_id.as_bytes().to_vec().into()],
+            [
+                tenant_id.as_bytes().to_vec().into(),
+                tenant_id.as_bytes().to_vec().into(),
+            ],
         ))
         .await?;
     row.map(|r| {

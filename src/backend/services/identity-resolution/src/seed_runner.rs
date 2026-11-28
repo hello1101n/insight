@@ -181,8 +181,8 @@ async fn guarded_seed(
     }
 
     let run = async {
-        let other = seed_repo::other_tenant(db, tenant).await?;
-        if let Err(msg) = tenant_guard(tenant, other) {
+        let other = seed_repo::other_tenant_only(db, tenant).await?;
+        if let Err(msg) = tenant_guard(tenant, other, force) {
             return Err(SeedRunError::WrongTenant(msg));
         }
 
@@ -240,17 +240,19 @@ pub(crate) fn resolve_tenant(
     }
 }
 
-/// An install has one tenant: `persons` holding any other means the configured
-/// tenant is wrong, and the append-only log could not undo the seed's writes.
-/// A fresh install (empty `persons`) passes; `--force` does not override it.
-fn tenant_guard(tenant: Uuid, other: Option<Uuid>) -> Result<(), String> {
+/// `persons` holding other tenants but none under the configured one means the
+/// configured tenant is likely wrong, and the append-only log could not undo
+/// the seed's writes. Other tenants beside the configured one pass, and so does
+/// a fresh install (empty `persons`). `--force` seeds a new tenant anyway.
+fn tenant_guard(tenant: Uuid, other: Option<Uuid>, force: bool) -> Result<(), String> {
     match other {
-        None => Ok(()),
-        Some(other) => Err(format!(
-            "tenant guard: persons already holds tenant {other}, not only the configured tenant \
+        Some(other) if !force => Err(format!(
+            "tenant guard: persons holds tenant {other} and none under the configured tenant \
              {tenant} — seeding would write a parallel person set into the append-only log; \
-             set authenticator.oidc.defaultTenantId to the install's tenant"
+             set authenticator.oidc.defaultTenantId to the install's tenant, or re-run with \
+             --force to seed a new tenant"
         )),
+        _ => Ok(()),
     }
 }
 
@@ -294,10 +296,10 @@ mod tests {
     }
 
     #[test]
-    fn another_tenant_in_persons_is_refused_and_named() -> anyhow::Result<()> {
+    fn only_another_tenant_in_persons_is_refused_and_named() -> anyhow::Result<()> {
         let other = Uuid::from_u128(1);
-        let Err(err) = tenant_guard(tenant(), Some(other)) else {
-            anyhow::bail!("another tenant in persons must be refused");
+        let Err(err) = tenant_guard(tenant(), Some(other), false) else {
+            anyhow::bail!("persons holding only another tenant must be refused");
         };
         assert!(err.starts_with("tenant guard"), "{err}");
         assert!(err.contains(&other.to_string()), "{err}");
@@ -306,8 +308,13 @@ mod tests {
     }
 
     #[test]
-    fn persons_empty_or_only_under_the_tenant_passes() {
-        assert!(tenant_guard(tenant(), None).is_ok());
+    fn persons_without_a_foreign_only_tenant_passes() {
+        assert!(tenant_guard(tenant(), None, false).is_ok());
+    }
+
+    #[test]
+    fn force_seeds_a_new_tenant_beside_others() {
+        assert!(tenant_guard(tenant(), Some(Uuid::from_u128(1)), true).is_ok());
     }
 
     #[tokio::test]
