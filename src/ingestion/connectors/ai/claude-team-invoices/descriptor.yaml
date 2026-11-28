@@ -12,7 +12,7 @@ name: claude-team-invoices
 # 1.2.0: every stream stamps its source as `insight_source_id`, not `source_id`.
 # MINOR per ADR-0015: reconcile republishes the connector and refreshes the
 # catalog, and `tenant_migration` renames the column of stored Bronze first.
-version: "1.2.0"
+version: "1.3.0"
 type: cdk
 schedule: "0 4 * * *" # daily at 04:00 UTC — invoices are monthly; a daily pass keeps a new one within a day
 workflow: sync
@@ -24,7 +24,7 @@ images:
     name: source-claude-team-invoices-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-claude-team-invoices-insight:2026.11.20.13.24-f15a8f6"
+    image: "ghcr.io/hello1101n/source-claude-team-invoices-insight:2026.11.28.15.43-4007598"
 dbt_select: "tag:claude-team-invoices+"
 connection:
   # Its own namespace, though it is the same vendor through the same proxy: dbt

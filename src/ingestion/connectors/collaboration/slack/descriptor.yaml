@@ -22,7 +22,7 @@ name: slack
 #   extract they already built, so a gap of more than 3 days heals (#4323,
 #   #4317). MAJOR so reconcile runs the one-shot `dbt --full-refresh` that
 #   removes the stored duplicate keys and creates the new table engine.
-version: "2029.4.0"
+version: "2029.5.0"
 type: cdk
 schedule: 0 4 * * *
 # images.cdk.image stays empty until the first main build of build-images.yml,
@@ -32,7 +32,7 @@ images:
     name: source-slack-insight
     dockerfile: ./Dockerfile
     context: .
-    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.20.13.24-f15a8f6"
+    image: "ghcr.io/hello1101n/source-slack-insight:2026.11.28.15.43-4007598"
 dbt_select: tag:slack+
 workflow: sync
 connection:

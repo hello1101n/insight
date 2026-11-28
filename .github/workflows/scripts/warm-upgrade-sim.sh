@@ -135,8 +135,8 @@ create_connector_bronze() {
 # excluded. A tree from before #3834 built gold alone over a snapshot-created
 # silver; its own build-gold.sh still plays that.
 build_graph() {
-  local tree="$1" venv="$2" label="$3"
-  shift 3
+  local tree="$1" venv="$2" label="$3" vars="$4"
+  shift 4
   local profiles="$WORKDIR/profiles-$label" target="$WORKDIR/dbt-$label"
   local path="$venv/bin:$PATH" project="$tree/src/ingestion/dbt" unbuildable excluded=()
   if ! syncs_the_buildable_graph "$tree"; then
@@ -147,11 +147,12 @@ build_graph() {
   PATH="$path" python3 "$tree/src/ingestion/scripts/dbt_profiles.py" --target migrate \
     --profiles-dir "$profiles" --correlated-subqueries
   unbuildable="$(cd "$project" && PATH="$path" dbt --quiet run-operation list_unbuildable_models \
-    --profiles-dir "$profiles" --target-path "$target" --log-path "$target/logs")"
+    --profiles-dir "$profiles" --target-path "$target" --log-path "$target/logs" --vars "$vars")"
   read -r -a excluded <<< "$unbuildable"
   echo "=== dbt run over the buildable graph, excluding ${#excluded[@]} unbuildable model(s) ==="
   (cd "$project" && PATH="$path" dbt --no-use-colors run --profiles-dir "$profiles" \
-    --target-path "$target" --log-path "$target/logs" ${excluded[@]+--exclude "${excluded[@]}"} "$@")
+    --target-path "$target" --log-path "$target/logs" --vars "$vars" \
+    ${excluded[@]+--exclude "${excluded[@]}"} "$@")
 }
 
 echo "=== Step 1: install base $(git -C "$REPO_ROOT" rev-parse --short "$BASE_SHA") (warm state) ==="
@@ -177,8 +178,10 @@ echo "=== The base names its tenant column ${WARM_TENANT_COLUMN} and its source 
 # A base tree from before #3561 built gold inside the hook above; a later one
 # leaves it to the sync. Either way the warm state needs the base's silver and
 # gold, built under the base contract.
+# The connectors' bronze is empty here, and a base with `bronze_gap` leaves out every
+# never-built model over empty bronze; a synced installation's bronze holds rows.
 if [[ -f "$WORKDIR/src/ingestion/scripts/build-gold.sh" ]] &&
-    ! build_graph "$WORKDIR" "$WORKDIR/base-venv" base; then
+    ! build_graph "$WORKDIR" "$WORKDIR/base-venv" base '{skip_empty_bronze: false}'; then
   echo "::error title=warm-upgrade base install failed::The BASE sync (${BASE_SHA}) — dbt run over its buildable graph, or build-gold.sh on an older tree — did not converge — not this PR's fault. Check whether the base tree's dbt project is broken on a fresh ClickHouse."
   exit 1
 fi
@@ -593,7 +596,7 @@ assert_youtrack_field_observation_tenants
 assert_worklog_snapshot_type_narrowed
 
 echo "=== Step 3: the first sync after the upgrade — this tree's buildable graph over the warm warehouse ==="
-if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch ${REFRESH[@]+"${REFRESH[@]}"}; then
+if ! build_graph "$REPO_ROOT" "$WORKDIR/branch-venv" branch '{}' ${REFRESH[@]+"${REFRESH[@]}"}; then
   echo "::error title=first sync after the upgrade fails — forgotten heal::A model reads a bronze/silver/staging column this branch adds but no heal widens an existing relation with, so the first connector sync after this release fails on every installation that already holds data. Ship the companion ALTER — a ch_table_exists-guarded heal in src/ingestion/scripts/apply-ch-migrations.sh, for silver.class_* as for staging.* — per the Warehouse contract changes rules in AGENTS.md."
   exit 1
 fi

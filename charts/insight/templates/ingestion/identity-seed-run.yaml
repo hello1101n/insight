@@ -16,7 +16,8 @@ from the umbrella's `.Chart.AppVersion` yields one no build ever pushed.
 # sync just landed, and publish them (the `seed` subcommand publishes as its
 # own final step). Runs in every connector pipeline. `--guard-ok` keeps an
 # empty `identity_inputs` from failing a build; the tenant guard still fails
-# it (exit 4) when `persons` holds another tenant. Deliberately NO `--busy-ok`:
+# it (exit 4) when `persons` holds other tenants and none under this one.
+# Deliberately NO `--busy-ok`:
 # a busy seed lock is a holder that read `identity_inputs` before this
 # connector's rows landed, so giving up would let gold build over identities
 # this sync just ingested. The seed waits for the lock in-binary; a wait that
