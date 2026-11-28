@@ -22,6 +22,19 @@ function renderPanel(weeks: TeamTimeWeeks = 2) {
 }
 
 describe("MetricsChangeDatePanel", () => {
+  it("brings the calendar back to the last month with a free day when a longer window moves it", async () => {
+    const props = { change: "2026-10-10", onChange: vi.fn(), onWeeks: vi.fn() };
+    const { rerender } = render(
+      <MetricsChangeDatePanel {...props} weeks={1} latest="2026-11-21" />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /next month/i }));
+    expect(screen.getByText("November 2026")).toBeInTheDocument();
+
+    rerender(<MetricsChangeDatePanel {...props} weeks={4} latest="2026-10-31" />);
+
+    expect(screen.getByText("October 2026")).toBeInTheDocument();
+  });
+
   it("names the change date and opens the calendar on its month, with the date marked", () => {
     renderPanel();
 
