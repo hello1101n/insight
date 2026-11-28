@@ -167,6 +167,44 @@ def test_comments_on_others_prs_are_the_others_half(spec: SpecRun) -> None:
     ).equals(value=1)
 
 
+def test_comments_on_others_prs_across_views(spec: SpecRun) -> None:
+    """alice's 1 across the remaining views; every peer has one comment on
+    someone else's request, so the pool is flat at 1, n 5."""
+    r = spec.call(
+        {
+            "url": "/v1/metric-results",
+            "method": "POST",
+            "body": {
+                "entity": {"type": "person", "ids": [ALICE]},
+                "period": {"from": "2026-10-01", "to": "2026-10-02"},
+                "metrics": [
+                    {
+                        "metric_key": "git.pr_comments_on_others",
+                        "views": [
+                            {"view": "peer"},
+                            {"view": "timeseries", "bucket": "day"},
+                            {"view": "breakdown", "dimensions": ["source"]},
+                        ],
+                    }
+                ],
+            },
+        }
+    )
+    assert r.status == 200
+    r.row("git.pr_comments_on_others", "peer", entity_id=ALICE).equals(
+        target_value=1, p25=1, median=1, p75=1, min=1, max=1, n=5
+    )
+    r.row("git.pr_comments_on_others", "timeseries", entity_id=ALICE).contains(
+        points={"bucket_start": "2026-10-01", "value": 1}
+    )
+    r.row(
+        "git.pr_comments_on_others",
+        "breakdown",
+        entity_id=ALICE,
+        dimensions={"key": "source", "value": "github"},
+    ).equals(value=1)
+
+
 def test_comment_on_a_request_whose_author_is_unknown_counts_on_others_prs(
     spec: SpecRun,
 ) -> None:
