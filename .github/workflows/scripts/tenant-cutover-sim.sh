@@ -293,7 +293,7 @@ backups="$(query "SELECT count() FROM system.tables WHERE endsWith(name, '__tena
 
 echo "=== Step 5: clickhouse-migrate, then the post-upgrade rebuild ==="
 bash "$SCRIPTS/apply-ch-migrations.sh"
-[[ "$(map_views)" == "" ]] \
+[[ "$(map_views)" != *:0* ]] \
   || fail "the deploy must drop identity map views without a tenant column, so analytics answers not-ready until the rebuild recreates them — got '$(map_views)'"
 
 # Gold is left out: its views read the evidence of every connector class, and
