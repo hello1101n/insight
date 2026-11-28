@@ -1,4 +1,4 @@
-"""Builders for the bronze inputs the Jira field-history chain reads.
+"""Builders for the bronze inputs the Jira staging chain reads.
 
 A test declares only what it is about: the field's catalogue row, the issue's
 current JSON, changelog items, and optional census sightings. Everything Airbyte adds — raw ids,
@@ -17,6 +17,7 @@ from typing import Any
 
 SOURCE_ID = "jira-transform-test"
 TENANT_ID = "11111111-1111-1111-1111-111111111111"
+OTHER_TENANT = "22222222-2222-2222-2222-222222222222"
 
 # Every fixture issue is created at this instant, so a synthetic_initial row's
 # expected `event_at` is one constant rather than a per-test literal.
@@ -41,6 +42,13 @@ def _airbyte(extracted_at: str) -> dict[str, Any]:
     }
 
 
+def as_other_tenant(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The same ids under the other tenant, keyed the way its connector would key them."""
+    return [
+        {**r, "insight_tenant_id": OTHER_TENANT, "unique_key": f"{OTHER_TENANT}-{r['unique_key']}"} for r in records
+    ]
+
+
 def field(
     field_id: str,
     *,
@@ -57,8 +65,8 @@ def field(
         "key": field_id,
         "name": name or field_id,
         "custom": schema_custom != "",
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{field_id}",
         "field_id": field_id,
         "schema_type": schema_type,
@@ -96,8 +104,8 @@ def issue(
         **_airbyte(extracted_at),
         "id": jira_id or key,
         "key": key,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{key}",
         "jira_id": jira_id or key,
         "id_readable": key,
@@ -116,8 +124,8 @@ def census_entry(key: str, *, jira_id: str, extracted_at: str = OBSERVED_AT) -> 
     return {
         **_airbyte(extracted_at),
         "id": jira_id,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{jira_id}",
         "jira_id": jira_id,
         "id_readable": key,
@@ -130,8 +138,8 @@ def user(account_id: str, *, email: str | None, extracted_at: str = OBSERVED_AT)
     """One account as /users/search returned it; `email` is None when Jira hides it."""
     return {
         **_airbyte(extracted_at),
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{account_id}",
         "account_id": account_id,
         "email": email,
@@ -148,8 +156,8 @@ def status(status_id: str, *, name: str, category_key: str, extracted_at: str = 
         **_airbyte(extracted_at),
         "id": status_id,
         "name": name,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-status-{status_id}",
         "status_id": int(status_id),
         "category_key": category_key,
@@ -164,8 +172,8 @@ def project_visibility(
         **_airbyte(extracted_at),
         "id": project_id,
         "key": key,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{TENANT_ID}-{SOURCE_ID}-{project_id}",
         "project_id": project_id,
         "project_key": key,
@@ -211,8 +219,8 @@ def event(
     return {
         **_airbyte(extracted_at),
         "id": str(changelog_id),
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-{changelog_id}",
         "id_readable": key,
         "jira_id": key if jira_id == "" else jira_id,
@@ -224,21 +232,54 @@ def event(
     }
 
 
+def comment(
+    key: str,
+    comment_id: int,
+    *,
+    jira_id: str,
+    updated: str,
+    author: str = "author-acct",
+    extracted_at: str = OBSERVED_AT,
+) -> dict[str, Any]:
+    """One comment of an issue, as the comment stream lands it; `updated` dates its lifecycle event."""
+    return {
+        **_airbyte(extracted_at),
+        "id": str(comment_id),
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
+        "unique_key": f"{SOURCE_ID}-comment-{comment_id}",
+        "comment_id": comment_id,
+        "jira_id": jira_id,
+        "id_readable": key,
+        "author_account_id": author,
+        "body": f"comment {comment_id}",
+        "created": updated,
+        "updated": updated,
+        "collected_at": extracted_at,
+    }
+
+
 def worklog(
-    worklog_id: int, *, jira_id: str, key: str, started: str = CREATED_AT, extracted_at: str = OBSERVED_AT
+    worklog_id: int,
+    *,
+    jira_id: str,
+    key: str,
+    started: str = CREATED_AT,
+    author: str = "author-acct",
+    extracted_at: str = OBSERVED_AT,
 ) -> dict[str, Any]:
     """One worklog entry on an issue; the feed is instance-wide and keyed by the issue id."""
     return {
         **_airbyte(extracted_at),
         "id": str(worklog_id),
         "issueId": jira_id,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-worklog-{worklog_id}",
         "worklog_id": worklog_id,
         "id_readable": key,
         "jira_id": jira_id,
-        "author_account_id": "author-acct",
+        "author_account_id": author,
         "started": started,
         "created": started,
         "updated": started,
@@ -253,8 +294,8 @@ def worklog_tombstone(worklog_id: int, *, deleted_at_ms: int, extracted_at: str 
         **_airbyte(extracted_at),
         "worklogId": worklog_id,
         "updatedTime": deleted_at_ms,
-        "tenant_id": TENANT_ID,
-        "source_id": SOURCE_ID,
+        "insight_tenant_id": TENANT_ID,
+        "insight_source_id": SOURCE_ID,
         "unique_key": f"{SOURCE_ID}-worklog-deleted-{worklog_id}",
         "worklog_id": worklog_id,
         "deleted_at_ms": deleted_at_ms,

@@ -19,7 +19,7 @@ use crate::domain::metric_crud::{
     normalize_observation_sql, replace_custom_metric, validate_graph,
 };
 
-const OBSERVATION_CONTRACT_COLUMNS: &str = "tenant_id, source_key, entity_type, entity_id, \
+const OBSERVATION_CONTRACT_COLUMNS: &str = "insight_tenant_id, source_key, entity_type, entity_id, \
     metric_date, measure_key, observed_at, value, subject_key, dimensions";
 
 const PROBE_MAX_EXECUTION_SECS: u32 = 5;
@@ -267,11 +267,11 @@ mod probe_live_tests {
     ) -> Result<String, insight_clickhouse::Error> {
         let table = format!("probe_live_{}", Uuid::now_v7().simple());
         ch.query(&format!(
-            "CREATE TABLE {table} (tenant_id UUID, source_key String, entity_type String, \
+            "CREATE TABLE {table} (insight_tenant_id UUID, source_key String, entity_type String, \
              entity_id UUID, metric_date Date, measure_key String, observed_at DateTime64(3), \
              value Float64, subject_key Nullable(String), \
              dimensions Array(Tuple(key String, value String, label Nullable(String)))) \
-             ENGINE = MergeTree ORDER BY (tenant_id, metric_date)"
+             ENGINE = MergeTree ORDER BY (insight_tenant_id, metric_date)"
         ))
         .execute()
         .await?;
@@ -317,7 +317,7 @@ mod probe_live_tests {
             return Ok(());
         };
 
-        let result = probe_observation_sql(&ch, "SELECT 1 AS tenant_id").await;
+        let result = probe_observation_sql(&ch, "SELECT 1 AS insight_tenant_id").await;
 
         anyhow::ensure!(
             result.is_err(),

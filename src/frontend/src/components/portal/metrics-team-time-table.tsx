@@ -12,6 +12,11 @@ import {
   directionNote,
   formatViewValue,
 } from "@/lib/portal/metrics-view";
+import {
+  combinedColumn,
+  combinedFigureBy,
+  type CombinedColumn,
+} from "@/lib/portal/metrics-view-combined";
 import { cn } from "@/lib/utils";
 
 const HEAD_CELL = "sticky top-0 z-10 border-b bg-muted px-3 py-2 text-start font-medium";
@@ -57,9 +62,19 @@ export function MetricsTeamTimeTable({
             const result = afterResult ?? beforeResult;
             if (!result) return [];
 
+            const column = combinedColumn(key);
             const afterValue = afterResult ? teamSum(afterResult, memberIds) : null;
             const beforeValue = beforeResult ? teamSum(beforeResult, memberIds) : null;
-            const change = compareOverTime(afterValue, beforeValue, result);
+            const change = column ? null : compareOverTime(afterValue, beforeValue, result);
+            const total = (
+              value: number | null,
+              byKey: ReadonlyMap<string, NormalizedMetricResult>,
+            ) =>
+              column ? (
+                <CombinedTotal column={column} byKey={byKey} memberIds={memberIds} />
+              ) : (
+                <TeamValue value={value} result={result} />
+              );
 
             return [
               <tr key={key} className="hover:bg-muted/50">
@@ -68,7 +83,7 @@ export function MetricsTeamTimeTable({
                   <MetricNote result={result} />
                 </th>
                 <td className={BODY_CELL}>
-                  <TeamValue value={afterValue} result={result} />
+                  {total(afterValue, after)}
                   {change ? (
                     <>
                       {" "}
@@ -87,9 +102,7 @@ export function MetricsTeamTimeTable({
                     </>
                   ) : null}
                 </td>
-                <td className={BODY_CELL}>
-                  <TeamValue value={beforeValue} result={result} />
-                </td>
+                <td className={BODY_CELL}>{total(beforeValue, before)}</td>
               </tr>,
             ];
           })}
@@ -111,4 +124,18 @@ function MetricNote({ result }: { result: NormalizedMetricResult }) {
 function TeamValue({ value, result }: { value: number | null; result: NormalizedMetricResult }) {
   if (value == null) return <span className="text-muted-foreground">{NO_VALUE}</span>;
   return <>{formatViewValue(value, result)}</>;
+}
+
+function CombinedTotal({
+  column,
+  byKey,
+  memberIds,
+}: {
+  column: CombinedColumn;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  memberIds: readonly string[];
+}) {
+  const figure = combinedFigureBy(column, byKey, (part) => teamSum(part, memberIds));
+  if (figure == null) return <span className="text-muted-foreground">{NO_VALUE}</span>;
+  return <>{`${figure} ${column.unit}`}</>;
 }

@@ -2,12 +2,19 @@ import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
 
+import { evidenceSelection } from "@/api/metric-drilldown-client";
+import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
 import { useOpenRecords } from "@/components/portal/use-open-records";
+import { formatRange } from "@/lib/date-range-label";
 import { formatMetricFigure, isClockDuration } from "@/lib/format";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import {
+  combinedColumn,
+  combinedParts,
+  type CombinedColumn,
+} from "@/lib/portal/metrics-view-combined";
 import {
   columnFormula,
-  finiteValue,
   formatViewValue,
   type MetricGroup,
   type MetricsRow,
@@ -182,8 +189,9 @@ export function MetricsTable({
                     groupStarts.has(key) && "border-s",
                   )}
                 >
-                  <MetricValue
-                    result={byKey.get(key)}
+                  <MetricCell
+                    metricKey={key}
+                    byKey={byKey}
                     entityId={row.entityId}
                     personName={row.displayName}
                   />
@@ -229,6 +237,91 @@ export function MetricValue({
       className="cursor-pointer hover:text-primary hover:underline"
     >
       {text}
+    </button>
+  );
+}
+
+export function MetricCell({
+  metricKey,
+  byKey,
+  entityId,
+  personName,
+  withUnit = false,
+}: {
+  metricKey: string;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+  personName: string;
+  withUnit?: boolean;
+}) {
+  const column = combinedColumn(metricKey);
+  if (column) {
+    return (
+      <CombinedValue
+        column={column}
+        byKey={byKey}
+        entityId={entityId}
+        personName={personName}
+        withUnit={withUnit}
+      />
+    );
+  }
+  return (
+    <MetricValue
+      result={byKey.get(metricKey)}
+      entityId={entityId}
+      personName={personName}
+      withUnit={withUnit}
+    />
+  );
+}
+
+function CombinedValue({
+  column,
+  byKey,
+  entityId,
+  personName,
+  withUnit,
+}: {
+  column: CombinedColumn;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  entityId: string;
+  personName: string;
+  withUnit: boolean;
+}) {
+  const evidence = useMetricEvidenceOptional();
+  const parts = combinedParts(column, byKey, entityId);
+  if (!parts) return <span className="text-muted-foreground">—</span>;
+
+  const text = parts.map((part) => part.text).join(" / ");
+  const figure = `${text} ${column.unit}`;
+  const shown = withUnit ? figure : text;
+  const targets = parts.flatMap(({ result }) => {
+    const selection = result?.drilldown
+      ? evidenceSelection(result.selection, entityId)
+      : null;
+    return result && selection ? [{ selection, label: result.label }] : [];
+  });
+  const [first] = targets;
+  if (!evidence || !first) return <span>{shown}</span>;
+
+  return (
+    <button
+      type="button"
+      aria-label={`${personName} — ${column.label}: ${figure}`}
+      onClick={() =>
+        evidence.openEvidenceTargets(targets, {
+          title: [
+            column.label,
+            personName,
+            figure,
+            formatRange(first.selection.period.from, first.selection.period.to),
+          ].join(" · "),
+        })
+      }
+      className="-mx-1 cursor-pointer rounded-sm px-1 hover:bg-primary/10 hover:text-primary"
+    >
+      {shown}
     </button>
   );
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import { teamTimePeriods } from "@/lib/portal/metrics-team-time";
+import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view-combined";
 
 import { MetricsTeamTimeTable } from "./metrics-team-time-table";
 
@@ -191,5 +192,34 @@ describe("MetricsTeamTimeTable", () => {
 
     expect(cellsOf("Meeting hours")).toEqual(["2 h 05 min −7 h 55 min", "10 h"]);
     expect(cellsOf("Active person-days")).toEqual(["43 person-days +1 person-days", "42 person-days"]);
+  });
+
+  it("sums the team's lines added and removed apart in the Lines row, in KLOC, with no change", () => {
+    const lines = (added: Values, removed: Values) =>
+      withCombinedResults(
+        new Map([
+          [
+            "git.default_branch_lines_added",
+            metric("git.default_branch_lines_added", "Lines added", added, { unit: "lines" }),
+          ],
+          [
+            "git.default_branch_lines_removed",
+            metric("git.default_branch_lines_removed", "Lines removed", removed, { unit: "lines" }),
+          ],
+        ]),
+      );
+
+    render(
+      <MetricsTeamTimeTable
+        keys={[LINES_KEY]}
+        after={lines([["alex", 1500], ["jamie", 900]], [["alex", 200], ["jamie", null]])}
+        before={lines([["alex", 300]], [["alex", null]])}
+        memberIds={TEAM}
+        periods={PERIODS}
+      />,
+    );
+
+    expect(screen.getByRole("rowheader")).toHaveTextContent("Lines · Total");
+    expect(cellsOf("Lines")).toEqual(["+2.4 / −0.2 KLOC", "+0.3 / — KLOC"]);
   });
 });

@@ -49,7 +49,7 @@ fn client_or_skip() -> Option<insight_clickhouse::Client> {
 fn nullable_date_sql() -> String {
     format!(
         "SELECT \
-            '{TENANT}' AS tenant_id, \
+            '{TENANT}' AS insight_tenant_id, \
             'custom_repro' AS source_key, \
             'person' AS entity_type, \
             '{PERSON}' AS entity_id, \
@@ -66,7 +66,7 @@ fn nullable_date_sql() -> String {
 fn disjoint_groups_sql() -> String {
     let row = |repo: &str, day: &str, value: &str, measure: &str| {
         format!(
-            "SELECT                 '{TENANT}' AS tenant_id,                 'custom_repro' AS source_key,                 'person' AS entity_type,                 '{PERSON}' AS entity_id,                 CAST(toDate('{day}') AS Nullable(Date)) AS metric_date,                 '{measure}' AS measure_key,                 now() AS observed_at,                 toFloat64({value}) AS value,                 CAST(NULL AS Nullable(String)) AS subject_key,                 CAST([('repository', '{repo}', NULL)] AS Array(Tuple(key String, value String, label Nullable(String)))) AS dimensions"
+            "SELECT                 '{TENANT}' AS insight_tenant_id,                 'custom_repro' AS source_key,                 'person' AS entity_type,                 '{PERSON}' AS entity_id,                 CAST(toDate('{day}') AS Nullable(Date)) AS metric_date,                 '{measure}' AS measure_key,                 now() AS observed_at,                 toFloat64({value}) AS value,                 CAST(NULL AS Nullable(String)) AS subject_key,                 CAST([('repository', '{repo}', NULL)] AS Array(Tuple(key String, value String, label Nullable(String)))) AS dimensions"
         )
     };
     [
@@ -116,7 +116,6 @@ fn request() -> ValidatedMetricResultsRequest {
         to: NaiveDate::from_ymd_opt(2026, 8, 16).unwrap_or_default(),
         compare_to: None,
         metrics: Vec::new(),
-        enforce_tenant_scope: true,
     }
 }
 

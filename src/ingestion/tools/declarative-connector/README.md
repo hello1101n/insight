@@ -86,10 +86,10 @@ transformations:
   - type: AddFields
     fields:
       - type: AddedFieldDefinition          # MANDATORY — Builder will reject without it
-        path: [tenant_id]
+        path: [insight_tenant_id]
         value: "{{ config['insight_tenant_id'] }}"
       - type: AddedFieldDefinition
-        path: [source_id]
+        path: [insight_source_id]
         value: "{{ config['insight_source_id'] }}"
 ```
 

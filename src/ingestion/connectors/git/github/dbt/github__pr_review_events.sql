@@ -12,31 +12,31 @@
 -- pick is stable across syncs.
 WITH account_email AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         account_id,
         argMin(email, (email LIKE '%@users.noreply.github.com', observed_at, email)) AS email
     FROM {{ ref('github__account_emails') }}
-    GROUP BY tenant_id, source_id, account_id
+    GROUP BY insight_tenant_id, insight_source_id, account_id
 ),
 
 -- The conversation-comment endpoint is repo-wide and answers for plain issues
 -- as well, so only the numbers that name a pull request are kept.
 pull_request_numbers AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         repo_full_name,
         number,
         max(_airbyte_extracted_at) AS pull_request_extracted_at
     FROM {{ source('bronze_github', 'pull_requests') }} FINAL
-    GROUP BY tenant_id, source_id, repo_full_name, number
+    GROUP BY insight_tenant_id, insight_source_id, repo_full_name, number
 ),
 
 events AS (
     SELECT
-        r.tenant_id AS tenant_id,
-        r.source_id AS source_id,
+        {{ bronze_tenant('r.insight_tenant_id') }} AS insight_tenant_id,
+        r.insight_source_id AS insight_source_id,
         r.unique_key AS unique_key,
         splitByChar('/', COALESCE(r.repo_full_name, ''))[1] AS project_key,
         splitByChar('/', COALESCE(r.repo_full_name, ''))[2] AS repo_slug,
@@ -54,8 +54,8 @@ events AS (
     UNION ALL
 
     SELECT
-        c.tenant_id AS tenant_id,
-        c.source_id AS source_id,
+        {{ bronze_tenant('c.insight_tenant_id') }} AS insight_tenant_id,
+        c.insight_source_id AS insight_source_id,
         c.unique_key AS unique_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[1] AS project_key,
         splitByChar('/', COALESCE(c.repo_full_name, ''))[2] AS repo_slug,
@@ -74,16 +74,16 @@ events AS (
         greatest(c._airbyte_extracted_at, p.pull_request_extracted_at) AS _airbyte_extracted_at
     FROM {{ source('bronze_github', 'pull_request_comments') }} AS c FINAL
     INNER JOIN pull_request_numbers AS p
-        ON p.tenant_id = c.tenant_id
-        AND p.source_id = c.source_id
+        ON p.insight_tenant_id = {{ bronze_tenant('c.insight_tenant_id') }}
+        AND p.insight_source_id = c.insight_source_id
         AND p.repo_full_name = c.repo_full_name
         AND p.number = c.issue_number
 
     UNION ALL
 
     SELECT
-        rc.tenant_id AS tenant_id,
-        rc.source_id AS source_id,
+        {{ bronze_tenant('rc.insight_tenant_id') }} AS insight_tenant_id,
+        rc.insight_source_id AS insight_source_id,
         rc.unique_key AS unique_key,
         splitByChar('/', COALESCE(rc.repo_full_name, ''))[1] AS project_key,
         splitByChar('/', COALESCE(rc.repo_full_name, ''))[2] AS repo_slug,
@@ -100,8 +100,8 @@ events AS (
 )
 
 SELECT
-    e.tenant_id AS tenant_id,
-    e.source_id AS source_id,
+    e.insight_tenant_id AS insight_tenant_id,
+    e.insight_source_id AS insight_source_id,
     e.unique_key AS unique_key,
     e.project_key AS project_key,
     e.repo_slug AS repo_slug,
@@ -122,9 +122,9 @@ FROM events AS e
 -- re-trigger rows already staged; the address catches up when the event's own
 -- bronze row is re-extracted.
 LEFT JOIN account_email AS ae
-    ON ae.tenant_id = e.tenant_id
-    AND ae.source_id = e.source_id
+    ON ae.insight_tenant_id = e.insight_tenant_id
+    AND ae.insight_source_id = e.insight_source_id
     AND ae.account_id = e.actor_account_id
 {% if is_incremental() %}
-WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.tenant_id', 'e.source_id']) }}
+WHERE e._airbyte_extracted_at > {{ instance_incremental_watermark('_airbyte_extracted_at', ['e.insight_tenant_id', 'e.insight_source_id']) }}
 {% endif %}

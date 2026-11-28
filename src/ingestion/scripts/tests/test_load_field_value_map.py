@@ -28,7 +28,9 @@ from load_field_value_map import (
     deduplicate,
     defaults_insert_statement,
     insert_statement,
+    install_tenant,
     load_roles,
+    main,
     parse_bundle,
     parse_defaults,
     parse_roles,
@@ -37,10 +39,11 @@ from load_field_value_map import (
     read_task_config,
     roles_insert_statement,
     select_missing,
+    stamp,
     task_values_insert_statement,
 )
 
-HEADER = "tenant_id\tinsight_source_id\tdata_source\tfield\tsource_key\tdisplay_name\ttarget_value\tnote"
+HEADER = "insight_tenant_id\tinsight_source_id\tdata_source\tfield\tsource_key\tdisplay_name\ttarget_value\tnote"
 ROW = "zz-test\tsrc-1\tjira\tissue_type\tstory\tStory\ttask"
 OTHER_ROW = "zz-test\tsrc-1\tgithub\tissue_type\t10404\tDefect\tbug"
 DEFAULT_ROW = "zz-test\tsrc-1\tissue_type\ttask"
@@ -110,10 +113,10 @@ class TestParsing:
         [
             ("zz-test\tsrc-1\tjira\tissue_type\tstory\tStory", "expected 7-8 tab-separated columns, got 6"),
             (f"{ROW}\ta\tb", "expected 7-8 tab-separated columns, got 9"),
-            ("\tsrc-1\tjira\tissue_type\tstory\tStory\ttask", "the first 7 columns are all required"),
-            ("zz-test\tsrc-1\tjira\tissue_type\tstory\tStory\t", "the first 7 columns are all required"),
+            ("zz-test\t\tjira\tissue_type\tstory\tStory\ttask", "columns 2-7 are all required"),
+            ("zz-test\tsrc-1\tjira\tissue_type\tstory\tStory\t", "columns 2-7 are all required"),
         ],
-        ids=["too-few", "too-many", "blank-first", "blank-last-required"],
+        ids=["too-few", "too-many", "blank-source", "blank-last-required"],
     )
     def test_a_malformed_line_names_its_file_and_line(self, line, problem):
         with pytest.raises(MappingFileError) as error:
@@ -221,12 +224,12 @@ class TestInsertStatement:
         sql = insert_statement(parse(f"{ROW}\tnote text"), recorded_by="gitops")
         head, _, body = sql.partition("FORMAT TSV\n")
         assert head.startswith(
-            "INSERT INTO config.field_value_map (tenant_id, insight_source_id, data_source, "
+            "INSERT INTO config.field_value_map (insight_tenant_id, insight_source_id, data_source, "
             "field, source_key, valid_from, recorded_at, target_value, display_name, note, recorded_by) "
         )
         assert "field, source_key, toDateTime64(0, 3), now64(3), target_value, display_name" in head
         assert head.endswith(
-            "note, 'gitops' FROM input('tenant_id String, insight_source_id String, "
+            "note, 'gitops' FROM input('insight_tenant_id String, insight_source_id String, "
             "data_source String, field String, source_key String, display_name String, "
             "target_value String, note String') "
         )
@@ -260,7 +263,7 @@ class TestDefaultsParsing:
         [
             ("zz-test\tsrc-1\tissue_type", "expected 4 tab-separated columns, got 3"),
             (f"{DEFAULT_ROW}\textra", "expected 4 tab-separated columns, got 5"),
-            ("zz-test\tsrc-1\t\ttask", "all 4 columns are required"),
+            ("zz-test\tsrc-1\t\ttask", "columns 2-4 are all required"),
         ],
         ids=["too-few", "too-many", "blank-field"],
     )
@@ -312,11 +315,11 @@ class TestDefaultsInsertStatement:
         head, _, body = sql.partition("FORMAT TSV\n")
         assert head.startswith(
             "INSERT INTO config.field_value_defaults "
-            "(tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
+            "(insight_tenant_id, insight_source_id, field, valid_from, recorded_at, default_value, recorded_by) "
         )
         assert "toDateTime64(0, 3), now64(3)" in head
         assert head.endswith(
-            "'gitops' FROM input('tenant_id String, insight_source_id String, field String, default_value String') "
+            "'gitops' FROM input('insight_tenant_id String, insight_source_id String, field String, default_value String') "
         )
         assert body == "zz-test\tsrc-1\tissue_type\ttask\n"
 
@@ -572,7 +575,7 @@ class TestTaskConfig:
         ("line", "problem"),
         [
             (VALUE_ROW.replace("in_progress", "closed"), "canonical_value 'closed' is not one of"),
-            (VALUE_ROW.replace("In Progress", ""), "the first 7 columns are all required"),
+            (VALUE_ROW.replace("In Progress", ""), "columns 2-7 are all required"),
         ],
         ids=["category", "display"],
     )
@@ -616,3 +619,50 @@ class TestTaskConfig:
         assert "INSERT INTO config.task_value_map" in values_sql
         for sql in (roles_sql, values_sql):
             assert "toDateTime64(0, 3), now64(3)" in sql and "'gitops'" in sql
+
+
+TENANT = "0f6b3c2e-5d4a-4e7b-9c1d-2a3b4c5d6e7f"
+
+
+class TestInstallTenant:
+    @pytest.mark.parametrize("header", ["", HEADER + "\n", HEADER.replace("insight_tenant_id", "tenant_id", 1) + "\n"])
+    @pytest.mark.parametrize("first", ["zz-test", "", TENANT])
+    def test_every_row_is_stamped_with_the_install_tenant_whatever_the_first_column_says(self, header, first):
+        rows = parse(header + ROW.replace("zz-test", first, 1))
+
+        assert stamp(rows, TENANT) == [Mapping(TENANT, "src-1", "jira", "issue_type", "story", "Story", "task")]
+
+    def test_every_table_kind_is_stamped(self):
+        rows = [
+            *parse_default(DEFAULT_ROW),
+            *parse_roles([("roles.tsv", ROLE_ROW)]),
+            *parse_task_values([("task-values.tsv", VALUE_ROW)]),
+        ]
+
+        assert {row.tenant_id for row in stamp(rows, TENANT)} == {TENANT}
+
+    @pytest.mark.parametrize("value", [None, "", TENANT.upper(), "zz-test"])
+    def test_a_missing_or_malformed_tenant_is_refused(self, monkeypatch, value):
+        if value is None:
+            monkeypatch.delenv("INSIGHT_TENANT_ID", raising=False)
+        else:
+            monkeypatch.setenv("INSIGHT_TENANT_ID", value)
+
+        with pytest.raises(MappingFileError, match="INSIGHT_TENANT_ID"):
+            install_tenant()
+
+    def test_main_writes_the_install_tenant_and_refuses_without_one(self, monkeypatch, tmp_path):
+        (tmp_path / "jira.tsv").write_text(ROW + "\n")
+        monkeypatch.setenv("FIELD_VALUE_MAP_DIR", str(tmp_path))
+        sent: list[str] = []
+        monkeypatch.setattr(
+            "load_field_value_map._http_client",
+            lambda: (sent.append, lambda sql: [["1"]] if "system.tables" in sql else []),
+        )
+
+        monkeypatch.delenv("INSIGHT_TENANT_ID", raising=False)
+        assert main() == 1 and sent == []
+
+        monkeypatch.setenv("INSIGHT_TENANT_ID", TENANT)
+        assert main() == 0
+        assert len(sent) == 1 and TENANT in sent[0] and "zz-test" not in sent[0]

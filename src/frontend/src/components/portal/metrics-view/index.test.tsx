@@ -171,6 +171,44 @@ async function downloadCsv(user: ReturnType<typeof userEvent.setup>) {
   return { filename, lines: text.split("\r\n").map((line) => line.split(",")) };
 }
 
+function lineResult(key: string, label: string, values: Array<[string, number]>) {
+  return result(key, label, values, {
+    unit: "lines",
+    drilldown: { granularity: ["event"] },
+    selection: {
+      metric_key: key,
+      entity: { type: "person", ids: values.map(([id]) => id) },
+      period: { from: "2026-07-01", to: "2026-07-31" },
+      filters: [],
+    },
+  } as Partial<NormalizedMetricResult>);
+}
+
+function addLineMetrics(values: Array<[string, number, number]>) {
+  mocks.definitions.push(
+    definition("git.default_branch_lines_added", "Lines added", { unit: "lines" }),
+    definition("git.default_branch_lines_removed", "Lines removed", { unit: "lines" }),
+  );
+  mocks.data.byKey.set(
+    "git.default_branch_lines_added",
+    lineResult(
+      "git.default_branch_lines_added",
+      "Lines added",
+      values.map(([id, added]) => [id, added]),
+    ),
+  );
+  mocks.data.byKey.set(
+    "git.default_branch_lines_removed",
+    lineResult(
+      "git.default_branch_lines_removed",
+      "Lines removed",
+      values.map(([id, , removed]) => [id, removed]),
+    ),
+  );
+}
+
+const LINKED = "git.default_branch_commits,tasks.closed,collab.messages_sent";
+
 const rowHeaders = () =>
   within(screen.getByRole("table"))
     .getAllByRole("rowheader")
@@ -243,7 +281,7 @@ beforeEach(() => {
     portalRouter.set({
       scope: undefined,
       direct: false,
-      metrics: undefined,
+      metrics: LINKED,
       compare: undefined,
       team: undefined,
       change: undefined,
@@ -251,6 +289,8 @@ beforeEach(() => {
     });
     setMetricsViewPaneShown(false);
   });
+  delete window.__INSIGHT_CONFIG__;
+  window.localStorage.clear();
 });
 
 describe("MetricsView", () => {
@@ -344,6 +384,7 @@ describe("MetricsView", () => {
       "git.pr_size",
       result("git.pr_size", "PR size", [[pid("b"), 237]], { unit: "lines" }),
     );
+    act(() => portalRouter.set({ metrics: `${LINKED},git.pr_size` }));
     render(<MetricsView />);
 
     const header = screen.getByRole("columnheader", { name: /PR size/ });
@@ -362,6 +403,7 @@ describe("MetricsView", () => {
       "git.pr_cycle_time_h",
       result("git.pr_cycle_time_h", "Cycle time", [[pid("b"), 2.25]], { unit: "h", format: "decimal" }),
     );
+    act(() => portalRouter.set({ metrics: `${LINKED},git.pr_cycle_time_h` }));
     render(<MetricsView />);
 
     const rowOfB = screen
@@ -400,12 +442,15 @@ describe("MetricsView", () => {
     expect(mocks.refetchDefinitions).toHaveBeenCalled();
   });
 
-  it("asks for every person-level metric, in family order", () => {
+  it("asks for the linked person-level metrics, defaults first, then in family order", () => {
+    act(() =>
+      portalRouter.set({ metrics: "collab.messages_sent,tasks.closed,git.default_branch_commits" }),
+    );
     render(<MetricsView />);
 
     expect(mocks.requestedKeys).toEqual([
-      "git.default_branch_commits",
       "tasks.closed",
+      "git.default_branch_commits",
       "collab.messages_sent",
     ]);
   });
@@ -428,7 +473,7 @@ describe("MetricsView", () => {
 
     render(<MetricsView />);
 
-    expect(mocks.requestedKeys).toContain("custom.velocity");
+    expect(screen.getByRole("button", { name: "Metrics: 3 of 4" })).toBeInTheDocument();
   });
 
   it("leaves out the metrics of a person section this install plans", () => {
@@ -436,7 +481,7 @@ describe("MetricsView", () => {
 
     render(<MetricsView />);
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits"]);
   });
 
   it("drops a metric the reader unticks", async () => {
@@ -446,7 +491,7 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
     await user.click(screen.getByRole("checkbox", { name: "Messages" }));
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits"]);
     expect(screen.queryByRole("columnheader", { name: /Messages/ })).not.toBeInTheDocument();
   });
 
@@ -462,7 +507,7 @@ describe("MetricsView", () => {
 
     await user.click(screen.getByRole("button", { name: "Select all metrics" }));
 
-    expect(mocks.requestedKeys).toEqual(["git.default_branch_commits", "tasks.closed", "collab.messages_sent"]);
+    expect(mocks.requestedKeys).toEqual(["tasks.closed", "git.default_branch_commits", "collab.messages_sent"]);
   });
 
   it("counts the picked metrics in the picker's top bar", async () => {
@@ -485,7 +530,7 @@ describe("MetricsView", () => {
   });
 
   it("restores the default set when Reset to defaults is pressed", async () => {
-    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    act(() => portalRouter.set({ metrics: "collab.messages_sent" }));
     const user = userEvent.setup();
     render(<MetricsView />);
 
@@ -493,6 +538,8 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("button", { name: "Reset to defaults" }));
 
     expect(portalRouter.search.metrics).toBeUndefined();
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBeNull();
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
   });
 
   it("names every catalog metric in the link on Select all, apart from Reset to defaults", async () => {
@@ -643,6 +690,7 @@ describe("MetricsView", () => {
       }),
     );
     const user = userEvent.setup();
+    act(() => portalRouter.set({ metrics: `${LINKED},git.pr_cycle_time_h` }));
     render(<MetricsView />);
 
     await compare(user, ["a", "b"]);
@@ -751,6 +799,234 @@ describe("MetricsView", () => {
     await user.click(screen.getByRole("checkbox", { name: "Messages" }));
 
     expect(portalRouter.search).toMatchObject({ metrics: "git.default_branch_commits,tasks.closed" });
+  });
+
+  it("opens on the built-in default metrics when the link names none", () => {
+    mocks.definitions.push(definition("git.default_branch_merge_rate", "PR merge rate"));
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["git.default_branch_merge_rate", "tasks.closed"]);
+    expect(screen.getByRole("button", { name: "Metrics: 2 of 4" })).toBeInTheDocument();
+  });
+
+  it("shows the default metrics first in each family, under one header per family", () => {
+    mocks.definitions.push(definition("git.pr_size", "PR size"));
+    act(() => portalRouter.set({ metrics: `${LINKED},git.pr_size` }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "git.pr_size",
+      "git.default_branch_commits",
+      "tasks.closed",
+      "collab.messages_sent",
+    ]);
+    expect(screen.getAllByRole("columnheader", { name: "Development · Git" })).toHaveLength(1);
+  });
+
+  it("shows lines added and removed in one Lines column, in KLOC", () => {
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "git.default_branch_lines_added",
+      "git.default_branch_lines_removed",
+    ]);
+    expect(screen.getByRole("columnheader", { name: /Lines/ })).toHaveTextContent(
+      "LinesTotal · KLOC",
+    );
+    const rowOfB = screen
+      .getAllByRole("rowheader")
+      .find((cell) => cell.textContent === "b")!
+      .closest("tr")!;
+    expect(within(rowOfB).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "+1.5 / −0.2",
+    ]);
+  });
+
+  it("opens the records behind lines added and removed from the Lines column", async () => {
+    const openEvidenceTargets = vi.fn();
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(
+      <EvidenceDialogContext.Provider
+        value={{ openEvidence: vi.fn(), openEvidenceTargets, openEvidencePeople: vi.fn() }}
+      >
+        <MetricsView />
+      </EvidenceDialogContext.Provider>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "b — Lines: +1.5 / −0.2 KLOC" }));
+
+    expect(openEvidenceTargets).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          label: "Lines added",
+          selection: expect.objectContaining({
+            metric_key: "git.default_branch_lines_added",
+            entity: { type: "person", id: pid("b") },
+          }),
+        }),
+        expect.objectContaining({
+          label: "Lines removed",
+          selection: expect.objectContaining({
+            metric_key: "git.default_branch_lines_removed",
+            entity: { type: "person", id: pid("b") },
+          }),
+        }),
+      ],
+      { title: expect.stringMatching(/^Lines · b · \+1\.5 \/ −0\.2 KLOC · 1 Jul/) },
+    );
+  });
+
+  it("shows the Lines figure as one button, not one per part", () => {
+    addLineMetrics([[pid("b"), 1500, 200]]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(
+      <EvidenceDialogContext.Provider
+        value={{ openEvidence: vi.fn(), openEvidenceTargets: vi.fn(), openEvidencePeople: vi.fn() }}
+      >
+        <MetricsView />
+      </EvidenceDialogContext.Provider>,
+    );
+    const rowOfB = screen
+      .getAllByRole("rowheader")
+      .find((cell) => cell.textContent === "b")!
+      .closest("tr")!;
+
+    const [cell] = within(rowOfB).getAllByRole("cell");
+    expect(within(cell).getAllByRole("button")).toHaveLength(1);
+    expect(within(cell).getByRole("button")).toHaveTextContent("+1.5 / −0.2");
+  });
+
+  it("ranks people by lines added plus removed when Lines is sorted", async () => {
+    addLineMetrics([
+      [pid("a"), 100, 5000],
+      [pid("b"), 1500, 200],
+    ]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Lines" }));
+
+    expect(rowHeaders()).toEqual(["a", "b", "boss", "c"]);
+  });
+
+  it("shows each compared person's Lines figure with its unit, as plain values", async () => {
+    const user = userEvent.setup();
+    addLineMetrics([
+      [pid("a"), 100, 5000],
+      [pid("b"), 1500, 200],
+    ]);
+    act(() => portalRouter.set({ metrics: "git.default_branch_lines" }));
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+
+    expect(rowHeaders()).toEqual(["LinesNeutral"]);
+    expect(
+      within(within(screen.getByRole("table")).getByRole("row", { name: /^Lines/ }))
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["+0.1 / −5.0 KLOC", "+1.5 / −0.2 KLOC"]);
+  });
+
+  it("offers the Lines column in the picker", async () => {
+    const user = userEvent.setup();
+    addLineMetrics([]);
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 6" }));
+
+    expect(screen.getByRole("checkbox", { name: "Lines" })).not.toBeChecked();
+  });
+
+  it("opens on the pick saved in this browser when the link names no metrics", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["collab.messages_sent"]);
+  });
+
+  it("lets the link's metrics win over the pick saved in this browser", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
+  });
+
+  it("falls back to the pick the link saved when the link drops its metrics", () => {
+    window.localStorage.setItem("insight.metricsView.metrics", "collab.messages_sent");
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    act(() => portalRouter.set({ metrics: undefined }));
+
+    expect(mocks.requestedKeys).toEqual(["tasks.closed"]);
+  });
+
+  it("saves the link's metrics in this browser", () => {
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    render(<MetricsView />);
+
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBe("tasks.closed");
+  });
+
+  it("saves the reader's pick in this browser", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 3 of 3" }));
+    await user.click(screen.getByRole("checkbox", { name: "Messages" }));
+
+    expect(window.localStorage.getItem("insight.metricsView.metrics")).toBe(
+      "git.default_branch_commits,tasks.closed",
+    );
+  });
+
+  it("opens on the stand's default metrics when the deploy sets them", () => {
+    window.__INSIGHT_CONFIG__ = { metricsView: { defaultMetrics: ["collab.messages_sent"] } };
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual(["collab.messages_sent"]);
+  });
+
+  it("leaves a custom metric unpicked until the reader picks it", async () => {
+    const user = userEvent.setup();
+    mocks.definitions.push(
+      definition("custom.velocity", "Velocity", { origin: "custom", last_observed_date: null }),
+    );
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).not.toContain("custom.velocity");
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 4" }));
+    await user.click(screen.getByRole("checkbox", { name: "Velocity" }));
+
+    expect(mocks.requestedKeys).toContain("custom.velocity");
+  });
+
+  it("picks every metric, not only the defaults, on Select all", async () => {
+    const user = userEvent.setup();
+    act(() => portalRouter.set({ metrics: undefined }));
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Select all metrics" }));
+
+    expect(mocks.requestedKeys).toEqual([
+      "tasks.closed",
+      "git.default_branch_commits",
+      "collab.messages_sent",
+    ]);
+    expect(portalRouter.search).toMatchObject({
+      metrics: "git.default_branch_commits,tasks.closed,collab.messages_sent",
+    });
   });
 
   it("opens on the metrics a link names", () => {
@@ -1123,6 +1399,40 @@ describe("MetricsView", () => {
       expect(portalRouter.search).toMatchObject({ compare: `${pid("a")},${pid("b")}` });
       expect(portalRouter.search.team).toBeUndefined();
       expect(screen.getByText("Comparing a and b")).toBeInTheDocument();
+    });
+
+    it("sums the team's lines added and removed apart in each period, in one Lines row", () => {
+      mocks.definitions.push(
+        definition("git.default_branch_lines_added", "Lines added", { unit: "lines" }),
+        definition("git.default_branch_lines_removed", "Lines removed", { unit: "lines" }),
+      );
+      const lines = (added: Array<[string, number]>, removed: Array<[string, number]>) =>
+        new Map([
+          [
+            "git.default_branch_lines_added",
+            result("git.default_branch_lines_added", "Lines added", added, { unit: "lines" }),
+          ],
+          [
+            "git.default_branch_lines_removed",
+            result("git.default_branch_lines_removed", "Lines removed", removed, {
+              unit: "lines",
+            }),
+          ],
+        ]);
+      mocks.byPeriod.set("2026-10-15", lines([[pid("a"), 1500], [pid("c"), 900]], [[pid("a"), 200]]));
+      mocks.byPeriod.set("2026-10-01", lines([[pid("a"), 300]], [[pid("c"), 100]]));
+      act(() => portalRouter.set({ ...TEAM_A, metrics: "git.default_branch_lines" }));
+      render(<MetricsView />);
+
+      expect(mocks.requestedKeys).toEqual([
+        "git.default_branch_lines_added",
+        "git.default_branch_lines_removed",
+      ]);
+      expect(
+        within(within(screen.getByRole("table")).getByRole("row", { name: /^Lines/ }))
+          .getAllByRole("cell")
+          .map((cell) => cell.textContent),
+      ).toEqual(["+2.4 / −0.2 KLOC", "+0.3 / −0.1 KLOC"]);
     });
 
     it("downloads the table on screen, one row per metric", async () => {

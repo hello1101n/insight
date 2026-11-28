@@ -299,8 +299,8 @@ def _envelope(tenant_uuid: str) -> dict[str, object]:
         "_airbyte_extracted_at": read_at,
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": tenant_uuid,
-        "source_id": JIRA_SOURCE_ID,
+        "insight_tenant_id": tenant_uuid,
+        "insight_source_id": JIRA_SOURCE_ID,
         "collected_at": read_at.isoformat(),
     }
 
@@ -368,8 +368,8 @@ def seed_jira_fields(client: clickhouse_connect.driver.client.Client, tenant_uui
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "field_id",
         "name",
@@ -403,8 +403,8 @@ def seed_jira_statuses(client: clickhouse_connect.driver.client.Client, tenant_u
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "status_id",
         "name",
@@ -436,8 +436,8 @@ def seed_jira_issuetypes(client: clickhouse_connect.driver.client.Client, tenant
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "issuetype_id",
         "name",
@@ -472,8 +472,8 @@ def seed_jira_user(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "account_id",
         "email",
@@ -508,8 +508,8 @@ def seed_jira_project(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "project_id",
         "project_key",
@@ -574,8 +574,8 @@ def seed_jira_issues(
     issue_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "jira_id",
         "id_readable",
@@ -593,8 +593,8 @@ def seed_jira_issues(
     key_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "jira_id",
         "id_readable",
@@ -603,8 +603,8 @@ def seed_jira_issues(
     census_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "jira_id",
         "project_key",
@@ -694,8 +694,8 @@ def seed_jira_issue_history(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "jira_id",
         "id_readable",
@@ -758,8 +758,8 @@ def seed_jira_worklogs(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "worklog_id",
         "jira_id",
@@ -842,7 +842,7 @@ def seed_field_value_map(
     `seed_field_value_defaults`."""
     truncate(client, "config", "field_value_map")
     cols = [
-        "tenant_id",
+        "insight_tenant_id",
         "insight_source_id",
         "data_source",
         "field",
@@ -900,7 +900,7 @@ def seed_field_value_defaults(
     rather than left to the hardcoded terminal."""
     truncate(client, "config", "field_value_defaults")
     cols = [
-        "tenant_id",
+        "insight_tenant_id",
         "insight_source_id",
         "field",
         "valid_from",

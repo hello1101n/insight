@@ -24,12 +24,12 @@ Tab-separated, one decision per line. `#` comments and blank lines are ignored;
 an optional header line is allowed. Only `note` may be omitted.
 
 ```
-tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  note
+insight_tenant_id  insight_source_id  data_source  field  source_key  display_name  target_value  note
 ```
 
 | column              | meaning                                                                      |
 |---------------------|------------------------------------------------------------------------------|
-| `tenant_id`         | Insight tenant the decision belongs to                                        |
+| `insight_tenant_id`         | Ignored: the loader writes every row under the install's tenant (`INSIGHT_TENANT_ID`) |
 | `insight_source_id` | the connector instance the value came from                                    |
 | `data_source`       | `github`, `jira`, …                                                           |
 | `field`             | what is standardized — currently only `issue_type`                            |
@@ -60,7 +60,7 @@ four columns are required; `default_value` obeys the same per-field domain as
 `target_value`.
 
 ```
-tenant_id  insight_source_id  field  default_value
+insight_tenant_id  insight_source_id  field  default_value
 ```
 
 ## Field roles and status categories
@@ -72,7 +72,7 @@ Same conventions; only `note` may be omitted.
 `roles.tsv` lands in `config.task_field_roles`:
 
 ```
-tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  note
+insight_tenant_id  insight_source_id  data_source  field_id  role  precedence  value_unit  unit_multiplier  note
 ```
 
 `role` is one of `status`, `assignee`, `issuetype`, `resolution`, `duedate`,
@@ -86,7 +86,7 @@ orders several fields bound to one role.
 one value of a status field:
 
 ```
-tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  note
+insight_tenant_id  insight_source_id  data_source  field_id  value_id  value_display  canonical_value  note
 ```
 
 `canonical_value` is `new`, `in_progress`, `done` or `undefined`.
@@ -94,10 +94,10 @@ tenant_id  insight_source_id  data_source  field_id  value_id  value_display  ca
 ## Insert-only
 
 The loader anti-joins each line against the live table on the business key —
-`(tenant_id, insight_source_id, data_source, field, source_key)` for the map,
-`(tenant_id, insight_source_id, field)` for the defaults,
-`(tenant_id, insight_source_id, data_source, field_id)` for roles and
-`(tenant_id, insight_source_id, data_source, field_id, value_id)` for task
+`(insight_tenant_id, insight_source_id, data_source, field, source_key)` for the map,
+`(insight_tenant_id, insight_source_id, field)` for the defaults,
+`(insight_tenant_id, insight_source_id, data_source, field_id)` for roles and
+`(insight_tenant_id, insight_source_id, data_source, field_id, value_id)` for task
 values — and writes only the
 keys with no stored decision. A key that already carries one — including a
 retraction (`is_deleted = 1`) — is left untouched, so editing a line here does

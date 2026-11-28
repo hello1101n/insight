@@ -226,6 +226,7 @@ MATRIX: Sequence[Expectation] = (
     Expectation("git.multi_reviewer_rate", "git", Tier.EXACT_RATIO, scale=100.0),
     Expectation("git.pr_abandonment_rate", "git", Tier.EXACT_RATIO, scale=100.0),
     Expectation("git.pr_comments", "git", Tier.EXACT_COUNT),
+    Expectation("git.pr_comments_on_others", "git", Tier.EXACT_COUNT),
     Expectation("git.pr_commits", "git", Tier.EXACT_MEDIAN),
     Expectation("git.pr_cycle_time_h", "git", Tier.EXACT_MEDIAN),
     Expectation("git.pr_cycle_time_p75_h", "git", Tier.EXACT_PERCENTILE, quantile=0.75),

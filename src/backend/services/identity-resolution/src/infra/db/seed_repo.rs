@@ -81,12 +81,6 @@ impl SeedStore for MariaDbSeedStore<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TenantPresence {
-    pub has_own: bool,
-    pub has_other: bool,
-}
-
 pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Result<Vec<Uuid>> {
     const SQL: &str = "SELECT DISTINCT insight_tenant_id FROM persons LIMIT ?";
     let rows = db
@@ -104,15 +98,19 @@ pub async fn distinct_tenants(db: &DatabaseConnection, cap: u64) -> anyhow::Resu
         .collect()
 }
 
-pub async fn tenant_presence(
+/// A tenant `persons` holds while it holds nothing under `tenant_id`, if any:
+/// the seed's wrong-tenant guard. Other tenants beside `tenant_id` are not
+/// reported. Two probes on `idx_tenant_person`.
+///
+/// # Errors
+///
+/// Returns an error if the query fails.
+pub async fn other_tenant_only(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-) -> anyhow::Result<TenantPresence> {
-    const SQL: &str = r"
-        SELECT
-            EXISTS(SELECT 1 FROM persons WHERE insight_tenant_id = ?)  AS has_own,
-            EXISTS(SELECT 1 FROM persons WHERE insight_tenant_id <> ?) AS has_other
-    ";
+) -> anyhow::Result<Option<Uuid>> {
+    const SQL: &str = "SELECT insight_tenant_id FROM persons WHERE insight_tenant_id <> ? \
+                       AND NOT EXISTS (SELECT 1 FROM persons WHERE insight_tenant_id = ?) LIMIT 1";
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::MySql,
@@ -122,12 +120,12 @@ pub async fn tenant_presence(
                 tenant_id.as_bytes().to_vec().into(),
             ],
         ))
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("tenant_presence query returned no row"))?;
-    Ok(TenantPresence {
-        has_own: row.try_get::<i64>("", "has_own")? != 0,
-        has_other: row.try_get::<i64>("", "has_other")? != 0,
+        .await?;
+    row.map(|r| {
+        let id: Vec<u8> = r.try_get("", "insight_tenant_id")?;
+        Ok(Uuid::from_slice(&id)?)
     })
+    .transpose()
 }
 
 pub async fn known_account_bindings(

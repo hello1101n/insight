@@ -25,8 +25,8 @@
 -- with different values.
 WITH activity AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         unique_key,
         repo_full_name,
         pr_id,
@@ -55,8 +55,8 @@ status_change AS (
 )
 
 SELECT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     unique_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[1] AS project_key,
     splitByChar('/', COALESCE(repo_full_name, ''))[2] AS repo_slug,

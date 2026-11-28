@@ -12,8 +12,8 @@
 -- deployment, and an incremental fold would never revisit the parent row.
 -- Readers take the latest event per deployment_id (argMax on created_at).
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
+    insight_source_id,
     unique_key,
     COALESCE(repo_full_name, '') AS repo_full_name,
     toString(COALESCE(deployment_id, 0)) AS deployment_id,

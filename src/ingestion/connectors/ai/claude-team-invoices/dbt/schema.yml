@@ -30,7 +30,8 @@ models:
       - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key

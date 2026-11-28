@@ -24,16 +24,17 @@ sources:
 models:
   - name: slack__users_latest
     description: >
-      One row per Slack member (tenant_id, source_id, user_id), built from the
+      One row per Slack member (insight_tenant_id, insight_source_id, user_id), built from the
       Activity file (bronze_slack.users_details) and the Members list
       (bronze_slack.users). The Activity email wins; the Members email is the
       fallback. Bots and proven guests are left out. Feeds slack__users_snapshot.
     columns:
-      - name: tenant_id
-        description: "The raw tenant string from bronze insight_tenant_id."
+      - name: insight_tenant_id
+        description: "The canonical tenant UUID, checked by bronze_tenant(); never NULL or empty."
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         description: "The raw source string from bronze insight_source_id."
         tests:
           - not_null
@@ -53,10 +54,11 @@ models:
   - name: slack__users_snapshot
     description: "SCD2 snapshot of slack__users_latest. A new version is written when email or display_name changes."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
       - name: unique_key
@@ -69,10 +71,11 @@ models:
       - name: entity_id
         tests:
           - not_null
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
-      - name: source_id
+          - not_empty
+      - name: insight_source_id
         tests:
           - not_null
 
@@ -103,9 +106,10 @@ models:
   - name: slack__collab_chat_activity
     description: "Slack daily chat activity per user (admin.analytics.getFile). Feeds silver.class_collab_chat_activity."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null
@@ -140,9 +144,10 @@ models:
   - name: slack__collab_chat_activity_messages
     description: "Slack daily chat activity per user on Free and Pro, from message history (bronze_slack.messages). Same columns and measures as slack__collab_chat_activity. Feeds silver.class_collab_chat_activity."
     columns:
-      - name: tenant_id
+      - name: insight_tenant_id
         tests:
           - not_null
+          - not_empty
       - name: insight_source_id
         tests:
           - not_null

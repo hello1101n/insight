@@ -17,7 +17,7 @@ WITH teams AS (
 
 SELECT
     {{ hubspot_support_key(['team_id']) }}             AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'hubspot'                                          AS data_source,
     CAST(team_id AS Nullable(String))                  AS group_id,

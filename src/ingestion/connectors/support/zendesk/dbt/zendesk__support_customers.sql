@@ -8,7 +8,7 @@
 
 WITH end_users AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS customer_id,
         'user'                                         AS kind,
@@ -20,7 +20,7 @@ WITH end_users AS (
 
 organizations AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         insight_source_id,
         {{ zendesk_id('payload', "'id'") }}            AS customer_id,
         'organization'                                 AS kind,
@@ -37,7 +37,7 @@ customers AS (
 
 SELECT
     {{ zendesk_key(['kind', 'customer_id']) }}         AS unique_key,
-    tenant_id,
+    insight_tenant_id,
     insight_source_id,
     'zendesk'                                          AS data_source,
     customer_id,

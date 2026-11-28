@@ -80,7 +80,7 @@ UNKNOWN_METRIC_KEY: Final[str] = "example.absent_metric"
 #: `system.one` has exactly one row — and carries only synthetic placeholder data.
 SCRATCH_OBSERVATION_SQL: Final[str] = (
     "SELECT "
-    "generateUUIDv4() AS tenant_id, "
+    "generateUUIDv4() AS insight_tenant_id, "
     "'scratch' AS source_key, "
     "'person' AS entity_type, "
     "'' AS entity_id, "

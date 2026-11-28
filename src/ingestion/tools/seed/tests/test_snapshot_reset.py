@@ -139,7 +139,9 @@ def test_the_stale_keys_are_this_tenants_keys_the_source_lacks() -> None:
     )
 
     assert query.startswith("SELECT DISTINCT unique_key FROM `staging`.`example__users_snapshot`")
-    assert query.count("tenant_id = {tenant:String}") == 2, f"should scope both sides: {query!r}"
+    assert query.count("insight_tenant_id = {tenant:String}") == 2, (
+        f"should scope both sides: {query!r}"
+    )
     assert "NOT IN (SELECT unique_key FROM `staging`.`example__users_latest` FINAL" in query, (
         f"should read the deduplicated source: {query!r}"
     )
@@ -149,7 +151,9 @@ def test_the_delete_removes_only_listed_keys_of_one_tenant() -> None:
     statement = snapshots.delete_statement(("staging", "example__users_snapshot"))
 
     assert statement.startswith("ALTER TABLE `staging`.`example__users_snapshot` DELETE")
-    assert "tenant_id = {tenant:String}" in statement, f"should scope to one tenant: {statement!r}"
+    assert "insight_tenant_id = {tenant:String}" in statement, (
+        f"should scope to one tenant: {statement!r}"
+    )
     assert "has({keys:Array(String)}, unique_key)" in statement, (
         f"should delete listed keys: {statement!r}"
     )

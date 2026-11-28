@@ -6,23 +6,22 @@
 
 WITH snapshots AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         argMax(
             tuple(entries_json, window_start, window_end),
             tuple(_airbyte_extracted_at, _airbyte_raw_id)
         ) AS snapshot
     FROM {{ source('bamboohr', 'whos_out') }}
     WHERE entries_json IS NOT NULL
-      AND tenant_id IS NOT NULL
-      AND source_id IS NOT NULL
-    GROUP BY tenant_id, source_id
+      AND insight_source_id IS NOT NULL
+    GROUP BY insight_tenant_id, insight_source_id
 ),
 
 latest AS (
     SELECT
-        coalesce(tenant_id, '') AS insight_tenant_id,
-        coalesce(source_id, '') AS account_source_id,
+        insight_tenant_id,
+        coalesce(insight_source_id, '') AS account_source_id,
         toDateOrNull(snapshot.2) AS window_start,
         toDateOrNull(snapshot.3) AS window_end,
         JSONExtractArrayRaw(assumeNotNull(snapshot.1)) AS raw_entries

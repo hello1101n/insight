@@ -13,15 +13,15 @@
 ) }}
 
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }}                           AS insight_tenant_id,
+    insight_source_id,
     -- Entity-level grain: bronze `unique_key` is already
     -- `{tenant}-{source}-{employee_id}`, so silver `class_people` (versionless
     -- RMT ORDER BY unique_key) collapses to one row per employee. Do NOT add a
     -- version axis here — that would make every changed record a second
     -- permanently-"current" row (see ADR-0004).
     CAST(coalesce(unique_key, '') AS String)        AS unique_key,
-    coalesce(tenant_id, '')                         AS workspace_id,
+    insight_tenant_id                               AS workspace_id,
     -- person_id resolved in Silver Step 2 via Identity Manager
     CAST(NULL AS Nullable(UUID))                    AS person_id,
     parseDateTimeBestEffortOrNull(lastChanged)      AS valid_from,

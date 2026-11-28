@@ -11,6 +11,7 @@ import { EvidenceDialogContext } from "@/components/metric-evidence-context";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import type { PersonTeam } from "@/lib/portal/metrics-view";
+import { LINES_KEY, withCombinedResults } from "@/lib/portal/metrics-view-combined";
 
 import { MetricsCompareTable } from "./metrics-compare-table";
 
@@ -446,3 +447,106 @@ describe("MetricsCompareTable, three or more people", () => {
     expect(headerRows()).toHaveLength(1);
   });
 });
+
+function linesByKey(values: ReadonlyArray<[MembersGridMember, number | null, number | null]>) {
+  const part = (key: string, label: string, index: 1 | 2) =>
+    metric(
+      key,
+      label,
+      values.map((row): [MembersGridMember, number | null] => [row[0], row[index]]),
+      {
+        unit: "lines",
+        drilldown: { granularity: ["event"] },
+        selection: {
+          metric_key: key,
+          entity: { type: "person", ids: values.map(([person]) => person.entityId) },
+          period: { from: "2026-07-01", to: "2026-07-31" },
+          filters: [],
+        },
+      } as Partial<NormalizedMetricResult>,
+    );
+
+  return withCombinedResults(
+    new Map([
+      ["git.default_branch_lines_added", part("git.default_branch_lines_added", "Lines added", 1)],
+      [
+        "git.default_branch_lines_removed",
+        part("git.default_branch_lines_removed", "Lines removed", 2),
+      ],
+    ]),
+  );
+}
+
+function renderLines(
+  people: readonly MembersGridMember[],
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  openEvidenceTargets = vi.fn(),
+) {
+  render(
+    <EvidenceDialogContext.Provider
+      value={{ openEvidence: vi.fn(), openEvidenceTargets, openEvidencePeople: vi.fn() }}
+    >
+      <MetricsCompareTable
+        people={people}
+        keys={[LINES_KEY]}
+        byKey={byKey}
+        roles={new Map()}
+        teams={new Map()}
+      />
+    </EvidenceDialogContext.Provider>,
+  );
+}
+
+describe("MetricsCompareTable, Lines column", () => {
+  it("shows lines added and removed of two people as one plain figure each, in KLOC", () => {
+    renderLines(
+      [ALEX, JAMIE],
+      linesByKey([
+        [ALEX, 1500, 200],
+        [JAMIE, 100, 5000],
+      ]),
+    );
+
+    expect(cellsOf("Lines")).toEqual(["+1.5 / −0.2 KLOC", "+0.1 / −5.0 KLOC"]);
+  });
+
+  it("opens the records behind both parts from one button", async () => {
+    const openEvidenceTargets = vi.fn();
+    renderLines([ALEX, JAMIE], linesByKey([[ALEX, 1500, 200], [JAMIE, 100, 5000]]), openEvidenceTargets);
+
+    const [alex] = within(rowOfLines()).getAllByRole("cell");
+    expect(within(alex!).getAllByRole("button")).toHaveLength(1);
+
+    await userEvent.click(within(alex!).getByRole("button"));
+
+    expect(openEvidenceTargets).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ label: "Lines added" }),
+        expect.objectContaining({ label: "Lines removed" }),
+      ],
+      { title: expect.stringMatching(/^Lines · Alex Morgan · \+1\.5 \/ −0\.2 KLOC · /) },
+    );
+  });
+
+  it("puts the median of each part in the group median of three or more people", () => {
+    renderLines(
+      [ALEX, JAMIE, TAYLOR],
+      linesByKey([
+        [ALEX, 1500, 200],
+        [JAMIE, 100, 5000],
+        [TAYLOR, 700, null],
+      ]),
+    );
+
+    expect(cellsOf("Lines")).toEqual([
+      "+0.7 / −2.6 KLOC",
+      "+1.5 / −0.2 KLOC",
+      "+0.1 / −5.0 KLOC",
+      "+0.7 / — KLOC",
+    ]);
+  });
+});
+
+function rowOfLines(): HTMLElement {
+  return within(table()).getByRole("row", { name: /^Lines/ });
+}

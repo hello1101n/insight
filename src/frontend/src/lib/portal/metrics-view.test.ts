@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
+import { GROUPS } from "@/lib/insight/groups";
+import { requestedMetricKeys } from "@/lib/portal/metrics-view-combined";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 
 import { identityPerson, pid } from "@/test/identity";
 
 import {
+  DEFAULT_METRIC_KEYS,
   chunkKeys,
   columnFormula,
+  defaultMetricKeys,
   directionNote,
   formatViewValue,
   rolesById,
@@ -16,6 +20,7 @@ import {
   metricGroups,
   metricsRows,
   metricsViewCatalog,
+  orderMetricKeys,
   sortRows,
   type MetricsRow,
 } from "./metrics-view";
@@ -112,6 +117,77 @@ describe("metricsViewCatalog", () => {
       "collab.messages",
       "ai.sessions",
     ]);
+  });
+});
+
+describe("DEFAULT_METRIC_KEYS", () => {
+  it("names the built-in default metrics", () => {
+    expect([...DEFAULT_METRIC_KEYS]).toEqual([
+      "git.default_branch_lines",
+      "git.pr_size",
+      "git.default_branch_prs_merged",
+      "git.default_branch_merge_rate",
+      "git.pr_cycle_time_h",
+      "git.reviews_performed",
+      "git.pr_comments_on_others",
+      "ai.active_days",
+      "tasks.closed",
+    ]);
+  });
+
+  it("names only metrics a person section offers, Lines through its two parts", () => {
+    const offered = new Set(
+      GROUPS.flatMap((group) => group.collection.metrics.map((metric) => metric.key)),
+    );
+
+    expect(requestedMetricKeys(DEFAULT_METRIC_KEYS).filter((key) => !offered.has(key))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("defaultMetricKeys", () => {
+  it("keeps the catalog keys that are defaults, in catalog order", () => {
+    expect(
+      defaultMetricKeys(["git.pr_size", "collab.messages_sent", "tasks.closed", "custom.x"]),
+    ).toEqual(["git.pr_size", "tasks.closed"]);
+  });
+
+  it("uses the stand's list in place of the built-in one when the deploy sets it", () => {
+    expect(
+      defaultMetricKeys(["git.pr_size", "collab.messages_sent", "custom.x"], [
+        "custom.x",
+        "collab.messages_sent",
+        "git.gone",
+      ]),
+    ).toEqual(["collab.messages_sent", "custom.x"]);
+  });
+
+  it("uses the built-in list when the stand's list is empty", () => {
+    expect(defaultMetricKeys(["git.pr_size", "collab.messages_sent"], [])).toEqual([
+      "git.pr_size",
+    ]);
+  });
+});
+
+describe("orderMetricKeys", () => {
+  it("puts the default keys first, in the default order, then the rest as they came", () => {
+    expect(
+      orderMetricKeys(["collab.x", "tasks.closed", "git.pr_size"], [
+        "git.pr_size",
+        "tasks.closed",
+      ]),
+    ).toEqual(["git.pr_size", "tasks.closed", "collab.x"]);
+  });
+
+  it("keeps a family's columns together, defaults first, so each family has one header", () => {
+    const ordered = orderMetricKeys(["git.a", "tasks.closed", "git.pr_size", "collab.x"], [
+      "git.pr_size",
+      "tasks.closed",
+    ]);
+
+    expect(ordered).toEqual(["git.pr_size", "git.a", "tasks.closed", "collab.x"]);
+    expect(metricGroups(ordered).map((group) => group.family)).toEqual(["git", "tasks", "collab"]);
   });
 });
 

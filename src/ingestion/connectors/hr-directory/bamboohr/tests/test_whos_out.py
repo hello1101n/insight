@@ -57,8 +57,8 @@ def test_time_off_and_holidays_share_one_lossless_envelope() -> None:
     assert len(records) == 1
     assert records == list(stream.read_records(SyncMode.full_refresh))
     record = records[0]
-    assert record["tenant_id"] == TENANT
-    assert record["source_id"] == SOURCE
+    assert record["insight_tenant_id"] == TENANT
+    assert record["insight_source_id"] == SOURCE
     assert json.loads(record["entries_json"]) == rows
     assert all("unique_key" not in row for row in rows)
     validate(record, stream.get_json_schema())

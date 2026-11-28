@@ -11,8 +11,8 @@
 -- from a vendor project to the class contract, and it does not exist yet.
 
 SELECT
-    tenant_id,
-    source_id,
+    insight_tenant_id,
+    insight_source_id,
     unique_key,
     id AS project_id,
     name,
@@ -24,7 +24,7 @@ SELECT
 FROM (
     -- Read-time dedup of append-only RMT bronze (ADR-0001): keep the latest
     -- extract per unique_key so re-delivered rows never duplicate downstream.
-    SELECT * FROM {{ source('bronze_youtrack', 'youtrack_projects') }}
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id) FROM {{ source('bronze_youtrack', 'youtrack_projects') }}
     ORDER BY _airbyte_extracted_at DESC
     LIMIT 1 BY unique_key
 )

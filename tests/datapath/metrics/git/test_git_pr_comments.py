@@ -1,4 +1,5 @@
-"""PR comments per person, with the comment_target split into own and others.
+"""PR comments per person, with the comment_target split into own and others,
+and git.pr_comments_on_others, which counts the others half alone.
 
 Bronze: GitHub conversation comments and inline review comments, with the
 commenter accounts resolved through `commit_authors`. Silver:
@@ -125,6 +126,67 @@ def test_comment_on_a_request_whose_author_is_unknown_counts_under_others(spec: 
         entity_id=DAVE,
         dimensions={"key": "comment_target", "value": "others"},
     ).equals(value=1)
+
+
+def test_comments_on_others_prs_are_the_others_half(spec: SpecRun) -> None:
+    """alice's one comment on carol's #2 is her whole git.pr_comments_on_others,
+    the same 1 as the others half of git.pr_comments."""
+    r = spec.call(
+        {
+            "url": "/v1/metric-results",
+            "method": "POST",
+            "body": {
+                "entity": {"type": "person", "ids": [ALICE]},
+                "period": {"from": "2026-10-01", "to": "2026-10-02"},
+                "metrics": [
+                    {
+                        "metric_key": "git.pr_comments_on_others",
+                        "views": [{"view": "period"}],
+                    },
+                    {
+                        "metric_key": "git.pr_comments",
+                        "views": [{"view": "breakdown", "dimensions": ["comment_target"]}],
+                    },
+                ],
+            },
+        }
+    )
+    assert r.status == 200
+    r.row("git.pr_comments_on_others", "period", entity_id=ALICE).equals(value=1)
+    r.row(
+        "git.pr_comments",
+        "breakdown",
+        entity_id=ALICE,
+        dimensions={"key": "comment_target", "value": "own"},
+    ).equals(value=2)
+    r.row(
+        "git.pr_comments",
+        "breakdown",
+        entity_id=ALICE,
+        dimensions={"key": "comment_target", "value": "others"},
+    ).equals(value=1)
+
+
+def test_comment_on_a_request_whose_author_is_unknown_counts_on_others_prs(
+    spec: SpecRun,
+) -> None:
+    """dave's comment on #99, whose author has no e-mail anywhere, counts as a
+    comment on another person's request."""
+    r = spec.call(
+        {
+            "url": "/v1/metric-results",
+            "method": "POST",
+            "body": {
+                "entity": {"type": "person", "ids": [DAVE]},
+                "period": {"from": "2026-10-01", "to": "2026-10-02"},
+                "metrics": [
+                    {"metric_key": "git.pr_comments_on_others", "views": [{"view": "period"}]}
+                ],
+            },
+        }
+    )
+    assert r.status == 200
+    r.row("git.pr_comments_on_others", "period", entity_id=DAVE).equals(value=1)
 
 
 def test_empty_window(spec: SpecRun) -> None:

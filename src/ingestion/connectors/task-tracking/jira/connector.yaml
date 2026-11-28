@@ -377,9 +377,9 @@ streams:
             type:
               - boolean
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type:
@@ -391,19 +391,19 @@ streams:
               - "null"
         required:
           - id
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
     transformations:
       - type: AddFields
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -442,11 +442,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -567,9 +567,9 @@ streams:
                     type:
                       - boolean
                       - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -613,8 +613,8 @@ streams:
                       - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_projects
@@ -647,11 +647,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -776,9 +776,9 @@ streams:
             type:
               - object
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -820,8 +820,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_user
@@ -860,11 +860,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -948,9 +948,9 @@ streams:
             type:
               - boolean
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -984,8 +984,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_issue
@@ -1083,11 +1083,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -1203,9 +1203,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -1272,8 +1272,8 @@ streams:
         required:
           - unique_key
           - updated
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
           - jira_id
         additionalProperties: true
   - type: DeclarativeStream
@@ -1344,11 +1344,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -1465,9 +1465,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -1497,8 +1497,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_comments
@@ -1560,11 +1560,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -1743,9 +1743,9 @@ streams:
             type:
               - boolean
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -1771,8 +1771,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_worklogs
@@ -1824,11 +1824,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2012,9 +2012,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2048,8 +2048,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_sprints
@@ -2113,11 +2113,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2196,9 +2196,9 @@ streams:
             type:
               - number
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2241,8 +2241,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_statuses
@@ -2270,11 +2270,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2380,9 +2380,9 @@ streams:
                     type:
                       - string
                       - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2408,8 +2408,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_priorities
@@ -2437,11 +2437,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2492,9 +2492,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2508,8 +2508,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_issuetypes
@@ -2537,11 +2537,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2612,9 +2612,9 @@ streams:
             type:
               - number
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2650,8 +2650,8 @@ streams:
                       - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
   - type: DeclarativeStream
     name: jira_resolutions
@@ -2679,11 +2679,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2726,9 +2726,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2742,8 +2742,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
 
   # ─── Lightweight parent for issue substreams ──────────────────────────
@@ -2761,7 +2761,7 @@ streams:
   # Reconcile (ADR-0015) auto-selects every discovered stream, so this lands
   # as a real (tiny: key + updated per issue) bronze_jira.jira_issue_keys
   # table. It therefore carries the standard identity stamp
-  # (tenant_id/source_id/unique_key) like every other jira bronze table.
+  # (insight_tenant_id/insight_source_id/unique_key) like every other jira bronze table.
   - type: DeclarativeStream
     name: jira_issue_keys
     primary_key:
@@ -2860,11 +2860,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -2906,9 +2906,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -2927,8 +2927,8 @@ streams:
         required:
           - unique_key
           - updated
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
           - jira_id
         additionalProperties: true
 
@@ -2979,11 +2979,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -3068,9 +3068,9 @@ streams:
             type:
               - object
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -3098,8 +3098,8 @@ streams:
         required:
           - unique_key
           - project_status
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
 
   # Key-only sweep of ALL issues in every visible live project. Jira Cloud
@@ -3162,11 +3162,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -3201,9 +3201,9 @@ streams:
             type:
               - string
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -3226,8 +3226,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
           - jira_id
         additionalProperties: true
 
@@ -3273,11 +3273,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -3318,9 +3318,9 @@ streams:
             type:
               - array
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -3338,8 +3338,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
 
   # ─── Board configuration (specs/DATA-COMPLETENESS.md) ──────────────────
@@ -3381,11 +3381,11 @@ streams:
         fields:
           - type: AddedFieldDefinition
             path:
-              - tenant_id
+              - insight_tenant_id
             value: "{{ config['insight_tenant_id'] }}"
           - type: AddedFieldDefinition
             path:
-              - source_id
+              - insight_source_id
             value: "{{ config['insight_source_id'] }}"
       - type: AddFields
         fields:
@@ -3466,9 +3466,9 @@ streams:
             type:
               - object
               - "null"
-          tenant_id:
+          insight_tenant_id:
             type: string
-          source_id:
+          insight_source_id:
             type: string
           unique_key:
             type: string
@@ -3502,8 +3502,8 @@ streams:
               - "null"
         required:
           - unique_key
-          - tenant_id
-          - source_id
+          - insight_tenant_id
+          - insight_source_id
         additionalProperties: true
 
 spec:

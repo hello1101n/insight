@@ -240,6 +240,10 @@ const GIT_OUTPUT_COLLECTION: MetricCollectionConfig = {
       ],
     },
     {
+      key: "git.pr_comments_on_others",
+      views: [{ view: "period" }, { view: "peer" }],
+    },
+    {
       key: "git.pr_size",
       views: [{ view: "period" }, { view: "peer" }, { view: "histogram" }],
     },

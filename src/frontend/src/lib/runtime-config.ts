@@ -1,6 +1,7 @@
 export interface InsightRuntimeConfig {
   sentryDsn?: string;
   nav?: { hide?: readonly string[]; planned?: readonly string[] };
+  metricsView?: { defaultMetrics?: readonly string[] };
 }
 
 declare global {

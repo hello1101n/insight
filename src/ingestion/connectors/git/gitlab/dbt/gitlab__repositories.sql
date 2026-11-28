@@ -11,8 +11,8 @@
 -- project's own path segment: together they are path_with_namespace, which is
 -- how every other GitLab model names the project.
 SELECT
-    tenant_id,
-    source_id,
+    {{ bronze_tenant() }} AS insight_tenant_id,
+    insight_source_id,
     unique_key,
     COALESCE(namespace_full_path, '') AS project_key,
     COALESCE(path, '') AS repo_slug,

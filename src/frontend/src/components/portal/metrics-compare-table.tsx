@@ -2,9 +2,9 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { MetricValue } from "@/components/portal/metrics-table";
+import { MetricCell } from "@/components/portal/metrics-table";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   compareWithBest,
   compareWithMedian,
@@ -14,10 +14,15 @@ import {
 } from "@/lib/portal/metrics-compare";
 import {
   directionNote,
-  finiteValue,
   formatViewValue,
   type PersonTeam,
 } from "@/lib/portal/metrics-view";
+import {
+  combinedColumn,
+  combinedFigure,
+  combinedFigureBy,
+  type CombinedColumn,
+} from "@/lib/portal/metrics-view-combined";
 import { cn } from "@/lib/utils";
 
 const STICKY_START = "sticky start-0 z-10";
@@ -137,9 +142,21 @@ export function MetricsCompareTable({
                     <span className={MUTED_LINE}>{directionNote(result)}</span>
                   </th>
                   {byMedian ? (
-                    <MedianCells result={result} people={columns} values={values} />
+                    <MedianCells
+                      metricKey={key}
+                      byKey={byKey}
+                      result={result}
+                      people={columns}
+                      values={values}
+                    />
                   ) : (
-                    <BestCells result={result} people={columns} values={values} />
+                    <BestCells
+                      metricKey={key}
+                      byKey={byKey}
+                      result={result}
+                      people={columns}
+                      values={values}
+                    />
                   )}
                 </tr>,
               ];
@@ -152,12 +169,14 @@ export function MetricsCompareTable({
 }
 
 interface CellsProps {
+  metricKey: string;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
   result: NormalizedMetricResult;
   people: readonly Person[];
   values: ReadonlyArray<number | null>;
 }
 
-function BestCells({ result, people, values }: CellsProps) {
+function BestCells({ metricKey, byKey, result, people, values }: CellsProps) {
   const { t } = useTranslation();
   const cells = compareWithBest(values, result);
   const bestPerson = people[cells.findIndex((cell) => cell.best)];
@@ -165,7 +184,7 @@ function BestCells({ result, people, values }: CellsProps) {
 
   return people.map((person, index) => {
     const cell = cells[index]!;
-    const value = <ShownValue result={result} person={person} />;
+    const value = <ShownValue metricKey={metricKey} byKey={byKey} person={person} />;
 
     return (
       <td key={person.entityId} className={BODY_CELL}>
@@ -188,9 +207,19 @@ function BestCells({ result, people, values }: CellsProps) {
   });
 }
 
-function MedianCells({ result, people, values }: CellsProps) {
+function MedianCells({ metricKey, byKey, result, people, values }: CellsProps) {
   const { t } = useTranslation();
-  const { median, present, cells } = compareWithMedian(values, result);
+  const comparison = compareWithMedian(values, result);
+  const { cells } = comparison;
+  const column = combinedColumn(metricKey);
+  const median = column
+    ? combinedMedian(column, byKey, people)
+    : comparison.median == null
+      ? null
+      : formatViewValue(comparison.median, result);
+  const present = column
+    ? people.filter((person) => combinedFigure(column, byKey, person.entityId) != null).length
+    : comparison.present;
   const withBest = (text: string, best: boolean) =>
     best ? `${text} · ${t("metrics_view.best")}` : text;
 
@@ -201,7 +230,7 @@ function MedianCells({ result, people, values }: CellsProps) {
           <span className="text-muted-foreground">—</span>
         ) : (
           <span className={SIDE_BY_SIDE}>
-            {formatViewValue(median, result)}
+            {median}
             {present < people.length ? (
               <>
                 {" "}
@@ -215,7 +244,7 @@ function MedianCells({ result, people, values }: CellsProps) {
       </td>
       {people.map((person, index) => {
         const cell = cells[index]!;
-        const value = <ShownValue result={result} person={person} />;
+        const value = <ShownValue metricKey={metricKey} byKey={byKey} person={person} />;
 
         return (
           <td key={person.entityId} className={BODY_CELL}>
@@ -240,15 +269,41 @@ function MedianCells({ result, people, values }: CellsProps) {
   );
 }
 
-function ShownValue({ result, person }: { result: NormalizedMetricResult; person: Person }) {
+function ShownValue({
+  metricKey,
+  byKey,
+  person,
+}: {
+  metricKey: string;
+  byKey: ReadonlyMap<string, NormalizedMetricResult>;
+  person: Person;
+}) {
   return (
-    <MetricValue
-      result={result}
+    <MetricCell
+      metricKey={metricKey}
+      byKey={byKey}
       entityId={person.entityId}
       personName={person.displayName}
       withUnit
     />
   );
+}
+
+function combinedMedian(
+  column: CombinedColumn,
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+  people: readonly Person[],
+): string | null {
+  const figure = combinedFigureBy(
+    column,
+    byKey,
+    (part) =>
+      compareWithMedian(
+        people.map((person) => finiteValue(part, person.entityId)),
+        part,
+      ).median,
+  );
+  return figure == null ? null : `${figure} ${column.unit}`;
 }
 
 function Chip({ better, children }: { better: boolean; children: ReactNode }) {

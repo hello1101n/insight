@@ -1,0 +1,277 @@
+"""What a bronze row without a valid tenant does to the model that reads it.
+
+Every Jira model reads its Bronze tenant through `bronze_tenant()`, so it fails to build over
+a NULL, empty or non-UUID tenant, naming itself, even where it INNER JOINs on the tenant;
+with `bronze_tenant_on_invalid: warn` it builds and its `not_empty` test reports the row.
+Each case builds the chain from rows that carry a tenant, adds one row that does not, and
+rebuilds only the model that reads it, so the finding is that model's own.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import pytest
+from conftest import FIELD_HISTORY_SELECTOR, LIFECYCLE_SELECTOR, Scenario, Warehouse, truncate_bronze
+from helpers import comment, event, field, issue, item, worklog
+
+POINTS = "customfield_10001"
+NOTES = "customfield_10010"
+TEXTAREA = "com.atlassian.jira.plugin.system.customfieldtypes:textarea"
+SELECTOR = (
+    f"{FIELD_HISTORY_SELECTOR} +jira__task_links {LIFECYCLE_SELECTOR} +jira__task_field_metadata"
+    " +jira__task_field_current_text"
+)
+CLASSES = (
+    "class_task_field_history",
+    "class_task_links",
+    "class_task_field_metadata",
+    "class_task_field_text",
+    "class_task_field_current_text",
+)
+PRODUCERS = (
+    "jira__field_history_derived",
+    "jira__task_links",
+    "jira__comment_lifecycle_events",
+    "jira__worklog_lifecycle_events",
+    "jira__task_field_metadata",
+    "jira__task_field_text",
+    "jira__task_field_current_text",
+)
+
+# Spelled out: a table name cannot be bound, and a formatted statement is what the security gate rejects.
+DROP_TENANTLESS = {
+    "bronze_jira.jira_fields": "ALTER TABLE bronze_jira.jira_fields DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2",
+    "bronze_jira.jira_issue": "ALTER TABLE bronze_jira.jira_issue DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2",
+    "bronze_jira.jira_issue_history": (
+        "ALTER TABLE bronze_jira.jira_issue_history DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2"
+    ),
+    "bronze_jira.jira_comments": (
+        "ALTER TABLE bronze_jira.jira_comments DELETE WHERE startsWith(unique_key, 'no-tenant-')"
+        " SETTINGS mutations_sync = 2"
+    ),
+    "bronze_jira.jira_worklogs": (
+        "ALTER TABLE bronze_jira.jira_worklogs DELETE WHERE insight_tenant_id IS NULL SETTINGS mutations_sync = 2"
+    ),
+}
+
+
+TRUNCATE_CLASSES = (
+    "TRUNCATE TABLE IF EXISTS silver.class_task_field_history",
+    "TRUNCATE TABLE IF EXISTS silver.class_task_links",
+    "TRUNCATE TABLE IF EXISTS silver.class_task_field_metadata",
+    "TRUNCATE TABLE IF EXISTS silver.class_task_field_text",
+    "TRUNCATE TABLE IF EXISTS silver.class_task_field_current_text",
+)
+
+
+def _without_tenant(record: dict[str, Any]) -> dict[str, Any]:
+    return {**record, "insight_tenant_id": None, "unique_key": f"no-tenant-{record['unique_key']}"}
+
+
+def _issue() -> dict[str, Any]:
+    return issue("TST-9", jira_id="9009", fields={POINTS: 1, NOTES: "body"})
+
+
+# model -> (the bronze table it reads, a row of that table)
+CASES: dict[str, tuple[str, Callable[[], dict[str, Any]]]] = {
+    "jira__catalogue_first_seen": ("bronze_jira.jira_fields", lambda: field("customfield_10098", schema_type="number")),
+    "jira__task_field_metadata": ("bronze_jira.jira_fields", lambda: field("customfield_10097", schema_type="number")),
+    "jira__issue_key_ids": ("bronze_jira.jira_issue", _issue),
+    "jira__changelog_items": (
+        "bronze_jira.jira_issue_history",
+        lambda: event("TST-9", 909, "2026-01-07T10:00:00", [item(POINTS, frm="1", frm_str="1", to="2", to_str="2")]),
+    ),
+    "jira__issue_availability_state": ("bronze_jira.jira_issue", _issue),
+    "jira__task_field_kind": ("bronze_jira.jira_fields", lambda: field("customfield_10099", schema_type="number")),
+    # INNER JOINs on the tenant: the row must fail the build, not vanish from the join.
+    "jira__worklog_state": (
+        "bronze_jira.jira_worklogs",
+        lambda: worklog(609, jira_id="TST-1", key="TST-1", started="2026-01-07T10:00:00.000+0000"),
+    ),
+    "jira__task_field_text": (
+        "bronze_jira.jira_issue",
+        lambda: issue("TST-9", jira_id="9009", fields={NOTES: "tenantless body"}),
+    ),
+}
+
+
+def tenant_tests(model: str) -> tuple[str, str]:
+    return f"not_null_{model}_insight_tenant_id", f"not_empty_{model}_insight_tenant_id"
+
+
+def _rebuild(warehouse: Warehouse, model: str) -> None:
+    if model == "jira__catalogue_first_seen":
+        warehouse.execute("TRUNCATE TABLE IF EXISTS staging.jira__catalogue_first_seen")
+        warehouse.dbt("run", "--select", model)
+        return
+    warehouse.dbt("run", "--select", model, "--full-refresh")
+
+
+@pytest.fixture(scope="module")
+def built(warehouse: Warehouse) -> Iterator[Warehouse]:
+    truncate_bronze(warehouse)
+    Scenario(warehouse).seed(
+        fields=[
+            field(POINTS, name="Story Points", schema_type="number"),
+            field(NOTES, name="Notes", schema_type="string", schema_custom=TEXTAREA),
+        ],
+        issues=[issue("TST-1", fields={POINTS: 5, NOTES: "body"})],
+        events=[event("TST-1", 101, "2026-01-06T10:00:00", [item(POINTS, frm="3", frm_str="3", to="5", to_str="5")])],
+        comments=[comment("TST-1", 501, jira_id="TST-1", updated="2026-01-06T10:00:00.000+0000")],
+        worklogs=[worklog(601, jira_id="TST-1", key="TST-1", started="2026-01-06T10:00:00.000+0000")],
+    )
+    warehouse.build(SELECTOR)
+    yield warehouse
+    truncate_bronze(warehouse)
+    for statement in TRUNCATE_CLASSES:
+        warehouse.execute(statement)
+
+
+GUARD = "insight_tenant_id is NULL, empty or not a UUID"
+# In warn mode the row's tenant is '', which an INNER JOIN on the tenant cannot match.
+INNER_JOINED = {"jira__worklog_state", "jira__task_field_text"}
+VIEWS = {"jira__task_field_kind"}
+# The relation a model builds, which the guard's message names, where it differs from the model.
+RELATIONS = {"jira__changelog_items": "jira_changelog_items"}
+WARN = ("--vars", "{bronze_tenant_on_invalid: warn}")
+
+
+@pytest.mark.parametrize("model", sorted(CASES))
+def test_a_bronze_row_without_a_tenant_fails_the_build_of_the_model_that_reads_it(built: Warehouse, model: str) -> None:
+    table, row = CASES[model]
+    assert built.failing_tests(tenant_tests(model)) == frozenset(), f"{model} should start from tenanted rows only"
+
+    built.insert(table, [_without_tenant(row())])
+    relation = RELATIONS.get(model, model)
+    try:
+        invocation = built.dbt_status("run", "--select", model)
+        if model in VIEWS:
+            # A view fails only when read.
+            with pytest.raises(Exception, match=f"staging.{relation}: a Bronze .*{GUARD}"):
+                built.rows(f"SELECT * FROM staging.{relation}")
+    finally:
+        built.execute(DROP_TENANTLESS[table])
+        _rebuild(built, model)
+
+    if model in VIEWS:
+        return
+    assert not invocation.success, f"{model} should refuse a {table} row without a tenant"
+    assert f"staging.{relation}: a Bronze" in invocation.log and GUARD in invocation.log, (
+        f"the failure should name {relation}:\n{invocation.log}"
+    )
+
+
+@pytest.mark.parametrize("model", sorted(set(CASES) - INNER_JOINED))
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_model_reports_it(
+    built: Warehouse, model: str
+) -> None:
+    table, row = CASES[model]
+    built.insert(table, [_without_tenant(row())])
+    try:
+        invocation = built.dbt_status("run", "--select", model, *WARN)
+        failing = built.failing_tests(tenant_tests(model))
+    finally:
+        built.execute(DROP_TENANTLESS[table])
+        _rebuild(built, model)
+
+    assert invocation.success, f"{model} should build in warn mode:\n{invocation.log}"
+    assert f"not_empty_{model}_insight_tenant_id" in failing, f"{model} should report the row: {sorted(failing)}"
+
+
+def test_in_warn_mode_a_tenantless_issue_reaches_the_journal_and_its_tenant_tests_report_it(built: Warehouse) -> None:
+    rows = {
+        "bronze_jira.jira_issue": _issue(),
+        "bronze_jira.jira_issue_history": event(
+            "TST-9",
+            909,
+            "2026-01-07T10:00:00",
+            [item(POINTS, frm="1", frm_str="1", to="2", to_str="2")],
+            jira_id="9009",
+        ),
+    }
+    for table, row in rows.items():
+        built.insert(table, [_without_tenant(row)])
+    try:
+        built.build(SELECTOR, dbt_vars={"bronze_tenant_on_invalid": "warn"})
+        failing = built.failing_tests(tenant_tests("jira__field_history_derived"))
+    finally:
+        for table in rows:
+            built.execute(DROP_TENANTLESS[table])
+        built.build(SELECTOR)
+
+    assert "not_empty_jira__field_history_derived_insight_tenant_id" in failing, (
+        f"the journal should report it: {sorted(failing)}"
+    )
+
+
+def test_the_producers_and_their_classes_carry_a_string_tenant(built: Warehouse) -> None:
+    built.dbt("run", "--select", *CLASSES, "--full-refresh")
+
+    types = {
+        f"{row['database']}.{row['table']}": row["type"]
+        for row in built.rows(
+            "SELECT database, table, type FROM system.columns WHERE name = 'insight_tenant_id'"
+            " AND ((database = 'staging' AND table IN {producers:Array(String)})"
+            " OR (database = 'silver' AND table IN {classes:Array(String)}))",
+            {"producers": list(PRODUCERS), "classes": list(CLASSES)},
+        )
+    }
+
+    expected = {f"staging.{name}": "String" for name in PRODUCERS} | {f"silver.{name}": "String" for name in CLASSES}
+    assert types == expected, f"every producer and class should carry a String tenant: {types}"
+
+
+GUARDED = "jira__comment_state"
+GUARD_MESSAGE = "staging.jira__comment_state: a Bronze c.insight_tenant_id is NULL, empty or not a UUID"
+
+
+def _comment(tenant: str | None) -> dict[str, Any]:
+    row = comment("TST-9", 909, jira_id="TST-9", updated="2026-01-07T10:00:00.000+0000")
+    return {**row, "insight_tenant_id": tenant, "unique_key": f"no-tenant-{row['unique_key']}"}
+
+
+@pytest.mark.parametrize("tenant", [None, "", "not-a-uuid", "gbcdefab-1111-2222-3333-444455556666"])
+def test_a_bronze_row_without_a_valid_tenant_fails_the_build_of_the_model_that_reads_it(
+    built: Warehouse, tenant: str | None
+) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment(tenant)])
+    try:
+        invocation = built.dbt_status("run", "--select", GUARDED)
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert not invocation.success, f"{GUARDED} should refuse a tenant of {tenant!r}"
+    assert GUARD_MESSAGE in invocation.log, f"the failure should name the model and the problem:\n{invocation.log}"
+
+
+def test_warn_mode_builds_over_a_bronze_row_without_a_tenant_and_the_tenant_test_reports_it(built: Warehouse) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment(None)])
+    try:
+        invocation = built.dbt_status("run", "--select", GUARDED, *WARN)
+        failing = built.failing_tests(tenant_tests(GUARDED))
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert invocation.success, f"{GUARDED} should build in warn mode:\n{invocation.log}"
+    assert failing == {f"not_empty_{GUARDED}_insight_tenant_id"}, (
+        f"warn mode should keep the row as '': {sorted(failing)}"
+    )
+
+
+def test_a_bronze_tenant_is_read_as_its_lowercase_canonical_uuid(built: Warehouse) -> None:
+    built.insert("bronze_jira.jira_comments", [_comment("ABCDEFAB-1111-2222-3333-444455556666")])
+    try:
+        built.dbt("run", "--select", GUARDED)
+        rows = built.rows(
+            "SELECT insight_tenant_id, toTypeName(insight_tenant_id) AS type FROM staging.jira__comment_state"
+            " WHERE startsWith(unique_key, 'no-tenant-')"
+        )
+    finally:
+        built.execute(DROP_TENANTLESS["bronze_jira.jira_comments"])
+        _rebuild(built, GUARDED)
+
+    assert rows == [{"insight_tenant_id": "abcdefab-1111-2222-3333-444455556666", "type": "String"}]

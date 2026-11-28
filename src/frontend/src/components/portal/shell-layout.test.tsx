@@ -40,7 +40,6 @@ vi.mock("@/lib/portal/use-person-sections", () => ({
   usePersonSectionStandings: () => [],
   useSelectedPersonSection: () => null,
 }));
-vi.mock("@/components/mock-banner", () => ({ MockBanner: () => <div /> }));
 vi.mock("@/components/view-as-banner", () => ({
   ViewAsBanner: () => <div data-testid="view-as-banner" />,
 }));

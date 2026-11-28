@@ -303,6 +303,34 @@ http://{{ .Values.airbyte.releaseName }}-airbyte-server-svc.{{ include "insight.
 
 {{/*
 ==============================================================================
+ TENANT
+==============================================================================
+insight.tenantId is the install's one tenant, a lowercase UUID read from
+authenticator.oidc.defaultTenantId only. Every consumer takes it from here, and
+a key that used to carry a copy of it fails the render instead of being ignored.
+*/}}
+{{- define "insight.tenantId" -}}
+{{- $removed := dict
+      "global.tenantDefaultId" (((.Values.global | default dict).tenantDefaultId) | default "")
+      "ingestion.reconcile.tenantId" ((((.Values.ingestion | default dict).reconcile | default dict).tenantId) | default "")
+      "identityResolution.seed.tenantDefaultId" ((((.Values.identityResolution | default dict).seed | default dict).tenantDefaultId) | default "") -}}
+{{- range $key := keys $removed | sortAlpha -}}
+{{- if get $removed $key -}}
+{{- fail (printf "%s is removed: the tenant is set once, in authenticator.oidc.defaultTenantId, as a lowercase UUID. Move the value there and delete %s." $key $key) -}}
+{{- end -}}
+{{- end -}}
+{{- $tenant := ((((.Values.authenticator | default dict).oidc | default dict).defaultTenantId) | default "") -}}
+{{- if not $tenant -}}
+{{- fail "authenticator.oidc.defaultTenantId is required: the install's tenant as a lowercase UUID, the same value the IdP stamps as the tenant_id claim. Data, identity, sign-in and authorization all key on it." -}}
+{{- end -}}
+{{- if not (regexMatch "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" $tenant) -}}
+{{- fail (printf "authenticator.oidc.defaultTenantId must be a lowercase UUID, got %q." $tenant) -}}
+{{- end -}}
+{{- $tenant -}}
+{{- end -}}
+
+{{/*
+==============================================================================
  APP SERVICE HOSTS
 ==============================================================================
 App services are mandatory umbrella components — no deploy flag.
@@ -457,4 +485,14 @@ Invoked from NOTES.txt so they fire on every install.
       name: {{ $.Values.global.connectorSchedules.database.secretName | quote }}
       key: {{ $key | quote }}
 {{- end }}
+{{- end -}}
+
+{{/* The env every tenant-cutover.sh step reads: where its state lives and the tenant. */}}
+{{- define "insight.tenantCutover.env" -}}
+- name: INSIGHT_NAMESPACE
+  value: {{ .Release.Namespace | quote }}
+- name: CUTOVER_CONFIGMAP
+  value: {{ printf "%s-tenant-cutover" (include "insight.fullname" .) | quote }}
+- name: INSIGHT_TENANT_ID
+  value: {{ include "insight.tenantId" . | quote }}
 {{- end -}}

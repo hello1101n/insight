@@ -16,7 +16,7 @@
 -- issue streams know its issue, so their project scope bounds the worklogs too.
 
 WITH worklogs AS (
-    SELECT *
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id)
     FROM {{ source('bronze_jira', 'jira_worklogs') }}
     ORDER BY _airbyte_extracted_at DESC
     LIMIT 1 BY unique_key
@@ -24,18 +24,18 @@ WITH worklogs AS (
 
 tombstones AS (
     SELECT
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        insight_source_id,
         toString(toInt64(worklog_id))                   AS worklog_id,
         max(toInt64(deleted_at_ms))                     AS deleted_at_ms
     FROM {{ source('bronze_jira', 'jira_worklog_deleted') }} FINAL
-    GROUP BY tenant_id, source_id, worklog_id
+    GROUP BY insight_tenant_id, insight_source_id, worklog_id
 ),
 
 issues AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         jira_id,
         id_readable,
         availability
@@ -45,8 +45,8 @@ issues AS (
 
 SELECT
     w.unique_key                                        AS unique_key,
-    w.tenant_id                                         AS tenant_id,
-    w.source_id                                         AS source_id,
+    w.insight_tenant_id                                         AS insight_tenant_id,
+    w.insight_source_id                                         AS insight_source_id,
     toString(w.worklog_id)                              AS worklog_id,
     i.id_readable                                       AS id_readable,
     w.author_account_id                                 AS author_id,
@@ -65,10 +65,10 @@ SELECT
     ts.deleted_at_ms                                    AS deleted_at_ms
 FROM worklogs AS w
 LEFT JOIN tombstones AS ts
-    ON ts.tenant_id = w.tenant_id
-    AND ts.source_id = w.source_id
+    ON ts.insight_tenant_id = w.insight_tenant_id
+    AND ts.insight_source_id = w.insight_source_id
     AND ts.worklog_id = toString(w.worklog_id)
 INNER JOIN issues AS i
-    ON i.tenant_id = w.tenant_id
-    AND i.source_id = w.source_id
+    ON i.insight_tenant_id = w.insight_tenant_id
+    AND i.insight_source_id = w.insight_source_id
     AND i.jira_id = w.jira_id

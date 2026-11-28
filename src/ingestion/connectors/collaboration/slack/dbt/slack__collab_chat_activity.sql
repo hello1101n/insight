@@ -32,10 +32,11 @@
 -- otherwise produce a negative residual.
 
 SELECT
-    u.insight_tenant_id AS tenant_id,
+    {{ bronze_tenant('u.insight_tenant_id') }} AS insight_tenant_id,
     u.insight_source_id,
+    -- INVARIANT: bare insight_tenant_id here and in the bot NOT IN is the guarded SELECT alias, not u.insight_tenant_id.
     MD5(concat(
-        u.insight_tenant_id, '-',
+        insight_tenant_id, '-',
         u.insight_source_id, '-',
         coalesce(u.user_id, ''), '-',
         toString(toDate(parseDateTimeBestEffortOrNull(u.date)))
@@ -83,8 +84,8 @@ WHERE u.user_id IS NOT NULL
   -- INVARIANT: bots are never counted. Slackbot is USLACKBOT; the Members stream flags the others.
   AND u.user_id != 'USLACKBOT'
 {%- if members %}
-  AND (u.insight_tenant_id, u.insight_source_id, u.user_id) NOT IN (
-      SELECT insight_tenant_id, insight_source_id, user_id
+  AND (insight_tenant_id, u.insight_source_id, u.user_id) NOT IN (
+      SELECT {{ bronze_tenant() }}, insight_source_id, user_id
       FROM {{ source('bronze_slack', 'users') }} FINAL
       WHERE coalesce(is_bot, false)
   )
@@ -96,7 +97,7 @@ WHERE u.user_id IS NOT NULL
     SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(date))
     FROM {{ source('bronze_slack', 'users_details') }}
     WHERE _airbyte_extracted_at
-          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['tenant_id', 'insight_source_id'], '3 DAY') }}
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
   )
 {% endif %}
 -- INVARIANT: one row per key in the batch; delete+insert keeps one row per key across runs.

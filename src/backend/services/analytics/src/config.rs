@@ -128,10 +128,9 @@ impl Default for GearConfig {
 pub struct MetricCatalogConfig {
     pub tenant_metrics_enabled: bool,
 
-    // SAFETY: tenancy shortcut (#1829, #1967): while false, metric reads are not tenant-scoped.
-    // Keep false until ingested `tenant_id` matches the JWT tenant; enforcing earlier empties every read.
-    pub enforce_tenant_scope: bool,
-
+    /// Revalidate managed metric definitions every five minutes after the startup pass.
+    ///
+    /// Env: `APP__gears__analytics__config__metric_catalog__periodic_validation_enabled`.
     pub periodic_validation_enabled: bool,
 }
 
@@ -139,7 +138,6 @@ impl Default for MetricCatalogConfig {
     fn default() -> Self {
         Self {
             tenant_metrics_enabled: false,
-            enforce_tenant_scope: false,
             periodic_validation_enabled: true,
         }
     }
@@ -300,12 +298,18 @@ mod tests {
     }
 
     #[test]
+    fn a_retired_tenant_scope_key_is_ignored() -> anyhow::Result<()> {
+        let config: GearConfig = serde_json::from_value(serde_json::json!({
+            "metric_catalog": { "enforce_tenant_scope": false }
+        }))?;
+        assert!(config.metric_catalog.periodic_validation_enabled);
+        Ok(())
+    }
+
+    #[test]
     fn metric_validation_repeats_unless_disabled() -> anyhow::Result<()> {
         let omitted: GearConfig = serde_json::from_value(serde_json::json!({
-            "metric_catalog": {
-                "tenant_metrics_enabled": false,
-                "enforce_tenant_scope": false
-            }
+            "metric_catalog": { "tenant_metrics_enabled": false }
         }))?;
         assert!(omitted.metric_catalog.periodic_validation_enabled);
 

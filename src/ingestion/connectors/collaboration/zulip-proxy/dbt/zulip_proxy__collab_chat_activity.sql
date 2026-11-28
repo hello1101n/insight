@@ -30,11 +30,11 @@
 -- `total_chat_messages`.
 
 SELECT
-    m.tenant_id,
-    m.source_id AS insight_source_id,
+    m.insight_tenant_id,
+    m.insight_source_id AS insight_source_id,
     MD5(concat(
-        m.tenant_id, '-',
-        m.source_id, '-',
+        m.insight_tenant_id, '-',
+        m.insight_source_id, '-',
         lower(u.email), '-',
         toString(toDate(parseDateTimeBestEffortOrNull(m.created_at)))
     )) AS unique_key,
@@ -63,15 +63,15 @@ FROM (
     -- normally collapses these on FINAL, but the incremental SUM(count)
     -- below must not double-count if the table has not been OPTIMIZE'd
     -- yet — pre-dedup by `uniq` (the proxy's primary key).
-    SELECT *
+    SELECT * REPLACE ({{ bronze_tenant() }} AS insight_tenant_id)
     FROM {{ source('bronze_zulip_proxy', 'messages') }}
     WHERE parseDateTimeBestEffortOrNull(created_at) IS NOT NULL
     ORDER BY _airbyte_extracted_at DESC
-    LIMIT 1 BY tenant_id, source_id, uniq
+    LIMIT 1 BY insight_tenant_id, insight_source_id, uniq
 ) AS m
 LEFT JOIN {{ source('bronze_zulip_proxy', 'users') }} AS u FINAL
-    ON u.tenant_id = m.tenant_id
-    AND u.source_id = m.source_id
+    ON {{ bronze_tenant('u.insight_tenant_id') }} = m.insight_tenant_id
+    AND u.insight_source_id = m.insight_source_id
     AND u.id = m.sender_id
 WHERE u.email IS NOT NULL AND u.email != ''
   -- INVARIANT: the class holds organization members only — a guest (Zulip role 600)
@@ -81,18 +81,15 @@ WHERE u.email IS NOT NULL AND u.email != ''
   -- Watermark on the source EXTRACT time, not the business date (see zoom model header
   -- for the backfill-strand failure mode this fixes). Re-pulled rows carry a fresh
   -- `_airbyte_extracted_at`, so reprocess every business date touched by a recent extract.
-  AND (
-    (SELECT count() FROM {{ this }}) = 0
-    OR toDate(parseDateTimeBestEffortOrNull(m.created_at)) IN (
-      SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(created_at))
-      FROM {{ source('bronze_zulip_proxy', 'messages') }}
-      WHERE _airbyte_extracted_at
-            > (SELECT max(_airbyte_extracted_at) FROM {{ source('bronze_zulip_proxy', 'messages') }}) - INTERVAL 3 DAY
-    )
+  AND toDate(parseDateTimeBestEffortOrNull(m.created_at)) IN (
+    SELECT DISTINCT toDate(parseDateTimeBestEffortOrNull(created_at))
+    FROM {{ source('bronze_zulip_proxy', 'messages') }}
+    WHERE _airbyte_extracted_at
+          > {{ instance_incremental_watermark('collected_at', ['insight_tenant_id', 'insight_source_id'], ['insight_tenant_id', 'insight_source_id'], '3 DAY') }}
   )
 {% endif %}
 GROUP BY
-    m.tenant_id,
-    m.source_id,
+    m.insight_tenant_id,
+    m.insight_source_id,
     lower(u.email),
     toDate(parseDateTimeBestEffortOrNull(m.created_at))

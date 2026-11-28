@@ -2,9 +2,13 @@ import type { DateRange } from "@/api/period-to-date-range";
 import i18n from "@/i18n";
 import type { Matrix, MatrixCell } from "@/lib/export/matrix";
 import { isDurationUnit, roundMetricValue } from "@/lib/format";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 import { teamSum, type TeamTimePeriods } from "@/lib/portal/metrics-team-time";
-import { finiteValue } from "@/lib/portal/metrics-view";
+import {
+  combinedColumn,
+  combinedFigure,
+  combinedFigureBy,
+} from "@/lib/portal/metrics-view-combined";
 
 export interface MetricsViewExport {
   people: ReadonlyArray<{ entityId: string; displayName: string }>;
@@ -79,7 +83,12 @@ export function metricsViewMatrix({
     person.displayName,
     ...(withRoles ? [roles.get(person.entityId) ?? null] : []),
     period,
-    ...keys.map((key) => fileValue(byKey.get(key), person.entityId)),
+    ...keys.map((key) => {
+      const column = combinedColumn(key);
+      return column
+        ? combinedFigure(column, byKey, person.entityId)
+        : fileValue(byKey.get(key), person.entityId);
+    }),
   ]);
 
   return { columns, rows };
@@ -117,7 +126,10 @@ export function teamTimeMatrix({
     const result = after.get(key) ?? before.get(key);
     if (!result) return [];
 
-    const total = (side: ReadonlyMap<string, NormalizedMetricResult>) => {
+    const column = combinedColumn(key);
+    const total = (side: ReadonlyMap<string, NormalizedMetricResult>): MatrixCell => {
+      if (column) return combinedFigureBy(column, side, (part) => teamSum(part, memberIds));
+
       const sideResult = side.get(key);
       const value = sideResult ? teamSum(sideResult, memberIds) : null;
       return value == null ? null : fileNumber(value, result);

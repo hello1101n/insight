@@ -9,7 +9,7 @@
 -- stays and starts counting the moment it resolves; until then it, and every
 -- unassigned issue's row, counts only in the unattributed share.
 SELECT
-    src.tenant_id,
+    src.insight_tenant_id,
     src.source_key,
     src.entity_type,
     {{ normalized_email('src.entity_id') }} AS entity_id,
@@ -43,7 +43,7 @@ status_intervals AS (
 ),
 issue_facts AS (
     SELECT
-        s.tenant_id                                                          AS tenant_id,
+        s.insight_tenant_id                                                          AS insight_tenant_id,
         s.entity_id                                                          AS entity_id,
         s.account_source_type                                                AS account_source_type,
         s.account_source_id                                                  AS account_source_id,
@@ -98,16 +98,17 @@ issue_facts AS (
         ) AS type_dimensions
     FROM issue_state AS s
     LEFT JOIN status_intervals AS i
-        ON i.insight_source_id = s.insight_source_id
+        ON i.insight_tenant_id = s.insight_tenant_id
+        AND i.insight_source_id = s.insight_source_id
         AND i.issue_id = s.issue_id
         AND i.status_category = 'in_progress'
     WHERE s.final_close_at IS NOT NULL
-    GROUP BY s.tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
+    GROUP BY s.insight_tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
              s.insight_source_id, s.issue_id, toDate(s.final_close_at)
 ),
 issue_item_evidence AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -171,7 +172,7 @@ issue_item_evidence AS (
 -- per person-day (`task_person_day_group`), the grain the email gave it.
 estimation_rows AS (
     SELECT
-        tenant_id                                                            AS day_tenant_id,
+        insight_tenant_id                                                            AS day_tenant_id,
         entity_id                                                            AS day_entity_id,
         account_source_type                                                  AS day_account_source_type,
         account_source_id                                                    AS day_account_source_id,
@@ -193,7 +194,7 @@ estimation_rows AS (
 -- deviation and of its one sample, so the shares sum back to the day's figure.
 estimation_issues AS (
     SELECT
-        day_tenant_id AS tenant_id,
+        day_tenant_id AS insight_tenant_id,
         day_entity_id AS entity_id,
         {{ task_person_day_account_columns('day_', window='person_day_window') }},
         day_metric_date AS metric_date,
@@ -213,28 +214,29 @@ estimation_issues AS (
 ),
 transitions AS (
     SELECT
+        insight_tenant_id,
         insight_source_id,
         issue_id,
         interval_start AS event_at,
         status_category,
         lagInFrame(status_category) OVER (
-            PARTITION BY insight_source_id, issue_id ORDER BY interval_start
+            PARTITION BY insight_tenant_id, insight_source_id, issue_id ORDER BY interval_start
         ) AS prev_category
     FROM status_intervals
 ),
 closes AS (
-    SELECT insight_source_id, issue_id, event_at AS close_at
+    SELECT insight_tenant_id, insight_source_id, issue_id, event_at AS close_at
     FROM transitions
     WHERE status_category = 'done' AND (prev_category IS NULL OR prev_category != 'done')
 ),
 reopens AS (
-    SELECT insight_source_id, issue_id, event_at AS reopen_at
+    SELECT insight_tenant_id, insight_source_id, issue_id, event_at AS reopen_at
     FROM transitions
     WHERE prev_category = 'done' AND (status_category != 'done' OR status_category IS NULL)
 ),
 close_reopen AS (
     SELECT
-        s.tenant_id                                                          AS tenant_id,
+        s.insight_tenant_id                                                          AS insight_tenant_id,
         s.entity_id                                                          AS entity_id,
         s.account_source_type                                                AS account_source_type,
         s.account_source_id                                                  AS account_source_id,
@@ -254,15 +256,19 @@ close_reopen AS (
            toFloat64(1), toFloat64(0))                                       AS reopened_14d
     FROM closes AS c
     INNER JOIN issue_state AS s
-        ON s.insight_source_id = c.insight_source_id AND s.issue_id = c.issue_id
+        ON s.insight_tenant_id = c.insight_tenant_id
+        AND s.insight_source_id = c.insight_source_id
+        AND s.issue_id = c.issue_id
     LEFT JOIN reopens AS r
-        ON r.insight_source_id = c.insight_source_id AND r.issue_id = c.issue_id
-    GROUP BY s.tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
+        ON r.insight_tenant_id = c.insight_tenant_id
+        AND r.insight_source_id = c.insight_source_id
+        AND r.issue_id = c.issue_id
+    GROUP BY s.insight_tenant_id, s.entity_id, s.account_source_type, s.account_source_id, s.account_id,
              c.insight_source_id, c.issue_id, c.close_at
 ),
 issue_measures AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -288,7 +294,7 @@ issue_measures AS (
     UNION ALL
 
     SELECT
-        c.tenant_id AS tenant_id,
+        c.insight_tenant_id AS insight_tenant_id,
         c.entity_id AS entity_id,
         c.account_source_type AS account_source_type,
         c.account_source_id AS account_source_id,
@@ -307,7 +313,7 @@ issue_measures AS (
         [tuple('close_events', toFloat64(1))],
         if(c.reopened_14d > 0, [tuple('reopened_within_14d', c.reopened_14d)], [])
     ) AS close_measure
-    GROUP BY c.tenant_id, c.entity_id, c.account_source_type, c.account_source_id, c.account_id,
+    GROUP BY c.insight_tenant_id, c.entity_id, c.account_source_type, c.account_source_id, c.account_id,
              c.insight_source_id, c.issue_id, toDate(c.close_at), close_measure.1
 
     UNION ALL
@@ -315,7 +321,7 @@ issue_measures AS (
     -- INVARIANT: zero rows stay. Without them a person-day that logged
     -- nothing reads no data instead of 0%.
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -339,7 +345,7 @@ issue_measures AS (
     UNION ALL
 
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -362,7 +368,7 @@ issue_measures AS (
 -- each account's hours keep its key and resolve account-first.
 logged_work AS (
     SELECT
-        tenant_id,
+        insight_tenant_id,
         entity_id,
         account_source_type,
         account_source_id,
@@ -373,7 +379,7 @@ logged_work AS (
     FROM ({{ task_worklog_per_account_day() }})
 )
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     'task' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -413,14 +419,13 @@ SELECT
         'title', ifNull(title, '')
     ) AS details
 FROM issue_measures
-WHERE tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     'task' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -444,14 +449,13 @@ SELECT
         'type', ifNull(arrayFirst(dimension -> dimension.1 = 'type', type_dimensions).3, '')
     ) AS details
 FROM issue_item_evidence
-WHERE tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     'task' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -486,14 +490,13 @@ ARRAY JOIN arrayConcat(
         []
     )
 ) AS issue_measure
-WHERE tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 
 UNION ALL
 
 SELECT
-    assumeNotNull(tenant_id) AS tenant_id,
+    ifNull(insight_tenant_id, '') AS insight_tenant_id,
     'task' AS source_key,
     'person' AS entity_type,
     assumeNotNull(entity_id) AS entity_id,
@@ -525,7 +528,6 @@ SELECT
     dimensions,
     CAST(map() AS Map(String, String)) AS details
 FROM ({{ sum_measure('logged_hours', 'logged_work', 'worklog_seconds / 3600.0', 'no_dimensions', where='worklog_seconds > 0', keys=account_keys) }})
-WHERE tenant_id IS NOT NULL
-  AND entity_id IS NOT NULL
+WHERE entity_id IS NOT NULL
   AND metric_date IS NOT NULL
 ) AS src

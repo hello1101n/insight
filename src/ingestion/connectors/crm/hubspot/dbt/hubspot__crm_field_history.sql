@@ -14,9 +14,9 @@
 WITH src AS (
     {% for tbl in ['deals_property_history', 'tickets_property_history'] %}
     SELECT
-        tenant_id,
-        source_id,
-        concat(tenant_id, '-', source_id, '-', objectType, '-', id) AS unique_key,
+        {{ bronze_tenant() }}                           AS insight_tenant_id,
+        insight_source_id,
+        concat(insight_tenant_id, '-', insight_source_id, '-', objectType, '-', id) AS unique_key,
         objectType                                      AS object_type,
         objectId                                        AS object_id,
         propertyName                                    AS field,

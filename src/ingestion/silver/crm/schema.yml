@@ -4,6 +4,11 @@ models:
   - name: class_crm_users
     description: "Unified CRM users from all sources (Salesforce, HubSpot)"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: user_id
         description: "Source-specific record-owner ID (HubSpot: owners.id). Joins to record-owner fields on deals/engagements."
         tests:
@@ -26,6 +31,11 @@ models:
   - name: class_crm_deals
     description: "Unified CRM deals/opportunities from all sources"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: deal_id
         description: "Source-specific deal ID"
         tests:
@@ -50,6 +60,11 @@ models:
   - name: class_crm_activities
     description: "Unified CRM activities (calls, meetings, tasks, emails) from all sources"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: activity_id
         description: "Source-specific activity ID"
         tests:
@@ -78,6 +93,11 @@ models:
   - name: class_crm_contacts
     description: "Unified CRM contacts (external customers) from all sources"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: contact_id
         description: "Source-specific contact ID"
         tests:
@@ -94,6 +114,11 @@ models:
   - name: class_crm_accounts
     description: "Unified CRM accounts/companies from all sources"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: account_id
         description: "Source-specific account ID"
         tests:
@@ -110,6 +135,11 @@ models:
   - name: class_crm_leads
     description: "Unified CRM leads (prospects before a deal) from all sources"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: lead_id
         description: "Source-specific lead ID"
         tests:
@@ -128,6 +158,11 @@ models:
   - name: class_crm_tickets
     description: "CRM service tickets."
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: insight_source_id
         description: "Source instance"
         tests:
@@ -152,6 +187,11 @@ models:
   - name: class_crm_associations
     description: "Associated object ids, one row per (record, associated object type); the whole id list is replaced when the record changes"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: from_object_type
         description: "contacts, deals, calls, emails, meetings, tasks, notes, communications, leads, tickets"
         tests:
@@ -173,6 +213,11 @@ models:
   - name: class_crm_pipelines
     description: "Deal and ticket pipelines"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: pipeline_id
         tests:
           - not_null
@@ -188,6 +233,11 @@ models:
   - name: class_crm_pipeline_stages
     description: "Pipeline stages with their closing semantics"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: stage_id
         tests:
           - not_null
@@ -211,6 +261,11 @@ models:
   - name: class_crm_field_history
     description: "Property value changes, one row per change"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: object_type
         description: "deals | tickets"
         tests:
@@ -235,6 +290,11 @@ models:
   - name: class_crm_teams
     description: "CRM teams, as named on their members"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: team_id
         tests:
           - not_null
@@ -246,6 +306,11 @@ models:
   - name: class_crm_property_definitions
     description: "Labels, types and option labels of every property"
     columns:
+      - name: insight_tenant_id
+        description: "Canonical tenant the row belongs to; never NULL or empty."
+        tests:
+          - not_null
+          - not_empty
       - name: object_type
         tests:
           - not_null

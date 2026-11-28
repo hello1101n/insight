@@ -16,8 +16,8 @@
 WITH roster AS (
     SELECT
         unique_key,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }}                               AS insight_tenant_id,
+        insight_source_id,
         toString(toInt64(project_id))                       AS project_id,
         project_key,
         project_status,
@@ -29,17 +29,17 @@ WITH roster AS (
 -- one instance's fresher watermark must not mark another's projects stale.
 generation AS (
     SELECT
-        tenant_id,
-        source_id,
+        insight_tenant_id,
+        insight_source_id,
         max(seen_at) AS watermark
     FROM roster
-    GROUP BY tenant_id, source_id
+    GROUP BY insight_tenant_id, insight_source_id
 )
 
 SELECT
     r.unique_key                                            AS unique_key,
-    r.tenant_id                                             AS tenant_id,
-    r.source_id                                             AS source_id,
+    r.insight_tenant_id                                             AS insight_tenant_id,
+    r.insight_source_id                                             AS insight_source_id,
     r.project_id                                            AS project_id,
     r.project_key                                           AS project_key,
     toUInt8(r.seen_at >= g.watermark
@@ -48,5 +48,5 @@ SELECT
     r.seen_at                                               AS last_seen_at
 FROM roster AS r
 INNER JOIN generation AS g
-    ON g.tenant_id = r.tenant_id
-    AND g.source_id = r.source_id
+    ON g.insight_tenant_id = r.insight_tenant_id
+    AND g.insight_source_id = r.insight_source_id

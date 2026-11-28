@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { Columns3 } from "lucide-react";
 
@@ -26,7 +26,19 @@ import {
   resolveChangeDate,
   teamTimePeriods,
 } from "@/lib/portal/metrics-team-time";
-import { compareTeams, metricsViewCatalog } from "@/lib/portal/metrics-view";
+import {
+  compareTeams,
+  defaultMetricKeys,
+  defaultMetricOrder,
+  metricsViewCatalog,
+  orderMetricKeys,
+} from "@/lib/portal/metrics-view";
+import {
+  requestedMetricKeys,
+  withCombinedColumns,
+  withCombinedResults,
+} from "@/lib/portal/metrics-view-combined";
+import { readStoredMetricsPick, storeMetricsPick } from "@/lib/portal/metrics-view-pick";
 import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search";
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
@@ -68,7 +80,9 @@ export function MetricsView() {
 
   const catalog = useMemo(
     () =>
-      metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      withCombinedColumns(
+        metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+      ),
     [definitions.data, showPlanned],
   );
   const catalogKeys = useMemo(
@@ -91,22 +105,32 @@ export function MetricsView() {
     weeks: weeksParam,
   } = usePortalSearch();
   const setSearch = useSetPortalSearch();
+  const [storedPick, setStoredPick] = useState(readStoredMetricsPick);
+  if (metricsParam != null && metricsParam !== storedPick) setStoredPick(metricsParam);
+  const pickParam = metricsParam ?? storedPick;
   const picked = useMemo(
-    () =>
-      metricsParam == null ? null : metricsParam === "none" ? [] : metricsParam.split(","),
-    [metricsParam],
+    () => (pickParam == null ? null : pickParam === "none" ? [] : pickParam.split(",")),
+    [pickParam],
   );
-  const setPicked = (next: string[] | null) =>
-    setSearch(
-      { metrics: next == null ? undefined : next.length === 0 ? "none" : next.join(",") },
-      { replace: true },
-    );
-  const selected = picked ?? catalogKeys;
+  useEffect(() => {
+    if (metricsParam != null) storeMetricsPick(metricsParam);
+  }, [metricsParam]);
+  const setPicked = (next: string[] | null) => {
+    const value = next == null ? null : next.length === 0 ? "none" : next.join(",");
+    setSearch({ metrics: value ?? undefined }, { replace: true });
+    storeMetricsPick(value);
+    setStoredPick(value);
+  };
+  const defaultKeys = useMemo(() => defaultMetricKeys(catalogKeys), [catalogKeys]);
+  const selected = picked ?? defaultKeys;
   const setSelected = (action: SetStateAction<string[]>) =>
     setPicked(typeof action === "function" ? action(selected) : action);
   const metricKeys = useMemo(() => {
     const chosen = new Set(selected);
-    return catalogKeys.filter((key) => chosen.has(key));
+    return orderMetricKeys(
+      catalogKeys.filter((key) => chosen.has(key)),
+      defaultMetricOrder(),
+    );
   }, [catalogKeys, selected]);
 
   const { pivot, roster } = orgScope;
@@ -150,16 +174,19 @@ export function MetricsView() {
         : null,
   );
 
+  const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
   const data = useMetricsViewData(
-    metricKeys,
+    requestKeys,
     timeTeam ? timeTeam.memberIds : memberIds,
     timeTeam ? periods.after : dateRange,
   );
   const before = useMetricsViewData(
-    timeTeam ? metricKeys : NO_KEYS,
+    timeTeam ? requestKeys : NO_KEYS,
     timeTeam ? timeTeam.memberIds : NO_IDS,
     periods.before,
   );
+  const byKey = useMemo(() => withCombinedResults(data.byKey), [data.byKey]);
+  const beforeByKey = useMemo(() => withCombinedResults(before.byKey), [before.byKey]);
   const compareTeamOverTime = (teamId: string) =>
     setSearch({ compare: undefined, team: teamId, change, weeks });
 
@@ -254,8 +281,8 @@ export function MetricsView() {
             members={members}
             teams={teams}
             metricKeys={metricKeys}
-            after={data}
-            before={before}
+            after={{ ...data, byKey }}
+            before={{ ...before, byKey: beforeByKey }}
             periods={periods}
             change={change}
             weeks={weeks}
@@ -269,7 +296,7 @@ export function MetricsView() {
             people={people}
             members={members}
             metricKeys={metricKeys}
-            byKey={data.byKey}
+            byKey={byKey}
             loading={data.isPending}
             range={dateRange}
             onCompareTeam={compareTeamOverTime}

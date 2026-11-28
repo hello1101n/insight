@@ -1,8 +1,7 @@
 import { addDays, subDays } from "date-fns";
 
 import { parseISOCalendarDate, toISODate, type DateRange } from "@/api/period-to-date-range";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue } from "@/lib/portal/metrics-view";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
 
 export const TEAM_TIME_WEEKS = [1, 2, 4] as const;
 

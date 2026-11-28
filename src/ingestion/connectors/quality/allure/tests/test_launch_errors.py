@@ -74,8 +74,8 @@ def test_records_stamped_with_tenant_source_and_unique_key(http_mocker: HttpMock
     output = _read(config)
 
     record = output.records[0].record.data
-    assert record["tenant_id"] == "test-tenant"
-    assert record["source_id"] == "test-source"
+    assert record["insight_tenant_id"] == "test-tenant"
+    assert record["insight_source_id"] == "test-source"
     assert record["unique_key"] == "test-tenant-test-source-81"
 
 
@@ -85,7 +85,9 @@ def test_pagination_within_launch_follows_page_index_until_last_page(http_mocker
     mock_projects(http_mocker)
     mock_launch_window(http_mocker, 7, page([_launch(101, 7)]))
     _mock_errors(http_mocker, 101, page([_launch_error(81, 101)], number=0, last=False))
-    http_mocker.get(api_request(LAUNCH_ERRORS_URL, _params(101, page_index=1)), page([_launch_error(82, 101)], number=1))
+    http_mocker.get(
+        api_request(LAUNCH_ERRORS_URL, _params(101, page_index=1)), page([_launch_error(82, 101)], number=1)
+    )
 
     output = _read(config)
 

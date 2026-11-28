@@ -10,8 +10,8 @@ schemas:
       _airbyte_extracted_at: {type: string, format: date-time}
       _airbyte_meta: {type: string}
       _airbyte_generation_id: {type: integer}
-      tenant_id: {type: [string, "null"]}
-      source_id: {type: [string, "null"]}
+      insight_tenant_id: {type: [string, "null"]}
+      insight_source_id: {type: [string, "null"]}
       unique_key: {type: [string, "null"]}
       userPrincipalName: {type: [string, "null"]}
       isDeleted: {type: [boolean, "null"]}

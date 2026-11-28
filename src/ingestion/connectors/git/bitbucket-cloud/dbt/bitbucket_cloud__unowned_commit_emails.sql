@@ -25,12 +25,12 @@ WITH walked_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         max(parseDateTimeBestEffortOrNull(authored_date)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'commits') }} FINAL
     WHERE COALESCE(author_email, '') != ''
-    GROUP BY email, author_name, tenant_id, source_id
+    GROUP BY email, author_name, insight_tenant_id, insight_source_id
 ),
 
 -- The head commits of an unmerged or declined pull request are reachable from
@@ -40,12 +40,12 @@ pull_request_commits AS (
     SELECT
         lower(trimBoth(COALESCE(author_email, ''))) AS email,
         COALESCE(author_name, '') AS author_name,
-        tenant_id,
-        source_id,
+        {{ bronze_tenant() }} AS insight_tenant_id,
+        insight_source_id,
         max(parseDateTimeBestEffortOrNull(committed_date)) AS seen_at
     FROM {{ source('bronze_bitbucket_cloud', 'pull_request_commits') }} FINAL
     WHERE COALESCE(author_email, '') != ''
-    GROUP BY email, author_name, tenant_id, source_id
+    GROUP BY email, author_name, insight_tenant_id, insight_source_id
 ),
 
 every_author AS (
@@ -66,8 +66,8 @@ SELECT
     -- The name from their most recent commit: one person spells it several
     -- ways, and the freshest spelling is the one an operator will recognise.
     assumeNotNull(argMax(c.author_name, c.seen_at)) AS author_name,
-    c.tenant_id AS tenant_id,
-    c.source_id AS source_id,
+    c.insight_tenant_id AS insight_tenant_id,
+    c.insight_source_id AS insight_source_id,
     assumeNotNull(max(c.seen_at)) AS last_committed_at,
     sum(1) AS commit_idents
 FROM candidates AS c
@@ -76,6 +76,6 @@ FROM candidates AS c
 -- nothing about the same e-mail in another.
 LEFT ANTI JOIN {{ ref('bitbucket_cloud__account_emails') }} AS owned
     ON  owned.email     = c.email
-    AND owned.tenant_id = c.tenant_id
-    AND owned.source_id = c.source_id
-GROUP BY c.email, c.tenant_id, c.source_id
+    AND owned.insight_tenant_id = c.insight_tenant_id
+    AND owned.insight_source_id = c.insight_source_id
+GROUP BY c.email, c.insight_tenant_id, c.insight_source_id

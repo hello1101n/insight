@@ -5,8 +5,8 @@
   "required": ["unique_key"],
   "properties": {
     "unique_key": { "type": "string" },
-    "tenant_id": { "type": ["string", "null"] },
-    "source_id": { "type": ["string", "null"] },
+    "insight_tenant_id": { "type": ["string", "null"] },
+    "insight_source_id": { "type": ["string", "null"] },
     "data_source": { "type": ["string", "null"] },
     "collected_at": { "type": ["string", "null"] },
     "chain_status": { "type": ["string", "null"] },

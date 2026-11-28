@@ -7,7 +7,8 @@ it is not built at all. `union_by_tag` already unions whichever tagged
 contributors are materialised — this lane covers the decision in front of it,
 because dbt fixes its node set before the first model runs and a model body
 cannot skip itself. `list_unbuildable_models` names the models whose sources are
-not there, and `run-dbt.sh` passes them to `--exclude`.
+not there (or hold no rows; `tests/absent_bronze` covers that), and `run-dbt.sh`
+passes them to `--exclude`.
 
 No connector, no rows, no docker. The suite drops and recreates every database
 in the warehouse it points at, so point it at a throwaway one.

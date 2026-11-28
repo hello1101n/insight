@@ -32,7 +32,9 @@ CH_FLOOR_FACTS=()
 #   present  — the contract carries it
 #   string   — where it stands, its type is a String
 #   nullable — where it stands, its type is Nullable
-# A fact about a table that does not stand holds.
+# A fact about a table that does not stand holds. A fact about
+# `insight_tenant_id` is also met by `tenant_id`, its name until
+# `tenant_migration` and the cutover rebuild rename it.
 _floor_fact() {
   CH_FLOOR_FACTS+=("('$1', '$2', '$3', '$4')")
 }
@@ -70,7 +72,7 @@ _floor_facts() {
   _floor_fact_each staging direct_and_group_messages present \
     m365__collab_chat_activity slack__collab_chat_activity zulip_proxy__collab_chat_activity
   _floor_fact silver class_collab_chat_activity direct_and_group_messages present
-  _floor_fact silver class_task_users tenant_id present
+  _floor_fact silver class_task_users insight_tenant_id present
 
   _floor_fact_each bronze_github pre_image_oid present file_changes
   _floor_fact_each bronze_github post_image_oid present file_changes
@@ -113,7 +115,8 @@ LEFT JOIN
 (
     SELECT database, table, name, type FROM system.columns
     WHERE database IN ('staging', 'silver', 'bronze_github', 'bronze_jira')
-) AS c ON c.database = f.database AND c.table = f.table AND c.name = f.column
+) AS c ON c.database = f.database AND c.table = f.table
+    AND (c.name = f.column OR (f.column = 'insight_tenant_id' AND c.name = 'tenant_id'))
 WHERE multiIf(
     f.expectation = 'absent', ifNull(c.name, '') != '',
     f.expectation = 'present', ifNull(c.name, '') = '',

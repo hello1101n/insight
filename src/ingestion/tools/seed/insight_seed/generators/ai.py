@@ -120,8 +120,8 @@ def _envelope(source_id: str, tenant_uuid: str) -> dict[str, object]:
         "_airbyte_extracted_at": read_at,
         "_airbyte_meta": "{}",
         "_airbyte_generation_id": 0,
-        "tenant_id": tenant_uuid,
-        "source_id": source_id,
+        "insight_tenant_id": tenant_uuid,
+        "insight_source_id": source_id,
         "collected_at": read_at.isoformat(),
     }
 
@@ -136,8 +136,8 @@ def seed_cursor_daily_usage(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "userId",
         "email",
         "day",
@@ -211,8 +211,8 @@ def seed_claude_team_code_metrics(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "data_source",
         "metric_date",
@@ -231,8 +231,8 @@ def seed_claude_team_code_metrics(
     org_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "data_source",
         "metric_date",
@@ -310,8 +310,8 @@ def seed_chatgpt_team(
     seat_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "data_source",
         "user_id",
@@ -324,8 +324,8 @@ def seed_chatgpt_team(
     activity_cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "data_source",
         "date",
@@ -407,8 +407,8 @@ def seed_claude_enterprise_users(
     cols = [
         *AIRBYTE_COLS,
         "unique_key",
-        "tenant_id",
-        "source_id",
+        "insight_tenant_id",
+        "insight_source_id",
         "collected_at",
         "data_source",
         "date",

@@ -480,10 +480,6 @@
   "error_boundary": {
     "title": "Something went wrong"
   },
-  "mock_banner": {
-    "title": "Synthetic data",
-    "description_html": "UI is rendering using mock data."
-  },
   "view_as_banner": {
     "title": "Viewing as {{email}}",
     "description": "You are signed in as {{impersonator}} and seeing the portal as this person.",
@@ -1238,7 +1234,12 @@
     "mode_team_time": "Team over time",
     "find_team": "Find a team",
     "open_team": "Open",
-    "team_roster": "{{team}} · Current roster · {{count}} people"
+    "team_roster": "{{team}} · Current roster · {{count}} people",
+    "lines": {
+      "label": "Lines",
+      "description": "Lines added and removed that reached the default branch",
+      "unit": "KLOC"
+    }
   },
   "dashboards": {
     "no_shared": "No shared dashboards",

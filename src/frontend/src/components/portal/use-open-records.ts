@@ -1,8 +1,8 @@
 import { evidenceSelection } from "@/api/metric-drilldown-client";
 import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
 import { formatRange } from "@/lib/date-range-label";
-import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { finiteValue, formatViewValue } from "@/lib/portal/metrics-view";
+import { finiteValue, type NormalizedMetricResult } from "@/lib/metrics/collection";
+import { formatViewValue } from "@/lib/portal/metrics-view";
 
 export function useOpenRecords(
   result: NormalizedMetricResult | undefined,

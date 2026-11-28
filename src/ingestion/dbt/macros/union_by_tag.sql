@@ -14,6 +14,12 @@
     duplicates straight into silver and inflates metrics. Deduping here makes
     silver duplicate-free regardless of merge timing. See ADR-0001.
 
+  How: `union_relations_latest` below finds the latest `dedup_version_col` per
+  `unique_key` over those two columns alone and keeps the rows holding it
+  (`LIMIT 1 BY` breaks a tie, as ROW_NUMBER did). A window over `SELECT *`
+  sorted every whole row in memory instead: on dev, 5.7 GiB for the 1.07M rows
+  of class_crm_activities.
+
   Args:
     dedup_version_col: version column for "latest wins" dedup (default
       `_version`). Pass `none` for versionless RMT sources (full-refresh
@@ -32,6 +38,7 @@
 -#}
 {% macro union_by_tag(tag_name, dedup_version_col='_version') %}
   {%- if execute -%}
+    {%- set bronze = bronze_tables() -%}
     {%- set models = [] -%}
     {%- for node in graph.nodes.values() -%}
       {%- if tag_name in node.tags and node.resource_type == 'model' and node.unique_id != model.unique_id -%}
@@ -39,28 +46,39 @@
             still has a relation, and unioning it fails the whole class. The
             rule is `unbuildable_models`' own, so an arm this run excludes is
             the same arm the union leaves out. -#}
-        {%- if relation_is_readable(node) -%}
+        {%- if relation_is_readable(node, bronze) -%}
           {%- do models.append(node) -%}
         {%- else -%}
-          {{ log("union_by_tag: skipping " ~ node.name ~ " (not materialised, or it reads a relation that is gone)", info=True) }}
+          {{ log("union_by_tag: skipping " ~ node.name ~ " (not materialised, or it reads a relation that is gone or bronze that is empty)", info=True) }}
         {%- endif -%}
       {%- endif -%}
     {%- endfor -%}
 
-    {%- if models | length == 0 -%}
-      {#- No source staging tables for this tag: hand the surrounding model SQL
-          the target's own schema with zero rows, so the materialise is a no-op
-          and the outer "WHERE _version > ..." still compiles.
-
-          A class nobody feeds and no earlier run materialised has no shape to
-          emit at all — `unbuildable_models` keeps it out of the run, and
-          reaching here means something selected it by hand. -#}
+    {%- if models | length == 0 and load_relation(this) is not none -%}
+      {#- No contributor to read: hand the surrounding model SQL the target's
+          own schema with zero rows, so the materialise is a no-op and the
+          outer "WHERE _version > ..." still compiles. The table stays as is. -#}
       {{ log("union_by_tag: no source tables for tag '" ~ tag_name ~ "' — emitting empty select from the target to preserve schema", info=True) }}
       SELECT * FROM {{ this }} WHERE 1 = 0
+    {%- elif models | length == 0 -%}
+      {#- No contributor and no table yet: there is no shape to emit — silver
+          is a projection of its contributors, and no column list is declared
+          anywhere else. A model body cannot skip itself, so the skip is
+          `unbuildable_models`', which leaves such a class out of every run that
+          passes it the run's selection. Reaching here means a run that did
+          not (a hand-picked `--select`); say so instead of failing on a
+          table that is not there. -#}
+      {{ exceptions.raise_compiler_error(
+           "union_by_tag: no contributor tagged '" ~ tag_name ~ "' is materialised and " ~ this
+           ~ " does not exist yet, so there is nothing to build it from. Exclude what"
+           ~ " `dbt run-operation list_unbuildable_models` lists, or select a contributor too.") }}
     {%- else -%}
       {%- set relations = [] -%}
       {%- for m in models -%}{%- do relations.append(ref(m.name)) -%}{%- endfor -%}
-      {{ union_relations_latest(relations, dedup_version_col) }}
+      {#- A NULL unique_key (a NULL tenant or key part) would collapse into one row in the dedup. #}
+      {{ union_relations_latest(
+           relations, dedup_version_col,
+           row_filter=tenant_guard_fail('unique_key IS NULL', 'unique_key is NULL before dedup') ~ ' = 0') }}
     {%- endif -%}
   {%- else -%}
     SELECT 1 AS _placeholder WHERE FALSE
@@ -68,7 +86,7 @@
 {% endmacro %}
 
 {#-
-  union_relations_latest(relations, dedup_version_col)
+  union_relations_latest(relations, dedup_version_col, row_filter=none)
 
   The UNION ALL of `relations` with one row per `unique_key`. With a version
   column the newest version wins: it is found over `unique_key` and the
@@ -83,16 +101,21 @@
   times. A key whose relation another run replaces between the reads can
   match no winning version and leave this batch; its newer version passes the
   next run's watermark, so it is late, not lost.
+
+  `row_filter`, when given, is applied to every row before the dedup.
 -#}
-{% macro union_relations_latest(relations, dedup_version_col) %}
+{% macro union_relations_latest(relations, dedup_version_col, row_filter=none) %}
       SELECT * FROM (
       {%- for relation in relations %}
         SELECT * FROM {{ relation }}
         {%- if not loop.last %} UNION ALL {% endif %}
       {%- endfor %}
       ) AS _ubt
+      {%- if row_filter %}
+      WHERE {{ row_filter }}
+      {%- endif %}
       {% if dedup_version_col %}
-      WHERE (isNull(unique_key), assumeNotNull(unique_key)) IN (
+      {{ 'AND' if row_filter else 'WHERE' }} ((isNull(unique_key), assumeNotNull(unique_key)) IN (
           SELECT isNull(unique_key), assumeNotNull(unique_key)
           FROM (
           {%- for relation in relations %}
@@ -118,7 +141,7 @@
               GROUP BY unique_key
               HAVING count() > 1
           )
-      )
+      ))
       LIMIT 1 BY unique_key
       {% else %}
       {# Versionless RMT (no _version column): any row per unique_key. #}

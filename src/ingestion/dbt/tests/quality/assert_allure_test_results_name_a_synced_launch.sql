@@ -12,17 +12,17 @@
 ) }}
 
 SELECT
-    r.tenant_id AS tenant_id,
-    r.source_id AS source_id,
+    r.insight_tenant_id AS insight_tenant_id,
+    r.insight_source_id AS insight_source_id,
     r.launchId AS launch_id,
     count() AS test_results,
     max(r._airbyte_extracted_at) AS last_extracted_at
 FROM {{ source('bronze_allure', 'test_results') }} AS r FINAL
 LEFT ANTI JOIN (
-    SELECT DISTINCT tenant_id, source_id, id
+    SELECT DISTINCT insight_tenant_id, insight_source_id, id
     FROM {{ source('bronze_allure', 'launches') }} FINAL
 ) AS l
-    ON l.tenant_id = r.tenant_id AND l.source_id = r.source_id AND l.id = r.launchId
+    ON l.insight_tenant_id = r.insight_tenant_id AND l.insight_source_id = r.insight_source_id AND l.id = r.launchId
 WHERE r._airbyte_extracted_at < now64(3) - INTERVAL 2 DAY
-GROUP BY r.tenant_id, r.source_id, r.launchId
+GROUP BY r.insight_tenant_id, r.insight_source_id, r.launchId
 LIMIT 100
