@@ -199,7 +199,7 @@ export function MetricsView() {
                 variant="ghost"
                 size="sm"
                 aria-label={t("metrics_view.select_all_metrics")}
-                onClick={() => setPicked(null)}
+                onClick={() => setPicked(catalogKeys)}
               >
                 {t("metrics_view.select_all")}
               </Button>

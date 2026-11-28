@@ -448,6 +448,19 @@ describe("MetricsView", () => {
     expect(portalRouter.search.metrics).toBeUndefined();
   });
 
+  it("names every catalog metric in the link on Select all, apart from Reset to defaults", async () => {
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 1 of 3" }));
+    await user.click(screen.getByRole("button", { name: "Select all metrics" }));
+
+    expect(portalRouter.search.metrics).toBe(
+      "git.default_branch_commits,tasks.closed,collab.messages_sent",
+    );
+  });
+
   it("keeps the picker open while a metric's description card is open", async () => {
     mocks.definitions[0] = definition("collab.messages_sent", "Messages", {
       description: "Messages sent in team channels.",
