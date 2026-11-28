@@ -1,9 +1,5 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import type {
-  MetricDimensionFilter,
-  MetricDirection,
-  MetricFormat,
-} from "@/api/metric-results-client";
+import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
 import { metricDisplayUnit } from "@/lib/format";
 import {
   personDisplayName,
@@ -42,14 +38,10 @@ export const DEFAULT_METRIC_KEYS: readonly string[] = [
   "git.default_branch_merge_rate",
   "git.pr_cycle_time_h",
   "git.reviews_performed",
-  "git.pr_comments",
+  "git.pr_comments_on_others",
   "ai.active_days",
   "tasks.closed",
 ];
-
-export const METRIC_FILTERS: Readonly<Record<string, readonly MetricDimensionFilter[]>> = {
-  "git.pr_comments": [{ dimension: "comment_target", values: ["others"] }],
-};
 
 function standMetricKeys(): readonly string[] {
   return runtimeConfig().metricsView?.defaultMetrics ?? [];

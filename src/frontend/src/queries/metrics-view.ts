@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type { DateRange } from "@/api/period-to-date-range";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
-import { chunkKeys, METRIC_FILTERS } from "@/lib/portal/metrics-view";
+import { chunkKeys } from "@/lib/portal/metrics-view";
 import {
   useMetricCollectionSet,
   type KeyedCollection,
@@ -27,14 +27,7 @@ export function useMetricsViewData(
       chunkKeys(metricKeys, MAX_METRICS_PER_REQUEST).map((chunk, index) => ({
         key: `metrics-view-${index}`,
         collection: {
-          metrics: chunk.map((key) => {
-            const filters = METRIC_FILTERS[key];
-            return {
-              key,
-              ...(filters ? { filters: [...filters] } : {}),
-              views: [{ view: "period" as const }],
-            };
-          }),
+          metrics: chunk.map((key) => ({ key, views: [{ view: "period" }] })),
         },
       })),
     [metricKeys],
