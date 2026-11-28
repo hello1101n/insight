@@ -297,7 +297,7 @@ fn owner_name_json(owner: Owner, names: &HashMap<PersonId, String>) -> Option<St
         .and_then(|person| names.get(&person).cloned())
 }
 
-async fn owner_names(
+pub(crate) async fn owner_names(
     state: &AppState,
     authorization: Option<&str>,
     owners: impl Iterator<Item = Owner>,
@@ -399,6 +399,9 @@ pub(super) fn custom_error(error: CustomError) -> CanonicalError {
             DefinitionApiError::invalid_field("body", source.to_string())
         }
         CustomError::Unanswerable(violations) => unanswerable(&violations),
+        CustomError::Personal(source) => {
+            DefinitionApiError::invalid_field("body", source.to_string())
+        }
         CustomError::Store(source) => DefinitionApiError::definition_store_error(source),
         CustomError::Datasets(source) => DefinitionApiError::dataset_store_error(source),
         CustomError::Run(source) => {

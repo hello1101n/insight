@@ -207,6 +207,7 @@ pub(super) fn presented(
             let number = text
                 .parse::<i64>()
                 .map(serde_json::Number::from)
+                .or_else(|_| text.parse::<u64>().map(serde_json::Number::from))
                 .ok()
                 .or_else(|| {
                     text.parse::<f64>()

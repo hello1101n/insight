@@ -244,7 +244,7 @@ fn a_person_is_looked_up_by_the_record_s_own_value() {
         .compile_over(&people(), &Window::legacy(), over)
         .unwrap_or_else(|error| panic!("a declared person compiles: {error}"))
         .sql;
-    let Some((shown, key)) = sql.split_once("LEFT JOIN") else {
+    let Some((shown, key)) = sql.split_once("LEFT JOIN __people_by_email AS `__p0`") else {
         panic!("the join is there: {sql}");
     };
 

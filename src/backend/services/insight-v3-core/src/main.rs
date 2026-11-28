@@ -37,6 +37,12 @@ mod definition_ids_live_tests;
 #[cfg(test)]
 mod ownership_live_tests;
 
+#[cfg(test)]
+mod personal_metrics_live_tests;
+
+#[cfg(test)]
+mod personal_values_live_tests;
+
 use api_gateway as _;
 use authn_resolver as _;
 use authz_resolver as _;

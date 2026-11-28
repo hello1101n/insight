@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use serde::Deserialize;
+use reqwest::header::{AUTHORIZATION, HeaderValue};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::access::{Caller, PersonId, Role};
@@ -11,6 +12,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const ADMIN_ROLE_ID: Uuid = Uuid::from_u128(0xa4d1_1000_0000_4000_8000_0000_0000_0001);
 
 const ASSIGNMENTS_PAGE: usize = 500;
+
+const VISIBLE_PERSONS_BATCH: usize = 1000;
 
 #[cfg(test)]
 const FIXED_CALLER: Uuid = Uuid::nil();
@@ -59,6 +62,16 @@ struct PersonSummary {
     person_id: Uuid,
 }
 
+#[derive(Debug, Serialize)]
+struct VisibleRequest<'a> {
+    person_ids: &'a [Uuid],
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleResponse {
+    visible: Vec<Uuid>,
+}
+
 #[derive(Debug, Deserialize)]
 struct AssignmentList {
     items: Vec<Assignment>,
@@ -91,6 +104,7 @@ struct Fixed {
     role: Role,
     members: Vec<Uuid>,
     strangers: Vec<Uuid>,
+    refused: Vec<Uuid>,
     names: Vec<(Uuid, String)>,
     names_unreachable: bool,
     roster: Roster,
@@ -168,6 +182,7 @@ impl IdentityClient {
                 role,
                 members: Vec::new(),
                 strangers: Vec::new(),
+                refused: Vec::new(),
                 names: Vec::new(),
                 names_unreachable: false,
                 roster: Roster::Whole(vec![caller]),
@@ -219,6 +234,14 @@ impl IdentityClient {
     pub(crate) fn with_strangers(self, people: &[Uuid]) -> Self {
         self.with(|fixed| Fixed {
             strangers: people.to_vec(),
+            ..fixed
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn refusing(self, people: &[Uuid]) -> Self {
+        self.with(|fixed| Fixed {
+            refused: people.to_vec(),
             ..fixed
         })
     }
@@ -345,6 +368,51 @@ impl IdentityClient {
             .into_iter()
             .filter_map(NamedPerson::shown)
             .collect())
+    }
+
+    pub(crate) async fn visible(
+        &self,
+        authorization: &HeaderValue,
+        ids: &[PersonId],
+    ) -> Result<HashSet<PersonId>, IdentityError> {
+        let (http, base_url) = match &self.mode {
+            Mode::Live { http, base_url } => (http, base_url),
+            #[cfg(test)]
+            Mode::Fixed(fixed) => {
+                if ids
+                    .iter()
+                    .any(|person| fixed.refused.contains(&person.uuid()))
+                {
+                    return Err(IdentityError::Refused(400));
+                }
+                return Ok(ids
+                    .iter()
+                    .copied()
+                    .filter(|person| !fixed.strangers.contains(&person.uuid()))
+                    .collect());
+            }
+        };
+
+        let url = format!("{base_url}/v1/visible-persons");
+        let asked: Vec<Uuid> = ids.iter().map(|person| person.uuid()).collect();
+        let mut visible = HashSet::new();
+
+        for batch in asked.chunks(VISIBLE_PERSONS_BATCH) {
+            let response = http
+                .post(&url)
+                .header(AUTHORIZATION, authorization)
+                .json(&VisibleRequest { person_ids: batch })
+                .send()
+                .await?;
+            if !response.status().is_success() {
+                return Err(IdentityError::Refused(response.status().as_u16()));
+            }
+
+            let answered: VisibleResponse = response.json().await?;
+            visible.extend(answered.visible.into_iter().map(PersonId::new));
+        }
+
+        Ok(visible)
     }
 
     pub(crate) async fn holds_admin(

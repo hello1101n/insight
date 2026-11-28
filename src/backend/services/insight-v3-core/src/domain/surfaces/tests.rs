@@ -1333,3 +1333,219 @@ async fn running_a_metric_over_a_dataset_still_being_made_says_so() -> R {
 
     Ok(())
 }
+
+mod personal_settings {
+    use super::*;
+    use crate::chat::Proposed;
+    use crate::domain::personal::{
+        Direction, MetricFormat, PersonalSettings, PersonalSettingsStore as _, SettingsError,
+    };
+
+    fn label() -> DefinitionLabel {
+        DefinitionLabel::parse("Comments").unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    fn reviews() -> serde_json::Value {
+        json!({
+            "title": "Reviews",
+            "fields": [
+                { "name": "reviewer", "path": "reviewer", "type": "string", "person": "email" },
+                { "name": "repository", "path": "repository", "type": "string" },
+                { "name": "comments", "path": "comments", "type": "int" },
+                { "name": "reviewed_at", "path": "reviewed_at", "type": "datetime" }
+            ]
+        })
+    }
+
+    fn per_reviewer() -> serde_json::Value {
+        json!({
+            "dataset": "reviews",
+            "time": { "field": "reviewed_at" },
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+            ],
+            "group_by": ["reviewer"]
+        })
+    }
+
+    fn per_repository() -> serde_json::Value {
+        json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "repository", "type": "string", "as_name": "repository" },
+                { "field": "comments", "type": "int", "agg": "sum", "as_name": "comments" }
+            ],
+            "group_by": ["repository"]
+        })
+    }
+
+    fn the_settings() -> PersonalSettings {
+        PersonalSettings {
+            person_field: "reviewer".to_owned(),
+            value_field: "comments".to_owned(),
+            unit: None,
+            format: MetricFormat::Number,
+            direction: Direction::HigherIsBetter,
+            description: "Review comments left in the period".to_owned(),
+        }
+    }
+
+    async fn personal_metric(fixture: &Fixture) -> Result<DefinitionId, Box<dyn Error>> {
+        fixture.a_ready_dataset("reviews", &reviews()).await?;
+        let id = fixture
+            .surfaces()
+            .create(DefinitionKind::Metric, &label(), &per_reviewer())
+            .await?;
+        assert!(
+            fixture
+                .definitions
+                .set_personal(&id, Some(&the_settings()))
+                .await?
+        );
+
+        Ok(id)
+    }
+
+    async fn untouched(fixture: &Fixture, id: &DefinitionId) -> R {
+        let stored = fixture.surfaces().read(DefinitionKind::Metric, id).await?;
+        assert_eq!(stored.body, per_reviewer());
+        assert_eq!(
+            fixture.definitions.personal_of(id).await?,
+            Some(the_settings())
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_replace_that_drops_the_person_field_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = personal_metric(&fixture).await?;
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &per_repository())
+            .await;
+
+        let Err(error) = refused else {
+            panic!("a replace that drops the person field must be refused");
+        };
+        assert!(
+            matches!(&error, CustomError::Personal(SettingsError::NoPersonField(field)) if field == "reviewer"),
+            "{error:?}"
+        );
+        assert_eq!(
+            error.to_string(),
+            SettingsError::NoPersonField("reviewer".to_owned()).to_string()
+        );
+        assert!(error.is_about_the_caller());
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
+    async fn a_replace_that_leaves_the_value_unaggregated_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = personal_metric(&fixture).await?;
+        let rows = json!({
+            "dataset": "reviews",
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "as_name": "comments" }
+            ]
+        });
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &rows)
+            .await;
+
+        assert!(
+            matches!(&refused, Err(CustomError::Personal(SettingsError::NotAggregated(field))) if field == "comments"),
+            "{refused:?}"
+        );
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
+    async fn a_replace_that_removes_the_time_source_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = personal_metric(&fixture).await?;
+        let mut clockless = per_reviewer();
+        if let Some(body) = clockless.as_object_mut() {
+            body.remove("time");
+        }
+
+        let refused = fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &clockless)
+            .await;
+
+        let Err(error) = refused else {
+            panic!("a replace that leaves a personal metric without a time source must be refused");
+        };
+        assert!(matches!(&error, CustomError::Personal(_)), "{error:?}");
+        assert!(error.to_string().contains("no time source"), "{error}");
+        assert!(error.is_about_the_caller());
+        untouched(&fixture, &id).await
+    }
+
+    #[tokio::test]
+    async fn a_replace_keeps_the_personal_settings() -> R {
+        let fixture = Fixture::new().await;
+        let id = personal_metric(&fixture).await?;
+        let wider = json!({
+            "dataset": "reviews",
+            "time": { "field": "reviewed_at" },
+            "fields": [
+                { "field": "reviewer", "type": "string", "as_name": "reviewer" },
+                { "field": "comments", "type": "int", "agg": "avg", "as_name": "comments" },
+                { "type": "int", "agg": "count", "as_name": "reviews" }
+            ],
+            "group_by": ["reviewer"]
+        });
+
+        fixture
+            .surfaces()
+            .replace(DefinitionKind::Metric, &id, &label(), &wider)
+            .await?;
+
+        let stored = fixture.surfaces().read(DefinitionKind::Metric, &id).await?;
+        assert_eq!(stored.body, wider);
+        assert_eq!(
+            fixture.definitions.personal_of(&id).await?,
+            Some(the_settings())
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_proposal_that_drops_the_person_field_is_refused() -> R {
+        let fixture = Fixture::new().await;
+        let id = personal_metric(&fixture).await?;
+
+        let refused = fixture
+            .surfaces()
+            .store_proposal(
+                Some(Proposed {
+                    id: Some(id.as_str().to_owned()),
+                    name: "Comments".to_owned(),
+                    body: per_repository(),
+                }),
+                Vec::new(),
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &refused,
+                Err(ProposalError::Refused(CustomError::Personal(SettingsError::NoPersonField(field))))
+                    if field == "reviewer"
+            ),
+            "{refused:?}"
+        );
+        untouched(&fixture, &id).await
+    }
+}

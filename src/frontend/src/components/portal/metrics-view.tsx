@@ -58,12 +58,17 @@ import { usePortalSearch, useSetPortalSearch } from "@/lib/portal/portal-search"
 import { usePortalShowPlanned } from "@/lib/portal/portal-store";
 import { useOrgScope } from "@/lib/portal/use-org-scope";
 import { useShellLayout } from "@/lib/portal/use-shell-layout";
+import type { PersonalMetricDefinition } from "@/lib/portal/personal-metrics";
 import { byFamily } from "@/lib/reports/families";
 import { useMetricDefinitionsResponse } from "@/queries/metric-definitions";
-import { useMetricsViewData } from "@/queries/metrics-view";
+import {
+  useMetricsViewData,
+  usePersonalMetricDefinitions,
+} from "@/queries/metrics-view";
 import type { IdentityPerson } from "@/types/insight";
 
 const TEST_ID = "page-people-metrics";
+const NO_PERSONAL: readonly PersonalMetricDefinition[] = [];
 
 function comparedNames(
   compareParam: string,
@@ -85,14 +90,22 @@ export function MetricsView() {
   const { dateRange } = usePortalPeriod();
   const orgScope = useOrgScope();
   const definitions = useMetricDefinitionsResponse();
+  const personalDefinitions = usePersonalMetricDefinitions().data ?? NO_PERSONAL;
   const showPlanned = usePortalShowPlanned();
 
   const catalog = useMemo(
     () =>
       withCombinedColumns(
-        metricsViewCatalog(definitions.data?.metrics ?? [], offeredMetricFilter(showPlanned)),
+        metricsViewCatalog(
+          [...(definitions.data?.metrics ?? []), ...personalDefinitions],
+          offeredMetricFilter(showPlanned),
+        ),
       ),
-    [definitions.data, showPlanned],
+    [definitions.data, personalDefinitions, showPlanned],
+  );
+  const personalByKey = useMemo(
+    () => new Map(personalDefinitions.map((metric) => [metric.metric_key, metric])),
+    [personalDefinitions],
   );
   const catalogKeys = useMemo(
     () => catalog.map((metric) => metric.metric_key),
@@ -159,7 +172,12 @@ export function MetricsView() {
   usePageTitle(compared.length > 0 ? compared.join(", ") : null);
 
   const requestKeys = useMemo(() => requestedMetricKeys(metricKeys), [metricKeys]);
-  const data = useMetricsViewData(requestKeys, memberIds, dateRange);
+  const data = useMetricsViewData(
+    requestKeys,
+    memberIds,
+    dateRange,
+    personalDefinitions,
+  );
   const byKey = useMemo(() => withCombinedResults(data.byKey), [data.byKey]);
 
   const gate = orgScopeGate({
@@ -242,6 +260,9 @@ export function MetricsView() {
           members={members}
           metricKeys={metricKeys}
           byKey={byKey}
+          personal={personalByKey}
+          personalPending={data.personalPending}
+          personalFailed={data.personalFailed}
           loading={data.isPending}
           range={dateRange}
         />
@@ -307,6 +328,9 @@ function MetricsBody({
   members,
   metricKeys,
   byKey,
+  personal,
+  personalPending,
+  personalFailed,
   loading,
   range,
 }: {
@@ -315,6 +339,9 @@ function MetricsBody({
   members: MembersGridMember[];
   metricKeys: readonly string[];
   byKey: Map<string, NormalizedMetricResult>;
+  personal: ReadonlyMap<string, PersonalMetricDefinition>;
+  personalPending: ReadonlySet<string>;
+  personalFailed: ReadonlySet<string>;
   loading: boolean;
   range: DateRange;
 }) {
@@ -341,7 +368,11 @@ function MetricsBody({
   });
   const inView = comparing ? compared : members;
   const inViewIds = inView.map((member) => member.entityId);
-  const columns = keysWithData(metricKeys, byKey, inViewIds);
+  const withData = new Set(keysWithData(metricKeys, byKey, inViewIds));
+  const columns = metricKeys.filter(
+    (key) => withData.has(key) || personalFailed.has(key) || personalPending.has(key),
+  );
+  const shown = columns.filter((key) => !personalPending.has(key));
 
   const toggle = (entityId: string) =>
     setExpanded((current) => {
@@ -392,7 +423,7 @@ function MetricsBody({
           />
           <MetricsDownloadMenu
             view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
-            disabled={metricKeys.length === 0 || loading}
+            disabled={metricKeys.length === 0 || loading || personalPending.size > 0}
           />
         </div>
       </div>
@@ -404,9 +435,11 @@ function MetricsBody({
         <div className="rounded-lg border bg-card">
           <MetricsCompareTable
             people={compared}
-            keys={columns}
+            keys={shown}
             byKey={byKey}
             roles={roles}
+            personal={personal}
+            range={range}
           />
         </div>
       ) : (
@@ -414,6 +447,10 @@ function MetricsBody({
           rows={rows}
           groups={metricGroups(columns)}
           byKey={byKey}
+          personal={personal}
+          failed={personalFailed}
+          pending={personalPending}
+          range={range}
           roles={roles}
           sort={sort}
           onSort={(key) => setSort((current) => nextSort(current, key))}

@@ -15,13 +15,15 @@ use super::AppState;
 use super::errors::ApiErrors;
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::drilldown::{
-    Asked, Column, CursorError, DEFAULT_PAGE_ROWS, DrilldownError, MAX_PAGE_ROWS, Page, Sort,
+    Asked, Column, CursorError, DEFAULT_PAGE_ROWS, DrilldownError, MAX_PAGE_ROWS, Page, Row, Sort,
 };
 use crate::domain::query::metric_query::{ColumnKind, Unit};
 use crate::domain::query::time_window::WindowRequest;
 
 pub(crate) const MAX_CONCURRENT_PAGES: usize = 8;
 const ACQUIRE_TIMEOUT_SECS: u64 = 2;
+pub(super) const REBUILT: &str =
+    "The table behind this metric was made again while it was being read; start again.";
 
 #[resource_error("gts.cf.insight.insight_v3_core.metric_drilldown.v1~")]
 struct DrilldownApiError;
@@ -128,9 +130,9 @@ struct Selection {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-struct ColumnOut {
+pub(super) struct ColumnOut {
     key: String,
-    label: String,
+    pub(super) label: String,
     r#type: &'static str,
     sortable: bool,
     percent: bool,
@@ -140,7 +142,7 @@ struct ColumnOut {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-struct RowOut {
+pub(super) struct RowOut {
     values: serde_json::Map<String, serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<String>,
@@ -257,20 +259,26 @@ fn response(metric: &str, asked: &Asked, page: Page) -> DrilldownResponse {
                 },
             },
         },
-        columns: page.columns.iter().map(column_out).collect(),
-        rows: page
-            .rows
-            .into_iter()
-            .map(|row| RowOut {
-                values: row.values,
-                link: row.link,
-            })
+        columns: page
+            .columns
+            .iter()
+            .map(|column| column_out(column, true))
             .collect(),
+        rows: rows_out(page.rows),
         next_cursor: page.next_cursor,
     }
 }
 
-fn column_out(column: &Column) -> ColumnOut {
+pub(super) fn rows_out(rows: Vec<Row>) -> Vec<RowOut> {
+    rows.into_iter()
+        .map(|row| RowOut {
+            values: row.values,
+            link: row.link,
+        })
+        .collect()
+}
+
+pub(super) fn column_out(column: &Column, sortable: bool) -> ColumnOut {
     ColumnOut {
         key: column.key.clone(),
         label: column.key.clone(),
@@ -279,7 +287,7 @@ fn column_out(column: &Column) -> ColumnOut {
             ColumnKind::Number => "number",
             ColumnKind::Date => "date",
         },
-        sortable: true,
+        sortable,
         percent: column.percent,
         unit: column.unit.map(Unit::as_str),
         exact: column.exact,
@@ -303,11 +311,7 @@ fn drilldown_error(error: DrilldownError, name: &DefinitionId) -> CanonicalError
             CursorError::Malformed | CursorError::Version | CursorError::Selection,
         ) => DrilldownApiError::invalid_field("cursor", said),
         DrilldownError::Rebuilt => DrilldownApiError::failed_precondition()
-            .with_precondition_violation(
-                "metric source",
-                "The table behind this metric was made again while it was being read; start again.",
-                "SOURCE_REBUILT",
-            )
+            .with_precondition_violation("metric source", REBUILT, "SOURCE_REBUILT")
             .create(),
         DrilldownError::Reserved(_) => DrilldownApiError::invalid_field("body", said),
     }

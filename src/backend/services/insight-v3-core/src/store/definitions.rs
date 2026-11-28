@@ -24,6 +24,7 @@ use crate::domain::definition::{
     Change, DefinitionId, DefinitionKind, DefinitionLabel, DefinitionStoreError, Definitions,
     LibraryEntry, LibraryKind, LibraryPage, Listed, ListedPage, Lookup, Page, StoredDefinition,
 };
+use crate::domain::personal::{PersonalMetric, PersonalSettings, PersonalSettingsStore};
 use crate::store::like_escaped;
 
 const INSERT_NEW: &str = "INSERT INTO {table} (id, name, body, updated_at)
@@ -64,6 +65,12 @@ const NAMES_OF: &str = "SELECT id, name FROM {table} WHERE id IN ({ids})";
 
 const COUNT_MATCHES: &str = "SELECT COUNT(*) AS total FROM {table}
 WHERE name LIKE ? OR body LIKE ?";
+
+const SET_PERSONAL: &str = "UPDATE metrics SET personal = ? WHERE id = ?";
+const PERSONAL_OF: &str = "SELECT personal FROM metrics WHERE id = ?";
+const PERSONAL_METRICS: &str = "SELECT id, name, personal, body FROM metrics
+WHERE personal IS NOT NULL
+ORDER BY name, id";
 
 fn sql(template: &str, kind: DefinitionKind) -> String {
     template.replace("{table}", kind.table())
@@ -152,6 +159,35 @@ impl EntryRow {
 #[derive(Debug, FromQueryResult)]
 struct TotalRow {
     total: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct SettingsRow {
+    personal: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct PersonalMetricRow {
+    id: String,
+    name: String,
+    personal: String,
+    body: String,
+}
+
+impl PersonalMetricRow {
+    fn into_personal_metric(self) -> Result<PersonalMetric, DefinitionStoreError> {
+        Ok(PersonalMetric {
+            settings: read_settings(&self.personal)?,
+            body: serde_json::from_str(&self.body)?,
+            id: self.id,
+            name: self.name,
+        })
+    }
+}
+
+fn read_settings(personal: &str) -> Result<PersonalSettings, DefinitionStoreError> {
+    serde_json::from_str(personal)
+        .map_err(|_| DefinitionStoreError::UnreadableRow("personal settings"))
 }
 
 pub(crate) struct MariaDefinitions {
@@ -414,6 +450,58 @@ impl Definitions for MariaDefinitions {
         transaction.commit().await?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl PersonalSettingsStore for MariaDefinitions {
+    async fn set_personal(
+        &self,
+        metric: &DefinitionId,
+        settings: Option<&PersonalSettings>,
+    ) -> Result<bool, DefinitionStoreError> {
+        let personal = settings.map(serde_json::to_string).transpose()?;
+        let result = self
+            .db
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::MySql,
+                SET_PERSONAL,
+                [personal.into(), metric.as_str().into()],
+            ))
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn personal_of(
+        &self,
+        metric: &DefinitionId,
+    ) -> Result<Option<PersonalSettings>, DefinitionStoreError> {
+        let row = SettingsRow::find_by_statement(Statement::from_sql_and_values(
+            DbBackend::MySql,
+            PERSONAL_OF,
+            [metric.as_str().into()],
+        ))
+        .one(&self.db)
+        .await?;
+
+        row.and_then(|row| row.personal)
+            .as_deref()
+            .map(read_settings)
+            .transpose()
+    }
+
+    async fn personal_metrics(&self) -> Result<Vec<PersonalMetric>, DefinitionStoreError> {
+        let rows = PersonalMetricRow::find_by_statement(Statement::from_string(
+            DbBackend::MySql,
+            PERSONAL_METRICS,
+        ))
+        .all(&self.db)
+        .await?;
+
+        rows.into_iter()
+            .map(PersonalMetricRow::into_personal_metric)
+            .collect()
     }
 }
 

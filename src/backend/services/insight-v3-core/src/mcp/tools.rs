@@ -15,19 +15,26 @@ use crate::api::AppState;
 use crate::api::definitions::{dashboards_json, listed_json, owner_json};
 use crate::api::folders::{folder_json, folders_json, holding_json};
 use crate::api::tags::{names_json, tags_json};
-use crate::domain::access::{Caller, FolderAccess, PersonId};
+use crate::domain::access::{Caller, FolderAccess, Grantee, Level, PersonId};
 use crate::domain::dashboards::DashboardQuery;
 use crate::domain::dataset_lifecycle::DatasetChangeError;
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Page};
 use crate::domain::folders::{self, FolderError, FolderId, FolderName, SeenFolder};
 use crate::domain::kinds::dashboard::Item;
 use crate::domain::metric_run::MetricRuns;
+use crate::domain::personal::PersonalSettings;
+use crate::domain::query::metric_query::{MetricQuery, MetricRunner, RunResult};
 use crate::domain::query::time_window::WindowRequest;
+use crate::domain::sharing::{
+    AdministratorsError, Directory, Grant, Shared, Sharing, SharingError,
+};
 use crate::domain::surfaces::{CustomError, Surfaces};
 use crate::domain::tags::{self, TagError, TagSet};
 use crate::domain::violation::said;
 use crate::store::catalog::{CatalogError, TableSchema};
 
+#[cfg(test)]
+mod share_live_tests;
 #[cfg(test)]
 mod tests;
 
@@ -92,6 +99,28 @@ pub(crate) struct RunRequest {
     /// row for the whole window, which is what a total is. `true` by
     /// default.
     pub(crate) bucket: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct PersonalRequest {
+    /// The stored metric's id, as `list_definitions` answers it.
+    pub(crate) metric: String,
+    /// How the metric reads as a personal metric.
+    pub(crate) settings: PersonalSettings,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct MetricRequest {
+    /// The stored metric's id, as `list_definitions` answers it.
+    pub(crate) metric: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct GranteeRequest {
+    /// The stored metric's id, as `list_definitions` answers it.
+    pub(crate) metric: String,
+    /// A person id (a UUID), or `everyone` for every person.
+    pub(crate) grantee: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -178,7 +207,9 @@ impl CustomSurfaces {
     pub(crate) fn new(state: Arc<AppState>) -> Self {
         Self {
             state,
-            tool_router: Self::tool_router() + Self::alert_tool_router(),
+            tool_router: Self::tool_router()
+                + Self::alert_tool_router()
+                + Self::personal_tool_router(),
         }
     }
 
@@ -780,6 +811,278 @@ fn table_description(schema: &TableSchema) -> Value {
     })
 }
 
+#[tool_router(router = personal_tool_router)]
+impl CustomSurfaces {
+    #[tool(
+        name = "make_metric_personal",
+        description = "Makes a stored metric personal, so the Metrics page can show one value per person. The metric must group by one person field and aggregate one numeric value: a person field that carries a person handle (a dataset field declared with `person`, or a table field with `person`), read without `agg` and named in `group_by`; and one numeric field read with `agg` (or `divide`) as the value. The metric needs a time source (`time`, or a dataset default clock), because values are read over a window. `settings` holds `person_field` (the `as_name` of the person field), `value_field` (the `as_name` of the value field), `unit` (a label such as \"lines\", or null), `format` (number, percent, duration or currency), `direction` (higher_is_better, lower_is_better or neutral) and `description` (what the value means, in words people read). Settings that do not fit the metric are refused with the reason and nothing is saved. On success the settings are saved and the metric runs over P30D: answers `calculation` (sum, count, avg, min, max, ratio or percent) and `people_with_values`, the number of people with a value in that run. If that run fails, the settings stay and `run_error` says why. Nobody sees the metric until share_metric grants it."
+    )]
+    async fn make_metric_personal(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(PersonalRequest { metric, settings }): Parameters<PersonalRequest>,
+    ) -> CallToolResult {
+        if let Err(refusal) = subject(&parts) {
+            return refusal;
+        }
+        let parsed = match parse_id(DefinitionKind::Metric, &metric) {
+            Ok(parsed) => parsed,
+            Err(refusal) => return refusal,
+        };
+
+        let calculation = match self.checked_settings(&parsed, &settings).await {
+            Ok(calculation) => calculation,
+            Err(refusal) => return refusal,
+        };
+
+        match self
+            .state
+            .store()
+            .set_personal(&parsed, Some(&settings))
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => return refuse(&format!("metric `{metric}` was not found")),
+            Err(error) => return tool_error(&CustomError::Store(error)),
+        }
+
+        let requested = match WindowRequest::parse(Some("P30D"), Some(false)) {
+            Ok(requested) => requested,
+            Err(error) => return refuse(&error.to_string()),
+        };
+
+        match self.metric_runs().run(&parsed, &requested).await {
+            Ok(result) => CallToolResult::structured(json!({
+                "calculation": calculation,
+                "people_with_values": people_with_values(&result, &settings),
+            })),
+            Err(error) => CallToolResult::structured(json!({
+                "calculation": calculation,
+                "run_error": error_text(&error),
+            })),
+        }
+    }
+
+    #[tool(
+        name = "make_metric_not_personal",
+        description = "Removes the personal settings from a stored metric, named by its id, so the Metrics page stops showing it. The metric itself and its grants stay; a grant matters only while the metric is personal."
+    )]
+    async fn make_metric_not_personal(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(MetricRequest { metric }): Parameters<MetricRequest>,
+    ) -> CallToolResult {
+        if let Err(refusal) = subject(&parts) {
+            return refusal;
+        }
+        let parsed = match parse_id(DefinitionKind::Metric, &metric) {
+            Ok(parsed) => parsed,
+            Err(refusal) => return refusal,
+        };
+
+        match self.state.store().set_personal(&parsed, None).await {
+            Ok(true) => CallToolResult::structured(json!({"metric": metric, "personal": false})),
+            Ok(false) => refuse(&format!("metric `{metric}` was not found")),
+            Err(error) => tool_error(&CustomError::Store(error)),
+        }
+    }
+
+    #[tool(
+        name = "share_metric",
+        description = "Lets a person, or everyone, see a personal metric on the Metrics page. `metric` is the metric's id; `grantee` is a person id (a UUID) or `everyone`. A metric is shared at the viewer level only. Make the metric personal with make_metric_personal first; sharing a metric that is not personal shows nobody anything. A person the directory does not know is refused."
+    )]
+    async fn share_metric(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(GranteeRequest { metric, grantee }): Parameters<GranteeRequest>,
+    ) -> CallToolResult {
+        let (caller, parsed, grantee) = match grant_of(&parts, &metric, &grantee) {
+            Ok(found) => found,
+            Err(refusal) => return refusal,
+        };
+        let directory = directory_of(&self.state);
+
+        match self
+            .sharing(&directory, caller)
+            .grant(Shared::Metric(&parsed), grantee, Level::Viewer)
+            .await
+        {
+            Ok(()) => CallToolResult::structured(json!({
+                "metric": metric,
+                "grantee": grantee.to_string(),
+                "level": Level::Viewer.as_str(),
+            })),
+            Err(error) => sharing_refusal(&error),
+        }
+    }
+
+    #[tool(
+        name = "unshare_metric",
+        description = "Withdraws a grant on a metric. `metric` is the metric's id; `grantee` is a person id (a UUID) or `everyone`, as share_metric took it."
+    )]
+    async fn unshare_metric(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(GranteeRequest { metric, grantee }): Parameters<GranteeRequest>,
+    ) -> CallToolResult {
+        let (caller, parsed, grantee) = match grant_of(&parts, &metric, &grantee) {
+            Ok(found) => found,
+            Err(refusal) => return refusal,
+        };
+        let directory = directory_of(&self.state);
+
+        match self
+            .sharing(&directory, caller)
+            .withdraw(Shared::Metric(&parsed), grantee)
+            .await
+        {
+            Ok(()) => CallToolResult::structured(json!({
+                "metric": metric,
+                "grantee": grantee.to_string(),
+                "withdrawn": true,
+            })),
+            Err(error) => sharing_refusal(&error),
+        }
+    }
+
+    #[tool(
+        name = "list_metric_grants",
+        description = "Lists who a metric is shared with: each grant's `grantee` (a person id or `everyone`), `granted_by` (the person who granted it) and `created_at`. `metric` is the metric's id."
+    )]
+    async fn list_metric_grants(
+        &self,
+        Extension(parts): Extension<Parts>,
+        Parameters(MetricRequest { metric }): Parameters<MetricRequest>,
+    ) -> CallToolResult {
+        let caller = match subject(&parts) {
+            Ok(caller) => caller,
+            Err(refusal) => return refusal,
+        };
+        let parsed = match parse_id(DefinitionKind::Metric, &metric) {
+            Ok(parsed) => parsed,
+            Err(refusal) => return refusal,
+        };
+        let directory = directory_of(&self.state);
+
+        match self
+            .sharing(&directory, caller)
+            .list(Shared::Metric(&parsed))
+            .await
+        {
+            Ok(grants) => CallToolResult::structured(json!({
+                "grants": grants.iter().map(grant_json).collect::<Vec<_>>(),
+            })),
+            Err(error) => sharing_refusal(&error),
+        }
+    }
+}
+
+impl CustomSurfaces {
+    fn sharing<'a>(&'a self, directory: &'a WarehousePersons<'a>, caller: Caller) -> Sharing<'a> {
+        Sharing::new(self.state.store(), directory, caller)
+    }
+
+    async fn checked_settings(
+        &self,
+        id: &DefinitionId,
+        settings: &PersonalSettings,
+    ) -> Result<crate::domain::personal::Calculation, CallToolResult> {
+        let body = match self.state.store().get(DefinitionKind::Metric, id).await {
+            Ok(Some(body)) => body,
+            Ok(None) => return Err(refuse(&format!("metric `{}` was not found", id.as_str()))),
+            Err(error) => return Err(tool_error(&CustomError::Store(error))),
+        };
+        let query: MetricQuery =
+            serde_json::from_value(body).map_err(|error| tool_error(&CustomError::Body(error)))?;
+        let declaration = self
+            .metric_runs()
+            .declaration_of(&query)
+            .await
+            .map_err(|error| tool_error(&error))?;
+
+        settings
+            .check_timed(&query, declaration.as_ref())
+            .map_err(|error| refuse(&error.to_string()))
+    }
+}
+
+fn grant_of(
+    parts: &Parts,
+    metric: &str,
+    grantee: &str,
+) -> Result<(Caller, DefinitionId, Grantee), CallToolResult> {
+    let caller = subject(parts)?;
+    let parsed = parse_id(DefinitionKind::Metric, metric)?;
+    let grantee =
+        Grantee::parse(grantee).ok_or_else(|| refuse("a grantee is a person id or `everyone`"))?;
+
+    Ok((caller, parsed, grantee))
+}
+
+struct WarehousePersons<'a>(&'a MetricRunner);
+
+#[async_trait::async_trait]
+impl Directory for WarehousePersons<'_> {
+    async fn holds_admin(&self, _person: PersonId) -> Result<bool, AdministratorsError> {
+        Err(no_administrators())
+    }
+
+    async fn current(&self) -> Result<Vec<PersonId>, AdministratorsError> {
+        Err(no_administrators())
+    }
+
+    async fn knows(&self, person: PersonId) -> Result<bool, AdministratorsError> {
+        self.0
+            .holds_person(person)
+            .await
+            .map_err(|error| AdministratorsError::Unavailable(error.to_string()))
+    }
+}
+
+fn no_administrators() -> AdministratorsError {
+    AdministratorsError::Unavailable("the MCP tools read no administrators".to_owned())
+}
+
+fn directory_of(state: &AppState) -> WarehousePersons<'_> {
+    WarehousePersons(state.metrics())
+}
+
+fn grant_json(grant: &Grant) -> Value {
+    json!({
+        "grantee": grant.grantee.to_string(),
+        "granted_by": grant.granted_by.to_string(),
+        "created_at": grant.created_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+    })
+}
+
+fn sharing_refusal(error: &SharingError) -> CallToolResult {
+    match error {
+        SharingError::Administrators(_) | SharingError::Store(_) => {
+            tracing::error!(%error, "an MCP metric sharing call failed");
+            refuse("the request could not be completed")
+        }
+        _ => refuse(&error.to_string()),
+    }
+}
+
+fn people_with_values(result: &RunResult, settings: &PersonalSettings) -> usize {
+    let position = |name: &str| result.columns.iter().position(|column| column == name);
+    let (Some(person), Some(value)) = (
+        position(&settings.person_field),
+        position(&settings.value_field),
+    ) else {
+        return 0;
+    };
+
+    result
+        .rows
+        .iter()
+        .filter(|row| row.get(value).is_some_and(|cell| !cell.is_null()))
+        .filter_map(|row| row.get(person).filter(|cell| !cell.is_null()))
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+}
+
 fn catalog_error(error: &CatalogError) -> CallToolResult {
     match error {
         CatalogError::Timeout => refuse(&error.to_string()),
@@ -966,13 +1269,17 @@ fn written(id: &DefinitionId, name: &DefinitionLabel, created: bool) -> CallTool
 }
 
 fn tool_error(error: &CustomError) -> CallToolResult {
+    refuse(&error_text(error))
+}
+
+fn error_text(error: &CustomError) -> String {
     if error.is_about_the_caller() {
-        return refuse(&error.to_string());
+        return error.to_string();
     }
 
     tracing::error!(%error, "an MCP tool call failed");
 
-    refuse("the request could not be completed")
+    "the request could not be completed".to_owned()
 }
 
 fn folder_refusal(error: &FolderError) -> CallToolResult {

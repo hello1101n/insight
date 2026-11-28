@@ -1008,3 +1008,66 @@ async fn a_dashboard_stamp_is_utc_to_the_millisecond() {
         "`{stamp}` should read YYYY-MM-DDTHH:mm:ss.sssZ"
     );
 }
+
+#[tokio::test]
+async fn a_replace_that_breaks_personal_settings_is_refused_with_its_reason() {
+    use crate::domain::personal::{
+        Direction, MetricFormat, PersonalSettings, PersonalSettingsStore as _, SettingsError,
+    };
+
+    let store = Arc::new(MemoryDefinitions::new());
+    let harness = TestHarness::build(true, &(store.clone() as Arc<dyn DefinitionStore>));
+    let per_reviewer = json!({
+        "table": "reviews",
+        "fields": [
+            { "column": "reviewer_email", "type": "string", "person": "email", "as_name": "reviewer" },
+            { "type": "int", "agg": "count", "as_name": "reviews" }
+        ],
+        "group_by": ["reviewer"]
+    });
+    let id = harness
+        .created("metrics", "Reviews", per_reviewer.clone())
+        .await;
+    let metric = DefinitionId::parse(&id).unwrap_or_else(|error| panic!("{error}"));
+    let set = store
+        .set_personal(
+            &metric,
+            Some(&PersonalSettings {
+                person_field: "reviewer".to_owned(),
+                value_field: "reviews".to_owned(),
+                unit: None,
+                format: MetricFormat::Number,
+                direction: Direction::HigherIsBetter,
+                description: "Reviews left in the period".to_owned(),
+            }),
+        )
+        .await;
+    assert!(matches!(set, Ok(true)), "{set:?}");
+
+    let refused = harness
+        .replaced(
+            "metrics",
+            &id,
+            "Reviews",
+            json!({
+                "table": "reviews",
+                "fields": [
+                    { "column": "repository", "type": "string", "as_name": "repository" },
+                    { "type": "int", "agg": "count", "as_name": "reviews" }
+                ],
+                "group_by": ["repository"]
+            }),
+        )
+        .await;
+
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    let said = String::from_utf8_lossy(&refused.body);
+    let reason = SettingsError::NoPersonField("reviewer".to_owned()).to_string();
+    assert!(said.contains(&reason), "{said}");
+    let read = harness
+        .get_json(&format!("/v1/metrics/{id}"))
+        .await
+        .json()
+        .await;
+    assert_eq!(read["body"], per_reviewer);
+}

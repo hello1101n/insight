@@ -27,6 +27,8 @@ const WITHDRAW: &str = "DELETE FROM {table} WHERE {key} = ? AND grantee = ?";
 
 const LOCK_SHARED: &str = "SELECT owner_person_id FROM {owned} WHERE id = ? FOR UPDATE";
 
+const LOCK_METRIC: &str = "SELECT NULL AS owner_person_id FROM metrics WHERE id = ? FOR UPDATE";
+
 /// INVARIANT: read right after [`LOCK_SHARED`], before any other read in the
 /// transaction, so its snapshot starts once every other grant change of it
 /// has committed; a locking read here would gap-lock other dashboards'
@@ -105,21 +107,15 @@ fn on(template: &str, shared: Shared<'_>) -> String {
     let (table, key) = match shared {
         Shared::Dashboard(_) => ("dashboard_grants", "dashboard"),
         Shared::Folder(_) => ("folder_grants", "folder_id"),
+        Shared::Metric(_) => ("metric_grants", "metric"),
     };
 
     template.replace("{table}", table).replace("{key}", key)
 }
 
-fn owned(shared: Shared<'_>) -> Owned {
-    match shared {
-        Shared::Dashboard(_) => Owned::Dashboards,
-        Shared::Folder(_) => Owned::Folders,
-    }
-}
-
 fn key(shared: Shared<'_>) -> Value {
     match shared {
-        Shared::Dashboard(id) => id.as_str().into(),
+        Shared::Dashboard(id) | Shared::Metric(id) => id.as_str().into(),
         Shared::Folder(id) => id.to_string().into(),
     }
 }
@@ -135,10 +131,13 @@ struct Standing {
 }
 
 fn lock_statement(shared: Shared<'_>) -> Statement {
-    statement(
-        &LOCK_SHARED.replace("{owned}", owned(shared).table()),
-        vec![key(shared)],
-    )
+    let sql = match shared {
+        Shared::Dashboard(_) => LOCK_SHARED.replace("{owned}", Owned::Dashboards.table()),
+        Shared::Folder(_) => LOCK_SHARED.replace("{owned}", Owned::Folders.table()),
+        Shared::Metric(_) => LOCK_METRIC.to_owned(),
+    };
+
+    statement(&sql, vec![key(shared)])
 }
 
 fn editor_grants_statement(shared: Shared<'_>, by: PersonId) -> Statement {
@@ -167,13 +166,15 @@ async fn locked_standing(
 
     Ok(Some(Standing {
         owner,
-        sharer: owner == Owner::Person(by) || editor > 0,
+        sharer: matches!(shared, Shared::Metric(_)) || owner == Owner::Person(by) || editor > 0,
     }))
 }
 
 fn missing(shared: Shared<'_>) -> DefinitionStoreError {
     match shared {
-        Shared::Dashboard(id) => DefinitionStoreError::Missing(id.as_str().to_owned()),
+        Shared::Dashboard(id) | Shared::Metric(id) => {
+            DefinitionStoreError::Missing(id.as_str().to_owned())
+        }
         Shared::Folder(id) => DefinitionStoreError::Missing(id.to_string()),
     }
 }
@@ -476,7 +477,11 @@ mod tests {
         let id = board();
         let folder = FolderId::new();
 
-        for shared in [Shared::Dashboard(&id), Shared::Folder(folder)] {
+        for shared in [
+            Shared::Dashboard(&id),
+            Shared::Folder(folder),
+            Shared::Metric(&id),
+        ] {
             assert_bound(&lock_statement(shared));
             assert_bound(&editor_grants_statement(shared, person));
             assert_bound(&grant_statement(

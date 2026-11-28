@@ -45,6 +45,7 @@ axum = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 clickhouse = { workspace = true }
+futures = { workspace = true }
 reqwest = { workspace = true }
 insight-http-client = { workspace = true }
 sea-orm = { workspace = true }
@@ -66,5 +67,4 @@ insight-log-context = { workspace = true, features = ["test-support"] }
 insight-clickhouse = { workspace = true, features = ["test-support"] }
 p256 = { version = "0.14", features = ["pkcs8", "pem", "ecdsa", "getrandom"] }
 clickhouse = { workspace = true, features = ["test-util"] }
-futures = { workspace = true }
 tower = { version = "0.5", features = ["util"] }

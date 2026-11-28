@@ -171,7 +171,8 @@ impl<'a> AlertRules<'a> {
                 | CustomError::NotOwner
                 | CustomError::Widget(_)
                 | CustomError::Range(_)
-                | CustomError::Unanswerable(_) => AlertsError::Metric(error),
+                | CustomError::Unanswerable(_)
+                | CustomError::Personal(_) => AlertsError::Metric(error),
             })
     }
 

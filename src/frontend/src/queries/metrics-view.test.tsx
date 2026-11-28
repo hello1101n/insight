@@ -8,14 +8,48 @@ import {
   type MetricResultsRequest,
   type MetricResultsResponse,
 } from "@/api/metric-results-client";
+import {
+  fetchPersonalValues,
+  type PersonalMetric,
+  type PersonalValuesRequest,
+} from "@/api/personal-metrics-client";
+import { personalDefinition } from "@/lib/portal/personal-metrics";
 import { useMetricsViewData } from "@/queries/metrics-view";
 
 vi.mock("@/api/metric-results-client", async (orig) => ({
   ...(await orig<typeof import("@/api/metric-results-client")>()),
   queryMetricResults: vi.fn(),
 }));
+vi.mock("@/api/personal-metrics-client", () => ({
+  fetchPersonalValues: vi.fn(),
+}));
 
 const mock = vi.mocked(queryMetricResults);
+const personalMock = vi.mocked(fetchPersonalValues);
+
+function personalMetric(id: string, over: Partial<PersonalMetric> = {}): PersonalMetric {
+  return {
+    id,
+    label: `Label ${id}`,
+    unit: null,
+    format: "number",
+    direction: "neutral",
+    description: null,
+    calculation: "sum",
+    shared_by: null,
+    ...over,
+  };
+}
+
+function respondPersonal(req: PersonalValuesRequest) {
+  return {
+    values: req.metrics.flatMap((metric) =>
+      req.person_ids.map((person_id) => ({ metric, person_id, value: 7 })),
+    ),
+    teams: [],
+    errors: [],
+  };
+}
 
 function respond(req: MetricResultsRequest): MetricResultsResponse {
   if (req.entity.type !== "person") throw new Error("person request expected");
@@ -54,6 +88,195 @@ describe("useMetricsViewData", () => {
   beforeEach(() => {
     mock.mockReset();
     mock.mockImplementation(async (req) => respond(req));
+    personalMock.mockReset();
+    personalMock.mockImplementation(async (req) => respondPersonal(req));
+  });
+
+  it("personal keys go to insight-v3", async () => {
+    const focus = personalDefinition(personalMetric("focus"));
+    const { result } = renderHook(
+      () =>
+        useMetricsViewData(
+          ["git.commits", focus.metric_key],
+          ["b@x.com", "a@x.com"],
+          RANGE,
+          [focus],
+        ),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(false);
+      expect(result.current.byKey.get("personal.focus")?.period).toBeDefined();
+    });
+
+    expect(mock.mock.calls.flatMap(([req]) => req.metrics.map((m) => m.metric_key))).toEqual([
+      "git.commits",
+    ]);
+    expect(personalMock).toHaveBeenCalledTimes(1);
+    expect(personalMock).toHaveBeenCalledWith({
+      metrics: ["focus"],
+      person_ids: ["a@x.com", "b@x.com"],
+      from: "2026-04-01",
+      to: "2026-05-01",
+    });
+    expect(result.current.byKey.get("personal.focus")?.period?.values).toEqual([
+      { entity_id: "a@x.com", value: 7 },
+      { entity_id: "b@x.com", value: 7 },
+    ]);
+    expect(result.current.byKey.get("git.commits")?.period?.values).toHaveLength(2);
+  });
+
+  it("takes a personal column's label, unit, format, direction and description from its definition", async () => {
+    const focus = personalDefinition(
+      personalMetric("focus", {
+        label: "Focus hours",
+        unit: "h",
+        format: "percent",
+        direction: "lower_is_better",
+        description: "Hours without meetings",
+      }),
+    );
+    const { result } = renderHook(
+      () => useMetricsViewData([focus.metric_key], ["a@x.com"], RANGE, [focus]),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.get("personal.focus")?.period).toBeDefined());
+
+    expect(result.current.byKey.get("personal.focus")).toMatchObject({
+      metric_key: "personal.focus",
+      label: "Focus hours",
+      unit: "h",
+      format: "percent",
+      direction: "lower_is_better",
+      description: "Hours without meetings",
+    });
+  });
+
+  it("asks insight-v3 for at most 1,000 people and 50 metrics a request", async () => {
+    const definitions = Array.from({ length: 60 }, (_, i) =>
+      personalDefinition(personalMetric(`m${i}`)),
+    );
+    const people = Array.from({ length: 1500 }, (_, i) => `p${String(i).padStart(4, "0")}@x.com`);
+    const { result } = renderHook(
+      () =>
+        useMetricsViewData(
+          definitions.map((definition) => definition.metric_key),
+          people,
+          RANGE,
+          definitions,
+        ),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(false);
+      expect(result.current.byKey.get("personal.m59")?.period?.values).toHaveLength(1500);
+    });
+
+    const shapes = personalMock.mock.calls
+      .map(([req]) => [req.metrics.length, req.person_ids.length])
+      .sort(([a, b], [c, d]) => d! - b! || c! - a!);
+    expect(shapes).toEqual([
+      [50, 1000],
+      [10, 1000],
+      [50, 500],
+      [10, 500],
+    ]);
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("a personal failure keeps built-in values", async () => {
+    personalMock.mockRejectedValue(new Error("insight-v3 is down"));
+    const focus = personalDefinition(personalMetric("focus"));
+    const { result } = renderHook(
+      () => useMetricsViewData(["git.commits", focus.metric_key], ["a@x.com"], RANGE, [focus]),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.personalFailed).toEqual(new Set(["personal.focus"])));
+
+    expect(result.current.isError).toBe(false);
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.byKey.get("git.commits")?.period?.values).toEqual([
+      { entity_id: "a@x.com", value: 1 },
+    ]);
+    expect(result.current.byKey.get("personal.focus")?.period).toBeUndefined();
+  });
+
+  it("does not ask insight-v3 when no personal metric is picked", async () => {
+    const { result } = renderHook(
+      () => useMetricsViewData(["git.commits"], ["a@x.com"], RANGE),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.has("git.commits")).toBe(true));
+
+    expect(personalMock).not.toHaveBeenCalled();
+    expect(result.current.personalFailed.size).toBe(0);
+    expect(result.current.personalPending.size).toBe(0);
+  });
+
+  it("shows built-in values while personal values are still loading", async () => {
+    personalMock.mockImplementation(() => new Promise(() => {}));
+    const focus = personalDefinition(personalMetric("focus"));
+    const { result } = renderHook(
+      () => useMetricsViewData(["git.commits", focus.metric_key], ["a@x.com"], RANGE, [focus]),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.byKey.get("git.commits")?.period).toBeDefined());
+
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.personalPending).toEqual(new Set(["personal.focus"]));
+    expect(result.current.personalFailed.size).toBe(0);
+  });
+
+  it("stays drawn when the personal catalog arrives after the built-in values", async () => {
+    personalMock.mockImplementation(() => new Promise(() => {}));
+    const focus = personalDefinition(personalMetric("focus"));
+    const { result, rerender } = renderHook(
+      ({ keys, personal }) => useMetricsViewData(keys, ["a@x.com"], RANGE, personal),
+      {
+        wrapper: wrapper(),
+        initialProps: { keys: ["git.commits"], personal: [] as (typeof focus)[] },
+      },
+    );
+    await waitFor(() => expect(result.current.byKey.get("git.commits")?.period).toBeDefined());
+
+    rerender({ keys: ["git.commits", focus.metric_key], personal: [focus] });
+
+    await waitFor(() => expect(personalMock).toHaveBeenCalled());
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.personalPending).toEqual(new Set(["personal.focus"]));
+  });
+
+  it("counts as failed only the metrics insight-v3 lists in errors", async () => {
+    personalMock.mockImplementation(async (req) => ({
+      ...respondPersonal({ ...req, metrics: req.metrics.filter((metric) => metric !== "broken") }),
+      errors: [{ metric: "broken" }],
+    }));
+    const focus = personalDefinition(personalMetric("focus"));
+    const broken = personalDefinition(personalMetric("broken"));
+    const { result } = renderHook(
+      () =>
+        useMetricsViewData(
+          [focus.metric_key, broken.metric_key],
+          ["a@x.com"],
+          RANGE,
+          [focus, broken],
+        ),
+      { wrapper: wrapper() },
+    );
+
+    await waitFor(() => expect(result.current.personalPending.size).toBe(0));
+
+    expect(result.current.personalFailed).toEqual(new Set(["personal.broken"]));
+    expect(result.current.byKey.get("personal.focus")?.period?.values).toEqual([
+      { entity_id: "a@x.com", value: 7 },
+    ]);
+    expect(result.current.byKey.get("personal.broken")?.period?.values).toEqual([]);
   });
 
   it("asks for at most 50 metrics per request and serves all of them", async () => {

@@ -19,7 +19,7 @@ use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::surfaces::{CustomError, Reading};
 
 pub(crate) const MAX_CONCURRENT_WIDGET_RUNS: usize = 32;
-const WIDGET_RUN_ACQUIRE_TIMEOUT_SECS: u64 = 2;
+pub(crate) const WIDGET_RUN_ACQUIRE_TIMEOUT_SECS: u64 = 2;
 const WIDGET_RUNS_BUSY: &str = "every widget run slot is taken; try again shortly";
 
 #[resource_error("gts.cf.insight.insight_v3_core.dashboard_widgets.v1~")]
@@ -96,16 +96,21 @@ fn readying_error(
     not_drawn()
 }
 
-async fn widget_run_slot(
-    state: &AppState,
-) -> Result<tokio::sync::OwnedSemaphorePermit, CanonicalError> {
+pub(crate) async fn run_slot(state: &AppState) -> Option<tokio::sync::OwnedSemaphorePermit> {
     let slots = state.widget_run_slots();
     let waited = tokio::time::timeout(
         Duration::from_secs(WIDGET_RUN_ACQUIRE_TIMEOUT_SECS),
         Arc::clone(slots).acquire_owned(),
     )
     .await;
-    if let Ok(Ok(permit)) = waited {
+
+    waited.ok()?.ok()
+}
+
+async fn widget_run_slot(
+    state: &AppState,
+) -> Result<tokio::sync::OwnedSemaphorePermit, CanonicalError> {
+    if let Some(permit) = run_slot(state).await {
         return Ok(permit);
     }
 

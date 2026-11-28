@@ -19,6 +19,7 @@ use crate::store::identity::IdentityClient;
 
 mod folders;
 mod members;
+mod metrics;
 mod visibility;
 
 pub(super) const OWNER: &str = "0192a1b2-0000-7000-8000-00000000000a";

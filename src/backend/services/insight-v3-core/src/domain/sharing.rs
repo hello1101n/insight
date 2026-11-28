@@ -9,7 +9,7 @@ use crate::domain::access::{
     PersonId, Refused,
 };
 use crate::domain::dashboards::{Seen, sight};
-use crate::domain::definition::{DefinitionId, DefinitionStoreError, Page};
+use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionStoreError, Page};
 use crate::domain::folders::{DefinitionStore, FolderId, MAX_FOLDERS, SeenFolder};
 use crate::domain::tags::MAX_TAGS;
 
@@ -17,12 +17,13 @@ use crate::domain::tags::MAX_TAGS;
 pub(crate) enum Shared<'a> {
     Dashboard(&'a DefinitionId),
     Folder(FolderId),
+    Metric(&'a DefinitionId),
 }
 
 impl Shared<'_> {
     fn id(&self) -> String {
         match self {
-            Self::Dashboard(id) => id.as_str().to_owned(),
+            Self::Dashboard(id) | Self::Metric(id) => id.as_str().to_owned(),
             Self::Folder(id) => id.to_string(),
         }
     }
@@ -31,6 +32,7 @@ impl Shared<'_> {
         match self {
             Self::Dashboard(_) => "dashboard",
             Self::Folder(_) => "folder",
+            Self::Metric(_) => "metric",
         }
     }
 }
@@ -146,6 +148,10 @@ pub(crate) enum SharingError {
     NotFound(String),
     #[error("no folder has the id `{0}`")]
     FolderNotFound(FolderId),
+    #[error("metric `{0}` was not found")]
+    MetricNotFound(String),
+    #[error("a metric is shared at the viewer level only")]
+    MetricViewerOnly,
     #[error("{DASHBOARD_NOT_EDITOR}")]
     NotEditor,
     #[error("{DASHBOARD_NOT_SHARER}")]
@@ -193,6 +199,7 @@ fn refused(shared: Shared<'_>, refused: Refused) -> SharingError {
         (Shared::Folder(_), Refused::NotEditor | Refused::NotOwner | Refused::EditorByFolder) => {
             SharingError::FolderNotEditor
         }
+        (Shared::Metric(id), _) => SharingError::MetricNotFound(id.as_str().to_owned()),
         (shared, Refused::Ownerless) => SharingError::Ownerless(shared.noun()),
     }
 }
@@ -201,6 +208,7 @@ fn no_longer_sharer(shared: Shared<'_>) -> SharingError {
     match shared {
         Shared::Dashboard(_) => SharingError::NotSharer,
         Shared::Folder(_) => SharingError::FolderNotEditor,
+        Shared::Metric(id) => SharingError::MetricNotFound(id.as_str().to_owned()),
     }
 }
 
@@ -244,6 +252,9 @@ impl<'a> Sharing<'a> {
         grantee: Grantee,
         level: Level,
     ) -> Result<(), SharingError> {
+        if matches!(shared, Shared::Metric(_)) && level != Level::Viewer {
+            return Err(SharingError::MetricViewerOnly);
+        }
         let owner = self.shareable(shared).await?;
         self.grantable(grantee, owner).await?;
 
@@ -304,10 +315,19 @@ impl<'a> Sharing<'a> {
                 let seen = self.seen_folder(id).await?;
                 (seen.folder.owner, seen.access.share())
             }
+            Shared::Metric(id) => return self.metric_exists(id).await,
         };
         access.map_err(|refusal| refused(shared, refusal))?;
 
         Ok(owner)
+    }
+
+    async fn metric_exists(&self, id: &DefinitionId) -> Result<Owner, SharingError> {
+        self.store
+            .read(DefinitionKind::Metric, id)
+            .await?
+            .map(|_| Owner::Unowned)
+            .ok_or_else(|| SharingError::MetricNotFound(id.as_str().to_owned()))
     }
 
     async fn grantable(&self, grantee: Grantee, owner: Owner) -> Result<(), SharingError> {

@@ -192,7 +192,7 @@ impl RequestedRange {
     }
 }
 
-fn canonical_date(value: &str) -> Option<NaiveDate> {
+pub(crate) fn canonical_date(value: &str) -> Option<NaiveDate> {
     if value.len() != 10 {
         return None;
     }

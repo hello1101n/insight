@@ -214,6 +214,33 @@ describe("MetricEvidenceTable", () => {
     expect(screen.getByRole("columnheader", { name: "Who" })).toBeDefined();
   });
 
+  describe("a value with a badge", () => {
+    const badge = { row: 0, column: "value", label: "Median" };
+
+    it("shows the badged value in bold with its badge beside it", () => {
+      renderTable({ badge });
+      const first = screen.getAllByRole("row")[1]!;
+      const cell = within(first).getAllByRole("cell")[2]!;
+
+      expect(within(cell).getByText("Median")).toBeInTheDocument();
+      expect(cell.querySelector("strong")).toHaveTextContent("1.234");
+    });
+
+    it("puts a badge on no other cell", () => {
+      renderTable({ badge });
+
+      expect(screen.getAllByText("Median")).toHaveLength(1);
+      expect(screen.getByRole("table").querySelectorAll("strong")).toHaveLength(1);
+    });
+
+    it("puts no badge when none is asked for", () => {
+      renderTable();
+
+      expect(screen.queryByText("Median")).toBeNull();
+      expect(screen.getByRole("table").querySelector("strong")).toBeNull();
+    });
+  });
+
   describe("a metric measured in time", () => {
     const timeColumns = [
       { key: "value", label: "Duration", type: "number" as const },
@@ -564,7 +591,10 @@ describe("MetricEvidenceTable", () => {
       { values: { person: "Ann Lee", title: "x".repeat(80), lines: 42 } },
     ];
 
-    function tracksAt(viewportPx: number) {
+    function tracksAt(
+      viewportPx: number,
+      overrides: Partial<React.ComponentProps<typeof MetricEvidenceTable>> = {}
+    ) {
       vi.stubGlobal(
         "ResizeObserver",
         class {
@@ -588,7 +618,7 @@ describe("MetricEvidenceTable", () => {
         }
       );
 
-      renderTable({ columns: sizedColumns, rows: sizedRows });
+      renderTable({ columns: sizedColumns, rows: sizedRows, ...overrides });
       const header = screen.getAllByRole("row")[0]!;
       return {
         tracks: header.style.gridTemplateColumns.split(" ").slice(1),
@@ -620,6 +650,14 @@ describe("MetricEvidenceTable", () => {
       const minimumPx = Number(/([\d.]+)px/.exec(minWidth)?.[1]);
       expect(minWidth, `case: ${_case}`).toContain("2.25rem");
       expect(minimumPx, `case: ${_case}`).toBeCloseTo(total, 1);
+    });
+
+    it("widens a badged column to hold the badge beside its value", () => {
+      const { tracks } = tracksAt(400, {
+        badge: { row: 0, column: "lines", label: "Median" },
+      });
+
+      expect(tracks[2]).toBe("110.0px");
     });
   });
 

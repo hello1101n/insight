@@ -16,6 +16,7 @@ use crate::domain::folders::{
     Folder, FolderError, FolderFilter, FolderId, FolderList, FolderName, FolderSummary, Folders,
     HeldFolder, MAX_FOLDERS, SeenFolder,
 };
+use crate::domain::personal::{PersonalMetric, PersonalSettings, PersonalSettingsStore};
 use crate::domain::sharing::Grant;
 use crate::domain::tags::TagName;
 
@@ -49,9 +50,11 @@ struct Stored {
     dashboard_grants: BTreeMap<(String, Grantee), Grant>,
     folders: BTreeMap<FolderId, KeptFolder>,
     folder_grants: BTreeMap<(FolderId, Grantee), Grant>,
+    metric_grants: BTreeMap<(String, Grantee), Grant>,
     entries: BTreeMap<(FolderId, String), KeptEntry>,
     tagged: BTreeMap<String, Tagged>,
     pinned: BTreeMap<PersonId, Vec<String>>,
+    personal_settings: BTreeMap<String, PersonalSettings>,
 }
 
 fn reaching<'g>(
@@ -231,6 +234,11 @@ impl Stored {
             self.entries.retain(|(_, held), _| held != dashboard);
             self.tagged.remove(dashboard);
             self.drop_pins(dashboard);
+        }
+        if kind == DefinitionKind::Metric {
+            self.personal_settings.remove(id.as_str());
+            self.metric_grants
+                .retain(|(held, _), _| held != id.as_str());
         }
         let key = MemoryDefinitions::key(kind, id);
         self.definitions.remove(&key).is_some()
@@ -593,6 +601,68 @@ impl Definitions for MemoryDefinitions {
         *stored = applied;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl PersonalSettingsStore for MemoryDefinitions {
+    async fn set_personal(
+        &self,
+        metric: &DefinitionId,
+        settings: Option<&PersonalSettings>,
+    ) -> Result<bool, DefinitionStoreError> {
+        self.writable()?;
+        let mut stored = self.lock();
+        if !stored
+            .definitions
+            .contains_key(&Self::key(DefinitionKind::Metric, metric))
+        {
+            return Ok(false);
+        }
+
+        match settings {
+            Some(settings) => {
+                stored
+                    .personal_settings
+                    .insert(metric.as_str().to_owned(), settings.clone());
+            }
+            None => {
+                stored.personal_settings.remove(metric.as_str());
+            }
+        }
+
+        Ok(true)
+    }
+
+    async fn personal_of(
+        &self,
+        metric: &DefinitionId,
+    ) -> Result<Option<PersonalSettings>, DefinitionStoreError> {
+        Ok(self.lock().personal_settings.get(metric.as_str()).cloned())
+    }
+
+    async fn personal_metrics(&self) -> Result<Vec<PersonalMetric>, DefinitionStoreError> {
+        let stored = self.lock();
+        let mut personal_metric: Vec<PersonalMetric> = stored
+            .personal_settings
+            .iter()
+            .filter_map(|(id, settings)| {
+                let held = stored
+                    .definitions
+                    .get(&(DefinitionKind::Metric.table(), id.clone()))?;
+
+                Some(PersonalMetric {
+                    id: id.clone(),
+                    name: held.name.clone(),
+                    settings: settings.clone(),
+                    body: held.body.clone(),
+                })
+            })
+            .collect();
+        personal_metric
+            .sort_by(|left, right| (&left.name, &left.id).cmp(&(&right.name, &right.id)));
+
+        Ok(personal_metric)
     }
 }
 

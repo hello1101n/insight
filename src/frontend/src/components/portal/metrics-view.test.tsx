@@ -6,6 +6,7 @@ vi.mock("@tanstack/react-router", async () => {
 
 import { portalRouter } from "@/test/portal-router";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Workbook } from "exceljs";
@@ -13,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MetricDefinition } from "@/api/metric-definitions-client";
 import type { PeopleListItem } from "@/api/identity-client";
+import type { PersonalMetric } from "@/api/personal-metrics-client";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import i18n from "@/i18n";
 import {
@@ -20,6 +22,11 @@ import {
   useMetricsViewPaneShown,
 } from "@/lib/portal/metrics-view-pane";
 import { parseNavPolicy, type InstanceNavPolicy } from "@/lib/portal/nav-policy";
+import { validateMetricsViewSearch } from "@/lib/portal/portal-search";
+import {
+  personalDefinition,
+  type PersonalMetricDefinition,
+} from "@/lib/portal/personal-metrics";
 import { EvidenceDialogContext } from "@/components/metric-evidence-context";
 import { identityPerson, peopleFromIdentityTree, pid } from "@/test/identity";
 
@@ -28,20 +35,37 @@ const mocks = vi.hoisted(() => ({
   layout: "wide" as "phone" | "narrow" | "wide",
   roster: [] as PeopleListItem[],
   definitions: [] as MetricDefinition[],
+  personal: [] as PersonalMetricDefinition[],
+  personalCatalogError: false,
   requestedKeys: [] as readonly string[],
   requestedIds: [] as readonly string[],
   definitionsError: false,
   refetchDefinitions: vi.fn(),
   downloadBlob: vi.fn<(blob: Blob, filename: string) => void>(),
+  fetchPersonalRecords: vi.fn(),
   policy: null as InstanceNavPolicy | null,
   data: {
     byKey: new Map<string, NormalizedMetricResult>(),
     isPending: false,
     isError: false,
+    personalPending: new Set<string>() as ReadonlySet<string>,
+    personalFailed: new Set<string>() as ReadonlySet<string>,
     refetch: vi.fn(),
   },
 }));
 
+vi.mock("@/api/personal-metrics-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/personal-metrics-client")>()),
+  fetchPersonalRecords: mocks.fetchPersonalRecords,
+}));
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({ index, start: index * 44 })),
+    getTotalSize: () => count * 44,
+    measureElement: vi.fn(),
+  }),
+}));
 vi.mock("@/lib/download", () => ({ downloadBlob: mocks.downloadBlob }));
 vi.mock("@/auth", () => ({
   useViewer: () => ({ email: "boss@x", personId: mocks.personId }),
@@ -64,6 +88,7 @@ vi.mock("@/queries/visible-roster", () => ({
   }),
 }));
 vi.mock("@/queries/metric-definitions", () => ({
+  useMetricDefinition: () => null,
   useMetricDefinitionsResponse: () => ({
     data: { metrics: mocks.definitions },
     isPending: false,
@@ -77,6 +102,11 @@ vi.mock("@/queries/metrics-view", () => ({
     mocks.requestedIds = ids;
     return mocks.data;
   },
+  usePersonalMetricDefinitions: () => ({
+    data: mocks.personalCatalogError ? undefined : mocks.personal,
+    isPending: false,
+    isError: mocks.personalCatalogError,
+  }),
 }));
 vi.mock("@/lib/portal/use-shell-layout", () => ({
   useShellLayout: () => mocks.layout,
@@ -221,6 +251,10 @@ beforeEach(() => {
   ];
   mocks.data.isPending = false;
   mocks.data.isError = false;
+  mocks.data.personalPending = new Set();
+  mocks.data.personalFailed = new Set();
+  mocks.personal = [];
+  mocks.personalCatalogError = false;
   mocks.data.byKey = new Map([
     [
       "git.default_branch_commits",
@@ -1048,5 +1082,317 @@ describe("MetricsView", () => {
 
     expect(shown.result.current).toBe(true);
     expect(screen.getByRole("button", { name: "Hide menu" })).toBeInTheDocument();
+  });
+});
+
+function personalMetric(over: Partial<PersonalMetric> = {}): PersonalMetric {
+  return {
+    id: "load",
+    label: "Support load",
+    unit: "tickets",
+    format: "number",
+    direction: "higher_is_better",
+    description: "Tickets handled by the person",
+    calculation: "avg",
+    shared_by: { person_id: pid("a"), name: "Ada", at: "2026-01-02T03:04:05.000Z" },
+    ...over,
+  };
+}
+
+function cellsOf(name: string) {
+  const row = screen
+    .getAllByRole("rowheader")
+    .find((header) => header.textContent === name)!
+    .closest("tr")!;
+  return within(row)
+    .getAllByRole("cell")
+    .map((cell) => cell.textContent);
+}
+
+describe("MetricsView personal metrics", () => {
+  beforeEach(() => {
+    mocks.personal = [personalDefinition(personalMetric())];
+    act(() => portalRouter.set({ metrics: `${LINKED},personal.load` }));
+    mocks.data.byKey.set(
+      "personal.load",
+      result(
+        "personal.load",
+        "Support load",
+        [
+          [pid("boss"), 1],
+          [pid("a"), 3],
+          [pid("b"), 5],
+        ],
+        { unit: "tickets", format: "decimal" },
+      ),
+    );
+  });
+
+  it("the picker groups personal metrics under Custom metrics", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 4 of 4" }));
+
+    const group = screen.getByRole("heading", { name: "Custom metrics" }).closest("section")!;
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(1);
+    expect(within(group).getByRole("checkbox", { name: "Support load" })).toBeChecked();
+    expect(screen.getByRole("tab", { name: /Custom metrics/ })).toBeInTheDocument();
+  });
+
+  it("asks for a personal metric after the built-in ones", () => {
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "tasks.closed",
+      "git.default_branch_commits",
+      "collab.messages_sent",
+      "personal.load",
+    ]);
+  });
+
+  it("drops a personal metric the reader unticks", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 4 of 4" }));
+    await user.click(screen.getByRole("checkbox", { name: "Support load" }));
+
+    expect(mocks.requestedKeys).not.toContain("personal.load");
+    expect(portalRouter.search.metrics).toBe(
+      "git.default_branch_commits,tasks.closed,collab.messages_sent",
+    );
+  });
+
+  it("keeps a picked personal metric through the link", async () => {
+    const id = "01a20f0f-6804-7378-a097-828d2908237a";
+    mocks.personal = [personalDefinition(personalMetric({ id }))];
+    act(() => portalRouter.set({ metrics: `${LINKED},personal.${id}` }));
+    const user = userEvent.setup();
+    const first = render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "Metrics: 4 of 4" }));
+    await user.click(screen.getByRole("checkbox", { name: "Messages" }));
+    first.unmount();
+    act(() => portalRouter.set(validateMetricsViewSearch({ ...portalRouter.search })));
+    render(<MetricsView />);
+
+    expect(mocks.requestedKeys).toEqual([
+      "tasks.closed",
+      "git.default_branch_commits",
+      `personal.${id}`,
+    ]);
+    expect(screen.getByRole("button", { name: "Metrics: 3 of 4" })).toBeInTheDocument();
+  });
+
+  it("shows a personal column under Custom metrics, with its calculation and unit", () => {
+    render(<MetricsView />);
+
+    expect(screen.getByRole("columnheader", { name: "Custom metrics" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).toHaveTextContent(
+      "Support loadAverage · tickets",
+    );
+    expect(cellsOf("b")).toEqual(["20", "6", "5"]);
+  });
+
+  it("shows the description and who shared a personal metric in its header's info", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "About Support load" }));
+
+    expect(await screen.findByText("Tickets handled by the person")).toBeInTheDocument();
+    expect(screen.getByText("Shared by Ada, 2 Jan 2026")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["higher_is_better", "Higher is better"],
+    ["lower_is_better", "Lower is better"],
+    ["neutral", "Neutral"],
+  ] as const)("says in a personal metric's info that %s reads as %s", async (direction, said) => {
+    mocks.personal = [personalDefinition(personalMetric({ direction }))];
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "About Support load" }));
+
+    expect(await screen.findByText(said)).toBeInTheDocument();
+  });
+
+  it("leaves Shared by out of the info of a metric nobody shared", async () => {
+    mocks.personal = [personalDefinition(personalMetric({ shared_by: null }))];
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await user.click(screen.getByRole("button", { name: "About Support load" }));
+
+    expect(await screen.findByText("Tickets handled by the person")).toBeInTheDocument();
+    expect(screen.queryByText(/Shared by/)).not.toBeInTheDocument();
+  });
+
+  it("ranks everyone in scope by a personal metric when its header is clicked", async () => {
+    render(<MetricsView />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Support load" }));
+
+    expect(rowHeaders()).toEqual(["b", "a", "boss", "c"]);
+  });
+
+  it("a personal cell opens its records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue({
+      columns: [
+        { key: "author", label: "Author", type: "string", sortable: false, percent: false, exact: false },
+      ],
+      rows: [{ values: { author: "Ethan Okafor" } }],
+      next_cursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetricsView />
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^b — Support load: 5/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Support load · b" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("Ethan Okafor")).toBeInTheDocument();
+    expect(within(dialog).getByText("5")).toBeInTheDocument();
+    expect(within(dialog).getByText("average · 1 record")).toBeInTheDocument();
+    expect(mocks.fetchPersonalRecords).toHaveBeenCalledWith("load", {
+      person_id: pid("b"),
+      from: "2026-07-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("a compared personal value opens its records", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue({
+      columns: [
+        { key: "author", label: "Author", type: "string", sortable: false, percent: false, exact: false },
+      ],
+      rows: [{ values: { author: "Ethan Okafor" } }],
+      next_cursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetricsView />
+      </QueryClientProvider>,
+    );
+
+    await compare(user, ["a", "b"]);
+    await user.click(screen.getByRole("button", { name: /^b — Support load: 5/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Support load · b" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("Ethan Okafor")).toBeInTheDocument();
+    expect(mocks.fetchPersonalRecords).toHaveBeenCalledWith("load", {
+      person_id: pid("b"),
+      from: "2026-07-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("leaves an empty personal cell and a failed personal column unclickable", () => {
+    mocks.data.byKey.set(
+      "personal.load",
+      result("personal.load", "Support load", [[pid("a"), null]], { unit: "tickets", format: "decimal" }),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetricsView />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: /Support load:/ })).not.toBeInTheDocument();
+  });
+
+  it("downloads a personal column like a built-in one", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    const { lines } = await downloadCsv(user);
+
+    expect(lines[0]).toEqual([
+      "Person",
+      "Period",
+      "Default branch commits",
+      "Messages",
+      "Support load (tickets)",
+    ]);
+    expect(lines.find((line) => line[0] === "b")).toEqual(["b", PERIOD, "20", "6", "5"]);
+  });
+
+  it("a personal failure keeps built-in values", () => {
+    mocks.data.personalFailed = new Set(["personal.load"]);
+    mocks.data.byKey.set(
+      "personal.load",
+      result("personal.load", "Support load", [], { period: undefined }),
+    );
+    render(<MetricsView />);
+
+    expect(cellsOf("b")).toEqual(["20", "6", "—"]);
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).toHaveTextContent(
+      "Could not load",
+    );
+    expect(screen.getByRole("columnheader", { name: /Default branch commits/ })).not.toHaveTextContent(
+      "Could not load",
+    );
+  });
+
+  it("shows as not loaded only the personal metric insight-v3 could not read", () => {
+    mocks.personal = [
+      personalDefinition(personalMetric()),
+      personalDefinition(personalMetric({ id: "focus", label: "Focus hours" })),
+    ];
+    act(() => portalRouter.set({ metrics: `${LINKED},personal.load,personal.focus` }));
+    mocks.data.personalFailed = new Set(["personal.focus"]);
+    mocks.data.byKey.set(
+      "personal.focus",
+      result("personal.focus", "Focus hours", [], { period: undefined }),
+    );
+    render(<MetricsView />);
+
+    expect(screen.getByRole("columnheader", { name: /Focus hours/ })).toHaveTextContent(
+      "Could not load",
+    );
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).not.toHaveTextContent(
+      "Could not load",
+    );
+    expect(cellsOf("b")).toEqual(["20", "6", "5", "—"]);
+  });
+
+  it("shows the built-in values while a personal column loads", () => {
+    mocks.data.personalPending = new Set(["personal.load"]);
+    mocks.data.byKey.set(
+      "personal.load",
+      result("personal.load", "Support load", [], { period: undefined }),
+    );
+    render(<MetricsView />);
+
+    expect(cellsOf("b")).toEqual(["20", "6", ""]);
+    expect(screen.getByRole("columnheader", { name: /Support load/ })).toHaveTextContent(
+      "Loading",
+    );
+    expect(screen.getByRole("columnheader", { name: /Default branch commits/ })).not.toHaveTextContent(
+      "Loading",
+    );
+  });
+
+  it("offers no download while a personal column loads", () => {
+    mocks.data.personalPending = new Set(["personal.load"]);
+    render(<MetricsView />);
+
+    expect(screen.getByRole("button", { name: "Download" })).toBeDisabled();
+  });
+
+  it("keeps the built-in metrics when the personal catalog fails", () => {
+    mocks.personalCatalogError = true;
+    render(<MetricsView />);
+
+    expect(screen.getByRole("button", { name: "Metrics: 3 of 3" })).toBeInTheDocument();
+    expect(cellsOf("b")).toEqual(["20", "6"]);
   });
 });

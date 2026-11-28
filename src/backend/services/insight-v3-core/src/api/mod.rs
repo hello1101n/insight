@@ -14,6 +14,7 @@ mod errors;
 pub(crate) mod folders;
 pub(crate) mod metric_drilldown;
 pub(crate) mod metric_run;
+pub(crate) mod personal_metrics;
 pub(crate) mod pins;
 pub(crate) mod raw_data;
 pub(crate) mod sharing;
@@ -375,6 +376,17 @@ impl AppState {
         )
     }
 
+    pub(crate) fn personal_metrics(
+        &self,
+        caller: Caller,
+    ) -> crate::domain::personal::values::PersonalMetrics<'_> {
+        crate::domain::personal::values::PersonalMetrics::new(
+            self.definitions.as_ref(),
+            self.metric_runs(),
+            caller,
+        )
+    }
+
     pub(crate) fn drilldowns(&self) -> crate::domain::drilldown::Drilldowns<'_> {
         crate::domain::drilldown::Drilldowns::new(
             self.metric_runs(),
@@ -455,6 +467,7 @@ pub(crate) fn register_routes(
     let api = pins::register_routes(api, openapi, &state);
     let api = datasets::register_routes(api, openapi, &state);
     let api = tables::register_routes(api, openapi, &state);
+    let api = personal_metrics::register_routes(api, openapi, &state);
     let api = metric_run::register_routes(api, openapi, state.clone());
     let api = metric_drilldown::register_routes(api, openapi, state.clone());
     let api = alerts::register_routes(api, openapi, &state);

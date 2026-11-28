@@ -260,6 +260,19 @@ fn a_row_is_presented_without_the_working_cells_and_with_its_numbers_as_numbers(
 }
 
 #[test]
+fn a_whole_number_above_i64_keeps_every_digit_when_presented() {
+    let row = json!({ "day": "2026-09-01", "total": "18446744073709551615" });
+    let row = row.as_object().cloned().unwrap_or_default();
+
+    let shown = presented(row, &columns(), &[]);
+
+    assert_eq!(
+        shown.get("total"),
+        Some(&serde_json::Value::Number(u64::MAX.into()))
+    );
+}
+
+#[test]
 fn the_names_the_wrapper_writes_are_kept_from_a_metrics_columns() {
     for (name, reserved) in [
         ("__drilldown_flag", true),
@@ -305,7 +318,7 @@ struct Bound {
 
 impl Bound {
     fn digest(&self) -> String {
-        fingerprint(
+        fingerprint(&(
             self.name,
             &self.body,
             Some(self.range),
@@ -313,7 +326,7 @@ impl Bound {
             &self.window,
             &self.sort,
             &self.columns,
-        )
+        ))
     }
 }
 
@@ -403,6 +416,17 @@ fn a_page_asked_for_in_no_order_takes_the_metrics_own_or_the_first_column() {
 
     let gone = ("elsewhere".to_owned(), true);
     assert_eq!(default_sort(Some(&gone), &columns()), sort("day", false));
+}
+
+#[test]
+fn a_record_page_runs_newest_first_else_in_the_drilldown_order() {
+    let mut clocked = columns();
+    clocked.insert(0, column("time", ColumnKind::Date));
+    let own = Some(("total", false));
+
+    assert_eq!(records::newest_first(own, &clocked), sort("time", true));
+    assert_eq!(records::newest_first(own, &columns()), sort("total", false));
+    assert_eq!(records::newest_first(None, &columns()), sort("day", false));
 }
 
 fn compiled(value: serde_json::Value) -> crate::domain::query::metric_query::CompiledQuery {

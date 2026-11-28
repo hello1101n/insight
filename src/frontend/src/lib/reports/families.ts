@@ -5,6 +5,7 @@ const FAMILY_NAMES: Record<string, string> = {
   ci: "CI",
   wiki: "Knowledge / Wiki",
   ai: "AI",
+  personal: "Custom metrics",
 };
 
 export function familyOf(metricKey: string): string {

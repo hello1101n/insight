@@ -72,6 +72,7 @@ async fn grant(store: &MemoryDefinitions, shared: Shared<'_>, grantee: Grantee, 
             .held_folder(id, anyone)
             .await?
             .map(|held| held.folder.owner),
+        Shared::Metric(_) => None,
     };
     let by = owner
         .and_then(Owner::person)
