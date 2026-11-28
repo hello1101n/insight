@@ -9,9 +9,11 @@ import {
   chunkKeys,
   columnFormula,
   compareGaps,
+  directionNote,
   formatGap,
   headerUnit,
   rolesById,
+  teamsById,
   keysWithData,
   metricGroups,
   metricsRows,
@@ -293,6 +295,40 @@ describe("rolesById", () => {
         [pid("b"), "Software Engineer"],
       ]),
     );
+  });
+});
+
+describe("teamsById", () => {
+  it("puts each person in their manager's team, and the root in none", () => {
+    const tree = identityPerson("boss", {}, [
+      identityPerson("a", {}, [identityPerson("c")]),
+      identityPerson("b"),
+    ]);
+
+    expect(teamsById(tree)).toEqual(
+      new Map([
+        [pid("a"), { id: pid("boss"), name: "boss" }],
+        [pid("c"), { id: pid("a"), name: "a" }],
+        [pid("b"), { id: pid("boss"), name: "boss" }],
+      ]),
+    );
+  });
+
+  it("knows no team without a tree", () => {
+    expect(teamsById(null)).toEqual(new Map());
+  });
+});
+
+describe("directionNote", () => {
+  it.each([
+    ["a total where more is better", "sum", "higher_is_better", "Higher is better"],
+    ["a ratio where less is better", "ratio", "lower_is_better", "Lower is better"],
+    ["a neutral count", "distinct_count", "neutral", "Neutral"],
+    ["a median", "median", "lower_is_better", "Median · Lower is better"],
+    ["a percentile", "percentile", "higher_is_better", "Percentile · Higher is better"],
+    ["a standard deviation", "stddev", "neutral", "Std dev · Neutral"],
+  ] as const)("writes %s", (_case, computation, direction, text) => {
+    expect(directionNote({ computation, direction })).toBe(text);
   });
 });
 

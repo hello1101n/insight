@@ -217,6 +217,24 @@ export function headerUnit(
   return label.toLocaleLowerCase().includes(shown.toLocaleLowerCase()) ? null : shown;
 }
 
+export interface PersonTeam {
+  id: string;
+  name: string;
+}
+
+export function teamsById(root: IdentityPerson | null): Map<string, PersonTeam> {
+  const teams = new Map<string, PersonTeam>();
+  const walk = (node: IdentityPerson) => {
+    const team = { id: normalizePersonId(node.person_id), name: personDisplayName(node) };
+    for (const report of node.subordinates) {
+      teams.set(normalizePersonId(report.person_id), team);
+      walk(report);
+    }
+  };
+  if (root) walk(root);
+  return teams;
+}
+
 export function rolesById(root: IdentityPerson | null): Map<string, string> {
   const roles = new Map<string, string>();
   const walk = (node: IdentityPerson) => {
@@ -254,4 +272,25 @@ export function columnFormula(
   return result.computation === "sum" || result.computation === "distinct_count"
     ? `${word} · count`
     : word;
+}
+
+const DIRECTION_LABEL: Record<MetricDirection, string> = {
+  higher_is_better: "Higher is better",
+  lower_is_better: "Lower is better",
+  neutral: "Neutral",
+};
+
+const DIRECTION_PREFIXED: ReadonlySet<NormalizedMetricResult["computation"]> = new Set([
+  "median",
+  "percentile",
+  "stddev",
+]);
+
+export function directionNote(
+  result: Pick<NormalizedMetricResult, "computation" | "direction">,
+): string {
+  const direction = DIRECTION_LABEL[result.direction];
+  return DIRECTION_PREFIXED.has(result.computation)
+    ? `${COMPUTATION_LABEL[result.computation]} · ${direction}`
+    : direction;
 }
