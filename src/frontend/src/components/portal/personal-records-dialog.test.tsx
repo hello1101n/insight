@@ -63,10 +63,10 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function open(range = { from: "2026-07-01", to: "2026-07-31" }) {
+function open(range = { from: "2026-07-01", to: "2026-07-31" }, metric = METRIC) {
   return render(
     <PersonalRecordsDialog
-      target={{ metric: METRIC, personId: "person-1", personName: "Ada Lovelace", value: "12" }}
+      target={{ metric, personId: "person-1", personName: "Ada Lovelace", value: "12" }}
       range={range}
       onClose={vi.fn()}
     />,
@@ -158,6 +158,14 @@ describe("PersonalRecordsDialog", () => {
     mocks.fetchPersonalRecords.mockResolvedValue(records([{ author: "Ada", share: 1 }]));
 
     open();
+
+    expect(await screen.findByText("total · 1 record")).toBeInTheDocument();
+  });
+
+  it("calls a count a total, the same as a sum", async () => {
+    mocks.fetchPersonalRecords.mockResolvedValue(records([{ author: "Ada", share: 1 }]));
+
+    open(undefined, { ...METRIC, calculation: "count" });
 
     expect(await screen.findByText("total · 1 record")).toBeInTheDocument();
   });

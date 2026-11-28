@@ -21,7 +21,7 @@ export function isPersonalKey(key: string): boolean {
 
 export const CALCULATION_LABEL: Record<PersonalCalculation, string> = {
   sum: "Total",
-  count: "Count",
+  count: "Total",
   avg: "Average",
   min: "Minimum",
   max: "Maximum",
