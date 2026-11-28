@@ -80,34 +80,10 @@ function byName(a: { displayName: string }, b: { displayName: string }): number 
   return a.displayName.localeCompare(b.displayName);
 }
 
-export interface MetricsRowOrder {
-  key: string;
-  direction: SortDirection;
-  byKey: ReadonlyMap<string, NormalizedMetricResult>;
-}
-
-function siblingComparator<T extends { displayName: string }>(
-  idOf: (item: T) => string,
-  order: MetricsRowOrder | undefined,
-): (a: T, b: T) => number {
-  const result = order?.byKey.get(order.key);
-  if (!order || !result) return byName;
-  const sign = order.direction === "ascending" ? 1 : -1;
-
-  return (a, b) => {
-    const left = finiteValue(result, idOf(a));
-    const right = finiteValue(result, idOf(b));
-    if (left == null) return right == null ? byName(a, b) : 1;
-    if (right == null) return -1;
-    return (left - right) * sign || byName(a, b);
-  };
-}
-
 function treeRows(
   node: IdentityPerson,
   depth: number,
   expanded: ReadonlySet<string>,
-  order: MetricsRowOrder | undefined,
 ): MetricsRow[] {
   const entityId = normalizePersonId(node.person_id);
   const hasReports = node.subordinates.length > 0;
@@ -121,27 +97,19 @@ function treeRows(
   };
   if (!open) return [row];
 
-  const reports = node.subordinates
-    .map((report) => ({
-      node: report,
-      displayName: personDisplayName(report),
-      entityId: normalizePersonId(report.person_id),
-    }))
-    .sort(siblingComparator((report) => report.entityId, order));
+  const reports = [...node.subordinates].sort((a, b) =>
+    personDisplayName(a).localeCompare(personDisplayName(b)),
+  );
 
-  return [
-    row,
-    ...reports.flatMap((report) => treeRows(report.node, depth + 1, expanded, order)),
-  ];
+  return [row, ...reports.flatMap((report) => treeRows(report, depth + 1, expanded))];
 }
 
 export function metricsRows(
   root: IdentityPerson | null,
   people: ReadonlyArray<PersonNaming & { person_id: string }>,
   expanded: ReadonlySet<string>,
-  order?: MetricsRowOrder,
 ): MetricsRow[] {
-  if (root) return treeRows(root, 0, expanded, order);
+  if (root) return treeRows(root, 0, expanded);
 
   return people
     .map((person) => ({
@@ -151,7 +119,28 @@ export function metricsRows(
       hasReports: false,
       expanded: false,
     }))
-    .sort(siblingComparator((row) => row.entityId, order));
+    .sort(byName);
+}
+
+export function sortRows(
+  rows: readonly MetricsRow[],
+  metricKey: string,
+  direction: SortDirection,
+  byKey: ReadonlyMap<string, NormalizedMetricResult>,
+): MetricsRow[] {
+  const result = byKey.get(metricKey);
+  const valueOf = (row: MetricsRow) => (result ? finiteValue(result, row.entityId) : null);
+  const sign = direction === "ascending" ? 1 : -1;
+
+  return rows
+    .map((row) => ({ ...row, depth: 0 }))
+    .sort((a, b) => {
+      const left = valueOf(a);
+      const right = valueOf(b);
+      if (left == null) return right == null ? byName(a, b) : 1;
+      if (right == null) return -1;
+      return (left - right) * sign || byName(a, b);
+    });
 }
 
 export function metricGroups(keys: readonly string[]): MetricGroup[] {

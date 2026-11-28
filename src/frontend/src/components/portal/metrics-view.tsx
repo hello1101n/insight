@@ -38,6 +38,7 @@ import {
   metricGroups,
   metricsRows,
   metricsViewCatalog,
+  sortRows,
 } from "@/lib/portal/metrics-view";
 import {
   setMetricsViewPaneShown,
@@ -337,9 +338,9 @@ function MetricsBody({
       return next;
     });
 
-  const order = sort ? { key: sort.key, direction: sort.direction, byKey } : undefined;
-  const rows = metricsRows(pivot, people, expanded, order);
-  const downloadRows = order ? metricsRows(null, people, expanded, order) : rows;
+  const rows = sort
+    ? sortRows(metricsRows(null, people, expanded), sort.key, sort.direction, byKey)
+    : metricsRows(pivot, people, expanded);
 
   return (
     <section className="flex flex-col gap-3">
@@ -349,7 +350,7 @@ function MetricsBody({
             ? t("metrics_view.comparing", { count: inView.length })
             : t("metrics_view.people_count", { count: inView.length })}
         </p>
-        {allManagers.length > 0 && !comparing ? (
+        {allManagers.length > 0 && !sort && !comparing ? (
           <Button
             type="button"
             variant="ghost"
@@ -378,7 +379,7 @@ function MetricsBody({
             onCompare={setComparing}
           />
           <MetricsDownloadMenu
-            view={{ people: comparing ? compared : downloadRows, keys: columns, byKey, roles, range }}
+            view={{ people: comparing ? compared : rows, keys: columns, byKey, roles, range }}
             disabled={metricKeys.length === 0 || loading}
           />
         </div>

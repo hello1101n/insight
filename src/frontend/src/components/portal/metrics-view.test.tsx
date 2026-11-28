@@ -506,35 +506,12 @@ describe("MetricsView", () => {
     expect(portalRouter.search.scope).toBeFalsy();
   });
 
-  it("ranks the rows under the expanded managers by a metric when its header is clicked", async () => {
+  it("ranks everyone in scope by a metric when its header is clicked", async () => {
     render(<MetricsView />);
 
     await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
 
-    expect(rowHeaders()).toEqual(["boss", "b", "a"]);
-  });
-
-  it("keeps the manager above their reports, at the same indent, when a column is sorted", async () => {
-    render(<MetricsView />);
-    const indent = (name: string) =>
-      screen
-        .getAllByRole("rowheader")
-        .find((header) => header.textContent?.startsWith(name))!
-        .querySelector<HTMLElement>("span[aria-hidden]")!.style.inlineSize;
-    const before = [indent("boss"), indent("a"), indent("b")];
-
-    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
-
-    expect(rowHeaders()[0]).toBe("boss");
-    expect([indent("boss"), indent("a"), indent("b")]).toEqual(before);
-  });
-
-  it("keeps Collapse all and Expand all while a column is sorted", async () => {
-    render(<MetricsView />);
-
-    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
-
-    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+    expect(rowHeaders()).toEqual(["boss", "c", "b", "a"]);
   });
 
   it("opens the records behind a value when it is clicked", async () => {
