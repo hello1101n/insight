@@ -126,7 +126,7 @@ describe("compareWithMedian", () => {
 describe("formatDelta", () => {
   it.each([
     ["percentage points for a percent", -10, "percent", null, "−10 pp"],
-    ["the clock form for hours", 3, "decimal", "h", "+3 h 00 min"],
+    ["the clock form for hours", 3, "decimal", "h", "+3 h"],
     ["the clock form for less than an hour", -0.5, "decimal", "h", "−0 h 30 min"],
     ["the unit after the number", 109, "integer", "lines", "+109 lines"],
     ["a bare number with no unit", -40, "integer", null, "−40"],

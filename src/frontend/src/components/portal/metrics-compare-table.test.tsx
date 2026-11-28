@@ -220,8 +220,8 @@ describe("MetricsCompareTable, two people", () => {
     renderTable({ people: [ALEX, JAMIE], values: TWO_VALUES });
 
     expect(cellsOf("PR cycle time")).toEqual([
-      "12 h 00 min +3 h 00 min vs Jamie",
-      "9 h 00 min Best",
+      "12 h +3 h vs Jamie",
+      "9 h Best",
     ]);
     expect(cellsOf("PR merge rate")).toEqual(["90% Best", "80% −10 pp vs Alex"]);
     expect(cellsOf("Commit size")).toEqual(["149 lines +109 lines vs Jamie", "40 lines Best"]);
@@ -243,7 +243,7 @@ describe("MetricsCompareTable, two people", () => {
     renderTable({ people: [ALEX, JAMIE], values: TWO_VALUES });
 
     expect(cellsOf("PRs merged")).toEqual(["10", "14"]);
-    expect(cellsOf("Meeting hours")).toEqual(["10 h 00 min", "12 h 00 min"]);
+    expect(cellsOf("Meeting hours")).toEqual(["10 h", "12 h"]);
   });
 
   it.each([
@@ -329,7 +329,7 @@ describe("MetricsCompareTable, two people", () => {
         }),
       ],
       expect.objectContaining({
-        title: expect.stringMatching(/^PR cycle time · Jamie Ellis · 9 h 00 min · /),
+        title: expect.stringMatching(/^PR cycle time · Jamie Ellis · 9 h · /),
       }),
     );
   });
@@ -396,13 +396,13 @@ describe("MetricsCompareTable, three or more people", () => {
     renderTable({ people: SIX, values: SIX_VALUES });
 
     expect(cellsOf("Meeting hours")).toEqual([
-      "10 h 00 min n = 5",
-      "10 h 00 min",
-      "8 h 00 min",
+      "10 h n = 5",
+      "10 h",
+      "8 h",
       "—",
-      "12 h 00 min",
-      "14 h 00 min",
-      "10 h 00 min",
+      "12 h",
+      "14 h",
+      "10 h",
     ]);
   });
 

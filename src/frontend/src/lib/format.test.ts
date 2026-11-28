@@ -116,11 +116,12 @@ describe("formatClockDuration", () => {
     [0.7833, "0 h 47 min"],
     [46.0667, "46 h 04 min"],
     [9.4833, "9 h 29 min"],
-    [0, "0 h 00 min"],
-    [1.9999, "2 h 00 min"],
+    [0, "0 h"],
+    [1.9999, "2 h"],
+    [12, "12 h"],
     [1234.5, "1,234 h 30 min"],
     [-1.5, "-1 h 30 min"],
-    [-0.001, "0 h 00 min"],
+    [-0.001, "0 h"],
   ])("writes %s hours as %s", (hours, text) => {
     expect(formatClockDuration(hours)).toBe(text);
   });

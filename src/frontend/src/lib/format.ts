@@ -70,8 +70,11 @@ export function formatClockDuration(hours: number): string {
   const totalMinutes = Math.round(Math.abs(hours) * 60);
   const sign = hours < 0 && totalMinutes > 0 ? "-" : "";
   const h = Math.floor(totalMinutes / 60);
-  const m = String(totalMinutes % 60).padStart(2, "0");
-  return `${sign}${NF_THOUSANDS.format(h)} ${HOURS_UNIT} ${m} min`;
+  const minutes = totalMinutes % 60;
+  const hoursText = `${sign}${NF_THOUSANDS.format(h)} ${HOURS_UNIT}`;
+  if (minutes === 0) return hoursText;
+
+  return `${hoursText} ${String(minutes).padStart(2, "0")} min`;
 }
 
 export function formatMetricNumber(
