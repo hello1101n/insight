@@ -172,11 +172,21 @@ describe("defaultMetricKeys", () => {
 describe("orderMetricKeys", () => {
   it("puts the default keys first, in the default order, then the rest as they came", () => {
     expect(
-      orderMetricKeys(["git.a", "tasks.closed", "git.pr_size", "collab.x"], [
+      orderMetricKeys(["collab.x", "tasks.closed", "git.pr_size"], [
         "git.pr_size",
         "tasks.closed",
       ]),
-    ).toEqual(["git.pr_size", "tasks.closed", "git.a", "collab.x"]);
+    ).toEqual(["git.pr_size", "tasks.closed", "collab.x"]);
+  });
+
+  it("keeps a family's columns together, defaults first, so each family has one header", () => {
+    const ordered = orderMetricKeys(["git.a", "tasks.closed", "git.pr_size", "collab.x"], [
+      "git.pr_size",
+      "tasks.closed",
+    ]);
+
+    expect(ordered).toEqual(["git.pr_size", "git.a", "tasks.closed", "collab.x"]);
+    expect(metricGroups(ordered).map((group) => group.family)).toEqual(["git", "tasks", "collab"]);
   });
 });
 

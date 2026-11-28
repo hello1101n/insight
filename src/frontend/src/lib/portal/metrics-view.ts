@@ -69,7 +69,12 @@ export function orderMetricKeys(
   const first = keys
     .filter((key) => rank.has(key))
     .sort((a, b) => rank.get(a)! - rank.get(b)!);
-  return [...first, ...keys.filter((key) => !rank.has(key))];
+  const byFamily = new Map<string, string[]>();
+  for (const key of [...first, ...keys.filter((key) => !rank.has(key))]) {
+    const family = familyOf(key);
+    byFamily.set(family, [...(byFamily.get(family) ?? []), key]);
+  }
+  return [...byFamily.values()].flat();
 }
 
 function servesData(metric: MetricDefinition): boolean {

@@ -664,17 +664,18 @@ describe("MetricsView", () => {
     expect(screen.getByRole("button", { name: "Metrics: 2 of 4" })).toBeInTheDocument();
   });
 
-  it("shows the default metrics first, in the default order, then the rest", () => {
+  it("shows the default metrics first in each family, under one header per family", () => {
     mocks.definitions.push(definition("git.pr_size", "PR size"));
     act(() => portalRouter.set({ metrics: `${LINKED},git.pr_size` }));
     render(<MetricsView />);
 
     expect(mocks.requestedKeys).toEqual([
       "git.pr_size",
-      "tasks.closed",
       "git.default_branch_commits",
+      "tasks.closed",
       "collab.messages_sent",
     ]);
+    expect(screen.getAllByRole("columnheader", { name: "Development · Git" })).toHaveLength(1);
   });
 
   it("shows lines added and removed in one Lines column, in KLOC", () => {
