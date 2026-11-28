@@ -101,7 +101,7 @@ vi.mock("@/hooks/use-portal-period", () => ({
   }),
 }));
 
-import { MetricsView } from "./metrics-view";
+import { MetricsView } from "./index";
 
 function definition(
   key: string,
