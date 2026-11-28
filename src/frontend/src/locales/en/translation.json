@@ -1215,7 +1215,15 @@
     "clear_all": "Clear all",
     "comparing": "Comparing {{count}} people",
     "people_count": "{{count}} people",
-    "exit_compare": "Exit compare"
+    "exit_compare": "Exit compare",
+    "metric": "Metric",
+    "best": "Best",
+    "versus": "{{delta}} vs {{name}}",
+    "at_median": "At median",
+    "group_median": "Group median",
+    "selected_people": "{{count}} selected people",
+    "present_count": "n = {{count}}",
+    "view_records": "View records"
   },
   "dashboards": {
     "no_shared": "No shared dashboards",

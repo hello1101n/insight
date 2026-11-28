@@ -2,20 +2,13 @@ import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpRight, ChevronRight } from "lucide-react";
 
-import { evidenceSelection } from "@/api/metric-drilldown-client";
-import { useMetricEvidenceOptional } from "@/components/metric-evidence-context";
-import { formatRange } from "@/lib/date-range-label";
-import {
-  formatClockDuration,
-  formatMetricFigure,
-  formatMetricValue,
-  isClockDuration,
-} from "@/lib/format";
+import { useOpenRecords } from "@/components/portal/use-open-records";
+import { formatMetricFigure, isClockDuration } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
   columnFormula,
   finiteValue,
-  headerUnit,
+  formatViewValue,
   type MetricGroup,
   type MetricsRow,
   type SortDirection,
@@ -208,59 +201,34 @@ export function MetricValue({
   result,
   entityId,
   personName,
+  withUnit = false,
 }: {
   result: NormalizedMetricResult | undefined;
   entityId: string;
   personName: string;
+  withUnit?: boolean;
 }) {
-  const evidence = useMetricEvidenceOptional();
+  const openRecords = useOpenRecords(result, entityId, personName);
   const value = result ? finiteValue(result, entityId) : null;
   if (!result || value == null) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const clock = isClockDuration(result.format, result.unit);
-  const text = clock
-    ? formatClockDuration(value)
-    : formatMetricFigure(value, result.format, result.unit);
-  const fullText = clock
-    ? text
-    : formatMetricValue(value, result.format, result.unit);
-  const selection = result.drilldown
-    ? evidenceSelection(result.selection, entityId)
-    : null;
-  if (!selection || !evidence) return <span>{text}</span>;
+  const fullText = formatViewValue(value, result);
+  const text =
+    withUnit || isClockDuration(result.format, result.unit)
+      ? fullText
+      : formatMetricFigure(value, result.format, result.unit);
+  if (!openRecords) return <span>{text}</span>;
 
   return (
     <button
       type="button"
       aria-label={`${personName} — ${result.label}: ${fullText}`}
-      onClick={() =>
-        evidence.openEvidenceTargets([{ selection, label: result.label }], {
-          activeMetricKey: selection.metric_key,
-          title: [
-            result.label,
-            personName,
-            fullText,
-            formatRange(selection.period.from, selection.period.to),
-          ].join(" · "),
-        })
-      }
+      onClick={openRecords}
       className="cursor-pointer hover:text-primary hover:underline"
     >
       {text}
     </button>
   );
-}
-
-export function UnitNote({
-  result,
-  className,
-}: {
-  result: NormalizedMetricResult | undefined;
-  className: string;
-}) {
-  const unit = result ? headerUnit(result.label, result.format, result.unit) : null;
-  if (!unit) return null;
-  return <span className={cn("font-normal text-muted-foreground", className)}>{unit}</span>;
 }

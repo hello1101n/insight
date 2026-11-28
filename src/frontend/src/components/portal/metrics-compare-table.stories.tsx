@@ -45,6 +45,7 @@ const meta: Meta<typeof MetricsCompareTable> = {
     keys: ["git.commits"],
     byKey: BY_KEY,
     roles: new Map([[PEOPLE[0]!.entityId, "Software Engineer"]]),
+    teams: new Map(),
   },
   decorators: [
     (Story) => (
@@ -63,23 +64,19 @@ export default meta;
 
 type Story = StoryObj<typeof MetricsCompareTable>;
 
-export const TestEachNameLinesUpWithItsValues: Story = {
+export const TestEachNameStartsWhereItsValueStarts: Story = {
   tags: ["test"],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
 
-    for (const [name, value] of [
-      ["Alexandra Fernandez", "210 commits"],
-      ["Bo Ng", "822 commits"],
-    ] as const) {
-      const nameEdge = canvas.getByRole("link", { name }).getBoundingClientRect().right;
-      const text = document.createRange();
-      text.selectNodeContents(canvas.getByRole("button", { name: new RegExp(`${value}$`) }));
-      const valueEdge = text.getBoundingClientRect().right;
+    for (const name of ["Alexandra Fernandez", "Bo Ng"]) {
+      const nameEdge = canvas.getByRole("link", { name }).getBoundingClientRect().left;
+      const value = canvas.getByRole("button", { name: new RegExp(`^${name} — `) });
+      const valueEdge = value.closest("td")!.firstElementChild!.getBoundingClientRect().left;
 
       await expect(
         Math.abs(nameEdge - valueEdge),
-        `${name} does not end where its values end`,
+        `${name} does not start where its value starts`,
       ).toBeLessThanOrEqual(1);
     }
   },

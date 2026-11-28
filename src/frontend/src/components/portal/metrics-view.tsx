@@ -35,6 +35,7 @@ import {
   compareTeams,
   rolesById,
   keysWithData,
+  teamsById,
   metricGroups,
   metricsRows,
   metricsViewCatalog,
@@ -319,6 +320,7 @@ function MetricsBody({
   );
   const teams = compareTeams(pivot);
   const roles = rolesById(pivot);
+  const personTeams = teamsById(pivot);
   const allManagers = teams.map((team) => team.id);
   const allExpanded = allManagers.every((id) => expanded.has(id));
 
@@ -389,14 +391,13 @@ function MetricsBody({
       ) : loading ? (
         <CenteredSpinner className="min-h-[40vh]" />
       ) : comparing ? (
-        <div className="rounded-lg border bg-card">
-          <MetricsCompareTable
-            people={compared}
-            keys={columns}
-            byKey={byKey}
-            roles={roles}
-          />
-        </div>
+        <MetricsCompareTable
+          people={compared}
+          keys={columns}
+          byKey={byKey}
+          roles={roles}
+          teams={personTeams}
+        />
       ) : (
         <MetricsTable
           rows={rows}

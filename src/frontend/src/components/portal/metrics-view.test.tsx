@@ -560,7 +560,10 @@ describe("MetricsView", () => {
     await compare(user, ["a", "b"]);
 
     const table = screen.getByRole("table");
-    expect(rowHeaders()).toEqual(["Default branch commits", "Messages"]);
+    expect(rowHeaders()).toEqual([
+      "Default branch commitsHigher is better",
+      "MessagesHigher is better",
+    ]);
     expect(
       within(table)
         .getAllByRole("columnheader")
@@ -570,7 +573,7 @@ describe("MetricsView", () => {
       within(within(table).getByRole("row", { name: /Default branch commits/ }))
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["10−50%", "20 (best)"]);
+    ).toEqual(["10 −10 vs b", "20 Best"]);
   });
 
   it("marks the smallest value best when lower is better", async () => {
@@ -590,7 +593,17 @@ describe("MetricsView", () => {
       within(within(screen.getByRole("table")).getByRole("row", { name: /PR cycle time/ }))
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["10 (best)", "40+300%"]);
+    ).toEqual(["10 Best", "40 +30 vs a"]);
+  });
+
+  it("writes the team of the manager two compared people share once, above the table", async () => {
+    const user = userEvent.setup();
+    render(<MetricsView />);
+
+    await compare(user, ["a", "b"]);
+
+    expect(screen.getByText("boss's team")).toBeInTheDocument();
+    expect(screen.getByRole("table")).not.toHaveTextContent("boss's team");
   });
 
   it("adds a whole team to the comparison in one pick", async () => {
@@ -605,7 +618,7 @@ describe("MetricsView", () => {
       within(screen.getByRole("table"))
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
-    ).toEqual(["Metric", "a", "c"]);
+    ).toEqual(["Metric", "aboss's team", "ca's team"]);
   });
 
   it("opens the records behind a compared value when it is clicked", async () => {
@@ -657,7 +670,10 @@ describe("MetricsView", () => {
 
     mocks.data.isPending = false;
     view.rerender(<MetricsView />);
-    expect(rowHeaders()).toEqual(["Default branch commits", "Messages"]);
+    expect(rowHeaders()).toEqual([
+      "Default branch commitsHigher is better",
+      "MessagesHigher is better",
+    ]);
   });
 
   it("asks for everyone under the scope even with direct reports only on", () => {

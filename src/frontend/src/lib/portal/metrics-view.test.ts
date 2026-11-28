@@ -8,10 +8,8 @@ import { identityPerson, pid } from "@/test/identity";
 import {
   chunkKeys,
   columnFormula,
-  compareGaps,
   directionNote,
-  formatGap,
-  headerUnit,
+  formatViewValue,
   rolesById,
   teamsById,
   keysWithData,
@@ -217,71 +215,6 @@ describe("metricGroups", () => {
   });
 });
 
-describe("compareGaps", () => {
-  it("marks the biggest value best when higher is better, with everyone else's gap in percent", () => {
-    expect(compareGaps([50, 200, null, 100], "higher_is_better")).toEqual([
-      { best: false, gap: -75 },
-      { best: true, gap: null },
-      { best: false, gap: null },
-      { best: false, gap: -50 },
-    ]);
-  });
-
-  it("marks the smallest value best when lower is better, with everyone else's excess in percent", () => {
-    expect(compareGaps([83, 698], "lower_is_better")).toEqual([
-      { best: true, gap: null },
-      { best: false, gap: 741 },
-    ]);
-  });
-
-  it("marks every person who ties for best", () => {
-    expect(compareGaps([5, 5, 8], "lower_is_better").map((cell) => cell.best)).toEqual([
-      true,
-      true,
-      false,
-    ]);
-  });
-
-  it.each([
-    ["a neutral metric", [1, 9], "neutral"],
-    ["everyone equal", [5, 5], "higher_is_better"],
-    ["a single value", [7, null], "higher_is_better"],
-    ["no values", [null, null], "lower_is_better"],
-  ] as const)("names no best with %s", (_case, values, direction) => {
-    expect(compareGaps(values, direction).some((cell) => cell.best)).toBe(false);
-  });
-
-  it("gives no percent when the best value is zero", () => {
-    expect(compareGaps([0, 4], "lower_is_better")).toEqual([
-      { best: true, gap: null },
-      { best: false, gap: null },
-    ]);
-  });
-});
-
-describe("formatGap", () => {
-  it.each([
-    [null, ""],
-    [0, "≈"],
-    [63, "+63%"],
-    [-47, "−47%"],
-  ] as const)("writes a gap of %s as %j", (gap, text) => {
-    expect(formatGap(gap)).toBe(text);
-  });
-});
-
-describe("headerUnit", () => {
-  it.each([
-    ["a count unit the title does not name", "PR size", "integer", "lines", "lines"],
-    ["a count unit the title already names", "Commits per PR", "decimal", "commits", null],
-    ["hours, which each cell writes as a duration", "Cycle time", "decimal", "h", null],
-    ["a percent, which each cell carries", "Merge rate", "percent", null, null],
-    ["no unit", "Commits", "integer", null, null],
-  ] as const)("header unit for %s", (_case, label, format, unit, shown) => {
-    expect(headerUnit(label, format, unit)).toBe(shown);
-  });
-});
-
 describe("rolesById", () => {
   it("maps each person in the tree to their job title, skipping blanks", () => {
     const tree = identityPerson("boss", { job_title: "Head of Engineering" }, [
@@ -316,6 +249,17 @@ describe("teamsById", () => {
 
   it("knows no team without a tree", () => {
     expect(teamsById(null)).toEqual(new Map());
+  });
+});
+
+describe("formatViewValue", () => {
+  it.each([
+    ["hours in the clock form", 2.0333, "decimal", "h", "2 h 02 min"],
+    ["a count with its unit", 149, "integer", "lines", "149 lines"],
+    ["a percent", 80.4, "percent", null, "80%"],
+    ["a bare number", 40, "integer", null, "40"],
+  ] as const)("writes %s", (_case, value, format, unit, text) => {
+    expect(formatViewValue(value, { format, unit })).toBe(text);
   });
 });
 

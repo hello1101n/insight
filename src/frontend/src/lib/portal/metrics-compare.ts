@@ -6,6 +6,7 @@ import {
   roundMetricValue,
 } from "@/lib/format";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
+import type { PersonTeam } from "@/lib/portal/metrics-view";
 
 type ValueFormat = Pick<NormalizedMetricResult, "format" | "unit">;
 type CompareFormat = Pick<NormalizedMetricResult, "direction" | "format" | "unit">;
@@ -109,4 +110,33 @@ export function formatDelta(delta: number, result: ValueFormat): string {
 
   const number = formatMetricNumber(size, result.format);
   return result.unit ? `${sign}${number} ${result.unit}` : `${sign}${number}`;
+}
+
+export function sharedTeam(
+  entityIds: readonly string[],
+  teams: ReadonlyMap<string, PersonTeam>,
+): PersonTeam | null {
+  const first = entityIds.length > 0 ? teams.get(entityIds[0]!) : undefined;
+  if (!first) return null;
+
+  return entityIds.every((id) => teams.get(id)?.id === first.id) ? first : null;
+}
+
+export interface TeamGroup<T> {
+  team: PersonTeam | null;
+  members: T[];
+}
+
+export function groupByTeam<T extends { entityId: string }>(
+  people: readonly T[],
+  teams: ReadonlyMap<string, PersonTeam>,
+): TeamGroup<T>[] {
+  const groups = new Map<string | null, TeamGroup<T>>();
+  for (const person of people) {
+    const team = teams.get(person.entityId) ?? null;
+    const group = groups.get(team?.id ?? null);
+    if (group) group.members.push(person);
+    else groups.set(team?.id ?? null, { team, members: [person] });
+  }
+  return [...groups.values()];
 }

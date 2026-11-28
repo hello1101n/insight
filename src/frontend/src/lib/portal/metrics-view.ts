@@ -1,6 +1,10 @@
 import type { MetricDefinition } from "@/api/metric-definitions-client";
-import type { MetricDirection, MetricFormat } from "@/api/metric-results-client";
-import { isClockDuration, metricDisplayUnit } from "@/lib/format";
+import type { MetricDirection } from "@/api/metric-results-client";
+import {
+  formatClockDuration,
+  formatMetricValue,
+  isClockDuration,
+} from "@/lib/format";
 import {
   personDisplayName,
   type PersonNaming,
@@ -177,44 +181,13 @@ export function compareTeams(root: IdentityPerson | null): CompareTeam[] {
   ];
 }
 
-export interface CompareCell {
-  best: boolean;
-  gap: number | null;
-}
-
-export function compareGaps(
-  values: ReadonlyArray<number | null>,
-  direction: MetricDirection,
-): CompareCell[] {
-  const present = values.filter((value): value is number => value != null);
-  const best = direction === "lower_is_better" ? Math.min(...present) : Math.max(...present);
-  const ranked =
-    direction !== "neutral" && present.length >= 2 && present.some((value) => value !== best);
-
-  return values.map((value) => {
-    if (!ranked || value == null) return { best: false, gap: null };
-    if (value === best) return { best: true, gap: null };
-    return {
-      best: false,
-      gap: best === 0 ? null : Math.round(((value - best) / Math.abs(best)) * 100),
-    };
-  });
-}
-
-export function formatGap(gap: number | null): string {
-  if (gap == null) return "";
-  if (gap === 0) return "≈";
-  return `${gap > 0 ? "+" : "−"}${Math.abs(gap)}%`;
-}
-
-export function headerUnit(
-  label: string,
-  format: MetricFormat,
-  unit: string | null,
-): string | null {
-  const shown = metricDisplayUnit(format, unit);
-  if (!shown) return null;
-  return label.toLocaleLowerCase().includes(shown.toLocaleLowerCase()) ? null : shown;
+export function formatViewValue(
+  value: number,
+  result: Pick<NormalizedMetricResult, "format" | "unit">,
+): string {
+  return isClockDuration(result.format, result.unit)
+    ? formatClockDuration(value)
+    : formatMetricValue(value, result.format, result.unit);
 }
 
 export interface PersonTeam {
