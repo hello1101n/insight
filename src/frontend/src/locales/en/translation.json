@@ -1228,7 +1228,6 @@
     "group_median": "Group median",
     "selected_people": "{{count}} selected people",
     "present_count": "n = {{count}}",
-    "view_records": "View records",
     "team_time_caption": "A team's metrics before and after a change date",
     "after": "After · {{range}}",
     "before": "Before · {{range}}",

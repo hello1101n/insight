@@ -174,7 +174,7 @@ describe("MetricsCompareTable, any number of people", () => {
     ]);
   });
 
-  it("opens the records behind a value inside a chip when it is clicked", async () => {
+  it("opens that person's records when a value that is not the best is clicked", async () => {
     const openEvidenceTargets = vi.fn();
     const byKey = figmaMetrics([ALEX, JAMIE], TWO_VALUES);
     const emails = byKey.get("collab.emails_sent")!;
@@ -289,8 +289,7 @@ describe("MetricsCompareTable, two people", () => {
     expect(table()).not.toHaveTextContent("Bob Park's team");
   });
 
-  it("opens the records of the better value from View records beside it", async () => {
-    const openEvidenceTargets = vi.fn();
+  it("offers the records only through the value, with no link beside it", () => {
     const byKey = figmaMetrics([ALEX, JAMIE], TWO_VALUES);
     const cycle = byKey.get("git.pr_cycle_time_h")!;
     byKey.set("git.pr_cycle_time_h", {
@@ -305,11 +304,11 @@ describe("MetricsCompareTable, two people", () => {
     } as NormalizedMetricResult);
     render(
       <EvidenceDialogContext.Provider
-        value={{ openEvidence: vi.fn(), openEvidenceTargets, openEvidencePeople: vi.fn() }}
+        value={{ openEvidence: vi.fn(), openEvidenceTargets: vi.fn(), openEvidencePeople: vi.fn() }}
       >
         <MetricsCompareTable
           people={[ALEX, JAMIE]}
-          keys={[...byKey.keys()]}
+          keys={["git.pr_cycle_time_h"]}
           byKey={byKey}
           roles={new Map()}
           teams={new Map()}
@@ -317,21 +316,12 @@ describe("MetricsCompareTable, two people", () => {
       </EvidenceDialogContext.Provider>,
     );
 
-    const [link] = screen.getAllByRole("button", { name: "View records" });
-    await userEvent.click(link!);
-
-    expect(screen.getAllByRole("button", { name: "View records" })).toHaveLength(1);
-    expect(within(link!.closest("td")!).getByText("Best")).toBeInTheDocument();
-    expect(openEvidenceTargets).toHaveBeenCalledWith(
-      [
-        expect.objectContaining({
-          selection: expect.objectContaining({ entity: { type: "person", id: JAMIE.entityId } }),
-        }),
-      ],
-      expect.objectContaining({
-        title: expect.stringMatching(/^PR cycle time · Jamie Ellis · 9 h · /),
-      }),
-    );
+    const row = within(table()).getByRole("row", { name: /^PR cycle time/ });
+    expect(
+      within(row)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["12 h", "9 h"]);
   });
 });
 

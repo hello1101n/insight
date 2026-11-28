@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MetricValue } from "@/components/portal/metrics-table";
-import { useOpenRecords } from "@/components/portal/use-open-records";
 import type { MembersGridMember } from "@/components/widgets/dashboard/members-grid";
 import type { NormalizedMetricResult } from "@/lib/metrics/collection";
 import {
@@ -171,12 +170,9 @@ function BestCells({ result, people, values }: CellsProps) {
     return (
       <td key={person.entityId} className={BODY_CELL}>
         {cell.best ? (
-          <>
-            <Chip better>
-              {value} <ChipNote>{t("metrics_view.best")}</ChipNote>
-            </Chip>
-            <ViewRecords result={result} person={person} />
-          </>
+          <Chip better>
+            {value} <ChipNote>{t("metrics_view.best")}</ChipNote>
+          </Chip>
         ) : cell.delta != null ? (
           <Chip better={false}>
             {value}{" "}
@@ -271,22 +267,6 @@ function Chip({ better, children }: { better: boolean; children: ReactNode }) {
 
 function ChipNote({ children }: { children: ReactNode }) {
   return <span className="text-xs font-normal">{children}</span>;
-}
-
-function ViewRecords({ result, person }: { result: NormalizedMetricResult; person: Person }) {
-  const { t } = useTranslation();
-  const openRecords = useOpenRecords(result, person.entityId, person.displayName);
-  if (!openRecords) return null;
-
-  return (
-    <button
-      type="button"
-      onClick={openRecords}
-      className="ms-3 cursor-pointer text-primary underline underline-offset-2 hover:text-primary/80"
-    >
-      {t("metrics_view.view_records")}
-    </button>
-  );
 }
 
 function firstName(displayName: string): string {
