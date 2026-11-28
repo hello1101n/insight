@@ -94,18 +94,20 @@ create_zoom_bronze() {
 }
 
 # The previous release's sync of the identity map views and their buildable
-# ancestors, with the base tree's dbt and profile.
+# ancestors, with the base tree's dbt and profile. The zoom bronze is empty here,
+# and a base with `bronze_gap` leaves out every never-built model over empty
+# bronze; a synced installation's bronze holds rows.
 build_base_identity_maps() {
   local tree="$1" path="$WORKDIR/base-venv/bin:$PATH" profiles="$WORKDIR/base-profiles" target="$WORKDIR/base-target"
-  local project="$tree/src/ingestion/dbt" unbuildable excluded=()
+  local project="$tree/src/ingestion/dbt" vars='{skip_empty_bronze: false}' unbuildable excluded=()
   mkdir -p "$profiles"
   PATH="$path" python3 "$tree/src/ingestion/scripts/dbt_profiles.py" --target migrate \
     --profiles-dir "$profiles" --correlated-subqueries
   unbuildable="$(cd "$project" && PATH="$path" dbt --quiet run-operation list_unbuildable_models \
-    --profiles-dir "$profiles" --target-path "$target" --log-path "$target/logs")"
+    --profiles-dir "$profiles" --target-path "$target" --log-path "$target/logs" --vars "$vars")"
   read -r -a excluded <<< "$unbuildable"
   (cd "$project" && PATH="$path" dbt --no-use-colors run --profiles-dir "$profiles" \
-    --target-path "$target" --log-path "$target/logs" --select +account_assignment +person_map \
+    --target-path "$target" --log-path "$target/logs" --vars "$vars" --select +account_assignment +person_map \
     ${excluded[@]+--exclude "${excluded[@]}"})
 }
 
@@ -291,7 +293,7 @@ backups="$(query "SELECT count() FROM system.tables WHERE endsWith(name, '__tena
 
 echo "=== Step 5: clickhouse-migrate, then the post-upgrade rebuild ==="
 bash "$SCRIPTS/apply-ch-migrations.sh"
-[[ "$(map_views)" == "" ]] \
+[[ "$(map_views)" != *:0* ]] \
   || fail "the deploy must drop identity map views without a tenant column, so analytics answers not-ready until the rebuild recreates them — got '$(map_views)'"
 
 # Gold is left out: its views read the evidence of every connector class, and
