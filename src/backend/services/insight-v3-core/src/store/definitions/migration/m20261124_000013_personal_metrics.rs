@@ -37,7 +37,8 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Err(DbErr::Custom(
-            "dropping the personal mark would publish every personal metric to everyone".to_owned(),
+            "dropping the personal settings would publish every personal metric to everyone"
+                .to_owned(),
         ))
     }
 }
@@ -58,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    fn a_metric_carries_a_nullable_personal_mark() {
+    fn a_metric_carries_nullable_personal_settings() {
         assert!(
             STEPS.contains(&"ALTER TABLE metrics ADD COLUMN IF NOT EXISTS personal JSON NULL"),
             "{STEPS:#?}"

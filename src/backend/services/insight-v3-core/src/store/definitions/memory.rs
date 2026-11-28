@@ -16,7 +16,7 @@ use crate::domain::folders::{
     Folder, FolderError, FolderFilter, FolderId, FolderList, FolderName, FolderSummary, Folders,
     HeldFolder, MAX_FOLDERS, SeenFolder,
 };
-use crate::domain::personal::{Marked, Marks, PersonalMark};
+use crate::domain::personal::{PersonalMetric, PersonalSettings, PersonalSettingsStore};
 use crate::domain::sharing::Grant;
 use crate::domain::tags::TagName;
 
@@ -54,7 +54,7 @@ struct Stored {
     entries: BTreeMap<(FolderId, String), KeptEntry>,
     tagged: BTreeMap<String, Tagged>,
     pinned: BTreeMap<PersonId, Vec<String>>,
-    marks: BTreeMap<String, PersonalMark>,
+    personal_settings: BTreeMap<String, PersonalSettings>,
 }
 
 fn reaching<'g>(
@@ -236,7 +236,7 @@ impl Stored {
             self.drop_pins(dashboard);
         }
         if kind == DefinitionKind::Metric {
-            self.marks.remove(id.as_str());
+            self.personal_settings.remove(id.as_str());
             self.metric_grants
                 .retain(|(held, _), _| held != id.as_str());
         }
@@ -605,11 +605,11 @@ impl Definitions for MemoryDefinitions {
 }
 
 #[async_trait]
-impl Marks for MemoryDefinitions {
-    async fn mark(
+impl PersonalSettingsStore for MemoryDefinitions {
+    async fn set_personal(
         &self,
         metric: &DefinitionId,
-        mark: Option<&PersonalMark>,
+        settings: Option<&PersonalSettings>,
     ) -> Result<bool, DefinitionStoreError> {
         self.writable()?;
         let mut stored = self.lock();
@@ -620,48 +620,49 @@ impl Marks for MemoryDefinitions {
             return Ok(false);
         }
 
-        match mark {
-            Some(mark) => {
+        match settings {
+            Some(settings) => {
                 stored
-                    .marks
-                    .insert(metric.as_str().to_owned(), mark.clone());
+                    .personal_settings
+                    .insert(metric.as_str().to_owned(), settings.clone());
             }
             None => {
-                stored.marks.remove(metric.as_str());
+                stored.personal_settings.remove(metric.as_str());
             }
         }
 
         Ok(true)
     }
 
-    async fn mark_of(
+    async fn personal_of(
         &self,
         metric: &DefinitionId,
-    ) -> Result<Option<PersonalMark>, DefinitionStoreError> {
-        Ok(self.lock().marks.get(metric.as_str()).cloned())
+    ) -> Result<Option<PersonalSettings>, DefinitionStoreError> {
+        Ok(self.lock().personal_settings.get(metric.as_str()).cloned())
     }
 
-    async fn marked(&self) -> Result<Vec<Marked>, DefinitionStoreError> {
+    async fn personal_metrics(&self) -> Result<Vec<PersonalMetric>, DefinitionStoreError> {
         let stored = self.lock();
-        let mut marked: Vec<Marked> = stored
-            .marks
+        let mut personal_metric: Vec<PersonalMetric> = stored
+            .personal_settings
             .iter()
-            .filter_map(|(id, mark)| {
+            .filter_map(|(id, settings)| {
                 let held = stored
                     .definitions
                     .get(&(DefinitionKind::Metric.table(), id.clone()))?;
 
-                Some(Marked {
+                Some(PersonalMetric {
                     id: id.clone(),
                     name: held.name.clone(),
-                    mark: mark.clone(),
+                    settings: settings.clone(),
                     body: held.body.clone(),
                 })
             })
             .collect();
-        marked.sort_by(|left, right| (&left.name, &left.id).cmp(&(&right.name, &right.id)));
+        personal_metric
+            .sort_by(|left, right| (&left.name, &left.id).cmp(&(&right.name, &right.id)));
 
-        Ok(marked)
+        Ok(personal_metric)
     }
 }
 

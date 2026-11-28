@@ -1928,7 +1928,10 @@ fn person(seed: u128) -> crate::domain::access::PersonId {
     crate::domain::access::PersonId::new(uuid::Uuid::from_u128(seed))
 }
 
-fn marked(person_field: &str, value_field: &str) -> crate::domain::personal::PersonalMark {
+fn personal_metric(
+    person_field: &str,
+    value_field: &str,
+) -> crate::domain::personal::PersonalSettings {
     serde_json::from_value(json!({
         "person_field": person_field,
         "value_field": value_field,
@@ -1937,7 +1940,7 @@ fn marked(person_field: &str, value_field: &str) -> crate::domain::personal::Per
         "direction": "higher_is_better",
         "description": "Lines merged in the period"
     }))
-    .unwrap_or_else(|error| panic!("the mark parses: {error}"))
+    .unwrap_or_else(|error| panic!("the settings parse: {error}"))
 }
 
 fn merged_lines() -> MetricQuery {
@@ -1999,7 +2002,7 @@ fn after_the_people(sql: &str) -> &str {
 fn personal_values_group_by_person_id() {
     let compiled = merged_lines()
         .personal_values(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1), person(2)],
             &september_week(),
             &people(),
@@ -2036,7 +2039,7 @@ fn personal_values_group_by_person_id() {
 fn personal_values_bind_the_person_ids() {
     let compiled = merged_lines()
         .personal_values(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1), person(2)],
             &september_week(),
             &people(),
@@ -2075,7 +2078,7 @@ fn personal_values_bind_the_person_ids() {
 fn personal_values_keep_the_metric_filters() {
     let compiled = merged_lines()
         .personal_values(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2104,7 +2107,7 @@ fn personal_values_keep_the_metric_filters() {
 fn team_value_has_no_group_by() {
     let compiled = merged_lines()
         .team_value(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1), person(2)],
             &september_week(),
             &people(),
@@ -2135,7 +2138,7 @@ fn team_value_has_no_group_by() {
 fn personal_values_keep_the_fields_a_ratio_divides() {
     let compiled = gate_pass_rate()
         .personal_values(
-            &marked("author", "pass_rate"),
+            &personal_metric("author", "pass_rate"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2160,7 +2163,7 @@ fn personal_values_keep_the_fields_a_ratio_divides() {
 #[test]
 fn personal_values_need_a_person() {
     let refusal = merged_lines().personal_values(
-        &marked("author", "lines"),
+        &personal_metric("author", "lines"),
         &[],
         &september_week(),
         &people(),
@@ -2175,9 +2178,9 @@ fn personal_values_need_a_person() {
 }
 
 #[test]
-fn personal_values_refuse_a_mark_the_metric_does_not_carry() {
+fn personal_values_refuse_settings_the_metric_does_not_carry() {
     let refusal = merged_lines().team_value(
-        &marked("lines", "merged"),
+        &personal_metric("lines", "merged"),
         &[person(1)],
         &september_week(),
         &people(),
@@ -2186,7 +2189,7 @@ fn personal_values_refuse_a_mark_the_metric_does_not_carry() {
     );
 
     assert!(
-        matches!(refusal, Err(MetricQueryError::Mark(_))),
+        matches!(refusal, Err(MetricQueryError::Personal(_))),
         "{refusal:?}"
     );
 }
@@ -2205,7 +2208,7 @@ fn personal_values_keep_the_maximum_range() {
     }));
 
     let refusal = metric.personal_values(
-        &marked("author", "total"),
+        &personal_metric("author", "total"),
         &[person(1)],
         &window("P1Y", false),
         &people(),
@@ -2223,7 +2226,7 @@ fn personal_values_keep_the_maximum_range() {
 fn personal_values_read_the_final_rows_of_a_replacing_table() {
     let compiled = merged_lines()
         .personal_values(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2276,7 +2279,7 @@ fn personal_values_over_a_dataset_join_the_declared_person() {
 
     let compiled = comments_by_reviewer()
         .personal_values(
-            &marked("reviewer", "comments"),
+            &personal_metric("reviewer", "comments"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2315,7 +2318,7 @@ fn personal_values_over_a_dataset_join_the_declared_person() {
 fn personal_records_apply_the_value_condition() {
     let compiled = merged_lines()
         .personal_records(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             person(1),
             &september_week(),
             &people(),
@@ -2361,7 +2364,7 @@ fn personal_records_apply_the_value_condition() {
 fn personal_records_of_a_ratio_apply_only_the_metric_filters() {
     let compiled = gate_pass_rate()
         .personal_records(
-            &marked("author", "pass_rate"),
+            &personal_metric("author", "pass_rate"),
             person(1),
             &september_week(),
             &people(),
@@ -2391,7 +2394,7 @@ fn personal_records_of_a_ratio_apply_only_the_metric_filters() {
 fn personal_records_carry_the_identity_drilldown_pages_by() {
     let over_a_table = merged_lines()
         .personal_records(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             person(1),
             &september_week(),
             &people(),
@@ -2411,7 +2414,7 @@ fn personal_records_carry_the_identity_drilldown_pages_by() {
     };
     let over_a_dataset = comments_by_reviewer()
         .personal_records(
-            &marked("reviewer", "comments"),
+            &personal_metric("reviewer", "comments"),
             person(1),
             &september_week(),
             &people(),
@@ -2466,7 +2469,7 @@ fn a_record_field_named_like_the_record_time_is_refused() {
     }));
 
     let refusal = metric.personal_records(
-        &marked("author", "time"),
+        &personal_metric("author", "time"),
         person(1),
         &september_week(),
         &people(),
@@ -2499,7 +2502,7 @@ fn personal_values_keep_nested_ratios_linear_in_size() {
         .unwrap_or_else(|error| panic!("{error}"));
     let result = metric
         .personal_values(
-            &marked("author", &previous),
+            &personal_metric("author", &previous),
             &[person(1)],
             &Window::legacy(),
             &people(),
@@ -2520,7 +2523,7 @@ fn personal_values_keep_nested_ratios_linear_in_size() {
 fn a_person_without_a_name_still_maps_to_a_person_id() {
     let by_email = merged_lines()
         .personal_values(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2538,7 +2541,7 @@ fn a_person_without_a_name_still_maps_to_a_person_id() {
         "group_by": ["author"]
     }))
     .personal_values(
-        &marked("author", "total"),
+        &personal_metric("author", "total"),
         &[person(1)],
         &september_week(),
         &people(),
@@ -2567,7 +2570,7 @@ fn a_person_without_a_name_still_maps_to_a_person_id() {
 fn team_value_answers_null_for_a_team_with_no_rows() {
     let compiled = merged_lines()
         .team_value(
-            &marked("author", "lines"),
+            &personal_metric("author", "lines"),
             &[person(1)],
             &september_week(),
             &people(),
@@ -2599,7 +2602,7 @@ fn personal_values_refuse_a_ratio_of_unaggregated_fields() {
     }));
 
     let team = listing.team_value(
-        &marked("author", "share"),
+        &personal_metric("author", "share"),
         &[person(1)],
         &Window::legacy(),
         &people(),
@@ -2607,7 +2610,7 @@ fn personal_values_refuse_a_ratio_of_unaggregated_fields() {
         None,
     );
     let personal = listing.personal_values(
-        &marked("author", "share"),
+        &personal_metric("author", "share"),
         &[person(1)],
         &Window::legacy(),
         &people(),
@@ -2619,7 +2622,7 @@ fn personal_values_refuse_a_ratio_of_unaggregated_fields() {
         assert!(
             matches!(
                 &refusal,
-                Err(MetricQueryError::Mark(crate::domain::personal::MarkError::UnaggregatedRatio(field)))
+                Err(MetricQueryError::Personal(crate::domain::personal::SettingsError::UnaggregatedRatio(field)))
                     if field == "share"
             ),
             "{refusal:?}"
@@ -2628,7 +2631,7 @@ fn personal_values_refuse_a_ratio_of_unaggregated_fields() {
 }
 
 #[test]
-fn personal_records_join_the_marked_person_itself() {
+fn personal_records_join_the_named_person_itself() {
     let metric = query(json!({
         "table": "events",
         "time": { "column": "occurred_at" },
@@ -2640,7 +2643,7 @@ fn personal_records_join_the_marked_person_itself() {
     }));
 
     let refusal = metric.personal_records(
-        &marked("author", "lines"),
+        &personal_metric("author", "lines"),
         person(1),
         &september_week(),
         &people(),

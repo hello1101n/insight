@@ -9,7 +9,7 @@ import {
 import { refusal } from "@/components/custom/refusal";
 import {
   MetricEvidenceTable,
-  type EvidenceMarker,
+  type EvidenceBadge,
 } from "@/components/metric-evidence-table";
 import { CenteredSpinner } from "@/components/widgets/centered-spinner";
 import {
@@ -102,7 +102,7 @@ function Records({
     [pages, columns]
   );
   const complete = !query.hasNextPage;
-  const marker = useMemo((): EvidenceMarker | undefined => {
+  const badge = useMemo((): EvidenceBadge | undefined => {
     if (!pages || !valueKey || !complete) return undefined;
     const row = medianRow(
       pages.flatMap((page) => page.rows.map((record) => record.values[valueKey]))
@@ -160,7 +160,7 @@ function Records({
         isFetchingNextPage={query.isFetchingNextPage}
         nextPageError={query.isFetchNextPageError}
         pageLimitReached={pageLimitReached}
-        marker={marker}
+        badge={badge}
       />
     </>
   );

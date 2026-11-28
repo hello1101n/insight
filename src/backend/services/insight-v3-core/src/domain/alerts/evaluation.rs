@@ -163,7 +163,7 @@ fn unknown_because(rule: &str, error: &CustomError) -> UnknownReason {
         | CustomError::NotEditor
         | CustomError::NotOwner
         | CustomError::Widget(_)
-        | CustomError::Mark(_) => {
+        | CustomError::Personal(_) => {
             tracing::warn!(rule = %rule, %error, "an alert's metric does not compile");
             UnknownReason::CompileFailed
         }

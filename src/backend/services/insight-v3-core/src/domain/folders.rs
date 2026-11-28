@@ -10,7 +10,7 @@ use crate::domain::access::{
 };
 use crate::domain::dashboards::{DashboardCatalogue, sight};
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionStoreError, Definitions};
-use crate::domain::personal::Marks;
+use crate::domain::personal::PersonalSettingsStore;
 use crate::domain::pins::Pins;
 use crate::domain::sharing::Grants;
 use crate::domain::tags::Tags;
@@ -309,12 +309,12 @@ pub(crate) async fn remove(
 }
 
 pub(crate) trait DefinitionStore:
-    Definitions + Folders + Tags + Pins + DashboardCatalogue + Grants + Marks
+    Definitions + Folders + Tags + Pins + DashboardCatalogue + Grants + PersonalSettingsStore
 {
 }
 
-impl<T: Definitions + Folders + Tags + Pins + DashboardCatalogue + Grants + Marks> DefinitionStore
-    for T
+impl<T: Definitions + Folders + Tags + Pins + DashboardCatalogue + Grants + PersonalSettingsStore>
+    DefinitionStore for T
 {
 }
 

@@ -189,7 +189,7 @@ describe("PersonalRecordsDialog", () => {
     expect(await screen.findByText("1 Jul 2025 – 31 Jul 2025 · UTC")).toBeInTheDocument();
   });
 
-  it("marks the row that holds the median value", async () => {
+  it("puts the Median badge on the row that holds the median value", async () => {
     mocks.fetchPersonalRecords.mockResolvedValue(
       records(
         [
@@ -210,7 +210,7 @@ describe("PersonalRecordsDialog", () => {
     expect(within(rowOf(dialog, "Lin")).getByText("Median")).toBeInTheDocument();
   });
 
-  it("marks no row while another page of records exists", async () => {
+  it("puts no badge while another page of records exists", async () => {
     mocks.fetchPersonalRecords
       .mockResolvedValueOnce(
         records(
@@ -232,7 +232,7 @@ describe("PersonalRecordsDialog", () => {
     expect(within(dialog).queryByText("Median")).toBeNull();
   });
 
-  it("marks the median of every page once the last page has loaded", async () => {
+  it("puts the badge on the median of every page once the last page has loaded", async () => {
     mocks.fetchPersonalRecords
       .mockResolvedValueOnce(
         records(
@@ -263,7 +263,7 @@ describe("PersonalRecordsDialog", () => {
     expect(within(rowOf(dialog, "Ada")).getByText("Median")).toBeInTheDocument();
   });
 
-  it("marks no row when the answer names no value column", async () => {
+  it("puts no badge when the answer names no value column", async () => {
     mocks.fetchPersonalRecords.mockResolvedValue(
       records(
         [

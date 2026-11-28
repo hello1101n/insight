@@ -6,7 +6,7 @@ use crate::domain::access::{Caller, Grantee, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
 use crate::domain::folders::DefinitionStore;
 use crate::domain::metric_run::MetricRuns;
-use crate::domain::personal::{Calculation, Marked};
+use crate::domain::personal::{Calculation, PersonalMetric};
 use crate::domain::query::metric_query::{MetricQuery, RunResult};
 use crate::domain::query::time_window::Window;
 use crate::domain::sharing::{Grant, Shared};
@@ -14,7 +14,7 @@ use crate::domain::surfaces::CustomError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Shown {
-    pub(crate) marked: Marked,
+    pub(crate) personal_metric: PersonalMetric,
     pub(crate) shared_by: Option<Grant>,
 }
 
@@ -64,23 +64,27 @@ impl<'a> PersonalMetrics<'a> {
     }
 
     pub(crate) async fn listed(&self) -> Result<Vec<Listed>, CustomError> {
-        let marked = self.store.marked().await.map_err(CustomError::Store)?;
+        let stored = self
+            .store
+            .personal_metrics()
+            .await
+            .map_err(CustomError::Store)?;
 
-        let mut listed = Vec::with_capacity(marked.len());
-        for held in marked {
+        let mut listed = Vec::with_capacity(stored.len());
+        for held in stored {
             let Some(shown) = self.shown(held).await? else {
                 continue;
             };
-            match self.calculation(&shown.marked).await {
+            match self.calculation(&shown.personal_metric).await {
                 Ok(calculation) => listed.push(Listed { shown, calculation }),
                 Err(
                     error @ (CustomError::Body(_)
                     | CustomError::DatasetNotReady(_)
-                    | CustomError::Mark(_)),
+                    | CustomError::Personal(_)),
                 ) => {
                     tracing::warn!(
                         %error,
-                        metric_id = shown.marked.id,
+                        metric_id = shown.personal_metric.id,
                         "a personal metric is left out of the listing: its calculation cannot be read"
                     );
                 }
@@ -91,10 +95,13 @@ impl<'a> PersonalMetrics<'a> {
         Ok(listed)
     }
 
-    pub(crate) async fn asked(&self, ids: &[DefinitionId]) -> Result<Vec<Marked>, CustomError> {
-        let marked: HashMap<String, Marked> = self
+    pub(crate) async fn asked(
+        &self,
+        ids: &[DefinitionId],
+    ) -> Result<Vec<PersonalMetric>, CustomError> {
+        let stored: HashMap<String, PersonalMetric> = self
             .store
-            .marked()
+            .personal_metrics()
             .await
             .map_err(CustomError::Store)?
             .into_iter()
@@ -107,13 +114,13 @@ impl<'a> PersonalMetrics<'a> {
                 kind: DefinitionKind::Metric,
                 id: id.as_str().to_owned(),
             };
-            let held = marked.get(id.as_str()).cloned().ok_or_else(missing)?;
+            let held = stored.get(id.as_str()).cloned().ok_or_else(missing)?;
             if self.caller.is_administrator() {
                 asked.push(held);
                 continue;
             }
             let shown = self.shown(held).await?.ok_or_else(missing)?;
-            asked.push(shown.marked);
+            asked.push(shown.personal_metric);
         }
 
         Ok(asked)
@@ -121,11 +128,11 @@ impl<'a> PersonalMetrics<'a> {
 
     pub(crate) async fn values(
         &self,
-        marked: &Marked,
+        personal_metric: &PersonalMetric,
         asked: &Asked,
     ) -> Result<Values, CustomError> {
         let query: MetricQuery =
-            serde_json::from_value(marked.body.clone()).map_err(CustomError::Body)?;
+            serde_json::from_value(personal_metric.body.clone()).map_err(CustomError::Body)?;
         let reading = self.runs.reading(&query).await?;
 
         let mut persons = Vec::with_capacity(asked.persons.len());
@@ -134,7 +141,7 @@ impl<'a> PersonalMetrics<'a> {
                 .runs
                 .run_read(&reading, |people, engine, over| {
                     query.personal_values(
-                        &marked.mark,
+                        &personal_metric.settings,
                         &asked.persons,
                         &asked.window,
                         people,
@@ -162,7 +169,7 @@ impl<'a> PersonalMetrics<'a> {
                 .runs
                 .run_read(&reading, |people, engine, over| {
                     query.team_value(
-                        &marked.mark,
+                        &personal_metric.settings,
                         &team.persons,
                         &asked.window,
                         people,
@@ -177,8 +184,8 @@ impl<'a> PersonalMetrics<'a> {
         Ok(Values { persons, teams })
     }
 
-    async fn shown(&self, marked: Marked) -> Result<Option<Shown>, CustomError> {
-        let Ok(id) = DefinitionId::parse(&marked.id) else {
+    async fn shown(&self, personal_metric: PersonalMetric) -> Result<Option<Shown>, CustomError> {
+        let Ok(id) = DefinitionId::parse(&personal_metric.id) else {
             return Ok(None);
         };
         let grants = self
@@ -187,25 +194,31 @@ impl<'a> PersonalMetrics<'a> {
             .await
             .map_err(CustomError::Store)?;
 
-        Ok(shown(self.caller, marked, grants))
+        Ok(shown(self.caller, personal_metric, grants))
     }
 
-    async fn calculation(&self, marked: &Marked) -> Result<Calculation, CustomError> {
+    async fn calculation(
+        &self,
+        personal_metric: &PersonalMetric,
+    ) -> Result<Calculation, CustomError> {
         let query: MetricQuery =
-            serde_json::from_value(marked.body.clone()).map_err(CustomError::Body)?;
+            serde_json::from_value(personal_metric.body.clone()).map_err(CustomError::Body)?;
         let declaration = self.runs.declaration_of(&query).await?;
 
-        marked
-            .mark
+        personal_metric
+            .settings
             .check_timed(&query, declaration.as_ref())
-            .map_err(CustomError::Mark)
+            .map_err(CustomError::Personal)
     }
 }
 
-fn shown(caller: Caller, marked: Marked, grants: Vec<Grant>) -> Option<Shown> {
+fn shown(caller: Caller, personal_metric: PersonalMetric, grants: Vec<Grant>) -> Option<Shown> {
     if caller.is_administrator() {
         let shared_by = grants.into_iter().max_by_key(|grant| grant.created_at);
-        return Some(Shown { marked, shared_by });
+        return Some(Shown {
+            personal_metric,
+            shared_by,
+        });
     }
 
     let reaching = |grantee: Grantee| grants.iter().find(|grant| grant.grantee == grantee);
@@ -214,7 +227,7 @@ fn shown(caller: Caller, marked: Marked, grants: Vec<Grant>) -> Option<Shown> {
         .clone();
 
     Some(Shown {
-        marked,
+        personal_metric,
         shared_by: Some(shared_by),
     })
 }

@@ -1010,8 +1010,10 @@ async fn a_dashboard_stamp_is_utc_to_the_millisecond() {
 }
 
 #[tokio::test]
-async fn a_replace_that_breaks_a_personal_mark_is_refused_with_its_reason() {
-    use crate::domain::personal::{Direction, MarkError, Marks as _, MetricFormat, PersonalMark};
+async fn a_replace_that_breaks_personal_settings_is_refused_with_its_reason() {
+    use crate::domain::personal::{
+        Direction, MetricFormat, PersonalSettings, PersonalSettingsStore as _, SettingsError,
+    };
 
     let store = Arc::new(MemoryDefinitions::new());
     let harness = TestHarness::build(true, &(store.clone() as Arc<dyn DefinitionStore>));
@@ -1027,10 +1029,10 @@ async fn a_replace_that_breaks_a_personal_mark_is_refused_with_its_reason() {
         .created("metrics", "Reviews", per_reviewer.clone())
         .await;
     let metric = DefinitionId::parse(&id).unwrap_or_else(|error| panic!("{error}"));
-    let marked = store
-        .mark(
+    let set = store
+        .set_personal(
             &metric,
-            Some(&PersonalMark {
+            Some(&PersonalSettings {
                 person_field: "reviewer".to_owned(),
                 value_field: "reviews".to_owned(),
                 unit: None,
@@ -1040,7 +1042,7 @@ async fn a_replace_that_breaks_a_personal_mark_is_refused_with_its_reason() {
             }),
         )
         .await;
-    assert!(matches!(marked, Ok(true)), "{marked:?}");
+    assert!(matches!(set, Ok(true)), "{set:?}");
 
     let refused = harness
         .replaced(
@@ -1060,7 +1062,7 @@ async fn a_replace_that_breaks_a_personal_mark_is_refused_with_its_reason() {
 
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     let said = String::from_utf8_lossy(&refused.body);
-    let reason = MarkError::NoPersonField("reviewer".to_owned()).to_string();
+    let reason = SettingsError::NoPersonField("reviewer".to_owned()).to_string();
     assert!(said.contains(&reason), "{said}");
     let read = harness
         .get_json(&format!("/v1/metrics/{id}"))

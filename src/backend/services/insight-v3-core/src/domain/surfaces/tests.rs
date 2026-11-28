@@ -1334,10 +1334,12 @@ async fn running_a_metric_over_a_dataset_still_being_made_says_so() -> R {
     Ok(())
 }
 
-mod a_personal_mark {
+mod personal_settings {
     use super::*;
     use crate::chat::Proposed;
-    use crate::domain::personal::{Direction, MarkError, Marks as _, MetricFormat, PersonalMark};
+    use crate::domain::personal::{
+        Direction, MetricFormat, PersonalSettings, PersonalSettingsStore as _, SettingsError,
+    };
 
     fn label() -> DefinitionLabel {
         DefinitionLabel::parse("Comments").unwrap_or_else(|error| panic!("{error}"))
@@ -1378,8 +1380,8 @@ mod a_personal_mark {
         })
     }
 
-    fn the_mark() -> PersonalMark {
-        PersonalMark {
+    fn the_settings() -> PersonalSettings {
+        PersonalSettings {
             person_field: "reviewer".to_owned(),
             value_field: "comments".to_owned(),
             unit: None,
@@ -1389,13 +1391,18 @@ mod a_personal_mark {
         }
     }
 
-    async fn marked(fixture: &Fixture) -> Result<DefinitionId, Box<dyn Error>> {
+    async fn personal_metric(fixture: &Fixture) -> Result<DefinitionId, Box<dyn Error>> {
         fixture.a_ready_dataset("reviews", &reviews()).await?;
         let id = fixture
             .surfaces()
             .create(DefinitionKind::Metric, &label(), &per_reviewer())
             .await?;
-        assert!(fixture.definitions.mark(&id, Some(&the_mark())).await?);
+        assert!(
+            fixture
+                .definitions
+                .set_personal(&id, Some(&the_settings()))
+                .await?
+        );
 
         Ok(id)
     }
@@ -1403,7 +1410,10 @@ mod a_personal_mark {
     async fn untouched(fixture: &Fixture, id: &DefinitionId) -> R {
         let stored = fixture.surfaces().read(DefinitionKind::Metric, id).await?;
         assert_eq!(stored.body, per_reviewer());
-        assert_eq!(fixture.definitions.mark_of(id).await?, Some(the_mark()));
+        assert_eq!(
+            fixture.definitions.personal_of(id).await?,
+            Some(the_settings())
+        );
 
         Ok(())
     }
@@ -1411,7 +1421,7 @@ mod a_personal_mark {
     #[tokio::test]
     async fn a_replace_that_drops_the_person_field_is_refused() -> R {
         let fixture = Fixture::new().await;
-        let id = marked(&fixture).await?;
+        let id = personal_metric(&fixture).await?;
 
         let refused = fixture
             .surfaces()
@@ -1422,12 +1432,12 @@ mod a_personal_mark {
             panic!("a replace that drops the person field must be refused");
         };
         assert!(
-            matches!(&error, CustomError::Mark(MarkError::NoPersonField(field)) if field == "reviewer"),
+            matches!(&error, CustomError::Personal(SettingsError::NoPersonField(field)) if field == "reviewer"),
             "{error:?}"
         );
         assert_eq!(
             error.to_string(),
-            MarkError::NoPersonField("reviewer".to_owned()).to_string()
+            SettingsError::NoPersonField("reviewer".to_owned()).to_string()
         );
         assert!(error.is_about_the_caller());
         untouched(&fixture, &id).await
@@ -1436,7 +1446,7 @@ mod a_personal_mark {
     #[tokio::test]
     async fn a_replace_that_leaves_the_value_unaggregated_is_refused() -> R {
         let fixture = Fixture::new().await;
-        let id = marked(&fixture).await?;
+        let id = personal_metric(&fixture).await?;
         let rows = json!({
             "dataset": "reviews",
             "fields": [
@@ -1451,7 +1461,7 @@ mod a_personal_mark {
             .await;
 
         assert!(
-            matches!(&refused, Err(CustomError::Mark(MarkError::NotAggregated(field))) if field == "comments"),
+            matches!(&refused, Err(CustomError::Personal(SettingsError::NotAggregated(field))) if field == "comments"),
             "{refused:?}"
         );
         untouched(&fixture, &id).await
@@ -1460,7 +1470,7 @@ mod a_personal_mark {
     #[tokio::test]
     async fn a_replace_that_removes_the_time_source_is_refused() -> R {
         let fixture = Fixture::new().await;
-        let id = marked(&fixture).await?;
+        let id = personal_metric(&fixture).await?;
         let mut clockless = per_reviewer();
         if let Some(body) = clockless.as_object_mut() {
             body.remove("time");
@@ -1472,18 +1482,18 @@ mod a_personal_mark {
             .await;
 
         let Err(error) = refused else {
-            panic!("a replace that leaves a marked metric without a time source must be refused");
+            panic!("a replace that leaves a personal metric without a time source must be refused");
         };
-        assert!(matches!(&error, CustomError::Mark(_)), "{error:?}");
+        assert!(matches!(&error, CustomError::Personal(_)), "{error:?}");
         assert!(error.to_string().contains("no time source"), "{error}");
         assert!(error.is_about_the_caller());
         untouched(&fixture, &id).await
     }
 
     #[tokio::test]
-    async fn a_replace_keeps_the_mark() -> R {
+    async fn a_replace_keeps_the_personal_settings() -> R {
         let fixture = Fixture::new().await;
-        let id = marked(&fixture).await?;
+        let id = personal_metric(&fixture).await?;
         let wider = json!({
             "dataset": "reviews",
             "time": { "field": "reviewed_at" },
@@ -1502,7 +1512,10 @@ mod a_personal_mark {
 
         let stored = fixture.surfaces().read(DefinitionKind::Metric, &id).await?;
         assert_eq!(stored.body, wider);
-        assert_eq!(fixture.definitions.mark_of(&id).await?, Some(the_mark()));
+        assert_eq!(
+            fixture.definitions.personal_of(&id).await?,
+            Some(the_settings())
+        );
 
         Ok(())
     }
@@ -1510,7 +1523,7 @@ mod a_personal_mark {
     #[tokio::test]
     async fn a_proposal_that_drops_the_person_field_is_refused() -> R {
         let fixture = Fixture::new().await;
-        let id = marked(&fixture).await?;
+        let id = personal_metric(&fixture).await?;
 
         let refused = fixture
             .surfaces()
@@ -1528,7 +1541,7 @@ mod a_personal_mark {
         assert!(
             matches!(
                 &refused,
-                Err(ProposalError::Refused(CustomError::Mark(MarkError::NoPersonField(field))))
+                Err(ProposalError::Refused(CustomError::Personal(SettingsError::NoPersonField(field))))
                     if field == "reviewer"
             ),
             "{refused:?}"

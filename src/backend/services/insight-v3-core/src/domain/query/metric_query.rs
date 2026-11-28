@@ -15,7 +15,7 @@ use thiserror::Error;
 use crate::domain::kinds::dataset::declaration::{
     BUCKET_COLUMN, Declaration, FieldType as DeclaredType,
 };
-use crate::domain::personal::MarkError;
+use crate::domain::personal::SettingsError;
 use crate::domain::query::time_window::MaximumRange;
 
 pub(crate) use compiler::{Bound, bound_by, imposed_limit};
@@ -522,7 +522,7 @@ pub(crate) enum MetricQueryError {
     #[error(transparent)]
     Window(#[from] WindowError),
     #[error(transparent)]
-    Mark(#[from] MarkError),
+    Personal(#[from] SettingsError),
     #[error("a personal value needs at least one person")]
     NoPersons,
     #[error("`{RECORD_TIME_COLUMN}` is reserved for the time of a personal record")]

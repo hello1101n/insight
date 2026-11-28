@@ -1342,7 +1342,7 @@ describe("MetricsView personal metrics", () => {
     );
   });
 
-  it("marks as not loaded only the personal metric insight-v3 could not read", () => {
+  it("shows as not loaded only the personal metric insight-v3 could not read", () => {
     mocks.personal = [
       personalDefinition(personalMetric()),
       personalDefinition(personalMetric({ id: "focus", label: "Focus hours" })),

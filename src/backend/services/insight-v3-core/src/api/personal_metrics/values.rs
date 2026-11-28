@@ -19,7 +19,7 @@ use crate::api::dashboard_widgets::{MAX_CONCURRENT_WIDGET_RUNS, run_slot};
 use crate::api::errors::ApiErrors;
 use crate::domain::access::{Caller, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind};
-use crate::domain::personal::Marked;
+use crate::domain::personal::PersonalMetric;
 use crate::domain::personal::values::{Asked, PersonalMetrics, Team, Values};
 use crate::domain::query::metric_query::{MetricQueryError, MetricRunError};
 use crate::domain::surfaces::CustomError;
@@ -177,12 +177,12 @@ async fn values_of(
     state: &AppState,
     personal: &PersonalMetrics<'_>,
     caller: Caller,
-    metrics: &[Marked],
+    metrics: &[PersonalMetric],
     asked: &Asked,
 ) -> Vec<Read> {
     let runs: Vec<_> = metrics
         .iter()
-        .map(|marked| value_of(state, personal, caller, marked, asked))
+        .map(|personal_metric| value_of(state, personal, caller, personal_metric, asked))
         .collect();
 
     futures::stream::iter(runs)
@@ -195,7 +195,7 @@ async fn value_of(
     state: &AppState,
     personal: &PersonalMetrics<'_>,
     caller: Caller,
-    marked: &Marked,
+    personal_metric: &PersonalMetric,
     asked: &Asked,
 ) -> Read {
     // INVARIANT: the permit lives until this metric's values answer; it is what
@@ -203,19 +203,19 @@ async fn value_of(
     let Some(_permit) = run_slot(state).await else {
         tracing::warn!(
             capacity = MAX_CONCURRENT_WIDGET_RUNS,
-            metric_id = marked.id,
+            metric_id = personal_metric.id,
             "a personal metric found no run slot"
         );
         return failed(caller, RUNS_BUSY.to_owned());
     };
 
-    match personal.values(marked, asked).await {
+    match personal.values(personal_metric, asked).await {
         Ok(values) => Read::Values(values),
         Err(CustomError::Compile(source @ MetricQueryError::RangeExceedsMaximum(_))) => {
             failed(caller, source.to_string())
         }
         Err(error) => {
-            tracing::error!(%error, metric_id = marked.id, "a personal metric could not be read");
+            tracing::error!(%error, metric_id = personal_metric.id, "a personal metric could not be read");
             failed(caller, admin_detail(&error))
         }
     }
@@ -236,28 +236,28 @@ fn admin_detail(error: &CustomError) -> String {
     }
 }
 
-fn answer(metrics: &[Marked], asked: &Asked, reads: Vec<Read>) -> Value {
+fn answer(metrics: &[PersonalMetric], asked: &Asked, reads: Vec<Read>) -> Value {
     let mut persons = Vec::new();
     let mut teams = Vec::new();
     let mut errors = Vec::new();
-    for (marked, read) in metrics.iter().zip(reads) {
+    for (personal_metric, read) in metrics.iter().zip(reads) {
         let values = match read {
             Read::Values(values) => values,
             Read::Failed(Some(detail)) => {
-                errors.push(json!({ "metric": marked.id, "detail": detail }));
+                errors.push(json!({ "metric": personal_metric.id, "detail": detail }));
                 continue;
             }
             Read::Failed(None) => {
-                errors.push(json!({ "metric": marked.id }));
+                errors.push(json!({ "metric": personal_metric.id }));
                 continue;
             }
         };
         persons.extend(values.persons.into_iter().map(|(person, value)| {
-            json!({ "metric": marked.id, "person_id": person.to_string(), "value": value })
+            json!({ "metric": personal_metric.id, "person_id": person.to_string(), "value": value })
         }));
         teams.extend(
             asked.teams.iter().zip(values.teams).map(
-                |(team, value)| json!({ "metric": marked.id, "team": team.id, "value": value }),
+                |(team, value)| json!({ "metric": personal_metric.id, "team": team.id, "value": value }),
             ),
         );
     }

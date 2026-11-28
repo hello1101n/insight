@@ -73,7 +73,7 @@ impl Surfaces<'_> {
         self.check_batch(&batch)
             .await
             .map_err(ProposalError::Refused)?;
-        self.marks_kept(&landing).await?;
+        self.personal_settings_kept(&landing).await?;
 
         let mut stored = Vec::with_capacity(landing.len());
         let mut changes = Vec::new();
@@ -109,13 +109,13 @@ impl Surfaces<'_> {
         Ok(())
     }
 
-    async fn marks_kept(&self, landing: &[Landing]) -> Result<(), ProposalError> {
+    async fn personal_settings_kept(&self, landing: &[Landing]) -> Result<(), ProposalError> {
         let replaced = landing
             .iter()
             .filter(|item| item.arrival == Arrival::Replaced);
 
         for item in replaced {
-            self.keeps_its_mark(item.kind, &item.id, &item.body)
+            self.keeps_its_personal_settings(item.kind, &item.id, &item.body)
                 .await
                 .map_err(ProposalError::Refused)?;
         }

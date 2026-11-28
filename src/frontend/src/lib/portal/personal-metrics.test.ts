@@ -152,7 +152,7 @@ describe("medianRow", () => {
     ["the first of equal middle values", [2, 7, 2, 1], 0],
     ["a row among rows that carry no number", [9, null, "3", 4, 1], 3],
     ["one of two numbers", [8, 6], 1],
-  ])("marks %s", (_case, values, expected) => {
+  ])("finds the median row of %s", (_case, values, expected) => {
     expect(medianRow(values), `case: ${_case}`).toBe(expected);
   });
 
@@ -160,7 +160,7 @@ describe("medianRow", () => {
     ["no rows", []],
     ["one number", [5, null]],
     ["no numbers", ["3", null, Number.NaN]],
-  ])("marks no row when there are %s", (_case, values) => {
+  ])("finds no median row when there are %s", (_case, values) => {
     expect(medianRow(values), `case: ${_case}`).toBeNull();
   });
 });

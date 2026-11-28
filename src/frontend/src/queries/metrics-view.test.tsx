@@ -252,7 +252,7 @@ describe("useMetricsViewData", () => {
     expect(result.current.personalPending).toEqual(new Set(["personal.focus"]));
   });
 
-  it("marks as failed only the metrics insight-v3 lists in errors", async () => {
+  it("counts as failed only the metrics insight-v3 lists in errors", async () => {
     personalMock.mockImplementation(async (req) => ({
       ...respondPersonal({ ...req, metrics: req.metrics.filter((metric) => metric !== "broken") }),
       errors: [{ metric: "broken" }],

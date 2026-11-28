@@ -17,7 +17,7 @@ use crate::domain::kinds::metric::CompileAgainst;
 use crate::domain::kinds::metric::answerable::EffectiveClock;
 use crate::domain::kinds::widget::WidgetError;
 use crate::domain::kinds::{self, KindError};
-use crate::domain::personal::MarkError;
+use crate::domain::personal::SettingsError;
 use crate::domain::query::composite::{Composite, CompositeError};
 use crate::domain::query::metric::Metric;
 use crate::domain::query::metric_query::{MetricQuery, MetricQueryError, MetricRunError, People};
@@ -64,7 +64,7 @@ pub(crate) enum CustomError {
     #[error("this dataset cannot answer that metric - {}", crate::domain::violation::said(.0))]
     Unanswerable(Vec<Violation>),
     #[error(transparent)]
-    Mark(MarkError),
+    Personal(SettingsError),
 }
 
 impl From<KindError> for CustomError {
@@ -95,7 +95,7 @@ impl CustomError {
             | Self::Range(_)
             | Self::DatasetNotReady(_)
             | Self::Unanswerable(_)
-            | Self::Mark(_)
+            | Self::Personal(_)
             | Self::Compile(_)
             | Self::Composite(_) => true,
             Self::Run(_) | Self::Store(_) | Self::Datasets(_) => false,
@@ -322,12 +322,12 @@ impl<'a> Surfaces<'a> {
     ) -> Result<(), CustomError> {
         self.writable(kind, id).await?;
         kinds::check(kind, body, self.definitions, self.datasets, self.over).await?;
-        self.keeps_its_mark(kind, id, body).await?;
+        self.keeps_its_personal_settings(kind, id, body).await?;
 
         self.store_replacing(kind, id, name, body).await
     }
 
-    async fn keeps_its_mark(
+    async fn keeps_its_personal_settings(
         &self,
         kind: DefinitionKind,
         id: &DefinitionId,
@@ -336,9 +336,9 @@ impl<'a> Surfaces<'a> {
         if kind != DefinitionKind::Metric {
             return Ok(());
         }
-        let Some(mark) = self
+        let Some(settings) = self
             .definitions
-            .mark_of(id)
+            .personal_of(id)
             .await
             .map_err(CustomError::Store)?
         else {
@@ -354,8 +354,9 @@ impl<'a> Surfaces<'a> {
                 .map(|ready| ready.declaration),
             None => None,
         };
-        mark.check_timed(&metric, declaration.as_ref())
-            .map_err(CustomError::Mark)?;
+        settings
+            .check_timed(&metric, declaration.as_ref())
+            .map_err(CustomError::Personal)?;
 
         Ok(())
     }

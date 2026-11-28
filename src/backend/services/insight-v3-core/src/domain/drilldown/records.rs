@@ -3,7 +3,7 @@ use super::{
     page_size,
 };
 use crate::domain::access::PersonId;
-use crate::domain::personal::Marked;
+use crate::domain::personal::PersonalMetric;
 use crate::domain::query::metric_query::{MetricQuery, RECORD_TIME_COLUMN};
 use crate::domain::query::time_window::Window;
 use crate::domain::surfaces::CustomError;
@@ -21,13 +21,13 @@ pub(crate) struct Records {
 impl Drilldowns<'_> {
     pub(crate) async fn records(
         &self,
-        marked: &Marked,
+        personal_metric: &PersonalMetric,
         asked: &Records,
     ) -> Result<Page, DrilldownError> {
         page_size(asked.limit)?;
 
         let resume = asked.cursor.as_deref().map(cursor::decode).transpose()?;
-        let query: MetricQuery = serde_json::from_value(marked.body.clone())
+        let query: MetricQuery = serde_json::from_value(personal_metric.body.clone())
             .map_err(|error| DrilldownError::Custom(CustomError::Body(error)))?;
         let reading = self
             .runs
@@ -38,7 +38,7 @@ impl Drilldowns<'_> {
             .runs
             .compile_read(&reading, |people, engine, over| {
                 query.personal_records(
-                    &marked.mark,
+                    &personal_metric.settings,
                     asked.person,
                     &asked.window,
                     people,
@@ -55,9 +55,9 @@ impl Drilldowns<'_> {
         let sort = newest_first(query.own_order(), &columns);
         let fingerprint = cursor::fingerprint(&(
             SELECTION,
-            &marked.id,
-            &marked.body,
-            &marked.mark,
+            &personal_metric.id,
+            &personal_metric.body,
+            &personal_metric.settings,
             asked.person.to_string(),
             &asked.window,
             &sort,

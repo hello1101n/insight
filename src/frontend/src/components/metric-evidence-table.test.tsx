@@ -214,11 +214,11 @@ describe("MetricEvidenceTable", () => {
     expect(screen.getByRole("columnheader", { name: "Who" })).toBeDefined();
   });
 
-  describe("a marked value", () => {
-    const marker = { row: 0, column: "value", label: "Median" };
+  describe("a value with a badge", () => {
+    const badge = { row: 0, column: "value", label: "Median" };
 
-    it("shows the marked value in bold with its marker beside it", () => {
-      renderTable({ marker });
+    it("shows the badged value in bold with its badge beside it", () => {
+      renderTable({ badge });
       const first = screen.getAllByRole("row")[1]!;
       const cell = within(first).getAllByRole("cell")[2]!;
 
@@ -226,14 +226,14 @@ describe("MetricEvidenceTable", () => {
       expect(cell.querySelector("strong")).toHaveTextContent("1.234");
     });
 
-    it("marks no other cell", () => {
-      renderTable({ marker });
+    it("puts a badge on no other cell", () => {
+      renderTable({ badge });
 
       expect(screen.getAllByText("Median")).toHaveLength(1);
       expect(screen.getByRole("table").querySelectorAll("strong")).toHaveLength(1);
     });
 
-    it("marks nothing when no marker is asked for", () => {
+    it("puts no badge when none is asked for", () => {
       renderTable();
 
       expect(screen.queryByText("Median")).toBeNull();
@@ -652,9 +652,9 @@ describe("MetricEvidenceTable", () => {
       expect(minimumPx, `case: ${_case}`).toBeCloseTo(total, 1);
     });
 
-    it("widens a marked column to hold the marker beside its value", () => {
+    it("widens a badged column to hold the badge beside its value", () => {
       const { tracks } = tracksAt(400, {
-        marker: { row: 0, column: "lines", label: "Median" },
+        badge: { row: 0, column: "lines", label: "Median" },
       });
 
       expect(tracks[2]).toBe("110.0px");

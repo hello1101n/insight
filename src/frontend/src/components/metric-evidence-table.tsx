@@ -67,7 +67,7 @@ const CELL_PADDING_PX = 24;
 const ROUNDING_PX = 2;
 const SORT_ICON_PX = 18;
 const COPY_BUTTON_PX = 42;
-const MARKER_PX = 20;
+const BADGE_PX = 20;
 const CAP_CHARACTERS = 40;
 const MEASURED_ROWS = 100;
 
@@ -78,7 +78,7 @@ const NUMBERED_LEADING_REM: readonly number[] = [NUMBER_REM, EXPANDER_REM];
 
 const SUMMARY_ONLY_LINKS: ReadonlySet<string> = new Set(["title"]);
 
-export interface EvidenceMarker {
+export interface EvidenceBadge {
   row: number;
   column: string;
   label: string;
@@ -134,15 +134,15 @@ function measureTexts(
   return widths;
 }
 
-function markedLine(
+function badgeLine(
   columns: readonly MetricEvidenceColumn[],
   rows: readonly MetricEvidenceRow[],
-  marker: EvidenceMarker | undefined,
+  badge: EvidenceBadge | undefined,
   metricKey: string | null,
   metric: MetricValueFormat | null
 ): string | null {
-  const row = marker ? rows[marker.row] : undefined;
-  const column = columns.find((candidate) => candidate.key === marker?.column);
+  const row = badge ? rows[badge.row] : undefined;
+  const column = columns.find((candidate) => candidate.key === badge?.column);
   if (!row || !column) return null;
 
   return cellLine(row, column, metricKey, metric).line;
@@ -154,10 +154,10 @@ function columnNeeds(
   rows: readonly MetricEvidenceRow[],
   metricKey: string | null,
   metric: MetricValueFormat | null,
-  marker: EvidenceMarker | undefined
+  badge: EvidenceBadge | undefined
 ): ColumnNeed[] | null {
   const sample = rows.slice(0, MEASURED_ROWS);
-  const marked = markedLine(columns, rows, marker, metricKey, metric);
+  const badgeText = badgeLine(columns, rows, badge, metricKey, metric);
   const texts = [
     { text: "0".repeat(CAP_CHARACTERS), header: false },
     ...columns.flatMap((column) => [
@@ -167,10 +167,10 @@ function columnNeeds(
         header: false,
       })),
     ]),
-    ...(marked != null && marker
+    ...(badgeText != null && badge
       ? [
-          { text: marked, header: false },
-          { text: marker.label, header: true },
+          { text: badgeText, header: false },
+          { text: badge.label, header: true },
         ]
       : []),
   ];
@@ -178,11 +178,11 @@ function columnNeeds(
   if (widths.every((width) => width === 0)) return null;
   const cap = widths[0]!;
   const perColumn = sample.length + 1;
-  const markedNeed =
-    marked != null
+  const badgeNeed =
+    badgeText != null
       ? Math.min(widths.at(-2)!, cap) +
         widths.at(-1)! +
-        MARKER_PX +
+        BADGE_PX +
         CELL_PADDING_PX +
         ROUNDING_PX
       : 0;
@@ -200,9 +200,9 @@ function columnNeeds(
       CELL_PADDING_PX +
       ROUNDING_PX +
       (column.key === "ref" ? COPY_BUTTON_PX : 0);
-    const markedValue = column.key === marker?.column ? markedNeed : 0;
+    const badgeValue = column.key === badge?.column ? badgeNeed : 0;
     return {
-      natural: Math.max(header, value, markedValue),
+      natural: Math.max(header, value, badgeValue),
       stretches: column.type === "string",
     };
   });
@@ -264,7 +264,7 @@ export function MetricEvidenceTable({
   nextPageError,
   pageLimitReached,
   numbered = false,
-  marker,
+  badge,
 }: {
   metricKey: string | null;
   rows: MetricEvidenceRow[];
@@ -278,7 +278,7 @@ export function MetricEvidenceTable({
   nextPageError: boolean;
   pageLimitReached: boolean;
   numbered?: boolean;
-  marker?: EvidenceMarker;
+  badge?: EvidenceBadge;
 }) {
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -318,7 +318,7 @@ export function MetricEvidenceTable({
       rows,
       metricKey,
       metric,
-      marker
+      badge
     );
     if (!needs) return null;
     const remPx =
@@ -331,7 +331,7 @@ export function MetricEvidenceTable({
     rows,
     metricKey,
     metric,
-    marker,
+    badge,
     leadingTotalRem,
   ]);
 
@@ -529,9 +529,9 @@ export function MetricEvidenceTable({
                     metricKey,
                     metric
                   );
-                  const marked =
-                    marker?.row === virtualRow.index &&
-                    marker.column === column.key;
+                  const badged =
+                    badge?.row === virtualRow.index &&
+                    badge.column === column.key;
                   return (
                     <TableCell
                       role="cell"
@@ -554,7 +554,7 @@ export function MetricEvidenceTable({
                             errorMessage="Unable to copy ref"
                           />
                         </div>
-                      ) : marked ? (
+                      ) : badged ? (
                         <div
                           className={cn(
                             "flex min-w-0 items-center gap-1.5",
@@ -569,7 +569,7 @@ export function MetricEvidenceTable({
                             </strong>
                           </CutText>
                           <Badge variant="secondary" size="xs">
-                            {marker.label}
+                            {badge.label}
                           </Badge>
                         </div>
                       ) : (

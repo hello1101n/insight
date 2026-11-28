@@ -172,7 +172,7 @@ impl<'a> AlertRules<'a> {
                 | CustomError::Widget(_)
                 | CustomError::Range(_)
                 | CustomError::Unanswerable(_)
-                | CustomError::Mark(_) => AlertsError::Metric(error),
+                | CustomError::Personal(_) => AlertsError::Metric(error),
             })
     }
 

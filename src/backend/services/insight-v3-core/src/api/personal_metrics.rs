@@ -198,7 +198,7 @@ async fn read_records(
     let missing = || PersonalMetricApiError::malformed_id(DefinitionKind::Metric, &id);
     let metric = DefinitionId::parse(&id).map_err(|_| missing())?;
 
-    let marked = state
+    let personal_metric = state
         .personal_metrics(caller)
         .asked(std::slice::from_ref(&metric))
         .await
@@ -218,11 +218,15 @@ async fn read_records(
     };
     let page = state
         .drilldowns()
-        .records(&marked, &asked)
+        .records(&personal_metric, &asked)
         .await
-        .map_err(|error| records_error(caller, &marked.id, error))?;
+        .map_err(|error| records_error(caller, &personal_metric.id, error))?;
 
-    Ok(Json(records::records_out(page, &marked.mark.value_field)).into_response())
+    Ok(Json(records::records_out(
+        page,
+        &personal_metric.settings.value_field,
+    ))
+    .into_response())
 }
 
 fn window(from: &str, to: &str) -> Result<Window, CanonicalError> {
@@ -342,7 +346,7 @@ fn not_read() -> CanonicalError {
 }
 
 fn listed_json(listed: &Listed, names: &HashMap<PersonId, String>) -> Value {
-    let marked = &listed.shown.marked;
+    let personal_metric = &listed.shown.personal_metric;
     let shared_by = listed.shown.shared_by.as_ref().map(|grant| {
         json!({
             "person_id": grant.granted_by.to_string(),
@@ -352,12 +356,12 @@ fn listed_json(listed: &Listed, names: &HashMap<PersonId, String>) -> Value {
     });
 
     json!({
-        "id": marked.id,
-        "label": marked.name,
-        "unit": marked.mark.unit,
-        "format": marked.mark.format,
-        "direction": marked.mark.direction,
-        "description": marked.mark.description,
+        "id": personal_metric.id,
+        "label": personal_metric.name,
+        "unit": personal_metric.settings.unit,
+        "format": personal_metric.settings.format,
+        "direction": personal_metric.settings.direction,
+        "description": personal_metric.settings.description,
         "calculation": listed.calculation,
         "shared_by": shared_by,
     })

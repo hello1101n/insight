@@ -14,7 +14,9 @@ use crate::domain::access::PersonId;
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _};
 use crate::domain::drilldown::{Page, Records};
 use crate::domain::kinds::dataset::declaration::Declaration;
-use crate::domain::personal::{Direction, Marked, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::personal::{
+    Direction, MetricFormat, PersonalMetric, PersonalSettings, PersonalSettingsStore as _,
+};
 use crate::domain::query::metric_query::over::Over;
 use crate::domain::query::metric_query::{
     MetricQuery, MetricRunner, People, RunResult, TableEngine,
@@ -258,9 +260,9 @@ impl Stand {
             .await
             .unwrap_or_else(|error| panic!("the metric is stored: {error}"));
         definitions
-            .mark(&id, Some(&marked("lines")))
+            .set_personal(&id, Some(&personal_metric("lines")))
             .await
-            .unwrap_or_else(|error| panic!("the mark is stored: {error}"));
+            .unwrap_or_else(|error| panic!("the settings are stored: {error}"));
 
         Arc::new(AppState::new(
             MetricRunner::new(
@@ -343,8 +345,8 @@ fn capitalized(name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn marked(value_field: &str) -> PersonalMark {
-    PersonalMark {
+fn personal_metric(value_field: &str) -> PersonalSettings {
+    PersonalSettings {
         person_field: "author".to_owned(),
         value_field: value_field.to_owned(),
         unit: None,
@@ -415,7 +417,7 @@ async fn personal_values_answer_only_the_persons_asked_for() {
 
     let compiled = metric
         .personal_values(
-            &marked("lines"),
+            &personal_metric("lines"),
             &[person(1), person(2), person(4)],
             &september_week(),
             stand.runner.people(),
@@ -446,7 +448,7 @@ async fn a_team_value_is_one_total_over_its_persons() {
 
     let compiled = metric
         .team_value(
-            &marked("lines"),
+            &personal_metric("lines"),
             &[person(1), person(2)],
             &september_week(),
             stand.runner.people(),
@@ -471,7 +473,7 @@ async fn a_ratio_value_divides_each_persons_own_sums() {
 
     let personal = metric
         .personal_values(
-            &marked("pass_rate"),
+            &personal_metric("pass_rate"),
             &[person(1), person(2)],
             &september_week(),
             stand.runner.people(),
@@ -481,7 +483,7 @@ async fn a_ratio_value_divides_each_persons_own_sums() {
         .unwrap_or_else(|error| panic!("the personal ratio compiles: {error}"));
     let team = metric
         .team_value(
-            &marked("pass_rate"),
+            &personal_metric("pass_rate"),
             &[person(1), person(2)],
             &september_week(),
             stand.runner.people(),
@@ -515,7 +517,7 @@ async fn personal_records_list_the_rows_behind_one_persons_value() {
 
     let compiled = metric
         .personal_records(
-            &marked("lines"),
+            &personal_metric("lines"),
             person(1),
             &september_week(),
             stand.runner.people(),
@@ -564,7 +566,7 @@ async fn a_person_without_a_display_name_still_has_a_value() {
     for metric in [&by_email, &by_id] {
         let compiled = metric
             .personal_values(
-                &marked("lines"),
+                &personal_metric("lines"),
                 &[person(5)],
                 &september_week(),
                 stand.runner.people(),
@@ -581,7 +583,7 @@ async fn a_person_without_a_display_name_still_has_a_value() {
 
     let records = by_email
         .personal_records(
-            &marked("lines"),
+            &personal_metric("lines"),
             person(5),
             &september_week(),
             stand.runner.people(),
@@ -617,7 +619,7 @@ async fn a_team_with_no_rows_answers_null_for_every_aggregate() {
     for value_field in ["counted", "sum", "min", "max", "avg", "pass_rate"] {
         let compiled = metric
             .team_value(
-                &marked(value_field),
+                &personal_metric(value_field),
                 &[person(4)],
                 &september_week(),
                 stand.runner.people(),
@@ -720,10 +722,10 @@ async fn the_records_of_a_person_come_newest_first_one_page_at_a_time() {
         &lines(),
     );
     let state = stand.state("lines_merged", &body).await;
-    let held = Marked {
+    let held = PersonalMetric {
         id: "lines_merged".to_owned(),
         name: "Lines merged".to_owned(),
-        mark: marked("lines"),
+        settings: personal_metric("lines"),
         body,
     };
     let page = |cursor: Option<String>| Records {
@@ -836,7 +838,7 @@ async fn personal_values_over_a_dataset_read_the_declared_person_and_clock() {
     ] {
         let compiled = dataset_metric(person_field)
             .personal_values(
-                &marked("lines"),
+                &personal_metric("lines"),
                 &persons,
                 &september_week(),
                 stand.runner.people(),
@@ -866,7 +868,7 @@ async fn a_team_value_over_a_dataset_is_one_total_over_its_persons() {
 
     let compiled = dataset_metric("author")
         .team_value(
-            &marked("lines"),
+            &personal_metric("lines"),
             &[person(1), person(2)],
             &september_week(),
             stand.runner.people(),
@@ -891,7 +893,7 @@ async fn personal_records_over_a_dataset_carry_each_records_id() {
 
     let compiled = dataset_metric("author")
         .personal_records(
-            &marked("lines"),
+            &personal_metric("lines"),
             person(1),
             &september_week(),
             stand.runner.people(),
@@ -943,7 +945,7 @@ async fn personal_values_by_person_id_answer_each_person_asked_for() {
 
     let compiled = by_id
         .personal_values(
-            &marked("lines"),
+            &personal_metric("lines"),
             &[person(1), person(2), person(3), person(4)],
             &september_week(),
             stand.runner.people(),

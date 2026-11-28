@@ -25,8 +25,8 @@ fn reviews() -> Declaration {
     .unwrap_or_else(|error| panic!("valid declaration: {error}"))
 }
 
-fn mark(person: &str, value: &str) -> PersonalMark {
-    PersonalMark {
+fn settings(person: &str, value: &str) -> PersonalSettings {
+    PersonalSettings {
         person_field: person.to_owned(),
         value_field: value.to_owned(),
         unit: None,
@@ -53,17 +53,17 @@ fn summed() -> serde_json::Value {
 }
 
 #[test]
-fn a_mark_needs_a_person_field() {
+fn settings_need_a_person_field() {
     let metric = per_reviewer(&summed());
     let declaration = reviews();
 
     assert_eq!(
-        mark("author", "comments").check(&metric, Some(&declaration)),
-        Err(MarkError::NoPersonField("author".to_owned()))
+        settings("author", "comments").check(&metric, Some(&declaration)),
+        Err(SettingsError::NoPersonField("author".to_owned()))
     );
     assert_eq!(
-        mark("repository", "comments").check(&metric, Some(&declaration)),
-        Err(MarkError::NoPersonHandle("repository".to_owned()))
+        settings("repository", "comments").check(&metric, Some(&declaration)),
+        Err(SettingsError::NoPersonHandle("repository".to_owned()))
     );
 }
 
@@ -72,12 +72,12 @@ fn a_person_handle_may_come_from_the_dataset_declaration() {
     let metric = per_reviewer(&summed());
 
     assert_eq!(
-        mark("reviewer", "comments").check(&metric, Some(&reviews())),
+        settings("reviewer", "comments").check(&metric, Some(&reviews())),
         Ok(Calculation::Sum)
     );
     assert_eq!(
-        mark("reviewer", "comments").check(&metric, None),
-        Err(MarkError::NoPersonHandle("reviewer".to_owned())),
+        settings("reviewer", "comments").check(&metric, None),
+        Err(SettingsError::NoPersonHandle("reviewer".to_owned())),
         "a dataset metric gets its handle from the declaration only"
     );
 }
@@ -95,12 +95,12 @@ fn a_person_handle_may_come_from_person_on_a_table_field() {
     }));
 
     assert_eq!(
-        mark("reviewer", "reviews").check(&metric, None),
+        settings("reviewer", "reviews").check(&metric, None),
         Ok(Calculation::Count)
     );
     assert_eq!(
-        mark("repository", "reviews").check(&metric, None),
-        Err(MarkError::NoPersonHandle("repository".to_owned()))
+        settings("repository", "reviews").check(&metric, None),
+        Err(SettingsError::NoPersonHandle("repository".to_owned()))
     );
 }
 
@@ -117,13 +117,13 @@ fn an_aggregated_person_field_names_no_one_person() {
     }));
 
     assert_eq!(
-        mark("reviewers", "comments").check(&metric, Some(&reviews())),
-        Err(MarkError::AggregatedPerson("reviewers".to_owned()))
+        settings("reviewers", "comments").check(&metric, Some(&reviews())),
+        Err(SettingsError::AggregatedPerson("reviewers".to_owned()))
     );
 }
 
 #[test]
-fn a_mark_needs_an_aggregated_number() {
+fn settings_need_an_aggregated_number() {
     let declaration = reviews();
     let plain = per_reviewer(&json!({ "field": "comments", "type": "int", "as_name": "comments" }));
     let latest = per_reviewer(
@@ -134,20 +134,20 @@ fn a_mark_needs_an_aggregated_number() {
     );
 
     assert_eq!(
-        mark("reviewer", "comments").check(&plain, Some(&declaration)),
-        Err(MarkError::NotAggregated("comments".to_owned()))
+        settings("reviewer", "comments").check(&plain, Some(&declaration)),
+        Err(SettingsError::NotAggregated("comments".to_owned()))
     );
     assert_eq!(
-        mark("reviewer", "latest").check(&latest, Some(&declaration)),
-        Err(MarkError::NotANumber("latest".to_owned()))
+        settings("reviewer", "latest").check(&latest, Some(&declaration)),
+        Err(SettingsError::NotANumber("latest".to_owned()))
     );
     assert_eq!(
-        mark("reviewer", "latest").check(&latest_day, Some(&declaration)),
-        Err(MarkError::NotANumber("latest".to_owned()))
+        settings("reviewer", "latest").check(&latest_day, Some(&declaration)),
+        Err(SettingsError::NotANumber("latest".to_owned()))
     );
     assert_eq!(
-        mark("reviewer", "absent").check(&plain, Some(&declaration)),
-        Err(MarkError::NoValueField("absent".to_owned()))
+        settings("reviewer", "absent").check(&plain, Some(&declaration)),
+        Err(SettingsError::NoValueField("absent".to_owned()))
     );
 }
 
@@ -173,11 +173,11 @@ fn a_ratio_field_is_calculation_ratio() {
     let declaration = reviews();
 
     assert_eq!(
-        mark("reviewer", "per_review").check(&ratio(false), Some(&declaration)),
+        settings("reviewer", "per_review").check(&ratio(false), Some(&declaration)),
         Ok(Calculation::Ratio)
     );
     assert_eq!(
-        mark("reviewer", "per_review").check(&ratio(true), Some(&declaration)),
+        settings("reviewer", "per_review").check(&ratio(true), Some(&declaration)),
         Ok(Calculation::Percent)
     );
 }
@@ -196,8 +196,8 @@ fn a_ratio_needs_aggregated_sides() {
     }));
 
     assert_eq!(
-        mark("reviewer", "per_review").check(&metric, Some(&reviews())),
-        Err(MarkError::UnaggregatedRatio("per_review".to_owned()))
+        settings("reviewer", "per_review").check(&metric, Some(&reviews())),
+        Err(SettingsError::UnaggregatedRatio("per_review".to_owned()))
     );
 }
 
@@ -217,7 +217,7 @@ fn each_aggregate_is_its_own_calculation() {
         );
 
         assert_eq!(
-            mark("reviewer", "comments").check(&metric, Some(&declaration)),
+            settings("reviewer", "comments").check(&metric, Some(&declaration)),
             Ok(calculation),
             "{agg}"
         );
@@ -225,7 +225,7 @@ fn each_aggregate_is_its_own_calculation() {
 }
 
 #[test]
-fn a_mark_refuses_a_metric_with_a_name_the_service_keeps_for_itself() {
+fn settings_refuse_a_metric_with_a_name_the_service_keeps_for_itself() {
     let declaration = reviews();
 
     for kept in ["__rows", "__person_id", "__p0", "__drilldown_key"] {
@@ -240,15 +240,15 @@ fn a_mark_refuses_a_metric_with_a_name_the_service_keeps_for_itself() {
         }));
 
         assert_eq!(
-            mark("reviewer", "comments").check(&metric, Some(&declaration)),
-            Err(MarkError::ReservedName(kept.to_owned())),
+            settings("reviewer", "comments").check(&metric, Some(&declaration)),
+            Err(SettingsError::ReservedName(kept.to_owned())),
             "{kept}"
         );
     }
 }
 
 #[test]
-fn a_marked_metric_needs_a_time_source() {
+fn a_personal_metric_needs_a_time_source() {
     let clocked: Declaration = serde_json::from_value(json!({
         "title": "Reviews",
         "fields": [
@@ -280,31 +280,31 @@ fn a_marked_metric_needs_a_time_source() {
     }));
 
     assert_eq!(
-        mark("reviewer", "comments").check_timed(&clockless, Some(&reviews())),
-        Err(MarkError::Clockless)
+        settings("reviewer", "comments").check_timed(&clockless, Some(&reviews())),
+        Err(SettingsError::Clockless)
     );
     assert_eq!(
-        mark("reviewer", "comments").check_timed(&clockless, Some(&clocked)),
+        settings("reviewer", "comments").check_timed(&clockless, Some(&clocked)),
         Ok(Calculation::Sum)
     );
     assert_eq!(
-        mark("reviewer", "comments").check_timed(&own_clock, Some(&reviews())),
+        settings("reviewer", "comments").check_timed(&own_clock, Some(&reviews())),
         Ok(Calculation::Sum)
     );
     assert_eq!(
-        mark("reviewer", "reviews").check_timed(&table, None),
-        Err(MarkError::Clockless)
+        settings("reviewer", "reviews").check_timed(&table, None),
+        Err(SettingsError::Clockless)
     );
     assert_eq!(
-        mark("author", "comments").check_timed(&clockless, Some(&reviews())),
-        Err(MarkError::NoPersonField("author".to_owned())),
-        "a mark that does not fit says so before the clock"
+        settings("author", "comments").check_timed(&clockless, Some(&reviews())),
+        Err(SettingsError::NoPersonField("author".to_owned())),
+        "settings that do not fit say so before the clock"
     );
 }
 
 #[test]
-fn a_mark_reads_its_format_and_direction_in_snake_case() {
-    let read: PersonalMark = serde_json::from_value(json!({
+fn settings_read_format_and_direction_in_snake_case() {
+    let read: PersonalSettings = serde_json::from_value(json!({
         "person_field": "reviewer",
         "value_field": "hours",
         "unit": "h",
@@ -312,11 +312,11 @@ fn a_mark_reads_its_format_and_direction_in_snake_case() {
         "direction": "lower_is_better",
         "description": "Hours to the first review"
     }))
-    .unwrap_or_else(|error| panic!("a full mark reads: {error}"));
+    .unwrap_or_else(|error| panic!("full settings read: {error}"));
 
     assert_eq!(
         read,
-        PersonalMark {
+        PersonalSettings {
             person_field: "reviewer".to_owned(),
             value_field: "hours".to_owned(),
             unit: Some("h".to_owned()),
@@ -332,8 +332,8 @@ fn a_mark_reads_its_format_and_direction_in_snake_case() {
 }
 
 #[test]
-fn a_mark_refuses_a_key_it_does_not_know() {
-    let read = serde_json::from_value::<PersonalMark>(json!({
+fn settings_refuse_a_key_they_do_not_know() {
+    let read = serde_json::from_value::<PersonalSettings>(json!({
         "person_field": "reviewer",
         "value_field": "comments",
         "format": "number",
@@ -368,65 +368,67 @@ mod the_store {
     }
 
     #[tokio::test]
-    async fn a_marked_metric_is_listed_with_its_name_and_body_until_unmarked() -> R {
+    async fn a_personal_metric_is_listed_with_its_name_and_body_until_made_not_personal() -> R {
         let store = MemoryDefinitions::new();
-        let marked = a_metric(&store, "marked").await;
+        let personal_metric = a_metric(&store, "personal_metric").await;
         a_metric(&store, "plain").await;
 
         assert!(
             store
-                .mark(&marked, Some(&mark("reviewer", "comments")))
+                .set_personal(&personal_metric, Some(&settings("reviewer", "comments")))
                 .await?
         );
 
         assert_eq!(
-            store.marked().await?,
-            vec![Marked {
-                id: "marked".to_owned(),
-                name: "marked".to_owned(),
-                mark: mark("reviewer", "comments"),
+            store.personal_metrics().await?,
+            vec![PersonalMetric {
+                id: "personal_metric".to_owned(),
+                name: "personal_metric".to_owned(),
+                settings: settings("reviewer", "comments"),
                 body: json!({ "dataset": "reviews", "fields": [] }),
             }]
         );
         assert_eq!(
-            store.mark_of(&marked).await?,
-            Some(mark("reviewer", "comments"))
+            store.personal_of(&personal_metric).await?,
+            Some(settings("reviewer", "comments"))
         );
 
-        assert!(store.mark(&marked, None).await?);
-        assert!(store.marked().await?.is_empty());
-        assert_eq!(store.mark_of(&marked).await?, None);
+        assert!(store.set_personal(&personal_metric, None).await?);
+        assert!(store.personal_metrics().await?.is_empty());
+        assert_eq!(store.personal_of(&personal_metric).await?, None);
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn a_metric_nobody_holds_cannot_be_marked() -> R {
+    async fn a_metric_nobody_holds_cannot_be_made_personal() -> R {
         let store = MemoryDefinitions::new();
 
         assert!(
             !store
-                .mark(&id("nowhere"), Some(&mark("reviewer", "comments")))
+                .set_personal(&id("nowhere"), Some(&settings("reviewer", "comments")))
                 .await?
         );
-        assert!(store.marked().await?.is_empty());
+        assert!(store.personal_metrics().await?.is_empty());
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn a_deleted_metric_takes_its_mark_with_it() -> R {
+    async fn a_deleted_metric_takes_its_personal_settings_with_it() -> R {
         let store = MemoryDefinitions::new();
-        let marked = a_metric(&store, "marked").await;
+        let personal_metric = a_metric(&store, "personal_metric").await;
         store
-            .mark(&marked, Some(&mark("reviewer", "comments")))
+            .set_personal(&personal_metric, Some(&settings("reviewer", "comments")))
             .await?;
 
-        store.delete(DefinitionKind::Metric, &marked).await?;
-        a_metric(&store, "marked").await;
+        store
+            .delete(DefinitionKind::Metric, &personal_metric)
+            .await?;
+        a_metric(&store, "personal_metric").await;
 
-        assert_eq!(store.mark_of(&marked).await?, None);
-        assert!(store.marked().await?.is_empty());
+        assert_eq!(store.personal_of(&personal_metric).await?, None);
+        assert!(store.personal_metrics().await?.is_empty());
 
         Ok(())
     }

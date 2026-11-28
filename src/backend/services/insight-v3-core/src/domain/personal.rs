@@ -16,7 +16,7 @@ const RESERVED_PREFIX: &str = "__";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PersonalMark {
+pub(crate) struct PersonalSettings {
     /// The `as_name` of the field that names the person.
     pub(crate) person_field: String,
     /// The `as_name` of the aggregated numeric field read as the value.
@@ -61,34 +61,34 @@ pub(crate) enum Calculation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum MarkError {
+pub(crate) enum SettingsError {
     #[error(
-        "the personal mark names person field `{0}`, which is not one of this metric's as_name values"
+        "the personal settings name person field `{0}`, which is not one of this metric's as_name values"
     )]
     NoPersonField(String),
     #[error(
-        "the personal mark names person field `{0}`, which carries no person handle: \
+        "the personal settings name person field `{0}`, which carries no person handle: \
          set `person` on it, or read a dataset field declared with `person`"
     )]
     NoPersonHandle(String),
     #[error(
-        "the personal mark names person field `{0}`, which carries an aggregate, \
+        "the personal settings name person field `{0}`, which carries an aggregate, \
          so it names no one person"
     )]
     AggregatedPerson(String),
     #[error(
-        "the personal mark names value field `{0}`, which is not one of this metric's as_name values"
+        "the personal settings name value field `{0}`, which is not one of this metric's as_name values"
     )]
     NoValueField(String),
     #[error(
-        "the personal mark names value field `{0}`, which carries no `agg` or `divide`, \
+        "the personal settings name value field `{0}`, which carries no `agg` or `divide`, \
          so it gives no one value per person"
     )]
     NotAggregated(String),
-    #[error("the personal mark names value field `{0}`, which is not a number")]
+    #[error("the personal settings name value field `{0}`, which is not a number")]
     NotANumber(String),
     #[error(
-        "the personal mark names value field `{0}`, which divides a field \
+        "the personal settings name value field `{0}`, which divides a field \
          that carries no `agg`, so it gives no one value per person"
     )]
     UnaggregatedRatio(String),
@@ -106,22 +106,22 @@ pub(crate) enum MarkError {
     TimeSource(String),
 }
 
-impl PersonalMark {
+impl PersonalSettings {
     pub(crate) fn check_timed(
         &self,
         query: &MetricQuery,
         declaration: Option<&Declaration>,
-    ) -> Result<Calculation, MarkError> {
+    ) -> Result<Calculation, SettingsError> {
         let calculation = self.check(query, declaration)?;
 
         let timed = match declaration {
             Some(declaration) => answerable::effective_clock(query, declaration).is_some(),
             None => query
                 .has_clock()
-                .map_err(|error| MarkError::TimeSource(error.to_string()))?,
+                .map_err(|error| SettingsError::TimeSource(error.to_string()))?,
         };
         if !timed {
-            return Err(MarkError::Clockless);
+            return Err(SettingsError::Clockless);
         }
 
         Ok(calculation)
@@ -131,35 +131,35 @@ impl PersonalMark {
         &self,
         query: &MetricQuery,
         declaration: Option<&Declaration>,
-    ) -> Result<Calculation, MarkError> {
+    ) -> Result<Calculation, SettingsError> {
         if let Some(kept) = query
             .output_names()
             .into_iter()
             .find(|name| name.starts_with(RESERVED_PREFIX))
         {
-            return Err(MarkError::ReservedName(kept.to_owned()));
+            return Err(SettingsError::ReservedName(kept.to_owned()));
         }
 
         let person = query
             .output(&self.person_field, declaration)
-            .ok_or_else(|| MarkError::NoPersonField(self.person_field.clone()))?;
+            .ok_or_else(|| SettingsError::NoPersonField(self.person_field.clone()))?;
         if !person.carries_a_person() {
-            return Err(MarkError::NoPersonHandle(self.person_field.clone()));
+            return Err(SettingsError::NoPersonHandle(self.person_field.clone()));
         }
         if calculation(person).is_some() {
-            return Err(MarkError::AggregatedPerson(self.person_field.clone()));
+            return Err(SettingsError::AggregatedPerson(self.person_field.clone()));
         }
 
         let value = query
             .output(&self.value_field, declaration)
-            .ok_or_else(|| MarkError::NoValueField(self.value_field.clone()))?;
-        let calculation =
-            calculation(value).ok_or_else(|| MarkError::NotAggregated(self.value_field.clone()))?;
+            .ok_or_else(|| SettingsError::NoValueField(self.value_field.clone()))?;
+        let calculation = calculation(value)
+            .ok_or_else(|| SettingsError::NotAggregated(self.value_field.clone()))?;
         if value.divides() && !query.aggregates(&self.value_field) {
-            return Err(MarkError::UnaggregatedRatio(self.value_field.clone()));
+            return Err(SettingsError::UnaggregatedRatio(self.value_field.clone()));
         }
         if value.kind() != ColumnKind::Number {
-            return Err(MarkError::NotANumber(self.value_field.clone()));
+            return Err(SettingsError::NotANumber(self.value_field.clone()));
         }
 
         Ok(calculation)
@@ -185,27 +185,27 @@ fn calculation(output: Output<'_>) -> Option<Calculation> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Marked {
+pub(crate) struct PersonalMetric {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) mark: PersonalMark,
+    pub(crate) settings: PersonalSettings,
     pub(crate) body: serde_json::Value,
 }
 
 #[async_trait]
-pub(crate) trait Marks: Send + Sync + fmt::Debug {
-    async fn mark(
+pub(crate) trait PersonalSettingsStore: Send + Sync + fmt::Debug {
+    async fn set_personal(
         &self,
         metric: &DefinitionId,
-        mark: Option<&PersonalMark>,
+        settings: Option<&PersonalSettings>,
     ) -> Result<bool, DefinitionStoreError>;
 
-    async fn mark_of(
+    async fn personal_of(
         &self,
         metric: &DefinitionId,
-    ) -> Result<Option<PersonalMark>, DefinitionStoreError>;
+    ) -> Result<Option<PersonalSettings>, DefinitionStoreError>;
 
-    async fn marked(&self) -> Result<Vec<Marked>, DefinitionStoreError>;
+    async fn personal_metrics(&self) -> Result<Vec<PersonalMetric>, DefinitionStoreError>;
 }
 
 #[cfg(test)]

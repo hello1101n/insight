@@ -8,7 +8,9 @@ use crate::domain::access::{Grantee, Level, PersonId};
 use crate::domain::definition::{
     Change, DefinitionId, DefinitionKind, DefinitionLabel, DefinitionStoreError, Definitions as _,
 };
-use crate::domain::personal::{Direction, Marked, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::personal::{
+    Direction, MetricFormat, PersonalMetric, PersonalSettings, PersonalSettingsStore as _,
+};
 use crate::domain::sharing::{Granting, Grants as _, Shared, Withdrawal};
 use crate::live_mariadb::{database_or_skip, store_or_skip, unique};
 use crate::store::definitions::MariaDefinitions;
@@ -35,7 +37,7 @@ async fn counted(db: &DatabaseConnection, sql: &str) -> i64 {
 }
 
 #[tokio::test]
-async fn a_metric_holds_a_personal_mark_and_its_grants_go_with_it() {
+async fn a_metric_holds_personal_settings_and_its_grants_go_with_it() {
     let Some(db) = database_or_skip().await else {
         return;
     };
@@ -85,8 +87,8 @@ async fn a_metric_holds_a_personal_mark_and_its_grants_go_with_it() {
     assert_eq!(left, 0, "a deleted metric must take its grants with it");
 }
 
-fn a_mark() -> PersonalMark {
-    PersonalMark {
+fn some_settings() -> PersonalSettings {
+    PersonalSettings {
         person_field: "reviewer".to_owned(),
         value_field: "comments".to_owned(),
         unit: Some("comments".to_owned()),
@@ -124,45 +126,45 @@ async fn a_metric(store: &MariaDefinitions, prefix: &str) -> Result<DefinitionId
 async fn listed(
     store: &MariaDefinitions,
     metric: &DefinitionId,
-) -> Result<Vec<Marked>, Box<dyn Error>> {
+) -> Result<Vec<PersonalMetric>, Box<dyn Error>> {
     Ok(store
-        .marked()
+        .personal_metrics()
         .await?
         .into_iter()
-        .filter(|marked| marked.id == metric.as_str())
+        .filter(|personal_metric| personal_metric.id == metric.as_str())
         .collect())
 }
 
 #[tokio::test]
-async fn a_mark_is_kept_read_back_and_dropped() -> R {
+async fn personal_settings_are_kept_read_back_and_dropped() -> R {
     let Some(store) = store_or_skip().await else {
         return Ok(());
     };
-    let metric = a_metric(&store, "marked").await?;
+    let metric = a_metric(&store, "personal_metric").await?;
 
-    assert!(store.mark(&metric, Some(&a_mark())).await?);
+    assert!(store.set_personal(&metric, Some(&some_settings())).await?);
     assert!(
-        store.mark(&metric, Some(&a_mark())).await?,
-        "a mark that changes nothing still finds its metric"
+        store.set_personal(&metric, Some(&some_settings())).await?,
+        "settings that change nothing still find their metric"
     );
-    assert_eq!(store.mark_of(&metric).await?, Some(a_mark()));
+    assert_eq!(store.personal_of(&metric).await?, Some(some_settings()));
     assert_eq!(
         listed(&store, &metric).await?,
-        vec![Marked {
+        vec![PersonalMetric {
             id: metric.as_str().to_owned(),
             name: metric.as_str().to_owned(),
-            mark: a_mark(),
+            settings: some_settings(),
             body: per_reviewer(),
         }]
     );
 
-    assert!(store.mark(&metric, None).await?);
-    assert_eq!(store.mark_of(&metric).await?, None);
+    assert!(store.set_personal(&metric, None).await?);
+    assert_eq!(store.personal_of(&metric).await?, None);
     assert!(listed(&store, &metric).await?.is_empty());
 
     let nowhere = DefinitionId::parse(&unique("nowhere"))?;
-    assert!(!store.mark(&nowhere, Some(&a_mark())).await?);
-    assert_eq!(store.mark_of(&nowhere).await?, None);
+    assert!(!store.set_personal(&nowhere, Some(&some_settings())).await?);
+    assert_eq!(store.personal_of(&nowhere).await?, None);
 
     store.delete(DefinitionKind::Metric, &metric).await?;
 
@@ -170,12 +172,12 @@ async fn a_mark_is_kept_read_back_and_dropped() -> R {
 }
 
 #[tokio::test]
-async fn a_replace_keeps_the_mark() -> R {
+async fn a_replace_keeps_the_personal_settings() -> R {
     let Some(store) = store_or_skip().await else {
         return Ok(());
     };
     let metric = a_metric(&store, "replaced").await?;
-    store.mark(&metric, Some(&a_mark())).await?;
+    store.set_personal(&metric, Some(&some_settings())).await?;
     let label = DefinitionLabel::parse("Comments per reviewer")?;
     let wider = json!({
         "dataset": "reviews",
@@ -198,7 +200,7 @@ async fn a_replace_keeps_the_mark() -> R {
         )])
         .await?;
 
-    assert_eq!(store.mark_of(&metric).await?, Some(a_mark()));
+    assert_eq!(store.personal_of(&metric).await?, Some(some_settings()));
     let kept = listed(&store, &metric).await?;
     assert_eq!(kept.len(), 1, "{kept:?}");
     assert_eq!(

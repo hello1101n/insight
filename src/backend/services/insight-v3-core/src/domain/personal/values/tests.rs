@@ -4,17 +4,17 @@ use uuid::Uuid;
 
 use super::*;
 use crate::domain::access::Level;
-use crate::domain::personal::{Direction, MetricFormat, PersonalMark};
+use crate::domain::personal::{Direction, MetricFormat, PersonalSettings};
 
 fn person(seed: u128) -> PersonId {
     PersonId::new(Uuid::from_u128(seed))
 }
 
-fn marked() -> Marked {
-    Marked {
+fn personal_metric() -> PersonalMetric {
+    PersonalMetric {
         id: "lines_merged".to_owned(),
         name: "Lines merged".to_owned(),
-        mark: PersonalMark {
+        settings: PersonalSettings {
             person_field: "author".to_owned(),
             value_field: "lines".to_owned(),
             unit: None,
@@ -44,7 +44,7 @@ fn a_member_is_shown_the_grant_to_them_before_the_grant_to_everyone() {
         granted(Grantee::Person(person(1)), 9, 20),
     ];
 
-    let shown = shown(member, marked(), grants).map(|shown| shown.shared_by);
+    let shown = shown(member, personal_metric(), grants).map(|shown| shown.shared_by);
 
     assert_eq!(
         shown,
@@ -57,7 +57,7 @@ fn a_member_is_not_shown_a_metric_granted_to_someone_else() {
     let member = Caller::member(person(1));
     let grants = vec![granted(Grantee::Person(person(2)), 9, 20)];
 
-    assert!(shown(member, marked(), grants).is_none());
+    assert!(shown(member, personal_metric(), grants).is_none());
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn an_admin_is_shown_the_latest_grant() {
         granted(Grantee::Everyone, 9, 10),
     ];
 
-    let shown = shown(admin, marked(), grants).map(|shown| shown.shared_by);
+    let shown = shown(admin, personal_metric(), grants).map(|shown| shown.shared_by);
 
     assert_eq!(
         shown,
@@ -80,7 +80,7 @@ fn an_admin_is_shown_the_latest_grant() {
 fn an_admin_is_shown_an_unshared_metric() {
     let admin = Caller::administrator(person(1));
 
-    let shown = shown(admin, marked(), Vec::new()).map(|shown| shown.shared_by);
+    let shown = shown(admin, personal_metric(), Vec::new()).map(|shown| shown.shared_by);
 
     assert_eq!(shown, Some(None));
 }

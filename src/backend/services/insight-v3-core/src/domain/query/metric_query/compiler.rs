@@ -14,7 +14,7 @@ use crate::domain::access::PersonId;
 use crate::domain::kinds::dataset::declaration::{BUCKET_COLUMN, Declaration};
 use crate::domain::kinds::dataset::read::Form;
 use crate::domain::kinds::metric::answerable::effective_clock;
-use crate::domain::personal::{MarkError, PersonalMark};
+use crate::domain::personal::{PersonalSettings, SettingsError};
 use crate::domain::query::metric_query::TableEngine;
 use crate::domain::query::time_window::Window;
 
@@ -545,7 +545,7 @@ enum Spread {
 impl MetricQuery {
     pub(crate) fn personal_values(
         &self,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
         persons: &[PersonId],
         window: &Window,
         people: &People,
@@ -553,7 +553,7 @@ impl MetricQuery {
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
         self.valued(
-            mark,
+            settings,
             persons,
             window,
             people,
@@ -565,7 +565,7 @@ impl MetricQuery {
 
     pub(crate) fn team_value(
         &self,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
         persons: &[PersonId],
         window: &Window,
         people: &People,
@@ -573,7 +573,7 @@ impl MetricQuery {
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
         self.valued(
-            mark,
+            settings,
             persons,
             window,
             people,
@@ -585,14 +585,14 @@ impl MetricQuery {
 
     pub(crate) fn personal_records(
         &self,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
         person: PersonId,
         window: &Window,
         people: &People,
         engine: TableEngine,
         over: Option<Over<'_>>,
     ) -> Result<CompiledQuery, MetricQueryError> {
-        let personal = self.personal(mark, over)?;
+        let personal = self.personal(settings, over)?;
         let qualifier = Some(FACT_ALIAS);
         let window = window.clone().unbucketed();
         let time = self.time_expression(&window, over, qualifier, &HashSet::new())?;
@@ -722,7 +722,7 @@ impl MetricQuery {
     )]
     fn valued(
         &self,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
         persons: &[PersonId],
         window: &Window,
         people: &People,
@@ -733,7 +733,7 @@ impl MetricQuery {
         if persons.is_empty() {
             return Err(MetricQueryError::NoPersons);
         }
-        let personal = self.personal(mark, over)?;
+        let personal = self.personal(settings, over)?;
         let qualifier = Some(FACT_ALIAS);
         let window = window.clone().unbucketed();
         let alias = person_alias(personal.person);
@@ -838,25 +838,25 @@ impl MetricQuery {
 
     fn personal(
         &self,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
         over: Option<Over<'_>>,
     ) -> Result<Personal, MetricQueryError> {
         if over.is_none() {
             self.validate_shape(self.split().1)?;
         }
-        mark.check(self, over.map(|over| over.declaration))?;
+        settings.check(self, over.map(|over| over.declaration))?;
 
         let position = |as_name: &str| {
             self.fields
                 .iter()
                 .position(|field| field.as_name == as_name)
         };
-        let person = position(&mark.person_field)
-            .ok_or_else(|| MarkError::NoPersonField(mark.person_field.clone()))?;
+        let person = position(&settings.person_field)
+            .ok_or_else(|| SettingsError::NoPersonField(settings.person_field.clone()))?;
         let handle = handle_of(&self.fields[person], over)
-            .ok_or_else(|| MarkError::NoPersonHandle(mark.person_field.clone()))?;
-        let value = position(&mark.value_field)
-            .ok_or_else(|| MarkError::NoValueField(mark.value_field.clone()))?;
+            .ok_or_else(|| SettingsError::NoPersonHandle(settings.person_field.clone()))?;
+        let value = position(&settings.value_field)
+            .ok_or_else(|| SettingsError::NoValueField(settings.value_field.clone()))?;
 
         Ok(Personal {
             person,
@@ -885,8 +885,8 @@ impl MetricQuery {
                     .iter()
                     .rposition(|field| field.as_name == name)
                     .ok_or_else(|| field.divides_no_earlier(name))?;
-                if let Some(marked) = needed.get_mut(earlier) {
-                    *marked = true;
+                if let Some(flag) = needed.get_mut(earlier) {
+                    *flag = true;
                 }
             }
         }
@@ -912,8 +912,8 @@ impl MetricQuery {
     }
 }
 
-fn named_value(marked: bool) -> Vec<String> {
-    if marked {
+fn named_value(flag: bool) -> Vec<String> {
+    if flag {
         vec!["value".to_owned()]
     } else {
         Vec::new()

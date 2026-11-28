@@ -22,7 +22,7 @@ use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, P
 use crate::domain::folders::{self, FolderError, FolderId, FolderName, SeenFolder};
 use crate::domain::kinds::dashboard::Item;
 use crate::domain::metric_run::MetricRuns;
-use crate::domain::personal::PersonalMark;
+use crate::domain::personal::PersonalSettings;
 use crate::domain::query::metric_query::{MetricQuery, MetricRunner, RunResult};
 use crate::domain::query::time_window::WindowRequest;
 use crate::domain::sharing::{
@@ -102,11 +102,11 @@ pub(crate) struct RunRequest {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub(crate) struct MarkRequest {
+pub(crate) struct PersonalRequest {
     /// The stored metric's id, as `list_definitions` answers it.
     pub(crate) metric: String,
     /// How the metric reads as a personal metric.
-    pub(crate) mark: PersonalMark,
+    pub(crate) settings: PersonalSettings,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -814,13 +814,13 @@ fn table_description(schema: &TableSchema) -> Value {
 #[tool_router(router = personal_tool_router)]
 impl CustomSurfaces {
     #[tool(
-        name = "mark_metric_personal",
-        description = "Marks a stored metric as a personal metric, so the Metrics page can show one value per person. The metric must group by one person field and aggregate one numeric value: a person field that carries a person handle (a dataset field declared with `person`, or a table field with `person`), read without `agg` and named in `group_by`; and one numeric field read with `agg` (or `divide`) as the value. The metric needs a time source (`time`, or a dataset default clock), because values are read over a window. `mark` has `person_field` (the `as_name` of the person field), `value_field` (the `as_name` of the value field), `unit` (a label such as \"lines\", or null), `format` (number, percent, duration or currency), `direction` (higher_is_better, lower_is_better or neutral) and `description` (what the value means, in words people read). A mark that does not fit the metric is refused with the reason and nothing is saved. On success the mark is saved and the metric runs over P30D: answers `calculation` (sum, count, avg, min, max, ratio or percent) and `people_with_values`, the number of people with a value in that run. If that run fails, the mark stays and `run_error` says why. Nobody sees the metric until share_metric grants it."
+        name = "make_metric_personal",
+        description = "Makes a stored metric personal, so the Metrics page can show one value per person. The metric must group by one person field and aggregate one numeric value: a person field that carries a person handle (a dataset field declared with `person`, or a table field with `person`), read without `agg` and named in `group_by`; and one numeric field read with `agg` (or `divide`) as the value. The metric needs a time source (`time`, or a dataset default clock), because values are read over a window. `settings` holds `person_field` (the `as_name` of the person field), `value_field` (the `as_name` of the value field), `unit` (a label such as \"lines\", or null), `format` (number, percent, duration or currency), `direction` (higher_is_better, lower_is_better or neutral) and `description` (what the value means, in words people read). Settings that do not fit the metric are refused with the reason and nothing is saved. On success the settings are saved and the metric runs over P30D: answers `calculation` (sum, count, avg, min, max, ratio or percent) and `people_with_values`, the number of people with a value in that run. If that run fails, the settings stay and `run_error` says why. Nobody sees the metric until share_metric grants it."
     )]
-    async fn mark_metric_personal(
+    async fn make_metric_personal(
         &self,
         Extension(parts): Extension<Parts>,
-        Parameters(MarkRequest { metric, mark }): Parameters<MarkRequest>,
+        Parameters(PersonalRequest { metric, settings }): Parameters<PersonalRequest>,
     ) -> CallToolResult {
         if let Err(refusal) = subject(&parts) {
             return refusal;
@@ -830,12 +830,17 @@ impl CustomSurfaces {
             Err(refusal) => return refusal,
         };
 
-        let calculation = match self.checked_mark(&parsed, &mark).await {
+        let calculation = match self.checked_settings(&parsed, &settings).await {
             Ok(calculation) => calculation,
             Err(refusal) => return refusal,
         };
 
-        match self.state.store().mark(&parsed, Some(&mark)).await {
+        match self
+            .state
+            .store()
+            .set_personal(&parsed, Some(&settings))
+            .await
+        {
             Ok(true) => {}
             Ok(false) => return refuse(&format!("metric `{metric}` was not found")),
             Err(error) => return tool_error(&CustomError::Store(error)),
@@ -849,7 +854,7 @@ impl CustomSurfaces {
         match self.metric_runs().run(&parsed, &requested).await {
             Ok(result) => CallToolResult::structured(json!({
                 "calculation": calculation,
-                "people_with_values": people_with_values(&result, &mark),
+                "people_with_values": people_with_values(&result, &settings),
             })),
             Err(error) => CallToolResult::structured(json!({
                 "calculation": calculation,
@@ -859,10 +864,10 @@ impl CustomSurfaces {
     }
 
     #[tool(
-        name = "unmark_metric_personal",
-        description = "Removes the personal mark from a stored metric, named by its id, so the Metrics page stops showing it. The metric itself and its grants stay; a grant matters only while the metric is marked."
+        name = "make_metric_not_personal",
+        description = "Removes the personal settings from a stored metric, named by its id, so the Metrics page stops showing it. The metric itself and its grants stay; a grant matters only while the metric is personal."
     )]
-    async fn unmark_metric_personal(
+    async fn make_metric_not_personal(
         &self,
         Extension(parts): Extension<Parts>,
         Parameters(MetricRequest { metric }): Parameters<MetricRequest>,
@@ -875,7 +880,7 @@ impl CustomSurfaces {
             Err(refusal) => return refusal,
         };
 
-        match self.state.store().mark(&parsed, None).await {
+        match self.state.store().set_personal(&parsed, None).await {
             Ok(true) => CallToolResult::structured(json!({"metric": metric, "personal": false})),
             Ok(false) => refuse(&format!("metric `{metric}` was not found")),
             Err(error) => tool_error(&CustomError::Store(error)),
@@ -884,7 +889,7 @@ impl CustomSurfaces {
 
     #[tool(
         name = "share_metric",
-        description = "Lets a person, or everyone, see a personal metric on the Metrics page. `metric` is the metric's id; `grantee` is a person id (a UUID) or `everyone`. A metric is shared at the viewer level only. Mark the metric with mark_metric_personal first; sharing an unmarked metric shows nobody anything. A person the directory does not know is refused."
+        description = "Lets a person, or everyone, see a personal metric on the Metrics page. `metric` is the metric's id; `grantee` is a person id (a UUID) or `everyone`. A metric is shared at the viewer level only. Make the metric personal with make_metric_personal first; sharing a metric that is not personal shows nobody anything. A person the directory does not know is refused."
     )]
     async fn share_metric(
         &self,
@@ -977,10 +982,10 @@ impl CustomSurfaces {
         Sharing::new(self.state.store(), directory, caller)
     }
 
-    async fn checked_mark(
+    async fn checked_settings(
         &self,
         id: &DefinitionId,
-        mark: &PersonalMark,
+        settings: &PersonalSettings,
     ) -> Result<crate::domain::personal::Calculation, CallToolResult> {
         let body = match self.state.store().get(DefinitionKind::Metric, id).await {
             Ok(Some(body)) => body,
@@ -995,7 +1000,8 @@ impl CustomSurfaces {
             .await
             .map_err(|error| tool_error(&error))?;
 
-        mark.check_timed(&query, declaration.as_ref())
+        settings
+            .check_timed(&query, declaration.as_ref())
             .map_err(|error| refuse(&error.to_string()))
     }
 }
@@ -1059,10 +1065,12 @@ fn sharing_refusal(error: &SharingError) -> CallToolResult {
     }
 }
 
-fn people_with_values(result: &RunResult, mark: &PersonalMark) -> usize {
+fn people_with_values(result: &RunResult, settings: &PersonalSettings) -> usize {
     let position = |name: &str| result.columns.iter().position(|column| column == name);
-    let (Some(person), Some(value)) = (position(&mark.person_field), position(&mark.value_field))
-    else {
+    let (Some(person), Some(value)) = (
+        position(&settings.person_field),
+        position(&settings.value_field),
+    ) else {
         return 0;
     };
 

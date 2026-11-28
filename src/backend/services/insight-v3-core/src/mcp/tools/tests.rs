@@ -14,7 +14,7 @@ use crate::api::AppState;
 use crate::chat::ChatClient;
 use crate::domain::access::PersonId;
 use crate::domain::kinds::dashboard::{HeadingItem, TextItem, WidgetItem};
-use crate::domain::personal::{Direction, MetricFormat, PersonalMark};
+use crate::domain::personal::{Direction, MetricFormat, PersonalSettings};
 use crate::domain::query::metric_query::{MetricRunner, People};
 use crate::store::catalog::{Catalog, Column, Layer, TableSchema};
 use crate::store::definitions::memory::MemoryDefinitions;
@@ -1979,8 +1979,8 @@ async fn a_viewer_reads_a_shared_dashboard_but_may_not_change_it() {
 }
 
 #[tokio::test]
-async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -> R {
-    use crate::domain::personal::{Direction, MarkError, MetricFormat, PersonalMark};
+async fn a_put_metric_that_breaks_personal_settings_is_refused_with_its_reason() -> R {
+    use crate::domain::personal::{Direction, MetricFormat, PersonalSettings, SettingsError};
 
     let surfaces = surfaces();
     let per_reviewer = json!({
@@ -2000,9 +2000,9 @@ async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -
         surfaces
             .state
             .store()
-            .mark(
+            .set_personal(
                 &DefinitionId::parse(&id)?,
-                Some(&PersonalMark {
+                Some(&PersonalSettings {
                     person_field: "reviewer".to_owned(),
                     value_field: "reviews".to_owned(),
                     unit: None,
@@ -2034,7 +2034,7 @@ async fn a_put_metric_that_breaks_a_personal_mark_is_refused_with_its_reason() -
 
     assert_refused(
         &refused,
-        &MarkError::NoPersonField("reviewer".to_owned()).to_string(),
+        &SettingsError::NoPersonField("reviewer".to_owned()).to_string(),
     );
     let read = assert_accepted(
         &surfaces
@@ -2071,8 +2071,8 @@ fn lines_metric() -> Value {
     })
 }
 
-fn lines_mark() -> PersonalMark {
-    PersonalMark {
+fn lines_settings() -> PersonalSettings {
+    PersonalSettings {
         person_field: "author".to_owned(),
         value_field: "lines".to_owned(),
         unit: Some("lines".to_owned()),
@@ -2082,10 +2082,10 @@ fn lines_mark() -> PersonalMark {
     }
 }
 
-fn marking(metric: &str, mark: PersonalMark) -> Parameters<MarkRequest> {
-    Parameters(MarkRequest {
+fn personal_request(metric: &str, settings: PersonalSettings) -> Parameters<PersonalRequest> {
+    Parameters(PersonalRequest {
         metric: metric.to_owned(),
-        mark,
+        settings,
     })
 }
 
@@ -2162,19 +2162,19 @@ async fn personal_surfaces(failing: bool) -> (CustomSurfaces, tokio::task::JoinH
     (surfaces, server)
 }
 
-async fn mark_of(surfaces: &CustomSurfaces, metric: &str) -> Option<PersonalMark> {
+async fn personal_of(surfaces: &CustomSurfaces, metric: &str) -> Option<PersonalSettings> {
     let id = DefinitionId::parse(metric).unwrap_or_else(|error| panic!("an id: {error}"));
 
     surfaces
         .state()
         .store()
-        .mark_of(&id)
+        .personal_of(&id)
         .await
-        .unwrap_or_else(|error| panic!("the mark is read: {error}"))
+        .unwrap_or_else(|error| panic!("the settings are read: {error}"))
 }
 
 #[tokio::test]
-async fn mark_answers_people_with_values() -> R {
+async fn make_personal_answers_people_with_values() -> R {
     let (surfaces, server) = personal_surfaces(false).await;
     let metric = created(
         &surfaces
@@ -2184,42 +2184,45 @@ async fn mark_answers_people_with_values() -> R {
 
     let answer = assert_accepted(
         &surfaces
-            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .make_metric_personal(administrator(), personal_request(&metric, lines_settings()))
             .await,
     );
 
     assert_eq!(answer["calculation"], "sum");
     assert_eq!(answer["people_with_values"], 2);
-    assert_eq!(mark_of(&surfaces, &metric).await, Some(lines_mark()));
+    assert_eq!(
+        personal_of(&surfaces, &metric).await,
+        Some(lines_settings())
+    );
     server.abort();
 
     Ok(())
 }
 
 #[tokio::test]
-async fn mark_refuses_a_metric_without_a_person_field() {
+async fn make_personal_refuses_a_metric_without_a_person_field() {
     let (surfaces, server) = personal_surfaces(false).await;
     let metric = created(
         &surfaces
             .put_metric(administrator(), put("Lines", lines_metric()))
             .await,
     );
-    let mark = PersonalMark {
+    let settings = PersonalSettings {
         person_field: "nobody".to_owned(),
-        ..lines_mark()
+        ..lines_settings()
     };
 
     let result = surfaces
-        .mark_metric_personal(administrator(), marking(&metric, mark))
+        .make_metric_personal(administrator(), personal_request(&metric, settings))
         .await;
 
     assert_refused(&result, "person field `nobody`");
-    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    assert_eq!(personal_of(&surfaces, &metric).await, None);
     server.abort();
 }
 
 #[tokio::test]
-async fn mark_refuses_a_metric_with_no_time_source() {
+async fn make_personal_refuses_a_metric_with_no_time_source() {
     let (url, server) = warehouse(false).await;
     let surfaces = built_reading(
         Catalog::fixed(Vec::new()),
@@ -2245,20 +2248,23 @@ async fn mark_refuses_a_metric_with_no_time_source() {
     );
 
     let result = surfaces
-        .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+        .make_metric_personal(administrator(), personal_request(&metric, lines_settings()))
         .await;
 
     assert_refused(&result, "no time source");
-    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    assert_eq!(personal_of(&surfaces, &metric).await, None);
     server.abort();
 }
 
 #[tokio::test]
-async fn mark_refuses_a_metric_that_was_never_stored() {
+async fn make_personal_refuses_a_metric_that_was_never_stored() {
     let (surfaces, server) = personal_surfaces(false).await;
 
     let result = surfaces
-        .mark_metric_personal(administrator(), marking("absent", lines_mark()))
+        .make_metric_personal(
+            administrator(),
+            personal_request("absent", lines_settings()),
+        )
         .await;
 
     assert_refused(&result, "was not found");
@@ -2266,7 +2272,7 @@ async fn mark_refuses_a_metric_that_was_never_stored() {
 }
 
 #[tokio::test]
-async fn mark_keeps_the_mark_and_says_why_the_preview_run_failed() {
+async fn make_personal_keeps_the_settings_and_says_why_the_preview_run_failed() {
     let (surfaces, server) = personal_surfaces(true).await;
     let metric = created(
         &surfaces
@@ -2276,19 +2282,22 @@ async fn mark_keeps_the_mark_and_says_why_the_preview_run_failed() {
 
     let answer = assert_accepted(
         &surfaces
-            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .make_metric_personal(administrator(), personal_request(&metric, lines_settings()))
             .await,
     );
 
     assert_eq!(answer["calculation"], "sum");
     assert!(answer["run_error"].is_string(), "{answer}");
     assert!(answer.get("people_with_values").is_none(), "{answer}");
-    assert_eq!(mark_of(&surfaces, &metric).await, Some(lines_mark()));
+    assert_eq!(
+        personal_of(&surfaces, &metric).await,
+        Some(lines_settings())
+    );
     server.abort();
 }
 
 #[tokio::test]
-async fn unmark_removes_the_mark_and_keeps_the_grants() {
+async fn make_not_personal_removes_the_settings_and_keeps_the_grants() {
     let (surfaces, server) = personal_surfaces(false).await;
     let metric = created(
         &surfaces
@@ -2297,7 +2306,7 @@ async fn unmark_removes_the_mark_and_keeps_the_grants() {
     );
     assert_accepted(
         &surfaces
-            .mark_metric_personal(administrator(), marking(&metric, lines_mark()))
+            .make_metric_personal(administrator(), personal_request(&metric, lines_settings()))
             .await,
     );
     assert_accepted(
@@ -2308,11 +2317,11 @@ async fn unmark_removes_the_mark_and_keeps_the_grants() {
 
     assert_accepted(
         &surfaces
-            .unmark_metric_personal(administrator(), for_metric(&metric))
+            .make_metric_not_personal(administrator(), for_metric(&metric))
             .await,
     );
 
-    assert_eq!(mark_of(&surfaces, &metric).await, None);
+    assert_eq!(personal_of(&surfaces, &metric).await, None);
     let listed = assert_accepted(
         &surfaces
             .list_metric_grants(administrator(), for_metric(&metric))
@@ -2323,9 +2332,9 @@ async fn unmark_removes_the_mark_and_keeps_the_grants() {
 }
 
 #[tokio::test]
-async fn unmark_refuses_a_metric_that_was_never_stored() {
+async fn make_not_personal_refuses_a_metric_that_was_never_stored() {
     let result = surfaces()
-        .unmark_metric_personal(administrator(), for_metric("absent"))
+        .make_metric_not_personal(administrator(), for_metric("absent"))
         .await;
 
     assert_refused(&result, "was not found");
@@ -2480,7 +2489,7 @@ async fn personal_tools_refuse_a_caller_who_is_not_an_administrator() {
 }
 
 #[test]
-fn the_personal_tools_describe_the_mark_and_name_the_metric_shape() {
+fn the_personal_tools_describe_the_settings_and_name_the_metric_shape() {
     let tools = CustomSurfaces::personal_tool_router().list_all();
 
     let mut names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
@@ -2489,18 +2498,18 @@ fn the_personal_tools_describe_the_mark_and_name_the_metric_shape() {
         names,
         [
             "list_metric_grants",
-            "mark_metric_personal",
+            "make_metric_not_personal",
+            "make_metric_personal",
             "share_metric",
-            "unmark_metric_personal",
             "unshare_metric",
         ]
     );
 
-    let marking = tools
+    let described = tools
         .iter()
-        .find(|tool| tool.name == "mark_metric_personal")
+        .find(|tool| tool.name == "make_metric_personal")
         .and_then(|tool| tool.description.as_ref())
-        .unwrap_or_else(|| panic!("the mark tool is described"));
+        .unwrap_or_else(|| panic!("the make_metric_personal tool is described"));
     for word in [
         "higher_is_better",
         "lower_is_better",
@@ -2511,7 +2520,7 @@ fn the_personal_tools_describe_the_mark_and_name_the_metric_shape() {
         "person_field",
         "value_field",
     ] {
-        assert!(marking.contains(word), "{word} is missing: {marking}");
+        assert!(described.contains(word), "{word} is missing: {described}");
     }
 }
 
@@ -2534,6 +2543,6 @@ fn every_tool_router_is_part_of_the_server() {
 
     let server = CustomSurfaces::new(state);
 
-    assert!(server.tool_router.has_route("mark_metric_personal"));
+    assert!(server.tool_router.has_route("make_metric_personal"));
     assert!(server.tool_router.has_route("share_metric"));
 }

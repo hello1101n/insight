@@ -15,7 +15,9 @@ use crate::api::AppState;
 use crate::chat::ChatClient;
 use crate::domain::access::{Grantee, Level, PersonId};
 use crate::domain::definition::{DefinitionId, DefinitionKind, DefinitionLabel, Definitions as _};
-use crate::domain::personal::{Direction, Marks as _, MetricFormat, PersonalMark};
+use crate::domain::personal::{
+    Direction, MetricFormat, PersonalSettings, PersonalSettingsStore as _,
+};
 use crate::domain::query::metric_query::{MetricRunner, People};
 use crate::domain::sharing::{Grant, Grants as _, Shared};
 use crate::store::definitions::memory::MemoryDefinitions;
@@ -69,8 +71,8 @@ fn lines_metric() -> Value {
     })
 }
 
-fn lines_mark() -> PersonalMark {
-    PersonalMark {
+fn lines_settings() -> PersonalSettings {
+    PersonalSettings {
         person_field: "author".to_owned(),
         value_field: "lines".to_owned(),
         unit: Some("lines".to_owned()),
@@ -249,22 +251,29 @@ impl Harness {
             .unwrap_or_else(|error| panic!("the metric is stored: {error}"));
     }
 
-    async fn marked(&self, raw: &str, label: &str) {
-        self.marked_as(raw, label, &lines_metric()).await;
+    async fn personal_metric(&self, raw: &str, label: &str) {
+        self.made_personal_as(raw, label, &lines_metric()).await;
     }
 
-    async fn marked_as(&self, raw: &str, label: &str, body: &Value) {
-        self.marked_by(raw, label, body, &lines_mark()).await;
+    async fn made_personal_as(&self, raw: &str, label: &str, body: &Value) {
+        self.made_personal_with(raw, label, body, &lines_settings())
+            .await;
     }
 
-    async fn marked_by(&self, raw: &str, label: &str, body: &Value, mark: &PersonalMark) {
+    async fn made_personal_with(
+        &self,
+        raw: &str,
+        label: &str,
+        body: &Value,
+        settings: &PersonalSettings,
+    ) {
         self.metric(raw, label, body).await;
-        let marked = self
+        let personal_metric = self
             .definitions
-            .mark(&id(raw), Some(mark))
+            .set_personal(&id(raw), Some(settings))
             .await
-            .unwrap_or_else(|error| panic!("the mark is stored: {error}"));
-        assert!(marked, "`{raw}` is a stored metric");
+            .unwrap_or_else(|error| panic!("the settings are stored: {error}"));
+        assert!(personal_metric, "`{raw}` is a stored metric");
     }
 
     async fn grant(&self, raw: &str, grantee: &str, by: &str) {
@@ -401,11 +410,17 @@ fn field_of(answer: &Answer) -> Value {
 #[tokio::test]
 async fn a_member_lists_only_shared_metrics() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
-    harness.marked("lines_everyone", "Lines for everyone").await;
-    harness.marked("lines_other", "Lines for another").await;
     harness
-        .metric("lines_unmarked", "Lines unmarked", &lines_metric())
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .personal_metric("lines_everyone", "Lines for everyone")
+        .await;
+    harness
+        .personal_metric("lines_other", "Lines for another")
+        .await;
+    harness
+        .metric("lines_not_personal", "Lines not personal", &lines_metric())
         .await;
     harness.grant("lines_merged", "everyone", LATER_ADMIN).await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
@@ -413,7 +428,7 @@ async fn a_member_lists_only_shared_metrics() {
         .grant("lines_everyone", "everyone", LATER_ADMIN)
         .await;
     harness.grant("lines_other", OTHER_MEMBER, ADMIN).await;
-    harness.grant("lines_unmarked", MEMBER, ADMIN).await;
+    harness.grant("lines_not_personal", MEMBER, ADMIN).await;
 
     let listed = harness.listed(MEMBER).await;
 
@@ -441,12 +456,16 @@ async fn a_member_lists_only_shared_metrics() {
 }
 
 #[tokio::test]
-async fn an_admin_lists_every_marked_metric() {
+async fn an_admin_lists_every_personal_metric() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
-    harness.marked("lines_unshared", "Lines unshared").await;
     harness
-        .metric("lines_unmarked", "Lines unmarked", &lines_metric())
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .personal_metric("lines_unshared", "Lines unshared")
+        .await;
+    harness
+        .metric("lines_not_personal", "Lines not personal", &lines_metric())
         .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
     harness.grant("lines_merged", "everyone", LATER_ADMIN).await;
@@ -473,9 +492,11 @@ async fn a_metric_whose_dataset_is_not_ready_is_left_out_of_the_listing() {
     let harness = Harness::new().await;
     let mut unready = lines_metric();
     unready["dataset"] = json!("absent");
-    harness.marked("lines_merged", "Lines merged").await;
     harness
-        .marked_as("lines_unready", "Lines unready", &unready)
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .made_personal_as("lines_unready", "Lines unready", &unready)
         .await;
 
     let listed = harness.listed(ADMIN).await;
@@ -490,9 +511,11 @@ async fn a_metric_without_a_time_source_is_left_out_of_the_listing() {
     if let Some(body) = clockless.as_object_mut() {
         body.remove("time");
     }
-    harness.marked("lines_merged", "Lines merged").await;
     harness
-        .marked_as("lines_clockless", "Lines clockless", &clockless)
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .made_personal_as("lines_clockless", "Lines clockless", &clockless)
         .await;
 
     let listed = harness.listed(ADMIN).await;
@@ -503,7 +526,9 @@ async fn a_metric_without_a_time_source_is_left_out_of_the_listing() {
 #[tokio::test]
 async fn values_refuse_a_person_the_caller_cannot_see() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
 
     let refused = harness
@@ -524,7 +549,9 @@ async fn values_refuse_a_person_the_caller_cannot_see() {
 #[tokio::test]
 async fn values_refuse_a_person_id_identity_refuses() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let nil = Uuid::nil().to_string();
 
     let refused = harness
@@ -538,7 +565,9 @@ async fn values_refuse_a_person_id_identity_refuses() {
 #[tokio::test]
 async fn values_refuse_a_team_member_the_caller_cannot_see() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
 
     let refused = harness
@@ -568,7 +597,9 @@ async fn values_refuse_a_team_member_the_caller_cannot_see() {
 #[tokio::test]
 async fn values_answer_null_for_a_person_without_rows() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     harness.grant("lines_merged", "everyone", ADMIN).await;
 
     let answer = harness
@@ -592,7 +623,9 @@ async fn values_answer_null_for_a_person_without_rows() {
 #[tokio::test]
 async fn values_answer_one_value_per_team() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let answer = harness
         .values(
@@ -627,7 +660,9 @@ async fn values_answer_one_value_per_team() {
 #[tokio::test]
 async fn values_refuse_1001_persons() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let persons: Vec<String> = (1..=1001_u128)
         .map(|seed| Uuid::from_u128(seed).to_string())
         .collect();
@@ -644,7 +679,9 @@ async fn values_refuse_1001_persons() {
 #[tokio::test]
 async fn values_count_team_members_toward_the_persons_limit() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let persons: Vec<String> = (1..=1001_u128)
         .map(|seed| Uuid::from_u128(seed).to_string())
         .collect();
@@ -691,7 +728,9 @@ async fn values_refuse_an_empty_metric_list() {
 #[tokio::test]
 async fn values_need_persons_or_teams() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness.values(ADMIN, asked(&["lines_merged"], &[])).await;
 
@@ -702,7 +741,9 @@ async fn values_need_persons_or_teams() {
 #[tokio::test]
 async fn values_refuse_a_period_that_does_not_move_forward() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness
         .values(
@@ -723,7 +764,9 @@ async fn values_refuse_a_period_that_does_not_move_forward() {
 #[tokio::test]
 async fn values_refuse_a_date_that_is_not_a_day() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness
         .values(
@@ -746,9 +789,11 @@ async fn values_tell_an_admin_which_metric_caps_the_period_and_keep_the_others()
     let harness = Harness::new().await;
     let mut capped = lines_metric();
     capped["max_range"] = json!("P30D");
-    harness.marked("lines_merged", "Lines merged").await;
     harness
-        .marked_as("lines_capped", "Lines capped", &capped)
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .made_personal_as("lines_capped", "Lines capped", &capped)
         .await;
 
     let answer = harness
@@ -776,9 +821,11 @@ async fn values_hide_from_a_member_which_metric_caps_the_period_and_keep_the_oth
     let harness = Harness::new().await;
     let mut capped = lines_metric();
     capped["max_range"] = json!("P30D");
-    harness.marked("lines_merged", "Lines merged").await;
     harness
-        .marked_as("lines_capped", "Lines capped", &capped)
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .made_personal_as("lines_capped", "Lines capped", &capped)
         .await;
     harness.grant("lines_merged", "everyone", ADMIN).await;
     harness.grant("lines_capped", "everyone", ADMIN).await;
@@ -810,7 +857,7 @@ async fn values_hide_from_a_member_which_metric_caps_the_period_and_keep_the_oth
 async fn values_list_a_metric_whose_stored_body_does_not_parse_as_failed() {
     let harness = Harness::new().await;
     harness
-        .marked_as(
+        .made_personal_as(
             "lines_broken",
             "Lines broken",
             &json!({ "dataset": "commits", "fields": "not a list" }),
@@ -834,7 +881,7 @@ async fn values_tell_an_admin_why_a_stored_metric_does_not_compile() {
     let mut broken = lines_metric();
     broken["max_range"] = json!("P1W");
     harness
-        .marked_as("lines_broken", "Lines broken", &broken)
+        .made_personal_as("lines_broken", "Lines broken", &broken)
         .await;
 
     let answer = harness
@@ -852,7 +899,7 @@ async fn values_hide_from_a_member_why_a_stored_metric_does_not_compile() {
     let mut broken = lines_metric();
     broken["max_range"] = json!("P1W");
     harness
-        .marked_as("lines_broken", "Lines broken", &broken)
+        .made_personal_as("lines_broken", "Lines broken", &broken)
         .await;
     harness.grant("lines_broken", "everyone", ADMIN).await;
 
@@ -871,7 +918,7 @@ async fn values_tell_an_admin_which_dataset_is_not_ready() {
     let mut unready = lines_metric();
     unready["dataset"] = json!("absent");
     harness
-        .marked_as("lines_unready", "Lines unready", &unready)
+        .made_personal_as("lines_unready", "Lines unready", &unready)
         .await;
 
     let answer = harness
@@ -890,7 +937,7 @@ async fn values_hide_from_a_member_why_a_metric_cannot_be_read() {
     let mut unready = lines_metric();
     unready["dataset"] = json!("absent");
     harness
-        .marked_as("lines_unready", "Lines unready", &unready)
+        .made_personal_as("lines_unready", "Lines unready", &unready)
         .await;
     harness.grant("lines_unready", "everyone", ADMIN).await;
 
@@ -913,21 +960,25 @@ async fn values_hide_from_a_member_why_a_metric_cannot_be_read() {
 #[tokio::test]
 async fn values_hide_a_metric_not_shared_with_the_caller() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
-    harness.marked("lines_other", "Lines for another").await;
     harness
-        .metric("lines_unmarked", "Lines unmarked", &lines_metric())
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .personal_metric("lines_other", "Lines for another")
+        .await;
+    harness
+        .metric("lines_not_personal", "Lines not personal", &lines_metric())
         .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
     harness.grant("lines_other", OTHER_MEMBER, ADMIN).await;
-    harness.grant("lines_unmarked", MEMBER, ADMIN).await;
+    harness.grant("lines_not_personal", MEMBER, ADMIN).await;
 
     let shown = harness
         .values(MEMBER, asked(&["lines_merged"], &[ALICE]))
         .await;
 
     assert_eq!(shown.status, StatusCode::OK, "{}", shown.body);
-    for hidden in ["lines_other", "lines_unmarked", "no_such_metric"] {
+    for hidden in ["lines_other", "lines_not_personal", "no_such_metric"] {
         let refused = harness
             .values(MEMBER, asked(&["lines_merged", hidden], &[ALICE]))
             .await;
@@ -941,9 +992,11 @@ async fn values_keep_the_other_metrics_when_one_run_fails() {
     let harness = Harness::new().await;
     let mut outage = lines_metric();
     outage["dataset"] = json!("outages");
-    harness.marked("lines_merged", "Lines merged").await;
     harness
-        .marked_as("lines_outage", "Lines outage", &outage)
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .made_personal_as("lines_outage", "Lines outage", &outage)
         .await;
     harness.grant("lines_merged", "everyone", ADMIN).await;
     harness.grant("lines_outage", "everyone", ADMIN).await;
@@ -975,7 +1028,9 @@ async fn values_keep_the_other_metrics_when_one_run_fails() {
 #[tokio::test]
 async fn values_hide_the_warehouse_failure_from_an_admin() {
     let harness = Harness::failing().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let answer = harness
         .values(ADMIN, asked(&["lines_merged"], &[ALICE]))
@@ -992,7 +1047,9 @@ async fn values_hide_the_warehouse_failure_from_an_admin() {
 #[tokio::test]
 async fn values_list_a_metric_as_failed_while_every_run_slot_is_taken() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let taken = Arc::clone(harness.state.widget_run_slots())
         .acquire_many_owned(
             u32::try_from(crate::api::dashboard_widgets::MAX_CONCURRENT_WIDGET_RUNS)
@@ -1022,7 +1079,9 @@ async fn values_list_a_metric_as_failed_while_every_run_slot_is_taken() {
 #[tokio::test]
 async fn an_unidentified_caller_reads_nothing() {
     let harness = Harness::build(Upstream::Answering, IdentityClient::unidentified()).await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let listed = harness
         .send(ADMIN, "GET", "/v1/personal-metrics", None)
@@ -1042,7 +1101,9 @@ async fn an_unidentified_caller_reads_nothing() {
 #[tokio::test]
 async fn records_refuse_a_person_the_caller_cannot_see() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
 
     let shown = harness
@@ -1067,7 +1128,9 @@ async fn records_refuse_a_person_the_caller_cannot_see() {
 #[tokio::test]
 async fn records_page_with_a_cursor() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let first = harness
         .records(ADMIN, "lines_merged", records_of(ALICE))
@@ -1096,7 +1159,9 @@ async fn records_page_with_a_cursor() {
 #[tokio::test]
 async fn records_read_the_newest_rows_first() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let answer = harness
         .records(ADMIN, "lines_merged", records_of(ALICE))
@@ -1121,7 +1186,9 @@ async fn records_read_the_newest_rows_first() {
 #[tokio::test]
 async fn records_answer_in_the_drilldown_shape() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let answer = harness
         .records(ADMIN, "lines_merged", records_of(ALICE))
@@ -1168,7 +1235,9 @@ fn a_records_column_title_is_its_key_in_plain_words() {
 #[tokio::test]
 async fn records_name_the_column_that_holds_the_value() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let answer = harness
         .records(ADMIN, "lines_merged", records_of(ALICE))
@@ -1190,12 +1259,12 @@ async fn records_name_no_value_column_when_the_value_reads_no_column() {
         ],
         "group_by": ["author"]
     });
-    let mark = PersonalMark {
+    let settings = PersonalSettings {
         value_field: "commits".to_owned(),
-        ..lines_mark()
+        ..lines_settings()
     };
     harness
-        .marked_by("commits_made", "Commits made", &counted, &mark)
+        .made_personal_with("commits_made", "Commits made", &counted, &settings)
         .await;
 
     let answer = harness
@@ -1210,7 +1279,9 @@ async fn records_name_no_value_column_when_the_value_reads_no_column() {
 #[tokio::test]
 async fn records_refuse_a_cursor_issued_for_another_person() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let first = harness
         .records(ADMIN, "lines_merged", records_of(ALICE))
         .await;
@@ -1227,7 +1298,9 @@ async fn records_refuse_a_cursor_issued_for_another_person() {
 #[tokio::test]
 async fn records_refuse_a_cursor_that_does_not_decode() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let mut broken = records_of(ALICE);
     broken["cursor"] = json!("not a cursor!");
@@ -1240,7 +1313,9 @@ async fn records_refuse_a_cursor_that_does_not_decode() {
 #[tokio::test]
 async fn records_refuse_a_person_id_that_is_not_a_uuid() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness
         .records(ADMIN, "lines_merged", records_of("alice"))
@@ -1253,7 +1328,9 @@ async fn records_refuse_a_person_id_that_is_not_a_uuid() {
 #[tokio::test]
 async fn records_refuse_a_person_id_identity_refuses() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness
         .records(ADMIN, "lines_merged", records_of(&Uuid::nil().to_string()))
@@ -1266,7 +1343,9 @@ async fn records_refuse_a_person_id_identity_refuses() {
 #[tokio::test]
 async fn records_refuse_a_period_that_does_not_move_forward() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
 
     let refused = harness
         .records(
@@ -1283,20 +1362,24 @@ async fn records_refuse_a_period_that_does_not_move_forward() {
 #[tokio::test]
 async fn records_hide_a_metric_not_shared_with_the_caller() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
-    harness.marked("lines_other", "Lines for another").await;
     harness
-        .metric("lines_unmarked", "Lines unmarked", &lines_metric())
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
+    harness
+        .personal_metric("lines_other", "Lines for another")
+        .await;
+    harness
+        .metric("lines_not_personal", "Lines not personal", &lines_metric())
         .await;
     harness.grant("lines_merged", MEMBER, ADMIN).await;
     harness.grant("lines_other", OTHER_MEMBER, ADMIN).await;
-    harness.grant("lines_unmarked", MEMBER, ADMIN).await;
+    harness.grant("lines_not_personal", MEMBER, ADMIN).await;
 
     let shown = harness
         .records(MEMBER, "lines_merged", records_of(ALICE))
         .await;
     assert_eq!(shown.status, StatusCode::OK, "{}", shown.body);
-    for hidden in ["lines_other", "lines_unmarked", "no_such_metric"] {
+    for hidden in ["lines_other", "lines_not_personal", "no_such_metric"] {
         let refused = harness.records(MEMBER, hidden, records_of(ALICE)).await;
 
         assert_eq!(
@@ -1314,7 +1397,7 @@ async fn records_tell_an_admin_which_dataset_is_not_ready() {
     let mut unready = lines_metric();
     unready["dataset"] = json!("absent");
     harness
-        .marked_as("lines_unready", "Lines unready", &unready)
+        .made_personal_as("lines_unready", "Lines unready", &unready)
         .await;
 
     let refused = harness
@@ -1335,7 +1418,7 @@ async fn records_hide_from_a_member_why_a_metric_cannot_be_read() {
     let mut unready = lines_metric();
     unready["dataset"] = json!("absent");
     harness
-        .marked_as("lines_unready", "Lines unready", &unready)
+        .made_personal_as("lines_unready", "Lines unready", &unready)
         .await;
     harness.grant("lines_unready", "everyone", ADMIN).await;
 
@@ -1360,7 +1443,7 @@ async fn records_hide_from_a_member_why_a_metric_cannot_be_read() {
 async fn records_fail_on_the_server_when_a_stored_body_does_not_parse() {
     let harness = Harness::new().await;
     harness
-        .marked_as(
+        .made_personal_as(
             "lines_broken",
             "Lines broken",
             &json!({ "dataset": "commits", "fields": "not a list" }),
@@ -1385,7 +1468,9 @@ async fn records_fail_on_the_server_when_a_stored_body_does_not_parse() {
 #[tokio::test]
 async fn records_wait_for_the_shared_run_slots() {
     let harness = Harness::new().await;
-    harness.marked("lines_merged", "Lines merged").await;
+    harness
+        .personal_metric("lines_merged", "Lines merged")
+        .await;
     let taken = Arc::clone(harness.state.widget_run_slots())
         .acquire_many_owned(
             u32::try_from(crate::api::dashboard_widgets::MAX_CONCURRENT_WIDGET_RUNS)
