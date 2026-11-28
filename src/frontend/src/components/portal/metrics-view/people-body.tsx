@@ -86,6 +86,7 @@ export function PeopleBody({
   const inView = comparing ? compared : members;
   const inViewIds = inView.map((member) => member.entityId);
   const columns = keysWithData(metricKeys, byKey, inViewIds);
+  const shownSort = sort && columns.includes(sort.key) ? sort : null;
 
   const toggle = (entityId: string) =>
     setExpanded((current) => {
@@ -94,8 +95,8 @@ export function PeopleBody({
       return next;
     });
 
-  const rows = sort
-    ? sortRows(metricsRows(null, people, expanded), sort.key, sort.direction, byKey)
+  const rows = shownSort
+    ? sortRows(metricsRows(null, people, expanded), shownSort.key, shownSort.direction, byKey)
     : metricsRows(pivot, people, expanded);
 
   return (
@@ -106,7 +107,7 @@ export function PeopleBody({
             ? comparingNote(t, compared)
             : t("metrics_view.people_count", { count: inView.length })}
         </p>
-        {allManagers.length > 0 && !sort && !comparing ? (
+        {allManagers.length > 0 && !shownSort && !comparing ? (
           <Button
             type="button"
             variant="ghost"
@@ -168,7 +169,7 @@ export function PeopleBody({
           groups={metricGroups(columns)}
           byKey={byKey}
           roles={roles}
-          sort={sort}
+          sort={shownSort}
           onSort={(key) => setSort((current) => nextSort(current, key))}
           onToggle={toggle}
           onScope={(entityId) => setScope({ root: entityId })}

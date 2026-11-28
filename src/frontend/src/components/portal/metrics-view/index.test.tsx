@@ -561,6 +561,17 @@ describe("MetricsView", () => {
     expect(rowHeaders()).toEqual(["boss", "c", "b", "a"]);
   });
 
+  it("returns to the manager tree when the sorted metric leaves the table", async () => {
+    render(<MetricsView />);
+    const tree = rowHeaders();
+
+    await userEvent.click(screen.getByRole("button", { name: "Sort by Default branch commits" }));
+    act(() => portalRouter.set({ metrics: "tasks.closed" }));
+
+    expect(rowHeaders()).toEqual(tree);
+    expect(screen.getByRole("button", { name: /^(Expand|Collapse) all$/ })).toBeInTheDocument();
+  });
+
   it("opens the records behind a value when it is clicked", async () => {
     const openEvidenceTargets = vi.fn();
     render(
