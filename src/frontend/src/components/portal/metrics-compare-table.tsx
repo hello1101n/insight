@@ -94,7 +94,7 @@ export function MetricsCompareTable({
               </tr>
             ) : null}
             <tr>
-              <th scope="col" className={cn(HEAD_CELL, STICKY_START, headTop, "z-20")}>
+              <th scope="col" className={cn(HEAD_CELL, STICKY_START, headTop, "z-20 min-w-44")}>
                 {t("metrics_view.metric")}
               </th>
               {byMedian ? (

@@ -3,6 +3,7 @@ import { expect, within } from "storybook/test";
 
 import { EvidenceDialogContext } from "@/components/metric-evidence-context";
 import { MetricsCompareTable } from "@/components/portal/metrics-compare-table";
+import type { MetricResult } from "@/api/metric-results-client";
 import { normalizeMetricResults } from "@/lib/metrics/collection";
 
 const PEOPLE = [
@@ -37,6 +38,114 @@ const BY_KEY = normalizeMetricResults([
   },
 ]);
 
+const FIGMA_PEOPLE = [
+  "Alex Morgan",
+  "Taylor Kim",
+  "Casey Park",
+  "Jamie Ellis",
+  "Sam Rivera",
+  "Robin Chen",
+].map((displayName, index) => ({
+  entityId: `019e27bc-dec0-7626-81a9-c5524662a7c${index}`,
+  displayName,
+}));
+
+const FIGMA_PERIOD = { from: "2026-10-16", to: "2026-11-15" };
+
+function figmaMetric(
+  metric_key: string,
+  label: string,
+  shape: Pick<MetricResult, "format" | "unit" | "computation" | "direction">,
+  values: ReadonlyArray<number | null>,
+  drilldown = false,
+): MetricResult {
+  return {
+    metric_key,
+    label,
+    ...shape,
+    ...(drilldown
+      ? {
+          drilldown: { granularity: ["event"] },
+          selection: {
+            metric_key,
+            entity: { type: "person", ids: FIGMA_PEOPLE.map((person) => person.entityId) },
+            period: FIGMA_PERIOD,
+            filters: [],
+          },
+        }
+      : {}),
+    views: [
+      {
+        view: "period",
+        values: FIGMA_PEOPLE.map((person, index) => ({
+          entity_id: person.entityId,
+          value: values[index] ?? null,
+        })),
+      },
+    ],
+  } as MetricResult;
+}
+
+const FIGMA_BY_KEY = normalizeMetricResults([
+  figmaMetric(
+    "git.prs_merged",
+    "PRs merged",
+    { format: "integer", unit: null, computation: "sum", direction: "neutral" },
+    [10, 8, 12, 14, 10, 16],
+  ),
+  figmaMetric(
+    "git.pr_cycle_time_h",
+    "PR cycle time",
+    { format: "decimal", unit: "h", computation: "sum", direction: "lower_is_better" },
+    [12, 15, 12, 9, 9, 15],
+    true,
+  ),
+  figmaMetric(
+    "git.pr_merge_rate",
+    "PR merge rate",
+    { format: "percent", unit: null, computation: "ratio", direction: "higher_is_better" },
+    [90, 75, 85, 80, 95, 85],
+  ),
+  figmaMetric(
+    "git.commit_size",
+    "Commit size",
+    { format: "integer", unit: "lines", computation: "median", direction: "lower_is_better" },
+    [149, 80, 60, 40, 100, 80],
+  ),
+  figmaMetric(
+    "collab.meeting_hours",
+    "Meeting hours",
+    { format: "decimal", unit: "h", computation: "sum", direction: "neutral" },
+    [10, 8, null, 12, 14, 10],
+  ),
+  figmaMetric(
+    "collab.emails_sent",
+    "Emails sent",
+    { format: "integer", unit: null, computation: "sum", direction: "higher_is_better" },
+    [40, 24, 12, 0, 18, 24],
+  ),
+]);
+
+const FIGMA_ROLES = new Map(
+  ["Backend engineer", "Backend engineer", "Engineer", "Frontend engineer", "Frontend engineer", "Engineer"].map(
+    (role, index) => [FIGMA_PEOPLE[index]!.entityId, role],
+  ),
+);
+
+const FIGMA_TEAMS = new Map(
+  FIGMA_PEOPLE.map((person, index) => [
+    person.entityId,
+    index < 3 ? { id: "manager-1", name: "Morgan Lee" } : { id: "manager-2", name: "Riley Shaw" },
+  ]),
+);
+
+const FIGMA_ARGS = {
+  keys: [...FIGMA_BY_KEY.keys()],
+  byKey: FIGMA_BY_KEY,
+  roles: FIGMA_ROLES,
+  teams: FIGMA_TEAMS,
+};
+
 const meta: Meta<typeof MetricsCompareTable> = {
   title: "Portal/MetricsCompareTable",
   component: MetricsCompareTable,
@@ -52,7 +161,7 @@ const meta: Meta<typeof MetricsCompareTable> = {
       <EvidenceDialogContext.Provider
         value={{ openEvidence: () => {}, openEvidenceTargets: () => {}, openEvidencePeople: () => {} }}
       >
-        <div style={{ width: 900 }}>
+        <div style={{ width: 1200 }}>
           <Story />
         </div>
       </EvidenceDialogContext.Provider>
@@ -80,4 +189,12 @@ export const TestEachNameStartsWhereItsValueStarts: Story = {
       ).toBeLessThanOrEqual(1);
     }
   },
+};
+
+export const TwoPeople: Story = {
+  args: { ...FIGMA_ARGS, people: [FIGMA_PEOPLE[0]!, FIGMA_PEOPLE[3]!] },
+};
+
+export const SixPeople: Story = {
+  args: { ...FIGMA_ARGS, people: FIGMA_PEOPLE },
 };
