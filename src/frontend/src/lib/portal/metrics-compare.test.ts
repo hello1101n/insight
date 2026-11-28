@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  compareOverTime,
   compareWithBest,
   compareWithMedian,
   formatDelta,
@@ -134,5 +135,26 @@ describe("formatDelta", () => {
     ["the currency form for a currency", 1234, "currency", "USD", "+$1,234"],
   ] as const)("writes %s", (_case, delta, format, unit, text) => {
     expect(formatDelta(delta, { format, unit })).toBe(text);
+  });
+});
+
+describe("compareOverTime", () => {
+  it.each([
+    ["better when a higher-is-better value rises", 371, 300, COUNT, { delta: 71, better: true }],
+    ["worse when a higher-is-better value falls", 54, 70, COUNT, { delta: -16, better: false }],
+    ["better when a lower-is-better value falls", 10, 12, HOURS_LOWER, { delta: -2, better: true }],
+    ["worse when a lower-is-better value rises", 12, 10, HOURS_LOWER, { delta: 2, better: false }],
+    ["neither for a neutral metric", 70, 54, { ...COUNT, direction: "neutral" }, { delta: 16, better: null }],
+    ["neither when the values are equal", 371, 371, COUNT, { delta: 0, better: null }],
+    ["neither when the values show the same", 10.04, 9.96, COUNT, { delta: 0, better: null }],
+  ] as const)("measures After from Before, %s", (_case, after, before, result, cell) => {
+    expect(compareOverTime(after, before, result)).toEqual(cell);
+  });
+
+  it.each([
+    ["After", null, 12],
+    ["Before", 12, null],
+  ] as const)("gives no change when %s has no value", (_case, after, before) => {
+    expect(compareOverTime(after, before, COUNT)).toBeNull();
   });
 });

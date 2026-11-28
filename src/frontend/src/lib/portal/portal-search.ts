@@ -2,9 +2,10 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import type { OwnedFilter } from "@/api/custom-client";
-import { validateDateRange } from "@/api/period-to-date-range";
+import { parseISOCalendarDate, validateDateRange } from "@/api/period-to-date-range";
 import { isRangeToken } from "@/lib/custom/time-range";
 import { formatSources, parseSources } from "@/lib/identities/sources";
+import { asTeamTimeWeeks, type TeamTimeWeeks } from "@/lib/portal/metrics-team-time";
 import type { PeriodValue } from "@/types/insight";
 
 export interface GlobalSearch {
@@ -30,6 +31,9 @@ export interface IdentitiesSearch {
 export interface MetricsViewSearch {
   metrics?: string;
   compare?: string;
+  team?: string;
+  change?: string;
+  weeks?: TeamTimeWeeks;
 }
 
 export interface DashboardListSearch {
@@ -125,9 +129,14 @@ export function validateIdentitiesSearch(raw: Record<string, unknown>): Identiti
 }
 
 export function validateMetricsViewSearch(raw: Record<string, unknown>): MetricsViewSearch {
+  const team = str(raw.team)?.toLowerCase();
+  const change = str(raw.change);
   return {
     metrics: list(raw.metrics, METRIC_KEY),
     compare: list(str(raw.compare)?.toLowerCase(), PERSON_ID),
+    team: team && PERSON_ID.test(team) ? team : undefined,
+    change: change && parseISOCalendarDate(change) ? change : undefined,
+    weeks: asTeamTimeWeeks(raw.weeks),
   };
 }
 

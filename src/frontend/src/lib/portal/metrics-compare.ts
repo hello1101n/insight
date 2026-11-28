@@ -100,6 +100,23 @@ export function compareWithMedian(
   return { median, present: present.length, cells };
 }
 
+export interface OverTimeCell {
+  delta: number;
+  better: boolean | null;
+}
+
+export function compareOverTime(
+  after: number | null,
+  before: number | null,
+  result: CompareFormat,
+): OverTimeCell | null {
+  if (after == null || before == null) return null;
+
+  const delta = shownValue(after, result) - shownValue(before, result);
+  if (delta === 0 || result.direction === "neutral") return { delta, better: null };
+  return { delta, better: result.direction === "lower_is_better" ? delta < 0 : delta > 0 };
+}
+
 export function formatDelta(delta: number, result: ValueFormat): string {
   const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
   const size = Math.abs(delta);

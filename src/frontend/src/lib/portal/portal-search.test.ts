@@ -124,6 +124,17 @@ describe("Metrics view links", () => {
     ["keeps an empty pick", { metrics: "none" }, { metrics: "none" }],
     ["drops a list with nothing usable", { metrics: ",," }, { metrics: undefined }],
     ["keeps compared ids, lower-cased", { compare: "AB12-CD,x y" }, { compare: "ab12-cd" }],
+    [
+      "keeps a team compared over time, its change date and its weeks",
+      { team: "AB12-CD", change: "2026-10-15", weeks: 4 },
+      { team: "ab12-cd", change: "2026-10-15", weeks: 4 },
+    ],
+    ["reads weeks written as text", { weeks: "1" }, { weeks: 1 }],
+    [
+      "drops a team that is not an id, a change date that is not a calendar day, and weeks out of 1, 2 and 4",
+      { team: "x y", change: "2026-02-30", weeks: 3 },
+      { team: undefined, change: undefined, weeks: undefined },
+    ],
   ])("%s", (_case, raw, expected) => {
     expect(validateMetricsViewSearch(raw)).toMatchObject(expected);
   });
